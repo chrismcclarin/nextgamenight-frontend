@@ -741,6 +741,19 @@ export default function CalendarMonthView({
                                not add a keyboard path to the cell" therefore still stands, and is
                                now enforced by `groupColourRendering.test.ts`'s rewritten test 23.
 
+                               (b) SIZE — plan 88.6-40 task 3. "PHASE 88.6's calendar/tile pass
+                               owns the size question" is DISCHARGED here, not left to a later
+                               plan: this tile now DECLARES `min-h-6` (24px) on its own
+                               `className`, under the D-13 per-control pattern and citing WCAG 2.2
+                               SC 2.5.8 — see the marker at that `className`, which also records
+                               why 44 (SC 2.5.5, AAA) was REJECTED. The "roughly 16-20px tall"
+                               figure above is HISTORY; re-derived at this commit the pre-fix
+                               height was ~20px (16px `text-xs` line box + 2px `p-0.5` each side,
+                               ARITHMETIC not a rendered read). The paragraph's other half —
+                               "the DAY CELL (min-h 80px) is the touch surface" — is unchanged and
+                               is exactly the WCAG 2.2 "Equivalent" precondition the day-number
+                               target's own marker leans on.
+
                                Any of this is a decision, not a cleanup. */
                             <div
                               key={event.id}
@@ -757,8 +770,28 @@ export default function CalendarMonthView({
                               /* §4.5 HIERARCHY -> 700: this span IS the compact tile's game
                                  name, its primary content. `text-xs` STAYS — a month tile is a
                                  dense-grid cell and Caption 12 is its ratified role (§4.2), so
-                                 this is one of the sites that must NOT be swept to 14. */
-                              className={`text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
+                                 this is one of the sites that must NOT be swept to 14.
+
+                                 DECISION Phase 88.6-40 (W40, D-13 pattern): `min-h-6` (24px)
+                                 DECLARED here, citing WCAG 2.2 SC 2.5.8 (Target Size, Minimum),
+                                 whose binding floor is 24x24 CSS px. It is DECLARED rather than
+                                 inherited because this is a `role="button"` div, not a `.btn` and
+                                 not a `<Button>`, so neither `globals.css`'s phone-only
+                                 `.btn { min-height: 2.75rem }` nor the primitive's cva base
+                                 reaches it — the same per-site pattern the 87.8 D-13 floor
+                                 markers record.
+
+                                 REJECTED — a 44px floor (SC 2.5.5, which is AAA). Seven of these
+                                 sit across a `grid-cols-7` row at 375px inside a cell that is
+                                 `min-h-[80px]`, and two tiles stack per cell: a 44px floor would
+                                 deform the month grid outright. 24 is the correct floor for THIS
+                                 element and 44 would be the wrong one, which is precisely why
+                                 D-13's pattern is a per-control declaration.
+
+                                 MEASURED BEFORE: ~20px (ARITHMETIC, not a rendered read — 16px
+                                 `text-xs` line box + 2px `p-0.5` top and bottom). This is a
+                                 decision, not a cleanup. */
+                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,

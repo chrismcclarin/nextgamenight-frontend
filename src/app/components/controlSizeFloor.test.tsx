@@ -318,24 +318,29 @@ function elementSites(names: RegExp): { where: string; rel: string; tag: string 
  * decision, not a cleanup.
  */
 const D13_FLOOR_ROSTER: ExemptionRoster = {
-  'app/components/CalendarMonthView.js': {
-    sites: 1,
-    why:
-      'The COMPACT month event tile (`aria-label={tileLabel + rsvpLabel}`) is `text-xs p-0.5 ' +
-      'rounded-sm` with no minimum dimension — roughly 16-20px tall by its own shipped TARGET ' +
-      'SIZE marker in this file. Plan 40 (wave 8) declares the >= 24px floor (WCAG 2.2 2.5.8, ' +
-      'D-13 pattern) and its fix must delete this entry.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R5 / W40 — AC-5' },
-  },
-  'app/components/grouplist.js': {
-    sites: 1,
-    why:
-      'The home-card settings cog (`aria-label="Customize group"`) is `px-3 py-1 text-sm` around ' +
-      'a single emoji glyph — ~28px tall by its own shipped TARGET SIZE marker, which records the ' +
-      'owner ruling of 2026-08-27 deferring it and names Phase 88.6 as the owner. Plan 40 (wave 8) ' +
-      'declares the >= 44px floor at the site (D-13 pattern); its fix must delete this entry.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R5 / W40 — AC-5' },
-  },
+  // BOTH ENTRIES DELETED by plan 88.6-40 task 3 (wave 8, 2026-09-17) — the closure plan 12
+  // designed this roster for, not an adjustment. `assertExactCounts` runs in both directions, so
+  // a met floor with a surviving entry reds on a fossil permission; deleting them IS how the
+  // handoff completes. Neither threshold was lowered and neither locator was re-anchored.
+  //
+  //  - `app/components/CalendarMonthView.js` carried `sites: 1` for the COMPACT month event tile
+  //    (`aria-label={tileLabel + rsvpLabel}`), which was `text-xs p-0.5 rounded-sm` with no
+  //    minimum dimension (~20px: a 16px `text-xs` line box plus 2px `p-0.5` each side,
+  //    arithmetic). It now DECLARES `min-h-6` at the site, with WCAG 2.2 SC 2.5.8 cited and 44
+  //    recorded as REJECTED (it would deform a 7-column grid at 375px).
+  //  - `app/components/grouplist.js` carried `sites: 1` for the home-card settings cog
+  //    (`aria-label="Customize group"`). It now DECLARES `min-h-11 min-w-11` as a plain-utility
+  //    addition to the existing `<button>`'s existing `className` — no `Button` migration and no
+  //    restructure, so `groupColourRendering.test.ts`'s cog pins stay green unedited. The entry's
+  //    inherited "~28px tall" figure was the control's INTRINSIC box: re-derived at the fix, it
+  //    is a stretch child of a flex row whose `<Button>` sibling carries the cva base's
+  //    `min-h-11` at every viewport, so it already laid out 44px TALL and the real deficit was
+  //    WIDTH. `min-h-11` is declared anyway, because both controls in that row are optional and a
+  //    card rendering the cog without the CTA would otherwise fall back to ~28px.
+  //
+  // The roster is now EMPTY. An empty roster is the end state this file's docblock describes —
+  // do not re-seed it to silence a future red; a new unmet floor is a new subject and needs its
+  // own entry with its own owner.
 };
 
 describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {

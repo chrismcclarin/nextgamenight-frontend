@@ -924,9 +924,49 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                          which is a layout change nobody has looked at on a phone. PHASE 88.6 owns
                          it under the `Button` migration (entry in `.planning/deferred/phase-88.6.md`).
 
+                         AMENDED Phase 88.6-40 (W40) — THE PARAGRAPH ABOVE IS KEPT AS HISTORY, AND
+                         TWO OF ITS CLAIMS ARE SUPERSEDED RATHER THAN REPEATED.
+
+                         (a) OWNERSHIP DISCHARGED. `min-h-11 min-w-11` is now declared on this
+                         button's existing `className` — a PLAIN-UTILITY addition under the D-13
+                         per-control pattern, deliberately NOT the `Button` migration the sentence
+                         above anticipated. `groupColourRendering.test.ts` anchors its cog pins on
+                         `aria-label="Customize group"` and on the `className` expression
+                         immediately preceding it (`bg-btn-secondary`, `dark:bg-surface-elevated`,
+                         `border border-line-control`, plus a no-unprefixed-`bg-surface-elevated`
+                         rule); a migration or a restructure would red those, a utility addition
+                         does not. If one of them ever reds, the ELEMENT is wrong, never the
+                         assertion. Phase 88.9's emoji-to-SVG gear item is a DIFFERENT and LATER
+                         decision on this same control and is deliberately NOT folded in — this
+                         class addition is one 88.9 can carry over unchanged.
+
+                         (b) THE GEOMETRY CLAIM ABOVE IS WRONG AND IS CORRECTED, NOT PROPAGATED.
+                         "~28px tall … adding it here reflows the card header" was true of the
+                         control's INTRINSIC box and of nothing else. Re-derived at this commit:
+                         this button is not in the card HEADER at all — it is a stretch child of
+                         the Action Buttons row (`flex gap-2 mt-3 relative z-2`, no `items-*`)
+                         whose sibling CTA is a `<Button>`, and the primitive's cva base carries
+                         `min-h-11` at EVERY viewport width (88.6 D-09), under a gate
+                         (`userRole && userRole !== 'pending'`) that strictly contains this
+                         button's own `canEdit` gate. So the row already lays this control out
+                         44px TALL, at every width — the real deficit is WIDTH (~40px: a `text-sm`
+                         glyph plus `px-3`), which is what `min-w-11` closes. The only layout
+                         delta from this addition is a few px of row width absorbed by the
+                         `flex-1` sibling; there is no header reflow to look at.
+
+                         `min-h-11` IS STILL DECLARED, and not as decoration: it is what makes the
+                         44px height a PROPERTY OF THIS CONTROL rather than a side effect of a
+                         sibling's presence. Both are optional in the row — this one on `canEdit`,
+                         the CTA on a role gate — so a card rendering the cog without the CTA
+                         would otherwise fall back to the intrinsic ~28px. (A note for whoever
+                         reads this next: a plan-era claim that `Button`'s `size: default` variant
+                         declares no min-height is STALE — the floor moved to the cva BASE in
+                         88.6 D-09. It is the base, not the size variant, that holds the sibling
+                         at 44px.)
+
                          Any of this is a decision, not a cleanup. */
                       <button
-                        className="px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                        className="min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);
