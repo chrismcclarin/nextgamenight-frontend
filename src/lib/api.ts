@@ -14,6 +14,7 @@ import type {
 import type { EmailChangeResponse, User } from './schemas/users';
 import type { AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
+import { logger } from '@/lib/logger';
 
 // Absolute backend origin. Used ONLY by PUBLIC/unauthenticated callers that must
 // bypass the BFF proxy (magic-link, invite-preview, public RSVP respond,
@@ -152,12 +153,27 @@ export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;
   readonly details?: unknown;
-  constructor(message: string, code: ApiErrorCode, status: number, details?: unknown) {
+  /**
+   * The BACKEND's own error string, off the DISPLAY path. Populated from the
+   * legacy `error` key by `extractUpstreamMessage` (see its DECISION marker)
+   * and read by NOTHING but `queryCacheOnError`'s Sentry `extra` forward.
+   * A STRING or undefined — never the parsed body, never `errorData`.
+   * Rendering this anywhere is a defect, not a simplification.
+   */
+  readonly upstreamMessage?: string;
+  constructor(
+    message: string,
+    code: ApiErrorCode,
+    status: number,
+    details?: unknown,
+    upstreamMessage?: string
+  ) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
     this.details = details;
+    this.upstreamMessage = upstreamMessage;
     Object.setPrototypeOf(this, ApiError.prototype); // instanceof works post-transpile
   }
 }
@@ -294,27 +310,86 @@ function statusToCode(status: number): ApiErrorCode {
 // raw `{ error }` body. Call sites NEVER change — they only read err.code.
 export function mapErrorToCode(body: any, status: number): ApiErrorCode {
   if (body && typeof body.code === 'string') return body.code as ApiErrorCode; // PREFERRED: envelope code
-  // Legacy validation hint: a body carrying a top-level errors[] (the Phase 85
-  // legacy mirror, or an old raw validation body) is a validation failure
-  // regardless of status. Retained as a FALLBACK for unconverted routes.
-  if (body?.errors && Array.isArray(body.errors)) return 'validation';
+  // Validation hint, CANONICAL SHAPE ONLY. Phase 88.6 plan 42 moved this arm off
+  // the TOP-LEVEL `errors[]` legacy mirror onto the sanctioned Phase 85/86
+  // `details.errors`. BEHAVIOUR-NEUTRAL for the unconverted producers measured
+  // 2026-09-17 — routes/invites.js:216, routes/friendships.js:278 and
+  // routes/availability.js:55-64 all emit their top-level `errors[]` on a 400,
+  // and statusToCode(400) already returns 'validation'. The Array.isArray guard
+  // stays: a malformed `details.errors` must not produce 'validation' and must
+  // not throw (AC-9).
+  if (body?.details?.errors && Array.isArray(body.details.errors)) return 'validation';
   return statusToCode(status); // FALLBACK: HTTP-status -> code
 }
 
-// Envelope-PREFERRED human message. Prefer the envelope `body.message`; fall
-// back to the legacy `body.error` alias (RETAINED for the ~497 unconverted
-// routes until Phase 93 / BAPI-03 removes both sides). This is the fallback
-// chain the acceptance criteria pins.
+// Envelope-ONLY human message: the envelope `body.message`, else the bare status
+// template. Phase 88.6 plan 42 DROPPED the legacy alias arm — the FE no longer
+// derives `ApiError.message` from the backend's raw `error` key on any path.
+// The dropped string is not lost: `extractUpstreamMessage` below carries it on a
+// NON-RENDERED `ApiError` field for Sentry. Both self-constructed non-JSON error
+// bodies (publicFetch and apiFetch) were reshaped onto `message` in the SAME
+// commit, so a proxy/gateway failure still surfaces its text here.
 function extractErrorMessage(body: any, status: number): string {
-  return body?.message ?? body?.error ?? `HTTP error! status: ${status}`;
+  return body?.message ?? `HTTP error! status: ${status}`;
 }
 
-// Envelope-PREFERRED validation field-errors. Prefer `body.details.errors`
-// (Phase 85 envelope); fall back to the top-level legacy `body.errors[]` mirror
-// (RETAINED for unconverted routes until Phase 93).
+// DECISION Phase 88.6-42 (AC-4): the backend's own error string is retained on a
+// NON-RENDERED `ApiError` field and forwarded to Sentry `extra` — over a clean
+// delete (arm B), which would have dropped that string from the event ENTIRELY
+// for the ~455 unconverted raw-`{ error }` routes until Phase 93, leaving only
+// "HTTP error! status: N" to read. GROUPING is unchanged either way: that capture
+// (queryClient.ts:162) carries tags and no fingerprint, and Sentry's default
+// grouping does not key on extra — so the field buys per-event READABILITY, not
+// issue separation. `ApiError.message` is the display contract and does NOT read
+// this field; the single by-name roster exemption in errorEnvelopeReads.test.ts
+// is what keeps AC-9 exact. Owner ruling 2026-09-09 (AC-4 a). Rendering this
+// field anywhere is a defect, not a simplification.
+//
+// T-84-01 RECONCILIATION (so a later sweep finds the answer, not the conflict):
+// this MOVES a string that already egresses today, it opens no channel. Before
+// this plan `extractErrorMessage` already returned `body.message ?? body.error`
+// (api.ts:308-309 pre-edit), that message was already thrown (api.ts:441
+// pre-edit) and queryClient.ts:162 already captured it. Arm A relocates it off
+// the display path onto a non-rendered field — same string, same destination,
+// narrower blast radius. The bound on it is sentry.scrub.js:171-172, which
+// deep-scrubs `event.extra`; the shape mirrored is the T-84-05 {path, code}
+// forward at queryClient.ts:150-158.
+//
+// This is the ONE sanctioned legacy-key read left in this module's apiFetch path
+// and the ONE by-name exemption in the R9 roster. It returns a STRING or
+// undefined and NOTHING else: never `errorData`, never the parsed body, never a
+// widened payload. Widening it is a different change with a different threat
+// model.
+function extractUpstreamMessage(body: any): string | undefined {
+  return typeof body?.error === 'string' ? body.error : undefined;
+}
+
+// Envelope-ONLY validation field-errors: `body.details.errors` (the sanctioned
+// Phase 85/86 envelope shape). Phase 88.6 plan 42 DROPPED the second arm, the
+// top-level legacy `body.errors[]` mirror. No consumer reads either shape for
+// control flow, and mapErrorToCode still yields 'validation' for a 400 via
+// statusToCode, so nothing downstream loses a kind.
 function extractFieldErrors(body: any): any[] | undefined {
-  const fieldErrors = body?.details?.errors ?? body?.errors;
+  const fieldErrors = body?.details?.errors;
   return Array.isArray(fieldErrors) ? fieldErrors : undefined;
+}
+
+/**
+ * One field-error entry rendered as text, or '' when it can render none.
+ *
+ * D25 / T-88.6-119: the old inline `err.message || \`${err.field}: ${err.msg}\``
+ * turned a `details.errors` of `[{}]` into the literal string
+ * "undefined: undefined". An entry with NEITHER a usable `message` NOR a
+ * `field`/`msg` pair now contributes NOTHING, and the formatter falls through
+ * to extractErrorMessage.
+ */
+function fieldErrorText(err: any): string {
+  // The param is deliberately named `err`, the name fetchErrorTreatment's
+  // RAW_MESSAGE_READ scanner matches: this IS a raw upstream read and it stays
+  // VISIBLE to that gate as one roster site. Renaming it to dodge the scanner is
+  // the anti-pattern logger.ts's errCtx docblock names by hand.
+  if (typeof err?.message === 'string' && err.message) return err.message;
+  return err?.field != null && err?.msg != null ? `${err.field}: ${err.msg}` : '';
 }
 
 /**
@@ -360,10 +435,21 @@ export async function publicFetch<T = unknown>(
     try {
       errorData = JSON.parse(responseText);
     } catch {
-      errorData = { error: responseText || `HTTP error! status: ${response.status}` };
+      // Keyed 'message', not 'error' (Phase 88.6 plan 42, T-88.6-118): the moment
+      // extractErrorMessage stopped reading the legacy alias, a self-constructed body
+      // keyed 'error' would have silently discarded its text and rendered only the
+      // status fallback for every proxy/gateway failure. Reshaped in the SAME commit
+      // as the drop.
+      errorData = { message: responseText || `HTTP error! status: ${response.status}` };
     }
     const msg = extractErrorMessage(errorData, response.status);
-    throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
+    throw new ApiError(
+      msg,
+      mapErrorToCode(errorData, response.status),
+      response.status,
+      errorData,
+      extractUpstreamMessage(errorData)
+    );
   }
 
   try {
@@ -403,11 +489,16 @@ export async function apiFetch<T = unknown>(
     
     // Check if response is HTML (means we're hitting the wrong endpoint)
     if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
-      console.error(`API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.`);
-      console.error(`Attempted URL: ${url}`);
-      console.error(`Current API_BASE_URL: ${API_BASE_URL}`);
+      // AC-2 WIDENED (owner 2026-09-09; LEVEL amended 2026-09-13, D2): ONE
+      // logger.info breadcrumb, message kept verbatim in substance. The ctx carries
+      // the BFF-RELATIVE path, which IS the whole diagnosis on this branch (WHICH
+      // call got HTML back) and cannot embed a magic-link token -- BFF_BASE is
+      // '/api' and every token-bearing helper in this module BYPASSES apiFetch.
+      // The third console line printed API_BASE_URL, the BACKEND origin this
+      // request never dialled; it is DROPPED rather than converted.
+      logger.info('API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.', { url });
       throw new ApiError(
-        `API configuration error: Backend URL appears to be incorrect. Check NEXT_PUBLIC_API_URL environment variable. Current: ${API_BASE_URL}`,
+        `API configuration error: the same-origin BFF route handler (app/api/[...path]/route.ts) returned HTML instead of JSON for ${url}. Check the NEXT_PUBLIC_API_URL environment variable that route resolves its upstream from.`,
         'config',
         response.status
       );
@@ -419,8 +510,11 @@ export async function apiFetch<T = unknown>(
         // Try to parse as JSON
         errorData = JSON.parse(responseText);
       } catch (jsonError) {
-        // If not JSON, use the text as error message
-        errorData = { error: responseText || `HTTP error! status: ${response.status}` };
+        // If not JSON, use the text as the envelope MESSAGE. Keyed 'message', not
+        // 'error' (Phase 88.6 plan 42, T-88.6-118) -- see the twin comment in
+        // publicFetch. Reshaped in the SAME commit as the alias drop; split across
+        // two commits the repo is broken in between.
+        errorData = { message: responseText || `HTTP error! status: ${response.status}` };
       }
 
       // The single throw site (D-07). mapErrorToCode is envelope-PREFERRED;
@@ -431,14 +525,27 @@ export async function apiFetch<T = unknown>(
       const fieldErrors = extractFieldErrors(errorData);
       if (fieldErrors && fieldErrors.length > 0) {
         const errorMessages = fieldErrors
-          .map((err: any) => err.message || `${err.field}: ${err.msg}`)
+          .map(fieldErrorText)
+          .filter(Boolean)
           .join('. ');
         const msg = errorMessages || extractErrorMessage(errorData, response.status);
-        throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
+        throw new ApiError(
+          msg,
+          mapErrorToCode(errorData, response.status),
+          response.status,
+          errorData,
+          extractUpstreamMessage(errorData)
+        );
       }
 
       const msg = extractErrorMessage(errorData, response.status);
-      throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
+      throw new ApiError(
+        msg,
+        mapErrorToCode(errorData, response.status),
+        response.status,
+        errorData,
+        extractUpstreamMessage(errorData)
+      );
     }
 
     // Parse successful response as JSON
@@ -449,9 +556,36 @@ export async function apiFetch<T = unknown>(
       return responseText as unknown as T;
     }
   } catch (error) {
-    const errMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`API Error (${endpoint}):`, errMessage || 'Unknown error');
-    console.error(`API URL: ${url}`);
+    // DECISION Phase 88.6-42 (AC-2 / D2): a BREADCRUMB at the fetch boundary, not
+    // Sentry.captureException -- chosen OVER an event here, and OVER deleting the log
+    // entirely. An event at this catch fires for every expected 401/404/410 (it sees
+    // every ApiError this module throws) and duplicates QueryCache.onError
+    // (queryClient.ts:167). AC-2's convert-on-touch level is logger.info phase-wide as
+    // of the owner ruling of 2026-09-13, so this is the RULE rather than an exception to
+    // it -- but it was independently the right call here and the reasoning is kept for
+    // whoever revisits the fetch boundary. If an event is ever wanted here it must be
+    // FILTERED (status >= 500), never blanket. Changing this to logger.error is a
+    // decision, not a cleanup.
+    //
+    // AND: plan 13's shared errCtx(err) helper is DECLINED at THIS ONE SITE, deliberately.
+    // errCtx returns the caught error name AND MESSAGE, and for the ApiError this module
+    // throws that message is extractErrorMessage output -- which, after this same commit
+    // reshaped the non-JSON bodies onto the message key, is the ENTIRE RAW RESPONSE TEXT
+    // on a non-JSON error response. Forwarding it would put a whole response body into a
+    // Sentry BREADCRUMB: a T-84-01 violation (logger.ts:8-13). So this call carries the
+    // endpoint, the error NAME and -- when it is an ApiError -- its status and code, and
+    // NOTHING derived from the response body. The full url is not carried either
+    // (T-88.6-124, defence in depth complementing AC-1 beforeSend scrub, never a
+    // substitute for it).
+    //
+    // NOT A PRECEDENT AGAINST THE AC-4 FIELD ABOVE: that field is a STRING forwarded to
+    // Sentry extra on an EVENT that already egresses today and is deep-scrubbed at
+    // sentry.scrub.js:171-172. This site would carry the raw response TEXT into a
+    // breadcrumb that does not egress today. Different site, different payload, different
+    // existing baseline -- both rules stand, and neither licenses the other. Restoring
+    // errCtx here is a decision, not a consistency fix.
+    const apiErr = error instanceof ApiError ? error : undefined;
+    logger.info(`API Error (${endpoint})`, { endpoint, error: error instanceof Error ? error.name : typeof error, status: apiErr?.status, code: apiErr?.code });
     // Re-throw with more context if it's a network error. ANY TypeError thrown
     // by fetch() is a network-level failure per the spec, but the message text
     // is engine-specific — Chrome throws "Failed to fetch", Safari throws

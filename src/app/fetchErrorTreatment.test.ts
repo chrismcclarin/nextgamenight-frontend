@@ -317,29 +317,15 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
     contains: "const msg = (error?.message || '').toLowerCase();",
     why: 'isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed.',
   },
-  {
-    file: 'app/friends/page.js',
-    contains: "if (err.message && err.message.includes('404'))",
-    why:
-      'CONTROL FLOW. "no user found" is a search OUTCOME with no ApiError code. Never ' +
-      'displayed. SCHEDULED FOR REMOVAL INSIDE 88.6: plan 88.6-42 (wave 8) re-keys both ' +
-      'arms onto a status-based 404 test and DELETES this entry in that same commit. ' +
-      'Confirmed 2026-09-15 from 88.6-42-PLAN.md — it declares src/app/friends/page.js in ' +
-      'files_modified and its R8 §2 note withdraws the earlier "plan 19 owns this file, do ' +
-      'not edit it from here" instruction in terms. Plan 88.6-13 does NOT edit ' +
-      'friends/page.js and does NOT delete this entry: at wave 3 the code still carries the ' +
-      'read, so an early deletion would make the scan flag it.',
-  },
-  {
-    file: 'app/friends/page.js',
-    contains: "} else if (err.message && err.message.includes('No user found'))",
-    why:
-      'CONTROL FLOW. Same search outcome, prose variant. Never displayed. SCHEDULED FOR ' +
-      'REMOVAL INSIDE 88.6 by the same plan 88.6-42 (wave 8) commit as its sibling above — ' +
-      'this arm can never match again once 42 drops the legacy `error` alias, because the ' +
-      'string it matches is a raw backend 404 with no `code` and no `message`. The entry ' +
-      'dies with the re-key. Plan 88.6-13 does not perform it.',
-  },
+  // DELETED by plan 88.6-42 task 1 (wave 8, 2026-09-17), in the SAME COMMIT as the re-key,
+  // exactly as both entries' own `why` said they would be: `app/friends/page.js` carried TWO
+  // entries — "if (err.message && err.message.includes('404'))" and
+  // "} else if (err.message && err.message.includes('No user found'))". Both prose arms are
+  // now ONE status test, `if (err?.status === 404)`, and the visible string is byte-identical.
+  // Reviewer ruling 5 of 2026-09-14 (88.6-PLAN-REVIEW-work/RULINGS.md:428): plan 13 owns this
+  // file's `why` and the standing rule above; plan 42 performs the deletion, because plan 42
+  // is where the re-key lands. The anti-vacuity array is DERIVED from this list (88.6-13 §2),
+  // so this is ONE deletion and not two — there are no twin rows to chase.
   {
     file: 'app/components/FriendshipStatusProvider.js',
     contains: "if (err?.message?.includes('409') || err?.status === 409) {",
@@ -685,15 +671,25 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // code it described (:79, the prose-matched 410 guard, re-keyed to `err?.status === 410`) and
   // two SURVIVE (:28 and :36, both inside `classifyError`'s fetch-`TypeError` arms, which the
   // re-key deliberately left alone). Entries DELETED, not zeroed.
+  // DECREMENTED 3 -> 2 by plan 88.6-42 task 1 (wave 8, 2026-09-17). The `:452` site is GONE:
+  // `const errMessage = error instanceof Error ? error.message : 'Unknown error'` existed only
+  // to feed the two console.error lines in apiFetch's outer catch, and AC-2 converted that
+  // catch to ONE `logger.info` carrying the endpoint, the error NAME and (for an ApiError) its
+  // status/code — deliberately NOT its message (see the DECISION Phase 88.6-42 (AC-2 / D2)
+  // marker at the site, which declines plan 13's errCtx helper there for exactly that reason),
+  // so the local had no remaining reader. The file's FIVE console.error calls are now ZERO.
   'lib/api.ts': {
-    sites: 3,
+    sites: 2,
     why:
-      'RAW-MESSAGE assertion. :346 and :452 are `error instanceof Error ? error.message : ' +
-      '"Unknown error"` at the fetch boundary; :434 maps a validation-errors array through ' +
-      '`err.message`. None carries a `console.` token, so none is developer-log exempt ' +
-      "today — this file's five console.error lines are separate and are plan 88.6-42's " +
-      'AC-2 conversions. Closed by plan 88.6-42 (wave 8), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-42' },
+      'RAW-MESSAGE assertion. :346 is `error instanceof Error ? error.message : ' +
+      '"Unknown error"` in publicFetch\'s fetch catch, feeding its TypeError discrimination. ' +
+      'The other is `fieldErrorText`, which maps one validation-errors entry through ' +
+      '`err.message` — the param is deliberately still named `err`, the name this scanner ' +
+      'matches, so the read stays VISIBLE here rather than being hidden by a rename. Neither ' +
+      'carries a `console.`/`logger.` token, so neither is developer-log exempt. Both are ' +
+      'Sentry-facing or control-flow, never displayed: no surface renders `ApiError.message` ' +
+      'after R1. Remaining owner: Phase 93 / BAPI-03, alongside the envelope work.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — decremented by plan 88.6-42' },
   },
 };
 

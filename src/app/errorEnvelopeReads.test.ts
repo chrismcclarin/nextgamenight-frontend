@@ -230,19 +230,51 @@ export function envelopeReads(file: string, src: string): Hit[] {
 //
 // Measured 2026-09-15 by this scanner: 13 read occurrences across 6 files.
 const ENVELOPE_READ_ROSTER: ExemptionRoster = {
+  // RE-SEEDED 5 -> 3 by plan 88.6-42 task 1 (wave 8, 2026-09-17). THREE survivors, and the
+  // FIRST of them is the phase's ONE BY-NAME arm-A exemption:
+  //
+  //  (1) `extractUpstreamMessage` — the AC-4 arm-A construction site, RULED by the owner on
+  //      2026-09-09 (a). The legacy key is read ONCE, into a NON-RENDERED `ApiError`
+  //      field (`upstreamMessage`), which nothing reads but `queryCacheOnError`'s Sentry
+  //      `extra` forward. `ApiError.message` is the display contract and does NOT read it.
+  //      Assertion 6 below pins that site BY NAME and pins that the field renders nowhere,
+  //      so AC-9's "literal zero `body.error` reads" is answered by ONE named exemption and
+  //      a NEW `.error` read anywhere else still fails assertion 1. Arm B (a clean delete)
+  //      was REJECTED: the backend's own error string would have been GONE from the Sentry
+  //      event entirely for the ~455 unconverted raw-`{ error }` routes until Phase 93.
+  //  (2)(3) `prefillFromGcal` and `prefillFromSaved` — RAW `fetch` calls that BYPASS
+  //      apiFetch, reading availabilityPrefill bodies that are `{ error: string }` with no
+  //      `code` and no `message`. Re-opened at source 2026-09-17: routes/availabilityPrefill.js
+  //      emits `{ error }` at :187, :190, :194, :197, :203-206 (+ `action: 'request_new'`),
+  //      :213, :216 and :241 — NOT ONE carries a `code` or a `message`. Under D62 branch B
+  //      these reads STAY and Phase 93 owns the backend `code`. Plan 42 hardened their
+  //      TRANSPORT (guarded success parse + mapped timeout) without touching the reads.
+  //
+  // GONE, and not coming back: the three apiFetch-path alias arms the SPEC called :300, :309
+  // and :316. `extractErrorMessage` is now `body?.message ?? "HTTP error! status: N"`,
+  // `mapErrorToCode`'s validation hint reads `body.details.errors`, and `extractFieldErrors`
+  // has one arm. Both self-constructed non-JSON bodies were reshaped onto `message` in the
+  // same commit.
   'lib/api.ts': {
-    sites: 5,
+    sites: 3,
     why:
-      'The envelope seam itself. :309 is the `body?.message ?? body?.error ?? "HTTP error!"` ' +
-      'fallback chain (the SPEC cites ":280" — stale, re-derived 2026-09-15). :300 is the ' +
-      'top-level `body.errors[]` legacy-validation mirror and :316 is its second arm ' +
-      '(`body?.details?.errors ?? body?.errors`) — the first arm is the SANCTIONED Phase ' +
-      '85/86 shape and is a scanner exclusion, not a roster site. :1126 and :1159 are RAW ' +
-      '`fetch` calls that BYPASS apiFetch entirely, reading availabilityPrefill bodies that ' +
-      'are `{ error: string }` with no `code` and no `message` — so converting those two ' +
-      'needs the backend shape confirmed first, not a mechanical edit. Plan 42 owns the ' +
-      'conversion of this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R9 / AC-9' },
+      'The envelope seam itself, down to THREE. (1) extractUpstreamMessage is AC-4 arm A: ' +
+      "the ONE by-name exemption, populating a NON-RENDERED ApiError field forwarded to " +
+      "Sentry extra by queryClient.ts:162 and read by nothing else (owner ruling " +
+      "2026-09-09 a; assertion 6 pins the site and the no-render property). (2) and (3) are " +
+      'the raw-fetch prefill helpers, whose availabilityPrefill bodies carry no code and no ' +
+      'message at any of their eight emit sites (re-opened at source 2026-09-17) — RETAINED ' +
+      'under D62 branch B with Phase 93 owning the backend code. The three apiFetch alias ' +
+      'arms the SPEC cited as :300/:309/:316 are DONE: dropped by plan 88.6-42.',
+    owner: {
+      kind: 'owner',
+      date: '2026-09-09',
+      ruling:
+        'AC-4 arm (a) — the backend error string is retained on a NON-RENDERED ApiError ' +
+        'field and forwarded to Sentry extra, behind exactly ONE by-name exemption here; ' +
+        'and D62 branch B — FE-only, Phase 93 owns adding code to the availabilityPrefill ' +
+        'error branches as the precondition for removing the error alias',
+    },
   },
   'app/components/SuggestionCard.js': {
     sites: 1,
@@ -433,7 +465,7 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     // Stated positively as well as by difference, so the census this plan asserts is
     // readable straight off a failure rather than reconstructed from a violations list.
     expect(MEASURED).toEqual({
-      'lib/api.ts': 5,
+      'lib/api.ts': 3,
       'app/components/SuggestionCard.js': 1,
       'app/rsvp/[token]/page.js': 2,
       'app/api/auth/google-connect/route.js': 1,
@@ -441,7 +473,7 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
       'app/availability-form/[token]/page.js': 2,
     });
     const total = Object.values(MEASURED).reduce((a, b) => a + b, 0);
-    expect(total).toBe(13);
+    expect(total).toBe(11);
     expect(Object.keys(ENVELOPE_READ_ROSTER).sort()).toEqual(Object.keys(MEASURED).sort());
   });
 
@@ -503,6 +535,161 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
       const owner = ENVELOPE_READ_ROSTER[file].owner;
       expect('ruling' in owner ? owner.ruling : '').toMatch(/Phase 93/);
     }
+  });
+
+  it('6. AC-4 arm A — ONE by-name construction site, and the field it fills renders nowhere', () => {
+    // Added by plan 88.6-42 task 1 (2026-09-17). Assertions 1-3 pin the COUNT; this one pins
+    // WHICH read the count permits and what the value it produces is allowed to do. Without
+    // it, "lib/api.ts: 3" would permit a THIRD apiFetch-path alias read to be reintroduced
+    // under the same number, which is precisely the exemption-as-cover failure this suite
+    // exists to prevent.
+    const apiSrc = withoutComments(fs.readFileSync(path.join(SRC, 'lib/api.ts'), 'utf8'));
+
+    // (a) THE NAMED SITE. The one sanctioned legacy read on the apiFetch path lives in
+    // `extractUpstreamMessage` and is spelled exactly this way — a STRING or undefined,
+    // never `errorData`, never the parsed body (R8 §10).
+    expect(apiSrc).toMatch(
+      /function extractUpstreamMessage\(body: any\): string \| undefined \{\s*return typeof body\?\.error === 'string' \? body\.error : undefined;\s*\}/,
+    );
+
+    // (b) …and the three rostered reads in this file are that one plus the two raw-fetch
+    // prefill helpers, and nothing else. Stated by RECEIVER so a new `body.error` anywhere
+    // in the module reds here as well as on the count.
+    const apiHits = BY_FILE.get('lib/api.ts') ?? [];
+    expect(apiHits.map((hit) => `${hit.receiver}.${hit.prop}`).sort()).toEqual([
+      'body.error',
+      'err.error',
+      'err.error',
+    ]);
+
+    // (c) THE DISPLAY CONTRACT. `ApiError.message` must not read the field, and no surface
+    // may render it. Tree-wide (test files are excluded from `sourceFiles`), the identifier
+    // appears in exactly TWO modules: the one that defines and fills it, and the Sentry
+    // forward that consumes it.
+    const carriers = FILES.map((f) => rel(f)).filter((r) =>
+      withoutComments(fs.readFileSync(path.join(SRC, r), 'utf8')).includes('upstreamMessage'),
+    );
+    expect(carriers.sort()).toEqual(['lib/api.ts', 'lib/queryClient.ts']);
+    expect(apiSrc).toMatch(/return body\?\.message \?\? `HTTP error! status: \$\{status\}`;/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// R8 §6 — THE FE `ApiErrorCode` UNION IS PINNED TO THE BE `ERROR_REGISTRY`
+// ---------------------------------------------------------------------------------------
+// Added by plan 88.6-42 task 1 (2026-09-17). After the `body.error` alias drop the `code` is
+// the SOLE channel for specific copy: a backend code with no FE mirror degrades silently to
+// the generic line — no type error, no test failure, no runtime signal. Nothing gated that
+// before this assertion. `ERROR_REGISTRY` appears in FE source only inside prose comments and
+// no BE test references `ApiErrorCode`, so the two registries were in sync by discipline alone.
+//
+// NON-VACUITY IS THE WHOLE DESIGN CONSTRAINT. FE and BE are separate repos and FE CI checks out
+// the frontend alone, so a guarded `if (backendExists)` skip would be a silent pass on exactly
+// the machine that matters. The BE key set is therefore MIRRORED as checked-in data below and
+// the parity assertion runs against that mirror UNCONDITIONALLY; the LIVE registry is compared
+// ADDITIONALLY, and only when the sibling checkout happens to be present.
+const BE_ERROR_REGISTRY_KEYS_MIRROR: readonly string[] = [
+  'validation',
+  'rate_limited',
+  'unauthorized',
+  'token_invalid',
+  'not_found',
+  'forbidden',
+  'prompt_deadline_expired',
+  'prompt_closed',
+  'reminder_cooldown',
+  'owner_of_active_groups',
+  'account_deleted',
+  'already_restored',
+  'already_member',
+  'invite_pending',
+  'invalid_token',
+  'already_used',
+  'window_expired',
+  'not_provisioned',
+  'unsupported_address',
+  'internal',
+];
+
+/** The `| 'code'` members of the FE `ApiErrorCode` union, read off disk. */
+function apiErrorCodeUnion(): string[] {
+  const src = withoutComments(fs.readFileSync(path.join(SRC, 'lib/api.ts'), 'utf8'));
+  const start = src.indexOf('export type ApiErrorCode =');
+  expect(start, 'ApiErrorCode union not found in lib/api.ts').toBeGreaterThan(-1);
+  const body = src.slice(start, src.indexOf(';', start));
+  return [...body.matchAll(/\|\s*'([a-z_]+)'/g)].map((m) => m[1]);
+}
+
+/** The keys of `MESSAGE_BY_CODE`, read off disk. */
+function messageByCodeKeys(): string[] {
+  const src = withoutComments(
+    fs.readFileSync(path.join(SRC, 'components/ui/useFetchErrorState.ts'), 'utf8'),
+  );
+  const start = src.indexOf('const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {');
+  expect(start, 'MESSAGE_BY_CODE not found in useFetchErrorState.ts').toBeGreaterThan(-1);
+  const body = src.slice(start, src.indexOf('\n};', start));
+  return [...body.matchAll(/^ {2}([a-z_]+):/gm)].map((m) => m[1]);
+}
+
+/** The LIVE BE registry keys, or null when the sibling backend checkout is absent. */
+function liveBackendRegistryKeys(): string[] | null {
+  const errorsJs = path.resolve(
+    SRC,
+    '..',
+    '..',
+    'periodictabletopbackend_v2',
+    'Sonnet',
+    'utils',
+    'errors.js',
+  );
+  if (!fs.existsSync(errorsJs)) return null;
+  const src = withoutComments(fs.readFileSync(errorsJs, 'utf8'));
+  const start = src.indexOf('const ERROR_REGISTRY = Object.freeze({');
+  if (start < 0) return null;
+  const body = src.slice(start, src.indexOf('\n});', start));
+  return [...body.matchAll(/^ {2}([a-z_]+):\s*\{/gm)].map((m) => m[1]);
+}
+
+describe('R8 §6 — every BE ERROR_REGISTRY code has an FE home', () => {
+  it('the mirrored BE key set is a subset of ApiErrorCode AND of MESSAGE_BY_CODE', () => {
+    const union = apiErrorCodeUnion();
+    const copy = messageByCodeKeys();
+
+    // Anti-vacuity: both readers must actually have read something, or "no missing codes"
+    // and "the parser went blind" look identical.
+    expect(BE_ERROR_REGISTRY_KEYS_MIRROR.length).toBe(20);
+    expect(union.length).toBeGreaterThanOrEqual(20);
+    expect(copy.length).toBeGreaterThanOrEqual(20);
+
+    // …and it FAILS NAMING THE MISSING CODES, never with a bare boolean: the whole value of
+    // this gate is telling whoever added a BE code which FE table to extend.
+    expect(
+      BE_ERROR_REGISTRY_KEYS_MIRROR.filter((k) => !union.includes(k)),
+      'BE codes with NO member in the FE ApiErrorCode union (lib/api.ts) — add them, or ' +
+        'mapErrorToCode passes them through verbatim and every Record keyed on the union misses',
+    ).toEqual([]);
+    expect(
+      BE_ERROR_REGISTRY_KEYS_MIRROR.filter((k) => !copy.includes(k)),
+      'BE codes with NO MESSAGE_BY_CODE entry (useFetchErrorState.ts) — add them, or the ' +
+        'outcome degrades silently to the generic line, which after the 88.6 alias drop is ' +
+        'the only thing left to degrade to',
+    ).toEqual([]);
+  });
+
+  it('the checked-in mirror still matches the LIVE backend registry when it is checked out', () => {
+    const live = liveBackendRegistryKeys();
+    if (live === null) {
+      // NOT a skip of the assertion above — that one ran unconditionally against the mirror.
+      // This arm only tells the mirror and the source apart, which needs the source present.
+      expect(BE_ERROR_REGISTRY_KEYS_MIRROR.length).toBe(20);
+      return;
+    }
+    expect(live.length).toBeGreaterThanOrEqual(20);
+    expect(
+      live.filter((k) => !BE_ERROR_REGISTRY_KEYS_MIRROR.includes(k)),
+      'the LIVE BE ERROR_REGISTRY has codes the checked-in mirror above does not — update ' +
+        'the mirror in the same commit as the backend change, then re-run the parity test',
+    ).toEqual([]);
   });
 });
 

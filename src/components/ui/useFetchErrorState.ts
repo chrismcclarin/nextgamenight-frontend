@@ -147,9 +147,14 @@ export interface FetchErrorMessageOptions {
    groupPlanning and OpenPollsList.
 
    WHY THE SHIPPED IDIOM LOSES — it is an information-disclosure bug, not just a copy nit.
-   `ApiError.message` is `body.message ?? body.error ?? \`HTTP error! status: ${status}\``
-   (api.ts extractErrorMessage), so whatever the backend says lands verbatim in the DOM, and an
-   unhandled 500 paints a raw status string at the user. 88-19 closed the same hole on the
+   `ApiError.message` was `body.message ?? body.error ?? \`HTTP error! status: ${status}\``
+   when this was written, so whatever the backend said landed verbatim in the DOM, and an
+   unhandled 500 painted a raw status string at the user. AMENDED Phase 88.6-42 (2026-09-17):
+   the legacy `body.error` arm is GONE — the chain is now `body.message ?? \`HTTP error!
+   status: ${status}\`` (api.ts extractErrorMessage) — so the raw-status half of that hazard
+   stands and the verbatim-backend-string half now only reaches an `ApiError` through a
+   converted route's own envelope `message`. The ARGUMENT below is unchanged: copy is DERIVED
+   from the code, never from the message. 88-19 closed the same hole on the
    page-level branch by giving `ErrorFallback` NO error prop by contract; this is that ruling
    applied to the action path, at the mechanism rather than string by string.
 

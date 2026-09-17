@@ -158,8 +158,24 @@ export function queryCacheOnError(
     return;
   }
 
-  // ApiError / network / unknown — forward as-is with entity/scope tags only.
-  Sentry.captureException(error, { tags });
+  // ApiError / network / unknown — forward as-is with entity/scope tags, PLUS the
+  // backend's own error string when the ApiError carries one.
+  //
+  // DECISION Phase 88.6-42 (AC-4, owner ruling 2026-09-09 a): ApiError.upstreamMessage
+  // rides in `extra` — chosen OVER arm B (a clean delete of the legacy alias), which
+  // would have dropped that string from the event ENTIRELY for the ~455 unconverted
+  // raw-`{ error }` backend routes until Phase 93, leaving only "HTTP error! status: N"
+  // to read in the app's only production error channel. GROUPING is unchanged either
+  // way: this capture carries tags and no `fingerprint` (there is none anywhere in
+  // src/), and Sentry's default grouping does not key on `extra` — so the field buys
+  // per-event READABILITY, not issue separation. Closing the grouping collapse is Phase
+  // 93's emitter conversion, and T-88.6-121 says so.
+  //
+  // NEVER into `tags` (unbounded cardinality, and tags are indexed) and never into any
+  // rendered string. `extra` is deep-scrubbed by sentry.scrub.js:171-172 on the way out,
+  // the same bound the T-84-05 zodIssues forward above relies on.
+  const upstreamMessage = error instanceof ApiError ? error.upstreamMessage : undefined;
+  Sentry.captureException(error, upstreamMessage ? { tags, extra: { upstreamMessage } } : { tags });
 }
 
 function makeQueryClient(): QueryClient {

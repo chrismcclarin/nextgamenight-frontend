@@ -633,3 +633,54 @@ describe('friends D-16 / R2 #171 — the tab strip', () => {
     expect(screen.getByRole('button', { name: /^Friends/ })).not.toHaveAttribute('aria-current');
   });
 });
+
+describe('friends #127 / R8 §2 — the email search 404 is STATUS-keyed, not prose-matched', () => {
+  // Added by plan 88.6-42 task 1 (2026-09-17), in the SAME commit as the `body.error` alias
+  // drop that forced it. Before that drop the outcome below was decided by TWO prose arms on
+  // `ApiError.message` — `.includes('404')` and `.includes('No user found')`. The second could
+  // never match again once the alias went (its string comes from Sonnet/routes/friendships.js:251,
+  // a RAW 404 with no `code` and no `message`), and the first survived only INCIDENTALLY,
+  // because the bare fallback template "HTTP error! status: 404" happens to contain "404".
+  // That is luck, not a design — this suite is what makes it a design.
+  const search = async (rejectWith: unknown) => {
+    (friendshipsAPI.searchUserByEmail as Mock).mockRejectedValue(rejectWith);
+    renderFriends();
+    const input = await screen.findByLabelText("Friend's email address");
+    fireEvent.change(input, { target: { value: 'nobody@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  };
+
+  it('renders the search outcome copy for a 404, byte-identical to before the re-key', async () => {
+    // The real shape after the drop: a raw backend 404, so `message` is the bare template
+    // and `status` is the ONLY thing that identifies the outcome.
+    await search(new ApiError('HTTP error! status: 404', 'not_found', 404));
+    expect(await screen.findByText('No user found with that email.')).toBeInTheDocument();
+  });
+
+  it('does NOT depend on the message text — a 404 with NO "404" in its message still works', async () => {
+    // This is the arm that proves the re-key. Against the OLD prose arms this rejection
+    // rendered the generic failure line; against the status test it renders the outcome.
+    await search(new ApiError('Resource not found', 'not_found', 404));
+    expect(await screen.findByText('No user found with that email.')).toBeInTheDocument();
+  });
+
+  it('a NON-404 failure still gets the DERIVED register copy, not the search outcome', async () => {
+    // A coded failure resolves through MESSAGE_BY_CODE and ignores `fallback` entirely —
+    // that narrowing is DECISION Phase 88.6-14 (D-33) in useFetchErrorState.ts, not a slip here.
+    await search(new ApiError('HTTP error! status: 500', 'internal', 500));
+    expect(
+      await screen.findByText('Something went wrong on our end. Please try again shortly.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No user found with that email.')).toBeNull();
+  });
+
+  it('a non-ApiError rejection does not throw on the optional-chained status read', async () => {
+    // The re-key reads `err?.status`. A plain TypeError has none, so it must fall to the
+    // generic branch rather than blowing up inside the catch.
+    await search(new TypeError('Failed to fetch'));
+    expect(
+      await screen.findByText("We couldn't run that search. Please try again.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No user found with that email.')).toBeNull();
+  });
+});

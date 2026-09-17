@@ -15,11 +15,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ZodError } from 'zod';
 import * as Sentry from '@sentry/nextjs';
-import { ApiError } from '@/lib/api';
+import { ApiError, apiFetch } from '@/lib/api';
 import { getQueryClient, queryCacheOnError, shouldRetry } from '@/lib/queryClient';
 
+// `addBreadcrumb` joined this mock in 88.6-42: `lib/api.ts` now routes its own
+// developer logs through `logger.info` (AC-2), which calls it, and the end-to-end arm below
+// drives a REAL apiFetch rejection through that path.
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
+  addBreadcrumb: vi.fn(),
+  captureMessage: vi.fn(),
 }));
 
 // The 2nd captureException arg is a wide Sentry union; in these tests we only
@@ -157,5 +162,71 @@ describe('GAP6 — retry predicate truth table (D-13, T-84-08)', () => {
     const transient = new Error('500 boom');
     expect(shouldRetry(0, transient)).toBe(true);
     expect(shouldRetry(1, transient)).toBe(false);
+  });
+});
+
+describe('88.6-42 / AC-4 arm A — the backend string rides in `extra`, never in `tags`', () => {
+  // Added by plan 88.6-42 task 1 (2026-09-17). The owner ruled (2026-09-09, AC-4 a) that the
+  // backend's own error string is RETAINED for Sentry after the `body.error` alias drop, on a
+  // NON-RENDERED `ApiError` field. This is the forward that makes the ruling real. Without a
+  // behavioral pin here, the "a STRING, never `errorData`" prohibition in the plan is prose
+  // with no machine behind it — which is the failure mode this suite exists to close.
+  it('forwards ApiError.upstreamMessage in the capture extra', () => {
+    const err = new ApiError('HTTP error! status: 500', 'internal', 500, { error: 'pg: boom' }, 'pg: boom');
+    queryCacheOnError(err, { queryKey: ['games', 'list'] });
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    const opts = ctxOf();
+    expect(opts.extra).toMatchObject({ upstreamMessage: 'pg: boom' });
+    // NEVER a tag: tags are indexed and this value has unbounded cardinality.
+    expect(opts.tags).not.toHaveProperty('upstreamMessage');
+    expect(opts.tags).toMatchObject({ entity: 'games', scope: 'list' });
+  });
+
+  it('PINS the forwarded value as `string | undefined` — never `errorData`, never the body', () => {
+    // R8 §10. A future widening of the field to carry the parsed body would keep every other
+    // assertion in this file green; this is the one that reds.
+    const err = new ApiError('HTTP error! status: 500', 'internal', 500, { error: 'pg: boom', sql: 'SELECT 1' }, 'pg: boom');
+    queryCacheOnError(err, { queryKey: ['games', 'list'] });
+
+    const forwarded = ctxOf().extra?.upstreamMessage;
+    expect(typeof forwarded === 'string' || forwarded === undefined).toBe(true);
+    expect(forwarded).not.toBeTypeOf('object');
+    // …and nothing else off the body travelled INTO THE EXTRA with it. (The whole parsed
+    // body still rides on `ApiError.details`, as it always has — that is the pre-existing
+    // D-07 seam and sentry.scrub.js's beforeSend is its bound. What arm A must not do is
+    // ADD a second copy of it under a new key.)
+    expect(JSON.stringify(ctxOf())).not.toContain('SELECT 1');
+    expect(Object.keys(ctxOf().extra ?? {})).toEqual(['upstreamMessage']);
+  });
+
+  it('adds NO extra at all when the ApiError carries no upstream string', () => {
+    // The common case after Phase 93 converts the emitters: a converted route sends a
+    // `message`, there is no legacy key, and the capture stays exactly as it was.
+    queryCacheOnError(new ApiError('Envelope message', 'not_found', 404), {
+      queryKey: ['games', 'list'],
+    });
+    expect(ctxOf().extra).toBeUndefined();
+  });
+
+  it('a REAL rejection whose body carried ONLY the legacy key reaches Sentry with it', async () => {
+    // End-to-end through the wired QueryCache, not a hand-built ApiError: this is the arm that
+    // proves the whole chain (apiFetch -> extractUpstreamMessage -> ApiError -> capture).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => '{"error":"pg: duplicate key"}' })
+    );
+    const client = getQueryClient();
+    await client
+      .fetchQuery({ queryKey: ['games', 'list'], queryFn: () => apiFetch('/games'), retry: false })
+      .catch(() => {});
+    vi.unstubAllGlobals();
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    const captured = vi.mocked(Sentry.captureException).mock.calls[0][0] as ApiError;
+    // The DISPLAY contract is untouched — the backend string is NOT the message…
+    expect(captured.message).toBe('HTTP error! status: 500');
+    // …but it is still readable on the event, which is the whole of arm A.
+    expect(ctxOf().extra).toMatchObject({ upstreamMessage: 'pg: duplicate key' });
   });
 });

@@ -262,16 +262,30 @@ function FriendsPage() {
             const result = await friendshipsAPI.searchUserByEmail(searchEmail.trim());
             setSearchResult(result);
         } catch (err) {
-            if (err.message && err.message.includes('404')) {
-                setSearchError('No user found with that email.');
-            } else if (err.message && err.message.includes('No user found')) {
+            if (err?.status === 404) {
                 setSearchError('No user found with that email.');
             } else {
                 /* DECISION Phase 88-25 (Req 14 / T-88-25-01): derived copy, chosen OVER
-                   `err.message || '…'`. The two branches above deliberately KEEP their prose
-                   match — "no user found" is a legitimate SEARCH OUTCOME the person can act on
-                   (check the address), not a failure, and there is no ApiError code that carries
-                   it. This branch is the genuine failure and no longer paints upstream text. */
+                   the `err.message || '…'` idiom. "No user found" is a legitimate SEARCH
+                   OUTCOME the person can act on (check the address), not a failure, and there
+                   is no ApiError code that carries it — so it keeps its own branch and its own
+                   string. This branch is the genuine failure and does not paint upstream text.
+
+                   AMENDED Phase 88.6-42 (2026-09-17): the two branches above USED to be a
+                   PROSE match on `ApiError.message` — `.includes('404')` and
+                   `.includes('No user found')` — and this block sanctioned them. That prose
+                   match is RETIRED, and it was retired BECAUSE Phase 88.6 dropped the
+                   `body.error` legacy alias from `extractErrorMessage` (api.ts), not tidied
+                   away as cleanup. The string the second arm matched came from
+                   Sonnet/routes/friendships.js:251, a RAW 404 with no `code` and no
+                   `message`, so after the drop `ApiError.message` is the bare
+                   "HTTP error! status: 404" template and that arm could never match again.
+                   The user-visible outcome survived only INCIDENTALLY, because the sibling
+                   arm tested `.includes('404')` and the fallback string happens to contain
+                   "404" — luck, not a design. The outcome is now STATUS-KEYED off
+                   `err.status`, which apiFetch sets on every ApiError it throws, and the
+                   visible string is byte-identical. Re-introducing a message-content match
+                   here is a decision, not a cleanup. Pinned in friends/page.test.tsx. */
                 setSearchError(
                     getFetchErrorMessage(err, {
                         fallback: "We couldn't run that search. Please try again.",

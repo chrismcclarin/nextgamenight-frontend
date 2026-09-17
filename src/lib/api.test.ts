@@ -7,6 +7,7 @@
 import { afterEach, vi } from 'vitest';
 
 import { ApiError, apiFetch, mapErrorToCode, rsvpAPI, usersAPI } from './api';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 describe('ApiError — shape', () => {
   it('is both an Error and an ApiError, carrying code + status + details', () => {
@@ -54,8 +55,16 @@ describe('mapErrorToCode — status mapping', () => {
     expect(mapErrorToCode({}, 422)).toBe('validation');
   });
 
-  it('maps an errors[] body to validation regardless of status', () => {
-    expect(mapErrorToCode({ errors: [{ message: 'x' }] }, 400)).toBe('validation');
+  // AMENDED Phase 88.6-42 (2026-09-17): the validation hint no longer reads a TOP-LEVEL
+  // `errors[]` — that legacy mirror arm was dropped and the hint now reads the canonical
+  // `details.errors`. The 400 outcome below is UNCHANGED, but it now comes from
+  // statusToCode(400) rather than from the body, so the old title's 'regardless of status'
+  // is no longer true. The regardless-of-status property is re-pinned on the canonical
+  // shape, and the mirror's fall-through is pinned, in the 88.6-42 describe at the foot of
+  // this file.
+  it('maps a details.errors body to validation regardless of status', () => {
+    expect(mapErrorToCode({ details: { errors: [{ message: 'x' }] } }, 400)).toBe('validation');
+    expect(mapErrorToCode({ details: { errors: [{ message: 'x' }] } }, 500)).toBe('validation');
   });
 
   it('defaults to unknown for an unmapped status', () => {
@@ -298,5 +307,164 @@ describe('usersAPI email-change calls — the serialised wire body, path and met
       expect(url).toContain(`/users/auth0%7Ca%20b/${suffix}`);
       vi.unstubAllGlobals();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Phase 88.6-42 — the alias drop, proven by a LEGACY-ONLY BODY FALLING THROUGH
+// ---------------------------------------------------------------------------------------
+// The load-bearing half of every pair below is the SECOND assertion. A canonical body
+// resolving correctly proves nothing about the drop — it resolved correctly before too.
+// Only a body carrying the legacy key AND NOTHING ELSE, resolving to the generic path,
+// proves the arm was removed rather than merely reordered.
+describe('88.6-42 — the FE reads code/message/details and nothing else', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Drive apiFetch against a not-ok response and CAPTURE the rejection. */
+  const rejection = async (status: number, bodyText: string): Promise<ApiError> => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status, text: async () => bodyText })
+    );
+    // An async `.not.toThrow()` is vacuous — it asserts on the PROMISE, not the
+    // rejection. Capture it and assert on the value.
+    let caught: unknown = null;
+    try {
+      await apiFetch('/anything');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'apiFetch must REJECT on a non-ok response').toBeInstanceOf(ApiError);
+    return caught as ApiError;
+  };
+
+  describe('the message chain (formerly `body.message ?? body.error ?? status`)', () => {
+    it('reads the envelope `message`', async () => {
+      const err = await rejection(400, '{"message":"That name is already taken."}');
+      expect(err.message).toBe('That name is already taken.');
+    });
+
+    it('FALLS THROUGH for a legacy-only body — the `body.error` arm is GONE', async () => {
+      const err = await rejection(400, '{"error":"Legacy alias text"}');
+      expect(err.message).toBe('HTTP error! status: 400');
+      expect(err.message).not.toContain('Legacy alias text');
+      // …and the code still resolves off the status, so nothing downstream loses a kind.
+      expect(err.code).toBe('validation');
+    });
+  });
+
+  describe('the validation hint (formerly a TOP-LEVEL `errors[]`)', () => {
+    it('reads the canonical `details.errors`, whatever the status', () => {
+      expect(mapErrorToCode({ details: { errors: [{ message: 'x' }] } }, 500)).toBe('validation');
+    });
+
+    it('FALLS THROUGH for a top-level `errors[]` — the legacy mirror arm is GONE', () => {
+      // 500 is chosen deliberately: under the old arm this returned `validation`
+      // "regardless of status". It now maps off the status like any other body.
+      expect(mapErrorToCode({ errors: [{ message: 'x' }] }, 500)).toBe('internal');
+      // On a 400 the OUTCOME is unchanged, which is why the three unconverted backend
+      // producers measured 2026-09-17 (routes/invites.js:216, routes/friendships.js:278,
+      // routes/availability.js:55-64 — all top-level `errors[]` on a 400) are
+      // behaviour-neutral across this change.
+      expect(mapErrorToCode({ errors: [{ message: 'x' }] }, 400)).toBe('validation');
+    });
+
+    it('does not produce `validation` (and does not throw) on a malformed `details.errors`', () => {
+      expect(mapErrorToCode({ details: { errors: 'not an array' } }, 500)).toBe('internal');
+    });
+  });
+
+  describe('the field errors (formerly `details.errors ?? errors`)', () => {
+    it('formats the canonical `details.errors`', async () => {
+      const err = await rejection(
+        400,
+        '{"details":{"errors":[{"message":"Name is required"},{"field":"email","msg":"invalid"}]}}'
+      );
+      expect(err.message).toBe('Name is required. email: invalid');
+    });
+
+    it('FALLS THROUGH for a top-level `errors[]` — the second arm is GONE', async () => {
+      const err = await rejection(400, '{"errors":[{"message":"Name is required"}]}');
+      expect(err.message).toBe('HTTP error! status: 400');
+      expect(err.message).not.toContain('Name is required');
+    });
+  });
+
+  describe('T-88.6-118 — a non-JSON error response still surfaces its text', () => {
+    it('carries the raw body text through as the message', async () => {
+      const err = await rejection(502, 'Bad Gateway: upstream timed out');
+      expect(err.message).toBe('Bad Gateway: upstream timed out');
+    });
+
+    it('falls back to the status template for an EMPTY non-JSON body', async () => {
+      const err = await rejection(502, '');
+      expect(err.message).toBe('HTTP error! status: 502');
+    });
+  });
+
+  describe('T-88.6-119 / D25 — a malformed `details` never renders `undefined: undefined`', () => {
+    const SHAPES: Array<[string, string]> = [
+      ['null', 'null'],
+      ['a JSON string', '"just a string"'],
+      ['a number', '42'],
+      ['a top-level array', '[]'],
+      ['errors as a string', '{"errors":"x"}'],
+      ['details.errors as a string', '{"details":{"errors":"x"}}'],
+      ['details.errors of empty objects', '{"details":{"errors":[{}]}}'],
+      ['details.errors of nulls', '{"details":{"errors":[null,null]}}'],
+      ['details.errors half-populated', '{"details":{"errors":[{},{"field":"a"}]}}'],
+    ];
+
+    it.each(SHAPES)('rejects cleanly for %s', async (_label, body) => {
+      const err = await rejection(400, body);
+      expect(err.code).toBe('validation');
+      expect(err.message).not.toContain('undefined');
+      // …and the copy a person would actually see is a REGISTER string, never this.
+      expect(getFetchErrorMessage(err)).toBe(
+        'Something looks off with that request. Refresh the page to try again.'
+      );
+    });
+
+    it('drops the entries that can render nothing and keeps the ones that can', async () => {
+      const err = await rejection(
+        400,
+        '{"details":{"errors":[{},{"message":"Name is required"},null,{"field":"email","msg":"invalid"}]}}'
+      );
+      expect(err.message).toBe('Name is required. email: invalid');
+    });
+  });
+
+  describe('AC-4 arm A — the backend string moves OFF the display path, not away', () => {
+    it('populates `upstreamMessage` from the legacy key while `message` ignores it', async () => {
+      const err = await rejection(500, '{"error":"pg: duplicate key value"}');
+      expect(err.upstreamMessage).toBe('pg: duplicate key value');
+      expect(err.message).toBe('HTTP error! status: 500');
+    });
+
+    it('leaves it undefined when the body carries no legacy key', async () => {
+      const err = await rejection(500, '{"message":"Envelope message"}');
+      expect(err.upstreamMessage).toBeUndefined();
+      expect(err.message).toBe('Envelope message');
+    });
+
+    it('carries a STRING or undefined — never the body, never a widened payload', async () => {
+      // R8 §10, stated as a prohibition and pinned as a type. A non-string legacy value
+      // (an object, an array, a number) must not ride the field.
+      const objectValued = await rejection(500, '{"error":{"nested":"object"}}');
+      expect(objectValued.upstreamMessage).toBeUndefined();
+      const stringValued = await rejection(500, '{"error":"plain"}');
+      expect(typeof stringValued.upstreamMessage).toBe('string');
+    });
+
+    it('is populated on the FIELD-ERROR throw path too, not only the plain one', async () => {
+      const err = await rejection(
+        400,
+        '{"error":"legacy too","details":{"errors":[{"message":"Name is required"}]}}'
+      );
+      expect(err.message).toBe('Name is required');
+      expect(err.upstreamMessage).toBe('legacy too');
+    });
   });
 });
