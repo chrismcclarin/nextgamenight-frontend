@@ -280,13 +280,40 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
 
   it('4c. the sunken surface is really adopted', () => {
     // Floor below the measured 5, same reason as 4a. Req 11's fourth pinnable surface.
+    //
+    // DECISION Phase 88.6-43 (R4 Target / D-30): the floor STAYS at 4 and the measured total
+    // STAYS at 5, chosen OVER raising either. Plan 43 ran the W24 sunken sweep to completion —
+    // it opened all ELEVEN candidates RESEARCH §Q2 bounded and dispositioned every one of them
+    // SKIP, so it adopted ZERO new sites and there is nothing to re-base by. The per-site
+    // reasoning is `.planning/phases/88.6-…/88.6-SUNKEN-SITES.md`: five candidates are CONTROLS
+    // on a card ground, three are avatar/media DISCS carrying the OI-5 SHAPE at sites the
+    // `DECISION Phase 88.3 (OI-5)` marker does not sit on, one matched on a component's props,
+    // one was retired by plan 18, and the single genuine nested surface
+    // (`userProfile/page.js:2873`, the BGG result row) sits at depth 2 on a `bg-surface-page`
+    // ground where `bg-surface-sunken` measures LIGHTER than its parent in both themes
+    // (dL* +8.06 light, +3.43 dark) — raised, not recessed.
+    //
+    // So a reader finding no 88.6 names in 4d's roster is looking at a sweep that RAN and
+    // adopted nothing, not at a sweep that was skipped. REJECTED: converting this to an exact
+    // total of 5 — the one-below-measured slack is the documented decision (same idiom as 4a at
+    // `:194-196`) and is what keeps adding a site from being a test edit. Changing it is a
+    // decision, not a cleanup.
     const sites = sitesOf(files, SUNKEN);
     expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(4);
   });
 
-  it('4d. each of the five censused nested blocks carries the sunken surface', () => {
+  it('4d. each of the five censused nested blocks carries the sunken surface — all five are D-03’s', () => {
     // Named individually, not by count: a count of 5 is satisfiable by any five sites,
     // and the five that matter are the nested blocks D-03 censused line by line.
+    //
+    // WHICH CENSUS EACH NAME CAME FROM (Phase 88.6-43): all five below are D-03's, and the
+    // 88.6 cohort is EMPTY. Plan 43 owned the phase's W24 sunken adoption sweep and adopted
+    // zero sites — see 4c's marker above and `88.6-SUNKEN-SITES.md` for the eleven SKIP
+    // rulings. This roster therefore needs no partition today; if a future plan DOES adopt,
+    // add its names in a separate block under an `88.6-…` heading so the two censuses stay
+    // distinguishable. `GroupSettings.js` is NOT in this roster and must never be added: its
+    // avatar disc is the OI-5 exclusion, so a roster entry would red until the class is added,
+    // which is the exact edit OI-5 forbids.
     const sites = sitesOf(files, SUNKEN);
     for (const required of [
       'app/components/PromptScheduleManager.js',
@@ -307,9 +334,17 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // re-keyed it to warm-200 [AMENDED 88.3-18: warm-250 since owner ruling 1c, 2026-08-28 —
     // warm-200 became the page; counts and assertions here are untouched] precisely to serve
     // pills, badges, chips, skeletons and
-    // selected/disabled states (D-01), plus `GroupSettings.js:361`'s avatar disc, which
+    // selected/disabled states (D-01), plus the `GroupSettings.js` avatar disc, which
     // is excluded from the sunken adoption on purpose (OI-5). Measured 44 after the
     // sweep (49 before, minus the five nested blocks that became sunken).
+    //
+    // CITE AMENDED Phase 88.6-43: this comment used to say `GroupSettings.js:361`. That line
+    // number is STALE and always was for this element — `:361` is a `color_preset`
+    // capability-probe comment, not the disc. Anchor on the disc's own
+    // `DECISION Phase 88.3 (OI-5)` marker text instead, never on a line: the marker records
+    // the same correction at its own site, and the file has moved by hundreds of lines since
+    // the register entry that minted `:361` was written. Re-pointing this to today's line
+    // number would only mint the next stale cite.
     const sites = sitesOf(files, LEGACY);
     expect(sites.length, `static surfaces remaining: ${sites.length}`).toBeGreaterThanOrEqual(40);
   });
