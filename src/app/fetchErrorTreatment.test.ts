@@ -568,14 +568,14 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // `nativeDialogs.test.ts`'s LAST `ALERT_EXEMPT` entry — and all three are deleted in the same
   // commit, taking the `alert(` roster to EMPTY. Deleted rather than zeroed; the roster is exact
   // in both directions.
-  'app/components/GroupSettings.js': {
-    sites: 2,
-    why:
-      'RAW-MESSAGE assertion. :481 and :532 — a leave-group field error and a delete-group ' +
-      'toast, both `x.message || "Failed to …"`. Closed by plan 88.6-20 (wave 7), which ' +
-      'declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-20' },
-  },
+  // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16): `app/components/GroupSettings.js`
+  // carried `sites: 2` — the leave-group field error and the delete-group toast, both
+  // `x.message || "Failed to …"` pre-edit. Both route through `getFetchErrorMessage(err)` with
+  // NO fallback now, so the ratified `unknown` string answers a generic failure and a 403
+  // resolves to `MESSAGE_BY_CODE.forbidden`. The delete site keeps its `throw error` and its
+  // justification comment byte-unchanged — `useConfirmAction`'s contract is that the gate stays
+  // OPEN on failure. Entry DELETED rather than zeroed; the roster is exact in both directions.
+  // This file's FAILED_COPY_EXEMPT entry (3, one more than this one) closed in the same commit.
   // DELETED by plan 88.6-19 task 1 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
   // carried `sites: 7` here (:138, :208, :239, :251, :296, :333, :761 pre-edit) — the largest
   // single concentration in the tree. All seven now route through
@@ -741,14 +741,15 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
   // import game from BGG:" string is replaced by the UI-SPEC §6.2.1 RATIFIED fallback, so this
   // one does carry a `fallback:` where BrowseMoreModal's above does not — the register has copy
   // for this site and none for that one. Entry DELETED, not zeroed.
-  'app/components/GroupSettings.js': {
-    sites: 3,
-    why:
-      '"FAILED TO X" assertion. :406, :481, :532 — one more than the raw-message count, ' +
-      'because :406 authors copy without reading a message. Closed by plan 88.6-20 ' +
-      '(wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-20' },
-  },
+  // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16): `app/components/GroupSettings.js`
+  // carried `sites: 3` — the two raw-message lines plus the settings-save catch, which authored
+  // "Failed to update group settings. Please try again." without reading a message at all. That
+  // third site is the one plan 88.6-21's acceptance criterion depends on: routing it through
+  // `getFetchErrorMessage` is what makes a 403 on settings-save render
+  // `MESSAGE_BY_CODE.forbidden` instead of a generic sentence, and a 403 there is genuinely
+  // reachable (a role changed server-side after the modal rendered). Zero "Failed to X" sites
+  // remain in this file. Deleted, not zeroed; its RAW_MESSAGE_EXEMPT sibling closed in the same
+  // commit, as that entry's `why` said it would.
   // DELETED by plan 88.6-19 task 1 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
   // carried `sites: 8` here — the seven raw-message lines plus :112 "Failed to load members",
   // which read no message. The seven took `getFetchErrorMessage(err)` with NO fallback (the

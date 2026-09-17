@@ -297,6 +297,26 @@ const RING_SCAN_FILES: { file: string; floor: number }[] = [
   { file: 'app/components/CalendarMonthView.js', floor: 5 },
   { file: 'app/components/CalendarListView.js', floor: 2 },
   { file: 'app/components/GroupGamesList.js', floor: 8 },
+  /* ADDED by plan 88.6-20 task 3 (wave 7, 2026-09-16), D-20 (iv). `GroupSettings.js` was
+     MISSING from this list, so CR-14's selection/focus split — the decision that a SELECTED
+     swatch and a FOCUSED swatch must read as two different affordances — had no source pin
+     anywhere. Recorded in `.planning/deferred/phase-88.6.md`.
+
+     It is a group-page surface by the same test as the other five: the group page mounts it
+     from the kebab, and its eight swatches are the colour-only controls this suite exists for.
+
+     FLOOR 10, COUNTED on the shipped tree at this commit: eight `<Button>`s (the two "Use"
+     controls, the transfer route, Leave Group, the leave-confirm Cancel/Confirm pair, Transfer
+     ownership instead, Delete Group — all counted toward the floor and then exempted on the
+     primitive's own base class, per the deal above), plus two raw `<button>`s (the eight
+     default-picture tiles rendered from one JSX site, and the eight swatches from another).
+
+     WHAT ARMING IT FOUND, recorded because a gate that finds nothing is a gate nobody can
+     trust: NINE offenders on first run. Eight were the `.btn` sites this same commit migrates
+     to `<Button>`; the ninth was the default-picture tile, which never wore `.btn` and had no
+     ring from any source. It was fixed in this commit rather than rostered — see the DECISION
+     marker at that button. */
+  { file: 'app/components/GroupSettings.js', floor: 10 },
 ];
 
 /**
@@ -1727,7 +1747,16 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // Total anti-vacuity floor: 23 focusables across the five files, counted 2026-08-27
     // (page.js 7, EventCalendar 1, CalendarMonthView 5, CalendarListView 2,
     // GroupGamesList 8 — primitives included).
-    expect(scanned, 'the five-file scan must see a real population').toBeGreaterThanOrEqual(23);
+    //
+    // RE-MEASURED 23 -> 34 by plan 88.6-20 task 3 (wave 7, 2026-09-16), when
+    // `GroupSettings.js` joined the list. TEN of the eleven are that file (see its floor
+    // above). THE ELEVENTH IS NOT, AND IS RECORDED RATHER THAN ABSORBED: the ORIGINAL FIVE now
+    // total 24, not the 23 counted in 2026-08-27, so one focusable was added to them by some
+    // plan between then and now without this floor moving. It could not have red — the floor
+    // is `>=`, which is the same silently-green trap `EXPECTED_MIN_PRIMITIVES` carries — so
+    // this is a re-measurement, not a regression, and the +1 is stated here so the next reader
+    // does not have to re-derive why 23 + 10 != 34.
+    expect(scanned, 'the six-file scan must see a real population').toBeGreaterThanOrEqual(34);
   });
 
   it('22b. Gate B — the group-colour SWATCH carries the project focus ring, and its selection cue is in a different slot', () => {

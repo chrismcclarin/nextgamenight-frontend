@@ -729,7 +729,7 @@ const EXPECTED_PROP_SEAMS = 5;
  * in `EmailAddressSection.test.tsx` that resolve the reference rather than walking up from the
  * heading.
  */
-const EXPECTED_MIN_PRIMITIVES = 121;
+const EXPECTED_MIN_PRIMITIVES = 125;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -832,11 +832,12 @@ const RUNG_ROSTER: ExemptionRoster = {
   // this raw-only population. The two h2s are a disclosed 24 -> 20 and the h3 a disclosed
   // 18 -> 20 — they CONVERGE on one rung, which is the point of a 4-size working set. `level`
   // is preserved at all three (P4). Deleted, not zeroed.
-  'app/components/GroupSettings.js': {
-    sites: 4,
-    why: '4 headings off the 4-size working set (h3:610 text-lg; h3:697 text-lg; h3:1019 text-lg; h3:1091 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16): `app/components/GroupSettings.js`
+  // carried `sites: 4` (Profile Picture, Background, Leave Group, Danger Zone — all h3 at
+  // `text-lg`). All four are `<Heading level={3} size="heading">` (20) now, so the rung comes
+  // from the primitive and the file leaves this RAW-only population. A disclosed +2px (18 -> 20),
+  // the tie §4.4 closed once for all fifteen h3@18 sites. Level PRESERVED at 3 on all four, so
+  // `EXPECTED_LEVELS`' `{ 3: 4 }` entry is byte-unchanged. Deleted, not zeroed.
   // THE THREE W55 SITES IN `LandingPage.js`, ENUMERATED ONCE HERE by plan 88.6-35 task 1
   // (wave 7, 2026-09-16), because only two of them are COUNTABLE by any roster in this file
   // and a reader who finds one needs to be able to find the other two:
@@ -981,11 +982,9 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
   // carried `sites: 1` (h3:39 `font-semibold`). Migrated onto `<Heading>`, whose cva base is
   // `font-bold`, so the call site states no weight. Deleted, not zeroed.
-  'app/components/GroupSettings.js': {
-    sites: 4,
-    why: '4 headings carrying the prohibited 600 weight (h3:610, h3:697, h3:1019, h3:1091) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16): the same four headings as the rung
+  // roster above. Their 700 comes from `Heading`'s `font-bold` cva base now, so no call site
+  // states a weight and a migrated heading leaves this RAW-only population. Deleted, not zeroed.
   // DELETED by plan 88.6-19 task 2 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
   // carried `sites: 2` (h3:434, h3:663 pre-edit, both `font-semibold`). Both migrated onto
   // `<Heading>`, whose cva base is `font-bold`, so the call sites state no weight at all and
@@ -1055,11 +1054,10 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
   // carried `sites: 1` (h3:39). RAW-ONLY supply rule; no longer a raw `<hN>` tag, so the file
   // leaves the population rather than decrementing. Deleted, not zeroed.
-  'app/components/GroupSettings.js': {
-    sites: 4,
-    why: '4 raw headings not stating the 700 weight (h3:610 font-semibold; h3:697 font-semibold; h3:1019 font-semibold; h3:1091 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16): the same four headings again. This is
+  // a RAW-ONLY supply rule and none of the four is a raw `<hN>` tag any more, so the file leaves
+  // the population rather than decrementing. The 700 is supplied by `Heading`'s cva base and is
+  // pinned in `Heading.test.tsx`. Deleted, not zeroed.
   // DELETED by plan 88.6-19 task 2 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
   // carried `sites: 2` (h3:434, h3:663 pre-edit). RAW-ONLY supply rule; neither is a raw `<hN>`
   // tag any more, so the file leaves the population rather than decrementing. The 700 is now
@@ -2143,12 +2141,12 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //   - EMPHASIS -> 400 + a colour token: the "Sort:" label at `:211` and the two link-shaped
   //     controls at `:265` and `:338`, all three of which already carried their colour token.
   // Zero off-scale weight sites remain. Deleted, not zeroed.
-  'app/components/GroupSettings.js': {
-    sites: 4,
-    why:
-      '4 off-scale weight sites (0 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-10, 88.6-13, 88.6-15, 88.6-19, 88.6-20, 88.6-21, 88.6-25, 88.6-30, 88.6-43, 88.6-45, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16): `app/components/GroupSettings.js`
+  // carried `sites: 4` (0 font-medium, 4 font-semibold — the four section headings). All four
+  // resolve under §4.5's HIERARCHY outcome: they are section titles, so 700, supplied by the
+  // `Heading` primitive rather than restated as a utility. CONFIRMED per site rather than
+  // assumed from the outcome lead. Zero off-scale weight sites remain in this file. Deleted,
+  // not zeroed.
   // DELETED by plan 88.6-34 task 3 (wave 7, 2026-09-16): `app/components/HeatmapTooltip.js`
   // carried `sites: 1` (1 font-medium, 0 font-semibold) — the `tone="mobile"` tooltip body.
   // Resolved as EMPHASIS (utility DELETED) rather than HIERARCHY (700): 700 would bold an entire

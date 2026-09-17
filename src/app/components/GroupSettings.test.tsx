@@ -46,7 +46,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import GroupSettings from './GroupSettings';
-import { groupsAPI } from '@/lib/api';
+import { groupsAPI, ApiError } from '@/lib/api';
+// Phase 88.6-20 (R1): the ratified copy is read through its ONE reader rather than copied into
+// this file as a literal, so the assertions cannot drift from the register.
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 
@@ -152,6 +155,52 @@ describe('Phase 88-13 — the settings surface is on the shared Modal, and savin
     fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
     expect(toast.success as Mock).not.toHaveBeenCalled();
+  });
+
+  it('R1: a 403 on settings-save renders MESSAGE_BY_CODE.forbidden, not a generic failure', async () => {
+    /*
+     * NEW Phase 88.6-20 (R1 / UI-SPEC §6.2 permission row). This is the site plan 88.6-21's
+     * acceptance criterion depends on — no other plan in the phase touches this catch.
+     *
+     * A 403 here is genuinely reachable, not theoretical: an owner or admin whose role was
+     * changed server-side after this modal rendered still has the Save button in front of them,
+     * and `isOwnerOrAdmin` refuses the write. Before this plan the catch authored
+     * "Failed to update group settings. Please try again." unconditionally, which reports a
+     * permission refusal as a transient glitch and invites the user to retry forever.
+     *
+     * Asserted BEHAVIOURALLY against the shipped register rather than against a copied string:
+     * `MESSAGE_BY_CODE` has exactly one reader (`getFetchErrorMessage`), so this reads the
+     * ratified copy through that reader and cannot drift from it.
+     */
+    (groupsAPI.updateGroupSettings as Mock).mockRejectedValue(
+      new ApiError('Forbidden', 'forbidden', 403)
+    );
+    renderSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
+    const said = (toast.error as Mock).mock.calls[0][0];
+    expect(said).toBe(getFetchErrorMessage(new ApiError('Forbidden', 'forbidden', 403)));
+    // the ratified forbidden line, and specifically NOT the retired ad-hoc sentence
+    expect(said).toContain("You don't have access to this");
+    expect(said).not.toContain('Failed to update group settings');
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+  });
+
+  it('R1: a generic save failure reads the ratified register, and never the raw upstream message', async () => {
+    // The counterpart to the 403 arm: a failure carrying no `ApiError.code` resolves through
+    // `unknown`, so no copy is authored here either. The raw `error.message` must not surface —
+    // that is the R1 defect, and an upstream string is exactly what used to reach the user.
+    (groupsAPI.updateGroupSettings as Mock).mockRejectedValue(
+      new Error('ECONNRESET: upstream socket hang up')
+    );
+    renderSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
+    const said = (toast.error as Mock).mock.calls[0][0];
+    expect(said).not.toContain('ECONNRESET');
+    expect(said).toBe(getFetchErrorMessage(new Error('x')));
   });
 });
 
@@ -331,6 +380,38 @@ describe('SPEC-REQ-6 / 88-13 D-04 — one gate, at full strength, with nothing s
     );
     expect(groupsAPI.deleteGroup as Mock).not.toHaveBeenCalled();
     expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('#33: a REJECTED delete leaves the confirm dialog OPEN, and the reason reads the ratified register', async () => {
+    /*
+     * NEW Phase 88.6-20. `performDeleteGroup` re-throws after its toast, and that `throw error`
+     * plus its justification comment are BYTE-UNCHANGED by this plan. This test is what stops a
+     * later reader deleting it as a stray: `useConfirmAction`'s contract is that the gate stays
+     * OPEN on failure, so dropping the re-throw closes the dialog as though the delete had
+     * SUCCEEDED while the group still exists — the owner would be looking at a dismissed
+     * confirmation with no indication anything went wrong.
+     *
+     * The second half is the R1 arm for the same catch: the raw `error.message` read is gone.
+     */
+    (groupsAPI.deleteGroup as Mock).mockRejectedValue(
+      new Error('violates foreign key constraint "events_group_id_fkey"')
+    );
+    renderSettings();
+    await waitFor(() => expect(dangerZone().textContent).toContain('37'));
+    const dialog = await openDeleteGate();
+
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalled());
+    // the gate stays OPEN — this is the property the re-throw buys
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: `Delete ${GROUP_NAME}?` })).toBeInTheDocument()
+    );
+    // …and the reason is the ratified copy, not the upstream Postgres string
+    const said = (toast.error as Mock).mock.calls[0][0];
+    expect(said).not.toContain('foreign key');
+    expect(said).toBe(getFetchErrorMessage(new Error('x')));
   });
 
   it('a many-member group needs no extra acknowledgement step', async () => {
@@ -704,5 +785,68 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
     expect(settings.color_preset).toBe('blue');
     expect(settings.background_color).toBeNull();
     expect(settings.profile_picture_url).toBe('\u{1F3B2}');
+  });
+});
+
+describe('Phase 88.6-20 — the leave-group failure is ANNOUNCED (R1 third arm / WCAG 4.1.3)', () => {
+  /*
+   * MATCHED PAIR with plan 88.6-19's shipped arm for `ManageMembers.js`'s leave-confirm flow:
+   * same markup shape, same flow, different surface. One phase must not ship two standards for
+   * one shape, least of all with the weaker one on the destructive path.
+   *
+   * The FAILING half of the old behaviour was not that the message was wrong — it was that a
+   * bare conditional error `<p>` is never announced at all, so a screen-reader user who
+   * confirmed Leave Group and hit a failure got a section that stayed open and no reason.
+   */
+  const asMember = { userRole: 'member' as const };
+
+  async function openLeaveConfirm() {
+    renderSettings(asMember);
+    fireEvent.click(await screen.findByRole('button', { name: 'Leave Group' }));
+    return await screen.findByRole('button', { name: 'Confirm Leave' });
+  }
+
+  it('the live region is mounted BEFORE the failure, empty, and the Confirm control names it', async () => {
+    // THE EMPTY-FIRST MOUNT IS THE MECHANISM. Screen readers announce CHANGES to a live region,
+    // not the conditional mount of a new one — so `{leaveError && <StatusRegion …>}` would be
+    // the same defect wearing the primitive's name. This is the PRESERVATION half of the pair:
+    // it asserts the region exists while nothing has gone wrong yet.
+    const confirm = await openLeaveConfirm();
+
+    const describedBy = confirm.getAttribute('aria-describedby');
+    expect(describedBy, 'the Confirm control does not name a description').toBeTruthy();
+    const region = document.getElementById(describedBy as string);
+    expect(region, 'aria-describedby points at nothing').not.toBeNull();
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveAttribute('aria-atomic', 'true');
+    expect(region!.textContent).toBe('');
+  });
+
+  it('a failed leave puts the RATIFIED reason into that same region, and logs to the error channel', async () => {
+    (groupsAPI.leaveGroup as Mock).mockRejectedValue(
+      new Error('ETIMEDOUT: upstream took too long')
+    );
+    const confirm = await openLeaveConfirm();
+    const region = document.getElementById(confirm.getAttribute('aria-describedby') as string)!;
+
+    fireEvent.click(confirm);
+
+    // Settle on the branch under test — the region CARRYING text — rather than on its absence,
+    // which is satisfied on the first tick and never observes the state (the 88.6-15 trap).
+    await waitFor(() => expect(region.textContent).not.toBe(''));
+
+    // it is the SAME node that was mounted empty, so the text change is what announces
+    expect(document.getElementById(confirm.getAttribute('aria-describedby') as string)).toBe(region);
+    // the ratified register, not the upstream string
+    expect(region.textContent).not.toContain('ETIMEDOUT');
+    expect(region.textContent).toBe(getFetchErrorMessage(new Error('x')));
+    // the section stays OPEN — a toast would have been the wrong treatment here
+    expect(screen.getByRole('button', { name: 'Confirm Leave' })).toBeInTheDocument();
+
+    // #101: the handler had NO logging channel at all before this plan. `logger.error` and not
+    // `logger.info` — a NET-NEW error channel on an irreversible path, not a channel move.
+    expect(logger.error as Mock).toHaveBeenCalled();
+    expect((logger.error as Mock).mock.calls[0][0]).toContain('leaving group');
   });
 });

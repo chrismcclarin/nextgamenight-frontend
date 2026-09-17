@@ -181,11 +181,17 @@ const OFFENDERS: ExemptionRoster = {
     why: 'The empty-day "+" hint is text-content-muted (4.3725) under the day-cell ground candidate inside the five-arm className ternary, and it is NOT in any census. It is rostered rather than excluded because the pairing is structurally POSSIBLE (an empty day can be today), but it is not renderable TODAY: the `group` marker that arms its `group-hover:opacity-40` sits on the cellClickable arm, which is mutually exclusive with the isCurrentDay ground, so the hint stays opacity-0 on a current day. PLAN 40 HOISTS THAT `group`, at which point this becomes a live AA failure — which is exactly why it is recorded here instead of dropped, and why plan 88.6-27 left it standing rather than closing a site whose element plan 40 owns. Line cites are deliberately NOT written into this `why`: plan 88.6-27 moved this file by ~50 lines and the previous text carried four stale ones. No sweep plan owns it; routed to the owner in 88.6-09-SUMMARY.md.',
     owner: D16,
   },
-  'app/components/GroupSettings.js': {
-    sites: 1,
-    why: 'text-content-muted (4.3725) at :645, the "No picture" fallback label, on the certain avatar-disc ground at :630. NEWLY MEASURED by this scan — NOT one of D-16\'s six censused sites, and no sweep plan declares this file together with this roster. Routed to the owner in 88.6-09-SUMMARY.md.',
-    owner: D16,
-  },
+  // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16), under OWNER RULING ARM A. The entry
+  // was `sites: 1` — `text-content-muted` (4.3725) on the "No picture" avatar-disc fallback
+  // label, on the CERTAIN `bg-surface-muted` disc ground. It is now `text-content-secondary`
+  // (6.9620), with a `DECISION Phase 88.6-20 (D-16)` marker at the site recording that moving
+  // the disc's GROUND instead was rejected (that ground is the OI-5 exclusion: ΔL* 10.4 vs 2.3).
+  // DISCLOSED: `groundInk.test.ts` is NOT in plan 88.6-20's `files_modified`. The owner
+  // authorised this file's entry — and only this one — to be closed in the same commit as the
+  // fix, because 88.6-09 routed it as an offender no scheduled plan could reach: no plan
+  // declared BOTH `GroupSettings.js` and this roster. Recorded in `.planning/WINDOWS.md`.
+  // The `BringGamePicker.js` and `NotificationBell.js` entries are NOT touched (plans 33, 31).
+  // Entry DELETED, not zeroed — the roster is exact in both directions.
   'app/components/NotificationBell.js': {
     sites: 1,
     why: 'text-content-muted (4.3725) at :281 under the muted confirmation-banner ground at :278. The two arms share the SAME condition (confirmation.tone === "success"), so the pairing is genuinely co-live even though the scan can only classify it "possible". NEWLY MEASURED — not a D-16 census site and no sweep plan owns it with this roster. Routed to the owner in 88.6-09-SUMMARY.md.',

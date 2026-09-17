@@ -189,11 +189,17 @@ const BTN_EXEMPT: ExemptionRoster = {
   // the roster is exact in both directions, so a zeroed entry would red as a fossil permission.
   // NOTE this file still carries an entry in PALETTE_BUTTON_EXEMPT below, at 2 and FLOORED: the
   // two rules see different populations and closing one does not close the other.
-  'app/components/GroupSettings.js': {
-    sites: 8,
-    why: 'plan 88.6-20 sweeps GroupSettings.js and lands the swatch a11y items alongside the Button migration',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16): `app/components/GroupSettings.js`
+  // carried `sites: 8` (the two custom-URL "Use" buttons, "Open Manage Members to transfer",
+  // "Leave Group", the leave-confirm Cancel/Confirm pair, "Transfer ownership instead" and
+  // "Delete Group"). All eight are `<Button variant=… size="default">` now. DEAD CLASSES
+  // DELETED AND ONLY THOSE: both per-CTA `min-h-11` go (the cva base supplies the floor at
+  // every viewport, 88.6-06 D-09), while `mb-4` and `w-full sm:w-auto` STAY — `.btn` declares
+  // neither margin nor width, so those utilities were never dead. The two `Modal.Action` call
+  // sites in the same file are NOT census sites: `Modal.Action` has rendered `Button` since
+  // plan 88.6-08, so they were already migrated and are byte-unchanged here. Entry DELETED
+  // rather than zeroed — the roster is exact in both directions, so a zeroed entry would red
+  // as a fossil permission.
   // PERMANENT AT 2 — the one entry in this roster that never reaches zero. SHRUNK 7 -> 2 by
   // plan 88.6-32 task 1 (wave 7, 2026-09-16), which migrated the other FIVE:
   //   - the three complexity-tier toggles and the two sort-direction toggles all carried a

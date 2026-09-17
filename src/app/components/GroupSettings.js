@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
@@ -18,6 +18,10 @@ import { toast } from 'sonner';
 // the sibling ManageMembers.js adopter.
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { StatusRegion } from '../../components/ui/StatusRegion';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 import { Modal } from './Modal';
 import { Input } from '../../components/ui/Input';
 
@@ -159,6 +163,11 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState('');
+  // Stable id for the leave-confirm failure's live region, so the Confirm control can name it
+  // with `aria-describedby`. `useId` and not a literal — matched to plan 88.6-19's arm in
+  // `ManageMembers.js`, where the same reasoning is recorded: this component can be mounted
+  // more than once in a tree and a duplicate id would make the reference ambiguous.
+  const leaveErrorId = useId();
 
   // Plan 69-04: derive isOnlyMember from a one-time members fetch.
   // The Group object passed to GroupSettings doesn't reliably include
@@ -403,7 +412,22 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       if (onClose) onClose();
     } catch (error) {
       logger.error('Error updating group settings', error);
-      toast.error('Failed to update group settings. Please try again.');
+      /* DECISION Phase 88.6-20 (R1 / UI-SPEC §6.2, mutation arm): the save failure reads the
+         RATIFIED register instead of authoring its own sentence. `getFetchErrorMessage(error)`
+         with NO fallback, so the register's own `unknown` string answers a generic failure and
+         no copy is minted here (P1).
+
+         THE REASON THIS SITE IS NOT OPTIONAL: it is the ONLY place a 403 on settings-save can
+         be turned into `MESSAGE_BY_CODE.forbidden`, and a 403 here is genuinely reachable — an
+         owner or admin whose role was changed server-side after this modal rendered still has
+         the Save button in front of them. The retired string ("Failed to update group settings.
+         Please try again.") reported that as a generic failure.
+
+         This is a MUTATION inside an open modal, so §6.2 routes it to the toast and the user's
+         context does not move. REJECTED: an inline banner in the modal body — the modal CLOSES
+         on success and this failure keeps it open, but the failure is not tied to any one field,
+         so a banner would put a page-level treatment on an action-level failure. */
+      toast.error(getFetchErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -478,7 +502,43 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       // see app/page.js → UserHomePage).
       router.push('/');
     } catch (err) {
-      setLeaveError(err.message || 'Failed to leave group. Please try again.');
+      /* DECISION Phase 88.6-20 (#101 / D2): `handleLeaveGroup` GAINS A LOGGING CHANNEL, at
+         `error` level, chosen OVER the phase's convert-on-touch `logger.info` default.
+
+         WHY IT IS NEEDED AT ALL: this handler had NEITHER `console.error` NOR `logger.error`.
+         The raw `err.message` painted into `setLeaveError` below WAS its only channel, and the
+         line above this one removes it. Standardising the user-facing string without adding a
+         channel would leave a failed leave producing a generic sentence to the user, nothing in
+         the console and nothing in Sentry — on an irreversible path.
+
+         WHY `error` AND NOT `info`: D2(ii) makes `logger.info` the convert-on-touch target for
+         the ~100 sites that MOVE an existing `console.*` call onto the house logger. This is not
+         a move. It is a NET-NEW error channel on a destructive path that has no channel today,
+         which is D2's own "kept where an owner ruling requires a Sentry EVENT" case. Shape
+         matched to `performDeleteGroup`'s `logger.error` below. A later `logger.info` sweep must
+         read this as a decision and not lower it.
+
+         THE ESCALATION CONTEXT, VERIFIED: `queryClient.ts` registers a `QueryCache` only (no
+         `MutationCache`) and `sentry.client.config.js` has no `captureConsoleIntegration`, so an
+         imperative catch block reaches Sentry ONLY through its own explicit call. */
+      logger.error('Error leaving group', err);
+      /* DECISION Phase 88.6-20 (R1 / WCAG 4.1.3): the leave failure keeps its message IN THIS
+         SECTION and is ANNOUNCED — see the `StatusRegion` in the leave-confirm block below.
+         `getFetchErrorMessage(err)` with no fallback, so the ratified register answers.
+
+         REJECTED (the load-bearing half): keep the bare conditional error `<p>` and merely feed
+         it `getFetchErrorMessage(err)`. That satisfies "the raw read is gone" while announcing
+         NOTHING — a bare conditional `<p>` is never read out, so a screen-reader user who
+         confirms Leave Group and hits a failure gets a section that stays open and no reason at
+         all, on the one path here that cannot be undone.
+         REJECTED: moving this to a `toast.error`. The section STAYS OPEN on failure and this
+         line is its only failure surface.
+
+         MATCHED PAIR with `ManageMembers.js`'s leave-confirm failure (plan 88.6-19, shipped):
+         same markup shape, same flow, different surface — in-modal there, in-section here. One
+         phase must not ship two standards for one shape, least of all with the weaker one on
+         the destructive path. If that arm ever moves, this one moves with it. */
+      setLeaveError(getFetchErrorMessage(err));
     } finally {
       setLeaving(false);
     }
@@ -529,7 +589,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       }
     } catch (error) {
       logger.error('Error deleting group', error);
-      toast.error(error.message || 'Failed to delete group. Please try again.');
+      /* DECISION Phase 88.6-20 (R1 / UI-SPEC §6.2, mutation arm): the ratified register, no
+         fallback. Same classification as the save catch above — an action failure whose context
+         must not move. The raw `error.message` read is gone. */
+      toast.error(getFetchErrorMessage(error));
       // Re-thrown so useConfirmAction keeps the gate OPEN on failure (its
       // contract): closing it would leave the owner looking at a Danger Zone
       // with no indication the group is still there.
@@ -605,9 +668,31 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         <Modal.Header>Customize Group</Modal.Header>
         <Modal.Body>
 
+        {/* DECISION Phase 88.6-20 (D57): NO in-component role gating is added to the Profile
+            Picture or Background sections below. Rejected BECAUSE PLAN 88.6-21 OWNS THE ENTRY
+            GATE, and a second authority check inside this modal would be a divergent one.
+
+            STATED HONESTLY, because the wording matters: this is NOT a claim that no member
+            entry point remains. At HEAD (verified 2026-09-16) `groupHomePage/page.js` gates the
+            kebab on `{userRole && userRole !== 'pending' && (` — ANY active non-pending member —
+            and its single "Group settings" item carries no role condition of its own;
+            `grouplist.js`'s cog DOES sit under `canEdit`. The no-member-entry property is what
+            PLAN 21 DELIVERS, not what the tree in front of this executor provides. Plans 20 and
+            21 are the SAME WAVE, so neither can observe the other's outcome — which is precisely
+            why this marker is worded as an ownership decision and never as a fact about the tree.
+
+            The backend is the real authority either way: `isOwnerOrAdmin` refuses a non-admin
+            settings write server-side, so the failure mode of the current entry gate is a 403 on
+            save — which the save catch above now renders as `MESSAGE_BY_CODE.forbidden` rather
+            than as a generic sentence. That is this plan's contribution to the same problem.
+
+            REJECTED: adding `88.6-21` to this plan's `depends_on`. That does not express "check
+            first" — it moves this plan out of wave 7 and re-shapes the wave graph to buy a prose
+            precondition. Recorded so a later reader does not "fix" it by adding the edge. */}
+
         {/* Profile Picture Section */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-content-primary mb-3">Profile Picture</h3>
+          <Heading level={3} size="heading" className="text-content-primary mb-3">Profile Picture</Heading>
           
           {/* Current Selection Preview */}
           <div className="mb-4 p-4 border border-line rounded-lg bg-surface-page">
@@ -626,7 +711,22 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   decision, not a cleanup.
                   AMENDED Phase 88.6-02 (D-15): renamed to `bg-surface-muted`, value byte-equal.
                   The OI-5 exclusion above stands verbatim — only the token's NAME moved, and the
-                  ΔL* figures it turns on are unchanged. */}
+                  ΔL* figures it turns on are unchanged.
+
+                  CONFIRMED Phase 88.6-20: THIS ELEMENT IS THE OI-5 EXCLUSION SITE. The ground
+                  survived both the 88.6-02 rename and this plan's full-file sweep — it is still
+                  `bg-surface-muted` (warm-200, ΔL* 10.4 against the card) and was deliberately
+                  NOT converged onto `bg-surface-sunken` with the nested blocks. Plan 43's sunken
+                  sweep must leave it alone; the reason is the two ΔL* figures above, not habit.
+
+                  A LINE-CITE CORRECTION for whoever reads the register next:
+                  `.planning/deferred/phase-88.6.md` records the exclusion as
+                  "`GroupSettings.js:361` MUST NOT be swept (OI-5)", and this plan's own text
+                  additionally asked for a separate one-line comment AT `:361`. There is no
+                  second site. `:361` is a STALE line number for THIS disc — the file has moved
+                  by hundreds of lines since that entry was written — so the exclusion is
+                  recorded once, here, at the element it actually describes rather than twice at
+                  two numbers. Anchor on `DEFAULT_PROFILE_PICTURES` / this marker, not on a line. */}
               <div className="inline-flex w-20 h-20 rounded-full bg-surface-muted items-center justify-center text-4xl mb-2 overflow-hidden">
                 {profilePictureUrl ? (
                   profilePictureUrl.startsWith('http') || profilePictureUrl.startsWith('/') ? (
@@ -642,7 +742,30 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 ) : (
                   // text-xs: the container's text-4xl is for emoji icons — the
                   // fallback label must not inherit it (F-4).
-                  <span className="text-content-muted text-xs">No picture</span>
+                  /* DECISION Phase 88.6-20 (D-16, owner ARM A 2026-09-16):
+                     `text-content-muted` -> `text-content-secondary` on the "No picture"
+                     fallback label, chosen OVER leaving it and OVER moving the disc's ground.
+
+                     MEASURED: `content-muted` on this avatar disc's `bg-surface-muted` ground
+                     reads **4.3725** — under WCAG 1.4.3's 4.5:1 for text this size (12px is
+                     normal text, not large). `content-secondary` reads **6.9620** on the same
+                     ground. The pairing is CERTAIN, not speculative: the ink and the ground are
+                     on the same element chain with no intervening branch, which is why the D-16
+                     scan classified it `certain` rather than `possible`.
+
+                     REJECTED — moving the disc to a lighter ground. That is the OI-5 exclusion
+                     recorded on the marker above, which exists precisely so the disc keeps
+                     reading as a filled shape (ΔL* 10.4 vs 2.3). Re-inking the LABEL fixes the
+                     text without touching the shape decision.
+
+                     WHY IT IS DONE HERE. This site was found by plan 88.6-09's D-16 scan, is
+                     NOT one of D-16's six censused sites, and NO sweep plan declared this file
+                     together with `groundInk.test.ts` — so no scheduled plan could close it. The
+                     owner authorised this plan to take it (ARM A), including deleting this
+                     file's `OFFENDERS` entry in the same commit even though that suite is not in
+                     this plan's `files_modified`. Disclosed in the SUMMARY and in WINDOWS as an
+                     owner-authorised undeclared-gate edit. */
+                  <span className="text-content-secondary text-xs">No picture</span>
                 )}
               </div>
               <p className="text-sm text-content-secondary">Current selection</p>
@@ -657,7 +780,29 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 <button
                   key={index}
                   onClick={() => handleSelectDefaultPicture(pic.url)}
-                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors ${
+                  /* DECISION Phase 88.6-20 (D-20 (iv)): this button GAINS the project focus
+                     string. It is not scope creep — it is the first thing the ring scan found
+                     when `GroupSettings.js` joined `RING_SCAN_FILES` in this same commit, and
+                     that is exactly what arming the scan is for.
+
+                     It was the ONE focusable here with no focus ring that the Button migration
+                     does not cover: the other eight raw `<button>`s in this file were `.btn`
+                     sites and are `<Button>`s now (ring from the primitive's base), and the
+                     swatch already carried the string. This one wears its own bespoke classes
+                     and never wore `.btn`, so nothing supplied it a ring — a keyboard user
+                     tabbing the eight default icons got only the browser default outline, which
+                     is the precise failure DEF-88.3-13-04 was reported as ("a blue circle,
+                     readable on some items and not on others") and which no contrast probe reads
+                     as a failure.
+
+                     It is NOT migrated to `<Button>`: `.btn`'s unlayered `font-size`
+                     (globals.css) would kill the `text-3xl` that sizes the emoji, and its
+                     padding would resize the tile. §3.2's bare-`<button>` row sanctions leaving
+                     such a site bare where a recorded geometry decision forbids `.btn`'s
+                     padding; this is that case, recorded here. The ring is added as a utility
+                     instead, byte-identical to the string the swatch below and the group-page
+                     header CTAs carry. */
+                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                     profilePictureUrl === pic.url ? 'border-accent bg-surface-muted' : 'border-line'
                   }`}
                   title={pic.name}
@@ -682,19 +827,16 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 placeholder="https://example.com/image.jpg"
                 className="flex-1"
               />
-              <button
-                onClick={handleUseCustomPicture}
-                className="btn btn-primary"
-              >
+              <Button variant="primary" size="default" onClick={handleUseCustomPicture}>
                 Use
-              </button>
+              </Button>
             </div>
           </div>
         </div>
 
         {/* Background Section */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-content-primary mb-3">Background</h3>
+          <Heading level={3} size="heading" className="text-content-primary mb-3">Background</Heading>
           
           {/* Current Selection Preview */}
           {/* The no-colour branch keeps `bg-surface-card` so "no colour chosen"
@@ -1152,12 +1294,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 placeholder="https://example.com/background.jpg"
                 className="flex-1"
               />
-              <button
-                onClick={handleUseCustomBackground}
-                className="btn btn-primary"
-              >
+              <Button variant="primary" size="default" onClick={handleUseCustomBackground}>
                 Use
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1174,20 +1313,21 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
             Active members only; pending users can't leave (they accept/decline). */}
         {userRole && userRole !== 'pending' && (
           <div className="mb-6 pt-6 border-t border-line">
-            <h3 className="text-lg font-semibold text-content-primary mb-3">Leave Group</h3>
+            <Heading level={3} size="heading" className="text-content-primary mb-3">Leave Group</Heading>
             {userRole === 'owner' && !isOnlyMember && (
               <div className="space-y-3">
                 <p className="text-sm text-content-secondary">
                   You are the owner. Transfer ownership to another member before you can leave.
                 </p>
-                <button
+                <Button
                   type="button"
-                  className="btn btn-secondary"
+                  variant="secondary"
+                  size="default"
                   onClick={() => onOpenManageMembers?.()}
                   disabled={!onOpenManageMembers}
                 >
                   Open Manage Members to transfer
-                </button>
+                </Button>
               </div>
             )}
             {userRole === 'owner' && isOnlyMember && (
@@ -1203,38 +1343,89 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
             {userRole !== 'owner' && !isOnlyMember && (
               <>
                 {!showLeaveConfirm ? (
-                  <button
+                  <Button
                     type="button"
-                    className="btn btn-danger"
+                    variant="danger"
+                    size="default"
                     onClick={() => setShowLeaveConfirm(true)}
                   >
                     Leave Group
-                  </button>
+                  </Button>
                 ) : (
                   <div className="space-y-3">
                     <p className="text-sm text-content-primary">
                       Leave <strong>{group?.name}</strong>? You will lose access to events, library, and member-only content.
                     </p>
-                    {leaveError && (
-                      <p className="text-sm text-content-status-error">{leaveError}</p>
-                    )}
+                    {/* DECISION Phase 88.6-20 (R1 third arm / WCAG 4.1.3): the leave failure is
+                        ANNOUNCED. The house `StatusRegion` at `politeness="polite"`, mounted
+                        UNCONDITIONALLY with an empty message, and the Confirm control points at
+                        it with `aria-describedby`.
+
+                        THE MOUNT IS THE MECHANISM. This replaces `{leaveError && <p …>}` — a
+                        bare conditional error paragraph, which is never announced at all. A
+                        screen-reader user who confirmed Leave Group and hit a failure got a
+                        section that stayed open and no reason, on the one path here that cannot
+                        be undone. `{leaveError && <StatusRegion …>}` would be the SAME defect
+                        wearing the primitive's name: the region and its text would enter the DOM
+                        together, and screen readers announce CHANGES to a live region, not the
+                        conditional mount of a new one (`StatusRegion.tsx`'s own contract).
+
+                        REJECTED: keeping the inline `<p>` and merely feeding it
+                        `getFetchErrorMessage(err)`. It drops the raw upstream read — this plan's
+                        own criterion — while announcing nothing.
+                        REJECTED: a `toast.error`. The section stays open on failure and this is
+                        its only failure surface, so a toast leaves the person looking at an open
+                        confirm with no reason in it.
+                        REJECTED: hand-rolling an `aria-live` div. The primitive supplies `role`,
+                        `aria-live` AND `aria-atomic` as one contract.
+
+                        WRITTEN IDENTICALLY to plan 88.6-19's shipped arm for the same markup
+                        shape in `ManageMembers.js`'s leave-confirm flow — same primitive, same
+                        politeness, same empty-first mount, same `aria-describedby`. The two must
+                        not diverge; one phase must not ship two standards for one shape.
+
+                        THE ONE DELIBERATE DIFFERENCE, and it is spacing, not mechanism. Plan 19's
+                        site sits in a `Modal.Body` with no `space-y`, so it suppresses the empty
+                        region's gap with a conditional `mt-4`. THIS site sits inside
+                        `<div className="space-y-3">`, where `space-y` puts a 12px `margin-top` on
+                        every child after the first — so an always-mounted empty region opens a
+                        visible 12px hole in the confirm block whether it carries text or not.
+                        `sr-only` while empty is what closes it: the node is NOT unmounted, it
+                        stays in the accessibility tree, and React mutates the SAME DOM node's
+                        text — which is the mutation the live region announces on. Visible the
+                        moment it carries a message, exactly as the owner's visible-when-set
+                        ruling requires. REJECTED: `empty:hidden` — `display: none` removes the
+                        node from the accessibility tree in several screen readers and would
+                        silently restore the very defect this arm fixes.
+
+                        Re-conditioning the mount, or dropping the `aria-describedby`, is a
+                        decision, not a cleanup. */}
+                    <StatusRegion
+                      id={leaveErrorId}
+                      politeness="polite"
+                      message={leaveError}
+                      className={`text-content-status-error${leaveError ? '' : ' sr-only'}`}
+                    />
                     <div className="flex gap-3">
-                      <button
+                      <Button
                         type="button"
-                        className="btn btn-secondary"
+                        variant="secondary"
+                        size="default"
                         disabled={leaving}
                         onClick={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
                       >
                         Cancel
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        className="btn btn-danger"
+                        variant="danger"
+                        size="default"
                         disabled={leaving}
+                        aria-describedby={leaveErrorId}
                         onClick={handleLeaveGroup}
                       >
                         {leaving ? 'Leaving…' : 'Confirm Leave'}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1246,7 +1437,31 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         {/* Delete Group Section - Owner Only */}
         {userRole === 'owner' && (
           <div className="mb-6 pt-6 border-t border-red-200">
-            <h3 className="text-lg font-semibold text-red-600 mb-3">Danger Zone</h3>
+            {/* DECISION Phase 88.6-20 (§4.4 + P6): `text-red-600` -> `text-content-status-error`,
+                the destructive INK token. It is not a token-hygiene tidy — it is a WCAG 1.4.3 fix.
+
+                THE DETERMINATION, made by reading `globals.css` rather than assuming (the same
+                ambiguity plan 88.6-17 resolved for `bg-purple-900`): `--color-red-600: #dc2626`
+                IS declared in the repo's own `@theme` block (`globals.css:306`) — but it is
+                Tailwind's default red-600 value re-declared, i.e. a raw palette STEP under
+                either reading, not a semantic token. Crucially, a palette step does not follow
+                the theme, and THAT is what breaks here.
+
+                MEASURED with `src/lib/wcag.ts`, this heading's ink against the card it sits on:
+                  `red-600` #dc2626            light 4.8294   DARK **2.8676**
+                  `content-status-error`       light 8.3101   dark  7.2966
+                `red-600` is a single fixed value, so the dark card gets the light-mode red:
+                2.8676 is under 3:1 — below even the LARGE-text floor, on the heading of the
+                destructive section. `content-status-error` is theme-keyed (#991b1b light,
+                #fca5a5 dark) and clears 4.5:1 in both. Plan 88.6-17 KEPT its palette steps
+                because they were a look call with no measured failure behind them; this one has
+                one, so the same determination reaches the opposite action.
+
+                NOT CHANGED HERE: `border-red-200` on the divider above. Same palette-step class,
+                but a 1px decorative divider is outside 1.4.11 and its treatment is a look call
+                with no floor to breach — routed to `.planning/deferred/phase-88.6.md` rather
+                than swept in silently on the back of this fix. */}
+            <Heading level={3} size="heading" className="text-content-status-error mb-3">Danger Zone</Heading>
 
             {/* Phase 88.2 / SPEC-REQ-5: three short beats — blast radius,
                 recoverability, the better path — rather than one wall of text,
@@ -1295,26 +1510,30 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
             {/* SPEC-REQ-5: the better path gets its own affordance, before the
                 destructive one. Same idiom as the Leave Group transfer button
                 above; both go dark if a call site forgets the prop. */}
-            <button
+            <Button
               type="button"
-              className="btn btn-secondary w-full sm:w-auto min-h-11 mb-4"
+              variant="secondary"
+              size="default"
+              className="w-full sm:w-auto mb-4"
               onClick={() => onOpenManageMembers?.()}
               disabled={!onOpenManageMembers}
             >
               Transfer ownership instead
-            </button>
+            </Button>
 
             {/* One affordance, one gate. The typed confirmation and its Cancel
                 now live in <ConfirmDialog> (see the DECISION marker above
                 `deleteGate`); this button only opens it. */}
-            <button
+            <Button
               type="button"
+              variant="danger"
+              size="default"
+              className="w-full sm:w-auto"
               onClick={() => deleteGate.trigger()}
               disabled={deleteGate.pending}
-              className="btn btn-danger w-full sm:w-auto min-h-11"
             >
               {deleteGate.pending ? 'Deleting...' : 'Delete Group'}
-            </button>
+            </Button>
           </div>
         )}
 
