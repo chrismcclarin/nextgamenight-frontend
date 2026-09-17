@@ -141,11 +141,43 @@ const ACTION_BUSY_ERROR = 'Wait for the current step to finish, then try again';
 const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
 /* Round 5 #16/#19/#29: the address the BACKEND refuses because its own sentinel
    predicate matches it (`isSyntheticAddress` — any host containing "auth0", the broad
-   NIX-AUTH0 test). Storing such a value would make seventeen backend sites and four
-   frontend ones read a real address as a provisioning sentinel, so the refusal is
-   correct — but it arrived as a bare `validation` envelope, which this section maps to
-   "reload the page", and reloading changes nothing: the same input fails identically
-   forever with no statement of what is wrong. This is the sentence that was missing. */
+   NIX-AUTH0 test). Storing such a value would make the guard sites on both sides read a
+   real address as a provisioning sentinel, so the refusal is correct.
+
+   AUDITED Phase 88.6-38 (2026-09-17). Three claims lived here; ONE was right and TWO were
+   not, and both wrong ones are corrected to what the code does rather than deleted.
+
+   1. THE PREDICATE CLAIM WAS CORRECT and is unchanged — `provisioningService.js:142-147`
+      is `value.includes('@auth0.local') || value.includes('@auth0')`, broad, with the
+      NIX-AUTH0 marker above it.
+   2. THE CENSUS WAS WRONG IN BOTH HALVES ("seventeen backend sites and four frontend
+      ones"). The numbers are replaced by the COMMANDS that produce them, because a bare
+      integer in a comment rots silently and this is the second time this one has:
+        - frontend: SIX call sites, ENUMERATED rather than counted by a grep, because a
+          grep for the helper's own name matches this comment and would count itself:
+            * `EmailAddressSection.tsx:498`  — the idle display (`currentIsSynthetic`)
+            * `EmailAddressSection.tsx:772`  — the Save pre-flight
+            * `EmailAddressSection.tsx:1440` — the BLUR pre-check (round 6 #21)
+            * `FeedbackForm.js:64`           — the prefill gate
+            * `FeedbackForm.js:204`          — the `user_email` write
+            * `userProfile/page.js:1705`     — the profile header address line
+          NOT four. The two the old count missed are this file's blur pre-check and
+          `FeedbackForm.js`'s prefill gate — both shipped in the SAME 2026-09-07 fix set
+          that wrote "four", which is how a census goes stale inside its own commit.
+        - backend, from `periodictabletopbackend_v2/Sonnet/`:
+          `{ grep -rn '@auth0' routes services; grep -rn 'isSyntheticAddress(\|isRealAddress(' routes services; } | grep -vE '^[^:]*:[0-9]+: *(//|\*)' | cut -d: -f1,2 | sort -u | wc -l`
+          -> 23 guard sites. NEITHER "seventeen" here NOR the "NINETEEN" in
+          `syntheticAddress.ts`'s docblock reproduces under any command run in the audit;
+          both are recorded there as unreproduced rather than silently re-pointed.
+   3. THE WIRE CLAIM WAS STALE — it said the refusal "arrived as a bare `validation`
+      envelope, which this section maps to 'reload the page'". It has not since round 6:
+      the backend registered `unsupported_address` @400 (`utils/errors.js:104`) and answers
+      it at `routes/users.js:1442`, and the Save catch below maps that specific code to
+      this constant. The file already said so 700 lines down and disagreed with itself
+      here. The stale sentence is why this constant EXISTS, so the history is kept as
+      history rather than dropped: the copy was minted when the refusal was generic, and
+      it survived the wire change because a specific string beats a specific code with no
+      string. */
 const RESERVED_ADDRESS_ERROR =
   "We can't use an address at that domain — it's reserved by our sign-in system. Try another address.";
 /* Round 4 #19: the five handlers used to `return` silently when the self row carried no
