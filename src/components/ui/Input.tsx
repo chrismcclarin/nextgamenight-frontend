@@ -69,10 +69,57 @@ import { cn } from '@/lib/cn';
    for controls, because an offset ring on a full-width control inside a 12px-padded phone card
    renders into its neighbour. Adding the offset to "make it consistent with Button" is the
    thing this marker exists to stop. */
+
+/* DECISION Phase 88.6-30 (W53 / SPEC R6, owner ruling AC-17 2026-09-09): the native
+   date/time normalisation is ATTRIBUTE-GATED — every class of it, not only the shrink.
+   CHOSEN OVER adding `appearance-none` / `min-w-0` unconditionally to `controlClass`.
+
+   W53 is the owner's own report (iPhone, light mode, 2026-08-28): `<Input type="date">`
+   runs past its cell on the Game Sessions filter card, because iOS Safari's native
+   date control keeps its INTRINSIC width and `w-full` cannot shrink it. The fix belongs
+   here and not at the page (SPEC R6) — a page fix leaves every other date input broken.
+
+   WHY GATED. `controlClass` is shared geometry: `grep -rnE "<(Input|Textarea|SelectControl)\b" src`
+   = 86 usages, 69 outside test files, across 24 files (measured 2026-09-14). The
+   dangerous half is the appearance reset, not the shrink: this class declares NO
+   `background-image`, so an UNCONDITIONAL `appearance-none` would strip the UA dropdown
+   indicator from all 19 `<SelectControl>` sites with nothing replacing it — and NOTHING
+   in this repo could see it (jsdom performs no layout, `touch-targets.spec.ts` measures
+   named CTA locators, and the W53 phone spec measures the date control only). Gated, the
+   other ~85 usages are untouched BY CONSTRUCTION, which is stronger than any assertion.
+
+   WHY THE WHOLE date/time FAMILY and not `type=date` alone: the siblings share the iOS
+   intrinsic-sizing root cause, and one `type="time"` PAIR (`userProfile/page.js:2228`,
+   `:2238`) sits directly above that file's own `type="date"` pair (`:2250`, `:2259`) on
+   one screen. 15 date/time-family controls in non-test source (6 `date`, 9
+   `time`/`datetime-local`, measured 2026-09-14). No non-test control usage carries those
+   types, so widening the list costs the by-construction guarantee nothing. Their iOS
+   behaviour is UNPROVEN-broken, not measured — no engine on this project reproduces it.
+
+   THE SET IS MINIMAL, AND WAS MINIMISED BY TESTING. A third member — start-aligning the
+   value pseudo-element — was REJECTED on evidence, not taste: Tailwind's own preflight
+   already ships `::-webkit-date-and-time-value { text-align: inherit }`
+   (`node_modules/tailwindcss/preflight.css:324-327`, comment: "Ensure text alignment can
+   be changed on date/time inputs in iOS Safari"), so a
+   `[…::-webkit-date-and-time-value]:text-left` would be a no-op dressed as a fix.
+
+   `text-base` is NOT touched — 16px is the iOS-zoom floor (UI-SPEC §4.1) and shrinking
+   the type to make the box fit is the wrong fix. Neither are the focus rules above.
+
+   These are the repo's FIRST arbitrary variants (`grep -rn '\[&' src` -> 0 before this
+   plan), so `Input.test.tsx` compiles them with the project's own Tailwind and asserts a
+   real, SCOPED rule is emitted — a never-emitted rule would otherwise be green on every
+   class-string gate. Making any of this unconditional is a decision, not a cleanup. */
+const DATE_TIME_CONTROL = '[&:is([type=date],[type=time],[type=datetime-local])]';
+
 const controlClass = cn(
   'block w-full p-2 max-md:min-h-11',
   'rounded-btn border border-input bg-surface-input',
   'text-base text-content-primary',
+  // W53: release the UA intrinsic sizing, then remove the intrinsic minimum width so
+  // `w-full` can actually shrink the box inside a narrow grid cell.
+  `${DATE_TIME_CONTROL}:appearance-none`,
+  `${DATE_TIME_CONTROL}:min-w-0`,
   // §7.2: `focus:outline-hidden` keeps a transparent outline for forced-colors mode
   // (v4's `outline-none` removes it outright). The ring itself is `focus-visible` ONLY —
   // a bare `focus:` variant would also fire on programmatic and pointer focus.
