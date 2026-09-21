@@ -173,75 +173,128 @@ describe('Input composed inside FormField', () => {
   });
 });
 
-// ── W53 / Phase 88.6-30: the native date/time normalisation ──────────────────
+// ── W53 / Phase 88.6-30 — REOPENED 2026-09-21: the native date/time normalisation ──
 //
-// The defect (owner, iPhone, 2026-08-28): `<Input type="date">` overflows its cell
-// on iOS Safari, because the native control keeps its INTRINSIC width and `w-full`
-// cannot shrink it. The fix lives in `controlClass` so it reaches Input, Textarea
-// AND SelectControl, but every class it adds is ATTRIBUTE-GATED to the native
-// date/time family — so the other ~85 control usages (19 of them `<SelectControl>`,
-// which have no `background-image` to fall back on if `appearance` is reset) are
-// untouched BY CONSTRUCTION rather than by assertion.
+// The defect (owner, iPhone): a date/time control overflows its cell on iOS Safari,
+// which resolves `width: 100%` on the NATIVE control against the CONTENT box and then
+// adds padding and border on top. The fix is a plain-CSS `@layer base` rule in
+// `src/app/globals.css`, NOT a class on `controlClass` — see the DECISION marker in
+// `Input.tsx` for why the class arm is not revivable.
 //
-// NO ENGINE INSTALLED ON THIS PROJECT REPRODUCES THE DEFECT: the `phone` Playwright
-// project is chromium-pinned by DECISION Phase 87.7 D-14 and ci.yml installs chromium
-// only. So these pins deliberately assert things that are engine-INDEPENDENT — the
-// class is present, the class is gated, and Tailwind actually EMITS a rule for it —
-// and the reproduction itself is the owner's device check (plan 88.6-30 task 4).
-const DATE_TIME_GATE = '[&:is([type=date],[type=time],[type=datetime-local])]';
-// The MINIMAL set, established by testing rather than applied by reflex (the plan's
-// instruction). `appearance-none` releases the UA intrinsic sizing; `min-w-0` removes
-// the intrinsic minimum width so `w-full` can actually shrink the box. A third member
-// was considered and REJECTED on evidence: start-aligning the value pseudo-element is
-// already shipped by Tailwind's own preflight — `::-webkit-date-and-time-value
-// { text-align: inherit }` at `node_modules/tailwindcss/preflight.css:324-327`, under
-// the comment "Ensure text alignment can be changed on date/time inputs in iOS Safari"
-// — so adding `[…::-webkit-date-and-time-value]:text-left` would be a no-op dressed as
-// a fix.
+// WHY THIS TEST LOOKS THE WAY IT DOES. Plan 30's first attempt shipped the
+// normalisation as two ATTRIBUTE-GATED Tailwind utilities built by string
+// interpolation. Tailwind v4 extracts candidates from RAW SOURCE TEXT, so the full
+// candidate string appeared in no scanned file and the compiler emitted NOTHING for
+// either one. The classes reached the DOM; the rules did not exist. Every gate in that
+// plan was green: the class-string pins read the constant, jsdom performs no layout,
+// and the EMISSION pin — the one written to catch exactly this — called
+// `compiler.build()` with the already-RESOLVED strings, which bypasses the scanner and
+// can only ever prove that the syntax compiles.
+//
+// So this replacement asserts the one thing that would have caught it: compile the REAL
+// `src/app/globals.css` through the project's own installed engine, honouring the real
+// `@source` tree (including its `@source not` test exclusions), and assert the selector
+// is present in the OUTPUT. It was observed RED at `ee26eef` (the compiled stylesheet
+// contained no date/time selector at all) and green once the rule landed.
+//
+// NO ENGINE INSTALLED ON THIS PROJECT RENDERS iOS SAFARI: the `phone` Playwright project
+// is chromium-pinned by DECISION Phase 87.7 D-14, ci.yml installs chromium only, and
+// Playwright ships no WebKit build for this macOS version. This test is therefore
+// engine-INDEPENDENT by necessity — it proves the rule SHIPS, never that it FIXES.
+// The reproduction is the owner's device check (plan 88.6-30 task 4).
+//
+// COST: the whole-tree compile takes roughly 2-4s (it scans every `@source` glob, the
+// same work `next build` does). That is deliberate — scoping `@source` down to make it
+// faster would stop it exercising the real scanner, which is the entire point.
+const DATE_TIME_TYPES = ['date', 'time', 'datetime-local'] as const;
+// The family the normalisation must NOT carry unconditionally. `appearance` is the
+// dangerous one: `controlClass` declares no `background-image`, so an unconditional
+// appearance reset would strip the UA dropdown indicator from all 19 `<SelectControl>`
+// sites with nothing replacing it.
 const NORMALISATION = ['appearance-none', 'min-w-0'] as const;
 
-describe('W53 — date/time normalisation (Phase 88.6-30)', () => {
-  it('carries every normalisation class, and carries each of them ATTRIBUTE-GATED', () => {
-    for (const utility of NORMALISATION) {
-      expect(controlClass).toContain(`${DATE_TIME_GATE}:${utility}`);
-    }
+/** Compile the real stylesheet the app ships, through the real scanner. */
+async function buildShippedCss(): Promise<{ css: string; candidates: string[] }> {
+  const [{ readFileSync }, { default: path }] = await Promise.all([
+    import('node:fs'),
+    import('node:path'),
+  ]);
+  // Resolved from the vitest root (the frontend package dir) — see the note on
+  // `fromRoot` in DangerZoneDeleteAccount.test.tsx for why not import.meta.url.
+  const root = process.cwd();
+  const { compile } = await import(
+    /* @vite-ignore */ path.join(root, 'node_modules/@tailwindcss/node/dist/index.mjs')
+  );
+  const { Scanner } = await import(
+    /* @vite-ignore */ path.join(root, 'node_modules/@tailwindcss/oxide/index.js')
+  );
+  const cssPath = path.resolve(root, 'src/app/globals.css');
+  const compiler = await compile(readFileSync(cssPath, 'utf8'), {
+    base: path.dirname(cssPath),
+    onDependency: () => {},
   });
+  // `compiler.sources` is what the `@source` / `@source not` directives resolved to —
+  // reading it from the compiler rather than re-declaring globs here is what keeps the
+  // test honest about the configuration the app actually builds with.
+  const scanner = new Scanner({ sources: compiler.sources });
+  const candidates: string[] = scanner.scan();
+  return { css: compiler.build(candidates), candidates };
+}
 
-  // The class reaches all three exported controls because it lives in the shared
-  // `controlClass` — asserted on the RENDERED nodes, not only on the constant, so a
-  // future export that stops composing `controlClass` reds here.
-  it('lands the gated normalisation on all THREE exported controls', () => {
-    render(
-      <>
-        <Input aria-label="From date" type="date" />
-        <Textarea aria-label="Notes" />
-        <SelectControl aria-label="Sort by">
-          <option value="a">A</option>
-        </SelectControl>
-      </>
+describe('W53 — the date/time normalisation is EMITTED (Phase 88.6-30, reopened)', () => {
+  it('ships an input-qualified date/time appearance reset in the compiled stylesheet', async () => {
+    const { css, candidates } = await buildShippedCss();
+
+    // Scanner health, so a misconfigured compile cannot make the assertions below
+    // vacuous by producing an empty or source-less build. `max-md:min-h-11` is written
+    // as a plain literal in `controlClass`, so the scanner must find it.
+    expect(candidates.length, 'the scanner found no candidates at all').toBeGreaterThan(0);
+    expect(css).toMatch(/\.max-md\\:min-h-11/);
+
+    // THE PIN. A rule whose selector carries the date type must exist in the OUTPUT.
+    // Quote-tolerant: the emitted selector reproduces whatever quoting the source used.
+    const rule = /(^|[\s}])((?:[^{}]*\[type=['"]?date['"]?\][^{}]*))\{([^}]*)\}/m.exec(css);
+    expect(
+      rule,
+      'the compiled stylesheet contains NO date-typed selector — the normalisation was never emitted (this is the exact state at ee26eef)'
+    ).not.toBeNull();
+
+    const selector = rule![2].trim();
+    const body = rule![3];
+
+    // Both spellings ship: `-webkit-appearance` is unreachable from a Tailwind utility
+    // and the unprefixed property alone is unproven on the owner's iOS.
+    expect(body, `emitted rule has no -webkit-appearance reset: ${selector}`).toMatch(
+      /-webkit-appearance:\s*none/
     );
-    for (const name of ['From date', 'Notes', 'Sort by']) {
-      const el = screen.getByLabelText(name);
-      for (const utility of NORMALISATION) {
-        expect(
-          el.className.split(/\s+/),
-          `${name} is missing ${DATE_TIME_GATE}:${utility}`
-        ).toContain(`${DATE_TIME_GATE}:${utility}`);
-      }
-    }
-  });
+    expect(body, `emitted rule has no appearance reset: ${selector}`).toMatch(
+      /(^|[^-])appearance:\s*none/
+    );
 
-  // THE SCOPING PIN — the preservation half, green before and after by design.
-  // It replaces an earlier wording ("assert they render unchanged"), which could
-  // never fail for two independent reasons: the class is on all three by
-  // construction, and a class-string assertion in jsdom cannot observe a layout
-  // change at all, because jsdom performs no layout.
-  //
-  // What this CAN catch is the real blast-radius failure: an UNCONDITIONAL
-  // `appearance-none` in `controlClass` would strip the UA dropdown indicator from
-  // all 19 `<SelectControl>` sites with nothing replacing it — `controlClass`
-  // declares no `background-image`.
-  it('carries NO UNCONDITIONAL member of the normalisation family, on any of the three', () => {
+    // The whole family, not just `date`.
+    for (const type of DATE_TIME_TYPES) {
+      expect(selector, `the emitted selector omits type=${type}`).toMatch(
+        new RegExp(`\\[type=['"]?${type}['"]?\\]`)
+      );
+    }
+
+    // THE SCOPING HALF, and it is stronger than the class gate it replaced: every
+    // selector in the list is `input`-qualified, so it cannot match a `<select>` or a
+    // `<textarea>` BY CONSTRUCTION. That is the guarantee owner ruling AC-17
+    // (2026-09-09) asked for — the 19 `<SelectControl>` sites keep their UA indicator.
+    for (const part of selector.split(',')) {
+      expect(
+        part.trim(),
+        `an unqualified date/time selector can reach a <select>: ${part.trim()}`
+      ).toMatch(/^input\[type=/);
+    }
+  }, 60_000);
+
+  // The preservation half: green before and after BY DESIGN, and labelled as such
+  // rather than presented as a demonstrated fix. It catches the blast-radius failure
+  // an executor could reintroduce at any time — an unconditional appearance reset on
+  // the shared control class.
+  it('carries NO member of the normalisation family on the shared controlClass, gated or not', () => {
     render(
       <>
         <Input aria-label="Group name" type="text" />
@@ -256,67 +309,15 @@ describe('W53 — date/time normalisation (Phase 88.6-30)', () => {
       for (const utility of NORMALISATION) {
         expect(
           classes,
-          `${name} carries a BARE ${utility} — the normalisation must be attribute-gated`
+          `${name} carries ${utility} — the normalisation belongs in globals.css, not on the shared control class`
         ).not.toContain(utility);
       }
     }
-  });
-
-  // THE EMISSION PIN. `grep -rn '\[&' src` returned 0 before this plan, so the gated
-  // utility is the repo's FIRST arbitrary variant, on `tailwindcss ^4.3.3`, with
-  // nothing in the tree proving the syntax compiles here. Every other gate in this
-  // plan is blind to "Tailwind emitted no rule at all": the two pins above read class
-  // STRINGS, and jsdom performs no layout. Without this, a silently-never-emitted
-  // rule is green on every CI-side gate and the defect ships.
-  //
-  // This compiles with the project's OWN installed Tailwind, so it is engine-
-  // independent and runs in CI — unlike the browser-side `min-width` probe in
-  // `e2e/input-date-phone.spec.ts`, which needs an authenticated phone-project run.
-  it('emits a real CSS rule for each gated utility, SCOPED to the date/time family', async () => {
-    const [{ readFileSync }, { default: path }] = await Promise.all([
-      import('node:fs'),
-      import('node:path'),
-    ]);
-    // Resolved from the vitest root (the frontend package dir) — see the note on
-    // `fromRoot` in DangerZoneDeleteAccount.test.tsx for why not import.meta.url.
-    const twDir = path.resolve(process.cwd(), 'node_modules/tailwindcss');
-    const { compile } = await import(
-      /* @vite-ignore */ path.join(twDir, 'dist/lib.mjs')
-    );
-
-    // Drive the candidate list off `controlClass` itself, so a fix that never made
-    // it into the primitive reds here too rather than compiling a hard-coded string.
-    const gated = controlClass
-      .split(/\s+/)
-      .filter((c) => c.startsWith(`${DATE_TIME_GATE}:`));
+    // An interpolated (or any) arbitrary variant here is the mechanism that failed:
+    // the scanner cannot see a class this file composes at runtime.
     expect(
-      gated.length,
-      'controlClass carries no attribute-gated normalisation class to compile'
-    ).toBe(NORMALISATION.length);
-
-    const compiler = await compile('@import "tailwindcss";', {
-      base: process.cwd(),
-      loadStylesheet: async (id: string, base: string) => {
-        const p =
-          id === 'tailwindcss'
-            ? path.join(twDir, 'index.css')
-            : path.resolve(base, id);
-        return { path: p, base: path.dirname(p), content: readFileSync(p, 'utf8') };
-      },
-    });
-    const css: string = compiler.build([...gated, ...NORMALISATION]);
-
-    for (const utility of NORMALISATION) {
-      // The gated rule exists AND its selector really is narrowed to the family.
-      const gatedSelector = new RegExp(
-        `\\.\\\\\\[[^\\n{]*${utility}[^\\n{]*:is\\(\\s*\\[type=date\\]`
-      );
-      expect(css, `no emitted rule scoped to the date/time family for ${utility}`).toMatch(
-        gatedSelector
-      );
-      // …and the BARE utility, compiled beside it, is NOT scoped — which is what
-      // proves the scoping above came from the gate and not from the utility itself.
-      expect(css).toMatch(new RegExp(`^\\s*\\.${utility}\\s*\\{`, 'm'));
-    }
+      controlClass,
+      'controlClass carries an arbitrary variant — Tailwind cannot see one that is composed rather than written literally'
+    ).not.toContain('[&');
   });
 });

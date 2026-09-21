@@ -618,6 +618,60 @@
     opacity: 1;
     color: #9ca3af;
   }
+
+  /* DECISION Phase 88.6-30 (W53 reopen, 2026-09-21): the native date/time normalisation is
+     PLAIN CSS IN THIS STYLESHEET, chosen OVER the attribute-gated Tailwind utilities that
+     plan 30 originally shipped in `Input.tsx`'s `controlClass`.
+
+     THE REJECTED ARM AND WHY IT FAILED IN PRODUCTION, not in theory. Plan 30 wrote the
+     utilities by INTERPOLATION -- a `DATE_TIME_CONTROL` constant composed into
+     `<gate>:appearance-none` inside a template literal. Tailwind v4 extracts candidates from
+     RAW SOURCE TEXT, so the full candidate string never appeared in any scanned file and the
+     compiler emitted NOTHING for either utility. The class names reached the DOM; the rules
+     did not exist. Measured at the pre-fix commit ee26eef with the project's own engine:
+     `npx @tailwindcss/cli@4 -i src/app/globals.css` then grep for `type=date` -> 0 matches.
+     The plan's own emission pin was green throughout because it fed the already-resolved
+     strings straight to `compiler.build()`, bypassing the scanner it needed to exercise.
+     Re-introducing an interpolated class is a decision, not a cleanup -- and it is the exact
+     decision that shipped this defect to the owner's phone twice.
+
+     SECOND REASON THE UTILITY ARM CANNOT WORK HERE: `-webkit-appearance` is not reachable from
+     a Tailwind utility at all, and the unprefixed property alone is unproven on the owner's
+     iOS. Both spellings ship here because plain CSS can carry both.
+
+     THE MECHANISM. iOS Safari resolves `width: 100%` on a NATIVE date/time control against the
+     CONTENT box and then adds padding and border, so the control overruns its cell by exactly
+     `p-2` plus the hairline -- a constant ~18px at 430 CSS px, independent of cell width
+     (measured over a 348px filter cell and a 168px profile column; an intrinsic-content
+     minimum would have scaled with the content). Dropping the native appearance is the only
+     declaration that changes that outcome: +18 -> 0 on every control, with the sibling text
+     inputs byte-identical.
+
+     TWO THINGS MEASURED AS NO-OPS AND THEREFORE NOT SHIPPED. `box-sizing: border-box` is
+     already in force via Tailwind's preflight `*` rule, and `min-w-0` -- half of what plan 30
+     shipped -- changes nothing: the computed `min-width` of these controls was already `0px`
+     before and after. A grid-cell cause was refuted the same way: forcing `min-width: 0` on
+     every grid item left the overflow at +18, and the tracks measure exactly their nominal
+     width.
+
+     SCOPE. The selector is `input`-qualified, so it cannot reach the 19 `<SelectControl>`
+     sites -- an `input[type=...]` selector can never match a `<select>`, which is a stronger
+     guarantee than the class-level gating it replaces. `text-base` (the 16px iOS-zoom floor,
+     UI-SPEC section 4.1) is untouched; shrinking the type to make the box fit is the wrong fix.
+
+     UNPROVEN AND OWED: iOS Safari itself is not rendered anywhere in this project -- Playwright
+     has no WebKit build for this macOS version. The mechanism above is inferred from three
+     independent measurements of the owner's screenshots and reproduced under emulation. The
+     owner's device re-check is still the only proof. `src/components/ui/Input.test.tsx`
+     compiles THIS file through the real engine with the real `@source` tree and asserts the
+     selector is present in the OUTPUT -- the recurrence guard the original emission pin was
+     supposed to be. */
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'] {
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }
 
 /* ===== DESIGN SYSTEM: Palette Primitives ===== */
