@@ -665,12 +665,26 @@
      owner's device re-check is still the only proof. `src/components/ui/Input.test.tsx`
      compiles THIS file through the real engine with the real `@source` tree and asserts the
      selector is present in the OUTPUT -- the recurrence guard the original emission pin was
-     supposed to be. */
+     supposed to be.
+
+     DECISION Phase 88.6-30 (W53 reopen, round 2 -- `min-width: 0`): a SECOND, engine-neutral
+     mechanism. The availability rows' cells became subgrids (9fd831b), which makes each
+     `<Input>` a direct GRID ITEM, and a grid item's `min-width: auto` resolves to its
+     min-content width -- for a date control that is `mm/dd/yyyy` + the picker icon (~162-167px),
+     wider than a 140.5px column at 375px. On a block-level child that minimum is inert, which
+     is why the first reproduction measured `min-w-0` as a no-op (plain-div cells, 430px) and
+     why CI's phone lane (Chromium, 375px) caught it only after the subgrid landed. Measured in
+     Chromium at 375: date 162 -> 140.5, panel scrollWidth 331 -> 325; no change at 430; WebKit
+     byte-identical; sibling text inputs untouched. REJECTED: `max-width`, `overflow:hidden`,
+     `field-sizing`, `::-webkit-datetime-edit` minimums -- none moves the number without this.
+     `type=time` fits at 375 today only because its intrinsic width is narrower; it gets the
+     same floor so a wider locale cannot reopen this. */
   input[type='date'],
   input[type='time'],
   input[type='datetime-local'] {
     -webkit-appearance: none;
     appearance: none;
+    min-width: 0;
   }
 }
 
