@@ -464,6 +464,56 @@ describe('userProfile availability settings', () => {
       screen.queryByRole('heading', { name: 'Availability Schedules' })
     ).not.toBeInTheDocument();
   });
+
+  // ── Phase 88.6-30 (W53 reopen, row alignment) ────────────────────────────
+  //
+  // THE DEFECT (owner's iPhone screenshot, 2026-09-21): "Available From (Start
+  // Time)" wraps to two lines at phone width while "Available Until (End Time)"
+  // does not, so the right-hand control starts a line higher than the left and
+  // the left hint text collides with the right column. The fix is a subgrid:
+  // the container declares three row tracks and each cell adopts them, so
+  // label / control / hint line up across both columns whatever the labels do.
+  //
+  // WHAT THIS CAN AND CANNOT ASSERT. jsdom performs NO LAYOUT, so the alignment
+  // itself is unobservable here — this pins the STRUCTURE that produces it and
+  // nothing more. Two specific things it is written to catch: the row-span
+  // silently reverting to 2 (measured: at span 2 the hint falls outside the
+  // shared tracks and overlaps the control), and the container losing its
+  // explicit row tracks, which makes `subgrid` on the cells inert.
+  //
+  // The three utilities are written as LITERALS, which is the whole difference
+  // from the W53 class failure this plan reopened for — an interpolated class
+  // is invisible to Tailwind's scanner. Emission verified by command at this
+  // commit: compiling globals.css emits `.grid-rows-subgrid`,
+  // `.grid-rows-[auto_auto_auto]` and `.row-span-3`.
+  it('aligns the two-column availability rows as a subgrid, spanning all three tracks', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+
+    const startTime = await screen.findByLabelText('Available From (Start Time)');
+    const startDate = screen.getByLabelText('Start Date');
+
+    for (const control of [startTime, startDate]) {
+      const cell = control.parentElement as HTMLElement;
+      const row = cell.parentElement as HTMLElement;
+
+      // The container supplies the tracks the cells adopt. Without these,
+      // `grid-rows-subgrid` below has nothing to inherit and does nothing.
+      expect(row.className).toContain('grid-cols-2');
+      expect(
+        row.className,
+        'the row lost its explicit track list — subgrid on the cells is inert without it'
+      ).toContain('grid-rows-[auto_auto_auto]');
+
+      expect(cell.className).toContain('grid-rows-subgrid');
+      expect(
+        cell.className,
+        'row-span must be 3: at 2 the hint paragraph falls outside the shared tracks and overlaps the control'
+      ).toContain('row-span-3');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

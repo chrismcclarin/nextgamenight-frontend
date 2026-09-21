@@ -2509,8 +2509,32 @@ function Profile(){
                                                 </button>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
+                                        {/* DECISION Phase 88.6-30 (W53 reopen, row alignment, 2026-09-21): the
+                                            two-column availability rows are SUBGRIDS — the container declares three
+                                            named row tracks and each cell adopts them with `grid-rows-subgrid
+                                            row-span-3`. CHOSEN OVER shortening the labels, which is the obvious fix
+                                            and is REJECTED because label text is visible copy (section 6.3 of the
+                                            phase's register) and therefore an owner decision, not an executor's.
+
+                                            THE DEFECT, from the owner's iPhone screenshot: "Available From (Start
+                                            Time)" wraps to two lines at phone width and "Available Until (End Time)"
+                                            does not, so with plain grid cells the right-hand input starts a line
+                                            HIGHER than the left one and the left hint text collides with the right
+                                            column. Subgrid makes label / control / hint share row tracks across both
+                                            columns, so they line up whatever the labels do.
+
+                                            ROW-SPAN IS 3, NOT 2 — measured, not chosen for symmetry: at span 2 the
+                                            hint paragraph falls outside the shared tracks and overlaps the control.
+                                            The date row below has no hint and so uses only two of the three tracks;
+                                            the empty third track collapses to zero height and the span is kept at 3
+                                            so the two rows stay structurally identical.
+
+                                            REQUIRES Safari 16+ / Chrome 117+. Below that, `grid-rows-subgrid` is
+                                            ignored and the rows render exactly as they do today — the un-fixed
+                                            layout, not a broken one. Replacing this with fixed heights or absolute
+                                            positioning is a decision, not a cleanup. */}
+                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                            <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="recurring-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
                                                     id="recurring-start-time"
@@ -2520,7 +2544,7 @@ function Profile(){
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
-                                            <div>
+                                            <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="recurring-end-time" className="block text-sm text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <Input
                                                     id="recurring-end-time"
@@ -2531,8 +2555,8 @@ function Profile(){
                                                 <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
+                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                            <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="recurring-start-date" className="block text-sm text-content-secondary mb-1">Start Date</label>
                                                 <Input
                                                     id="recurring-start-date"
@@ -2541,7 +2565,7 @@ function Profile(){
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
                                                 />
                                             </div>
-                                            <div>
+                                            <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="recurring-end-date" className="block text-sm text-content-secondary mb-1">End Date (Optional)</label>
                                                 <Input
                                                     id="recurring-end-date"
@@ -2646,8 +2670,10 @@ function Profile(){
                                                 onChange={(e) => setSpecificForm({ ...specificForm, date: e.target.value })}
                                             />
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
+                                        {/* Same subgrid row alignment as the Schedules tab — see the
+                                            DECISION Phase 88.6-30 marker at the recurring form's time row. */}
+                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                            <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="specific-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
                                                     id="specific-start-time"
@@ -2657,7 +2683,7 @@ function Profile(){
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
-                                            <div>
+                                            <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="specific-end-time" className="block text-sm text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <Input
                                                     id="specific-end-time"
