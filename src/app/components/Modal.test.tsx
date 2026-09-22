@@ -158,6 +158,69 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  // Phase 88.6-44 (T-88.6-141, WCAG 2.4.3). MEASURED before this pin existed: Radix's modal
+  // Content prevents FocusScope's restore and focuses `Dialog.Trigger`, which this primitive
+  // never renders — so focus went to <body> on every close. The assertion is a NAMED identity
+  // check against the opener; "not body" would pass on any wrong element.
+  describe('focus return on close (88.6-44)', () => {
+    function Host({ onCloseAutoFocus }: { onCloseAutoFocus?: (event: Event) => void }) {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open it
+          </button>
+          <Modal open={open} onClose={() => setOpen(false)} onCloseAutoFocus={onCloseAutoFocus}>
+            <Modal.Header>Start a check-in</Modal.Header>
+            <Modal.Body>
+              <p>When are you free?</p>
+            </Modal.Body>
+          </Modal>
+        </>
+      );
+    }
+
+    it('returns focus to the element that opened the dialog', async () => {
+      const user = userEvent.setup();
+      render(<Host />);
+      const opener = screen.getByRole('button', { name: 'Open it' });
+      opener.focus();
+      await user.click(opener);
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog.contains(document.activeElement)).toBe(true);
+
+      await user.keyboard('{Escape}');
+      await screen.findByRole('button', { name: 'Open it' });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await vi.waitFor(() => expect(document.activeElement).toBe(opener));
+    });
+
+    it('a consumer that prevents default in onCloseAutoFocus keeps control (T-87.8-22 shape)', async () => {
+      const user = userEvent.setup();
+      const elsewhere = document.createElement('button');
+      elsewhere.textContent = 'Elsewhere';
+      document.body.appendChild(elsewhere);
+      try {
+        render(
+          <Host
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              elsewhere.focus();
+            }}
+          />
+        );
+        const opener = screen.getByRole('button', { name: 'Open it' });
+        opener.focus();
+        await user.click(opener);
+        await screen.findByRole('dialog');
+        await user.keyboard('{Escape}');
+        await vi.waitFor(() => expect(document.activeElement).toBe(elsewhere));
+      } finally {
+        elsewhere.remove();
+      }
+    });
+  });
+
   it('closes on Escape via onClose by default', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();

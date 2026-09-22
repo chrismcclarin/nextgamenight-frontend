@@ -78,31 +78,11 @@ const RsvpSection = RsvpSectionJs as unknown as AnyComponent;
 
 afterEach(cleanup);
 
-/**
- * The fork-5 audit: every rendered, non-hidden form control must carry
- * (a) an `id`, (b) a `name`, and (c) an accessible-name source — a `label[for]`
- * pointing at it, a wrapping <label>, `aria-label`, or `aria-labelledby`.
- */
-function auditFormControls(root: HTMLElement) {
-  const controls = Array.from(
-    root.querySelectorAll<HTMLElement>('input, select, textarea')
-  ).filter((el) => (el as HTMLInputElement).type !== 'hidden');
-  expect(controls.length).toBeGreaterThan(0); // an empty audit proves nothing
-
-  const failures: string[] = [];
-  for (const el of controls) {
-    const describe = `${el.tagName.toLowerCase()}#${el.id || '?'}[name=${el.getAttribute('name') || '?'}]`;
-    if (!el.id) failures.push(`${describe}: missing id`);
-    if (!el.getAttribute('name')) failures.push(`${describe}: missing name attribute`);
-    const labelled =
-      el.getAttribute('aria-label') ||
-      el.getAttribute('aria-labelledby') ||
-      el.closest('label') ||
-      (el.id && root.querySelector(`label[for="${CSS.escape(el.id)}"]`));
-    if (!labelled) failures.push(`${describe}: no associated label`);
-  }
-  expect(failures).toEqual([]);
-}
+// The fork-5 control audit (id + name + an accessible-name source) MOVED to
+// `src/test-utils/formControlAudit.ts` in Phase 88.6-44 so the composed axe audits for the
+// heavier surfaces this docblock names (createEvent, and ScheduleForm alongside it) assert the
+// SAME rule from the SAME function — imported, never copied.
+import { auditFormControls } from '../../test-utils/formControlAudit';
 
 /** No label[for] may point at a NON-form element or a missing id (census class B). */
 function auditLabelTargets(root: HTMLElement) {

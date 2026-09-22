@@ -106,7 +106,10 @@ export interface ModalProps {
    * unmounts, so a caller that restores focus itself (FeedbackModalProvider's
    * invoker restore, T-87.8-22) must do it HERE with `event.preventDefault()`
    * — restoring in a close() handler runs first and is then clobbered by
-   * Radix's default. Omit for the default behaviour.
+   * Radix's default. Omit for the default behaviour — which, since Phase
+   * 88.6-44, is a real restore to the element that held focus when the dialog
+   * opened (see `handleCloseAutoFocus`). A caller that prevents default keeps
+   * full control, exactly as before.
    */
   onCloseAutoFocus?: (event: Event) => void;
   /** Extra classes merged onto the dialog content surface. */
@@ -139,11 +142,57 @@ function ModalRoot({
     [dismissable]
   );
 
+  /* DECISION Phase 88.6-44 (T-88.6-141, WCAG 2.4.3): the primitive RESTORES FOCUS ON CLOSE to
+     the element that held it when the dialog opened, chosen OVER leaving it to Radix — which
+     does NOT do this here, contrary to what this file's own docblock assumed until now.
+
+     MEASURED (2026-09-22, @radix-ui/react-dialog 1.1.17 `DialogContentModal`): Radix composes
+     the consumer's `onCloseAutoFocus` with its own handler that calls `event.preventDefault()`
+     and then `context.triggerRef.current?.focus()`. `FocusScope`'s "restore to the previously
+     focused element" is therefore ALWAYS cancelled for a modal dialog, and the replacement
+     focuses `Dialog.Trigger` — a component this primitive never renders (every consumer opens
+     from its own button and flips `open`), so `triggerRef.current` is null and nothing is
+     focused. The measured outcome on every `Modal` consumer without an `onCloseAutoFocus`:
+     focus lands on `<body>` after close, and a keyboard or screen-reader user is dropped at the
+     top of the page. `FeedbackModalProvider` (T-87.8-22) had already hand-rolled this exact
+     restore for ONE consumer; this is the same restore for the fleet, in the one place.
+
+     WHY THE OPENER IS CAPTURED IN `onOpenAutoFocus` and not in an effect: `FocusScope` reads
+     `document.activeElement` and dispatches the open-autofocus event BEFORE it moves focus into
+     the content, whereas a `useEffect` in this component runs AFTER the child scope has already
+     focused the first tabbable (React runs child effects first) and would capture the header
+     Close control. `onCloseAutoFocus` fires from a `setTimeout` after unmount, so the opener
+     may be gone by then — a detached node is skipped and the browser's own fallback stands.
+
+     REJECTED: rendering a `Dialog.Trigger` per consumer (~37 call sites, and the opener is
+     often not a single static button); REJECTED: each consumer passing its own
+     `onCloseAutoFocus` (the FeedbackModalProvider shape times the fleet — the duplication the
+     tenet forbids). A consumer that prevents default in its own handler still wins — checked
+     BEFORE the restore. Pinned by `Modal.test.tsx` ("returns focus to the opener"); five
+     surface suites (plan 88.6-44) assert it against a NAMED trigger. Removing this handler is a
+     decision, not a cleanup. */
+  const openerRef = React.useRef<HTMLElement | null>(null);
+
   const handleOpenAutoFocus = React.useCallback(
     (event: Event) => {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
       applyInitialFocus(initialFocusRef, event);
     },
     [initialFocusRef]
+  );
+
+  const handleCloseAutoFocus = React.useCallback(
+    (event: Event) => {
+      onCloseAutoFocus?.(event);
+      if (event.defaultPrevented) return;
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (!opener || !opener.isConnected) return;
+      event.preventDefault();
+      opener.focus();
+    },
+    [onCloseAutoFocus]
   );
 
   return (
@@ -151,7 +200,7 @@ function ModalRoot({
       <DialogContent
         hideCloseButton
         onOpenAutoFocus={handleOpenAutoFocus}
-        onCloseAutoFocus={onCloseAutoFocus}
+        onCloseAutoFocus={handleCloseAutoFocus}
         // This Radix build does not emit aria-modal on Content; set it
         // explicitly so the dialog advertises modality to assistive tech.
         aria-modal="true"

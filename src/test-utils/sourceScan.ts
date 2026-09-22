@@ -194,17 +194,32 @@ export function lineAt(src: string, offset: number): number {
 }
 
 /**
- * Every app source file under `dir`, recursively, excluding test and spec files.
+ * Every app source file under `dir`, recursively, excluding test and spec files — and
+ * excluding this `test-utils/` directory itself.
  *
  * The extension list includes `.ts` on purpose. `DEF-88-28-01` PROBE C found 88-28's focus
  * gate blind to `.ts` because its `--include` list omitted it — and `src/components/ui/`,
  * where this phase's primitives live, is largely `.ts`/`.tsx`.
+ *
+ * DECISION Phase 88.6-44 (T-88.6-124): `test-utils/` is skipped HERE, centrally, chosen OVER
+ * naming each helper so the `.test.` filter happens to exclude it (a `.test.helpers.ts`
+ * suffix), and OVER each consuming suite filtering the directory out on its own — which two
+ * already did independently (`interpolatedClassCensus.test.ts` `productionFiles`,
+ * `exemption.test.ts:193`). Helper modules whose whole job is to hold pattern strings and
+ * assertions are fixtures, not app source: before this edit `sourceScan.ts`, `exemption.ts`
+ * and `inkRules.ts` were three of the 192 files every tree-wide sweep censused (measured
+ * 2026-09-15), and `formControlAudit.ts` would have been a fourth. Measured at the edit: every
+ * `sourceFiles`-consuming suite is green both before and after, i.e. no roster or floor was
+ * counting a hit in these files. Re-including the directory is a decision, not a cleanup.
  */
+const TEST_UTILS_DIR = path.basename(__dirname);
+
 export function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (entry.name === TEST_UTILS_DIR && path.resolve(full) === path.resolve(__dirname)) continue;
       out.push(...sourceFiles(full));
     } else if (/\.(js|jsx|ts|tsx)$/.test(entry.name) && !/\.(test|spec)\./.test(entry.name)) {
       out.push(full);
