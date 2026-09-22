@@ -21,7 +21,7 @@
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`, and the
 // config's `jsx-in-js` pre-transform handles the `.js` components under test.
 import * as React from 'react';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -291,5 +291,224 @@ describe('ManageMembers + FriendInvitePanel stacked open (BLK-88-12-01)', () => 
         'every focusable control in the parent modal must be inerted while the panel is open'
       ).toEqual([]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-45 (R7 / AC-7, UI-SPEC §7.5) — THE STACKED PAIR: a `ConfirmDialog` open OVER an open
+// `Modal`, audited as ONE tree, after this surface's LAST migration commit (`git log -1 --
+// ManageMembers.js` = `df94f68`, plan 88.6-19, confirmed 2026-09-22). No `matchMedia` fork:
+// neither `ManageMembers.js` nor `KebabMenu`, `FriendInvitePanel`, `ConfirmDialog`, `Modal` nor
+// `useConfirmAction` calls it (grep, 2026-09-22) — one tree, one run per rule set, no resize.
+//
+// SCOPING. Every dialog here is a Radix `DialogPrimitive.Content` PORTALLED to `document.body`
+// (`dialog.tsx:59-60`), so the two open dialogs are SIBLINGS under body, not nested — a
+// `getByRole('dialog')` would throw on two matches, and scoping to either one alone is exactly the
+// per-dialog audit this test exists to go beyond. The audited container is therefore
+// `document.body`: the smallest element that holds BOTH.
+//
+// THE ORACLES BELOW ARE PRE-DECIDED (88.6-45-PLAN.md task 2), never read off the shipped
+// behaviour. A shipped behaviour that differs is a FAILING assertion recorded as an open finding.
+// ---------------------------------------------------------------------------
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+/** Open the members Modal, then the dialog-tier Remove gate for Target OVER it. */
+async function openRemoveOverMembers() {
+  const user = userEvent.setup();
+  (groupsAPI.removeUserFromGroup as Mock).mockResolvedValue({});
+  renderManageMembers();
+  const outer = await screen.findByRole('dialog', { name: 'Manage Group Members' });
+  await screen.findByText('Target');
+  // The desktop entry point (`ManageMembers.js:636-641`, `title="Remove from group"`) — the one
+  // that opens the DIALOG tier; the phone kebab's Remove is KebabMenu-internal two-tap (AR-DEC-3).
+  const opener = screen.getAllByTitle('Remove from group')[0] as HTMLElement;
+  opener.focus();
+  await user.click(opener);
+  const top = await screen.findByRole('dialog', { name: /Remove Target from this group\?/ });
+  return { user, outer, top, opener };
+}
+
+/** Open the members Modal, then the transfer-ownership Modal OVER it (Modal over Modal). */
+async function openTransferOverMembers() {
+  const user = userEvent.setup();
+  renderManageMembers();
+  const outer = await screen.findByRole('dialog', { name: 'Manage Group Members' });
+  const kebab = await screen.findByLabelText('More actions for Target');
+  kebab.focus();
+  await user.click(kebab);
+  await user.click(await screen.findByText('Transfer ownership to this member'));
+  const top = await screen.findByRole('dialog', { name: /Transfer ownership to Target\?/ });
+  return { user, outer, top, opener: kebab as HTMLElement };
+}
+
+/**
+ * Framework-sourced classification for an `aria-hidden-focus` node in the stacked tree. Two Radix
+ * mechanisms, both composed UNMODIFIED by `dialog.tsx`: (a) the outer dialog's content, marked
+ * `aria-hidden` by the `aria-hidden` package without `inert`/`tabindex=-1`; (b) the FocusScope's
+ * tab-loop sentinels — `<span data-radix-focus-guard tabindex="0" aria-hidden="true">` mounted at
+ * both edges of `document.body` (measured 2026-09-22: the first flagged node was
+ * `span[data-radix-focus-guard=""]…:nth-child(1)`). Anything else is a call-site defect.
+ */
+const isFrameworkSourced = (outer: HTMLElement, el: Element | null) =>
+  !!el && (outer.contains(el) || el.matches('[data-radix-focus-guard]'));
+
+const focusables = (root: HTMLElement) =>
+  Array.from(root.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea'));
+
+describe('ManageMembers — THE STACKED PAIR, ConfirmDialog over Modal (88.6-45, AC-7)', () => {
+  it('1. both dialogs are in the tree at once, each role=dialog + aria-modal, each with its OWN accessible name', async () => {
+    const { outer, top } = await openRemoveOverMembers();
+    expect(outer).not.toBe(top);
+    expect(screen.getAllByRole('dialog', { hidden: true })).toHaveLength(2);
+    for (const d of [outer, top]) expect(d).toHaveAttribute('aria-modal', 'true');
+    expect(outer).toHaveAccessibleName('Manage Group Members');
+    expect(top).toHaveAccessibleName(/Remove Target from this group\?/);
+  });
+
+  /* OPEN FINDING (88.6-45, routed to the primitive path — see 88.6-45-SUMMARY.md and its WINDOWS
+     entry). The oracle below is the PRE-DECIDED expectation and is left as the assertion body;
+     `it.fails` records that the shipped tree does NOT meet it and keeps the run green WITHOUT
+     pinning the defect as expected: the day a primitive change inerts the outer dialog, this test
+     reds ("expected to fail") — flip it to `it` and close the WINDOWS entry in the same commit.
+
+     MEASURED 2026-09-22: outer aria-hidden=null, inert=false, on BOTH stacked instances. CAUSE:
+     Radix hides "others" through the `aria-hidden` package (1.2.6), whose live-region carve-out
+     (its issue #10) refuses to hide any ANCESTOR of an `[aria-live]` node and descends to hide the
+     siblings instead — and the members Modal ALWAYS contains one (the compact `FetchErrorBanner`,
+     empty-first since plan 88.6-36, `ManageMembers.js:492`). So the outer `role=dialog`
+     `aria-modal=true` container and its live region stay exposed while every focusable under it
+     is hidden (test 2b, green). FRAMEWORK-sourced: `dialog.tsx:47-80` composes
+     `DialogPrimitive.Content` unmodified. Not patched at this call site by the plan's own rule. */
+  it.fails('2. OPEN FINDING — PRE-DECIDED: while the top dialog is open, the OUTER dialog carries aria-hidden="true" or inert', async () => {
+    const { outer } = await openRemoveOverMembers();
+    await waitFor(() => {
+      const hidden = outer.getAttribute('aria-hidden') === 'true' || outer.hasAttribute('inert');
+      expect(
+        hidden,
+        `the outer dialog must be inerted while a dialog stacks over it — measured aria-hidden=${JSON.stringify(
+          outer.getAttribute('aria-hidden')
+        )} inert=${outer.hasAttribute('inert')}`
+      ).toBe(true);
+    });
+  });
+
+  it('2b. the property behind the oracle: NO focusable control of the outer dialog is exposed while the top is open', async () => {
+    const { outer } = await openRemoveOverMembers();
+    await waitFor(() => {
+      const exposed = focusables(outer).filter((el) => el.closest('[aria-hidden="true"], [inert]') === null);
+      expect(exposed.map((el) => el.outerHTML.slice(0, 100))).toEqual([]);
+    });
+  });
+
+  it('3. focus is INSIDE the top dialog when it opens — on its Cancel (ConfirmDialog initialFocusRef, button-only tier)', async () => {
+    const { top } = await openRemoveOverMembers();
+    const cancel = within(top).getByRole('button', { name: 'Cancel' });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    expect(top.contains(document.activeElement)).toBe(true);
+  });
+
+  it('4. dismissing the top dialog returns focus INTO the underlying Modal — to the NAMED opener, never <body>', async () => {
+    const { user, outer, top, opener } = await openRemoveOverMembers();
+    await user.click(within(top).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /Remove Target from this group\?/ })).toBeNull()
+    );
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    expect(outer.contains(document.activeElement)).toBe(true);
+    expect(outer).not.toHaveAttribute('aria-hidden');
+    // ...and the outer is live again: its controls are no longer under an aria-hidden ancestor.
+    expect(focusables(outer).some((el) => el.closest('[aria-hidden="true"]') === null)).toBe(true);
+  });
+
+  it('5. the WHOLE stacked tree passes heading-order', async () => {
+    await openRemoveOverMembers();
+    expect(await axe(document.body, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('6. the WHOLE stacked tree: WCAG 4.1.2 reports zero VIOLATIONS, and the FRAMEWORK-sourced aria-hidden-focus report is present as INCOMPLETE with every node inside the OUTER dialog', async () => {
+    const { outer } = await openRemoveOverMembers();
+    const result = await axe(document.body, WCAG_412);
+    // Every violation reds — nothing is disabled and nothing is filtered out of this list.
+    expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
+
+    // THE FRAMEWORK-SOURCED REPORT, kept VISIBLE. MEASURED 2026-09-22 (axe-core 4.12.1): in jsdom
+    // `aria-hidden-focus` never reaches `violations` — it lands in `incomplete` (needs review),
+    // because its `focusable-modal-open` check (`axe.js:26423`) defers to `isModalOpen`, which
+    // filters dialogs through `_isVisibleOnScreen` (`axe.js:17666`) and jsdom has no layout.
+    // `toHaveNoViolations` is therefore structurally SILENT on this rule here (test 6b proves the
+    // rule IS evaluated), so the report is read from the bucket it actually lands in.
+    // CLASSIFICATION, not silencing: it is framework-sourced ONLY if every flagged node is inside
+    // the OUTER dialog or a Radix focus guard (`isFrameworkSourced` above). A flagged node anywhere
+    // else is a call-site defect and reds.
+    const report = result.incomplete.find((v) => v.id === 'aria-hidden-focus');
+    expect(
+      report,
+      'the framework-sourced aria-hidden-focus report is GONE from the stacked tree — the outer content is inert now; close the routed finding (88.6-45 WINDOWS entry) and delete this pin'
+    ).toBeDefined();
+    for (const n of report!.nodes) {
+      const el = document.querySelector(n.target.join(' '));
+      expect(isFrameworkSourced(outer, el), `aria-hidden-focus on a node that is NEITHER the outer dialog's content NOR a Radix focus guard: ${n.target.join(' ')}`).toBe(true);
+    }
+    expect(report!.nodes.length).toBeGreaterThan(0);
+  });
+
+  it('6b. POSITIVE CONTROL — axe evaluates aria-hidden-focus in this environment (it reaches INCOMPLETE on a planted fragment, never a verdict)', async () => {
+    // Without this, test 6 could be reading a rule that never runs here. A planted fragment with a
+    // tabbable button under `aria-hidden="true"` and NO open dialog: the rule is evaluated and, in
+    // jsdom, can only end INCOMPLETE — which is exactly why a browser-side axe is the instrument
+    // that can turn this report into a verdict (routed, 88.6-45-SUMMARY.md).
+    const host = document.createElement('div');
+    host.innerHTML = '<div aria-hidden="true"><button type="button">planted</button></div>';
+    document.body.appendChild(host);
+    try {
+      const result = await axe(host, WCAG_412);
+      expect(result.violations.map((v) => v.id)).toEqual([]);
+      expect(result.incomplete.map((v) => v.id)).toContain('aria-hidden-focus');
+    } finally {
+      host.remove();
+    }
+  });
+});
+
+describe('ManageMembers — the SECOND stacked instance in this file: the transfer-ownership Modal over the members Modal (88.6-45)', () => {
+  it('1. two dialogs, distinct names, and focus lands INSIDE the top on open (header Close — the transfer Modal passes no initialFocusRef)', async () => {
+    const { outer, top } = await openTransferOverMembers();
+    expect(screen.getAllByRole('dialog', { hidden: true })).toHaveLength(2);
+    expect(outer).toHaveAccessibleName('Manage Group Members');
+    expect(top).toHaveAccessibleName(/Transfer ownership to Target\?/);
+    const close = within(top).getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+  });
+
+  // Same OPEN FINDING as the remove instance above (same outer dialog, same carve-out).
+  it.fails('2. OPEN FINDING — PRE-DECIDED: the outer dialog carries aria-hidden or inert while the transfer Modal is open', async () => {
+    const { outer } = await openTransferOverMembers();
+    await waitFor(() =>
+      expect(outer.getAttribute('aria-hidden') === 'true' || outer.hasAttribute('inert')).toBe(true)
+    );
+  });
+
+  it('3. dismissing the transfer Modal returns focus into the members Modal — to the NAMED kebab trigger', async () => {
+    const { user, outer, top, opener } = await openTransferOverMembers();
+    await user.click(within(top).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /Transfer ownership to Target\?/ })).toBeNull()
+    );
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    expect(outer.contains(document.activeElement)).toBe(true);
+  });
+
+  it('4. the whole stacked tree: heading-order clean; WCAG 4.1.2 zero violations, with the same framework-sourced INCOMPLETE report confined to the outer dialog', async () => {
+    const { outer } = await openTransferOverMembers();
+    expect(await axe(document.body, HEADING_ORDER)).toHaveNoViolations();
+    const result = await axe(document.body, WCAG_412);
+    expect(result.violations.map((v) => v.id)).toEqual([]);
+    const report = result.incomplete.find((v) => v.id === 'aria-hidden-focus');
+    expect(report, 'see the remove-instance test 6 — the same routed finding').toBeDefined();
+    for (const n of report!.nodes) {
+      const el = document.querySelector(n.target.join(' '));
+      expect(isFrameworkSourced(outer, el), `flagged node that is neither the outer dialog's content nor a Radix focus guard: ${n.target.join(' ')}`).toBe(true);
+    }
   });
 });
