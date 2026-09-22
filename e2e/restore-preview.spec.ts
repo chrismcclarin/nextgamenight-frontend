@@ -128,14 +128,31 @@ test.describe('Phase 87.8 R7 — group-restore preview at phone width (phone pro
 
     // The fixture group name is short, so a purely geometric check could pass while
     // the wrap MECHANIC is broken for a long real-world name. Assert the mechanic
-    // itself: the h1 carries wrap-break-word, which must compute to
-    // overflow-wrap: break-word — a long unbroken name then wraps inside the card
-    // instead of pushing the layout wide.
+    // itself: the h1 carries a wrap utility, which must compute to an overflow-wrap
+    // value — a long unbroken name then wraps inside the card instead of pushing
+    // the layout wide.
+    //
+    /* DECISION Phase 88.6-47 (row 6 of the 2026-09-17 CI e2e red, run 35581508198): 87.8 R7's
+       `break-word` expectation is SUPERSEDED, on two named authorities.
+       (1) The owner ruling of 2026-09-21 on rows 2 and 6 — "the phase's choice stands".
+       (2) `src/components/ui/Heading.tsx:60` puts `wrap-anywhere` on the cva BASE, and its docblock
+           at `:74-78` records `wrap-anywhere` chosen OVER `break-words` for a mechanical reason:
+           a break-word value does NOT count in min-content, so it cannot stop a long unbroken name
+           widening a flex or grid cell. `anywhere` does. That is the phone-forward half of the
+           choice, and it is what this assertion now protects.
+       The comment above this block used to say "the h1 carries wrap-break-word". That was already
+       FALSE at `ef40170` — a corrected assertion sitting six lines under a comment naming the
+       retired class is the exact text-about-code defect this plan is fixing everywhere else, so
+       the comment was corrected in the same edit.
+       REJECTED — reverting `Heading` to `break-words` to satisfy this spec: it would pin the WEAKER
+       mechanic, the one that cannot stop the overflow this test exists to catch, and it would
+       contradict the owner ruling.
+       Changing this value back is a decision, not a cleanup. */
     const overflowWrap = await groupName.evaluate((node) => getComputedStyle(node).overflowWrap);
     expect(
       overflowWrap,
-      `the group-name h1 computes overflow-wrap: ${overflowWrap}, expected break-word — a long unbroken group name would force horizontal overflow instead of wrapping`,
-    ).toBe('break-word');
+      `the group-name h1 computes overflow-wrap: ${overflowWrap}, expected anywhere — the Heading primitive's cva base carries wrap-anywhere (Heading.tsx:60), chosen over break-words because a break-word value does not count in min-content and therefore cannot stop a long unbroken group name widening its flex/grid cell`,
+    ).toBe('anywhere');
 
     // And the rendered box itself stays inside the viewport.
     const box = await groupName.boundingBox();
