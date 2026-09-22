@@ -1027,15 +1027,59 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
         const plus = cell.getByText('+', { exact: true });
         const hint = plus.locator('xpath=..');
 
+        /* DECISION Phase 88.6-47 (row 8 of the 2026-09-17 CI record, intermittent: red on
+           `ef40170` / run 35581508198, green on 35580008509 and on the 35202982040 run).
+           THE REVEAL IS NOT DEAD; THE READ DID NOT WAIT FOR IT.
+
+           MECHANISM, read out of the compiled stylesheet rather than assumed: the hint carries
+           `opacity-0 group-hover:opacity-40 group-focus-within:opacity-40 transition-opacity`
+           (`src/app/components/CalendarMonthView.js:1229`) and the cell hoists `group`
+           unconditionally (`:323`). The compiled output emits
+           `.group-focus-within\:opacity-40:is(:where(.group):focus-within *)` at specificity
+           (0,2,0), which beats `.opacity-0` at (0,1,0) — so the reveal is wired correctly.
+           `transition-opacity` resolves `transition-duration: var(--tw-duration,
+           var(--default-transition-duration))`, and the theme default is 150ms. The read below
+           used to be ONE-SHOT with nothing between `target.focus()` and the read, so on a fast
+           round trip it sampled t`0 of a 150ms fade and got the FROM-value — which is exactly the
+           reported "0 before and 0 after", and exactly why it was intermittent rather than
+           consistently red.
+
+           RETIRED HERE: the CI record's competing hypothesis at
+           `88.6-CI-E2E-RED-2026-09-17.md:56-57` ("which cell counts as 'empty' moves with the
+           calendar month"). It is dead on the file's own evidence — the `hintTargets > 0` guard
+           above would have failed FIRST, and the reported error carried computed opacities, which
+           an unresolved locator cannot produce. Two live hypotheses on one row is how a real cause
+           gets talked past.
+
+           STRICTLY TIGHTER, NOT LOOSER. The bound is the same `> 0`; polling only gives the
+           transition somewhere to have gone. A reveal that never happens still times out and reds.
+           REJECTED — a fixed sleep: it pins a duration this file does not own, so a theme-level
+           change to `--default-transition-duration` would silently make it vacuous or flaky.
+           REJECTED — dropping the bound to "not less than before": it passes on a DEAD reveal,
+           which is the entire defect W39 fixed.
+           `before` is RETAINED FOR THE FAILURE MESSAGE ONLY. It is not asserted today and this
+           plan does not start asserting it — minting an `expect(Number(before)).toBe(0)` here
+           would be a new assertion nobody sanctioned. Note that `expect.poll`'s `message` is a
+           string evaluated once, so the POLLED value is not interpolated into it; Playwright's own
+           "Received:" line carries the last sampled opacity, and the message names `before` and
+           says where to read the other half. */
         const before = await hint.evaluate((el) => window.getComputedStyle(el).opacity);
         await target.focus();
-        const after = await hint.evaluate((el) => window.getComputedStyle(el).opacity);
-        expect(
-          Number(after),
-          `W39: focusing the empty day's keyboard target must reveal the "+" hint. Computed ` +
-            `opacity was ${before} before focus and ${after} after. A keyboard user who lands on ` +
-            'an empty cell with the hint still at 0 sees a cell that looks like nothing.'
-        ).toBeGreaterThan(0);
+        await expect
+          .poll(
+            async () => Number(await hint.evaluate((el) => window.getComputedStyle(el).opacity)),
+            {
+              timeout: 3_000,
+              message:
+                `W39: focusing the empty day's keyboard target must reveal the "+" hint. Computed ` +
+                `opacity was ${before} before focus, and did not rise above 0 within 3s of focus ` +
+                '(the last sampled value is on the "Received" line below). The hint fades over the ' +
+                'theme default 150ms, so this is no longer a race — a value still at 0 here means ' +
+                'the reveal itself is dead. A keyboard user who lands on an empty cell with the ' +
+                'hint at 0 sees a cell that looks like nothing.',
+            }
+          )
+          .toBeGreaterThan(0);
       });
     });
   });

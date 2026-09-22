@@ -473,6 +473,49 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    `scripts/e2e-fixtures.js` hard-deletes every `GroupInvite` for the invite group and
    seeds only accepted friendships, so no notification rows render; and "Save note" is
    gated on the viewer having already selected an RSVP status. */
+/* DECISION Phase 88.6-47 (row 2 of the 2026-09-17 CI e2e red, run 35581508198) — BOTH arms of
+   this test are re-based, and the reasons they hold are now different from each other.
+
+   OWNER RULING 2026-09-21: "the phase's choice stands." D-09 put `min-h-11` on `Button`'s cva base
+   at EVERY viewport; this test used to pin 88-01 D-36's rejection of exactly that. The two are not
+   actually in conflict, and saying why is the whole point of the re-base: D-36 rejected a floor on
+   the `.btn` CLASS, which square-by-design controls wear, and its `@media (width < 48rem)` rule
+   (`globals.css:2775`) is still unwidened. D-09's floor is on the PRIMITIVE
+   (`src/components/ui/Button.tsx:168`), which only opted-in elements wear. Both statements are
+   literally true, and after this re-base this test is the only place in the tree that proves BOTH
+   at 1280 — nothing else measures either half above `md`.
+
+   WHY ARM ONE IS A PLANTED PROBE. Neither control in this row is a bare `.btn` any more:
+   "Manage Members" is `<Button variant="ghost">` (`groupHomePage/page.js:1040`, label `:1058`) and
+   "Plan Game Session" is `<Button asChild variant="primary">` (`:1090`, label `:1108`). Arm one
+   therefore copies the house PLANTED-PROBE idiom (`e2e/touch-targets.spec.ts:877`), whose own
+   marker states the rule this follows: an arm whose subject can be migrated away is an arm with an
+   expiry date. `.btn` and `.btn-secondary` are AUTHORED CSS, not scanned utilities, so the
+   "`e2e/` is outside the `@source` globs" hazard that marker warns about does not apply here — the
+   rules exist in the stylesheet regardless of what the scanner saw. The next reader will ask; that
+   is the answer.
+
+   CONSIDERED AND REJECTED — the `BrowseMoreModal` steppers (the record's suggestion, and the
+   owner's first arm). Refuted by MEASUREMENT, not by preference: the steppers mount only behind a
+   suggestions list, and `grep -c 'UserGame' periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js`
+   returns 0 on the script CI actually runs, so the CI seed produces no suggestions, no "Browse more"
+   trigger and no steppers. They also carry `.btn-compact`, which opts OUT of the floor by design.
+   CONSIDERED AND REJECTED — "retire the arm" (the owner's SECOND arm, offered verbatim in the
+   2026-09-21 ruling alongside the steppers). Retiring it would leave D-09's all-viewport floor with
+   no 1280-width proof anywhere in the tree, which is the one thing this file is for. This plan
+   takes a THIRD option the owner did not offer, and records that here rather than letting the
+   ruling read as honoured by something it did not name.
+
+   BOOKKEEPING CONSEQUENCE, stated rather than left for a later reader. The describe below opens
+   with SPEC Req 8 / DEF-1's acceptance sentence verbatim, whose subject is "one dense `.btn` row".
+   At D-09's target of zero raw `.btn` (`88.6-CONTEXT.md:55`) no such row will exist anywhere at
+   phase end, so that acceptance clause is SUPERSEDED by a detached single probe, not satisfied by
+   it. Routed with a dated row in `.planning/deferred/phase-88.6.md` naming plan 46's AC-11 pass as
+   the owner of its disposition — a sanction with no owning row is the debt this project's
+   milestone-tenet rule forbids.
+
+   A future reader re-pointing arm one back at a shipped control re-introduces the expiry date plan
+   88.6-12 removed from this arm's twin. That is a decision, not a cleanup. */
 test.describe('SPEC Req 8 / DEF-1 — a dense `.btn` row stays dense at desktop', () => {
   test.skip(({ isMobile }) => !!isMobile, 'DEF-1 is the DESKTOP half of D-36: below md the phone floor legitimately makes these 44px, so at 375px this assertion would be backwards');
 
@@ -491,24 +534,47 @@ test.describe('SPEC Req 8 / DEF-1 — a dense `.btn` row stays dense at desktop'
       'the "Plan Game Session" CTA did not render — same gate as above; a missing control here would make the floor assertion below vacuous',
     ).toBeVisible({ timeout: 15_000 });
 
-    const bare = await manageMembers.boundingBox();
-    const floored = await planSession.boundingBox();
-    expect(bare, '"Manage Members" boundingBox() returned null').not.toBeNull();
-    expect(floored, '"Plan Game Session" boundingBox() returned null').not.toBeNull();
-    if (!bare || !floored) return;
+    /* ARM ONE — the CLASS-level floor is still phone-only, measured on a PLANTED bare `.btn`.
+       The two visibility guards above are retained as the FIXTURE check (they are the only thing
+       in this test that catches a broken seed) but they no longer supply the number: both controls
+       are `<Button>` now and would measure 44 for D-09's reason, not D-36's.
+       The single character of text content is LOAD-BEARING and is copied from the house `make()`
+       (`e2e/touch-targets.spec.ts:882`): an empty `.btn` has no line box and measures `16px at
+       1280 against `padding: 0.5rem 1rem` on `0.875rem` text, which would red the `>= 20` guard
+       below and read as a cascade defect rather than as a missing character. */
+    const probe = await page.evaluate(() => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'btn btn-secondary';
+      el.textContent = '+';
+      document.body.appendChild(el);
+      const r = el.getBoundingClientRect();
+      const out = { height: r.height, minHeight: getComputedStyle(el).minHeight };
+      el.remove();
+      return out;
+    });
 
     expect(
-      bare.height,
-      `"Manage Members" measured ${bare.height}px tall at 1280 — it is a bare .btn with NO per-CTA min-h-11, so anything >= 44 means a blanket .btn height floor has appeared. That was rejected in 87.8 (AF-2) and re-rejected for all viewports by 88-01 (D-36) because it deforms square-by-design controls; the phone-only floor is @media (width < 48rem) and must not reach this viewport`,
+      probe.height,
+      `the planted bare .btn probe measured ${probe.height}px tall at 1280 (min-height: ${probe.minHeight}) — anything >= 44 means a blanket .btn height floor has appeared at desktop. That is what 87.8 AF-2 rejected and 88-01 D-36 re-rejected for all viewports, because it deforms square-by-design controls; the phone floor is globals.css's @media (width < 48rem) block and it must not reach this viewport. D-09's floor lives on Button's cva base, NOT on the class — if you widened the media rule to satisfy something, you widened the wrong half`,
     ).toBeLessThan(44);
     expect(
-      bare.height,
-      `"Manage Members" measured ${bare.height}px tall — under 20px means the locator resolved something that is not the rendered CTA, which would make the < 44 assertion above pass vacuously`,
+      probe.height,
+      `the planted bare .btn probe measured ${probe.height}px tall — under 20px means the probe rendered without its authored CSS or without its text content, which would make the < 44 assertion above pass vacuously. .btn and .btn-secondary are authored rules in globals.css, not scanned utilities, so they do not depend on the @source globs seeing this file`,
     ).toBeGreaterThanOrEqual(20);
+
+    /* ARM TWO — the PRIMITIVE-level floor, on a shipped control, with a NEW reason. This is no
+       longer "the per-CTA min-h-11 utility is the only thing holding it": that utility is gone
+       from this call site, which is now `<Button asChild variant="primary">`. What holds it at 44
+       above `md` is D-09's `'min-h-11'` on the cva BASE (`src/components/ui/Button.tsx:168`,
+       docblock `:20`), and this is the only assertion in the tree that measures it at 1280. */
+    const floored = await planSession.boundingBox();
+    expect(floored, '"Plan Game Session" boundingBox() returned null').not.toBeNull();
+    if (!floored) return;
 
     expect(
       floored.height,
-      `"Plan Game Session" measured ${floored.height}px tall at 1280 — its per-CTA min-h-11 is the ONLY thing holding it at 44 above md (the D-36 phone floor stops at 48rem). If this failed, someone deleted that utility as redundant, which is exactly what all eight D-36 markers warn against`,
+      `"Plan Game Session" measured ${floored.height}px tall at 1280 — it is a <Button asChild variant="primary"> (groupHomePage/page.js:1090), so what floors it above md is D-09's 'min-h-11' on the cva BASE (src/components/ui/Button.tsx:168), not a per-CTA utility and not the D-36 phone rule, which stops at 48rem. If this failed, someone deleted that line from the base as redundant — exactly what all eight D-36 markers warn against, one layer down`,
     ).toBeGreaterThanOrEqual(44);
   });
 });
