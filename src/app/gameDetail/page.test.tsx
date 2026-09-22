@@ -1655,3 +1655,53 @@ describe('gameDetail breadcrumb landmarks are named (#175)', () => {
     expect(within(nav).getByText('Wingspan')).toBeInTheDocument();
   });
 });
+
+// ── Phase 88.6-47 (todo 2026-09-21, "date range inputs allow end before start") ──
+//
+// The session filter's From/To pair is pure CLIENT state — an inverted range simply
+// yields nothing and explains nothing, which is worse than the availability path where
+// the server at least says no. Native `min`/`max` close the picker path (the surface the
+// owner reported from); the typed path's missing explanation is routed to Phase 88.9
+// with its proposed string, because minting copy here would breach P1.
+//
+// THIS ASSERTS THE DERIVATION, NOT A DATE: each bound is set from a variable and then
+// CHANGED, so a hard-coded bound reds. The empty case is pinned too — this filter starts
+// empty on both ends, and an empty-string bound is a real bound of nothing.
+describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
+  it('bounds each date control by its sibling, and places no bound while the sibling is empty', async () => {
+    const user = userEvent.setup();
+    renderGameDetail();
+
+    await user.click(await screen.findByRole('button', { name: /Show Filters/ }));
+
+    const from = screen.getByLabelText('From Date') as HTMLInputElement;
+    const to = screen.getByLabelText('To Date') as HTMLInputElement;
+
+    expect(
+      from.getAttribute('max'),
+      'From Date carries an upper bound while To Date is empty — the filter starts empty on both ends, so an empty-string bound would bound a value that does not exist'
+    ).toBeNull();
+    expect(to.getAttribute('min'), 'To Date carries a lower bound while From Date is empty').toBeNull();
+
+    const firstFrom = '2026-02-01';
+    fireEvent.change(from, { target: { value: firstFrom } });
+    expect(
+      to.getAttribute('min'),
+      'To Date lower bound does not track the From Date value — the bound must be DERIVED from the sibling, never hard-coded'
+    ).toBe(firstFrom);
+
+    const secondFrom = '2026-06-15';
+    fireEvent.change(from, { target: { value: secondFrom } });
+    expect(
+      to.getAttribute('min'),
+      'To Date lower bound did not follow a CHANGED From Date — this is the assertion that separates a derived bound from a constant'
+    ).toBe(secondFrom);
+
+    const toValue = '2026-08-20';
+    fireEvent.change(to, { target: { value: toValue } });
+    expect(
+      from.getAttribute('max'),
+      'From Date upper bound does not track the To Date value — the bounds are two-sided on purpose: a user who sets To first must still be able to reach a valid From'
+    ).toBe(toValue);
+  });
+});

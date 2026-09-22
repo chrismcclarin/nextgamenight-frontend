@@ -514,6 +514,70 @@ describe('userProfile availability settings', () => {
       ).toContain('row-span-3');
     }
   });
+
+  // ── Phase 88.6-47 (todo 2026-09-21, "date range inputs allow end before start") ──
+  //
+  // The recurring DATE pair had NO client guard of any kind: the server rejects an
+  // inverted range with a code-less 400 that renders the generic register copy and
+  // discards the form (`routes/availability.js:137`). The TIME pair on the same form
+  // already refuses it with a ratified toast (`userProfile/page.js:1252`,
+  // 88-CODE-REVIEW MED#7) and is deliberately untouched.
+  //
+  // THIS ASSERTS THE DERIVATION, NOT A DATE. A test that pinned a literal would pass
+  // just as happily on a hard-coded bound, which is the wrong fix wearing the right
+  // assertion — so each bound is set from a variable and then CHANGED, and the sibling's
+  // attribute has to follow. It also pins the empty case: an unset sibling must place
+  // NO bound (attribute absent), never an empty string, because the End Date is optional
+  // and `min=""` is a real bound of nothing.
+  it('bounds each recurring date control by its sibling, and places no bound while the sibling is empty', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+
+    const startDate = screen.getByLabelText('Start Date') as HTMLInputElement;
+    const endDate = screen.getByLabelText('End Date (Optional)') as HTMLInputElement;
+
+    // THE EMPTY-SIBLING CASE, on the control that actually has one. `start_date` seeds to
+    // today (userProfile/page.js:210, HEAT-02 expansion 4) while `end_date` seeds to '', so
+    // it is the START control whose bound must be ABSENT here — not an empty string, which
+    // would be a real bound of nothing on a field the user is entitled to leave blank.
+    expect(
+      startDate.getAttribute('max'),
+      'Start Date carries an upper bound while End Date is empty — an empty-string bound is a real bound of nothing, and the End Date is OPTIONAL'
+    ).toBeNull();
+
+    // And the seeded start already bounds the END control, derived from the rendered value
+    // rather than from any date this test knows.
+    expect(
+      endDate.getAttribute('min'),
+      'End Date lower bound does not track the seeded Start Date value'
+    ).toBe(startDate.value);
+
+    // A start value bounds the END control from below, and the value is the one set.
+    const firstStart = '2026-03-10';
+    fireEvent.change(startDate, { target: { value: firstStart } });
+    expect(
+      endDate.getAttribute('min'),
+      'End Date lower bound does not track the Start Date value — the bound must be DERIVED from the sibling, never hard-coded'
+    ).toBe(firstStart);
+
+    // CHANGE it: a hard-coded bound would still read the first date here.
+    const secondStart = '2026-07-04';
+    fireEvent.change(startDate, { target: { value: secondStart } });
+    expect(
+      endDate.getAttribute('min'),
+      'End Date lower bound did not follow a CHANGED Start Date — this is the assertion that separates a derived bound from a constant'
+    ).toBe(secondStart);
+
+    // And the reverse direction, so neither edit order can dead-end the user.
+    const end = '2026-09-01';
+    fireEvent.change(endDate, { target: { value: end } });
+    expect(
+      startDate.getAttribute('max'),
+      'Start Date upper bound does not track the End Date value — the bounds are two-sided on purpose: a user who sets the end first must still be able to reach a valid start'
+    ).toBe(end);
+  });
 });
 
 // ---------------------------------------------------------------------------

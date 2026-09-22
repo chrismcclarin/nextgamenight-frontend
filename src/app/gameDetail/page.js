@@ -2723,12 +2723,44 @@ export default function GameDetailPage() {
                         here, and do not drop an `id`: both are decisions, not cleanups. */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Date Range */}
+                        {/* DECISION Phase 88.6-47 (todo 2026-09-21, "date range inputs allow end before
+                            start"): the two bounds below are DERIVED from the sibling's current value, and
+                            each passes `undefined` when its sibling is empty so an unset field places no
+                            bound at all — this filter starts empty on both ends, and an empty-string bound
+                            is a REAL bound of nothing that some engines treat as rejecting every value.
+
+                            These are NATIVE attributes, which is the point: iOS and Android date pickers
+                            honour `min`/`max` by greying out unreachable days, and a picker is the surface
+                            the owner was actually using when he reported this. `Input` spreads unknown
+                            props straight onto the element (`src/components/ui/Input.tsx:143`, contract
+                            recorded at `:27-29`), so no primitive changes.
+
+                            THE BOUNDS ARE TWO-SIDED ON PURPOSE. A one-sided `min` on the To control would
+                            trap a user who set To first: with From unbounded he could still pick an
+                            inverted pair, and with To bounded he could not fix it from the other end.
+                            Both directions are bounded so neither edit order dead-ends.
+
+                            WHAT THIS DOES NOT DO, stated rather than left to be discovered: it is a picker
+                            affordance, not validation. A typed value in a desktop text entry can still
+                            violate the bound, and on THIS surface the consequence is a silently empty
+                            result list with no explanation — the filter performs no fetch, so nothing
+                            surfaces.
+                            REJECTED — an inline error message for the typed path. The string would be NEW
+                            visible copy, the phase's P1 contract forbids minting it, and neither register
+                            holds a reusable one: UI-SPEC §6.3's 17 rows are all fetch-failure or
+                            save-success strings, and `MESSAGE_BY_CODE`
+                            (`src/components/ui/useFetchErrorState.ts:46-112`) is exhaustive over
+                            `FetchErrorCode` — every entry is an API-failure message and this filter calls
+                            no API. Routed to Phase 88.9 with the proposed string named on a row in
+                            `.planning/deferred/phase-88.6.md`, so the owner ratifies it in the look phase
+                            rather than an executor minting it mid-sweep. */}
                         <div>
                             <label htmlFor="session-filter-date-from" className="block text-sm text-content-secondary mb-1">From Date</label>
                             <Input
                                 id="session-filter-date-from"
                                 type="date"
                                 value={filters.dateFrom}
+                                max={filters.dateTo || undefined}
                                 onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
                             />
                         </div>
@@ -2738,6 +2770,7 @@ export default function GameDetailPage() {
                                 id="session-filter-date-to"
                                 type="date"
                                 value={filters.dateTo}
+                                min={filters.dateFrom || undefined}
                                 onChange={(e) => handleFilterChange('dateTo', e.target.value)}
                             />
                         </div>

@@ -2555,6 +2555,35 @@ function Profile(){
                                                 <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
+                                        {/* DECISION Phase 88.6-47 (todo 2026-09-21, "date range inputs
+                                            allow end before start"): each bound is DERIVED from the
+                                            sibling's current value, never hard-coded, and passes
+                                            `undefined` when the sibling is empty — the End Date is
+                                            OPTIONAL, so an empty-string bound would be a real bound of
+                                            nothing on a field the user is entitled to leave blank.
+                                            Native attributes, so the phone pickers this was reported
+                                            from grey out the unreachable days; `Input` spreads them
+                                            straight onto the element (`src/components/ui/Input.tsx:143`).
+
+                                            THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
+                                            already refuse an end before the start with a ratified toast,
+                                            added by 88-CODE-REVIEW MED#7 —
+                                            `userProfile/page.js:1252` (recurring) and `:1299`
+                                            (specific-date). Adding a second mechanism on top of a shipped
+                                            guard is how two answers to one question get created. The
+                                            owner's report named four surfaces; two were already closed.
+
+                                            NARROWING, NOT A COMPLETE GUARD, and the gap is named rather
+                                            than left to be found: `min`/`max` ADMIT EQUALITY, while the
+                                            server's rule is STRICT — `routes/availability.js:137` rejects
+                                            `startDate >= endDateObj` — so a same-day start and end still
+                                            reaches the code-less 400 that renders the generic register
+                                            copy and discards the form. Closing that would need either a
+                                            client branch with new copy (P1 forbids minting it) or a
+                                            server change, and neither is this plan's scope.
+                                            REJECTED — an inline error for the typed path, for the same P1
+                                            reason recorded at the gameDetail pair; routed to Phase 88.9
+                                            with a row in `.planning/deferred/phase-88.6.md`. */}
                                         <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
                                             <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="recurring-start-date" className="block text-sm text-content-secondary mb-1">Start Date</label>
@@ -2562,6 +2591,7 @@ function Profile(){
                                                     id="recurring-start-date"
                                                     type="date"
                                                     value={recurringForm.start_date}
+                                                    max={recurringForm.end_date || undefined}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
                                                 />
                                             </div>
@@ -2571,6 +2601,7 @@ function Profile(){
                                                     id="recurring-end-date"
                                                     type="date"
                                                     value={recurringForm.end_date}
+                                                    min={recurringForm.start_date || undefined}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
                                                 />
                                             </div>
