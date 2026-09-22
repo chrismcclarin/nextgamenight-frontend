@@ -158,11 +158,61 @@ const CARD_LSTAR_FLOOR = 97; // distinguishes the white card (100) from the warm
  * unnamed first-card locator is not a stable anchor and would silently measure whichever
  * row Postgres returned first. `padding-budget.spec.ts:209-214` already anchors this same
  * fixture group by name — this reuses that idiom rather than inventing one.
+ *
+ * ---------------------------------------------------------------------------------------
+ * DECISION Phase 88.6-47 (row 4 of the 2026-09-17 CI e2e red, run 35581508198): this helper is
+ * anchored on a CONTRACT ATTRIBUTE, not on structure.
+ *
+ * WHAT IT USED TO DO AND WHY THAT BROKE. The second step used to walk the heading UP to the
+ * nearest ancestor div carrying a button role, on the understanding that the ancestor was the
+ * CARD. FE `f696732` ("fix(88.6-21): move the group card's keyboard target onto its title block
+ * (W42/W62b)") deleted `role`/`tabIndex`/`onKeyDown` from the card div and put them on the TITLE
+ * BLOCK (`grouplist.js:496`). From that commit on, the step resolved the title block — whose own
+ * className (`grouplist.js:513`) carries NO shadow utility, so `box-shadow: none` is its CORRECT
+ * computed value — while the card kept the shadow (`grouplist.js:408`). Gate C's resting-shadow
+ * pin then reported the bare keyword and its message accused `--shadow-sm` of a revert. The token
+ * was intact in BOTH themes throughout (`globals.css:1455` light, `:1861` dark) and the compiled
+ * `.shadow-theme-sm` rule is a valid composite. The LOCATOR was the defect; nothing about the
+ * focus ring was ever broken.
+ *
+ * REJECTED — an XPath scoped on the `rounded-card` CLASS. It has exactly the property that
+ * produced this failure: it survives only until someone renames or moves the class, and then it
+ * re-points silently onto a different element and blames a token again. The file's own selector
+ * policy (see `groupHeader` below) also avoids class and id selectors.
+ * REJECTED — keeping the structural ancestor step and merely re-spelling it. ANY structural step
+ * is re-pointed by the next restructure, which is the failure being fixed, not a variation of it.
+ * A `data-testid` is neither a class nor an id, and it is the one shape whose whole purpose is to
+ * be stable across restructures. The production side is pinned by
+ * `src/app/groupColourRendering.test.ts` test 32 (exactly once, on the tag carrying
+ * `shadow-theme-sm`), so the two cannot drift apart again in silence.
+ * The `filter({ has: … })` is not decoration: plan 02 mints a SECOND, tinted fixture group that
+ * also renders a `group-card`, so the heading filter is what still proves this is the FIXTURE
+ * group's card. Owner ruling 2026-09-21, decision (1): the `data-testid` arm stands.
  */
 function fixtureCard(page: Page): Locator {
   return page
-    .getByRole('heading', { name: E2E_INVITE_GROUP_NAME })
-    .locator('xpath=ancestor::div[@role="button"][1]');
+    .getByTestId('group-card')
+    .filter({ has: page.getByRole('heading', { name: E2E_INVITE_GROUP_NAME }) });
+}
+
+/**
+ * The fixture card's KEYBOARD TARGET — the title block, not the card.
+ *
+ * DECISION Phase 88.6-47: two different subjects live on this card and they are no longer the
+ * same element. Surfaces whose subject is the card's GROUND (delta-L*, border, muted text) take
+ * `fixtureCard`. The ONE surface whose subject is a CONTROL — Req 7's card-hosted focus ring —
+ * takes this helper, because `f696732` moved `role`/`tabIndex`/`onKeyDown` off the card and the
+ * card can no longer match `:focus-visible` at all. Handing the card to `focusRingMeasurement`
+ * does not fail softly: it focuses the anchor (`e2e/support/contrast.ts:645`) and then
+ * `requireColor`s `--tw-ring-color` (`:654`), which THROWS on an empty value (`:474`) — and the
+ * compiled stylesheet declares `@property --tw-ring-color` with `syntax: "*"` and NO
+ * `initial-value`, so an element that never matched returns the empty string. Re-basing
+ * `fixtureCard` without minting this second helper would have traded one red for another.
+ */
+function fixtureCardKeyboardTarget(page: Page): Locator {
+  return fixtureCard(page)
+    .getByRole('button')
+    .filter({ has: page.getByRole('heading', { name: E2E_INVITE_GROUP_NAME }) });
 }
 
 /**
@@ -284,7 +334,14 @@ function expectRestingShadowIsInvisibleButValid(raw: string, label: string): voi
       "the keyword is INVALID inside Tailwind's composite `box-shadow` list — it annihilates every " +
       "default `<Button>`'s focus-visible ring. Archetype A wants a shadow that PAINTS nothing, " +
       'not the absence of a shadow property. Re-expressed under N1 (Chromium-verified 2026-09-09); ' +
-      'loosening this half is a decision, not a cleanup.'
+      'loosening this half is a decision, not a cleanup. ' +
+      'SECOND READING, added Phase 88.6-47 after row 4 of the 2026-09-17 CI red resolved to a ' +
+      'stale LOCATOR rather than a token: a resting-card element that never carried a shadow ' +
+      'utility at all ALSO computes exactly this value, so before suspecting `--shadow-sm`, ' +
+      'check that the locator still resolves the element carrying `shadow-theme-sm` ' +
+      '(`grouplist.js:408`, handle `data-testid="group-card"`). A structural ancestor step ' +
+      're-pointed itself onto a nested block once already, and this message accused the token ' +
+      'for ~25 plans.'
   ).not.toBe('none');
 
   for (const layer of shadowLayers(value)) {
@@ -622,7 +679,19 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // So the count of `role=link` inside a card at 375px is still zero, and this step
       // still measures the Button primitive plus the card ground. Nothing here needs to
       // change; deleting this note would lose the re-verification.
-      const cardRing = await focusRingMeasurement(page, card, 'card-hosted control focus ring (Req 7)');
+      //
+      // AMENDED Phase 88.6-47 (row 4): the cite `grouplist.js:303` above is stale, and so is the
+      // element it names. `f696732` moved `role="button"` / `tabIndex` / `onKeyDown` OFF the card
+      // onto the title block (`grouplist.js:496`), so the CARD is no longer a control and can never
+      // match `:focus-visible` — it wears no `ring-*` utility and no `tabIndex`, and
+      // `focusRingMeasurement` THROWS on an empty `--tw-ring-color` rather than failing softly.
+      // The conclusion above is UNCHANGED — the control is card-hosted and its ground IS the white
+      // card — only the node carrying the role moved, so this step measures the title block.
+      const cardRing = await focusRingMeasurement(
+        page,
+        fixtureCardKeyboardTarget(page),
+        'card-hosted control focus ring (Req 7)'
+      );
       expectRatio('card-hosted control focus ring (Req 7)', cardRing, NON_TEXT);
     });
   });
@@ -1116,9 +1185,15 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     // :1146`. Re-derived 2026-09-15, the two `--shadow-sm` declarations are at `globals.css:1361`
     // (light `:root`) and `:1765` (the `.dark` block). Both now hold `0 0 #0000` rather than the
     // bare keyword — see the helper's docblock for why the shape of this pin changed.
+    // ⚠ CORRECTED AGAIN, Phase 88.6-47, in the same amend-in-place form the note above uses for
+    // its own predecessor: re-derived 2026-09-21 at `ef40170`, the two `--shadow-sm` declarations
+    // are at `globals.css:1455` (inside the light `:root` opened at `:822`) and `:1861` (inside
+    // `.dark`, opened at `:1784`). The `:1361`/`:1765` pair above had drifted exactly the way its
+    // own predecessor did. Both still hold `0 0 #0000` — verified while triaging row 4, whose cause
+    // turned out to be the LOCATOR (see `fixtureCard`) and not this token at all.
     expectRestingShadowIsInvisibleButValid(
       probe.computed['box-shadow'].raw,
-      'home card (Req 3, dark) — `--shadow-sm` paints nothing in BOTH themes (globals.css:1361 light, :1765 dark)'
+      'home card (Req 3, dark) — `--shadow-sm` paints nothing in BOTH themes (globals.css:1455 light, :1861 dark)'
     );
   });
 

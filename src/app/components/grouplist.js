@@ -403,8 +403,30 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  The markers at `:491-510` below describe the pre-fix shape as deliberate; what
                  changed is this phase's A11y mandate plus 88.9's blocked dependency, named here
                  rather than overridden silently. A decision, not a cleanup. */
+              /* DECISION Phase 88.6-47 (row 4 of the 2026-09-17 CI e2e red): the keyboard-target
+                 move recorded in the marker ABOVE silently re-pointed a Gate C locator two plans
+                 later, and nothing caught it for ~25 plans. `e2e/contrast.spec.ts`'s `fixtureCard`
+                 walked the group-name heading UP to the nearest ancestor div carrying a button
+                 role; after FE `f696732` that ancestor is the TITLE BLOCK below, which carries no
+                 shadow utility, so the resting-shadow pin computed `none` and its failure message
+                 accused `--shadow-sm` of a revert. The token was intact in both themes the whole
+                 time (`globals.css:1455` light, `:1861` dark).
+
+                 `data-testid="group-card"` exists so that the CARD — not whichever descendant
+                 happens to carry a button role next — is what Gate C measures. It is inert at
+                 runtime: no class, no role, no handler, no pixel, which is what keeps it inside P6.
+
+                 REJECTED: an XPath scoped on the `rounded-card` CLASS. It has the same property
+                 that produced this defect — it survives only until someone renames or moves the
+                 class, at which point Gate C measures a different element and blames a token again
+                 — and the spec file's own selector policy avoids class and id selectors. A contract
+                 attribute is the one shape a restructure cannot silently re-point.
+                 Pinned by `groupColourRendering.test.ts` test 32, EXACTLY once and on the tag that
+                 carries `shadow-theme-sm`. Deleting this attribute reds that pin and Gate C.
+                 Owner ruling 2026-09-21, decision (1): default stands. */
               <div
                 key={group.id}
+                data-testid="group-card"
                 className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
                 style={{

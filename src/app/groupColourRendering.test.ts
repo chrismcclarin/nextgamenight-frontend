@@ -2615,4 +2615,51 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       }
     }
   });
+
+  /**
+   * DECISION Phase 88.6-47 (row 4 of the 2026-09-17 CI e2e red, run 35581508198) — the Gate C
+   * handle, pinned so it cannot drift again.
+   *
+   * WHAT DRIFTED. `e2e/contrast.spec.ts`'s `fixtureCard` used to reach the card by walking the
+   * group-name heading UP to the nearest ancestor div carrying a button role. FE `f696732`
+   * (plan 88.6-21, W42/W62b) moved `role`/`tabIndex`/`onKeyDown` off the card onto the TITLE
+   * BLOCK, so from that commit the helper resolved the title block — which wears no shadow
+   * utility, so `none` is its CORRECT computed value — and Gate C's resting-shadow pin spent
+   * `25 plans accusing `--shadow-sm` of a revert that never happened.
+   *
+   * WHY A SCAN AND NOT A GREP: the same three reasons the rest of this file gives. In particular
+   * the `DECISION Phase 88.6-47` marker above the card QUOTES this handle, so a line-based grep
+   * would find it in a comment and pass on a tree where the attribute had been deleted from the
+   * markup. `code()` blanks comments first.
+   *
+   * EXACT IN BOTH DIRECTIONS, and both directions are real failures: ZERO means someone deleted
+   * the handle and Gate C is back to guessing; TWO means a second element took it and the e2e
+   * `filter({ has: … })` goes ambiguous, which Playwright reports as a strict-mode violation
+   * rather than as the drift it is.
+   */
+  it('32. the home card carries the `group-card` handle EXACTLY once, on the tag wearing `shadow-theme-sm`', () => {
+    const file = 'app/components/grouplist.js';
+    const src = code(file);
+    const HANDLE = 'data-testid="group-card"';
+
+    const carriers = openTags(src).filter((t) => t.attrs.includes(HANDLE));
+    expect(
+      carriers.length,
+      file + ': expected EXACTLY one `' + HANDLE + '` in the markup, found ' + carriers.length +
+        '. This handle is what `e2e/contrast.spec.ts` Gate C (the home-card resting-shadow, ' +
+        'border and muted-text surfaces, LIGHT and DARK) uses to find the card. Deleting it ' +
+        'sends Gate C back to a structural walk, which is exactly the defect Phase 88.6-47 fixed; ' +
+        'adding a SECOND one makes the spec-side `filter({ has: … })` ambiguous. Before you change ' +
+        'it, read the DECISION Phase 88.6-47 marker above the card div.',
+    ).toBe(1);
+
+    expect(
+      carriers[0].attrs,
+      file + ': the `' + HANDLE + '` handle is not on the tag that carries `shadow-theme-sm`. ' +
+        'Gate C measures the RESTING SHADOW through this handle, so a handle parked on any other ' +
+        'element makes that pin measure something that legitimately paints no shadow — and its ' +
+        'failure message then accuses the `--shadow-sm` token. That is the exact 2026-09-17 ' +
+        'red (rows 4a/4b) this pin exists to prevent recurring.',
+    ).toContain('shadow-theme-sm');
+  });
 });
