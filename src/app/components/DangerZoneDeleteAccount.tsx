@@ -588,6 +588,11 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                 <Input
                   ref={confirmInputRef}
                   id="delete-account-confirm"
+                  /* Phase 88.6-45 (R7 house rule, `Input.tsx:11-19`): `name` beside `id`. Found by the composed
+                     audit (`input#delete-account-confirm[name=?]: missing name attribute`); the handler reads
+                     `e.target.value`, so the attribute is inert to behaviour and exists for the browser
+                     autofill heuristic ARIA does not reach. */
+                  name="delete-account-confirm"
                   type="text"
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}

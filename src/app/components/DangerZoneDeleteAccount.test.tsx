@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import * as React from 'react';
-import { act, fireEvent, render, screen, cleanup, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1042,5 +1042,84 @@ describe('Phase 88.6-30 task 3 — the primitives sweep (D-30, one pass)', () =>
     await user.click(trigger());
     await screen.findByRole('link', { name: 'Catan Crew' });
     expect(screen.getByText(/4 members/)).toHaveClass('text-xs');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-45 (R7 / AC-7, UI-SPEC §7.5) — the composed axe audit, after this surface's LAST
+// migration commit. Ordering confirmed at execution (2026-09-22): `git log -1 --
+// DangerZoneDeleteAccount.tsx` is `89a6651` (plan 88.6-30 task 3, the primitives sweep); plan 30's
+// 2026-09-21 reopen touched `globals.css`, `Input.tsx` and `userProfile/page.js`, never this file.
+// THIS SURFACE HAS NO `matchMedia` FORK: neither this file nor `Modal`, `StatusRegion`, `Button` or
+// `Input` calls it (grep over the five, 2026-09-22). One tree, one run per rule set per BRANCH, no
+// resize. This surface mounts ONE dialog (`Modal` only — `grep -n Confirm` here returns only the
+// `confirmText` state), so it is a single-surface audit, not a stacked pair.
+// ---------------------------------------------------------------------------
+import { axe } from 'vitest-axe';
+import { auditFormControls } from '../../test-utils/formControlAudit';
+
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+describe('DangerZoneDeleteAccount — R7 composed axe audit + focus contract (88.6-45)', () => {
+  it('1. the IDLE branch (pre-flight clear, confirm input live) passes WCAG 4.1.2, heading-order and the house rule', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await openAndSettle(user);
+    // BY NAME: proves <Modal.Header> labels the dialog rather than merely sitting inside it.
+    const dialog = screen.getByRole('dialog', { name: 'Delete your account' });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+    // The fork-5 house rule (id + name + label source) on the one form control this dialog owns.
+    auditFormControls(dialog);
+  });
+
+  it('2. the BLOCKED branch (named group links, no confirm control) passes the same two rules', async () => {
+    mockGetBlockers.mockResolvedValue({
+      groups: [{ id: 'g1', name: 'Catan Crew', memberCount: 4 }],
+    });
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await screen.findByRole('link', { name: 'Catan Crew' });
+    const dialog = screen.getByRole('dialog', { name: 'Delete your account' });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('3. the IN-FLIGHT branch (aria-disabled Cancel, populated polite region, natively-disabled confirm) passes the same two rules', async () => {
+    const user = userEvent.setup();
+    await enterDeletingState(user);
+    // Settle on the state under test, not on chrome: the region is populated and Cancel is gated.
+    expect(progressRegion()).not.toHaveTextContent('');
+    expect(cancelAction()).toHaveAttribute('aria-disabled', 'true');
+    const dialog = screen.getByRole('dialog', { name: 'Delete your account' });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('4. focus: on OPEN the header Close control (no initialFocusRef is passed); on CLOSE the NAMED trigger', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    const opener = trigger();
+    opener.focus();
+    await user.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: 'Delete your account' });
+    // DERIVED BEFORE WRITING: `DangerZoneDeleteAccount.tsx` mounts `<Modal open onClose
+    // dismissable={false}>` with NO `initialFocusRef` (the confirm input is disabled during the
+    // pre-flight, so it could not take opening focus anyway), so `Modal.tsx`'s documented default
+    // stands — the first focusable node, `<Modal.Header>`'s `DialogClose aria-label="Close"`.
+    // NAMED target; containment is the second check.
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.click(cancelAction());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // NAMED identity (the `Modal.tsx` opener restore, plan 88.6-44) — never "not body".
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 });

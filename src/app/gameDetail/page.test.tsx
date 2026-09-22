@@ -1705,3 +1705,117 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
     ).toBe(toValue);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-45 (R7 / AC-7, UI-SPEC §7.5) — the composed axe audits, after this surface's LAST
+// migration commit. Ordering confirmed at execution (2026-09-22): `git log -1 -- gameDetail/page.js`
+// is `461c857` (plan 88.6-47 task 5, the native date bounds) — NOT plan 18's `73af23a` and NOT plan
+// 41's (which never touched this file); the plan-45 must_have amendment predicted exactly this.
+//
+// THE AUDITED TREES HAVE NO `matchMedia` FORK. `gameDetail/page.js` calls `window.matchMedia` at
+// exactly two sites (`:2444`, `:2513`, measured 2026-09-22), both inside the game-TITLE overflow
+// handlers on the page body — neither is reachable from any dialog rendered here. One tree, one run
+// per rule set per dialog, no resize.
+//
+// THIS FILE HAS NO STACKED `ConfirmDialog`-over-`Modal` STATE, contrary to RESEARCH §Q1's reading
+// of its two imports: `removeParticipantGate` (`page.js:903`) is `tier: 'two-tap'` and renders
+// `null` by design (DECISION Phase 88-05 D-07), and `deleteSessionGate` (`:1101`) opens from the
+// page-level session rows, never from inside a `Modal`. The three dialogs this file CAN show are
+// audited one at a time below; the stacked-pair audit lives in `ManageMembers.modals.test.tsx`.
+//
+// ADDITIONS ONLY: the EVT-08 two-tap describe and the invite-before-remove ordering describe above
+// are byte-unchanged (confirmed by `git diff` at commit), and no clock-derived fixture is introduced —
+// nothing here reads the clock.
+// ---------------------------------------------------------------------------
+import { axe } from 'vitest-axe';
+import { auditFormControls } from '../../test-utils/formControlAudit';
+
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', () => {
+  it('1. the See-all participants Modal (owner: guest invite + two-tap Remove rows) passes WCAG 4.1.2 and heading-order', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+    const dialog = await openParticipantsModal(user);
+    // Settle on a branch-specific element, never on chrome: an owner's row action.
+    await within(dialog).findAllByRole('button', { name: RESTING_REMOVE });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('2. the review-form Modal passes WCAG 4.1.2, heading-order and the house rule on every control', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await user.click(await screen.findByRole('button', { name: 'Add Review' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Write a Review' });
+    await within(dialog).findByRole('button', { name: 'Submit Review' });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+    auditFormControls(dialog);
+  });
+
+  it('3. the session-delete ConfirmDialog (page-level, dialog tier) passes both rules — the ONLY ConfirmDialog this file can open', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+    const sessions = await sessionsSection();
+    await user.click(within(sessions).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete this session?' });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('4. focus, participants Modal: on OPEN the header Close control; on CLOSE the NAMED "See all" trigger', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+    const opener = await screen.findByRole('button', { name: /^See all \(/ });
+    opener.focus();
+    await user.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: 'Participants (6)' });
+    // DERIVED BEFORE WRITING: `page.js:2033` mounts `<Modal open onClose>` with no `initialFocusRef`,
+    // so the `Modal.tsx` default stands — `<Modal.Header>`'s Close control.
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it('5. focus, review Modal: on OPEN the header Close control; on CLOSE the NAMED "Add Review" trigger', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    const opener = await screen.findByRole('button', { name: 'Add Review' });
+    opener.focus();
+    await user.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: 'Write a Review' });
+    // `page.js:3088`: `<Modal open onClose className="max-w-md">`, no `initialFocusRef`.
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it('6. focus, session-delete ConfirmDialog opened from the KEBAB: Cancel on OPEN; the NAMED kebab trigger on CLOSE (the menu item that opened it unmounts)', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+    const sessions = await sessionsSection();
+    const kebab = await within(sessions).findByRole('button', { name: 'Session actions' });
+    await user.click(kebab);
+    const list = document.getElementById(kebab.getAttribute('aria-controls') as string) as HTMLElement;
+    await user.click(within(list).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete this session?' });
+    // `ConfirmDialog.tsx` passes `initialFocusRef={cancelRef}` on button-only tiers (88-33 Task 4).
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    await user.click(cancel);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // The menu ITEM that opened the dialog is gone with the closed menu, so the element that held
+    // focus when the dialog opened is the kebab TRIGGER (`KebabMenu.js` restores to it on close,
+    // before the dialog's FocusScope reads `activeElement`). NAMED identity, never "not body".
+    await waitFor(() => expect(document.activeElement).toBe(kebab));
+  });
+});

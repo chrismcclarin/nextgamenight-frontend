@@ -3116,6 +3116,10 @@ export default function GameDetailPage() {
                             </label>
                             <Textarea
                                 id="review_text"
+                                /* Phase 88.6-45 (R7 house rule, `Input.tsx:11-19`): `name` beside `id` on both review
+                                   controls, found by the composed audit (`textarea#review_text[name=?]` / `input#recommended[name=?]:
+                                   missing name attribute`). The handlers read `e.target.value` / `.checked`, so inert to behaviour. */
+                                name="review_text"
                                 value={reviewForm.review_text}
                                 onChange={(e) => setReviewForm({...reviewForm, review_text: e.target.value})}
                                 rows="4"
@@ -3133,6 +3137,7 @@ export default function GameDetailPage() {
                             <input
                                 type="checkbox"
                                 id="recommended"
+                                name="recommended"
                                 checked={reviewForm.is_recommended}
                                 onChange={(e) => setReviewForm({...reviewForm, is_recommended: e.target.checked})}
                                 className="mr-2"
