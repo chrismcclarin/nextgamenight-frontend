@@ -1530,7 +1530,12 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   // the document OUTLINE is unchanged in every reachable render — only the number of places that
   // outline is written down moved. The two pre-existing h2s are byte-unchanged in level.
   'app/components/EventCalendar.js': { 2: 3 },
-  'app/components/EventDayModal.js': { 4: 1 },
+  // LEVEL CHANGE, Phase 88.6-44 (R7 / UI-SPEC §7.5 — the one sanctioned class): `{ 4: 1 }` ->
+  // `{ 3: 1 }`. The composed heading-order audit in `EventDayModal.test.tsx` (axe
+  // `heading-order`) found the event-row title `<h4>` directly under the dialog's `<h2>` title —
+  // "Heading levels should only increase by one". The row heading is now `<Heading level={3}>`;
+  // its `size="body"` and every class are byte-unchanged. Same commit as the source edit.
+  'app/components/EventDayModal.js': { 3: 1 },
   'app/components/FriendInvitePanel.js': { 3: 3 },
   'app/components/GroupGamesList.js': { 2: 2, 3: 1 },
   'app/components/GroupSettings.js': { 3: 4 },

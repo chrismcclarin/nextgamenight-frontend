@@ -6,7 +6,7 @@
 // AT. These tests pin the corrected shape: the TITLE BLOCK is the keyboard
 // target; the Share button is its own, exposed control.
 import * as React from 'react';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -187,5 +187,90 @@ describe('EventDayModal — W16: the QR failure speaks, and stops speaking after
     // outside the guard. Asserting it is what stops a future "fix" from moving the whole catch
     // inside the ref check and silently losing the report.
     expect(loggerSpies.info).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-44 (R7 / AC-7, UI-SPEC §7.5) — the composed axe audit, after this surface's LAST
+// migration commit. Ordering confirmed at execution: `git log -1 -- EventDayModal.js` is
+// `a41df05` (plan 88.6-41's W49 convergence, an ancestor of HEAD), NOT plan 27's sweep commit —
+// so the tree audited here is the final migrated one. THIS SURFACE HAS NO `matchMedia` FORK:
+// neither `EventDayModal.js` nor anything it renders calls `matchMedia` (`QRCodeModal` and
+// `TimezoneNudgeBanner` are stubbed above; neither calls it either) — measured 2026-09-22. One
+// tree, one run per rule set, no resize. This surface has no form controls, so there is no
+// house-rule check here.
+// ---------------------------------------------------------------------------
+import { axe } from 'vitest-axe';
+
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+/** A real trigger + the consumer's shape (`EventCalendar.js:362`: `{selectedDay && <EventDayModal …>}`). */
+function AuditHost() {
+  const [day, setDay] = React.useState<typeof selectedDay | null>(null);
+  return (
+    <>
+      <button type="button" onClick={() => setDay(selectedDay)}>
+        Open day
+      </button>
+      {day && <EventDayModal selectedDay={day} onClose={() => setDay(null)} onEventClick={vi.fn()} />}
+    </>
+  );
+}
+
+describe('EventDayModal — R7 composed axe audit + focus contract (88.6-44)', () => {
+  beforeEach(() => {
+    h.getEventInviteToken.mockReset();
+    h.getEventInviteToken.mockResolvedValue({ invite_url: 'https://example.test/i/abc' });
+  });
+  afterEach(cleanup);
+
+  it('1. the POPULATED day (an event row) passes WCAG 4.1.2 and heading-order', async () => {
+    render(<EventDayModal selectedDay={selectedDay} onClose={vi.fn()} onEventClick={vi.fn()} />);
+    await screen.findByRole('button', { name: rowName });
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('2. the EMPTY day and the "+ New event" (group calendar) branches pass the same two rules', async () => {
+    // JS component: `onCreateEventOnDay = null` infers as `null | undefined`; cast to pass the
+    // callback the group calendar passes (the createGroup.test / formLabels.audit idiom).
+    const EventDayModalAny = EventDayModal as unknown as React.ComponentType<Record<string, unknown>>;
+    render(
+      <EventDayModalAny
+        selectedDay={{ date: future, events: [] }}
+        onClose={vi.fn()}
+        onEventClick={vi.fn()}
+        onCreateEventOnDay={vi.fn()}
+      />
+    );
+    await screen.findByText('No events on this day.');
+    await screen.findByRole('button', { name: '+ New event on this day' });
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('3. focus: on OPEN the header Close control (no initialFocusRef is passed); on CLOSE the NAMED trigger', async () => {
+    const user = userEvent.setup();
+    render(<AuditHost />);
+    const trigger = screen.getByRole('button', { name: 'Open day' });
+    trigger.focus();
+    await user.click(trigger);
+    const dialog = await screen.findByRole('dialog');
+    await screen.findByRole('button', { name: rowName });
+    // DERIVED BEFORE WRITING: `EventDayModal.js` passes no `initialFocusRef`, so `Modal.tsx`'s
+    // documented default stands — the first focusable node, `<Modal.Header>`'s
+    // `DialogClose aria-label="Close"`. Opening on Close rather than on the first event row is
+    // ACCEPTED (recorded in 88.6-44-SUMMARY.md). NAMED target; containment is the second check.
+    const close = screen.getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // NAMED identity, never "not body".
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });

@@ -492,6 +492,18 @@ export default function EventDayModal({
                                 size — `<Heading level={4} size="body">` (16) states that rather
                                 than inheriting it, and the LEVEL is preserved. It is NOT
                                 class-less: the six arbitrary-value themed-ink classes below (a
+                                AMENDED Phase 88.6-44 (R7, UI-SPEC §7.5 — the ONE sanctioned
+                                heading-level change class): LEVEL 4 -> 3. The composed
+                                heading-order audit (`EventDayModal.test.tsx`, axe `heading-order`)
+                                found the outline jumping from the dialog's `<h2>` title
+                                (`<Modal.Header>` renders a Radix DialogTitle) straight to this
+                                `<h4>` — "Heading levels should only increase by one". The skip is
+                                PRE-EXISTING (the `<h4>` predates plan 88.6-27's sweep, which
+                                preserved it under P4; the `<h2>` arrived with the 88-17 Modal
+                                migration), not introduced by the sweep. `size="body"` and every
+                                class below are byte-unchanged — only the semantic level moves, and
+                                `typeScaleTouchedSurfaces.test.ts` EXPECTED_LEVELS moves with it in
+                                the same commit. Going back to 4 re-opens the finding.
                                 light/dark pair each for colour, text-shadow and
                                 -webkit-text-stroke, all reading `--t-*`) are what keep the event
                                 title readable over a group background PHOTO, and every one of
@@ -502,7 +514,7 @@ export default function EventDayModal({
                                 the primitive's `font-bold` base supersedes it (§4.5: headings
                                 are 700). */}
                             <Heading
-                              level={4}
+                              level={3}
                               size="body"
                               className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
                               style={rowTitleVars}

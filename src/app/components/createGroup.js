@@ -240,10 +240,21 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                     PAIRS, and this is a container/input with no hover half.
                                     Going back to the built-in family is a decision, not a
                                     cleanup. */}
+                                {/* DECISION Phase 88.6-44 (T-88.6-124, house rule `Input.tsx:11-19`):
+                                    an ARIA-supplied name mirroring the placeholder, chosen OVER a
+                                    visible <label> row. Measured by the composed audit before this
+                                    edit: the control had id + name and NO label source at all —
+                                    axe's `label` rule passed it on the placeholder alone. A visible
+                                    label here is NEW VISIBLE COPY with no UI-SPEC §6.3 row (P1) and a
+                                    new row inside a `size="sm"` dialog whose one field sits directly
+                                    under the "Create a new Group" title; that is why a visible label
+                                    "genuinely cannot exist" in THIS phase. Adding one later is a copy
+                                    decision for the owner, not a cleanup. */}
                                 <Input
                                     ref={nameInputRef}
                                     id="name"
                                     name="group-name-create"
+                                    aria-label="Group Name"
                                     onChange={handleChange}
                                     value={newGroup.name}
                                     type="text"

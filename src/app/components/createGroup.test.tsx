@@ -431,3 +431,67 @@ describe('createGroup in-flight guard (UAT row 447)', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-44 (R7 / AC-7, UI-SPEC §7.5) — the composed axe audit, after this surface's LAST
+// migration commit (plan 88.6-33's `6410449`; `git log -1 -- createGroup.js` re-checked at
+// execution). THIS SURFACE HAS NO `matchMedia` FORK: neither `createGroup.js` nor anything it
+// renders (`Modal`, `Input`, `Button`; `FriendInvitePanel` is stubbed above) calls `matchMedia`
+// — measured 2026-09-22. One tree, one run per rule set, no resize.
+//
+// The fork-5 house rule is asserted alongside axe: `formLabels.audit.test.tsx`'s fixed roster
+// never included this form, and axe's `label` rule passes a placeholder-only input.
+// ---------------------------------------------------------------------------
+import { axe } from 'vitest-axe';
+import { auditFormControls } from '../../test-utils/formControlAudit';
+
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+/** A real trigger + the consumer's shape: `modaltoggle` flips `modal`, and the form returns null. */
+function AuditHost() {
+  const [open, setOpen] = React.useState(false);
+  const Component = CreateGroup as unknown as React.ComponentType<Record<string, unknown>>;
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        + Create New Group
+      </button>
+      <Component modal={open} modaltoggle={() => setOpen((m) => !m)} />
+    </>
+  );
+}
+
+describe('createGroup — R7 composed axe audit + house rule + focus contract (88.6-44)', () => {
+  it('1. the dialog passes WCAG 4.1.2 and heading-order (one composed run each; no media-query fork)', async () => {
+    renderCreateGroup();
+    await screen.findByRole('button', { name: /create group/i });
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('2. the group-name control carries id + name + a label source (house rule Input.tsx:11-19)', async () => {
+    renderCreateGroup();
+    await screen.findByRole('button', { name: /create group/i });
+    auditFormControls(screen.getByRole('dialog'));
+  });
+
+  it('3. focus: on OPEN the passed initialFocusRef target (the name input); on CLOSE the NAMED trigger', async () => {
+    const user = userEvent.setup();
+    render(<AuditHost />);
+    const trigger = screen.getByRole('button', { name: '+ Create New Group' });
+    trigger.focus();
+    await user.click(trigger);
+    const dialog = await screen.findByRole('dialog');
+    const nameInput = screen.getByPlaceholderText('Group Name');
+    // `createGroup.js` passes `initialFocusRef={nameInputRef}` — the NAMED target.
+    await waitFor(() => expect(document.activeElement).toBe(nameInput));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // NAMED identity, never "not body".
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+});
