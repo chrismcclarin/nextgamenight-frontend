@@ -351,10 +351,17 @@ export default function ScheduleForm({
             {/* §4.5 emphasis outcome: 400 + a colour token. `font-medium` (500) is a
                 prohibition outside the `Button` label (§4.2); a field label beside its control
                 is emphasis, not hierarchy, and it already carries `text-content-secondary`. */}
-            <label className="block text-sm text-content-secondary mb-1">
+            {/* Phase 88.6-44 (T-88.6-124, house rule `Input.tsx:11-19`): `htmlFor` + an
+                `id`/`name` forwarded through GameComboInput — the `createEvent.js` 88-33
+                Task 8 idiom, which this form never received. Measured by the composed audit
+                before the fix: the game input rendered with NO id and NO name, and this
+                label was an orphan (census classes B and C on one control). */}
+            <label htmlFor="schedule-game-name" className="block text-sm text-content-secondary mb-1">
               Game
             </label>
             <GameComboInput
+              id="schedule-game-name"
+              name="schedule-game-name"
               value={{ game_id: watchedGameId, game_name: watchedGameName }}
               onChange={({ game_id, game_name }) => {
                 setValue('game_id', game_id || '', { shouldValidate: true });

@@ -1221,9 +1221,15 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   <label htmlFor="start_date" className="block text-sm font-normal mb-1 text-content-primary">
                     Start Date & Time {!editingEvent && <span aria-hidden="true" className="text-content-status-error">*</span>}
                   </label>
+                  {/* Phase 88.6-44 (T-88.6-124): `name` added on this and the three controls
+                      below (duration, RSVP deadline, comments) — the house rule requires id +
+                      name (`Input.tsx:11-19`, autofill heuristic); `handleChange` keys on `id`,
+                      so `name` is inert to behaviour. Measured by the composed audit: four
+                      "missing name attribute" failures on this surface before the fix. */}
                   <Input
                     type="datetime-local"
                     id="start_date"
+                    name="start_date"
                     value={newEvent.start_date}
                     onChange={handleChange}
                     required={!editingEvent}
@@ -1247,6 +1253,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                         <Input
                           type="number"
                           id="duration_minutes"
+                          name="duration_minutes"
                           value={newEvent.duration_minutes || ''}
                           onChange={handleChange}
                           className={durationOverMax ? 'border-status-error' : ''}
@@ -1276,6 +1283,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               <Input
                 type="datetime-local"
                 id="rsvp_deadline"
+                name="rsvp_deadline"
                 value={newEvent.rsvp_deadline || ''}
                 onChange={handleChange}
                 max={newEvent.start_date && newEvent.start_date < '9999-12-31T23:59' ? newEvent.start_date : '9999-12-31T23:59'}
@@ -1396,6 +1404,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </label>
             <Textarea
               id="comments"
+              name="comments"
               value={newEvent.comments}
               onChange={handleChange}
               rows="3"

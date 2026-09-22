@@ -1,6 +1,7 @@
 // Per-form proof for PRIM-06: on a failed save, ScheduleForm must (a) render its
 // inline submit-error UI (role="alert") AND (b) re-throw so handleAppSubmit's
 // catch logs to logger.error -> Sentry (the reachable, tested Sentry path).
+import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -27,7 +28,36 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }
 vi.mock('../../lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({ selfUuid: undefined, self: undefined }),
 }));
-vi.mock('./GameComboInput', () => ({ default: () => <div data-testid="game-combo" /> }));
+// Phase 88.6-44: a FAITHFUL stand-in, not a bare div. It renders exactly what the real
+// `GameComboInput` forwards to its text input (`GameComboInput.js:215-235`: `id`, `name`,
+// `aria-label={placeholder}`, the external `inputRef`), so the composed audit below sees what
+// THIS FORM passes — which is what the house-rule finding on this surface was about. The real
+// combobox's own ARIA is pinned by `Combobox.test.tsx`'s axe audit; mounting it here would add
+// floating-ui + a search debounce to every test in this file for no additional signal.
+vi.mock('./GameComboInput', () => ({
+  default: ({
+    id,
+    name,
+    placeholder,
+    inputRef,
+  }: {
+    id?: string;
+    name?: string;
+    placeholder?: string;
+    inputRef?: { current: HTMLInputElement | null };
+  }) => (
+    <input
+      type="text"
+      id={id}
+      name={name}
+      aria-label={placeholder || 'Search for a game or type a name'}
+      ref={(node) => {
+        if (inputRef) inputRef.current = node;
+      }}
+      data-testid="game-combo"
+    />
+  ),
+}));
 // Render the received selection so tests can observe what the form actually
 // holds (IN-04 late-roster re-seed) without reaching into form internals.
 vi.mock('./MemberSelector', () => ({
@@ -46,6 +76,7 @@ import { logger } from '@/lib/logger';
 const ScheduleForm = ScheduleFormDefault as unknown as ComponentType<{
   groupId?: string;
   members?: Array<{ id: string; username?: string }>;
+  onCancel?: () => void;
 }>;
 
 afterEach(cleanup);
@@ -124,5 +155,82 @@ describe('ScheduleForm create-mode late-roster re-seed (IN-04)', () => {
     expect(screen.getByTestId('member-selector')).toHaveTextContent(
       ROSTER.map((m) => m.id).join(',')
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-44 (R7 / AC-7, UI-SPEC §7.5) — the composed axe audit, after this surface's LAST
+// migration commit (plan 88.6-32's `e9ac345`; `git log -1 -- ScheduleForm.js` re-checked at
+// execution). THIS SURFACE HAS NO `matchMedia` FORK: neither `ScheduleForm.js` nor anything it
+// renders (`Modal`, `FormField`, `Input`, `SelectControl`, `Button`) calls `matchMedia` — the only
+// non-test callers in `src/` are `EventScheduler.tsx`, `createEvent.js` and `gameDetail/page.js`
+// (measured 2026-09-22). One tree, one run per rule set, no resize.
+//
+// The house rule is asserted HERE because `formLabels.audit.test.tsx` never covered this form —
+// its roster is fixed (`GroupGamesList`, `GroupLibrary`, `BrowseMoreModal`, `StartPollModal`,
+// `MemberSelector`, `ParticipantRow`) and axe's `label` rule cannot stand in for id/name.
+// `MemberSelector` is stubbed in this file (its own real checkboxes are in that roster).
+// ---------------------------------------------------------------------------
+import { axe } from 'vitest-axe';
+import { auditFormControls } from '../../test-utils/formControlAudit';
+
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+/** A real trigger + the consumer's mount shape (`PromptScheduleManager` mounts the form on demand). */
+function AuditHost() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        + New Schedule
+      </button>
+      {open && <ScheduleForm groupId="g1" onCancel={() => setOpen(false)} />}
+    </>
+  );
+}
+
+describe('ScheduleForm — R7 composed axe audit + house rule + focus contract (88.6-44)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('1. the dialog passes WCAG 4.1.2 and heading-order (one composed run each; no media-query fork)', async () => {
+    render(<ScheduleForm groupId="g1" />);
+    // Settle on a branch-specific control, not the header.
+    await screen.findByRole('combobox', { name: 'Day of Week' });
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('2. every form control carries id + name + a label source (house rule Input.tsx:11-19)', async () => {
+    render(<ScheduleForm groupId="g1" />);
+    await screen.findByRole('combobox', { name: 'Day of Week' });
+    const dialog = screen.getByRole('dialog');
+    auditFormControls(dialog);
+    // The finding this surface HAD (pre-fix: no id, no name, an orphan "Game" label): the game
+    // input is now wired exactly like createEvent's, and the visible label points at it.
+    const game = screen.getByTestId('game-combo');
+    expect(game).toHaveAttribute('id', 'schedule-game-name');
+    expect(game).toHaveAttribute('name', 'schedule-game-name');
+    expect(dialog.querySelector('label[for="schedule-game-name"]')).toHaveTextContent('Game');
+  });
+
+  it('3. focus: on OPEN the passed initialFocusRef target (Day of Week) holds focus; on CLOSE the NAMED trigger does', async () => {
+    const user = userEvent.setup();
+    render(<AuditHost />);
+    const trigger = screen.getByRole('button', { name: '+ New Schedule' });
+    trigger.focus();
+    await user.click(trigger);
+    const dialog = await screen.findByRole('dialog');
+    const dayOfWeek = screen.getByRole('combobox', { name: 'Day of Week' });
+    // `ScheduleForm.js` passes `initialFocusRef={dayOfWeekRef}` — the NAMED target, not merely
+    // "somewhere inside".
+    await waitFor(() => expect(document.activeElement).toBe(dayOfWeek));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // NAMED identity, never "not body": a bare open-from-mount render lands on <body> correctly.
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });

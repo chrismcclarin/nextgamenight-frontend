@@ -84,7 +84,34 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // and NOT EventHeatmapBackground's parent wiring. EventHeatmapBackground itself is manual
 // mode's surface, not the scheduler's, so it stays mocked.
 vi.mock('@/app/components/EventHeatmapBackground', () => ({ default: () => null }));
-vi.mock('@/app/components/GameComboInput', () => ({ default: () => <div>game input</div> }));
+// Phase 88.6-44: a FAITHFUL stand-in, not a bare div — it renders what the real component
+// forwards to its text input (`GameComboInput.js:215-235`: `id`, `name`, `aria-label` from the
+// placeholder, the external `inputRef`), so the composed audit at the end of this file sees what
+// createEvent PASSES. The real combobox's ARIA is pinned by `Combobox.test.tsx`; the reasons it
+// stays stubbed here (floating-ui, debounce, ~25 render-count tests) are unchanged.
+vi.mock('@/app/components/GameComboInput', () => ({
+  default: ({
+    id,
+    name,
+    placeholder,
+    inputRef,
+  }: {
+    id?: string;
+    name?: string;
+    placeholder?: string;
+    inputRef?: { current: HTMLInputElement | null };
+  }) => (
+    <input
+      type="text"
+      id={id}
+      name={name}
+      aria-label={placeholder || 'Search for a game or type a name'}
+      ref={(node) => {
+        if (inputRef) inputRef.current = node;
+      }}
+    />
+  ),
+}));
 /* PLAN 88.6-39 (W52 / D-18) — RENDER COUNTERS, not null stubs.
    These two are the height sources above the grid. Both now read the paint-gesture flag through
    the REAL `usePaintGestureHold`, so this suite exercises the shipped subscription mechanism in
@@ -399,6 +426,35 @@ describe('CreateEvent + real EventScheduler — the Phase 66-01 controlled round
   });
 });
 
+// DELIBERATE COPY, not an accident: `stubMatchMedia` duplicates the shape at
+// `EventScheduler.test.tsx:490-513`. That helper is file-local and NOT exported; exporting it
+// from a `.test.tsx` to import here would make one suite's harness load-bearing for another's.
+// If the media-query fork ever changes, both copies change. (Hoisted to file scope by 88.6-44:
+// the CR-01 describe below and the composed audit at the end of the file share this ONE copy.)
+function stubMatchMedia() {
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => {
+    const widthMatch = /max-width:\s*(\d+)px/.exec(query);
+    // Phone arm: 375px, coarse pointer.
+    const matches = widthMatch
+      ? 375 <= Number(widthMatch[1])
+      : query.includes('hover: none');
+    return {
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    } as unknown as MediaQueryList;
+  }) as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
+
 describe('CreateEvent + real EventScheduler — the displayed day survives the heatmap fetch (CR-01)', () => {
   // CR-01 (88.1-REVIEW.md). `createEvent.js` re-emits the FETCHED WEEK'S MONDAY as a fresh `Date`
   // after every group-heatmap fetch (`:359` setHeatmapWeekStart(effectiveMonday) -> `:840`
@@ -407,34 +463,8 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
   // day to Monday on every non-Monday. Only this harness can catch it: the churn originates in the
   // PARENT's memo, so a component-level rerender pin cannot reproduce the source.
   //
-  // DELIBERATE COPY, not an accident: `stubMatchMedia` below duplicates the shape at
-  // `EventScheduler.test.tsx:490-513`. That helper is file-local and NOT exported; exporting it
-  // from a `.test.tsx` to import here would make one suite's harness load-bearing for another's.
-  // If the media-query fork ever changes, both copies change.
-  function stubMatchMedia() {
-    const original = window.matchMedia;
-    window.matchMedia = ((query: string) => {
-      const widthMatch = /max-width:\s*(\d+)px/.exec(query);
-      // Phone arm: 375px, coarse pointer.
-      const matches = widthMatch
-        ? 375 <= Number(widthMatch[1])
-        : query.includes('hover: none');
-      return {
-        matches,
-        media: query,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-      } as unknown as MediaQueryList;
-    }) as typeof window.matchMedia;
-    return () => {
-      window.matchMedia = original;
-    };
-  }
-
+  // `stubMatchMedia` is the file-scope helper above (hoisted by 88.6-44 so the composed audit at
+  // the end of this file audits the same phone fork without a third copy).
   let restoreMatchMedia: (() => void) | null = null;
 
   afterEach(() => {
@@ -671,5 +701,132 @@ describe('createEvent — the paint-gesture flag is WRITTEN here and subscribed 
     // subscribers — the count is unchanged across the whole cycle.
     expect(renderCounts.quick).toBe(before.quick);
     expect(renderCounts.banner).toBe(before.banner);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-44 (R7 / AC-7, UI-SPEC §7.5) — the composed axe audit, run AFTER this surface's
+// LAST migration commit. Ordering confirmed at execution: `git log -1 -- createEvent.js` is
+// `23db998` (plan 88.6-39's W52 gesture work), an ancestor of HEAD; plan 88.6-40's `0bf8f40`
+// touched only `groundInk.test.ts`. So the tree audited here is the final migrated one.
+//
+// TWO media-query forks exist on this audited tree and BOTH are audited by stub, not by
+// resize: `createEvent.js:65` reads `matchMedia('(hover: none)')` (swipe gating), and the real
+// `EventScheduler` forks its layout on `max-width` (the DAY arm below `md`). The desktop arm is
+// the setup-file stub (`matches: false` for every query); the phone arm is `stubMatchMedia`
+// above (375px + coarse pointer). jsdom has no layout and neither rule is viewport-dependent,
+// so a resize would measure nothing.
+//
+// The house rule is asserted HERE because `formLabels.audit.test.tsx`'s fixed roster never
+// included createEvent — its own docblock (`:10-12`) names this suite as the backstop.
+// `GameComboInput` is the faithful stand-in declared at the top of this file; `MemberSelector`
+// is REAL here (its checkboxes are audited in the composed tree).
+// ---------------------------------------------------------------------------
+import userEvent from '@testing-library/user-event';
+import { axe } from 'vitest-axe';
+import { auditFormControls } from '../../test-utils/formControlAudit';
+
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+/** A real trigger + the consumer's shape: `modaltoggle` flips `modal`, and the form returns null. */
+function AuditHost() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        Plan Game Session
+      </button>
+      <CreateEvent
+        group_id={GROUP_ID}
+        modal={open}
+        modaltoggle={() => setOpen(false)}
+        onEventCreated={vi.fn()}
+        user={{ sub: 'auth0|self' }}
+        userRole="owner"
+      />
+    </>
+  );
+}
+
+describe('createEvent — R7 composed axe audit + house rule + focus contract (88.6-44)', () => {
+  let restoreMatchMedia: (() => void) | null = null;
+  afterEach(() => {
+    restoreMatchMedia?.();
+    restoreMatchMedia = null;
+  });
+
+  /** Render, settle on the members (a branch-specific signal), audit both rules + the house rule. */
+  async function auditThisFork() {
+    await renderModal();
+    await waitFor(() => expect(api.getGroupHeatmap).toHaveBeenCalledTimes(1));
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+    auditFormControls(dialog);
+    return dialog;
+  }
+
+  it('1. DESKTOP fork (setup stub: hover available, week grid) passes WCAG 4.1.2, heading-order and the house rule', async () => {
+    await auditThisFork();
+  });
+
+  it('2. PHONE fork (375px + hover:none — createEvent.js:65 and the EventScheduler DAY arm) passes the same three', async () => {
+    restoreMatchMedia = stubMatchMedia();
+    await auditThisFork();
+  });
+
+  it('3. MANUAL-ENTRY branch: passes both rules and the house rule; the four hand-wired controls carry `name`', async () => {
+    const user = userEvent.setup();
+    const dialog = await auditThisFork();
+    // The manual date/duration inputs are a BRANCH of this surface (the default is the visual
+    // scheduler, which the two fork audits above cover). Switch, then audit the manual tree —
+    // an audit of one branch is an audit of one branch.
+    await user.click(screen.getByRole('button', { name: 'Switch to Manual Entry' }));
+    const startDate = await screen.findByLabelText(/start date & time/i);
+    // The RSVP deadline control mounts only once a FUTURE start is set (`createEvent.js`:
+    // `newEvent.start_date && new Date(newEvent.start_date) > new Date()`), so set one and
+    // audit the fullest manual tree.
+    fireEvent.change(startDate, { target: { value: '2099-01-01T19:00' } });
+    await screen.findByLabelText(/rsvp deadline/i);
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+    auditFormControls(dialog);
+    // Pre-fix measurement (2026-09-22): these four rendered with an `id` and NO `name` — four
+    // "missing name attribute" failures from `auditFormControls` on this branch.
+    for (const id of ['start_date', 'duration_minutes', 'rsvp_deadline', 'comments']) {
+      const control = dialog.querySelector(`#${id}`);
+      expect(control, id).not.toBeNull();
+      expect(control).toHaveAttribute('name', id);
+    }
+    const game = dialog.querySelector('#event-game-name');
+    expect(game).toHaveAttribute('name', 'event-game-name');
+    expect(dialog.querySelector('label[for="event-game-name"]')).toHaveTextContent('Game');
+  });
+
+  it('4. focus: on OPEN the header Close control (the recorded fallback while members load); on CLOSE the NAMED trigger', async () => {
+    const user = userEvent.setup();
+    render(<AuditHost />);
+    const trigger = screen.getByRole('button', { name: 'Plan Game Session' });
+    trigger.focus();
+    await user.click(trigger);
+    const dialog = await screen.findByRole('dialog');
+    // DERIVED BEFORE WRITING, from the site itself: `createEvent.js` passes
+    // `initialFocusRef={gameInputRef}`, but its own marker (the 88-33 Task 4 paragraph above
+    // the `return`) records that while the members fetch is pending the game input is NOT
+    // mounted, `applyInitialFocus` declines, and Radix's default stands — the header Close
+    // control. That is the target on a cold open, NAMED. Initial focus is applied once, on
+    // open, so it does not move when the input mounts a tick later (recorded, accepted:
+    // 88.6-44-SUMMARY.md).
+    const close = screen.getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await screen.findByText('Alice');
+    expect(document.activeElement).toBe(close);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // NAMED identity, never "not body".
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });
