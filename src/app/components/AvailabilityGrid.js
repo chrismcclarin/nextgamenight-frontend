@@ -806,10 +806,22 @@ export default function AvailabilityGrid({
                  w-11 h-11 there would paint a 44px checkbox — a look change this phase has no
                  ruling for. The 44 rung was taken because the 375px measurement says the row
                  still fits: min-w-11 is 44px inside a 76px column, so the column arithmetic is
-                 untouched and only the row's HEIGHT grows. Shrinking either class is a decision. */
-              <div
+                 untouched and only the row's HEIGHT grows. Shrinking either class is a decision.
+
+                 AMENDED Phase 88.6-57 (CR-102, 88.6-REVIEW.md, 2026-09-28): the wrapper that
+                 shipped was a <div>, and a div's padding forwards NO activation to the input
+                 inside it — so the 44x44 floor above was 44px of nothing and the real target
+                 stayed the 16px glyph. It is a <label> now, which forwards activation, exactly
+                 like the "All" control beside it. What still stands: the floor is on the WRAPPER,
+                 the glyph is unchanged, the 76px column arithmetic is unchanged, and the NAME
+                 stays on the input's aria-label (the label element carries no text). cursor-pointer
+                 is added to match the "All" label's affordance; like that label it is
+                 unconditional, so a disabled grid shows a pointer over both labels alike — a
+                 consistent, accepted cost (the input keeps disabled:cursor-not-allowed), not a
+                 per-label fix. Going back to a <div> is a regression, not a cleanup. */
+              <label
                 key={`cb-${day.toISOString()}`}
-                className="w-[76px] sm:w-28 shrink-0 flex items-center justify-center py-1 min-h-11 min-w-11"
+                className="w-[76px] sm:w-28 shrink-0 flex items-center justify-center py-1 min-h-11 min-w-11 cursor-pointer"
               >
                 <input
                   type="checkbox"
@@ -819,7 +831,7 @@ export default function AvailabilityGrid({
                   disabled={disabled}
                   className="w-4 h-4 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
                 />
-              </div>
+              </label>
             ))}
           </div>
 

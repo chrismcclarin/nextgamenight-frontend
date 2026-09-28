@@ -216,6 +216,35 @@ describe('AvailabilityGrid — the seven per-day checkboxes announce their day, 
     expect(allBox.className).toContain('w-3.5');
     expect(screen.getByRole('checkbox', { name: 'All' })).toBe(allBox);
   });
+
+  // Phase 88.6-57 (CR-102, 88.6-REVIEW.md): the test above pins WHICH ELEMENT carries the
+  // floor classes, which cannot tell a <label> wrapper from a <div> one — and a <div>'s padding
+  // forwards NO activation to the input inside it, so the shipped 44px wrapper toggled nothing
+  // and the real target stayed the 16px glyph. These two assertions pin the MECHANISM itself:
+  // the wrapper is a LABEL (exactly like the "All" control), and a click on the wrapper — not
+  // on the input — reaches that day's handler.
+  it('makes each day WRAPPER a <label>, so a click on the 44px area toggles that day (CR-102)', () => {
+    const onChange = vi.fn();
+    render(
+      <Grid
+        value={[]}
+        onChange={onChange}
+        numDays={7}
+        weekStartDate={WEEK_START}
+        timezone={PROFILE_TZ}
+      />
+    );
+
+    const [, ...dayBoxes] = screen.getAllByRole('checkbox');
+    expect(dayBoxes).toHaveLength(7);
+    for (const box of dayBoxes) {
+      expect(box.parentElement!.tagName).toBe('LABEL');
+    }
+    dayBoxes.forEach((box, i) => {
+      fireEvent.click(box.parentElement!);
+      expect(onChange, `day ${i}: a wrapper click must reach the checkbox`).toHaveBeenCalledTimes(i + 1);
+    });
+  });
 });
 describe('AvailabilityGrid — mirror day checkboxes + bulk fill/clear (SPEC R9, owner ruling 2026-08-02)', () => {
   it('tapping an unchecked day checkbox fills every empty slot in that column only', () => {
