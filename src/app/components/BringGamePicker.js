@@ -196,6 +196,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
   };
 
   const handleSave = async () => {
+    // Phase 88.6-57 (CR-101): refuse unless the selection came from a SUCCESSFUL load. The PUT
+    // is a FULL REPLACE, and until the load lands `selectedGameIds` is the initial empty Set
+    // (or a stale one from a previous open) — saving it wipes the person's brings. The refusal
+    // lives HERE so it holds whatever the control's disabled idiom becomes.
+    if (loading || loadError) return;
     const generation = dismissGenerationRef.current;
     // Cleared at the START so a second identical failure is a real change (the
     // `NextGameNightCard` / `RsvpSection` clear-then-set idiom, UI-SPEC §6.3).
@@ -455,11 +460,19 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
         {/* 88.6-33 (§3.2/§3.3): `<Button variant="primary" size="default">`. `text-sm` was DEAD
             under unlayered `.btn`'s `font-size` (globals.css:2201) and is deleted rather than
             moved onto the className. The control KEEPS its NATIVE `disabled={saving}` — the
-            plans 17-24 `aria-disabled` conversion is not this plan's work. */}
+            plans 17-24 `aria-disabled` conversion is not this plan's work.
+            AMENDED Phase 88.6-57 (CR-101, 88.6-REVIEW.md, 2026-09-28): still NATIVE `disabled`.
+            R123 (plan 88.6-49 task 2) rules the in-flight idiom for `FetchErrorBanner` and
+            `ConfirmDialog` ONLY — this Save is NOT in its scope, and whether it later follows
+            whatever idiom that ruling sets is a separate call, not pre-empted here. What changed:
+            Save is now ALSO refused while `loading` and after `loadError` (here and in
+            `handleSave`'s first line), because the PUT is a FULL REPLACE and the initial empty
+            Set would wipe the person's brings. Re-enabling it on those states is a decision, not
+            a cleanup. */}
         <Button
           variant="primary"
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || loading || !!loadError}
         >
           {saving ? 'Saving...' : 'Save'}
         </Button>

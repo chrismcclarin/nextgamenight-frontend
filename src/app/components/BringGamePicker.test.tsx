@@ -474,6 +474,35 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
       message: SENTINEL,
     });
   });
+
+  // Phase 88.6-57 (CR-101): `updateMyBrings` is a FULL REPLACE (`PUT .../my-brings`), and on a
+  // failed load `selectedGameIds` is still the initial empty Set — the reset only runs on
+  // success. A Save from the failure state (or before a slow load lands) wiped the person's
+  // brings. The refusal lives in the handler AND on the control.
+  it('13. after a REJECTED LOAD, Save is disabled and a click sends no PUT (CR-101)', async () => {
+    const user = userEvent.setup();
+    api.getOwnedGames.mockRejectedValue(new Error(SENTINEL));
+    render(<Host initiallyOpen />);
+    await waitFor(() => expect(assertiveRegion()).toHaveTextContent(RATIFIED_UNKNOWN_COPY));
+
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(api.updateMyBrings).not.toHaveBeenCalled();
+  });
+
+  it('14. while the load is IN FLIGHT, Save is disabled and a click sends no PUT (CR-101)', async () => {
+    const user = userEvent.setup();
+    api.getOwnedGames.mockImplementation(() => new Promise(() => {}));
+    render(<Host initiallyOpen />);
+    // Positive settle signal: the loading branch has been announced.
+    await waitFor(() => expect(politeRegion()).toHaveTextContent(LOADING_COPY));
+
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(api.updateMyBrings).not.toHaveBeenCalled();
+  });
 });
 
 describe('BringGamePicker — the focus contract axe cannot see (T-88.6-141)', () => {
