@@ -575,6 +575,16 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    suggestions list, and `grep -c 'UserGame' periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js`
    returns 0 on the script CI actually runs, so the CI seed produces no suggestions, no "Browse more"
    trigger and no steppers. They also carry `.btn-compact`, which opts OUT of the floor by design.
+   CORRECTED 2026-09-28 (plan 88.6-54): the MEASUREMENT above measured the wrong script, so the
+   "no steppers in CI" half is downgraded to UNMEASURED. `e2e-fixtures.js` is not the only script
+   CI runs: ci.yml's "Backend — seed" step runs `npm run seed` first, which is
+   `node scripts/seed-sample-data.js` (backend package.json), and that script's "Game
+   collections" block seeds 4 `UserGame` rows (Alice x3, Bob x1) for Weekend Warriors members —
+   the group `e2e-fixtures.js` then reuses (`Group.findOne({ where: { name: 'Weekend
+   Warriors' } })`). So suggestions and the steppers behind "Browse more" CAN render in CI once a
+   spec sets playerCount >= 1; whether any spec does is unmeasured. The rejection still holds on
+   the independent reason the sentence above already gives: the steppers carry `.btn-compact`,
+   which opts OUT of the floor by design, so they could never prove a 44px floor.
    CONSIDERED AND REJECTED — "retire the arm" (the owner's SECOND arm, offered verbatim in the
    2026-09-21 ruling alongside the steppers). Retiring it would leave D-09's all-viewport floor with
    no 1280-width proof anywhere in the tree, which is the one thing this file is for. This plan

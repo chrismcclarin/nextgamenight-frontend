@@ -831,6 +831,22 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      would need a new backend fixture — a cross-repo change that also alters the Create Event
      surface four other green specs walk.
 
+     CORRECTED 2026-09-28 (plan 88.6-54): the premise above is false twice over, so
+     "UNREACHABLE in CI" is downgraded to UNMEASURED. (1) `seed-sample-data.js` is a BACKEND
+     script (periodictabletopbackend_v2/Sonnet/scripts/), and it DOES seed collections: its
+     "Game collections" block runs `UserGame.findOrCreate` for 4 rows (Alice x3, Bob x1), both
+     Weekend Warriors members. (2) CI RUNS it — ci.yml's "Backend — seed" step is
+     `npm run seed`, which is `node scripts/seed-sample-data.js` (backend package.json), and
+     `e2e-fixtures.js` then REUSES that group (`Group.findOne({ where: { name: 'Weekend
+     Warriors' } })`). The later "correction" that pointed at `e2e-fixtures.js` (0 `UserGame`)
+     was wrong the same way: it is not the only script CI runs. So suggestions, and the
+     steppers behind "Browse more", CAN render in CI once a spec sets playerCount >= 1;
+     whether any spec actually does is UNMEASURED — event-scheduler-touch.spec.ts's
+     quick-suggestions test self-skips on an empty suggestion list, and the CI reporter does
+     not name skipped tests. The planted probe still stands, on the independent reason in the
+     next paragraph: it measures the cascade fact (.btn-compact vs the unlayered phone floor)
+     directly, which a shipped stepper could not isolate.
+
      What the probe DOES claim, and it is the half nothing else can see: that in the EMITTED
      stylesheet at 375px, `.btn-compact` still beats the unlayered `.btn { min-height: 2.75rem }`
      phone floor. That is a pure cascade fact about authoring order (globals.css:1100-1108),
