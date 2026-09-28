@@ -12,12 +12,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { act, render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { withoutComments } from '../../test-utils/sourceScan';
+import { Combobox, type ComboboxItem } from '../../components/ui/Combobox';
 import { Modal, preventNonDismissableClose } from './Modal';
 
 afterEach(cleanup);
@@ -226,6 +227,77 @@ describe('Modal', () => {
     const { onClose } = renderModal();
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // Phase 88.6-57 (CR-502, 88.6-REVIEW.md): Radix's `useEscapeKeydown` listens on `document`
+  // in the CAPTURE phase, so it saw Escape before the Combobox's own handler and closed the
+  // WHOLE dialog — createEvent opens with focus in its game combobox, so "type a game, press
+  // Escape to dismiss the suggestions" threw the form away. The host now lets an EXPANDED
+  // combobox own that Escape. The Clear button is a SIBLING of the input inside the combobox
+  // root (`GameComboInput`'s trailing slot), which is why the guard is scoped to the root.
+  describe('an open Combobox owns Escape (CR-502)', () => {
+    const ITEMS: ComboboxItem[] = [
+      { key: 'catan', label: 'Catan', onSelect: () => {} },
+      { key: 'brass', label: 'Brass', onSelect: () => {} },
+    ];
+
+    function ComboInModal({ onClose }: { onClose: () => void }) {
+      const [value, setValue] = React.useState('cat');
+      const [open, setOpen] = React.useState(true);
+      return (
+        <Modal open onClose={onClose}>
+          <Modal.Header>Create event</Modal.Header>
+          <Modal.Body>
+            <Combobox
+              aria-label="Search for a game"
+              items={ITEMS}
+              value={value}
+              onValueChange={setValue}
+              open={open}
+              onOpenChange={setOpen}
+              trailing={<button type="button">Clear game selection</button>}
+            />
+          </Modal.Body>
+        </Modal>
+      );
+    }
+
+    it('Escape in the OPEN list closes the list and keeps the dialog; a second Escape closes the dialog', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(<ComboInModal onClose={onClose} />);
+      const input = screen.getByRole('combobox', { name: 'Search for a game' });
+      await user.click(input);
+      // Positive settle signal: the list is open before the key is pressed.
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      expect(input).toHaveAttribute('aria-expanded', 'true');
+
+      await user.keyboard('{Escape}');
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.queryByRole('listbox')).toBeNull();
+      expect(input).toHaveFocus();
+
+      // The list is closed now, so a plain Escape belongs to the dialog again.
+      await user.keyboard('{Escape}');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('Escape from a sibling control INSIDE the combobox root, list open, keeps the dialog', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(<ComboInModal onClose={onClose} />);
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      const clear = screen.getByRole('button', { name: 'Clear game selection' });
+      act(() => clear.focus());
+      expect(clear).toHaveFocus();
+      expect(screen.getByRole('combobox', { name: 'Search for a game' })).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      );
+
+      await user.keyboard('{Escape}');
+      expect(onClose).not.toHaveBeenCalled();
+    });
   });
 
   it('still closes on Escape when dismissable=false (keyboard is never trapped)', async () => {

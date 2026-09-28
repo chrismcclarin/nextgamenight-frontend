@@ -59,6 +59,25 @@ export function preventNonDismissableClose(
 }
 
 /**
+ * Escape guard for an EXPANDED combobox (Phase 88.6-57, CR-502). Radix's `useEscapeKeydown`
+ * listens on `document` in the CAPTURE phase, so it sees Escape BEFORE the Combobox's own
+ * React `onKeyDown` — which therefore cannot stop the dialog from closing. When the keydown
+ * originates inside a combobox ROOT (`data-combobox-root`, `Combobox.tsx`) whose input is
+ * expanded, cancel it here: Radix checks `defaultPrevented` and skips the dismiss, and the
+ * Combobox's own handler (and floating-ui's dismiss) still close the LIST.
+ *
+ * Scoped to the ROOT, not the input: `role="combobox"` sits on the INPUT, and a trailing
+ * control such as `GameComboInput`'s Clear button is a SIBLING inside the same root, so a
+ * guard keyed on the input alone lets Escape from that button close the whole Modal while the
+ * list is open.
+ */
+function preventComboboxEscape(event: Pick<KeyboardEvent, 'target' | 'preventDefault'>): void {
+  const target = event.target;
+  const root = target instanceof Element ? target.closest('[data-combobox-root]') : null;
+  if (root?.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
+}
+
+/**
  * Initial-focus override (88-05, UI-SPEC §8.7). Radix's default auto-focus takes
  * the first focusable node in the content — which here is the header's close
  * `×`. A destructive confirmation must open with CANCEL focused, so consumers
@@ -137,6 +156,15 @@ function ModalRoot({
   // Defeat outside-click dismissal when locked. onPointerDownOutside +
   // onInteractOutside cover the overlay/focus-outside paths; Esc is handled by
   // Radix's onEscapeKeyDown, which we intentionally leave enabled.
+  //
+  // DECISION Phase 88.6-57 (CR-502, 88.6-REVIEW.md, 2026-09-28): Escape STAYS enabled for
+  // the dialog (the `dismissable` contract is unchanged — keyboard is never trapped). The ONE
+  // exception is a keydown that originates inside an EXPANDED combobox: that Escape belongs
+  // to the combobox (close the suggestions), not the dialog (discard the form) — see
+  // `preventComboboxEscape`. Chosen OVER handling it in `Combobox.tsx` (REJECTED: Radix
+  // listens on `document` in the capture phase, so the child's React handler runs too late
+  // to stop the dialog — the host is the only place that sees the event first). Removing
+  // the guard re-opens createEvent's form loss; it is a decision, not a cleanup.
   const preventOutsideDismiss = React.useCallback(
     (event: Event) => preventNonDismissableClose(dismissable, event),
     [dismissable]
@@ -209,6 +237,7 @@ function ModalRoot({
         aria-describedby={undefined}
         onPointerDownOutside={preventOutsideDismiss}
         onInteractOutside={preventOutsideDismiss}
+        onEscapeKeyDown={preventComboboxEscape}
         className={cn(
           // Reset shadcn Dialog defaults (grid/gap-4/p-6/bg-background/max-w-lg)
           // to the `.modal-content` chrome: card surface, 12px radius, 90dvh cap,

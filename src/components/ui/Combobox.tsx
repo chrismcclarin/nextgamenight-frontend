@@ -330,8 +330,11 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
           ? emptyLabel
           : countLabel(items.length);
 
+    // `data-combobox-root` (Phase 88.6-57, CR-502): the hook the hosting `Modal` uses to let
+    // an EXPANDED combobox own Escape — including from a trailing sibling control like
+    // `GameComboInput`'s Clear button. An attribute only; no behaviour here depends on it.
     return (
-      <div className={cn('relative', className)}>
+      <div className={cn('relative', className)} data-combobox-root="">
         {/* DECISION Phase 88.6-37 (W38): ONE always-mounted sr-only `StatusRegion`, a direct
             child of this wrapper and OUTSIDE `{open && (` below — the two-node shape, chosen
             over two alternatives that both look simpler and are both wrong.
