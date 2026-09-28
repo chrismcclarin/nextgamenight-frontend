@@ -170,6 +170,27 @@ describe('Heading — empty children render nothing (SPEC AC-3)', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  // Phase 88.6-57 (WR-506): the idioms React actually produces for "no title". `{cond && title}`
+  // passes `false` when `cond` is false, and a filtered map passes `[]` (or an array of
+  // empties). All of these rendered an EMPTY <h2> before — an outline entry with no name.
+  it.each([
+    ['false', false],
+    ['true', true],
+    ['an empty array', []],
+    ['an all-empty array', [false, null]],
+  ])('renders NO element for %s children (WR-506)', (_label, children) => {
+    const { container } = render(<Heading level={2}>{children as React.ReactNode}</Heading>);
+    expect(container.querySelector('h2')).toBeNull();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('renders for an array with ONE real child among empties (WR-506)', () => {
+    const { container } = render(<Heading level={2}>{[false, 'Title']}</Heading>);
+    const el = container.querySelector('h2');
+    expect(el).not.toBeNull();
+    expect(el?.textContent).toBe('Title');
+  });
+
   // The falsy-vs-empty edge. An implementation that guards with
   // `if (!children) return null` swallows a numeric zero, which is CONTENT.
   // The guard is an explicit test against undefined / null / '' only.

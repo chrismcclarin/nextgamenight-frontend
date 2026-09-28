@@ -136,6 +136,22 @@ export interface HeadingProps
   level: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
+/**
+ * SPEC AC-3's "empty children renders nothing", for the idioms React actually produces
+ * (Phase 88.6-57, WR-506): `undefined`, `null`, `''`, a boolean (what `{cond && title}` passes
+ * when `cond` is false), or an array whose every entry is itself empty (a filtered map).
+ * `0` is CONTENT and is deliberately not matched.
+ */
+function isEmptyChildren(c: React.ReactNode): boolean {
+  return (
+    c === undefined ||
+    c === null ||
+    c === '' ||
+    typeof c === 'boolean' ||
+    (Array.isArray(c) && c.every(isEmptyChildren))
+  );
+}
+
 const Heading = React.forwardRef<HTMLHeadingElement, HeadingProps>((allProps, ref) => {
   /* T-88.6-05, both halves. `HeadingProps` Omits `dangerouslySetInnerHTML` out of the extended
      `HTMLAttributes` (the TYPE half, copying the narrowing idiom at `EmptyState.tsx:47` and
@@ -159,7 +175,11 @@ const Heading = React.forwardRef<HTMLHeadingElement, HeadingProps>((allProps, re
 
   // AC-3. Explicitly `undefined` / `null` / `''` and nothing else — a `!children`
   // guard would swallow `children={0}`, which is CONTENT, not emptiness.
-  if (children === undefined || children === null || children === '') return null;
+  // AMENDED Phase 88.6-57 (WR-506, 88.6-REVIEW.md, 2026-09-28): booleans and all-empty arrays
+  // are emptiness too — `{cond && title}` passes `false` when `cond` is false, and a filtered
+  // map passes `[]` — so the guard is `isEmptyChildren` (above). `0` STAYS content; a `!children`
+  // guard is still the rejected shape.
+  if (isEmptyChildren(children)) return null;
 
   const Tag = LEVEL_TAGS[String(level)] ?? FALLBACK_TAG;
   const resolvedSize = size ?? SIZE_FOR_TAG[Tag];
