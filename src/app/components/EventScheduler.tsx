@@ -216,6 +216,18 @@ function formatSlotRange(start: Date, end: Date): string {
   return `${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')}`;
 }
 
+/**
+ * Plan 88.6-52: the nav-row header label, and the ONLY producer of it — the header and the
+ * navigation announcement both read this, so the spoken and printed text cannot drift. Byte-identical
+ * to what the header computed from `columnDates` before (day arm `[startOfDay(date)]`; week arm the
+ * Monday-first week containing `date`).
+ */
+function formatViewLabel(date: Date, view: 'week' | 'day'): string {
+  if (view === 'day') return format(startOfDay(date), 'EEEE, MMMM d, yyyy');
+  const monday = startOfWeek(date, { weekStartsOn: 1 });
+  return `${format(monday, 'MMM d')} - ${format(addDays(monday, 6), 'MMM d, yyyy')}`;
+}
+
 const NAV_BUTTON_CLASS =
   'inline-flex min-h-11 items-center justify-center rounded-btn border border-line px-3 ' +
   'text-sm text-content-secondary hover:text-content-primary hover:bg-surface-hover ' +
@@ -563,21 +575,32 @@ export default function EventScheduler({
   // then re-renders on the week containing it, which is how you cross a week boundary there. Both
   // arms still bubble through `onWeekChange`, so the parent's same-week skip does the de-duping.
   const stepDays = effectiveView === 'day' ? 1 : 7;
-  const goBack = useCallback(
-    () => navigateTo(addDays(currentDate, -stepDays)),
-    [navigateTo, currentDate, stepDays]
-  );
-  const goNext = useCallback(
-    () => navigateTo(addDays(currentDate, stepDays)),
-    [navigateTo, currentDate, stepDays]
-  );
+  const goBack = useCallback(() => {
+    const target = addDays(currentDate, -stepDays);
+    navigateTo(target);
+    announce(formatViewLabel(target, effectiveView));
+  }, [navigateTo, announce, currentDate, stepDays, effectiveView]);
+  const goNext = useCallback(() => {
+    const target = addDays(currentDate, stepDays);
+    navigateTo(target);
+    announce(formatViewLabel(target, effectiveView));
+  }, [navigateTo, announce, currentDate, stepDays, effectiveView]);
   /* DECISION Phase 88.1-09 (owner ruling 2026-08-22): the Today control is CARRIED, chosen OVER
      dropping it as chrome the rebuild does not need. The outgoing toolbar rendered one for free
      (no toolbar override existed, so it was in shipped UI), and the rebuild's promise is parity
      of NAV AFFORDANCES, not just of the grid. It routes through `navigateTo` exactly like Next
      and Back, so the parent sees an ordinary navigation and `resolveWeekNav` skips it when today
      is already inside the displayed week. Removing it is a decision, not a cleanup. */
-  const goToday = useCallback(() => navigateTo(new Date()), [navigateTo]);
+  // Plan 88.6-52: Today announces ONLY when the label actually changes — Today on the week (or day)
+  // already shown is a no-op and must not speak a "change" (gap-lap ML-30). The shown label is
+  // computed INLINE here: the render-scope `viewLabel` is declared far below, and reading it from
+  // this callback is a temporal-dead-zone error, not a shortcut.
+  const goToday = useCallback(() => {
+    const target = new Date();
+    navigateTo(target);
+    const label = formatViewLabel(target, effectiveView);
+    if (label !== formatViewLabel(currentDate, effectiveView)) announce(label);
+  }, [navigateTo, announce, currentDate, effectiveView]);
 
   // A strip tap is NAVIGATION at day granularity, so it routes through `navigateTo` rather than
   // becoming a third writer of `currentDate` (the two-writer rule at the top of this component is
@@ -586,9 +609,13 @@ export default function EventScheduler({
   const handleStripSelect = useCallback(
     (index: number) => {
       const day = weekDates[index];
-      if (day) navigateTo(day);
+      if (day) {
+        navigateTo(day);
+        // Plan 88.6-52: CLEARED, not announced — see the DECISION marker at the live region.
+        announce('');
+      }
     },
-    [weekDates, navigateTo]
+    [weekDates, navigateTo, announce]
   );
 
   // ---------------------------------------------------------------------------
@@ -1152,10 +1179,7 @@ export default function EventScheduler({
     />
   ) : null;
 
-  const viewLabel =
-    effectiveView === 'day'
-      ? format(columnDates[0], 'EEEE, MMMM d, yyyy')
-      : `${format(columnDates[0], 'MMM d')} - ${format(columnDates[columnDates.length - 1], 'MMM d, yyyy')}`;
+  const viewLabel = formatViewLabel(currentDate, effectiveView);
 
   // Namespaces the strip's per-cell ids so the day column's `aria-labelledby` resolves even if two
   // schedulers ever mount in one document.
@@ -1176,7 +1200,12 @@ export default function EventScheduler({
   const viewToggleButton = (value: 'week' | 'day', label: string) => (
     <button
       type="button"
-      onClick={() => setCurrentView(value)}
+      onClick={() => {
+        setCurrentView(value);
+        // Plan 88.6-52: pressing the ALREADY-pressed arm changes nothing, so it says nothing
+        // (gap-lap ML-2). The toggle never moves the date, so the label is `currentDate`'s.
+        if (value !== currentView) announce(formatViewLabel(currentDate, value));
+      }}
       aria-pressed={currentView === value}
       className={`${NAV_BUTTON_CLASS} ${
         currentView === value ? 'bg-surface-muted text-content-primary' : ''
@@ -1206,7 +1235,22 @@ export default function EventScheduler({
                 margin: a 375px layout change. FIRST, it moves nothing (`sr-only` is absolute).
           The text sits in a span KEYED on `seq`, so every utterance remounts the text node and an
           aria-atomic region announces even an utterance identical to the last one (gap-lap ML-1).
-          A mount is not an announcement: the region renders empty until the first commit. */}
+          A mount is not an announcement: the region renders empty until the first commit.
+
+          NAVIGATION HALF: Back / Next / Today and the desktop week/day toggle announce the NEW
+          header label (`formatViewLabel`, the header's own producer), because focus stays on a
+          control that did not change while the view did — nothing else would speak it. NOT
+          announced, deliberately:
+            - a phone STRIP selection — the focused tab's own name already speaks the day, so a
+              second announcement would double-speak. The region is CLEARED there (an empty
+              utterance is silent), so it can never hold a stale week label that contradicts the
+              header for someone reading linearly;
+            - the parent's `initialDate` re-anchor — a fetch anchor, not a user action; announcing
+              it would narrate network timing;
+            - a no-op: the already-pressed toggle, or Today on the week/day already shown.
+          ACCEPTED COST, chosen OVER clearing the region on blur: a browse-mode reader can hear the
+          CURRENT label twice (once from the region, once from the header) — the same words, never
+          a contradiction. */}
       <StatusRegion politeness="polite" className="sr-only">
         <span key={announcement.seq}>{announcement.text}</span>
       </StatusRegion>

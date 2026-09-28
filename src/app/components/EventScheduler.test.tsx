@@ -1798,4 +1798,106 @@ describe('EventScheduler — W46 live-region half: one polite, always-mounted St
     expect(second).not.toBe(first);
     expect(region().textContent).toBe(firstText);
   });
+  // --- Navigation half (task 2). The label is built here in the header's own shape. ---
+  const weekLabel = (d: Date) => {
+    const m = startOfWeek(d, { weekStartsOn: 1 });
+    return `${format(m, 'MMM d')} - ${format(addDays(m, 6), 'MMM d, yyyy')}`;
+  };
+  const dayLabel = (d: Date) => format(startOfDay(d), 'EEEE, MMMM d, yyyy');
+
+  it('announces Next in the WEEK arm with the header label — the SAME string, rendered twice', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+
+    fireEvent.click(button(/^next$/i));
+
+    const label = weekLabel(addDays(WEEK_N, 7));
+    expect(region().textContent).toBe(label);
+    // Once in the visible header, once in the region: one formatter, two consumers.
+    expect(screen.getAllByText(label)).toHaveLength(2);
+  });
+
+  it('announces Back in the WEEK arm', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(button(/^back$/i));
+    expect(region().textContent).toBe(weekLabel(addDays(WEEK_N, -7)));
+  });
+
+  it('announces Today from a navigated-away week', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(button(/^next$/i));
+    fireEvent.click(button(/^today$/i));
+    expect(region().textContent).toBe(weekLabel(new Date()));
+  });
+
+  it('announces Next and Back in the DAY arm with the day label', () => {
+    render(<EventScheduler initialDate={WEEK_N} defaultView="day" />);
+
+    fireEvent.click(button(/^next$/i));
+    expect(region().textContent).toBe(dayLabel(addDays(WEEK_N, 1)));
+
+    fireEvent.click(button(/^back$/i));
+    expect(region().textContent).toBe(dayLabel(WEEK_N));
+  });
+
+  it('announces the desktop week/day toggle: Week -> Day, then Day -> Week', () => {
+    const { restore } = renderAtViewport(DESKTOP, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      fireEvent.click(button(/^day$/i));
+      expect(region().textContent).toBe(dayLabel(WEEK_N));
+
+      fireEvent.click(button(/^week$/i));
+      expect(region().textContent).toBe(weekLabel(WEEK_N));
+    } finally {
+      restore();
+    }
+  });
+
+  it('does NOT announce a phone strip selection — it CLEARS the region instead of leaving a stale label', () => {
+    const { restore } = renderAtViewport(PHONE, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      fireEvent.click(button(/^next$/i));
+      expect(region().textContent).toBe(dayLabel(addDays(WEEK_N, 1)));
+
+      const friday = screen.getByRole('tab', { name: /friday 24/i });
+      fireEvent.click(friday);
+      // Positive control FIRST (gap-lap ML-3): the selection really moved, so the silence below
+      // is the region's choice, not a click that did nothing.
+      expect(screen.getByRole('tab', { name: /friday 24/i })).toHaveAttribute('aria-selected', 'true');
+      // The focused tab's own name already speaks the day; the region is emptied, never stale.
+      expect(region().textContent).toBe('');
+    } finally {
+      restore();
+    }
+  });
+
+  it('does NOT re-announce a press of the ALREADY-pressed toggle (a no-op, ML-2/ML-30)', () => {
+    const { restore } = renderAtViewport(DESKTOP, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      fireEvent.click(button(/^next$/i));
+      const beforeNode = region().firstElementChild;
+      const beforeText = region().textContent;
+
+      const week = button(/^week$/i);
+      expect(week).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.click(week);
+
+      expect(region().textContent).toBe(beforeText);
+      expect(region().firstElementChild).toBe(beforeNode);
+    } finally {
+      restore();
+    }
+  });
+
+  it('does NOT announce Today while today\'s week is already displayed (a no-op)', () => {
+    render(<EventScheduler initialDate={new Date()} />);
+    fireEvent.click(button(/^next$/i));
+    fireEvent.click(button(/^back$/i));
+    const beforeNode = region().firstElementChild;
+    const beforeText = region().textContent;
+
+    fireEvent.click(button(/^today$/i));
+
+    expect(region().textContent).toBe(beforeText);
+    expect(region().firstElementChild).toBe(beforeNode);
+  });
 });
