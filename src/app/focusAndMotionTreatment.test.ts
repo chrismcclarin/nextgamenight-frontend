@@ -65,6 +65,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
+import { assertExactCounts, assertRosterShape, type Exemption } from '../test-utils/exemption';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -236,15 +237,29 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
      surface's primary target on a phone, and removing a shipped visual state is a P6 breach.
 
      Growing this list is a decision, not a cleanup: a second entry means a second surface put a
-     press state on something a keyboard cannot reach, which is the defect this rule exists for. */
+     press state on something a keyboard cannot reach, which is the defect this rule exists for.
+
+     AMENDED Phase 88.6-57 (WR-409, 88.6-REVIEW.md, 2026-09-28): "Growing this list is a
+     decision" is now ENFORCED by a count, not asserted in prose. The entry was a FILE-LEVEL
+     skip — every unpaired `active:opacity-75` in `grouplist.js` was exempt, uncounted, so a
+     second press site on something a keyboard cannot reach would have hidden behind the card's.
+     It is now a D-19 roster row (`sites`, `why`, `owner`, `src/test-utils/exemption.ts`) and
+     test 2 compares the measured unpaired hits in each exempt file EXACTLY, both directions.
+     The counterpart window is read through `withoutComments`, so a comment quoting
+     `focus-visible:ring-2` near the anchor can no longer stand in for the real ring. */
   const PRESS_WITHOUT_OWN_FOCUS: Record<
     string,
-    { why: string; counterpartAnchor: string; window: number }
+    Exemption & { counterpartAnchor: string; window: number }
   > = {
     'app/components/grouplist.js': {
+      sites: 1,
       why:
         'the group CARD, pointer-only since 88.6-21 W42; its keyboard control is the ' +
         '`role="button"` title block inside it',
+      owner: {
+        kind: 'decision',
+        marker: 'DECISION Phase 88.6-21 (W42) — the PRESS_WITHOUT_OWN_FOCUS block in this file',
+      },
       // The title block's opening tag. Comments in this file quote `role="button"` in prose, so
       // the anchor is the CODE form — attribute plus the `tabIndex` that always follows it.
       counterpartAnchor: 'role="button"\n                        tabIndex={0}',
@@ -254,6 +269,9 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
 
   it('2. every `active:opacity-75` press site has a `focus-visible:` pairing on the same control', () => {
     const offenders: string[] = [];
+    // WR-409 (plan 88.6-57): unpaired hits in an EXEMPT file are TALLIED, not skipped, and the
+    // tally must equal the entry's `sites` exactly — see the AMENDED paragraph above.
+    const exemptUnpaired: Record<string, number> = {};
     let paired = 0;
     for (const file of files) {
       const src = fs.readFileSync(file, 'utf8');
@@ -264,16 +282,22 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
           paired += 1;
           continue;
         }
-        if (PRESS_WITHOUT_OWN_FOCUS[rel]) continue;
+        if (PRESS_WITHOUT_OWN_FOCUS[rel]) {
+          exemptUnpaired[rel] = (exemptUnpaired[rel] ?? 0) + 1;
+          continue;
+        }
         offenders.push(`${rel}:${line}`);
       }
     }
     expect(offenders).toEqual([]);
+    expect(assertRosterShape(PRESS_WITHOUT_OWN_FOCUS)).toEqual([]);
+    expect(assertExactCounts(PRESS_WITHOUT_OWN_FOCUS, exemptUnpaired)).toEqual([]);
     // The carve-out's teeth: the named COUNTERPART element must still ring. Anchored, not
     // file-level — see the DECISION block above for the measurement that rules the file-level
     // form out.
     for (const [rel, entry] of Object.entries(PRESS_WITHOUT_OWN_FOCUS)) {
-      const src = fs.readFileSync(path.join(SRC, rel), 'utf8');
+      // Comments BLANKED (length-preserving), so prose quoting the ring cannot satisfy it (WR-409).
+      const src = withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
       const at = src.indexOf(entry.counterpartAnchor);
       expect(
         at,
