@@ -17,6 +17,7 @@ import {
   usersAPI,
 } from './api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { logger } from '@/lib/logger';
 
 describe('ApiError — shape', () => {
   it('is both an Error and an ApiError, carrying code + status + details', () => {
@@ -113,6 +114,52 @@ describe('apiFetch — network-failure classification (WR-04)', () => {
     const abort = new DOMException('The user aborted a request.', 'AbortError');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
     await expect(apiFetch('/users/me')).rejects.toBe(abort);
+  });
+});
+
+// Phase 88.6-57 (CR-501): a third party's email travels `%40`-encoded in the query of
+// `friendshipsAPI.searchUserByEmail`, and the backend 404s every address that is not a user
+// yet — so the fetch-boundary breadcrumb fired on the invite-by-email flow's NORMAL path with
+// the address in it. Both sinks carry the PATH only; the query never leaves apiFetch.
+describe('apiFetch — the error sinks carry the path, never the query (CR-501)', () => {
+  const ENDPOINT = '/friendships/search?email=bob%40example.com';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('the catch breadcrumb message and ctx carry the path only on a 404', async () => {
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 404, text: async () => '{"message":"User not found"}' })
+    );
+    await expect(apiFetch(ENDPOINT)).rejects.toBeInstanceOf(ApiError);
+    const call = info.mock.calls.find(([msg]) => String(msg).startsWith('API Error ('));
+    expect(call, 'the fetch-boundary breadcrumb must fire').toBeDefined();
+    expect(call![0]).toBe('API Error (/friendships/search)');
+    expect((call![1] as Record<string, unknown>).endpoint).toBe('/friendships/search');
+    expect(JSON.stringify(info.mock.calls)).not.toContain('example.com');
+  });
+
+  it('the HTML-branch ApiError message carries the path and not the query', async () => {
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '<!DOCTYPE html><html><body>x</body></html>' })
+    );
+    let caught: unknown = null;
+    try {
+      await apiFetch(ENDPOINT);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ApiError);
+    const msg = (caught as ApiError).message;
+    expect(msg).toContain('/api/friendships/search');
+    expect(msg).not.toContain('?');
+    expect(msg).not.toContain('example.com');
   });
 });
 

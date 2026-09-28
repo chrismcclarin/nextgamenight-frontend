@@ -64,6 +64,21 @@ describe('scrubString / scrubUrl — the shipped value rules', () => {
     expect(scrubString(`token=${JWT}`)).not.toContain(JWT);
   });
 
+  // Phase 88.6-57 (CR-501): `encodeURIComponent` turns `@` into `%40`, and that is what every
+  // query-string producer in `api.ts` runs (`friendshipsAPI.searchUserByEmail`). The EMAIL
+  // rule is the beforeSend layer that must catch the address INDEPENDENTLY of any one call
+  // site, so it matches the encoded separator too.
+  it('scrubString redacts a %40-encoded email (CR-501)', () => {
+    const out = scrubString('mail me at bob%40example.com');
+    expect(out).not.toContain('bob%40example.com');
+    expect(out).toContain(R);
+  });
+
+  it('scrubString redacts a %40-encoded email inside a query-bearing endpoint (CR-501)', () => {
+    // The exact breadcrumb shape the review measured coming back unchanged from scrubEvent.
+    expect(scrubString('/friendships/search?email=bob%40example.com')).not.toContain('example.com');
+  });
+
   it('scrubUrl strips the query string entirely', () => {
     const out = scrubUrl(`https://x/rsvp/${RSVP_TOKEN}?magic_token=${JWT}`);
     expect(out).not.toContain(JWT);
@@ -164,6 +179,12 @@ describe('AC-1 — the over-redaction negatives', () => {
       'https://x/groups/f47ac10b-58cc-4372-a567-0e02b2c3d479'
     );
     expect(scrubString('/userProfile/settings')).toBe('/userProfile/settings');
+  });
+
+  it('a %40 with no local part or no dotted domain is NOT an email (CR-501 arm stays narrow)', () => {
+    // The `(?:@|%40)` arm added in plan 88.6-57 must not widen past an address shape.
+    expect(scrubString('a bare %40 alone')).toBe('a bare %40 alone');
+    expect(scrubString('/games?q=50%40off')).toBe('/games?q=50%40off');
   });
 
   it('`/invite/accept` is UNCHANGED — the negative control the deleted flat `invite/` entry reds', () => {

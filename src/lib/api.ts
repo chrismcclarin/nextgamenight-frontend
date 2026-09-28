@@ -498,8 +498,11 @@ export async function apiFetch<T = unknown>(
       // The third console line printed API_BASE_URL, the BACKEND origin this
       // request never dialled; it is DROPPED rather than converted.
       logger.info('API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.', { url });
+      // Phase 88.6-57 (CR-501): the MESSAGE carries the path only -- it becomes the Sentry
+      // exception value via queryCacheOnError, and a query can carry a third party's
+      // email. The `{ url }` ctx above is safe as-is: key `url` goes through scrubUrl.
       throw new ApiError(
-        `API configuration error: the same-origin BFF route handler (app/api/[...path]/route.ts) returned HTML instead of JSON for ${url}. Check the NEXT_PUBLIC_API_URL environment variable that route resolves its upstream from.`,
+        `API configuration error: the same-origin BFF route handler (app/api/[...path]/route.ts) returned HTML instead of JSON for ${url.split('?')[0]}. Check the NEXT_PUBLIC_API_URL environment variable that route resolves its upstream from.`,
         'config',
         response.status
       );
@@ -579,6 +582,16 @@ export async function apiFetch<T = unknown>(
     // (T-88.6-124, defence in depth complementing AC-1 beforeSend scrub, never a
     // substitute for it).
     //
+    // AMENDED Phase 88.6-57 (CR-501, 88.6-REVIEW.md, 2026-09-28): "the full url is not
+    // carried" was true of the ORIGIN and FALSE of the QUERY STRING until this plan --
+    // `endpoint` is the url minus `/api`, so `friendshipsAPI.searchUserByEmail`'s
+    // `?email=bob%40example.com` rode into both the message and the ctx on every 404 (the
+    // invite-by-email flow's normal path). The endpoint is now PATH-ONLY in both, and the
+    // beforeSend EMAIL rule (sentry.scrub.js) additionally catches `%40`. Scope, stated
+    // honestly: this closes the breadcrumb and exception sinks only; the GET-query
+    // CONTRACT (Sentry transactions, backend request logs) is routed to Phase 93 (G13).
+    // Re-adding the query here is a decision, not a cleanup.
+    //
     // NOT A PRECEDENT AGAINST THE AC-4 FIELD ABOVE: that field is a STRING forwarded to
     // Sentry extra on an EVENT that already egresses today and is deep-scrubbed at
     // sentry.scrub.js:171-172. This site would carry the raw response TEXT into a
@@ -586,7 +599,8 @@ export async function apiFetch<T = unknown>(
     // existing baseline -- both rules stand, and neither licenses the other. Restoring
     // errCtx here is a decision, not a consistency fix.
     const apiErr = error instanceof ApiError ? error : undefined;
-    logger.info(`API Error (${endpoint})`, { endpoint, error: error instanceof Error ? error.name : typeof error, status: apiErr?.status, code: apiErr?.code });
+    const path = endpoint.split('?')[0];
+    logger.info(`API Error (${path})`, { endpoint: path, error: error instanceof Error ? error.name : typeof error, status: apiErr?.status, code: apiErr?.code });
     // Re-throw with more context if it's a network error. ANY TypeError thrown
     // by fetch() is a network-level failure per the spec, but the message text
     // is engine-specific — Chrome throws "Failed to fetch", Safari throws

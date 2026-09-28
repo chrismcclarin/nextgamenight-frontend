@@ -21,7 +21,16 @@
 const REDACTED = '[REDACTED]';
 
 // --- shared regex set -------------------------------------------------------
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// DECISION Phase 88.6-57 (CR-501, 88.6-REVIEW.md, dated 2026-09-28): the separator is
+// `@` OR `%40`. `encodeURIComponent` is what every query-string producer in `src/lib/api.ts`
+// runs (e.g. `friendshipsAPI.searchUserByEmail`), so a searched address reached Sentry as
+// `bob%40example.com` and this rule — literal `@` only — let it through. The scrubber is the
+// layer that must fail INDEPENDENTLY of any one call site, so it matches the encoded form
+// itself. Chosen OVER a `decodeURIComponent` pre-pass in `scrubString` (REJECTED: it throws
+// `URIError` on a malformed `%` sequence and would crash `beforeSend`, dropping the whole
+// event). Only the separator widened — the local-part and dotted-domain shape still bound it
+// (pinned by the over-redaction negatives in `src/lib/sentry.scrub.test.ts`).
+const EMAIL = /[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // JWT: three base64url segments separated by dots, starting with the `eyJ` header.
 const JWT = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const BEARER = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
