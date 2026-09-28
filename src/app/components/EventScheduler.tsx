@@ -49,6 +49,7 @@ import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityCol
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
 import { maxAvailabilityPerDay, peakHourForDay } from './heatmap/dayAggregate';
 import SchedulerWeekStrip, { stripTabId } from './SchedulerWeekStrip';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import {
   usePaintGesture,
   pointResolver,
@@ -203,6 +204,18 @@ function formatDuration(start: Date, end: Date): string {
   }
 }
 
+/**
+ * Plan 88.6-52 (W46 live-region half, SPEC R5 P1): the Selected Time panel's label and range text,
+ * declared ONCE so the panel and the live region cannot drift. The region speaks exactly what the
+ * panel prints — no new words.
+ */
+const SELECTED_TIME_LABEL = 'Selected Time:';
+
+/** The panel's range text, e.g. "Wednesday, July 22, 7:00 PM - 9:30 PM". */
+function formatSlotRange(start: Date, end: Date): string {
+  return `${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')}`;
+}
+
 const NAV_BUTTON_CLASS =
   'inline-flex min-h-11 items-center justify-center rounded-btn border border-line px-3 ' +
   'text-sm text-content-secondary hover:text-content-primary hover:bg-surface-hover ' +
@@ -327,6 +340,19 @@ export default function EventScheduler({
   const [currentDate, setCurrentDate] = useState<Date>(initialDate || new Date());
   const [currentView, setCurrentView] = useState<'week' | 'day'>(
     defaultView === 'day' ? 'day' : 'week'
+  );
+
+  // Plan 88.6-52 (W46 live-region half): what the always-mounted polite region says. `seq` keys the
+  // rendered text node, so every utterance REPLACES it — see the DECISION marker at the region.
+  // Every utterance goes through `announce`, never through `setAnnouncement` directly: a same-string
+  // set would be a React bail-out and speak nothing (gap-lap ML-1).
+  const [announcement, setAnnouncement] = useState<{ seq: number; text: string }>({
+    seq: 0,
+    text: '',
+  });
+  const announce = useCallback(
+    (text: string) => setAnnouncement((prev) => ({ seq: prev.seq + 1, text })),
+    []
   );
 
   /* DECISION Phase 88.1-20 (CR-01, 88.1-REVIEW.md): writer (b) ignores exactly one class of
@@ -584,8 +610,18 @@ export default function EventScheduler({
       const start = slotStartFor(day, first);
       const end = slotStartFor(day, last + 1);
       if (onTimeSelected) onTimeSelected(start, end);
+      /* DECISION Phase 88.6-52 (W46 live-region half, SPEC R5): the commit is announced HERE, in
+         the one derivation, chosen OVER a keyboard-only hook in `handleCellSelect` — that would be
+         a second path, and the tap and drag commits would stay silent. What reaches this line is
+         MEASURED: keyboard Enter/Space (`handleCellSelect`), a mouse tap or drag, and a touch
+         LONG-PRESS (`usePaintGesture.ts` `LONG_PRESS_MS = 300`; grid cells carry no click
+         handler). NOT MEASURED, and not claimed: whether a plain assistive-technology double-tap
+         on a phone grid cell commits anything at all (gap-lap ML-29) — it may reach no commit and
+         so no announcement. Plan 88.6-49 routes that gap. The utterance is the panel's printed
+         text verbatim (label + range + duration), so a screen-reader user hears no new words. */
+      announce(`${SELECTED_TIME_LABEL} ${formatSlotRange(start, end)} (${formatDuration(start, end)})`);
     },
-    [columnDates, onTimeSelected]
+    [columnDates, onTimeSelected, announce]
   );
   const commitRef = useRef(commitRows);
   commitRef.current = commitRows;
@@ -1157,6 +1193,23 @@ export default function EventScheduler({
     // Removing this style attribute silently reverts the pick to the pre-88.1 strength — see the
     // DECISION marker on the constant.
     <div className="space-y-4" style={TODAY_TINT_SCOPE}>
+      {/* DECISION Phase 88.6-52 (W46 live-region half, SPEC R5): ONE always-mounted polite
+          `sr-only` StatusRegion, the root's FIRST child, text injected on change. Chosen OVER:
+            (a) making the Selected Time panel itself live — it mounts CONDITIONALLY, and a
+                conditionally-mounted region does not announce (`StatusRegion.tsx` EMPTY-FIRST);
+            (b) a VISIBLE-when-set region — the owner's #32+#166 ruling (2026-09-14) made three
+                OTHER regions visible because their strings appear nowhere else on screen; every
+                string here is ALREADY printed (the panel), and the V-20 ruling rejected printing
+                one string twice. Plan 36's sr-only region is the same call;
+            (c) mounting it LAST — Tailwind v4's `space-y-4` puts its margin on every child but the
+                last, so a last-mounted region would hand the panel above it a new 16px bottom
+                margin: a 375px layout change. FIRST, it moves nothing (`sr-only` is absolute).
+          The text sits in a span KEYED on `seq`, so every utterance remounts the text node and an
+          aria-atomic region announces even an utterance identical to the last one (gap-lap ML-1).
+          A mount is not an announcement: the region renders empty until the first commit. */}
+      <StatusRegion politeness="polite" className="sr-only">
+        <span key={announcement.seq}>{announcement.text}</span>
+      </StatusRegion>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button type="button" onClick={goBack} className={NAV_BUTTON_CLASS}>
@@ -1263,11 +1316,9 @@ export default function EventScheduler({
               resolves to text-xl / font-bold under R2's primary-string clause. It does NOT become
               a Heading: it has no semantic level today and P4 forbids inventing one. Phase 92 owns
               the outline review that would decide whether this box should have a real heading. */}
-          <p className="text-sm text-content-primary mb-1">Selected Time:</p>
+          <p className="text-sm text-content-primary mb-1">{SELECTED_TIME_LABEL}</p>
           <p className="text-xl text-content-accent font-bold">
-            {format(selectedSlot.start, 'EEEE, MMMM d, h:mm a')}
-            {' - '}
-            {format(selectedSlot.end, 'h:mm a')}
+            {formatSlotRange(selectedSlot.start, selectedSlot.end)}
             {' '}
             <span className="text-content-accent">({formatDuration(selectedSlot.start, selectedSlot.end)})</span>
           </p>

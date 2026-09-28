@@ -1686,3 +1686,116 @@ describe('EventScheduler — the active-change handler does NO state work of its
     pointerAt('pointerUp', 4, 2);
   });
 });
+
+// =========================================================================================
+// PLAN 88.6-52 (VERIFICATION gap 1, SPEC R5) — W46's live-region half.
+//
+// The scheduler must ANNOUNCE a committed slot and a changed view. The mechanism is the house
+// idiom (D-12): ONE always-mounted polite `StatusRegion`, `sr-only`, the component root's FIRST
+// child, text injected on change. Located by ROLE only (this file's locator rule, top of file).
+//
+// P1 — NO NEW WORDS: every utterance asserted below is built here from `date-fns` `format`, in the
+// same shape the panel and the header already print, never copied from component output. The
+// "rendered twice" assertions are the proof that the region and the visible surface share one
+// formatter.
+// =========================================================================================
+describe('EventScheduler — W46 live-region half: one polite, always-mounted StatusRegion (88.6-52)', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    // The pointer path resolves cells through `document.elementFromPoint`, which jsdom only
+    // answers under this stub (gap-lap ML-4) — mirrors the drag describes above.
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  const monday = startOfWeek(WEEK_N, { weekStartsOn: 1 });
+  const region = () => screen.getByRole('status');
+  /** The commit utterance: exactly the panel's printed label + range + duration. */
+  const commitUtterance = (start: Date, end: Date, duration: string) =>
+    `Selected Time: ${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')} (${duration})`;
+
+  it('is mounted EMPTY on every render, polite, sr-only, and the root\'s FIRST element child', () => {
+    const { container } = render(
+      <EventScheduler
+        initialDate={WEEK_N}
+        selectedSlot={{
+          start: new Date(2026, 6, 22, 19, 0, 0),
+          end: new Date(2026, 6, 22, 21, 30, 0),
+        }}
+      />
+    );
+
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(1);
+    const el = statuses[0];
+    expect(el).toHaveAttribute('aria-live', 'polite');
+    expect(el.className).toContain('sr-only');
+    // A mount is not an announcement — even with a slot already selected.
+    expect(el.textContent).toBe('');
+    // FIRST child: mounted last it would hand the panel above it a new space-y-4 margin (P6).
+    expect((container.firstElementChild as HTMLElement).firstElementChild).toBe(el);
+  });
+
+  it('announces a keyboard Enter commit in the WEEK arm, in the panel\'s own words', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    cellAt(2, 2, 7).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+
+    const start = new Date(addDays(monday, 2).setHours(11, 0, 0, 0));
+    const end = new Date(addDays(monday, 2).setHours(11, 30, 0, 0));
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    expect(onTimeSelected).toHaveBeenCalledWith(start, end);
+    expect(region().textContent).toBe(commitUtterance(start, end, '30 min'));
+  });
+
+  it('announces a keyboard Space commit in the DAY arm', () => {
+    const onTimeSelected = vi.fn();
+    render(
+      <EventScheduler initialDate={WEEK_N} defaultView="day" onTimeSelected={onTimeSelected} />
+    );
+
+    cellAt(1, 0, 1).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: ' ' });
+
+    const start = new Date(startOfDay(WEEK_N).setHours(10, 30, 0, 0));
+    const end = new Date(startOfDay(WEEK_N).setHours(11, 0, 0, 0));
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    expect(onTimeSelected).toHaveBeenCalledWith(start, end);
+    expect(region().textContent).toBe(commitUtterance(start, end, '30 min'));
+  });
+
+  it('announces a pointer TAP through the same one derivation', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    pointerAt('pointerDown', 6, 3);
+    pointerAt('pointerUp', 6, 3);
+
+    // Row 6 = 13:00 on column 3 (Thursday of WEEK_N's week).
+    const start = new Date(addDays(monday, 3).setHours(13, 0, 0, 0));
+    const end = new Date(addDays(monday, 3).setHours(13, 30, 0, 0));
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    expect(onTimeSelected).toHaveBeenCalledWith(start, end);
+    expect(region().textContent).toBe(commitUtterance(start, end, '30 min'));
+  });
+
+  it('re-announces an IDENTICAL re-commit — the text node is replaced, not merely re-set (ML-1)', () => {
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={vi.fn()} />);
+
+    cellAt(2, 2, 7).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+    const first = region().firstElementChild;
+    const firstText = region().textContent;
+    expect(first).not.toBeNull();
+    expect(firstText).not.toBe('');
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+    const second = region().firstElementChild;
+    expect(second).not.toBeNull();
+    // A same-string setState is a React bail-out and speaks nothing; a NEW node is a change.
+    expect(second).not.toBe(first);
+    expect(region().textContent).toBe(firstText);
+  });
+});
