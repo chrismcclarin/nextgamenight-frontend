@@ -603,6 +603,88 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
   });
 });
 
+describe('CreateEvent + real EventScheduler — a fetch re-emission cannot undo a navigation (88.6-52 task 3, gap-lap DR-1)', () => {
+  // DR-1 (gap-lap plan review, 2026-09-24; owner ruling fix-now 2026-09-28). `calendarInitialDate`
+  // (createEvent.js) returns a FRESH `Date` from `prefillDate` / the poll's `weekStart` on every
+  // memo run, and its deps include `heatmapWeekAnchor` — a new object after every fetch. So the
+  // refetch that a cross-week Next triggers re-emits the ORIGINAL week's date, and a re-sync keyed
+  // on IDENTITY snapped the grid back. Only this harness reproduces the source: the churn is the
+  // PARENT's memo.
+  //
+  // Clock pinned exactly as the Req 4 describe pins it (Wednesday 2026-09-16, local noon) so the
+  // "two weeks out" Monday is a fixed date and the -3/+12 clamp is never in play.
+  const PINNED_WEDNESDAY = new Date(2026, 8, 16, 12, 0, 0);
+  const TARGET_MONDAY = addWeeks(startOfWeek(PINNED_WEDNESDAY, { weekStartsOn: 1 }), 2); // Mon 28 Sep
+  const NAVIGATED_MONDAY = addWeeks(TARGET_MONDAY, 1); // Mon 5 Oct
+  // A second, distinguishable response for the NAVIGATED week, so the test can wait for the
+  // refetch to have RESOLVED and landed (its data is on screen) rather than merely been called.
+  const NAV_HEATMAP = { ...EMPTY_HEATMAP, totalGroupMembers: 3, membersWithoutDataCount: 3 };
+
+  beforeEach(() => {
+    expect(PINNED_WEDNESDAY.getDay()).toBe(3);
+    expect(TARGET_MONDAY.getDay()).toBe(1);
+    // `shouldAdvanceTime` is REQUIRED — `waitFor`/`findByText` never resolve under frozen timers.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(PINNED_WEDNESDAY);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('prefill path (the day-tap entry): Next holds after the refetch lands', async () => {
+    const prefillDate = format(TARGET_MONDAY, 'yyyy-MM-dd');
+    const navigatedWeek = format(NAVIGATED_MONDAY, 'yyyy-MM-dd');
+    api.getGroupHeatmap.mockImplementation(async (_g: string, weekStart: string) =>
+      weekStart === navigatedWeek ? NAV_HEATMAP : EMPTY_HEATMAP
+    );
+
+    await renderModal({ prefillDate });
+    await waitFor(() => expect(columnHeaders()[0]).toBe(format(TARGET_MONDAY, 'dd EEE')));
+    await waitFor(() =>
+      expect(heatmapCalls().some(([, weekStart]) => weekStart === prefillDate)).toBe(true)
+    );
+    // The mount data has landed. Never assume ONE mount fetch: the prefill clamp writes
+    // `currentWeekStart` after the first render, so the prefill path may fetch twice.
+    await screen.findByText(/2 of 2 members haven't shared availability yet/);
+    const settled = api.getGroupHeatmap.mock.calls.length;
+
+    fireEvent.click(toolbarButton(/^next$/i));
+    expect(columnHeaders()[0]).toBe(format(NAVIGATED_MONDAY, 'dd EEE'));
+
+    await waitFor(() => expect(api.getGroupHeatmap.mock.calls.length).toBeGreaterThan(settled));
+    // The refetch RESOLVED: the navigated week's data is on screen, so the parent has re-emitted.
+    await screen.findByText(/3 of 3 members haven't shared availability yet/);
+
+    await waitFor(() => expect(columnHeaders()[0]).toBe(format(NAVIGATED_MONDAY, 'dd EEE')));
+    // THE FINDING, as a negative on its own line: pre-fix the grid is back on the prefill week.
+    expect(columnHeaders()[0]).not.toBe(format(TARGET_MONDAY, 'dd EEE'));
+  });
+
+  it("poll path (Phase 71.2): Next holds after the refetch lands", async () => {
+    const pollWeekStart = format(TARGET_MONDAY, 'yyyy-MM-dd');
+    api.getPromptHeatmap
+      .mockResolvedValueOnce({ ...EMPTY_HEATMAP, weekStart: pollWeekStart })
+      .mockResolvedValue({ ...NAV_HEATMAP, weekStart: pollWeekStart });
+
+    await renderModal({ promptId: PROMPT_ID });
+    await waitFor(() => expect(columnHeaders()[0]).toBe(format(TARGET_MONDAY, 'dd EEE')));
+    await screen.findByText(/2 of 2 members haven't shared availability yet/);
+    const settled = api.getPromptHeatmap.mock.calls.length;
+
+    fireEvent.click(toolbarButton(/^next$/i));
+    expect(columnHeaders()[0]).toBe(format(NAVIGATED_MONDAY, 'dd EEE'));
+
+    await waitFor(() => expect(api.getPromptHeatmap.mock.calls.length).toBeGreaterThan(settled));
+    // The refetch RESOLVED (the second, distinguishable poll response is on screen) — the same
+    // poll `weekStart` VALUE has been re-emitted as a fresh Date.
+    await screen.findByText(/3 of 3 members haven't shared availability yet/);
+
+    await waitFor(() => expect(columnHeaders()[0]).toBe(format(NAVIGATED_MONDAY, 'dd EEE')));
+    expect(columnHeaders()[0]).not.toBe(format(TARGET_MONDAY, 'dd EEE'));
+  });
+});
+
 // ---------------------------------------------------------------------------
 // PLAN 88.6-39 (W52 / D-18) — the active signal reaches the strip WITHOUT re-rendering the
 // parent it has to pass through.

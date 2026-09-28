@@ -403,18 +403,53 @@ export default function EventScheduler({
      snap (`createEvent.js:352`), `resolveWeekNav` and `weekDates` below — a different boundary
      here would suppress re-anchors the fetch considers cross-week and vice versa.
      The FUNCTIONAL form is load-bearing: adding `currentDate` to the deps would re-run this
-     effect on every navigation and defeat the guard. */
+     effect on every navigation and defeat the guard.
+
+     AMENDED Phase 88.6-52 (gap-lap DR-1, owner ruling 2026-09-28 "F1 - fix now"), everything above
+     KEPT: the effect is now keyed on the anchor's VALUE (`initialDate.getTime()`), not its
+     IDENTITY. The parent's per-fetch re-emission described above hands over a fresh `Date` even
+     when the value has not changed — on the prefill (day-tap) and poll paths that value is the
+     ORIGINAL week's date, so after a cross-week Back/Next the refetch re-fired this effect, the
+     guard saw a cross-week value, and the grid snapped back to where the user started (measured
+     2026-09-24 by the gap-lap review; re-measured RED by plan 88.6-52's pins before this edit). A
+     same-value re-emission now never re-fires; a DIFFERENT value (the 71.2 poll anchor arriving,
+     the CR-01 same-week different-day hand-over) still re-anchors through the unchanged guard.
+     Chosen OVER alternative (i) AGAIN — stabilising the anchor's identity in `createEvent.js` —
+     for the reason recorded above: the guard belongs to the consumer's contract, and this extends
+     the consumer's own guard. KNOWN RESIDUE: `createEvent.js`'s today-substitution branch
+     (`!fromNavigation && isSameWeek(now, monday) ? now : monday`) yields a new `now` VALUE per memo
+     run; it is gated on `!fromNavigation`, so it fires only when no navigation caused the fetch
+     and cannot revert one.
+     The effect ALSO clears the live region (see the marker there) — but ONLY when the anchor
+     actually MOVES the displayed date. The refetch after a cross-week Next hands over the
+     NAVIGATED week's Monday, a different value the guard KEEPS; an unconditional clear would wipe
+     the label Next just announced. The displayed date is read from `currentDateRef` (a render-time
+     mirror, the `commitRef` idiom) and NOT from the closure or the deps — adding `currentDate` to
+     the deps re-opens DR-1, for the reason in the paragraph above. The one added line in the
+     updater (`prev.getTime() === initialDateKey`) keeps the old identity bail-out at mount, where
+     the old code returned the very object `useState` was seeded with. */
+  const initialDateKey = initialDate ? initialDate.getTime() : null;
+  const currentDateRef = useRef(currentDate);
+  currentDateRef.current = currentDate;
   useEffect(() => {
-    if (initialDate) {
-      setCurrentDate((prev) => {
-        const displayedMonday = startOfWeek(prev, { weekStartsOn: 1 });
-        const isAnchorForDisplayedWeek =
-          isSameWeek(initialDate, prev, { weekStartsOn: 1 }) &&
-          isSameDay(initialDate, displayedMonday);
-        return isAnchorForDisplayedWeek ? prev : initialDate;
-      });
-    }
-  }, [initialDate]);
+    if (initialDateKey == null) return;
+    const anchor = new Date(initialDateKey);
+    const shown = currentDateRef.current;
+    const reanchors =
+      !(
+        isSameWeek(anchor, shown, { weekStartsOn: 1 }) &&
+        isSameDay(anchor, startOfWeek(shown, { weekStartsOn: 1 }))
+      ) && !isSameDay(anchor, shown);
+    if (reanchors) announce('');
+    setCurrentDate((prev) => {
+      if (prev.getTime() === initialDateKey) return prev;
+      const displayedMonday = startOfWeek(prev, { weekStartsOn: 1 });
+      const isAnchorForDisplayedWeek =
+        isSameWeek(anchor, prev, { weekStartsOn: 1 }) &&
+        isSameDay(anchor, displayedMonday);
+      return isAnchorForDisplayedWeek ? prev : anchor;
+    });
+  }, [initialDateKey, announce]);
 
   /* DECISION Phase 88.1-11: the prompt's breakpoint fork is a matchMedia STATE fork, chosen OVER
      rendering both strings and hiding one with responsive utility classes.
@@ -1246,7 +1281,11 @@ export default function EventScheduler({
               utterance is silent), so it can never hold a stale week label that contradicts the
               header for someone reading linearly;
             - the parent's `initialDate` re-anchor — a fetch anchor, not a user action; announcing
-              it would narrate network timing;
+              it would narrate network timing. Since the re-sync is keyed on the anchor's VALUE
+              (the amended 88.1-20 marker), a same-value re-emission can no longer UNDO a
+              navigation; a genuinely different anchor that moves the displayed date (an
+              out-of-order older response, or the today-substitution after a NON-navigation fetch)
+              CLEARS the region rather than announcing, so it never contradicts the header;
             - a no-op: the already-pressed toggle, or Today on the week/day already shown.
           ACCEPTED COST, chosen OVER clearing the region on blur: a browse-mode reader can hear the
           CURRENT label twice (once from the region, once from the header) — the same words, never

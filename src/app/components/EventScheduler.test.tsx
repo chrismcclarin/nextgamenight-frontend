@@ -341,6 +341,20 @@ describe('EventScheduler — initialDate re-syncs the visible week AFTER mount',
     expect(headers).toHaveLength(1);
     expect(headers[0]).toContain('05');
   });
+
+  it('a SAME-VALUE initialDate with a new identity does NOT undo a navigation (88.6-52 task 3, DR-1)', () => {
+    // The parent re-emits its anchor as a FRESH `Date` after every heatmap fetch — on the prefill
+    // and poll paths that is the ORIGINAL week's date, identical in value. Keyed on identity, the
+    // re-sync fired and snapped the grid back to where the user started.
+    const { rerender } = render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+    expect(columnHeaders()?.[0]).toContain('27');
+
+    rerender(<EventScheduler initialDate={new Date(WEEK_N.getTime())} />);
+
+    expect(columnHeaders()?.[0]).toContain('27');
+    expect(columnHeaders().some((h) => h?.includes('20 Mon'))).toBe(false);
+  });
 });
 
 // =========================================================================================
@@ -1899,5 +1913,34 @@ describe('EventScheduler — W46 live-region half: one polite, always-mounted St
 
     expect(region().textContent).toBe(beforeText);
     expect(region().firstElementChild).toBe(beforeNode);
+  });
+  // --- Re-anchor half (task 3 — depends on the value-keyed re-sync effect). ---
+  it('CLEARS the region when a DIFFERENT initialDate actually moves the displayed week', () => {
+    const { rerender } = render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(button(/^next$/i));
+    expect(region().textContent).toBe(weekLabel(addDays(WEEK_N, 7)));
+
+    rerender(<EventScheduler initialDate={WEEK_N_PLUS_2} />);
+
+    // Positive control FIRST: the re-anchor really moved the grid.
+    expect(columnHeaders()[0]).toBe(format(startOfWeek(WEEK_N_PLUS_2, { weekStartsOn: 1 }), 'dd EEE'));
+    // Silent AND empty — never the label of a week the header no longer shows.
+    expect(region().textContent).toBe('');
+  });
+
+  it('KEEPS the Next label when the parent hands over the NAVIGATED week\'s Monday (the guard keeps it)', () => {
+    // The default create-event path: after a cross-week Next the refetch hands the scheduler the
+    // navigated week's Monday — a DIFFERENT value that the Monday guard keeps. An unconditional
+    // clear here would wipe the label Next just announced (round-3 finding).
+    const { rerender } = render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(button(/^next$/i));
+    const label = weekLabel(addDays(WEEK_N, 7));
+    const headerBefore = columnHeaders()[0];
+    expect(region().textContent).toBe(label);
+
+    rerender(<EventScheduler initialDate={startOfWeek(addDays(WEEK_N, 7), { weekStartsOn: 1 })} />);
+
+    expect(columnHeaders()[0]).toBe(headerBefore);
+    expect(region().textContent).toBe(label);
   });
 });
