@@ -301,6 +301,81 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     expect(chain.total, describeChain('groupPlanning availability polls', chain)).toBeLessThanOrEqual(PADDING_BUDGET_PX);
   });
 
+  /* DECISION Phase 88.6-53 (SPEC Edge Coverage R3 "encoding"; UI-SPEC §9 E5): the swept
+     groupPlanning page title is guarded with an INJECTED 80-character unbroken group name,
+     chosen OVER a guard on the seeded title. The seeded group is "Weekend Warriors" (16
+     breakable characters, backend scripts/e2e-fixtures.js) and never overflows, and the h1
+     renders its fallback "Plan Game Session" BEFORE the group GET resolves — so a guard that
+     waited for any level-1 heading would measure a short string and stay green whether or not
+     the primitive's wrap-anywhere survives. The real group GET is fetched and fulfilled with
+     only its name replaced (the month-tile-desktop.spec.ts rewrite idiom), and the reads wait
+     for the NAME-BEARING title. The predicate matches ONLY the exact group read — the members
+     read is /groups/:id/users and must not be touched.
+
+     FOUR reads, each catching a different regression: (i) the h1's right edge inside the
+     viewport; (ii) no page-level horizontal scroll; (iii) the h1 is taller than one line —
+     re-adding the old ellipsis clip collapses it to one; (iv) the h1's own content does not
+     overflow its box. (iv) is the one that catches wrap-anywhere being dropped: without it the
+     title still wraps at its spaces (so (iii) holds) and the element box stays inside its
+     column (so (i) holds) while the 80 W's run out past it. CI-only — no .auth/ locally. */
+  test('groupPlanning page title: an 80-character unbroken group name wraps inside the 375px viewport — no horizontal overflow (88.6-53)', async ({ page }) => {
+    const LONG_NAME = 'W'.repeat(80);
+    await page.route(
+      (url) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}`),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.continue();
+          return;
+        }
+        const response = await route.fetch();
+        const body = (await response.json()) as Record<string, unknown>;
+        await route.fulfill({ response, json: { ...body, name: LONG_NAME } });
+      },
+    );
+
+    await page.goto(`/groupPlanning?group_id=${E2E_GROUP_ID}`);
+
+    const title = page.getByRole('heading', { level: 1, name: /^Plan Game Session - W+$/ });
+    await expect(title).toBeVisible({ timeout: 15_000 });
+
+    const viewport = page.viewportSize();
+    expect(viewport, 'the phone project must define a viewport').not.toBeNull();
+    const box = await title.boundingBox();
+    expect(box, 'the page title has no layout box').not.toBeNull();
+
+    // (i) right edge inside the viewport.
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+
+    // (ii) no page-level horizontal scroll.
+    const page_ = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(
+      page_.scrollWidth,
+      `the page scrolls horizontally: scrollWidth ${page_.scrollWidth} > innerWidth ${page_.innerWidth}`,
+    ).toBeLessThanOrEqual(page_.innerWidth);
+
+    // (iii) it WRAPPED: taller than one Display-30 line.
+    const metrics = await title.evaluate((el) => ({
+      lineHeight: parseFloat(getComputedStyle(el).lineHeight),
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }));
+    expect(Number.isFinite(metrics.lineHeight), 'line-height did not resolve to px').toBe(true);
+    expect(
+      box!.height,
+      `one line is ${metrics.lineHeight}px; a ${box!.height}px title did not wrap`,
+    ).toBeGreaterThan(metrics.lineHeight * 1.5);
+
+    // (iv) its own content fits its box — the unbroken name broke inside the column.
+    expect(
+      metrics.scrollWidth,
+      `the title's content overflows its box (${metrics.scrollWidth} > ${metrics.clientWidth}) — ` +
+        'the unbroken name did not break; check the Heading primitive still carries wrap-anywhere',
+    ).toBeLessThanOrEqual(metrics.clientWidth);
+  });
+
   test('availability grid (magic-link form): padding chain stays within budget', async ({ page }) => {
     // Public magic-link route — no auth needed (FeedbackButton returns null
     // logged-out; RESEARCH C-3 notes).

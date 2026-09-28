@@ -825,13 +825,29 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
   // affected: it is the browser's own TypeError text being MATCHED, it stays an allow-list
   // entry, and `classifyError`'s transient arms were deliberately left untouched by the re-key.
   // Entries DELETED, not zeroed.
+  // CORRECTED by plan 88.6-53 task 3 (gap closure, 2026-09-28): this entry claimed "Closed by plan
+  // 88.6-42" while still counting 2 — VERIFICATION (2026-09-24) found the closure never happened.
+  // The count does not move; only the `why` and `owner` now state the truth (D-35).
   'lib/api.ts': {
     sites: 2,
     why:
-      '"FAILED TO X" assertion. :1126 and :1159 throw `new Error(err.error || "Failed to ' +
-      '…")` — authored copy on the throw path, distinct from the three raw-message reads ' +
-      'in the same file. Closed by plan 88.6-42 (wave 8), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-42' },
+      '"FAILED TO X" assertion. The two sites are the constant DECLARATIONS ' +
+      '`const GCAL_PREFILL_FAILURE = \'Failed to import from Google Calendar\'` and ' +
+      '`const SAVED_PREFILL_FAILURE = \'Failed to use saved availability\'` (re-measured ' +
+      '2026-09-28 against this predicate; the throw lines reference the constants and carry no ' +
+      'literal). prefillFromGcal / prefillFromSaved throw `new Error(err.error || ' +
+      '<the constant>)` because the availabilityPrefill routes emit no `code` to key designed ' +
+      'copy on. They SURVIVE 88.6 by CONTEXT D-35 (owner 2026-09-09, review D62 branch B) and ' +
+      'are a BLOCKING Phase 93 precondition — .planning/deferred/phase-93.md, the retighten ' +
+      'entry\'s "(d)" list, item 3: backend code first, then this FE read. The earlier ' +
+      '"Closed by plan 88.6-42" claim was false.',
+    owner: {
+      kind: 'owner',
+      date: '2026-09-09',
+      ruling:
+        'D-35 (review D62 branch B): the code-less availabilityPrefill failure paths stay ' +
+        'unconverted in 88.6; Phase 93 owns the backend code',
+    },
   },
 };
 
