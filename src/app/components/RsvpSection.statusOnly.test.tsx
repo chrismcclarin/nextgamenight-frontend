@@ -49,6 +49,14 @@ vi.mock('@/lib/api', async (importOriginal) => {
   };
 });
 
+// Phase 88.6-57 (CR-301): the profile timezone, MUTABLE per test. `null` is exactly what the
+// real `useTimezone()` returns with no provider mounted (`TimezoneProvider.js`'s context
+// default), so every case that does not set it renders as it did before this mock existed.
+const tzState = vi.hoisted(() => ({ timezone: null as string | null }));
+vi.mock('./TimezoneProvider', () => ({
+  useTimezone: () => ({ timezone: tzState.timezone, setTimezone: () => {} }),
+}));
+
 import { rsvpAPI } from '@/lib/api';
 import RsvpSectionUntyped from './RsvpSection';
 import { statusConfig } from './rsvpStatusConfig';
@@ -106,6 +114,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  tzState.timezone = null;
 });
 
 describe('RsvpSection status tap is status-only (owner ruling a, 2026-09-01)', () => {
@@ -321,6 +330,24 @@ describe('RsvpSection W44 — the status trio is a named group that keeps focus 
     expect(when).not.toBe('');
     const group = screen.getByRole('group');
     expect(group).toHaveAttribute('aria-label', `RSVP for ${when}`);
+  });
+
+  // Phase 88.6-57 (CR-301, 88.6-REVIEW.md): the page shows every event time in the PROFILE
+  // zone (`useTimezone()`), so the group's name must speak the same zone — the port from
+  // `NextGameNightCard` dropped it and the label spoke the BROWSER zone. UTC+14 is a zone no
+  // CI or dev machine runs in, so the two renderings below cannot coincide by accident.
+  it('speaks the event time in the PROFILE timezone, not the browser zone (CR-301)', async () => {
+    tzState.timezone = 'Pacific/Kiritimati';
+    renderSection();
+    await screen.findByRole('button', { name: statusConfig.no.buttonText });
+
+    const profileWhen = formatDateTime(EVENT_DATE, 'Pacific/Kiritimati');
+    const browserWhen = formatDateTime(EVENT_DATE);
+    // Guard the fixture: identical renderings would make both assertions vacuous.
+    expect(profileWhen).not.toBe(browserWhen);
+    const name = screen.getByRole('group').getAttribute('aria-label');
+    expect(name).toBe(`RSVP for ${profileWhen}`);
+    expect(name).not.toBe(`RSVP for ${browserWhen}`);
   });
 
   it('falls back to a generic phrase when eventDate is absent — never undefined, Invalid Date or the id', async () => {

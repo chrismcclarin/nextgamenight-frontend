@@ -10,6 +10,8 @@ import {
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
 import { logger } from '@/lib/logger';
+import { formatDateTime } from '../../lib/datetime';
+import { useTimezone } from './TimezoneProvider';
 
 /**
  * ResponseDashboard - Shows who has/hasn't responded to an availability prompt
@@ -36,6 +38,7 @@ export default function ResponseDashboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [remindingUserId, setRemindingUserId] = useState(null);
+  const { timezone } = useTimezone();
 
   /* The phase's ONE staleness idiom, ported from the shipped
      `NextGameNightCard.tsx:192`/`:197`/`:202`/`:209-211` cancelled-generation guard (the same
@@ -197,12 +200,12 @@ export default function ResponseDashboard({
       if (err?.code === 'reminder_cooldown') {
         const nextAvailable = err?.details?.details?.next_reminder_available;
         if (nextAvailable) {
-          const when = new Date(nextAvailable).toLocaleString([], {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-          });
+          // Phase 88.6-57 (CR-301): the reopen instant is formatted in the PROFILE zone the
+          // rest of the page speaks (`useTimezone()`), through the shared `formatDateTime` —
+          // chosen OVER keeping `toLocaleString([], …)`, which used the browser zone. The
+          // string is a formatted instant, not ratified copy; it now also carries the zone
+          // abbreviation (e.g. "Sep 17, 12:30 PM" -> "Sep 18, 9:30 AM GMT+14").
+          const when = formatDateTime(new Date(nextAvailable), timezone);
           toast.error(`You reminded this user recently. You can remind them again after ${when}.`);
         } else {
           toast.error('You reminded this user recently. Please wait before reminding them again.');

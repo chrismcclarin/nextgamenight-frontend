@@ -20,6 +20,7 @@ import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ComponentType } from 'react';
+import { formatDateTime } from '@/lib/datetime';
 import ResponseDashboardDefault from './ResponseDashboard';
 
 // `ResponseDashboard` is a JS component; its inferred prop type marks every prop required and
@@ -52,6 +53,13 @@ vi.mock('@/lib/logger', () => ({
 const toastCalls = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: toastCalls.error, success: vi.fn() } }));
 
+// Phase 88.6-57 (CR-301): the profile timezone, MUTABLE per test; `null` is the real
+// no-provider context default, so cases that do not set it are unaffected.
+const tzState = vi.hoisted(() => ({ timezone: null as string | null }));
+vi.mock('./TimezoneProvider', () => ({
+  useTimezone: () => ({ timezone: tzState.timezone, setTimezone: () => {} }),
+}));
+
 /** A REAL `ApiError` off the unmocked module, so `instanceof` holds. */
 async function codedError(code: string, status: number, details?: unknown) {
   const actual = await import('@/lib/api');
@@ -67,7 +75,10 @@ beforeEach(() => {
   api.sendReminder.mockReset();
   toastCalls.error.mockReset();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  tzState.timezone = null;
+});
 
 const baseProps = { promptId: 'prompt-1', isAdmin: true, currentUserId: 'me' };
 
@@ -216,6 +227,28 @@ describe('ResponseDashboard — the reminder arm, one sink for both failure mode
     );
     // ONE sink: the old inline `{reminderError && …}` block must not have come back.
     expect(screen.queryByText(/You reminded this user recently/)).toBeNull();
+  });
+
+  // Phase 88.6-57 (CR-301): the reopen time is formatted in the PROFILE zone the rest of the
+  // page uses, not the runner's/browser's zone (`toLocaleString([], …)` before this plan).
+  it('formats the cooldown reopen time in the PROFILE timezone (CR-301)', async () => {
+    tzState.timezone = 'Pacific/Kiritimati';
+    api.getRespondents.mockResolvedValue(pendingMember);
+    const next = new Date('2026-09-17T19:30:00Z').toISOString();
+    api.sendReminder.mockRejectedValue(
+      await codedError('reminder_cooldown', 429, { details: { next_reminder_available: next } })
+    );
+
+    render(<ResponseDashboard {...baseProps} />);
+    const remind = await screen.findByRole('button', { name: /^remind$/i });
+    await act(async () => { remind.click(); });
+
+    await waitFor(() => expect(toastCalls.error).toHaveBeenCalledTimes(1));
+    const profileWhen = formatDateTime(new Date(next), 'Pacific/Kiritimati');
+    expect(profileWhen).not.toBe(formatDateTime(new Date(next)));
+    expect(toastCalls.error.mock.calls[0][0]).toBe(
+      `You reminded this user recently. You can remind them again after ${profileWhen}.`
+    );
   });
 
   it('routes a NON-cooldown reminder failure through the same toast sink, on register copy', async () => {

@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Heading } from '../../components/ui/Heading';
 import { formatDateTime } from '../../lib/datetime';
+import { useTimezone } from './TimezoneProvider';
 import { logger, errCtx } from '@/lib/logger';
 
 /* The ratified note-save success string (UI-SPEC §6.3, owner ruling 2026-09-16, the same
@@ -73,8 +74,17 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
      RECORDED REJECTED ALTERNATIVE: an explicit `label` prop passed from both call sites.
      Rejected on wave mechanics, not merit — `88.6-18-PLAN.md` is the same wave 7 and declares
      `gameDetail/page.js` as its first file, so the prop version puts two same-wave writers on
-     one file for a label this derivation already delivers inside the one file this plan owns. */
-  const whenLabel = formatDateTime(eventDate);
+     one file for a label this derivation already delivers inside the one file this plan owns.
+
+     AMENDED Phase 88.6-57 (CR-301, 88.6-REVIEW.md, 2026-09-28): the derivation STAYS here (the
+     reasoning above still holds); what the port dropped was the ZONE argument, so the name
+     spoke the BROWSER zone while the page (`gameDetail/page.js` via `useTimezone()`) shows the
+     PROFILE zone — a traveller heard a different time than the card displays. The zone is
+     restored from `useTimezone()`, matching the `NextGameNightCard` twin; with no provider
+     mounted it is `null` and `formatDateTime` falls back to the browser zone as before.
+     Dropping the argument again is a regression, not a simplification. */
+  const { timezone } = useTimezone();
+  const whenLabel = formatDateTime(eventDate, timezone);
   const groupLabel = whenLabel ? `RSVP for ${whenLabel}` : 'RSVP for this event';
 
   // An unsaved, user-typed note draft. While true, NO fetch re-sync may repaint the
