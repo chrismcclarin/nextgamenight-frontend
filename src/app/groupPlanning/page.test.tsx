@@ -117,3 +117,40 @@ describe('groupPlanning page — heading outline (P4 levels, P1 wording)', () =>
     expect(within(nav).getByText('Plan Game Session')).toBeInTheDocument();
   });
 });
+
+describe('groupPlanning page — breadcrumb exposes "you are here" (plan 88.6-53 task 2)', () => {
+  // Plan 21 was told to write the landmark-name assertion and did not (88.6-21-SUMMARY.md); the
+  // landmark case sits in the outline describe above and is repeated here as the settle point.
+  it('names the breadcrumb landmark and marks ONLY the current crumb with aria-current="page"', async () => {
+    await renderSettled();
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByText('Plan Game Session')).toHaveAttribute('aria-current', 'page');
+    for (const link of within(nav).getAllByRole('link')) {
+      expect(link).not.toHaveAttribute('aria-current');
+    }
+    expect(within(nav).getAllByRole('link')).toHaveLength(2);
+  });
+
+  it('hides both ">" separators from assistive tech', async () => {
+    // Read by TEXT, not by accessible name: an aria-hidden separator is still in the DOM, so a
+    // role-based "no > in the name" check would pass whether or not the attribute exists.
+    await renderSettled();
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const separators = within(nav).getAllByText('>');
+    expect(separators).toHaveLength(2);
+    for (const sep of separators) {
+      expect(sep).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+
+  it('gives both breadcrumb links the project focus ring (DECISION Phase 88.3-17)', async () => {
+    await renderSettled();
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const links = within(nav).getAllByRole('link');
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link.className).toContain('focus-visible:ring-2');
+      expect(link.className).toContain('focus-visible:ring-focus-ring');
+    }
+  });
+});

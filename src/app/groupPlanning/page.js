@@ -254,19 +254,37 @@ export default function GroupPlanningPage() {
                 (`.eslintrc.json:59`) is deliberately untouched: AC-2's convert-on-touch rule is
                 scoped to plans that convert LOGGING, and an `aria-label` converts none — so plan
                 43's census is undisturbed. The ruling is assigned ONCE per nav; the other four
-                belong to plans 17 and 18 and are already done. */}
+                belong to plans 17 and 18 and are already done.
+                AMENDED Phase 88.6-53 (2026-09-28): the "not swept, not migrated" half is STALE —
+                plan 88.6-53 swept this file (headings onto Heading, off-scale weights, body text,
+                aria-current on the current crumb). What still stands is the no-console allowlist
+                entry (now at .eslintrc.json:30; the :59 above has drifted): its four console
+                calls are untouched by 53 too, and the entry belongs to the ROADMAP :28
+                milestone-close sweep (ledger P08), not to a type sweep. */}
+            {/* DECISION Phase 88.6-53 (D-03 / UI-SPEC §4.5; R2 #171): the two links are 400 (the
+                emphasis is carried by the link colour token) and the current crumb is 700 with
+                aria-current="page" — chosen to MATCH this page's parent, the groupHomePage
+                breadcrumb, OVER userProfile's 400 current crumb (DECISION Phase 88.6-17). The five
+                breadcrumbs disagree on that weight (userProfile 400, the other four 700); settling
+                it is a look call routed to Phase 88.9 — plan 88.6-56 writes the pointer.
+                The links also carry the project focus ring, DECISION Phase 88.3-17 (DEF-88.3-13-04,
+                owner ruling A: the browser default outline is unreadable on some surfaces) — they
+                are the page's FIRST tab stops. The separators are aria-hidden so a screen reader
+                does not read "greater than" between crumbs. Still open elsewhere, for the same
+                88.9 pointer: 3 of the 5 breadcrumbs lack the ring (userProfile's Home link and
+                both gameDetail breadcrumbs' Home links) and 6 separator spans are not hidden. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
-                <span className="text-content-muted mx-2">{'>'}</span>
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {group && (
                     <>
-                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium max-w-[200px] truncate inline-block align-bottom">
+                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 max-w-[200px] truncate inline-block align-bottom">
                             {group.name}
                         </Link>
-                        <span className="text-content-muted mx-2">{'>'}</span>
+                        <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     </>
                 )}
-                <span className="text-content-primary font-semibold">Plan Game Session</span>
+                <span aria-current="page" className="text-content-primary font-bold">Plan Game Session</span>
             </nav>
 
             {/* Header */}
@@ -288,7 +306,7 @@ export default function GroupPlanningPage() {
                         <Heading level={1} size="display" className="text-content-primary">
                             {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
                         </Heading>
-                        <p className="text-sm text-content-secondary mt-1">
+                        <p className="text-base text-content-secondary mt-1">
                             Send availability polls and manage responses
                         </p>
                     </div>

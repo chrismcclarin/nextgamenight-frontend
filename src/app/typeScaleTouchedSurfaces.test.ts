@@ -2353,20 +2353,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     the only signal separating the select-all control from the members it governs.
   //     Re-inking it instead was rejected at the site as a look change with no owner.
   // Markers at both sites, each naming its rejected arm. Entry DELETED, not zeroed.
-  'app/components/NextGameNightCard.tsx': {
-    // 3 -> 2, plan 88.6-28 task 1 (wave 7, 2026-09-16). The ONE `font-semibold` — the hero
-    // eyebrow — took 700 on §4.5's Eyebrow row, converging on the ratified role by moving the
-    // WEIGHT ONLY (the named shipped eyebrow whose ruling it matches is `CalendarListView.js`
-    // `:1005-1009`: "`text-xs` STAYS ... and only the WEIGHT moves, 600 -> 700"). The entry
-    // SURVIVES at 2 for the two `font-medium` sites this plan does NOT own and did not touch —
-    // the status sentence and the RSVP toggle labels — both of which sit on the co-owner list
-    // below. Line cites are deliberately absent from this `why`: this plan moved the file and
-    // the file is co-owned by twelve plans, so a number written here goes stale between them.
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-16, 88.6-17, 88.6-18, 88.6-22, 88.6-27, 88.6-28, 88.6-29, 88.6-30, 88.6-32, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-53 task 2 (gap closure, 2026-09-28): `app/components/NextGameNightCard.tsx`
+  // carried `sites: 2` — the two 500s plan 88.6-28 left UNOWNED rather than preserved (its note
+  // above the old entry said so; it moved only the eyebrow). Both took §4.5's EMPHASIS outcome,
+  // 400 + their colour token, converging on their shipped twins in `RsvpSection.js`:
+  //   - the status sentence (`cn(<500>, statusConfig[viewerStatus].textColor)`) -> the status
+  //     colour alone, matching RsvpSection's status line, which carries no weight utility;
+  //   - the RSVP toggle labels' class string -> no weight utility, matching RsvpSection's trio;
+  //     selection is carried by the 2px ring, the status colour and `aria-pressed`.
+  // 700 was REJECTED (marker at the site): it would split one RSVP idiom into two weights.
+  // Measured at this commit: 0 sites remain. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-31 task 3 (wave 7, 2026-09-16): `app/components/NotificationBell.js`
   // carried `sites: 5` and the count was EXACT (1 `font-medium`, 4 `font-semibold`), resolving
   // THREE ways, which is why the entry could not close on one rule:
@@ -2679,17 +2675,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     carried the active state; that state gained `aria-current` in the same edit, which is a
   //     separate Rule-2 add and not this rule's outcome.
   // Entry DELETED rather than zeroed; the roster is exact in both directions.
-  'app/groupPlanning/page.js': {
-    // 4 -> 3, plan 88.6-53 task 1 (gap closure, 2026-09-28). The "Poll Responses" h3's 600 left
-    // with its `Heading` migration in the same commit — this rule is a FILE-level
-    // comment-stripped scan and exact both ways, so it cannot stay at 4. The three that remain
-    // are the two breadcrumb links' 500 and the current-page crumb's 600; plan 88.6-53 task 2
-    // resolves them and DELETES this entry. The `why` below still describes the pre-plan four.
-    sites: 3,
-    why:
-      '4 off-scale weight sites (2 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-15, 88.6-21, 88.6-32, 88.6-39, 88.6-41, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-53 task 2 (gap closure, 2026-09-28): `app/groupPlanning/page.js`
+  // carried `sites: 4`, shrunk to 3 by task 1 when the "Poll Responses" h3's 600 left with its
+  // `Heading` migration. The remaining three, per site:
+  //   - the breadcrumb HOME link's 500 -> DELETED (§4.5 EMPHASIS; `text-content-link` carries it);
+  //   - the breadcrumb GROUP-NAME link's 500 -> DELETED, same reason;
+  //   - the CURRENT-PAGE crumb's 600 -> 700 (HIERARCHY) and it GAINED `aria-current="page"`,
+  //     matching the parent `groupHomePage/page.js` breadcrumb (R2 #171 / T-88.6-138).
+  // The five breadcrumbs still disagree on the current crumb's weight (userProfile ships 400
+  // under DECISION Phase 88.6-17) — a look call recorded for Phase 88.9, not settled here.
+  // Measured at this commit: 0 sites remain. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-23 task 2 (wave 7, 2026-09-16): `app/invite/accept/page.js` carried
   // `sites: 3`, all three §4.5 EMPHASIS (500 -> 400, colour token kept): the "Accepting your
   // invite..." status label (already `text-content-primary`) and the inviter-name and

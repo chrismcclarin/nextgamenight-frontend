@@ -432,10 +432,21 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             (WCAG 1.4.1). Its copy and colour come FROM `statusConfig`; nothing here is
             re-authored. UNKNOWN renders an EMPTY row on purpose: never claim "you have
             not answered" before the answer arrives.
+
+            DECISION Phase 88.6-53 (D-03 / UI-SPEC §4.5 emphasis): this sentence AND the
+            toggle labels below are 400 + their colour token, converging on their shipped
+            twins in RsvpSection.js (its status line and its RSVP trio carry no weight
+            utility at all). 700 was REJECTED: it would render the hero's sentence and toggle
+            labels heavier than the RsvpSection versions of the SAME RSVP idiom, splitting
+            one control into two weights. The 500 utility both sites carried was not a choice
+            anyone preserved — plan 88.6-28 moved only the eyebrow and left these two unowned
+            (its WEIGHT_ROSTER note). Selection on the toggle is carried by the 2px ring, the
+            status colour and aria-pressed, never by weight. Re-adding a weight here is a
+            decision, not a cleanup.
           */}
           <div className="min-h-5 text-sm">
             {viewerStatus === UNKNOWN ? null : viewerStatus ? (
-              <p className={cn('font-medium', statusConfig[viewerStatus].textColor)}>
+              <p className={statusConfig[viewerStatus].textColor}>
                 {statusConfig[viewerStatus].label}
               </p>
             ) : (
@@ -479,7 +490,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
                   disabled={otherInFlight}
                   onClick={() => handleRsvp(key)}
                   className={cn(
-                    'flex-1 min-h-11 px-3 text-sm font-medium active:opacity-75 transition-colors',
+                    'flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors',
                     // End buttons inherit the container's corner radius: without this the
                     // buttons are square-cornered inside a rounded overflow-hidden group,
                     // and the clip shaves the selected 2px border off exactly at the
