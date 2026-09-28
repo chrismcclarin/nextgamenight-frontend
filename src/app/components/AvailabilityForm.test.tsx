@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'vitest-axe';
 
 // WIDENED by plan 88.6-25 task 2 to the `importOriginal` form plan 88.6-15 shipped
 // (PromptScheduleManager.test.tsx:67-73). The narrow factory replaced the WHOLE module, so once
@@ -216,6 +217,102 @@ describe('Phase 88-13 — replacing painted selections is gated by a styled dial
     expect(availabilityFormAPI.prefillFromGcal).not.toHaveBeenCalled();
 
     unmount();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Phase 88.6-54 (R7 / SC-4, UI-SPEC §7.5) — the composed axe audit of the OPEN replace gate.
+// ---------------------------------------------------------------------------------------
+// WHY THIS SURFACE, AND WHY NOW: RESEARCH §Q1 lists AvailabilityForm.js as a `ui/ConfirmDialog`
+// importer (88.6-RESEARCH.md:919) but in NEITHER of its two derived lists — not among the files
+// whose tests already run axe (:922-926), not among the nine unaudited surfaces (:928-940). The
+// enumeration dropped it, so SC-4 ("composed axe audits on EVERY modal surface this phase
+// migrates") had a hole exactly here. Measured 2026-09-24 and re-measured 2026-09-28: this file and
+// availability-form/[token]/page.test.tsx held ZERO `axe` occurrences.
+//
+// ORDERING (SPEC R7 Edge Coverage), confirmed at execution 2026-09-28 — this audit lands after the
+// last commit of every file in the audited tree:
+//   AvailabilityForm.js  1a220e8 (plan 88.6-42, 2026-09-16)
+//   ConfirmDialog.tsx    861cee4 (plan 88-33,   2026-08-21)
+//   useConfirmAction.ts  8ac83ee (plan 88-05,   2026-08-05)
+// AvailabilityGrid.js moved later (plan 88.6-57, CR-102) but is MOCKED in this suite (the vi.mock
+// at the top of the file) and renders inside the form, not inside the dialog under audit.
+//
+// NO `matchMedia` FORK — one tree, one run per rule set. AvailabilityForm.js, ConfirmDialog.tsx,
+// useConfirmAction.ts and dialog.tsx call none (grep over the four, 2026-09-28, exit 1).
+//
+// SINGLE SURFACE — the gate opens over the magic-link PAGE, not over a `Modal`, so the SPEC's
+// stacked-pair ("adjacency") clause does not apply here (the DangerZoneDeleteAccount audit records
+// the same shape for its own single dialog).
+//
+// THE POSITIVE CONTROL is not optional. A ConfirmDialog's only heading is its Radix DialogTitle, so
+// heading-order CANNOT fail on this dialog by itself; and a green WCAG 4.1.2 run proves nothing
+// unless the same run is shown able to red on this dialog's DOM. Case 2 plants one defect per rule
+// set inside the open dialog and requires each run to report it (gap-lap ML-12 / ML-33).
+describe('Phase 88.6-54 (R7 / SC-4, UI-SPEC §7.5) — composed axe audit of the OPEN replace-gate ConfirmDialog', () => {
+  const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+  const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+  const DIALOG_NAME = 'Replace your current selections?';
+
+  // Its own fixture, same shape as the replace-gate describe's: one painted slot is "anything to lose".
+  const PAINTED = {
+    time_slots: [{ slotId: '2026-08-10T18:00:00.000Z', preference: 'preferred' }],
+    is_unavailable: false,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (availabilityFormAPI.prefillFromGcal as Mock).mockResolvedValue({ slot_ids: [], count: 0 });
+  });
+
+  /** Opens the gate and settles on the OPEN dialog itself (by its accessible name), never on chrome. */
+  async function openReplaceGate(): Promise<HTMLElement> {
+    render(
+      <AvailabilityForm
+        magicToken="tok"
+        userName="Sam"
+        promptId="p1"
+        gcalConnected
+        existingResponse={PAINTED}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /import from google calendar/i }));
+    const dialog = await screen.findByRole('dialog', { name: DIALOG_NAME });
+    // A branch-specific control of the open dialog: the audit runs on the settled gate, not a frame.
+    expect(within(dialog).getByRole('button', { name: 'Replace' })).toBeInTheDocument();
+    return dialog;
+  }
+
+  it('1. the open gate passes WCAG 4.1.2 and heading-order', async () => {
+    const dialog = await openReplaceGate();
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('2. positive control — the SAME two runs red on a defect planted inside this dialog', async () => {
+    const dialog = await openReplaceGate();
+
+    // WCAG 4.1.2: a button with no text and no label.
+    const nameless = document.createElement('button');
+    nameless.type = 'button';
+    dialog.appendChild(nameless);
+    const wcag = await axe(dialog, WCAG_412);
+    expect(wcag.violations.map((v) => v.id)).toContain('button-name');
+    nameless.remove();
+
+    // heading-order: an h4 after the dialog's title (Radix DialogTitle renders an h2), so h2 -> h4.
+    const title = within(dialog).getByRole('heading', { name: DIALOG_NAME });
+    expect(title.tagName).toBe('H2');
+    const skipped = document.createElement('h4');
+    skipped.textContent = 'Planted skipped level';
+    title.after(skipped);
+    const order = await axe(dialog, HEADING_ORDER);
+    expect(order.violations.map((v) => v.id)).toContain('heading-order');
+    skipped.remove();
+
+    // With both plants removed the dialog is back to the case-1 tree, and both runs are clean again.
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 });
 
