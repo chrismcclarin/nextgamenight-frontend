@@ -27,6 +27,9 @@ export default function LandingPage() {
               it raw and rostered where the gate can see it. The exemption is carried by
               `typeScaleTouchedSurfaces.test.ts`'s RUNG_ROSTER and BREAKPOINT_ROSTER entries
               for this file, both under that owner provenance.
+              AMENDED Phase 88.6-53 (2026-09-28): a THIRD roster now holds this h1 too —
+              RAW_HEADING_ROSTER, SPEC AC-3's raw-heading census, counts it as one of this
+              file's 2 raw heading sites under the same owner provenance.
 
               Applying the general rule here is a decision, not a cleanup — it takes a look
               call away from the phase that owns it. */}
@@ -188,6 +191,10 @@ export default function LandingPage() {
               which seeded this file's RUNG_ROSTER entry at 1 site for the h1 alone rather than
               the 2 its plan text asserted). This comment is therefore the ONLY thing standing
               between it and the next sweep.
+              AMENDED Phase 88.6-53 (2026-09-28): no longer the only thing — the raw-heading
+              census now holds this h2 as one of this file's 2 raw sites (RAW_HEADING_ROSTER in
+              `typeScaleTouchedSurfaces.test.ts`, SPEC AC-3), under the same 2026-09-08 W55
+              owner ruling. The rung scanner still does not count it, correctly: 30 is a rung.
 
               Resizing this is a decision, not a cleanup. */}
           <h2 className="text-3xl font-bold text-center text-content-primary mb-12">

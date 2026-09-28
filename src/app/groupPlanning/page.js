@@ -11,6 +11,7 @@ import PromptScheduleSection from '../components/PromptScheduleSection';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Heading } from '../../components/ui/Heading';
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -272,9 +273,21 @@ export default function GroupPlanningPage() {
             <div className="card p-3 md:p-6 mb-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div className="min-w-0">
-                        <h1 className="text-2xl md:text-3xl font-bold text-content-primary truncate">
+                        {/* DECISION Phase 88.6-53 (D-04 §4.4 row 1; A1): the page title is Display 30
+                            at EVERY width, chosen OVER keeping the breakpoint-grown 24 -> 30 pair (a
+                            heading that changes size at a breakpoint is a second type scale), and it
+                            WRAPS, chosen OVER keeping the old ellipsis clip — A1, the tracer's ruling
+                            (88.6-15-PLAN.md:122-131, applied at GroupGamesList.js): clipping is kept
+                            only where it is load-bearing, and here it would hide the group NAME, the
+                            one thing this title exists to show. Nothing needs the clip: the parent is
+                            min-w-0 and the card has no fixed height. Disclosed phone delta (V-5): at
+                            375px the title moves 24 -> 30 and wraps instead of ellipsising; the
+                            primitive's wrap-anywhere base breaks an unbroken name, guarded at 375px
+                            by e2e/padding-budget.spec.ts. Re-adding the clip is a decision, not a
+                            cleanup. */}
+                        <Heading level={1} size="display" className="text-content-primary">
                             {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
-                        </h1>
+                        </Heading>
                         <p className="text-sm text-content-secondary mt-1">
                             Send availability polls and manage responses
                         </p>
@@ -301,7 +314,7 @@ export default function GroupPlanningPage() {
 
             {/* Availability Polls + Response Dashboard in one card */}
             <div className="card p-3 md:p-6 mb-6">
-                <h2 className="text-xl font-bold text-content-primary mb-4">Availability Polls</h2>
+                <Heading level={2} size="heading" className="text-content-primary mb-4">Availability Polls</Heading>
                 <div className="bg-surface-page rounded-lg surface-flat-phone md:p-4">
                     <PromptScheduleSection
                         groupId={groupId}
@@ -332,7 +345,7 @@ export default function GroupPlanningPage() {
                             </div>
                         ) : heatmapPrompt ? (
                             <>
-                                <h3 className="text-lg font-semibold text-content-primary mb-3">Poll Responses</h3>
+                                <Heading level={3} size="heading" className="text-content-primary mb-3">Poll Responses</Heading>
                                 <ResponseDashboard
                                     promptId={heatmapPrompt.id}
                                     isAdmin={isAdmin}

@@ -740,7 +740,14 @@ const EXPECTED_PROP_SEAMS = 5;
 // "h3 @ 14 and h3 @ 16 -> stay" row — so `EXPECTED_LEVELS`' `{ 3: 1 }` entry for this file is
 // byte-unchanged and only the SOURCE of the rung moved. Raised in the SAME commit as the
 // migration, per the docblock rule above.
-const EXPECTED_MIN_PRIMITIVES = 128;
+// RAISED 128 -> 131 by plan 88.6-53 task 1 (gap closure, 2026-09-28): THREE more, all in
+// `app/groupPlanning/page.js` — the page title (h1, `size="display"`, a disclosed 24 -> 30 at
+// phone width; it was breakpoint-grown to 30 at md), the "Availability Polls" section title (h2,
+// `size="heading"`, already 20 — no rung move) and "Poll Responses" (h3, `size="heading"`, a
+// disclosed 18 -> 20). `EXPECTED_LEVELS`' `{ 1: 1, 2: 1, 3: 1 }` entry for that file is
+// byte-unchanged (P4). MEASURED, not assumed: the floor was first set to 132 and RED with
+// "expected 131 to be greater than or equal to 132".
+const EXPECTED_MIN_PRIMITIVES = 131;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -780,6 +787,26 @@ const FIXTURE_COMMENTS_AND_CLASSLESS = `
       <h4>Class-less, and still a heading</h4>
       <h2 className="text-xl font-bold">Real</h2>
     </div>
+  );
+`;
+
+// The raw-heading census's negative control (plan 88.6-53, gap closure 2026-09-28). THREE shapes
+// the census must get right, in one fixture: a MULTI-LINE opener (the tag name on one line, its
+// className on the next — `RAW_OPEN` anchors on the tag name alone, so this must count), a
+// CLASS-LESS h3 (the global-error.tsx shape — must count), and an h1 inside a JSX comment (must
+// count for NOTHING — the scan reads comment-stripped source). Exactly two raw headings, levels
+// [2, 3]: a count of 3 means the comment leaked in, a 1 among the levels says the same.
+const FIXTURE_RAW_CENSUS = `
+  export const E = () => (
+    <section>
+      {/* A JSX comment mentioning <h1 className="text-3xl">Nothing</h1> */}
+      <h2
+        className="text-xl font-bold"
+      >
+        Multi-line opener
+      </h2>
+      <h3>Class-less</h3>
+    </section>
   );
 `;
 
@@ -865,6 +892,10 @@ const RUNG_ROSTER: ExemptionRoster = {
   //        makes its destination a LOOK call rather than a rung snap. Plan 11 measured this
   //        (its plan text said seed `sites: 2`; the measurement said 1) and plan 35 confirms
   //        it. The site comment in `LandingPage.js` is the ONLY thing holding it.
+  //        AMENDED by plan 88.6-53 (2026-09-28): no longer uncountable — `RAW_HEADING_ROSTER`
+  //        (SPEC AC-3's raw-heading census) now counts it as one of this file's 2 raw sites,
+  //        under the same 2026-09-08 W55 owner ruling. This roster still does not, correctly:
+  //        30 IS a rung.
   //   :57  the Google sign-in CTA's live `text-lg` and `font-semibold` — the weight half is
   //        countable in WEIGHT_ROSTER (see that entry, whose `why` and `owner` plan 35
   //        corrected: it read "dead on a .btn (delete)" and the element wears `rounded-btn`,
@@ -922,11 +953,14 @@ const RUNG_ROSTER: ExemptionRoster = {
   // EXCLUSIVE branches of the `signedOutFromDeletedAccount` ternary (the `?` is at `:59`
   // post-edit), so the page renders exactly one page title at a time and the per-h1 Display
   // assertion is not being handed a page with two simultaneous h1s. Entry DELETED, not zeroed.
-  'app/groupPlanning/page.js': {
-    sites: 2,
-    why: '2 headings off the 4-size working set (h1:268 text-2xl md:text-3xl; h3:328 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-53 task 1 (gap closure, 2026-09-28): `app/groupPlanning/page.js`
+  // carried `sites: 2` — the page title h1 ("Plan Game Session - <group name>", breakpoint-grown
+  // 24 -> 30; the entry's `:268` cite had drifted to `:275`) and the "Poll Responses" h3 (18; cite
+  // `:328` drifted to `:335`). The h1 is `<Heading level={1} size="display">` (30 at every width)
+  // and the h3 is `<Heading level={3} size="heading">` (a disclosed 18 -> 20, §4.4's closed tie).
+  // Levels PRESERVED; both leave this RAW-only population. VERIFICATION gap 2 found this entry
+  // naming "the Phase 88.6 sweep that owns this file" when no plan swept it. Entry DELETED, not
+  // zeroed.
   // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16): `app/invite/game/[token]/page.js`
   // carried `sites: 2` (h1:238, h1:263 — both `text-2xl`) and
   // `app/invite/group/[token]/page.js` carried `sites: 1` (h1:148 `text-2xl`). All three are
@@ -1027,11 +1061,11 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // `<Heading>`, so its 700 now comes from the primitive's `font-bold` cva base and the
   // `font-semibold` was DELETED rather than promoted — it leaves this RAW-only population with
   // its migration. Entry DELETED, not zeroed.
-  'app/groupPlanning/page.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:328) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-53 task 1 (gap closure, 2026-09-28): `app/groupPlanning/page.js`
+  // carried `sites: 1` — the "Poll Responses" h3's 600 (cite `:328` had drifted to `:335`). It is
+  // `<Heading level={3} size="heading">` now and takes its 700 from the primitive's `font-bold`
+  // cva base, so the 600 was DELETED rather than promoted and the heading leaves this RAW-only
+  // population. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-24 task 2 (wave 7, 2026-09-16): `app/rsvp/[token]/page.js` carried
   // `sites: 2` (h1:190, h1:220 — the EVENT_PASSED and ERROR branch headings, both
   // `font-semibold`). Both are `<Heading level={1} size="heading">` now and take their 700 from
@@ -1106,11 +1140,11 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: 'a class-less <h1> in the root error boundary, which must not import from src/components/ui/ — it is the last surface standing when the app has crashed',
     owner: { kind: 'decision', marker: 'DECISION Phase 88-09 D-20' },
   },
-  'app/groupPlanning/page.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:328 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-53 task 1 (gap closure, 2026-09-28): `app/groupPlanning/page.js`
+  // carried `sites: 1` — the same "Poll Responses" h3 as the heading-semibold roster above.
+  // RAW-ONLY supply rule; it is no longer a raw `<hN>` tag, so the file leaves this population
+  // rather than decrementing, and its 700 is supplied by `Heading`'s cva base (pinned in
+  // `Heading.test.tsx`). Entry DELETED, not zeroed.
   // DELETED by plan 88.6-24 task 2 (wave 7, 2026-09-16): the same two headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
   // (Heading.tsx:60) rather than a stated utility. Entry DELETED, not zeroed.
@@ -1123,10 +1157,39 @@ const BREAKPOINT_ROSTER: ExemptionRoster = {
     why: 'Phase 88.9 W55 owns the landing hero block: 1 heading whose size changes at a breakpoint (h1:15 text-5xl md:text-6xl) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set',
     owner: { kind: 'owner', date: '2026-09-08', ruling: 'Phase 88.9 W55 owns the landing hero block\'s sizes' },
   },
-  'app/groupPlanning/page.js': {
+  // DELETED by plan 88.6-53 task 1 (gap closure, 2026-09-28): `app/groupPlanning/page.js`
+  // carried `sites: 1` — the page title h1 (24 at phone, 30 from md; cite `:268` had drifted to
+  // `:275`). It picked ONE rung: `<Heading level={1} size="display">`, 30 at every width — a
+  // disclosed +6px at 375px, where it now wraps rather than clipping (A1). Entry DELETED, not
+  // zeroed.
+};
+
+// SPEC AC-3's "0 raw h1-h4 outside the primitive + exemption list" clause, machine-held for the
+// first time (plan 88.6-53, gap closure 2026-09-28 — VERIFICATION gap 2 found the clause had no
+// assertion at all, which is how `groupPlanning/page.js` kept three raw headings behind a green
+// suite). The census counts EVERY raw `<hN>` in the comment-stripped tree, all six levels,
+// class-less and multi-line openers included (it reads `RAW`, built from `RAW_OPEN`).
+//
+// `components/ui/Heading.tsx` is the primitive's DEFINITION, so it is an EXCLUSION, never an
+// exemption — `src/test-utils/exemption.ts` "EXCLUSION IS NOT EXEMPTION". It holds ZERO raw tags
+// in stripped source at this commit (its `<h1>` mentions are all in comments); the exclusion is
+// named so that a literal tag map written into the primitive later does not read as debt.
+const RAW_HEADING_EXCLUSION = 'components/ui/Heading.tsx';
+
+// Measured 2026-09-28 by this suite's own scanner: 6 raw tags in 3 files before plan 88.6-53
+// (global-error 1, LandingPage 2, groupPlanning 3) and 3 in 2 files after it. Exact in both
+// directions, like every roster in this file.
+const RAW_HEADING_ROSTER: ExemptionRoster = {
+  'app/components/LandingPage.js': {
+    sites: 2,
+    why:
+      'two raw headings whose SIZES are a Phase 88.9 W55 look call: the hero h1 "Your next game night" (text-5xl md:text-6xl) and the section h2 "Everything your group needs" (text-3xl — D-04 has no "h2 @ 30" row, so its rung is a look call, not a snap). Migrating either onto Heading needs a size decision this phase does not own. The owner finds both in .planning/deferred/phase-88.9.md, in the dated "## [pointers]" block plan 88.6-56 writes, under its ### entry for the landing section h2 (the hero h1 rides the same W55 ruling)',
+    owner: { kind: 'owner', date: '2026-09-08', ruling: "Phase 88.9 W55 owns the landing hero block's sizes" },
+  },
+  'app/global-error.tsx': {
     sites: 1,
-    why: '1 heading whose size changes at a breakpoint (h1:268 text-2xl md:text-3xl) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+    why: 'a class-less <h1> in the root error boundary, which must not import from src/components/ui/ — it is the last surface standing when the app has crashed',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88-09 D-20' },
   },
 };
 
@@ -1166,6 +1229,7 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
     expect(assertRosterShape(HEADING_SEMIBOLD_ROSTER)).toEqual([]);
     expect(assertRosterShape(HEADING_WEIGHT_ROSTER)).toEqual([]);
     expect(assertRosterShape(BREAKPOINT_ROSTER)).toEqual([]);
+    expect(assertRosterShape(RAW_HEADING_ROSTER)).toEqual([]);
   });
 
   it('finds headings on every one of the five named surfaces, and a tree-wide total floor', () => {
@@ -1384,6 +1448,26 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
         'one (groupHomePage\'s h1) for this reason. Pick ONE rung from the working set. ' +
         `Offenders: ${JSON.stringify(offenders.map(describeHeading), null, 1)}`,
     ).toEqual([]);
+  });
+
+  it('holds raw heading tags outside the Heading primitive to an exact, owned roster (SPEC AC-3 zero-remaining)', () => {
+    // RAW ONLY, by definition — the clause is about raw tags. A migrated heading leaves this
+    // population with its migration, so a sweep closes its entry here in the SAME commit.
+    const offenders = RAW.filter((h) => h.surface !== RAW_HEADING_EXCLUSION);
+    expect(
+      assertExactCounts(RAW_HEADING_ROSTER, countByFile(offenders)),
+      'SPEC AC-3: every heading renders through the Heading primitive or sits on an owned, ' +
+        'counted exemption. Migrate the tag (level preserved) or add a provenance-bearing entry. ' +
+        `Offenders: ${JSON.stringify(offenders.map(describeHeading), null, 1)}`,
+    ).toEqual([]);
+
+    // Negative control: the census reads the same scanner, so prove the three shapes here.
+    const fixture = scanFixture('fixture/raw-census.tsx', FIXTURE_RAW_CENSUS);
+    expect(
+      fixture.filter((h) => h.kind === 'raw').map((h) => h.level),
+      'a multi-line opener and a class-less heading must each count once; a heading tag inside ' +
+        'a JSX comment must count for nothing',
+    ).toEqual([2, 3]);
   });
 
   it('renders exactly one h1 per PAGE surface, at the 30/700 Display role', () => {
@@ -2596,7 +2680,12 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     separate Rule-2 add and not this rule's outcome.
   // Entry DELETED rather than zeroed; the roster is exact in both directions.
   'app/groupPlanning/page.js': {
-    sites: 4,
+    // 4 -> 3, plan 88.6-53 task 1 (gap closure, 2026-09-28). The "Poll Responses" h3's 600 left
+    // with its `Heading` migration in the same commit — this rule is a FILE-level
+    // comment-stripped scan and exact both ways, so it cannot stay at 4. The three that remain
+    // are the two breadcrumb links' 500 and the current-page crumb's 600; plan 88.6-53 task 2
+    // resolves them and DELETES this entry. The `why` below still describes the pre-plan four.
+    sites: 3,
     why:
       '4 off-scale weight sites (2 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-15, 88.6-21, 88.6-32, 88.6-39, 88.6-41, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
