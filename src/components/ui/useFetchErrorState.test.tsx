@@ -176,6 +176,23 @@ describe('getFetchErrorMessage — designed copy for action-path failures', () =
     expect(out.length).toBeGreaterThan(0);
     expect(out).toMatch(/something went wrong/i);
   });
+
+  // Phase 88.6-54 (R071 (d), WINDOWS 122): the two registry rows 88.8 added with NO behaviour
+  // test. Each is asserted as the LITERAL copy — MESSAGE_BY_CODE is module-private and this plan
+  // adds tests only, so it is not exported to be imported here. Deleting either row makes its
+  // code fall back to `unknown` ("Something went wrong…"), which reds the matching case.
+  // Demonstrated RED that way at execution (2026-09-28), then GREEN on restore.
+  it('unsupported_address (the synthetic-target 400) resolves to its own designed copy', () => {
+    expect(getFetchErrorMessage(new ApiError('x', 'unsupported_address', 400))).toBe(
+      "That address can't be used with this app — the domain is reserved by our sign-in system."
+    );
+  });
+
+  it('not_provisioned (the never-provisioned 404) resolves to its own designed copy', () => {
+    expect(getFetchErrorMessage(new ApiError('x', 'not_provisioned', 404))).toBe(
+      "Your account isn't set up yet. Reload the page and try again."
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

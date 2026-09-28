@@ -152,6 +152,18 @@ describe('GAP6 — retry predicate truth table (D-13, T-84-08)', () => {
     expect(shouldRetry(0, new ApiError('x', 'unsupported_address', 400))).toBe(false);
   });
 
+  // Phase 88.6-54 (R071 (d), WINDOWS 122): `queryClient.ts`'s `not_provisioned` row (the
+  // `'not_provisioned',` entry in the terminal set) shipped in Phase 88.8 with NO test. Same
+  // dedicated-row convention as the three rows above — never folded into the `it.each`. Why it
+  // is terminal, from the registry's own comment: "you have no stored data yet" is a STATE, so an
+  // identical request returns the identical 404; a retry doubles every occurrence, delays the
+  // user's message by a round trip and, on the DELETE path, RE-ISSUES a state-changing
+  // DELETE /users/me. Demonstrated RED at execution (2026-09-28) by deleting the set entry — the
+  // code then falls through to the `failureCount < 1` transient default and returns true.
+  it('never retries not_provisioned (404 terminal — a retry re-issues the DELETE on that path)', () => {
+    expect(shouldRetry(0, new ApiError('x', 'not_provisioned', 404))).toBe(false);
+  });
+
   it('retries a transient failure at most once', () => {
     const networkErr = new ApiError('down', 'network', 0);
     expect(shouldRetry(0, networkErr)).toBe(true);
