@@ -48,7 +48,7 @@ vi.mock('./AvailabilityGrid', () => ({ default: () => <div data-testid="grid" />
 import type { ComponentType } from 'react';
 import AvailabilityFormDefault from './AvailabilityForm';
 import { logger } from '@/lib/logger';
-import { availabilityFormAPI } from '@/lib/api';
+import { ApiError, availabilityFormAPI } from '@/lib/api';
 
 // AvailabilityForm is a JS component; its inferred prop type marks every prop
 // required. Cast to a permissive type so the test can render with only the
@@ -93,6 +93,13 @@ describe('AvailabilityForm submit-error path', () => {
     // useFetchErrorState.ts. That genericness is the RULED RESIDUAL of D62 branch B
     // (owner, 2026-09-09), not a defect: until Phase 93 lands the backend `code`, an expired
     // magic link and a validation refusal render the same sentence here.
+    //
+    // AMENDED 2026-09-28 by plan 88.6-58 task 1 (review H2, D-35 amended): the paragraph above
+    // is now true only of CODE-LESS failures — this case's transport rejection, and the raw
+    // `{ error, action }` token/validation arms (pinned confirm-only below). The CODED arms
+    // (`prompt_closed`, `prompt_deadline_expired`, `rate_limited`) now reach the catch as an
+    // `ApiError` and render their own register lines — the `it.each` cases below. The
+    // `lib/api.ts:1086-1091` cite above is stale; `submitResponse` is api.ts:1364-1375.
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(
         'Something went wrong. Refresh the page to try again.',
@@ -102,6 +109,81 @@ describe('AvailabilityForm submit-error path', () => {
     // this half the assertion above still passes while a second element leaks the message.
     expect(document.body.textContent).not.toMatch(/network down/i);
     expect(logger.error).toHaveBeenCalledWith('form submit failed', expect.any(Error));
+  });
+
+  // ADDED by plan 88.6-58 task 1 (2026-09-28, /code-adversarial-review 88.6 H2, owner ruling
+  // `H2-RULING` in 88.6-CODE-REVIEW-work/RULINGS.md). The backend ALREADY sends an envelope
+  // `code` on the three lifecycle/limiter rejections of `POST /availability-responses`
+  // (Sonnet/routes/availabilityResponse.js:99, :103 `prompt_closed`; :109
+  // `prompt_deadline_expired`; middleware/rateLimiter.js:10 `rate_limited`), and
+  // `submitResponse` returns the parsed body whatever the status — so these bodies reach the
+  // component's `response.error` guard RESOLVED, not rejected. Before plan 58 the guard threw a
+  // bare `Error` and every one of them rendered the `unknown` line ("Refresh the page…"), which
+  // a refresh cannot fix. Each case below was RED on FE d03f728 and is GREEN after the coded
+  // throw.
+  async function submitWith(body: Record<string, unknown>) {
+    (availabilityFormAPI.submitResponse as Mock).mockResolvedValueOnce(body);
+    const user = userEvent.setup();
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    await user.click(screen.getByRole('button', { name: /unavailable this week/i }));
+    await user.click(screen.getByRole('button', { name: /submit availability/i }));
+  }
+
+  it.each([
+    [
+      'prompt_deadline_expired',
+      'The deadline for this availability prompt has passed.',
+      'The deadline for this availability poll has passed.',
+    ],
+    [
+      'prompt_closed',
+      'This availability prompt is closed.',
+      'This availability poll is already closed.',
+    ],
+    [
+      'rate_limited',
+      'Too many attempts. Please try again later.',
+      "You're going a little fast — give it a moment, then try again.",
+    ],
+  ])(
+    'a resolved `%s` envelope renders its ratified register line, not the generic one',
+    async (code, backendMessage, registerLine) => {
+      await submitWith({ code, message: backendMessage, error: backendMessage });
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(registerLine);
+      });
+      // The backend's own sentence stays OFF the display path (R1): only the register renders.
+      expect(document.body.textContent).not.toContain(backendMessage);
+      expect(document.body.textContent).not.toMatch(/refresh the page/i);
+    },
+  );
+
+  it('CONFIRM-ONLY: a code-less `{ error, action }` token arm still renders the `unknown` line (the true D-35 residual)', async () => {
+    // GREEN before and after plan 58 by design. It pins D-35's REAL residual so a later "tidy"
+    // onto `mapErrorToCode(response, 400)` — which resolves a code-less 400 to `validation` and
+    // would tell someone with an expired link "Something looks off with that request" — reds.
+    await submitWith({ error: 'This link is no longer valid.', action: 'request_new' });
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Something went wrong. Refresh the page to try again.',
+      );
+    });
+    expect(document.body.textContent).not.toMatch(/no longer valid/i);
+  });
+
+  it('the value reaching handleAppSubmit is a coded ApiError carrying the backend string only as upstreamMessage', async () => {
+    const backendMessage = 'The deadline for this availability prompt has passed.';
+    await submitWith({
+      code: 'prompt_deadline_expired',
+      message: backendMessage,
+      error: backendMessage,
+    });
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    const [msg, thrown] = (logger.error as Mock).mock.calls[0];
+    expect(msg).toBe('form submit failed');
+    expect(thrown).toBeInstanceOf(ApiError);
+    expect(thrown.code).toBe('prompt_deadline_expired');
+    expect(thrown.upstreamMessage).toBe(backendMessage);
   });
 });
 

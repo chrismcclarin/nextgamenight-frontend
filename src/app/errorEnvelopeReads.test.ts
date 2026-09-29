@@ -384,7 +384,23 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       'file: the guard and the throw are now AvailabilityForm.js:159 and :160 (was :130/:131) and ' +
       'the `onSuccess?.()` call is :163 (was :134). Both reads are BYTE-UNCHANGED — plan 25 ' +
       'pinned them so — and the movement is entirely imports and comment blocks that plan added ' +
-      'above them.',
+      'above them. ' +
+      // APPENDED by plan 88.6-58 task 1 (2026-09-28, /code-adversarial-review 88.6 H2, owner
+      // ruling `H2-RULING`), per the append-don't-rewrite convention. `sites` is UNCHANGED at 2
+      // and was re-run after the edit: the guard read is byte-unchanged and the throw's read
+      // sits on ONE line (this scanner dedupes on file:line:receiver.prop).
+      'SUPERSEDED IN PART 2026-09-28 by plan 88.6-58: the throw no longer rethrows the string ' +
+      'as a bare `Error` — it constructs a CODED `ApiError` from the body\'s own `code` and ' +
+      'reads `response.error` ONLY as the `upstreamMessage` argument (Sentry, off the display ' +
+      'path), so the three lifecycle/limiter arms that already carry an envelope `code` ' +
+      '(`prompt_closed` availabilityResponse.js:99,:103; `prompt_deadline_expired` :109; the ' +
+      'limiter\'s `rate_limited`) render their ratified register lines. "NO TEST is added in ' +
+      '88.6 for this path" is superseded: plan 88.6-58 adds five cases to ' +
+      'AvailabilityForm.test.tsx, including a confirm-only pin of the code-less token arm on ' +
+      'the `unknown` line. The Phase 93 ordering hazard above is UNCHANGED — the guard still ' +
+      'branches on the presence of `body.error`. LINE CITES RE-DERIVED 2026-09-28: guard ' +
+      'AvailabilityForm.js:168, throw :172-178 with its `.error` read on :177, ' +
+      '`onSuccess?.()` :181.',
     owner: {
       kind: 'owner',
       date: '2026-09-09',

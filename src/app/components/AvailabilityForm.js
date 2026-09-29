@@ -9,7 +9,7 @@ import AvailabilityGrid from './AvailabilityGrid';
 // vite-tsconfig-paths only maps `@/` for files in the TS project (tsconfig
 // `include` is .ts/.tsx only), so `@/` aliases don't resolve from `.js`
 // importers in tests. Matches the sibling ScheduleForm's import style.
-import { availabilityFormAPI } from '../../lib/api';
+import { ApiError, availabilityFormAPI } from '../../lib/api';
 import { useAppForm } from '../../lib/useAppForm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
@@ -166,7 +166,16 @@ export default function AvailabilityForm({
       });
 
       if (response.error) {
-        throw new Error(response.error);
+        // Coded throw (plan 88.6-58, review H2) — see the AMENDED 88.6-25 marker in the catch.
+        // The backend string rides ONLY as `upstreamMessage` (5th arg: Sentry, never the DOM),
+        // and its read stays on ONE line so the errorEnvelopeReads roster count stays 2.
+        throw new ApiError(
+          typeof response.message === 'string' ? response.message : 'availability submit rejected',
+          typeof response.code === 'string' ? response.code : 'unknown',
+          400,
+          response,
+          typeof response.error === 'string' ? response.error : undefined
+        );
       }
 
       onSuccess?.({
@@ -193,7 +202,29 @@ export default function AvailabilityForm({
          owns them, Phase 93 owns the backend `code`). CONSEQUENCE, stated so nobody reports it
          as a bug: on this anonymous magic-link page an EXPIRED link and a validation refusal
          render the SAME sentence until Phase 93 lands. Branch A — teaching this path a `code`
-         in 88.6 — was considered and REJECTED on blast radius, not on the merits. */
+         in 88.6 — was considered and REJECTED on blast radius, not on the merits.
+
+         AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review H2, owner ruling
+         `H2-RULING: coded-throw-amend-D35`, 88.6-CODE-REVIEW-work/RULINGS.md; D-35 amended in
+         88.6-CONTEXT.md): the "WHY THE GENERIC LINE IS WHAT LANDS" paragraph above is FALSE
+         for four of the arms. `prompt_closed` (Sonnet/routes/availabilityResponse.js:99, :103),
+         `prompt_deadline_expired` (:109) and the magic-token limiter's `rate_limited` 429
+         (middleware/rateLimiter.js:10, :101) ALREADY carry an envelope `code` today, and
+         `submitResponse` (lib/api.ts:1364-1375, `timedPublicFetch` + `guardedJson`) returns the
+         parsed body WHATEVER the status, so those codes reach the guard above. The guard now
+         throws a coded `ApiError` built from the body's own `code` — FE-only, no backend deploy
+         — so `getFetchErrorMessage` resolves the ratified register lines
+         (useFetchErrorState.ts `rate_limited` / `prompt_closed` / `prompt_deadline_expired`).
+         The `status` argument is a nominal 400: `submitResponse` hands back the body, not the
+         Response, and nothing downstream derives copy from it (`deriveCode` reads `.code` only).
+         WHAT STILL RESOLVES `unknown` (the true D-35 residual, pinned by a confirm-only case in
+         AvailabilityForm.test.tsx): the raw code-less `{ error, action }` token/validation arms
+         (availabilityResponse.js:38-77, :119) and the raw 500 (:197), until Phase 93 gives
+         them a `code`. Branch A (the BE PR) STAYS REJECTED; this is the FE-only read D-35 never
+         weighed. REJECTED here: routing the throw through `mapErrorToCode(response, 400)` — a
+         code-less 400 resolves `validation`, which would tell someone holding an expired link
+         "Something looks off with that request". `'unknown'` is the deliberate fallback.
+         Changing this is a decision, not a cleanup. */
       setSubmitError(getFetchErrorMessage(error));
       throw error;
     } finally {
