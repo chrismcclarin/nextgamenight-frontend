@@ -135,6 +135,39 @@ describe('invite/game/[token] — status-keyed branches (D-45 / D-59)', () => {
     expect(screen.getByText("We couldn't find what you were looking for.")).toBeInTheDocument();
     expect(screen.queryByText(/failed to join game night/i)).toBeNull();
   });
+
+  // ADDED by plan 88.6-58 task 6 (2026-09-28, /code-adversarial-review 88.6 MEDLOW-14). The
+  // preview catch already routes a 410 to the `expired` screen (D-45/D-59); the JOIN catch did
+  // not, so an event that passed between preview and join rendered the generic permanent
+  // screen. `POST /events/join-game-by-token`'s only 410 is the has-passed gate
+  // (Sonnet/routes/events.js:1353). RED on FE d03f728, GREEN after the join-catch 410 arm.
+  it('a JOIN 410 renders the same expired screen the preview 410 does', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue({ game_name: 'Wingspan', event_date: '2030-01-01T00:00:00Z' });
+    join().mockRejectedValue(postAliasDropError(410, 'gone'));
+
+    render(<GameInvitePage />);
+
+    expect(
+      await screen.findByRole('heading', { name: /game night has passed/i }),
+      'the join catch must select `expired` on `err.status === 410`, like the preview catch'
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /this invite is no longer valid/i })).toBeNull();
+    expect(screen.queryByText(/this is no longer available/i)).toBeNull();
+  });
+
+  it('NEGATIVE: a JOIN 500 still takes the transient error path, not the expired screen', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue({ game_name: 'Wingspan', event_date: '2030-01-01T00:00:00Z' });
+    join().mockRejectedValue(new ApiError('HTTP error! status: 500', 'internal', 500));
+
+    render(<GameInvitePage />);
+
+    expect(
+      await screen.findByRole('heading', { name: /couldn't join game night/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /game night has passed/i })).toBeNull();
+  });
 });
 
 describe('invite/game/[token] — the migrated anchors keep their element kind and href', () => {

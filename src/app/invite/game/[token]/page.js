@@ -172,6 +172,17 @@ function GameInvitePage() {
         // the toast arm of UI-SPEC §6.2 does not apply: this page IS the mutation and has no
         // other content to preserve context for, so the whole-page error branch below is the
         // placement, with the register supplying the words.
+        //
+        // DECISION Phase 88.6-58 (review MEDLOW-14): a join 410 selects the page's existing
+        // `expired` state — the SAME arm as the preview catch above — because the join
+        // handler's only 410 is the has-passed gate (Sonnet/routes/events.js:1353, verified
+        // 2026-09-28). Chosen OVER rendering the backend `message` (R1: never upstream text)
+        // and OVER the register's generic 410 line (wrong copy for a known, authored state).
+        // A second 410 on that route would need an envelope `code`, not prose.
+        if (err?.status === 410) {
+          setStatus('expired');
+          return;
+        }
         setError(getFetchErrorMessage(err));
         setStatus(classifyError(err) === 'permanent' ? 'error-permanent' : 'error-transient');
       });
