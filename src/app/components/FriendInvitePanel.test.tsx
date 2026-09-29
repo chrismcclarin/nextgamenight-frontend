@@ -352,6 +352,54 @@ describe('FriendInvitePanel — error and success are announced (88.6-22)', () =
     expect(described).toContain('Something went wrong. Refresh the page to try again.');
   });
 
+  // ADDED by plan 88.6-58 task 2 (2026-09-28, /code-adversarial-review 88.6 H3, owner rulings
+  // `H3-RULING` + `H3-COPY-RULING`). `noValidate` (88.6-22) sends a malformed address to the
+  // server, whose `isEmail` verdict is a raw `{ errors }` 400 (Sonnet/routes/invites.js:206,
+  // :216) — `apiFetch` maps it to `validation`, whose register line says "Refresh the page",
+  // which cannot fix a typo. RED on FE d03f728, GREEN after the local byCode override.
+  it('a malformed address (the server isEmail 400 → `validation`) renders the ratified field message on the SAME node', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(
+      new ApiError('HTTP error! status: 400', 'validation', 400, {
+        errors: [{ msg: 'Valid email is required', path: 'email' }],
+      })
+    );
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    const before = errorRegion();
+
+    fireEvent.change(emailField(), { target: { value: 'bob@gmail' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() => expect(errorRegion()).not.toHaveTextContent(''));
+    const after = errorRegion();
+    expect(after).toBe(before); // node identity kept
+    expect(after).toHaveTextContent(
+      "That doesn't look like a valid email address. Check it and try again."
+    );
+    expect(after?.textContent).not.toMatch(/refresh the page/i);
+    expect(after?.textContent).not.toMatch(/valid email is required/i); // no upstream text
+    const field = emailField();
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAttribute('aria-describedby', 'invite-email-error');
+  });
+
+  it('NEGATIVE: the `validation` override does not disturb the `already_member` code arm', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(
+      new ApiError('Already a member', 'already_member', 409)
+    );
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(emailField(), { target: { value: 'member@example.test' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() =>
+      expect(errorRegion()).toHaveTextContent('This person is already a member of the group')
+    );
+  });
+
   it('announces the SUCCESS on the same node — the outcome that was silent before', async () => {
     renderPanel();
     await screen.findByRole('heading', { name: 'Invite by Email' });

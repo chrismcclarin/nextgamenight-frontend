@@ -15,6 +15,10 @@ import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
 
+// UI-SPEC §6.3 row "FriendInvitePanel.js email-invite `validation` override" — ratified
+// 2026-09-28 (`H3-COPY-RULING`). Declared once; byte-equal to the §6.3 row.
+const INVALID_EMAIL_MESSAGE = "That doesn't look like a valid email address. Check it and try again.";
+
 // `openedFrom` is the entry point this panel was opened from: 'create' is the
 // auto-open immediately after a group is created (createGroup.js) and swaps in
 // the context copy of UI-SPEC §6.3; every other entry point keeps the generic
@@ -312,8 +316,27 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                    (`useFetchErrorState.ts:88` already_member, `:91` invite_pending), so keeping
                    them costs nothing and preserves the surface-owns-its-richer-resting-copy
                    precedence that file records at `:80-87`. Collapsing them into the helper is
-                   a decision, not a cleanup. */
-                setEmailError(getFetchErrorMessage(err));
+                   a decision, not a cleanup.
+
+                   AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review H3 + cross-finding
+                   4, owner rulings `H3-RULING` / `H3-COPY-RULING`): the else arm STILL passes no
+                   `fallback` (a code-less failure still resolves `unknown`), but `validation` is
+                   overridden LOCALLY with the §6.3-ratified INVALID_EMAIL_MESSAGE. Why that is
+                   safe on THIS call: every code-less 400 reachable from
+                   `invitesAPI.sendInvite(group_id, email)` is the server's `isEmail` verdict
+                   (Sonnet/routes/invites.js:206, raw `{ errors }` at :216) — measured
+                   2026-09-28: the selector-count 400s (:227-236) cannot fire because the empty
+                   field is refused above first; the self-invite 400s sit on branches this call
+                   never takes; `group_id` is app-supplied. Any NEW raw 400 on the email path must
+                   land as `sendError` with its OWN code (Phase 93's rule, entry "(f) TELLING THAT
+                   ROUTE'S THREE 400 OUTCOMES APART NEEDS A BACKEND `code`", parent-repo
+                   .planning/deferred/phase-93.md:255 as of 2026-09-28) — never widen this
+                   override. REJECTED: editing `MESSAGE_BY_CODE.validation` globally (shared
+                   register; 11 other non-test `byCode:` override sites at d03f728, git grep
+                   2026-09-28), and a client-side format regex (a hand-written
+                   pattern stricter than `isEmail` refuses addresses the server accepts, with no
+                   way around it — the server stays the single source of truth). */
+                setEmailError(getFetchErrorMessage(err, { byCode: { validation: INVALID_EMAIL_MESSAGE } }));
             }
         } finally {
             setEmailLoading(false);
@@ -597,7 +620,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             type=email bubble. It reaches the backend and returns through the
                             ratified register instead of an unstyleable, untranslated browser
                             popup. Restoring native validation would silence the empty-field
-                            message again — a decision, not a cleanup. */}
+                            message again — a decision, not a cleanup.
+
+                            AMENDED 2026-09-28 — DECISION Phase 88.6-58 (review H3, owner
+                            rulings `H3-RULING` / `H3-COPY-RULING`): "returns through the
+                            ratified register" was true but that register line was
+                            `validation` = "…Refresh the page…", which cannot fix a typo. The
+                            malformed address now gets the app-authored field message
+                            (INVALID_EMAIL_MESSAGE, UI-SPEC §6.3, ratified 2026-09-28) via a local
+                            `byCode` override in handleEmailInvite's else arm. A client-side
+                            format regex was considered and REJECTED: the server's `isEmail`
+                            stays the single source of truth. */}
                         <form onSubmit={handleEmailInvite} noValidate className="flex gap-2">
                             {/* 88-33 Task 8 (fork 5): id/name for the autofill heuristic; the
                                 visible "Invite by Email" heading IS the label — associated via
