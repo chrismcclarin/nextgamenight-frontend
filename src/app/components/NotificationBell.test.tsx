@@ -299,15 +299,20 @@ describe('Phase 88.6-31 — the SINGLE two-attribute ARIA exception (ACCEPT §9 
     const trigger = screen.getByRole('button', { name: 'Notifications' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
 
-    const controls = trigger.getAttribute('aria-controls');
-    expect(controls).toBeTruthy();
-    // Closed: the panel is not mounted, so the idref is dangling until it opens.
-    expect(document.getElementById(controls!)).toBeNull();
+    // Closed: the panel is NOT mounted, so the trigger exposes NO `aria-controls` at all — a
+    // permanently-present idref would name an element that is not in the document (a dangling
+    // reference, not a relationship). Flipped by plan 88.6-59 (review MEDLOW-30): until then
+    // this line asserted the dangle on purpose. Same rule as KebabMenu DECISION 88.6-16, pinned
+    // there by KM-2 (`keyboardOperability.test.tsx`) — the phase ships ONE disclosure-trigger rule.
+    expect(trigger).not.toHaveAttribute('aria-controls');
 
     fireEvent.click(trigger);
     expect(await screen.findByText('Group Invites')).toBeInTheDocument();
 
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    // Read the idref only AFTER it opens — it exists exactly while the panel does.
+    const controls = trigger.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
     const panel = document.getElementById(controls!);
     expect(panel).not.toBeNull();
     // The panel is the node that actually contains the disclosed content.
@@ -318,14 +323,15 @@ describe('Phase 88.6-31 — the SINGLE two-attribute ARIA exception (ACCEPT §9 
     render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
     const trigger = screen.getByRole('button', { name: 'Invites notifications' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
-
-    const controls = trigger.getAttribute('aria-controls');
-    expect(controls).toBeTruthy();
+    // Closed: no `aria-controls` (plan 88.6-59, review MEDLOW-30 — see the icon case above).
+    expect(trigger).not.toHaveAttribute('aria-controls');
 
     fireEvent.click(trigger);
     expect(await screen.findByText('Group Invites')).toBeInTheDocument();
 
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    const controls = trigger.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
     expect(document.getElementById(controls!)).toContainElement(screen.getByText('Group Invites'));
   });
 

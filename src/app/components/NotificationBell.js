@@ -30,7 +30,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
      so it survives the next reader: a wave-7 sweep plan that starts fixing a11y defects loses its
      boundary. Neither trigger's prior-decision comment (the `surfaceHoverSweep` hover pin on the
      row, the Phase 88.3 focus-ring treatment on the icon) constrains ARIA attributes — confirmed
-     at both sites before editing, not assumed. */
+     at both sites before editing, not assumed.
+
+     AMENDED 2026-09-29 — DECISION Phase 88.6-59 (review MEDLOW-30): `aria-controls` is now
+     CONDITIONAL — `{...(isOpen ? { 'aria-controls': panelId } : {})}` on both triggers — the same
+     house rule KebabMenu records in DECISION Phase 88.6-16 (`KebabMenu.js`, the
+     `'aria-controls': listId` spread) and KM-2 pins (`keyboardOperability.test.tsx`, "CLOSED
+     state: the trigger exposes NO aria-controls at all"). The panel below is conditionally
+     rendered, so the always-present form named an element that is NOT in the document whenever
+     the menu was closed. REJECTED: the always-present form this marker first shipped — a
+     dangling reference, not a relationship (axe tolerates it; assistive tech gains nothing from
+     it), and it left the phase with two contradictory disclosure-trigger rules. The owner's
+     ruling above is SATISFIED, not reopened: `aria-expanded` is unchanged, and `aria-controls`
+     still "points at this id" whenever the panel exists. Going back to the unconditional
+     attribute is a decision, not a cleanup. */
   const panelId = `${useId()}-notification-panel`;
   const [actionLoading, setActionLoading] = useState(null);
   // { text, tone: 'success' | 'muted' } — muted is the L-8 "no longer
@@ -280,8 +293,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
           className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
+          // `aria-controls` is present ONLY while the panel exists (plan 88.6-59, MEDLOW-30).
           aria-expanded={isOpen}
-          aria-controls={panelId}
+          {...(isOpen ? { 'aria-controls': panelId } : {})}
         >
           {bellIcon}
           {/* DECISION Phase 88.3 (Req 8 / UI-SPEC §5.9.2): this label DROPS
@@ -331,8 +345,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
           className="relative text-white hover:text-amber-400 transition-colors p-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label="Notifications"
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
+          // `aria-controls` is present ONLY while the panel exists (plan 88.6-59, MEDLOW-30).
           aria-expanded={isOpen}
-          aria-controls={panelId}
+          {...(isOpen ? { 'aria-controls': panelId } : {})}
         >
           {bellIcon}
 
