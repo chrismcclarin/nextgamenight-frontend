@@ -55,6 +55,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     const [refreshKey, setRefreshKey] = useState(0);
     const [upcomingEvents, setUpcomingEvents] = useState([]);
     const [upcomingLoading, setUpcomingLoading] = useState(false);
+    // The selfUuid whose upcoming-events fetch last SETTLED (resolved or rejected); see the M2 marker.
+    const [upcomingSettledFor, setUpcomingSettledFor] = useState(null);
     /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserEvents failure is tracked instead of
        being left in the `console.error` it used to stop at. The unhandled rejection left
        `upcomingEvents` at [], so UpcomingEventsCard rendered its empty state — telling someone
@@ -130,7 +132,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 err instanceof Error ? err : new Error("The upcoming-events request didn't complete.")
             );
         }).finally(() => {
-            if (!cancelled) setUpcomingLoading(false);
+            // quick-260928-sfo: both land in ONE callback, so one commit — see the M2 marker.
+            if (!cancelled) {
+                setUpcomingLoading(false);
+                setUpcomingSettledFor(selfUuid);
+            }
         });
         return () => { cancelled = true; };
     }, [user?.sub, refreshKey, selfUuid, upcomingRetryKey]);
@@ -168,8 +174,47 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
        ML-17's terminal branch below is deliberately checked FIRST and is unaffected: a resolved
        identity FAILURE degrades to the banner, an unresolved identity reads as loading. Passing
-       `upcomingLoading` back in is a decision to restore the lie, not a simplification. */
-    const upcomingPending = upcomingLoading || (!selfUuid && !selfIdentityErrorState.showError);
+       `upcomingLoading` back in is a decision to restore the lie, not a simplification.
+
+       AMENDED 2026-09-28 (quick-260928-sfo, WINDOWS 188 / NEW OWNER ITEM 10,
+       FLAKE-QUICK-TASK-RULING: approve) — every sentence above stands.
+       WHAT THE DERIVATION ABOVE MISSED: the ONE commit in which `selfUuid` first resolves. In that
+       commit the fetch effect has not run yet, so `upcomingLoading` is still its initial `false`,
+       both clauses read false, and the page committed a false `Calendar, 0 upcoming games this
+       week` on the phone Calendar button and the card's "Nothing on the calendar" for one effect.
+       That is real DOM, not a render React discarded: recorded by the quick-260928-sfo pins in
+       `UserHomePage.phone.test.tsx`, and read by the CI phone lane on 5 of 7 green runs (the
+       `phone-home-event-discovery.spec.ts` flake).
+       CHOSEN: the settled-for marker (`upcomingSettledFor`, set in the fetch's `finally` beside
+       `setUpcomingLoading(false)`) plus the third clause below — M2's own rule ("an unfetched
+       state reads as loading, never as a confident zero") applied to the frame it missed. This
+       EXTENDS M2, it does not override it. It also holds when the identity CHANGES: the new
+       identity pends until its own fetch settles. The third clause requires a DEFINED
+       `selfUuid`, so the identity-failure path is untouched and ML-17's banner is still checked
+       first; do not collapse clauses 2 and 3 into one `upcomingSettledFor !== selfUuid` — that
+       would make an identity FAILURE read as pending and remove M2's explicit carve-out. It is set
+       in `finally`, not only in `.then`, so a rejected fetch settles too and the error banner is
+       not held behind a pending state forever.
+       REJECTED: (1) initialising `upcomingLoading` to `true` — the raw in-flight flag would then
+       claim a request on the logged-out and identity-failure paths, where the effect early-returns
+       at `if (!selfUuid) return;` (:91) before any `finally` could clear it; (2) flipping the flag
+       in a `useLayoutEffect` — the false-zero commit still reaches the DOM and the accessibility
+       tree, only unpainted; (3) keeping the last RESOLVED count while a re-fetch is in flight
+       (plan 88.6-55's original direction) — aimed at a re-fetch hypothesis the diagnosis
+       rejected; on first load there is no earlier count; (4) initialising `upcomingEvents` to
+       `null` for "never fetched" — the five code read sites would mostly tolerate it (both
+       selectors take null, the classification set guards with `Array.isArray`, and
+       `CalendarListView` guards too), but `null` can only mean "never fetched for ANY identity":
+       the effect never resets the list before a re-fetch (see the hero gate's (c) note), so it
+       would not cover an identity CHANGE, and resetting it to `null` per fetch would blank the
+       list during every re-fetch. The settled-for marker says "not fetched for THIS identity"
+       without touching the list.
+       Removing the third clause restores a one-commit lie that only a recorder can see — a
+       decision, not a cleanup. */
+    const upcomingPending =
+        upcomingLoading ||
+        (!selfUuid && !selfIdentityErrorState.showError) ||
+        (Boolean(selfUuid) && upcomingSettledFor !== selfUuid);
 
     /* SPEC Req 2 (88.5-07): ONE clock, ONE selector call, ONE value per render.
        `now` is passed EXPLICITLY rather than leaning on the selector's `new Date()`
