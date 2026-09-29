@@ -11,12 +11,19 @@
  * final-line redaction layer (sentry.scrub.js `beforeSend` + replay scrub,
  * Task 4) normalizes anything that does reach Sentry through this helper or
  * QueryCache.onError before egress.
+ *
+ * AMENDED 2026-09-28 (plan 88.6-58, review MEDLOW-13): `logger.error`'s `extra` ALSO carries
+ * the backend's own error string when the thrown value has a string `upstreamMessage`
+ * (`ApiError`'s off-display-path field). That is the same bound AC-4 already relies on for
+ * `queryCacheOnError`'s forward: a STRING, never the parsed body, and `extra` is deep-scrubbed
+ * by sentry.scrub.js on the way out.
  */
 import * as Sentry from '@sentry/nextjs';
 
 export interface Logger {
   /** Route an error to Sentry.captureException. Forwards `err` (or a synthesized
-   *  Error(msg) when omitted); `msg` is recorded in `extra.msg`. */
+   *  Error(msg) when omitted); `msg` is recorded in `extra.msg`, and a string
+   *  `err.upstreamMessage` (ApiError) in `extra.upstreamMessage`. */
   error(msg: string, err?: unknown): void;
   /** Route a warning to Sentry.captureMessage at `warning` level; `ctx` -> extra. */
   warn(msg: string, ctx?: Record<string, unknown>): void;
@@ -26,7 +33,18 @@ export interface Logger {
 
 export const logger: Logger = {
   error(msg, err) {
-    Sentry.captureException(err ?? new Error(msg), { extra: { msg } });
+    // DECISION Phase 88.6-58 (review MEDLOW-13, AC-4 arm A): the backend's own error string
+    // (`ApiError.upstreamMessage`) is forwarded ONCE, here — chosen OVER per-site `extra` at
+    // the 15 `logger.error` call sites, and OVER an `instanceof ApiError` check (api.ts
+    // imports this module, so importing api.ts back is a cycle). STRING-ONLY structural read:
+    // anything else on that key (an object, a parsed body) is NOT forwarded (T-88.6-G30).
+    const upstreamMessage =
+      typeof (err as { upstreamMessage?: unknown } | null | undefined)?.upstreamMessage === 'string'
+        ? (err as { upstreamMessage: string }).upstreamMessage
+        : undefined;
+    Sentry.captureException(err ?? new Error(msg), {
+      extra: upstreamMessage ? { msg, upstreamMessage } : { msg },
+    });
   },
   warn(msg, ctx) {
     Sentry.captureMessage(msg, { level: 'warning', extra: ctx });

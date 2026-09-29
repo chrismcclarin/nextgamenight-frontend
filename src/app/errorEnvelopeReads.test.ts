@@ -580,10 +580,15 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     // may render it. Tree-wide (test files are excluded from `sourceFiles`), the identifier
     // appears in exactly TWO modules: the one that defines and fills it, and the Sentry
     // forward that consumes it.
+    // AMENDED 2026-09-28 by plan 88.6-58 task 5 (review MEDLOW-13, AC-4 arm A): THREE modules.
+    // The shared `logger.error` now forwards the field too (a structural string read — it
+    // cannot import api.ts), so the mutation/action paths keep the backend's text in Sentry.
+    // It is a SECOND SENTRY FORWARD, not a display reader: this assertion's display contract
+    // is unchanged — still zero rendering sites, still no `ApiError.message` read of it.
     const carriers = FILES.map((f) => rel(f)).filter((r) =>
       withoutComments(fs.readFileSync(path.join(SRC, r), 'utf8')).includes('upstreamMessage'),
     );
-    expect(carriers.sort()).toEqual(['lib/api.ts', 'lib/queryClient.ts']);
+    expect(carriers.sort()).toEqual(['lib/api.ts', 'lib/logger.ts', 'lib/queryClient.ts']);
     expect(apiSrc).toMatch(/return body\?\.message \?\? `HTTP error! status: \$\{status\}`;/);
   });
 

@@ -157,6 +157,9 @@ export class ApiError extends Error {
    * The BACKEND's own error string, off the DISPLAY path. Populated from the
    * legacy `error` key by `extractUpstreamMessage` (see its DECISION marker)
    * and read by NOTHING but `queryCacheOnError`'s Sentry `extra` forward.
+   * [AMENDED 2026-09-28, plan 88.6-58 / review MEDLOW-13: TWO readers now, both Sentry
+   * `extra` forwards — `queryCacheOnError` (query path) and `logger.error` (every
+   * mutation/action path; a structural string read, since logger.ts cannot import this file).]
    * A STRING or undefined — never the parsed body, never `errorData`.
    * Rendering this anywhere is a defect, not a simplification.
    */
