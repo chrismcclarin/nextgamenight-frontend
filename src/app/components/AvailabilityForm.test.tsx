@@ -77,7 +77,7 @@ describe('AvailabilityForm submit-error path', () => {
     render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
 
     // is_unavailable=true satisfies the cross-field refine without painting slots.
-    await user.click(screen.getByRole('button', { name: /unavailable this week/i }));
+    await user.click(screen.getByRole('checkbox', { name: /unavailable this week/i }));
     await user.click(screen.getByRole('button', { name: /submit availability/i }));
 
     // REWRITTEN by plan 88.6-25 task 2. The shipped form of this assertion was
@@ -125,7 +125,7 @@ describe('AvailabilityForm submit-error path', () => {
     (availabilityFormAPI.submitResponse as Mock).mockResolvedValueOnce(body);
     const user = userEvent.setup();
     render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
-    await user.click(screen.getByRole('button', { name: /unavailable this week/i }));
+    await user.click(screen.getByRole('checkbox', { name: /unavailable this week/i }));
     await user.click(screen.getByRole('button', { name: /submit availability/i }));
   }
 
@@ -492,7 +492,7 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
       })
     );
     render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
-    await user.click(screen.getByRole("button", { name: /unavailable this week/i }));
+    await user.click(screen.getByRole("checkbox", { name: /unavailable this week/i }));
 
     const cta = screen.getByRole('button', { name: /submit availability/i });
     await user.click(cta);
@@ -515,7 +515,7 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
       () => new Promise(() => {})
     );
     const { container } = render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
-    await user.click(screen.getByRole("button", { name: /unavailable this week/i }));
+    await user.click(screen.getByRole("checkbox", { name: /unavailable this week/i }));
     await user.click(screen.getByRole("button", { name: /submit availability/i }));
 
     const spinner = await waitFor(() => {
@@ -527,5 +527,42 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     expect(spinner.querySelector('path')?.getAttribute('opacity')).toBe('0.75');
     expect(spinner.innerHTML).not.toContain('opacity-25');
     expect(spinner.innerHTML).not.toContain('opacity-75');
+  });
+});
+
+describe('AvailabilityForm "unavailable this week" toggle — exposes its state (88.6-59, review MEDLOW-26)', () => {
+  // WCAG 4.1.2 (A). Before plan 88.6-59 the on/off state lived ONLY in the class ternary and a
+  // conditionally-rendered check glyph: a screen-reader user on the magic-link form heard
+  // "I'm unavailable this week, button" whether it was on or off. Same idiom as the Bring-a-game
+  // rows (DECISION Phase 88.6-44, `BringGamePicker.js` `role="checkbox"`): checkbox + aria-checked.
+  afterEach(cleanup);
+
+  it('is a checkbox whose aria-checked FLIPS on click, and back', async () => {
+    const user = userEvent.setup();
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+
+    const toggle = screen.getByRole('checkbox', { name: /unavailable this week/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('the check glyph is decorative: aria-hidden + focusable=false whenever it renders', async () => {
+    const user = userEvent.setup();
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+
+    const toggle = screen.getByRole('checkbox', { name: /unavailable this week/i });
+    // Off: no glyph at all (the state is carried by aria-checked, not by the svg's presence).
+    expect(toggle.querySelector('svg')).toBeNull();
+
+    await user.click(toggle);
+    const glyph = toggle.querySelector('svg');
+    expect(glyph).not.toBeNull();
+    expect(glyph).toHaveAttribute('aria-hidden', 'true');
+    expect(glyph).toHaveAttribute('focusable', 'false');
   });
 });

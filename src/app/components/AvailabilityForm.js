@@ -438,8 +438,19 @@ export default function AvailabilityForm({
 
       {/* Unavailable Toggle Section */}
       <div className="bg-surface-elevated border border-line rounded-card p-4">
+        {/* DECISION Phase 88.6-59 (review MEDLOW-26, WCAG 4.1.2): `role="checkbox"` +
+            `aria-checked` on the toggle, chosen OVER `aria-pressed` — the same idiom and the same
+            reasoning as the Bring-a-game rows (DECISION Phase 88.6-44, `BringGamePicker.js`
+            `role="checkbox"`): the visual IS a checkbox and the on/off state lived ONLY in the class
+            ternary and the glyph, so a screen reader heard the same "button" on or off.
+            `aria-pressed` ("toggle button, pressed") is the house idiom for ARMING a two-tap
+            action, a different interaction. The native <button> stays underneath for Enter/Space
+            and focus; the NAME is still the visible text. Going back to a bare button is a
+            decision, not a cleanup. */}
         <button
           type="button"
+          role="checkbox"
+          aria-checked={isUnavailable}
           onClick={handleUnavailableToggle}
           className={`
             w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn
@@ -455,7 +466,7 @@ export default function AvailabilityForm({
             isUnavailable ? 'bg-status-error border-status-error' : 'border-line-strong'
           }`}>
             {isUnavailable && (
-              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
             )}
