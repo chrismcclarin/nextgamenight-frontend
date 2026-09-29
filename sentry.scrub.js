@@ -115,6 +115,27 @@ const SECRET_KEY_RE = /token|email|phone|secret|password|authorization|api[_-]?k
        browser MAIN THREAD for the always-on session sample. A route prefix cannot match a
        string containing no `/`, and under `maskAllText: true` that is most of them.
        REMOVING THE GUARD IS A DECISION, NOT A CLEANUP.
+       * [CORRECTED 2026-09-29 — plan 88.6-60, review MEDLOW-23 / N1: the SCOPE stated above
+       * is FALSE; the guard itself stands. `beforeAddRecordingEvent` does NOT visit every rrweb
+       * event. In the installed `@sentry-internal/replay` 8.55.2 it runs ONLY on Custom events:
+       * `maybeApplyCallback` gates the call on `isCustomEvent(event)`
+       * (`build/npm/esm/index.js:6015`; `isCustomEvent` at `:5886`). Custom events are the
+       * replay's breadcrumb and performance entries (navigation, fetch, click), so THOSE are
+       * what reach `deepScrubRecording` and this leaf. It never sees rrweb FullSnapshot,
+       * IncrementalSnapshot or Meta events. Two consequences:
+       *   - the cost premise the old text implied is false: inlined stylesheets and DOM
+       *     mutations never reach this function, so the slash guard is cheap insurance, not a
+       *     hot-path necessity. It STAYS (harmless; removing it is still a decision).
+       *   - NOT COVERED BY THIS LAYER: the Meta event's `href: window.location.href`
+       *     (`index.js:3927`) and DOM `href` attributes in snapshots. `maskAttributes`
+       *     defaults to `['title', 'placeholder']` (`:9454`) and `maskAllText` masks text
+       *     nodes only. So on a replay-sampled session that lands on a token route, the
+       *     tokened URL is outside this hook. Whether one has actually reached a replay is
+       *     OPEN: owner check `R-7` (`88.6-CODE-REVIEW-work/RULINGS.md`; review N1).
+       * DECISION Phase 88.6-60 (review N1): the FE-only mitigation (route-gated replay init
+       * plus `maskAttributes` including `href`) is deliberately NOT added here, chosen OVER
+       * adding it pre-emptively, because N1 is an owner check first (`R-7`). Its absence is
+       * a pending decision, not an oversight. It is not a claimed leak either.]
 
    REJECTED, recorded so it is not re-proposed: collapsing these entries into ONE
    alternation. It has no FE-route half to export, so the set-equality arm loses its

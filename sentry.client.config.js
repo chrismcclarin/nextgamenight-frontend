@@ -56,7 +56,9 @@ Sentry.init({
       maskAllText: true,
       blockAllMedia: true,
       // T-84-01 (A1): beforeSend does NOT run on replay events, so scrub recorded
-      // navigation/fetch URLs here — magic-link/invite tokens in an on-error
+      // navigation/fetch URLs here (Custom events only — see marker (v) in
+      // sentry.scrub.js; the Meta `href` is outside this hook, owner check R-7,
+      // corrected 2026-09-29 by plan 88.6-60) — magic-link/invite tokens in an on-error
       // replay must not egress — the on-error sample is BOUNDED above, no longer 1.0.
       // networkCaptureBodies:false holds; networkDetailDenyUrls below is INERT, not a control.
       beforeAddRecordingEvent: scrubRecordingEvent,
