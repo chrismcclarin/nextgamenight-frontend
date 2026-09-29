@@ -290,7 +290,11 @@ const fmt = (hits: Hit[]) =>
 //
 // TWO CLASSES LIVE IN THIS ONE LIST, and each entry's `why` says which it is:
 //   - CONTROL FLOW: the read is branched on and never rendered.
-//   - MEASURED-EMPTY: the read IS rendered, but the value is provably always `''`.
+//   - MEASURED-EMPTY: the read IS rendered, but the value is provably `''` in the common
+//     case, with the exception named in the entry (the entry's `why` states both cases).
+//     [AMENDED 2026-09-29 — plan 88.6-60, review R2: this line used to say "provably always
+//     empty", which `deferred/phase-88.6.md`'s FAIL QUIETLY entry recorded as FALSE on
+//     2026-09-16 — a non-JSON 200 paints a `SyntaxError` message.]
 // They share a list because §2 below DERIVES the anti-vacuity array from it, and two
 // hand-maintained literals cannot be kept in step by discipline. See the standing rule.
 //
@@ -395,23 +399,39 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
     file: 'app/Header.js',
     contains: 'if (error) return <div>{error.message}</div>;',
     why:
-      'MEASURED-EMPTY, not control flow. This RENDERS the message, but the message is ' +
-      "Auth0's `useUser()` error, whose `RequestError` calls `super()` with no argument, so " +
-      "`.message` is always ''. `layout.js:27` passes no fetcher, so no other value can " +
-      'reach it. Nothing upstream is disclosed. The BLANK-RENDER defect this produces — the ' +
-      'failure renders as nothing at all, the 2026-08-28 AUTH0_BASE_URL incident shape — is ' +
-      'RECORDED AND ROUTED, not fixed here: see .planning/deferred/phase-88.6.md, proposed ' +
-      'home plan 88.6-34. Plan 88.6-13 does not touch this file.',
+      'MEASURED-EMPTY IN THE COMMON CASE, not control flow. This RENDERS the message of ' +
+      "Auth0's `useUser()` error. `layout.js:27` mounts `UserProvider` with no fetcher, so " +
+      "the SDK's default `userFetcher` is what throws, in TWO cases " +
+      '(`@auth0/nextjs-auth0/dist/client/use-user.js`): (a) a network failure or non-ok ' +
+      'response throws `RequestError`, whose constructor calls a bare `super()`, so ' +
+      "`.message` is '' and the header renders blank — the common case; (b) a 200 whose " +
+      'body is not JSON rejects inside `response.json()` with a `SyntaxError`, and that ' +
+      'NON-empty parser message IS painted. Neither case carries user data, so nothing ' +
+      'upstream is disclosed and the allow-listing stands. The BLANK/RAW-RENDER defect — ' +
+      'the failure renders as nothing (a) or as an SDK parser string (b), the 2026-08-28 ' +
+      'AUTH0_BASE_URL incident shape — is RECORDED AND ROUTED to Phase 93, not fixed here: ' +
+      '.planning/deferred/phase-93.md, heading "`Header.js:55` / `app/page.js:103` / ' +
+      '`app/page.js:32-42` — the signed-in surfaces fail QUIETLY…" (owner-ruled, 88.6-46 ' +
+      'R102). [CORRECTED 2026-09-29, plan 88.6-60, review R2: this entry used to claim the ' +
+      'message is empty in every case and to route to a plan-34 home; plan 34 ran and ' +
+      'declined it.]',
   },
   {
     file: 'app/page.js',
     contains: '<div className="text-content-status-error">Error: {error.message}</div>',
     why:
-      'MEASURED-EMPTY, not control flow. Same Auth0 `useUser()` error as Header.js:55 and ' +
-      'the same always-empty `.message`. Listed EXPLICITLY rather than excluding the file, ' +
-      'because `app/page.js:40` is a developer log in the same file and any file-level rule ' +
-      'would hide this live render behind it. Routed with its sibling to ' +
-      '.planning/deferred/phase-88.6.md (proposed home plan 88.6-34).',
+      'MEASURED-EMPTY IN THE COMMON CASE, not control flow. Same Auth0 `useUser()` error as ' +
+      "Header.js:55, with the same two cases: (a) `RequestError` → `.message` is '', so this " +
+      'paints the literal `Error: ` with nothing after it; (b) a non-JSON 200 → the ' +
+      '`SyntaxError` message IS painted after `Error: `. Neither is disclosing. Listed ' +
+      'EXPLICITLY rather than excluding the file, because the same file carries a developer ' +
+      "log (`getGroupList`'s catch, anchor `logger.info('Error fetching groups:'` — cited " +
+      'as `:40` until 88.6-60, since drifted) and any file-level rule would hide this live ' +
+      'render behind it. ' +
+      'Routed with its sibling to Phase 93 (.planning/deferred/phase-93.md, the same ' +
+      '"signed-in surfaces fail QUIETLY" heading; owner-ruled, 88.6-46 R102). [CORRECTED ' +
+      '2026-09-29, plan 88.6-60, review R2: the empty-in-every-case claim and the plan-34 ' +
+      'home are superseded.]',
   },
 ];
 
