@@ -120,6 +120,11 @@ const BREAKPOINT_SIZE = /\b(sm|md|lg|xl|2xl):text-(base|lg|xl)/;
 //     same as everyone else's — the "different root" in the deferral was a misreading.
 // So all six enumerated the same files, and this is a verbatim move rather than a behaviour
 // change. Each suite's own anti-vacuity floor (`files.length > 100`) still holds afterwards.
+// [CORRECTED 2026-09-29 — plan 88.6-60, review R3: that sentence described the SIBLING suites,
+// not this one. THIS file had NO tree-enumeration floor until 88.6-60; its three floors
+// (`controls.length > 3`, `primitiveSites.length > 20`, `buttonSites.length > 3`) all stay
+// green on a walk rooted at `src/app/components` alone (measured: 92 files, 9/9 green). Its
+// floor is now `SOURCES.length >= 150`, the `AC-8` describe below — the btnCensus idiom.]
 //
 // Re-inlining a private copy here is a decision, not a cleanup: six copies of a directory
 // walker is five places a correctness fix — a new extension, a newly-excluded directory — can
@@ -186,6 +191,18 @@ function textEntryControls(): Control[] {
   }
   return found;
 }
+
+describe('AC-8: the module-scope scan covers the whole source tree', () => {
+  // ANTI-VACUITY FLOOR for `SOURCES` itself (plan 88.6-60, review R3). Every other floor in this
+  // file counts MATCHES, and all three are satisfiable by a walk that only reaches
+  // `src/app/components` — so a mis-rooted `SRC` would pass the whole suite on half the tree.
+  // 150 is the btnCensus / errorEnvelopeReads / typeScaleTouchedSurfaces value; the live count
+  // is ~194 (docblock above `SOURCES`). Like btnCensus's, this quantity does not fall as a
+  // migration succeeds — sweeps rewrite files, they do not delete them.
+  it('enumerated the source tree (a scanner that walked nothing must red)', () => {
+    expect(SOURCES.length).toBeGreaterThanOrEqual(150);
+  });
+});
 
 describe('Req 1 (DES-01): the 16px iOS focus-zoom floor, repo-wide', () => {
   const controls = textEntryControls();
