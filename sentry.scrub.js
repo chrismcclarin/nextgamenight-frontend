@@ -136,6 +136,12 @@ const SECRET_KEY_RE = /token|email|phone|secret|password|authorization|api[_-]?k
        * plus `maskAttributes` including `href`) is deliberately NOT added here, chosen OVER
        * adding it pre-emptively, because N1 is an owner check first (`R-7`). Its absence is
        * a pending decision, not an oversight. It is not a claimed leak either.]
+       * [SHIPPED 2026-09-29 — `R-7-RULING: fix-now` (owner check: no token-route replay in
+       * 90 days; ruling on the mechanism, not on a capture). The mitigation lives in
+       * `sentry.client.config.js` (replay not registered when `isTokenBearingPath` is true;
+       * `maskAttributes` gains `href`) and the predicate in `src/lib/scrubFeedbackPageUrl.ts`
+       * reuses `TOKEN_ROUTE_PREFIXES` plus a new `TOKEN_QUERY_ROUTES` for `/invite/accept`.
+       * Pinned by `src/lib/sentryClientReplayGate.test.ts`. THIS leaf is unchanged.]
 
    REJECTED, recorded so it is not re-proposed: collapsing these entries into ONE
    alternation. It has no FE-route half to export, so the set-equality arm loses its
