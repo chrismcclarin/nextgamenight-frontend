@@ -38,6 +38,8 @@ on:
 # census said "one" until the second upload landed in the same commit; neither reaches
 # `.auth/` (the failure step uploads `playwright-report/` + `test-results/`, the new one only
 # `test-results/**/month-tile-desktop-*.png`), both authenticate with ACTIONS_RUNTIME_TOKEN,
+# AMENDED 2026-09-29 (Phase 88.6 CR-01): the failure step now EXCLUDES `**/*.zip` under both
+# directories, so no Playwright trace archive is uploaded; the scope and token are unchanged,
 # and neither adds a scope. There is no `gh`, no `github-script`, no `api.github.com`
 # call, and no step that WRITES to GitHub — no PR comment, no commit status, no release, no
 # package push. "Checkout backend" reads chrismcclarin/nextgamenight-backend, which is PUBLIC,
@@ -715,11 +717,19 @@ jobs:
         with:
           name: playwright-report
           # The CI reporter is 'github' (no playwright-report/ dir) — failure
-          # evidence (screenshots, traces, error-context.md) lands in
-          # test-results/. NOT .auth/ — never upload the appSession storageState.
+          # evidence (screenshots, error-context.md) lands in test-results/.
+          # NOT .auth/ — never upload the appSession storageState.
+          # 88.6 CR-01: NO zip archives either. A Playwright trace.zip records
+          # every action's parameters in plain text, and a retried login journey
+          # would carry the typed E2E_AUTH0_PASS. The setup project now records
+          # no trace (playwright.config.ts) — this exclusion is the independent
+          # second arm, so a future trace elsewhere still cannot leave a PUBLIC
+          # repo. Lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts.
           path: |
             playwright-report/
+            !playwright-report/**/*.zip
             test-results/
+            !test-results/**/*.zip
           retention-days: 7
           if-no-files-found: ignore
 

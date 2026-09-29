@@ -266,9 +266,12 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
       // published a viewport shot of the logged-in `/` from a PUBLIC repo; and "record that
       // the e2e account is fixture-only",
       // which rests on a value only the owner can read and a later seed change reverses silently.
-      // RESIDUE, recorded not fixed here: the pre-existing `if: failure()` upload publishes all of
-      // `test-results/` (failure screenshots + traces) on every red run — bounded only by the
-      // `.auth/` exclusion. Restoring a fallback is a decision, not a cleanup.
+      // RESIDUE (recorded here 2026-09-29, CLOSED the same day by 88.6 CR-01): the pre-existing
+      // `if: failure()` upload publishes `test-results/` (failure screenshots) on every red run,
+      // bounded by the `.auth/` exclusion AND, since CR-01, a `**/*.zip` exclusion — no trace
+      // archive leaves CI, and the setup project records none (playwright.config.ts). Both arms
+      // are lockstep-pinned in `src/lib/ci-grep-gate.fixture.test.ts`. Restoring a fallback is a
+      // decision, not a cleanup.
       const card = heading.locator('xpath=ancestor::div[contains(@class, "card")][1]');
       await expect(
         card,

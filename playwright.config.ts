@@ -59,7 +59,18 @@ export default defineConfig({
   },
   projects: [
     // The login journey + storageState producer (D-05).
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    //
+    // DECISION Phase 88.6 CR-01 (built-in review 2026-09-29): the setup project records NO
+    // trace, chosen OVER inheriting the shared `trace: 'on-first-retry'`. This journey types
+    // `E2E_AUTH0_PASS` (`auth.setup.ts`), and a trace keeps every action's parameters in plain
+    // text — with `retries: 1` in CI a single failed login would have re-run WITH tracing and
+    // written the real Auth0 password into `test-results/**/trace.zip`, which the failure
+    // upload publishes from a PUBLIC repo. REJECTED: masking the value in the trace (Playwright
+    // offers no such option) and relying on the upload's exclusion alone (that is the second,
+    // independent arm in ci.yml, not a substitute for this one). Lockstep-pinned by
+    // `src/lib/ci-grep-gate.fixture.test.ts` ("88.6 CR-01"). Re-enabling tracing here is a
+    // decision, not a cleanup.
+    { name: 'setup', testMatch: /auth\.setup\.ts/, use: { trace: 'off' } },
     {
       name: 'journeys',
       testMatch: /.*\.spec\.ts/,

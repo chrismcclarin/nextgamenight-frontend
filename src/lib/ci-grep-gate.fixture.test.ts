@@ -913,6 +913,37 @@ describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on eve
     }
   });
 
+  test('88.6 CR-01: the login journey records no trace, and no upload ships a zip from a directory it uploads', () => {
+    // The chain this pins shut (built-in review 2026-09-29, CR-01): the shared `use` block
+    // sets `trace: 'on-first-retry'` and CI sets `retries: 1`, so a login journey that fails
+    // once RE-RUNS WITH TRACING ON, and that journey does `fill(E2E_AUTH0_PASS)` — the real
+    // Auth0 password, kept in plain text in the trace's Call tab. The `if: failure()` upload
+    // then publishes `test-results/` whole from a PUBLIC repo for 7 days; GitHub's secret
+    // masking covers logs, not artifacts. Two independent arms, each sufficient alone, both
+    // pinned so neither reads as a cleanup:
+    //   (1) the `setup` project overrides trace to 'off' — the credential is never recorded;
+    //   (2) every uploaded DIRECTORY carries a `!<dir>**/*.zip` exclusion — no trace archive
+    //       (Playwright's `trace.zip`, or the html reporter's `data/*.zip`) can leave CI.
+    const cfg = readFileSync(resolve(__dirname, '../../playwright.config.ts'), 'utf8');
+    const setup = cfg.match(/name:\s*'setup'([\s\S]*?)name:\s*'journeys'/)?.[1];
+    expect(setup, "playwright.config.ts no longer declares the 'setup' project ahead of 'journeys'").toBeDefined();
+    expect(setup, "the setup project must override the shared trace setting with trace: 'off' (CR-01)").toMatch(
+      /trace:\s*'off'/,
+    );
+
+    const uploads = uploadArtifactSteps();
+    expect(uploads.length, 'uploadArtifactSteps() found fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
+    for (const { name, paths } of uploads) {
+      const dirs = paths.filter((p) => !p.startsWith('!') && p.endsWith('/'));
+      for (const dir of dirs) {
+        expect(
+          paths,
+          `upload step "${name}" uploads the directory ${dir} without excluding ${dir}**/*.zip (CR-01: a retried-setup trace.zip carries the typed password)`,
+        ).toContain(`!${dir}**/*.zip`);
+      }
+    }
+  });
+
   test('the storageState and the json report both live OUTSIDE test-results/, where the uploads read', () => {
     // The glob's safety rests on where these two files are written. playwright.config.ts
     // writes the json report at the repo root and the storageState under .auth/; if either
