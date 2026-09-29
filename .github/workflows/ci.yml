@@ -312,6 +312,13 @@ jobs:
         # with a green build — the exact hole this step exists to close, reopened by the phase
         # that was converging on it. Ledger rows R103 / R104 / H08 in 88.6-46-SUMMARY.md.
         #
+        # AMENDMENT — Phase 88.6 close (2026-09-29, gsd-verifier finding on plans 58/60). Two rows
+        # added — the guards the review fix-now set minted, unregistered exactly as plan 55's five were:
+        #   src/components/ui/Button.e2eReplica.test.ts               plan 58 — E10 replica lockstep (H1)          floor 5
+        #   src/app/components/CalendarListView.emptyStates.test.tsx  plan 60 — desktop 'No events' + loading arms  floor 1
+        # Floors MEASURED with this loop's regex on FE d69e681, 2026-09-29. Button.e2eReplica is H1's ONLY
+        # durable guard: unregistered, deleting it would have re-opened the stale-replica hole with a green build.
+        #
         # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
         # file list out of this workflow, located by the step name above, and asserts every
         # listed file exists and really carries at least the stated number of assertions.
@@ -348,6 +355,8 @@ jobs:
             "src/app/components/btnCensus.test.tsx:21" \
             "src/app/shadowTier.test.ts:8" \
             "src/app/interpolatedClassCensus.test.ts:4" \
+            "src/components/ui/Button.e2eReplica.test.ts:5" \
+            "src/app/components/CalendarListView.emptyStates.test.tsx:1" \
             "src/test-utils/sourceScan.ts:0" \
           ; do
             f="${entry%:*}"; min="${entry##*:}"
