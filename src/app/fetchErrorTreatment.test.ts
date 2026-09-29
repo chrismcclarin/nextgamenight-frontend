@@ -934,11 +934,23 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     // plan owns; this pins those two closed. The other four are tracked there.
     //
     // 88.6-13: this assertion KEEPS the nine `SURFACES` while the two above went
-    // tree-wide, and that asymmetry is deliberate (CONSEQUENCE, not an oversight).
-    // `nativeDialogs.test.ts:31-38` owns the repo-wide `alert(` property by an explicit
-    // written decision and holds `GameComboInput.js` as an exact-count `sites: 1`
-    // exemption. Widening this scan repo-wide would red on that site and create a SECOND
-    // answer to a question that suite already answers.
+    // tree-wide. `nativeDialogs.test.ts` (its "WHY NOT SIMPLY WIDEN" docblock) owns the
+    // repo-wide `alert(` property by an explicit written decision, so widening THIS scan
+    // would be a second answer to a question that suite already answers.
+    // [CORRECTED 2026-09-29 — plan 88.6-60, review MEDLOW-24: the reason this comment used to
+    // give — that suite holds `GameComboInput.js` as an exact-count `sites: 1` exemption, so a
+    // repo-wide scan here "would red on that site" — has been FALSE since plan 88.6-32 closed
+    // that site: `ALERT_EXEMPT` is EMPTY (`nativeDialogs.test.ts`, anchor `THIS ROSTER IS
+    // EMPTY`). Nothing would red now. This 9-file assertion is therefore a REDUNDANT
+    // per-surface subset of the tree-wide property, and is KEPT only as the exact-count
+    // scope pin below.]
+    //
+    // DECISION Phase 88.6-60 (review MEDLOW-24): KEEP + re-comment, chosen OVER deleting this
+    // assertion. Deleting it alone would orphan `SURFACES` and its two anti-vacuity guards (a
+    // nine-entry roster with no assertion reads as coverage it does not give); deleting all of
+    // it reverses 88.6-13's written "SURFACES survives ONLY as the alert( scope" decision in
+    // two suites. The assertion costs nothing (the nine files are already read). Retiring
+    // `SURFACES` wholesale is a decision, not a cleanup — take it with W058's roster reshape.
     //
     // The exact-count scope pin below is the mechanical half: `SURFACES` survives this
     // phase ONLY as this assertion's scope, so a later plan adding or removing an entry

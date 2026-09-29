@@ -52,6 +52,11 @@
  *     site this suite already governs, counts exactly and expires automatically — and
  *     would create a SECOND answer to a question this suite already answers. Two answers
  *     is the drift the whole shared-scanner pass exists to remove.
+ *   [CORRECTED 2026-09-29 — plan 88.6-60, review MEDLOW-24: the two bullets above are stale
+ *   on the `GameComboInput.js` half. Plan 88.6-32 closed that site and `ALERT_EXEMPT` below is
+ *   EMPTY, so a repo-wide scan there would NOT red today. The "second answer" reason is the one
+ *   that still stands; the other file's 9-file `alert(` assertion is now a redundant subset,
+ *   kept (not deleted) as its exact-count scope pin — see its `DECISION Phase 88.6-60` marker.]
  *
  * So `SURFACES` survives in that file ONLY as the `alert(` assertion's scope, pinned there
  * by a `SURFACES.length === 9` exact-count assertion so a later plan cannot change the
