@@ -86,6 +86,52 @@ describe('scrubString / scrubUrl — the shipped value rules', () => {
   });
 });
 
+// Phase 88.6-59 (review MEDLOW-11). `usersAPI.getUser(user?.sub …)` (`useSelfIdentity.ts`) is
+// the one apiFetch path that carries an Auth0 sub, as `/users/${encodeURIComponent(sub)}` — so a
+// failed self-lookup put `auth0%7C<id>` / `google-oauth2%7C<id>` into the `API Error (…)`
+// breadcrumb message AND its `data.endpoint`. Before this plan NEITHER encoded form was
+// redacted, and a hex `auth0|<id>` was not redacted even unencoded (an all-numeric Google id
+// was caught only by accident, by PHONE). `toBe` where the output is fully determined.
+describe('scrubString — Auth0 subs (88.6-59, review MEDLOW-11)', () => {
+  const HEX_SUB_ID = '6a2984bc1f0e4d3aa1b2c3d4e5f60718';
+
+  it('a %7C-encoded google-oauth2 sub inside the apiFetch breadcrumb message is redacted', () => {
+    const out = scrubString('API Error (/users/google-oauth2%7C115378212345678901234)');
+    expect(out).toBe(`API Error (/users/google-oauth2|${R})`);
+    expect(out).not.toContain('115378212345678901234');
+  });
+
+  it('an UNENCODED hex auth0 sub is redacted', () => {
+    expect(scrubString(`auth0|${HEX_SUB_ID}`)).toBe(`auth0|${R}`);
+  });
+
+  it('a %7C-encoded hex auth0 sub is redacted (upper- and lower-case escape)', () => {
+    expect(scrubString(`auth0%7C${HEX_SUB_ID}`)).toBe(`auth0|${R}`);
+    expect(scrubString(`auth0%7c${HEX_SUB_ID}`)).toBe(`auth0|${R}`);
+  });
+
+  it('the whole breadcrumb shape apiFetch emits — message AND data.endpoint — carries no sub', () => {
+    const endpoint = `/users/auth0%7C${HEX_SUB_ID}`;
+    const out = scrubEvent({
+      breadcrumbs: [{ message: `API Error (${endpoint})`, data: { endpoint, status: 500 } }],
+    }) as { breadcrumbs: Array<{ message: string; data: { endpoint: string } }> };
+    expect(out.breadcrumbs[0].message).toBe(`API Error (/users/auth0|${R})`);
+    expect(out.breadcrumbs[0].data.endpoint).toBe(`/users/auth0|${R}`);
+  });
+
+  it('NEGATIVE: separator-GUARDED — a bare 32-hex trace id, a prose pipe and a non-connection word are untouched', () => {
+    // Marker (iii): the rule must not widen onto bare hex, or it kills trace linking.
+    expect(scrubString(TRACE_ID)).toBe(TRACE_ID);
+    expect(scrubString('trace_id=4bf92f3577b34da6a3ce929d0e0e4736')).toBe(
+      'trace_id=4bf92f3577b34da6a3ce929d0e0e4736'
+    );
+    expect(scrubString('a | b')).toBe('a | b');
+    expect(scrubString('status|pending')).toBe('status|pending');
+    // `line` is a real connection prefix; the word boundary keeps it from matching mid-word.
+    expect(scrubString('timeline|abc123')).toBe('timeline|abc123');
+  });
+});
+
 describe('AC-1 — every LIVE token-in-path family is redacted, by its own pattern', () => {
   // The NINE live families, each against its real route prefix. The payload is the
   // mutation-guard ALPHA everywhere EXCEPT where a real token shape is the point, so a

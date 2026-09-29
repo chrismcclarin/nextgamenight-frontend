@@ -39,6 +39,23 @@ const SECRET_KV =
   /\b(token|magic_token|secret|password|authorization|api[_-]?key)\b\s*[=:]\s*[^&\s"']+/gi;
 // long digit runs (phone numbers, etc.).
 const PHONE = /(?<![\w.])\+?\d[\d\s().-]{7,}\d(?![\w.])/g;
+// DECISION Phase 88.6-59 (review MEDLOW-11, dated 2026-09-29): Auth0 subs —
+// `<connection>|<id>` or its `encodeURIComponent` form `<connection>%7C<id>`. The one apiFetch
+// path that carries a sub is `usersAPI.getUser(user?.sub …)` (`src/lib/hooks/useSelfIdentity.ts`)
+// -> `/users/${encodeURIComponent(sub)}`, so a failed self-lookup put `auth0%7C<id>` into the
+// `API Error (…)` breadcrumb message and its `data.endpoint`, and NEITHER form was redacted (a
+// hex `auth0|<id>` survived even unencoded; an all-numeric Google id was caught only by accident,
+// by PHONE). SEPARATOR-GUARDED on purpose, twice over: the literal `|` / `%7C` is REQUIRED by the
+// pattern AND checked with `indexOf` before the regex runs in `scrubString`, so it stays cheap on
+// the replay leaf (marker (v) below) and can never widen onto a bare hex id such as Sentry's own
+// `trace_id` (marker (iii) below). The `\b` keeps a connection name from matching mid-word
+// (`timeline|x`). Applied BEFORE `PHONE` so a numeric Google id is redacted by THIS rule, keeping
+// its connection prefix readable, not by accident. Chosen OVER stripping ids from the `endpoint`
+// breadcrumb inside `apiFetch` (REJECTED: the scrubber is the layer that must fail INDEPENDENTLY
+// of any one call site, and the fetch/console breadcrumb channels carried the same URL before
+// this phase). Removing the guard or the ordering is a decision, not a cleanup.
+const AUTH0_SUB =
+  /\b((?:[a-z0-9-]+-oauth2|auth0|email|sms|windowslive|facebook|twitter|github|apple|line))(?:\||%7C)([A-Za-z0-9._-]+)/gi;
 
 // key names whose VALUES should be redacted wholesale (regex, not exact-match).
 const SECRET_KEY_RE = /token|email|phone|secret|password|authorization|api[_-]?key/i;
@@ -180,14 +197,20 @@ const LONG_HEX_PATH_SEGMENT = /(\/)[0-9a-f]{32,}(?=$|[/?#])/g;
  * Redact PII patterns within a free-text string. Surrounding non-PII text is
  * preserved (so an exception message keeps its prose, only the JWT is redacted).
  */
-function scrubString(str) {
+function scrubString(str, opts) {
   if (typeof str !== 'string' || str.length === 0) return str;
   let out = str
     .replace(JWT, REDACTED)
     .replace(BEARER, REDACTED)
     .replace(SECRET_KV, REDACTED)
-    .replace(EMAIL, REDACTED)
-    .replace(PHONE, REDACTED);
+    .replace(EMAIL, REDACTED);
+  // Auth0 subs — BEFORE PHONE, and only when a separator is present (see the AUTH0_SUB marker).
+  // `%7` covers both `%7C` and `%7c`; the pattern itself still requires the full separator.
+  // `opts.keepAuth0Sub` is passed by ONE caller only — `scrubEvent`'s `event.user.id` (see there).
+  if (!(opts && opts.keepAuth0Sub) && (out.indexOf('|') !== -1 || out.indexOf('%7') !== -1)) {
+    out = out.replace(AUTH0_SUB, `$1|${REDACTED}`);
+  }
+  out = out.replace(PHONE, REDACTED);
 
   // The token-path step, moved here from `scrubUrl` in 88.6-13 — see marker (ii). This is
   // the ONE path every sink reaches: `event.message`, every `exception.values[].value`,
@@ -296,7 +319,18 @@ function scrubEvent(event) {
     for (const field of ['email', 'username', 'ip_address']) {
       if (typeof event.user[field] === 'string') event.user[field] = REDACTED;
     }
+    const userId = event.user.id;
     deepScrub(event.user);
+    /* DECISION Phase 88.6-59 (review MEDLOW-11): `event.user.id` is EXEMPT from the AUTH0_SUB
+       rule ONLY — every other rule still runs on it, exactly as before this plan. Chosen to
+       PRESERVE the Phase 84 T-84-01 decision (`4bf2884`, pinned by the `(e)` case in
+       `src/lib/sentry.scrub.test.ts`: "non-PII id is preserved for debugging") — Sentry's
+       structured user slot is the ONE place a pseudonymous id is kept on purpose — OVER letting
+       the new free-text rule silently reverse it. The review finding was about the sub leaking
+       through breadcrumb TEXT; it never weighed this slot. Nothing in the app calls
+       `Sentry.setUser` today, so this is latent. Whether the slot should be redacted too is an
+       OWNER call (raised in 88.6-59-SUMMARY.md), not a cleanup. */
+    if (typeof userId === 'string') event.user.id = scrubString(userId, { keepAuth0Sub: true });
   }
 
   if (event.request && typeof event.request === 'object') {
