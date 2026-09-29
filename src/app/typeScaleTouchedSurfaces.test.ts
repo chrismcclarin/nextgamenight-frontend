@@ -1648,7 +1648,12 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/not-found.tsx': { 1: 1 },
   'app/privacy/page.js': { 1: 1, 2: 8 },
   'app/restore/group/[token]/page.tsx': { 1: 4 },
-  'app/rsvp/[token]/page.js': { 1: 3 },
+  // RAISED { 1: 3 } -> { 1: 4 } by plan 88.6-58 task 7 (2026-09-29, review MEDLOW-16, copy
+  // ratified): a FOURTH mutually-exclusive branch (EXPIRED_LINK / ACCOUNT_NOT_FOUND share one
+  // render) with its own `<Heading level={1} size="heading">`. No existing heading moved LEVEL
+  // or size; the page still renders exactly ONE h1 at a time (D-06), so the outline is
+  // unchanged — this is one more branch, not a level change. Not an R7 heading-order finding.
+  'app/rsvp/[token]/page.js': { 1: 4 },
   'app/terms/page.js': { 1: 1, 2: 8 },
   'app/userProfile/page.js': { 1: 1, 2: 7, 3: 4, 4: 2 },
   'components/ui/ErrorFallback.tsx': { 1: 1 },
