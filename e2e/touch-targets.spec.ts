@@ -962,8 +962,13 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
           `<div class="flex items-center gap-2 shrink-0 ml-auto">` (gameDetail/page.js:1956) with
           `GuestInviteButton` (className at :198) and the two-tap Remove (className at :1978)
           inside it, re-derived 2026-09-15. The replica carries the LONGEST label each control can
-          render — "Already a member" and "Remove Bartholomew" — because a row only overflows at
-          its widest state and a short-label probe would pass on a row that breaks in production.
+          render because a row only overflows at its widest state and a short-label probe would
+          pass on a row that breaks in production. *[CORRECTED 2026-09-28, plan 88.6-58 / review
+          H1: after plan 88.6-18 the widest states are the settled invite `<span>` ("Already a
+          member") and the ARMED two-tap Remove ("Tap again to confirm") — a `Remove {name}`
+          label never renders. The replica is now derived from the shipped `<Button>` classes
+          and pinned in lockstep by `src/components/ui/Button.e2eReplica.test.ts`; current
+          cites: row :2165, settled span :299, Remove className :2216.]*
 
        2. The SHIPPED row, WHEN THE FIXTURE RENDERS IT. This half is CONDITIONAL, deliberately,
           and the reasoning is the one already recorded a few tests above for the `.btn-compact`
@@ -1002,27 +1007,46 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
 
       const row = document.createElement('div');
-      // The shipped row wrapper, gameDetail/page.js:1956.
+      // The shipped row wrapper, gameDetail/page.js:2165 (re-derived 2026-09-28).
       row.className = 'flex items-center gap-2 shrink-0 ml-auto';
 
-      const make = (className: string, text: string) => {
-        const el = document.createElement('button');
-        el.type = 'button';
+      const make = (tag: 'span' | 'button', className: string, text: string) => {
+        const el = document.createElement(tag);
+        if (el instanceof HTMLButtonElement) el.type = 'button';
         el.className = className;
         el.textContent = text;
         row.appendChild(el);
         return el;
       };
-      // GuestInviteButton's resting className (gameDetail/page.js:198) with its widest label
-      // ("Already a member"), and the two-tap Remove's (gameDetail/page.js:1978) with a long
-      // participant name — `labelFor` renders `Remove {username}` in its armed state.
+      // REBUILT 2026-09-28 by plan 88.6-58 (review H1). The widest REAL states of the two
+      // SHIPPED controls (plan 88.6-18 moved both onto `<Button size="sm" variant="ghost">`):
+      //   - INVITE: GuestInviteButton's SETTLED `<span>` (gameDetail/page.js:299) with the
+      //     `member` branch ink resolved (`branchInk`, :243-250) and its label 'Already a member'
+      //     (:304) — the widest invite state, and a span, not a button, since 88.6-18 D8.
+      //   - REMOVE: the two-tap Remove in its ARMED state — `cn(buttonVariants({ variant:
+      //     'ghost', size: 'sm' }), 'border shrink-0 ' + <the isConfirming classes at :2216-2218>)`
+      //     TRANSCRIBED as a literal (e2e cannot import `src/`), with `useConfirmAction`'s
+      //     `DEFAULT_ARMED_LABEL` 'Tap again to confirm' (useConfirmAction.ts:56; gameDetail
+      //     passes no `armedLabel`, page.js:903-909). The old comment here said `labelFor`
+      //     renders `Remove {username}` — it never did: the resting label is 'Remove' (:2222),
+      //     and the target's name lives only in the accessible name.
+      // LOCKSTEP: `src/components/ui/Button.e2eReplica.test.ts` reads these two literals and
+      // reds when either control's classes (or the cva output) change — edit both together.
+      // DECISION Phase 88.6-58 (review H1, `H1-RULING`): the replica is DERIVED from the shipped
+      // `cn(buttonVariants(...))` output and pinned by that source test, NOT hand-composed —
+      // chosen OVER seeding a guest participant row in the CI fixture so half 2 always runs (that
+      // is R105, owned by Phase 91) and OVER dropping this planted half (CI would then never
+      // measure the row at all, since the fixture seeds no shipped pair). Changing this is a
+      // decision, not a cleanup.
       const invite = make(
-        'inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors hover:bg-surface-hover text-content-link',
+        'span',
+        'inline-flex min-h-11 items-center text-sm px-2 py-1 rounded-sm border border-line transition-colors text-content-muted border-line bg-surface-page',
         'Already a member',
       );
       const remove = make(
-        'inline-flex min-h-11 items-center text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 border-status-error text-content-status-error hover:bg-status-error-subtle',
-        'Remove Bartholomew',
+        'button',
+        'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11 enabled-hover:bg-surface-hover aria-disabled:text-content-muted btn-sm border shrink-0 bg-status-error-subtle border-status-error text-content-status-error font-semibold',
+        'Tap again to confirm',
       );
 
       host.appendChild(row);
