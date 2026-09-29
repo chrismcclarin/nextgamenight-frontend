@@ -257,9 +257,24 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
       const gridPath = test.info().outputPath('month-tile-desktop-allowed-grid.png');
       await tile.screenshot({ path: tilePath });
       // The whole month card, so the tile is seen in its context.
-      await heading.locator('xpath=ancestor::div[contains(@class, "card")][1]').screenshot({ path: gridPath }).catch(async () => {
-        await page.screenshot({ path: gridPath });
-      });
+      //
+      // DECISION Phase 88.6-59 (review MEDLOW-12, dated 2026-09-29): NO whole-page fallback. When
+      // the card ancestor is missing the step FAILS, naming it, so the `if: always()` artifact
+      // (`ci.yml`, "Upload desktop month-tile screenshots") can only ever carry the tile and its
+      // month card — bounded by construction. REJECTED (T-82-12 / MEDLOW-12): the shipped
+      // `.catch()` arm that screenshotted the whole `page` instead, which on a GREEN run
+      // published a viewport shot of the logged-in `/` from a PUBLIC repo; and "record that
+      // the e2e account is fixture-only",
+      // which rests on a value only the owner can read and a later seed change reverses silently.
+      // RESIDUE, recorded not fixed here: the pre-existing `if: failure()` upload publishes all of
+      // `test-results/` (failure screenshots + traces) on every red run — bounded only by the
+      // `.auth/` exclusion. Restoring a fallback is a decision, not a cleanup.
+      const card = heading.locator('xpath=ancestor::div[contains(@class, "card")][1]');
+      await expect(
+        card,
+        'UI-SPEC month tile: the month card ancestor was not found — the grid screenshot would otherwise fall back to the WHOLE authenticated page, which the always() artifact publishes from a PUBLIC repo (review MEDLOW-12)'
+      ).toHaveCount(1);
+      await card.screenshot({ path: gridPath });
       await test.info().attach('month-tile-desktop-allowed-tile', { path: tilePath, contentType: 'image/png' });
       await test.info().attach('month-tile-desktop-allowed-grid', { path: gridPath, contentType: 'image/png' });
     });
