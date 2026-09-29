@@ -56,7 +56,7 @@
 // Geometry (heights, viewport units, occlusion) is deliberately NOT asserted: jsdom has no
 // layout, so a pixel assertion here would be theatre. That is the phone e2e's job.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -399,6 +399,235 @@ describe('SPEC Req 2 — the button never claims a count it does not have (DECIS
     expect(
       await findCalendarButton('Calendar, 0 upcoming games this week')
     ).toBeInTheDocument();
+  });
+});
+
+// quick-260928-sfo (WINDOWS 188; todo .planning/todos/pending/2026-09-24-e2e-phone-home-event-
+// discovery-recurring-flake.md). The M2 pins above check SETTLED states. These check the
+// TRANSITION: from the commit in which the viewer's identity resolves until the upcoming-events
+// fetch settles, the Calendar button must make no count claim. Plan 88.6-55's throwaway probe
+// recorded the page doing the opposite across that transition, as aria-label old values:
+//   "Calendar" -> "Calendar, 0 upcoming games this week" -> "Calendar" -> "Calendar, 2 upcoming
+//   games this week"
+// i.e. a FALSE ZERO for one effect (the commit where selfUuid first resolves, before the fetch
+// effect has run), then a counted -> bare flip — the phone e2e flake's exact signature.
+//
+// WHY THE SEQUENCE IS BUILT FROM oldValue AND NOT FROM CALLBACK-TIME READS: two mutations
+// delivered in one observer callback both read the LATER value at callback time. The probe's
+// own first line ("Calendar" -> "Calendar") is that collapse: the false zero it had just
+// written was already gone when the callback read the attribute. Each record's oldValue is
+// exact, so the chain of oldValues plus the button's current label is the true sequence.
+describe('quick-260928-sfo — the Calendar label never claims a count before the fetch settles (M2, extended)', () => {
+  const COUNTED = /^Calendar, \d+ upcoming games? this week$/;
+  const FALSE_ZERO = 'Calendar, 0 upcoming games this week';
+  const CAUSE =
+    'cause: UserHomePage.js `const upcomingPending` read false in the commit in which selfUuid ' +
+    'first resolved (the fetch effect had not run yet), so the still-empty [] was announced as a count';
+
+  const homeElement = () => (
+    <UserHome
+      GroupList={null}
+      getGroupList={vi.fn()}
+      onCreateGroup={vi.fn()}
+      groupListRefreshKey={0}
+      onMemberAdded={vi.fn()}
+    />
+  );
+
+  const isCalendarButton = (node: Node): boolean => {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    const el = node as Element;
+    return (
+      el.tagName === 'BUTTON' &&
+      el.getAttribute('aria-haspopup') === 'dialog' &&
+      (el.getAttribute('aria-label') ?? '').startsWith('Calendar')
+    );
+  };
+
+  /** Created BEFORE render. Keeps every record; `sequence()` is the oldValue chain + current. */
+  function recordCalendarLabels() {
+    const kept: MutationRecord[] = [];
+    const observer = new MutationObserver((records) => {
+      kept.push(...records);
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['aria-label'],
+      attributeOldValue: true,
+    });
+    const drain = () => {
+      kept.push(...observer.takeRecords());
+    };
+    return {
+      sequence(): string[] {
+        drain();
+        const seq = kept
+          .filter((r) => r.type === 'attributes' && isCalendarButton(r.target))
+          .map((r) => r.oldValue ?? '');
+        seq.push(
+          screen.getByRole('button', { name: /^calendar\b/i }).getAttribute('aria-label') ?? ''
+        );
+        return seq;
+      },
+      /** A detached node keeps its textContent, so a one-commit empty state is still visible here. */
+      sawEmptyState(): boolean {
+        drain();
+        return kept.some(
+          (r) =>
+            r.type === 'childList' &&
+            Array.from(r.addedNodes).some((n) =>
+              (n.textContent ?? '').includes('Nothing on the calendar')
+            )
+        );
+      },
+      disconnect() {
+        observer.disconnect();
+      },
+    };
+  }
+
+  async function runTransition({
+    identityAtMount,
+    payload,
+    settledName,
+  }: {
+    identityAtMount: 'resolved' | 'unresolved';
+    payload: unknown[];
+    settledName: string;
+  }) {
+    const api = await import('@/lib/api');
+    const getUserEvents = api.eventsAPI.getUserEvents as ReturnType<typeof vi.fn>;
+    getUserEvents.mockClear();
+    let resolve: (value: unknown[]) => void = () => {};
+    // mockImplementationOnce, NOT mockImplementation: on Vitest 4.1.7 the afterEach
+    // `vi.restoreAllMocks()` does not reset a vi.fn implementation, so a persistent deferred
+    // implementation would leak into every later test in this file.
+    getUserEvents.mockImplementationOnce(
+      () =>
+        new Promise<unknown[]>((r) => {
+          resolve = r;
+        })
+    );
+    h.selfUuid = identityAtMount === 'resolved' ? SELF_UUID : undefined;
+
+    const recorder = recordCalendarLabels();
+    const { rerender } = render(homeElement());
+    if (identityAtMount === 'unresolved') {
+      // What useQuery does when the ['users','self'] fetch returns — the probe's exact move.
+      h.selfUuid = SELF_UUID;
+      await act(async () => {
+        rerender(homeElement());
+      });
+    }
+
+    // Non-vacuity: the fetch really fired, once, for this identity — the pending window is real.
+    expect(getUserEvents, 'the upcoming-events fetch should have fired exactly once').toHaveBeenCalledTimes(1);
+    expect(getUserEvents).toHaveBeenCalledWith(SELF_UUID);
+    expect(
+      screen.getByRole('button', { name: /^calendar\b/i }).getAttribute('aria-label'),
+      'while the fetch is in flight the button must make no count claim'
+    ).toBe('Calendar');
+
+    await act(async () => {
+      resolve(payload);
+    });
+    await findCalendarButton(settledName);
+    return recorder;
+  }
+
+  /** Harness non-vacuity: a one-entry sequence means the recorder saw no transition at all. */
+  function expectRecorded(seq: string[]) {
+    expect(
+      seq.length,
+      `the recorder saw fewer than 2 label states: ${JSON.stringify(seq)}`
+    ).toBeGreaterThanOrEqual(2);
+  }
+
+  /** The flip rule, stated once: after the first counted entry, every entry is counted. */
+  function expectNoFlipAfterFirstCount(seq: string[]) {
+    const first = seq.findIndex((label) => COUNTED.test(label));
+    expect(first, `no counted label was ever recorded: ${JSON.stringify(seq)}`).toBeGreaterThanOrEqual(0);
+    const later = seq.slice(first + 1);
+    expect(
+      later.every((label) => COUNTED.test(label)),
+      `counted -> not-counted flip after the button first carried a count: ${JSON.stringify(seq)} — ${CAUSE}`
+    ).toBe(true);
+  }
+
+  function expectNoFalseZero(seq: string[]) {
+    expect(
+      seq.includes(FALSE_ZERO),
+      `the button announced "${FALSE_ZERO}" before the fetch returned any events: ${JSON.stringify(seq)} — ${CAUSE}`
+    ).toBe(false);
+  }
+
+  it('identity resolves after mount, the fetch returns events: never a false zero, no flip, no "Nothing on the calendar"', async () => {
+    const recorder = await runTransition({
+      identityAtMount: 'unresolved',
+      payload: EVENTS,
+      settledName: nameFor(FILTERED.length),
+    });
+    const seq = recorder.sequence();
+    const sawEmptyState = recorder.sawEmptyState();
+    recorder.disconnect();
+
+    expectRecorded(seq);
+    expectNoFalseZero(seq);
+    expectNoFlipAfterFirstCount(seq);
+    expect(seq[0], `the first recorded label should be the bare pending one: ${JSON.stringify(seq)}`).toBe(
+      NAME_SUPPRESSED
+    );
+    expect(seq[seq.length - 1]).toBe(nameFor(FILTERED.length));
+    expect(
+      sawEmptyState,
+      'the desktop card inserted "Nothing on the calendar" before the fetch settled — the lie ' +
+        `DECISION Phase 88-33 (M2) removed, for one commit — ${CAUSE}`
+    ).toBe(false);
+  });
+
+  it('identity resolves after mount, the fetch returns nothing: the genuine zero is claimed exactly once, last', async () => {
+    const recorder = await runTransition({
+      identityAtMount: 'unresolved',
+      payload: [],
+      settledName: FALSE_ZERO,
+    });
+    const seq = recorder.sequence();
+    recorder.disconnect();
+
+    expectRecorded(seq);
+    expectNoFlipAfterFirstCount(seq);
+    expect(
+      seq.filter((label) => label === FALSE_ZERO).length,
+      `the zero claim should appear exactly once, after the fetch settled: ${JSON.stringify(seq)} — ${CAUSE}`
+    ).toBe(1);
+    expect(seq[seq.length - 1]).toBe(FALSE_ZERO);
+    expect(seq[0], `the first recorded label should be the bare pending one: ${JSON.stringify(seq)}`).toBe(
+      NAME_SUPPRESSED
+    );
+  });
+
+  // The empty-state flag is asserted in the first case ONLY. Here the first-commit empty state
+  // (if any) arrives inside the initial tree insertion, which a childList record reports as one
+  // added root whose textContent is read after the tree has moved on — the flag cannot see it,
+  // so asserting it here would be vacuous.
+  it('identity already resolved at mount (cached users/self): never a false zero, no flip', async () => {
+    const recorder = await runTransition({
+      identityAtMount: 'resolved',
+      payload: EVENTS,
+      settledName: nameFor(FILTERED.length),
+    });
+    const seq = recorder.sequence();
+    recorder.disconnect();
+
+    expectRecorded(seq);
+    expectNoFalseZero(seq);
+    expectNoFlipAfterFirstCount(seq);
+    expect(seq[0], `the first recorded label should be the bare pending one: ${JSON.stringify(seq)}`).toBe(
+      NAME_SUPPRESSED
+    );
+    expect(seq[seq.length - 1]).toBe(nameFor(FILTERED.length));
   });
 });
 
