@@ -71,10 +71,8 @@ function InviteAcceptPage() {
 
     if (!user) {
       setStatus('not-logged-in');
-      // Store token in localStorage as backup for post-login redirect
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pendingInviteToken', token);
-      }
+      // No localStorage copy of the token here — see the AMENDED 88.6-59 note in the
+      // DECISION Phase 88.6-23 marker below. The sign-in anchor's `returnTo` carries it.
       return;
     }
 
@@ -107,7 +105,17 @@ function InviteAcceptPage() {
          post-login carrier.
 
          The stored copy is cleared in the `finally` below — on the ERROR path too, which the
-         shipped `removeItem` could not reach (it sat inside the override branch). */
+         shipped `removeItem` could not reach (it sat inside the override branch).
+
+         AMENDED 2026-09-29 — DECISION Phase 88.6-59 (review MEDLOW-10, owner ruling `R-5-RULING`):
+         the WRITE is now DELETED as well. It sat in the `!user` branch above and outlived its
+         only reader (the `getItem` this marker removed), so it was pure retention of a
+         group-membership bearer credential. The `returnTo` on the sign-in anchor at the bottom
+         of this file (`/invite/accept?token=…`) is the post-login carrier. REJECTED: keeping the
+         write "as a backup" — nothing reads it, and a future reader added back would re-open
+         the stored-token hijack above. The `finally` `removeItem` is KEPT for one release on
+         purpose, to sweep tokens that older builds stored; a later phase may delete it. Deleting
+         that sweep early is a decision, not a cleanup. */
       const tokenToUse = token;
 
       try {

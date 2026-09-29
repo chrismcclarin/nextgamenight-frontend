@@ -184,6 +184,23 @@ describe('invite/accept — the token a stale localStorage copy must not hijack 
         'left a bearer credential in localStorage forever'
     ).toBeNull();
   });
+
+  it('a LOGGED-OUT visit writes no invite token to localStorage (88.6-59, review MEDLOW-10)', async () => {
+    // The write in the `!user` branch outlived its only reader (T-88.6-148 deleted the
+    // `getItem`), so it was pure retention of a group-membership bearer credential. The token
+    // already survives login through the `returnTo` on the sign-in anchor.
+    authState.user = undefined;
+    inviteInfo().mockResolvedValue(null);
+
+    render(<InviteAcceptPage />);
+
+    await screen.findByRole('heading', { name: /you're invited!/i });
+    expect(
+      localStorage.getItem('pendingInviteToken'),
+      'a logged-out visit left the invite bearer token in browser storage with nothing reading it'
+    ).toBeNull();
+    expect(accept()).not.toHaveBeenCalled();
+  });
 });
 
 describe('invite/accept — the success heading and the migrated anchors', () => {
