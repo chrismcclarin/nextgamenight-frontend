@@ -356,23 +356,29 @@ const FALSE_POSITIVES: Record<string, FalsePositive> = {
   //       to this component must re-point all three. A content-anchored keying would be the
   //       durable fix; no 88.6 plan declares this file, so plan 22 re-points rather than
   //       re-engineers a gate it does not own, and routes the structural change instead.
-  'app/components/FriendInvitePanel.js:484': {
+  // RE-POINTED AGAIN by plan 88.6-58 task 2 (2026-09-28, review H3): 484 -> 507, 490 -> 513,
+  // ground 467 -> 490 (+23 each). The MECHANISM is unchanged — the three lines are byte-identical
+  // to FE d03f728's :484/:490/:467; plan 58 added the INVALID_EMAIL_MESSAGE constant (+4) near the
+  // top and amended the email-invite catch's DECISION marker (+19), both ABOVE these lines. Caught
+  // by the full `npx vitest run`, not by the task's targeted suites — the same way plan 88.6-42's
+  // PROVEN_LOCAL move was caught. The `why` line cites below are re-derived in place.
+  'app/components/FriendInvitePanel.js:507': {
     sites: 1,
-    why: 'The muted ground arm at :467 requires !isInGroup && selectedFriends.has(friend.id); the ink at :484 is the isInGroup arm of its own ternary. The two conditions are negations of each other, so the pairing cannot render. Plan 88.6-22 is this file\'s sweep owner and confirmed the mechanism at execution; it is a false positive, not debt that plan should have closed.',
+    why: 'The muted ground arm at :490 requires !isInGroup && selectedFriends.has(friend.id); the ink at :507 is the isInGroup arm of its own ternary. The two conditions are negations of each other, so the pairing cannot render. Plan 88.6-22 is this file\'s sweep owner and confirmed the mechanism at execution; it is a false positive, not debt that plan should have closed.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/FriendInvitePanel.js:484',
-      groundLine: 'app/components/FriendInvitePanel.js:467',
+      inkLine: 'app/components/FriendInvitePanel.js:507',
+      groundLine: 'app/components/FriendInvitePanel.js:490',
       conditions: ['ink requires isInGroup', 'ground requires !isInGroup && selectedFriends.has(friend.id)'],
     },
   },
-  'app/components/FriendInvitePanel.js:490': {
+  'app/components/FriendInvitePanel.js:513': {
     sites: 1,
-    why: 'Same ground arm at :467 (!isInGroup && selected); the "In group" label at :490 renders only inside an isInGroup guard. Mutually exclusive, so not debt. Same sweep-owner confirmation as :484.',
+    why: 'Same ground arm at :490 (!isInGroup && selected); the "In group" label at :513 renders only inside an isInGroup guard. Mutually exclusive, so not debt. Same sweep-owner confirmation as :507.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/FriendInvitePanel.js:490',
-      groundLine: 'app/components/FriendInvitePanel.js:467',
+      inkLine: 'app/components/FriendInvitePanel.js:513',
+      groundLine: 'app/components/FriendInvitePanel.js:490',
       conditions: ['ink requires isInGroup', 'ground requires !isInGroup && selectedFriends.has(friend.id)'],
     },
   },
@@ -549,9 +555,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
       'app/components/CalendarMonthView.js:445',
       // RE-POINTED by plan 88.6-22 task 1 (2026-09-16), 364/370 -> 484/490. This literal is the
       // SECOND place the line pin is written; both must move together. See the re-point note on
-      // the entries themselves.
-      'app/components/FriendInvitePanel.js:484',
-      'app/components/FriendInvitePanel.js:490',
+      // the entries themselves. RE-POINTED AGAIN by plan 88.6-58 task 2 (2026-09-28),
+      // 484/490 -> 507/513 — same note on the entries.
+      'app/components/FriendInvitePanel.js:507',
+      'app/components/FriendInvitePanel.js:513',
     ]);
     // (b) NOT A FOSSIL — every entry must still be a pairing the walk actually reports. An
     //     entry whose site was deleted or re-inked would otherwise sit here forever.
