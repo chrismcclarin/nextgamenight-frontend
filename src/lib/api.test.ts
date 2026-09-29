@@ -631,6 +631,74 @@ describe('88.6-42 — transport hardening on the apiFetch-bypassing public helpe
   });
 });
 
+// ADDED by plan 88.6-58 task 4 (2026-09-28, /code-adversarial-review 88.6 MEDLOW-2). Plan 42's
+// census above named FIVE apiFetch-bypassing public helpers; there were SIX. The sixth,
+// `availabilityFormAPI.getExistingResponse`, is awaited by the magic-link page BEFORE it sets
+// READY (availability-form/[token]/page.js:131, :159), so a GET that never settles held the
+// visitor on "Loading" forever — the same class plan 42 closed for the other five. Three cases
+// were RED on FE d03f728 (timeout, non-JSON 200, unencoded promptId); the 404 case is
+// confirm-only (the `object | null` contract is unchanged).
+describe('88.6-58 — getExistingResponse, the SIXTH apiFetch-bypassing helper, gets the same transport', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const jsonOnce = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText, json: async () => JSON.parse(bodyText) });
+
+  it('a lookup that never settles REJECTS at 20 000 ms with the helper\'s own failure message', async () => {
+    vi.useFakeTimers();
+    // Models real `fetch`: it settles only by rejecting when its signal aborts. With no signal
+    // (the pre-58 helper) it never settles at all.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            );
+          }),
+      ),
+    );
+    const settled = vi.fn();
+    const p = availabilityFormAPI.getExistingResponse('p1', 'tok');
+    p.then(
+      (v) => settled('resolved', v),
+      (e) => settled('rejected', e),
+    );
+
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(settled).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toHaveBeenCalledTimes(1);
+    const [outcome, value] = settled.mock.calls[0];
+    expect(outcome).toBe('rejected');
+    expect((value as Error).message).toBe('availability existing-response lookup did not complete');
+  });
+
+  it('a 200 with a non-JSON body resolves null (guarded parse; the object | null contract kept)', async () => {
+    vi.stubGlobal('fetch', jsonOnce(200, '<!DOCTYPE html><html><body>gateway</body></html>'));
+    await expect(availabilityFormAPI.getExistingResponse('p1', 'tok')).resolves.toBeNull();
+  });
+
+  it('CONFIRM-ONLY: a 404 still resolves null', async () => {
+    vi.stubGlobal('fetch', jsonOnce(404, '{"error":"not found"}'));
+    await expect(availabilityFormAPI.getExistingResponse('p1', 'tok')).resolves.toBeNull();
+  });
+
+  it('percent-encodes promptId in the path (and still encodes the token)', async () => {
+    const fetchMock = jsonOnce(200, '{"time_slots":[],"is_unavailable":false}');
+    vi.stubGlobal('fetch', fetchMock);
+    await availabilityFormAPI.getExistingResponse('p/1', 'tok en');
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('/availability-responses/p%2F1?');
+    expect(url).toContain('magic_token=tok%20en');
+    expect(url).not.toContain('p/1');
+  });
+});
+
 describe('88.6-42 / D41 cluster C — usersAPI.deleteAccount takes an OPTIONAL AbortSignal', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

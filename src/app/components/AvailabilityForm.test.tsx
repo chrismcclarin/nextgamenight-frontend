@@ -99,7 +99,7 @@ describe('AvailabilityForm submit-error path', () => {
     // `{ error, action }` token/validation arms (pinned confirm-only below). The CODED arms
     // (`prompt_closed`, `prompt_deadline_expired`, `rate_limited`) now reach the catch as an
     // `ApiError` and render their own register lines — the `it.each` cases below. The
-    // `lib/api.ts:1086-1091` cite above is stale; `submitResponse` is api.ts:1364-1375.
+    // `lib/api.ts:1086-1091` cite above is stale; read `submitResponse: async` in lib/api.ts.
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(
         'Something went wrong. Refresh the page to try again.',

@@ -619,7 +619,7 @@ export async function apiFetch<T = unknown>(
 }
 
 // -----------------------------------------------------------------------------
-// TRANSPORT FOR THE FIVE apiFetch-BYPASSING PUBLIC HELPERS (T-88.6-122)
+// TRANSPORT FOR THE FIVE apiFetch-BYPASSING PUBLIC HELPERS (T-88.6-122) — SIX since 88.6-58
 // -----------------------------------------------------------------------------
 /* DECISION Phase 88.6-42 (R8 §3 / §7 / §12): the five public helpers that BYPASS apiFetch
    -- rsvpPublicAPI.respondViaToken, magicAuthAPI.validateToken,
@@ -652,7 +652,19 @@ export async function apiFetch<T = unknown>(
    (rsvp/[token]/page.js branches on result.error === 'event_cancelled';
    AvailabilityForm.js reads response.error), and the owner's D62 branch-B ruling
    (2026-09-09) KEEPS those reads. An res.ok throw would strand them -- that is branch A,
-   which the owner rejected. Adding one here is a decision, not a hardening. */
+   which the owner rejected. Adding one here is a decision, not a hardening.
+
+   AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review MEDLOW-2, owner ruling
+   `FIX-NOW-SET-RULING: as-recommended`): the census above was FIVE and is SIX. The sixth,
+   `availabilityFormAPI.getExistingResponse`, was MISSED — a raw `fetch(...).then(res =>
+   res.ok ? res.json() : null)` with no timer, no signal, no guarded parse and an unencoded
+   `promptId`. Its one consumer (availability-form/[token]/page.js, the `await
+   availabilityFormAPI.getExistingResponse(` inside the validate try) awaits it BEFORE
+   `setPageState(PAGE_STATES.READY)`, so a stalled GET was the same "spun forever" class this
+   marker claims closed. It now uses `timedPublicFetch` + `guardedJson` like the other five,
+   keeps its `object | null` resolved contract (non-2xx and unparseable 2xx both resolve
+   `null`; only a transport failure rejects), and encodes `promptId`. The binding constraint
+   above still holds for it: no res.ok THROW and no body-shape change. */
 const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
 
 /**
@@ -1351,6 +1363,7 @@ export const magicAuthAPI = {
  * These use direct fetch without Auth0 token injection
  */
 const AVAILABILITY_SUBMIT_TRANSPORT_FAILURE = 'availability response submission did not complete';
+const AVAILABILITY_EXISTING_TRANSPORT_FAILURE = 'availability existing-response lookup did not complete';
 const GCAL_PREFILL_FAILURE = 'Failed to import from Google Calendar';
 const SAVED_PREFILL_FAILURE = 'Failed to use saved availability';
 
@@ -1374,11 +1387,27 @@ export const availabilityFormAPI = {
     return guardedJson(res, AVAILABILITY_SUBMIT_TRANSPORT_FAILURE);
   },
 
-  // Get existing response for pre-fill (if user returns to edit)
-  getExistingResponse: (promptId: string, token: string) =>
-    fetch(`${PUBLIC_API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
-      headers: { 'Content-Type': 'application/json' },
-    }).then(res => res.ok ? res.json() : null),
+  // Get existing response for pre-fill (if user returns to edit).
+  //
+  // The SIXTH apiFetch-bypassing helper (plan 88.6-58, review MEDLOW-2) — see the
+  // `DECISION Phase 88.6-42` transport marker, amended to say six. The resolved contract is
+  // UNCHANGED: the parsed body on a 2xx, `null` otherwise — a non-2xx AND an unparseable 2xx
+  // both mean "nothing to pre-fill" to the one consumer. A TRANSPORT failure (incl. the 20s
+  // timeout) REJECTS, and the consumer's own catch treats it as optional pre-fill and proceeds
+  // to READY; before this, a stalled GET held the page on "Loading" forever.
+  getExistingResponse: async (promptId: string, token: string) => {
+    const res = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/availability-responses/${encodeURIComponent(promptId)}?magic_token=${encodeURIComponent(token)}`,
+      { headers: { 'Content-Type': 'application/json' } },
+      AVAILABILITY_EXISTING_TRANSPORT_FAILURE
+    );
+    if (!res.ok) return null;
+    try {
+      return await guardedJson(res, AVAILABILITY_EXISTING_TRANSPORT_FAILURE);
+    } catch {
+      return null;
+    }
+  },
 
   // Phase 81 Plan 02 (CHKIN-05) — pre-fill the grid from the magic-token user's
   // Google Calendar. Returns { slot_ids: ["ISO datetime", ...], count } for

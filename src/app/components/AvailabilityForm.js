@@ -210,7 +210,7 @@ export default function AvailabilityForm({
          for four of the arms. `prompt_closed` (Sonnet/routes/availabilityResponse.js:99, :103),
          `prompt_deadline_expired` (:109) and the magic-token limiter's `rate_limited` 429
          (middleware/rateLimiter.js:10, :101) ALREADY carry an envelope `code` today, and
-         `submitResponse` (lib/api.ts:1364-1375, `timedPublicFetch` + `guardedJson`) returns the
+         `submitResponse` (lib/api.ts `submitResponse: async`, `timedPublicFetch` + `guardedJson`) returns the
          parsed body WHATEVER the status, so those codes reach the guard above. The guard now
          throws a coded `ApiError` built from the body's own `code` — FE-only, no backend deploy
          — so `getFetchErrorMessage` resolves the ratified register lines
