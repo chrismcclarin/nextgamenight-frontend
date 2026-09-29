@@ -32,8 +32,13 @@ on:
 # describes is wrong the next time anything above it is edited. The complete set of actions
 # is `actions/checkout@v4` x4 (quality's "Checkout (full history ...)", drift-gate-registry's
 # "Checkout", and e2e's "Checkout frontend" + "Checkout backend"), `actions/setup-node@v4` x2
-# ("Setup Node 20" in quality and in e2e) and one `actions/upload-artifact@v4` ("Upload
-# Playwright failure evidence"). There is no `gh`, no `github-script`, no `api.github.com`
+# ("Setup Node 20" in quality and in e2e) and two `actions/upload-artifact@v4` ("Upload
+# Playwright failure evidence" and "Upload desktop month-tile screenshots (always — PNG only,
+# never .auth/ — T-82-12)"). AMENDED 2026-09-28 (Phase 88.6 plan 55, gap-lap ML-17): this
+# census said "one" until the second upload landed in the same commit; neither reaches
+# `.auth/` (the failure step uploads `playwright-report/` + `test-results/`, the new one only
+# `test-results/**/month-tile-desktop-*.png`), both authenticate with ACTIONS_RUNTIME_TOKEN,
+# and neither adds a scope. There is no `gh`, no `github-script`, no `api.github.com`
 # call, and no step that WRITES to GitHub — no PR comment, no commit status, no release, no
 # package push. "Checkout backend" reads chrismcclarin/nextgamenight-backend, which is PUBLIC,
 # so `contents: read` on the default token covers it (see that step's own GITHUB_TOKEN note).
@@ -295,6 +300,18 @@ jobs:
         # coverage of the eight-state machine, of the four outcome literals that must not
         # collapse into one another, and of the DR-C no-native-`disabled` sweep.
         #
+        # AMENDMENT — Phase 88.6 plan 55 (owner-ruled 2026-09-28, NEW OWNER ITEM 4). Five rows
+        # added — the source-scan gates Phase 88.6 itself minted, none of which was registered:
+        #   src/app/groundInk.test.ts                  plan 09 — ground-aware ink (D-16)       floor 8
+        #   src/app/errorEnvelopeReads.test.ts         plan 14 — default-deny envelope reads   floor 16
+        #   src/app/components/btnCensus.test.tsx      plan 10 — the .btn element census       floor 21
+        #   src/app/shadowTier.test.ts                 plan 12 — off-tier shadow families       floor 8
+        #   src/app/interpolatedClassCensus.test.ts    plan 47 — interpolated Tailwind classes  floor 4
+        # Each floor is MEASURED, not quoted: `grep -cE '^[[:space:]]*(it|test)\(' <file>` (the
+        # same regex this loop uses) on FE e882822, 2026-09-28. Unregistered, each was deletable
+        # with a green build — the exact hole this step exists to close, reopened by the phase
+        # that was converging on it. Ledger rows R103 / R104 / H08 in 88.6-46-SUMMARY.md.
+        #
         # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
         # file list out of this workflow, located by the step name above, and asserts every
         # listed file exists and really carries at least the stated number of assertions.
@@ -326,6 +343,11 @@ jobs:
             "src/lib/groupColourPresets.test.ts:12" \
             "src/lib/syntheticAddress.test.ts:8" \
             "src/app/components/EmailAddressSection.test.tsx:50" \
+            "src/app/groundInk.test.ts:8" \
+            "src/app/errorEnvelopeReads.test.ts:16" \
+            "src/app/components/btnCensus.test.tsx:21" \
+            "src/app/shadowTier.test.ts:8" \
+            "src/app/interpolatedClassCensus.test.ts:4" \
             "src/test-utils/sourceScan.ts:0" \
           ; do
             f="${entry%:*}"; min="${entry##*:}"
@@ -667,6 +689,17 @@ jobs:
       - name: Gate C executed-count floor — contrast.spec.ts must actually run in the phone project
         run: node scripts/gate-c-executed-floor.mjs playwright-results.json
 
+      # Phase 88.6 plan 55 (owner-ruled 2026-09-28, NEW OWNER ITEM 4): the SAME hole as Gate C,
+      # mirrored. touch-targets.spec.ts's D10 arm (gated hover, focus ring, hover pin) sits behind
+      # `test.skip(({ isMobile }) => isMobile)` so it runs ONLY in the desktop `journeys` project;
+      # removing the project from the run line, flipping `isMobile` on it, or inverting that skip
+      # zeroes the arm while this job stays green. Same script, generalised by flags, not copied.
+      # The floor is the `--list` count (`npx playwright test --list --project=journeys
+      # e2e/touch-targets.spec.ts -g "D10"` = 3 on 2026-09-28), never above it. Closes WINDOWS 20
+      # and ledger row R104 (88.6-46-SUMMARY.md). No `if:`, for the reason the step above gives.
+      - name: D10 executed-count floor — touch-targets.spec.ts's D10 arm must actually run in the journeys project
+        run: node scripts/gate-c-executed-floor.mjs playwright-results.json --spec e2e/touch-targets.spec.ts --project journeys --title-prefix D10 --floor 3
+
       - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -680,3 +713,16 @@ jobs:
             test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+      # Phase 88.6 plan 55 (NEW OWNER ITEM 4, ledger R140): `always()` because the month-tile
+      # screenshots are review evidence on a GREEN run, which `failure()` above never uploads; the
+      # glob is PNG-only under test-results/, so it cannot reach `.auth/user.json` (repo root) or
+      # playwright-results.json (repo root) — pinned in src/lib/ci-grep-gate.fixture.test.ts.
+      - name: Upload desktop month-tile screenshots (always — PNG only, never .auth/ — T-82-12)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: month-tile-desktop-screenshots
+          path: test-results/**/month-tile-desktop-*.png
+          retention-days: 7
+          if-no-files-found: warn

@@ -2186,7 +2186,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    EXECUTED-COUNT FLOOR — DISCLOSED GAP. `scripts/gate-c-executed-floor.mjs` is this repo's idiom
    for "assert the gate actually EXECUTED", but it is scoped to `contrast.spec.ts` in the `phone`
    project. No equivalent floor covers this arm in `journeys`. The in-body `isMobile` assertions
-   are the local substitute; the durable floor is registered in `.planning/WINDOWS.md`. */
+   are the local substitute; the durable floor is registered in `.planning/WINDOWS.md`.
+   CLOSED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4): the same script now takes
+   `--spec/--project/--title-prefix/--floor`, and ci.yml's "D10 executed-count floor" step runs it
+   against this arm in `journeys` with floor 3 (the `--list` count); its lockstep in
+   `src/lib/ci-grep-gate.fixture.test.ts` keeps that floor at or below the `test('D10` count here.
+   The gap described above is historical — kept, not deleted, so the reasoning stays findable. */
 
 /** The `Button` cva base, variant `primary`, as it ships after plan 06.
  *
