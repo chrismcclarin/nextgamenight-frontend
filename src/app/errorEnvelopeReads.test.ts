@@ -294,7 +294,12 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
   // saying so. Entry DELETED, not zeroed. FOR THE RECORD: this makes `88.6-RESEARCH.md:1291`
   // R9 inventory wrong by one — it counted this as a convertible alias read.
   'app/rsvp/[token]/page.js': {
-    sites: 2,
+    // 2 → 4 on 2026-09-29 (plan 88.6-58 task 7, review MEDLOW-16, ITEM-16-COPY-RULING
+    // ratified): two more `result.error ===` discriminant reads for the 403 bodies
+    // `expired_link` (Sonnet/routes/rsvp.js:260-263) and `account_not_found` (:235-238).
+    // Those DO carry a `message`, which the page deliberately does not render (R1). Same
+    // disposition, same removal condition — Phase 93 lands the BE `code` on all FOUR.
+    sites: 4,
     why:
       'A DOMAIN DISCRIMINANT, not a legacy alias. The backend branches VERBATIM, re-read at ' +
       'source 2026-09-16 — Sonnet/routes/rsvp.js:293-296 is ' +
@@ -483,11 +488,12 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     // readable straight off a failure rather than reconstructed from a violations list.
     expect(MEASURED).toEqual({
       'lib/api.ts': 3,
-      'app/rsvp/[token]/page.js': 2,
+      // 2 → 4 on 2026-09-29 (plan 88.6-58 task 7): the two 403 discriminants joined the two 410s.
+      'app/rsvp/[token]/page.js': 4,
       'app/components/AvailabilityForm.js': 2,
     });
     const total = Object.values(MEASURED).reduce((a, b) => a + b, 0);
-    expect(total).toBe(7);
+    expect(total, '7 → 9 on 2026-09-29 (plan 88.6-58 task 7)').toBe(9);
     expect(Object.keys(ENVELOPE_READ_ROSTER).sort()).toEqual(Object.keys(MEASURED).sort());
   });
 

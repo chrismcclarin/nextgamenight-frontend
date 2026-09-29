@@ -71,6 +71,18 @@ const BODY_SUCCESS = {
   event_name: 'Tuesday Trivia Night',
   event_date: 'March 3',
 };
+// The two 403 bodies, VERBATIM from Sonnet/routes/rsvp.js (:235-238 account_not_found,
+// :260-263 expired_link, re-read at source 2026-09-29). Unlike the 410s these DO carry a
+// `message` — and the page deliberately does NOT render it (fetchErrorTreatment R1: the
+// backend's prose is never the display string). The ratified copy is the page's own.
+const BODY_ACCOUNT_NOT_FOUND_403 = {
+  error: 'account_not_found',
+  message: 'We could not find your account — sign in and open the event to RSVP.',
+};
+const BODY_EXPIRED_LINK_403 = {
+  error: 'expired_link',
+  message: 'This RSVP link has expired or was already used. Open the event to RSVP.',
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -189,6 +201,50 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
     ).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Go to Group' })).toBeNull();
   });
+
+  // Plan 88.6-58 task 7 (review MEDLOW-16, ITEM-16-COPY-RULING ratified 2026-09-29). Before this,
+  // both 403s fell through to ERROR and told the user to tap the link again — which fails again.
+  it('6. the expired_link 403 body drives its OWN state with the ratified copy, never the retry advice and never the backend message', async () => {
+    respond().mockResolvedValue(BODY_EXPIRED_LINK_403);
+
+    render(<RsvpPage />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'This link has already been used' }),
+      'a body carrying `error: expired_link` must reach its own page state, not the generic ' +
+        'error screen'
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Each RSVP link works once. Open the event to change your answer.')
+    ).toBeInTheDocument();
+    // The old advice is gone from this outcome, and the backend's prose is not the display string.
+    expect(screen.queryByText(/try clicking the RSVP link/)).toBeNull();
+    expect(screen.queryByText(BODY_EXPIRED_LINK_403.message)).toBeNull();
+    // The way forward is the shipped "Go to Home" (no group_id on a 403 body → no Go to Group).
+    expect(screen.queryByRole('link', { name: 'Go to Group' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+    // The live region composes the same two strings (AC-19 idiom).
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      'This link has already been used Each RSVP link works once. Open the event to change your answer.'
+    );
+  });
+
+  it('7. the account_not_found 403 body drives its OWN state with the ratified copy', async () => {
+    respond().mockResolvedValue(BODY_ACCOUNT_NOT_FOUND_403);
+
+    render(<RsvpPage />);
+
+    expect(
+      await screen.findByRole('heading', { name: "We couldn't find your account" })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Sign in and open the event to RSVP.')).toBeInTheDocument();
+    expect(screen.queryByText(/try clicking the RSVP link/)).toBeNull();
+    expect(screen.queryByText(BODY_ACCOUNT_NOT_FOUND_403.message)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      "We couldn't find your account Sign in and open the event to RSVP."
+    );
+  });
 });
 
 describe('rsvp/[token] — r2 #181 / AC-19: the LOADING to result swap is announced', () => {
@@ -300,6 +356,8 @@ describe('rsvp/[token] — r2 #181 / AC-19: the LOADING to result swap is announ
     const branches: Array<[string, unknown, RegExp, number]> = [
       ['SUCCESS', BODY_SUCCESS, /You're in!/, 1],
       ['EVENT_PASSED', BODY_PASSED_410, /This event has already happened/, 1],
+      ['EXPIRED_LINK', BODY_EXPIRED_LINK_403, /This link has already been used/, 1],
+      ['ACCOUNT_NOT_FOUND', BODY_ACCOUNT_NOT_FOUND_403, /We couldn't find your account/, 1],
       ['ERROR', {}, /Something went wrong/, 1],
     ];
 

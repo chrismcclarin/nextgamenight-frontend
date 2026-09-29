@@ -15,6 +15,9 @@ const PAGE_STATES = {
   LOADING: 'loading',
   SUCCESS: 'success',
   EVENT_PASSED: 'event_passed',
+  // Plan 88.6-58 task 7 (review MEDLOW-16): the two 403 discriminants get their own states.
+  EXPIRED_LINK: 'expired_link',
+  ACCOUNT_NOT_FOUND: 'account_not_found',
   ERROR: 'error',
 };
 
@@ -41,6 +44,26 @@ const EVENT_PASSED_DETAIL_GENERIC = 'This event has already taken place or has b
 const ERROR_HEADLINE = 'Something went wrong';
 const ERROR_DETAIL =
   'This link may be invalid or expired. Please try clicking the RSVP link from your email again.';
+
+/* Plan 88.6-58 task 7 (review MEDLOW-16; `ITEM-16-COPY-RULING: ratified`, owner 2026-09-29,
+   UI-SPEC §6.3). Before this, a second tap on a used link — or a link for an account the backend
+   cannot find — fell through to ERROR above and told the user to tap the link AGAIN, which fails
+   again. The backend already discriminates both (`Sonnet/routes/rsvp.js` 403 `expired_link` /
+   `account_not_found`); these are the page's own strings for them. The backend's `message` on
+   those bodies is deliberately NOT rendered (fetchErrorTreatment R1: upstream prose is never the
+   display string). Same hoist idiom as above: each string ONCE, rendered by the `<h1>` AND the
+   live announcement. */
+const EXPIRED_LINK_HEADLINE = 'This link has already been used';
+const EXPIRED_LINK_DETAIL = 'Each RSVP link works once. Open the event to change your answer.';
+const ACCOUNT_NOT_FOUND_HEADLINE = "We couldn't find your account";
+const ACCOUNT_NOT_FOUND_DETAIL = 'Sign in and open the event to RSVP.';
+const LINK_STATE_COPY = {
+  [PAGE_STATES.EXPIRED_LINK]: { headline: EXPIRED_LINK_HEADLINE, detail: EXPIRED_LINK_DETAIL },
+  [PAGE_STATES.ACCOUNT_NOT_FOUND]: {
+    headline: ACCOUNT_NOT_FOUND_HEADLINE,
+    detail: ACCOUNT_NOT_FOUND_DETAIL,
+  },
+};
 
 /**
  * Status display config: message templates, colors, and icons
@@ -151,7 +174,13 @@ export default function RsvpPage() {
            GATED, not just written down: `src/app/errorEnvelopeReads.test.ts` rosters this file
            with an exact site count in BOTH directions, so deleting these reads reds as loudly as
            adding an unrostered one, and `page.test.tsx` pins all four page states — including the
-           code-only body, which asserts `ERROR` deliberately. */
+           code-only body, which asserts `ERROR` deliberately.
+
+           [AMENDED 2026-09-29 — plan 88.6-58 task 7, review MEDLOW-16: the discriminant set is
+           FOUR bodies, not two. The two 410s above carry no `code` and no `message`; the two 403s
+           below (`rsvp.js` `account_not_found` :235-238, `expired_link` :260-263) carry a
+           `message` that the FE deliberately does NOT render (R1). The roster count is now 4
+           sites; Phase 93's retighten precondition lists all four literals.] */
         if (result.success) {
           setResponseData(result);
           setPageState(PAGE_STATES.SUCCESS);
@@ -164,6 +193,10 @@ export default function RsvpPage() {
         } else if (result.error === 'event_cancelled') {
           setErrorInfo({ group_id: result.group_id });
           setPageState(PAGE_STATES.EVENT_PASSED);
+        } else if (result.error === 'expired_link') {
+          setPageState(PAGE_STATES.EXPIRED_LINK);
+        } else if (result.error === 'account_not_found') {
+          setPageState(PAGE_STATES.ACCOUNT_NOT_FOUND);
         } else {
           setPageState(PAGE_STATES.ERROR);
         }
@@ -242,7 +275,9 @@ export default function RsvpPage() {
         ? `${successConfig.heading} ${successConfig.messageTemplate(responseData.event_name, responseData.event_date)}`
         : pageState === PAGE_STATES.EVENT_PASSED
           ? `${EVENT_PASSED_HEADLINE} ${eventPassedDetail}`
-          : `${ERROR_HEADLINE} ${ERROR_DETAIL}`;
+          : LINK_STATE_COPY[pageState]
+            ? `${LINK_STATE_COPY[pageState].headline} ${LINK_STATE_COPY[pageState].detail}`
+            : `${ERROR_HEADLINE} ${ERROR_DETAIL}`;
 
   let body;
 
@@ -350,6 +385,37 @@ export default function RsvpPage() {
               </a>
             </Button>
           )}
+        </div>
+      </div>
+    );
+  } else if (LINK_STATE_COPY[pageState]) {
+    // ---- EXPIRED_LINK / ACCOUNT_NOT_FOUND STATES (plan 88.6-58 task 7) ----
+    // One render on the EVENT_PASSED idiom: warning glyph, heading @ 20, detail, one CTA. The 403
+    // bodies carry NO `group_id`, so "Go to Group" has no target; the CTA is the shipped
+    // "Go to Home" (the ERROR branch's own string) rather than a NEW label such as "Open the
+    // event" — the ruling ratified the two headline/detail pairs and nothing else (P1). Minting
+    // an event-link label is an owner copy decision, not a cleanup.
+    const copy = LINK_STATE_COPY[pageState];
+    body = (
+      <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
+          <div className="w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4">
+            {/* Decorative — see the success branch. */}
+            <svg className="w-8 h-8 text-content-status-warning" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <Heading level={1} size="heading" className="text-content-primary mb-2">
+            {copy.headline}
+          </Heading>
+          <p className="text-content-secondary mb-6">
+            {copy.detail}
+          </p>
+          <Button asChild variant="primary" size="default">
+            <a href="/">
+              Go to Home
+            </a>
+          </Button>
         </div>
       </div>
     );
