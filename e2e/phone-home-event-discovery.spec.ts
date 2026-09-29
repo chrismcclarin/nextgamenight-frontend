@@ -8,6 +8,15 @@ import { attachDiagnostics, probeFooterOcclusion } from './support/diagnostics';
 // mechanism in this file could drift from `contrast.spec.ts`'s and neither would be wrong.
 import { assertTheme, forceLightMode } from './support/contrast';
 
+/** quick-260928-sfo: the in-page Calendar label trace written by `installCalendarLabelRecorder`
+ *  and read back by `assertNoCalendarLabelFlip` (house pattern: `event-scheduler-touch.spec.ts`
+ *  `__schedulerArmTrace`). `id` is a per-NODE id, so a remounted button shows up as a new id. */
+declare global {
+  interface Window {
+    __calLabels?: Array<{ id: string; label: string | null }>;
+  }
+}
+
 /**
  * Phase 88.1 plan 10 — SPEC Req 11/12 (phone event discovery on the logged-in home page),
  * gated at 375x667.
@@ -266,26 +275,63 @@ const COUNTED_CALENDAR_LABEL = /^Calendar, (\d+) upcoming games? this week$/;
  * is SUPPRESSED (`count === null`: identity or events fetch pending/errored), which on a
  * seeded account is a fixture or backend failure, never a pass.
  *
- * WAIT FOR THE SETTLED FORM FIRST. The label is the bare "Calendar" for every frame between
- * mount and the upcoming-events fetch resolving (`UserHomePage.js:222-234` — `upcomingCount`
- * is `null` while `upcomingPending`), so a one-shot read straight after `page.goto` races that
- * fetch and lost ~1 CI run in 4 on `main` (2026-09-02, runs 33681277058 / 33681279703, both
- * with the fixture rows present). The retrying assertion below polls until the counted form
- * appears (Playwright's expect timeout), and only THEN is the label read once for the exact
- * count. Same class as the gameDetail "0 of 1" race fixed in FE #28 (`sessionsSection()`):
- * assert on the settled state, never on a transient frame. The one-shot read is kept
- * deliberately — it is what turns the label into a number, and its message still names the
- * fixture owner if the settled label ever fails the shape.
+ * HISTORY — WHAT quick-002 FIXED. The label is the bare "Calendar" for every frame between
+ * mount and the upcoming-events fetch settling (`UserHomePage.js:351-354`, `const
+ * upcomingCount` — `null` while `upcomingPending`), so a one-shot read straight after
+ * `page.goto` raced that fetch and lost ~1 CI run in 4 on `main` (2026-09-02, runs
+ * 33681277058 / 33681279703, both with the fixture rows present). quick-002 added a retrying
+ * wait for the counted form BEFORE the one-shot read — same class as the gameDetail "0 of 1"
+ * race fixed in FE #28 (`sessionsSection()`): assert on the settled state, never on a
+ * transient frame.
+ *
+ * WHAT IT COULD NOT SEE. The counted shape matches `0`, and the app committed a pre-fetch
+ * FALSE ZERO ("Calendar, 0 upcoming games this week") for one effect — the commit in which
+ * the viewer's identity first resolved, before the fetch effect had run. The wait passed on
+ * that false zero, and the separate one-shot read landed one state later on bare "Calendar",
+ * so the shape check failed (at the then-`:292`) on runs 35679555261 / 35682897917 /
+ * 36499984107 / 36502533130 / 36510630175 — 5 of 7 green runs passed only on retry.
+ *
+ * WHAT REPLACED IT. The app no longer commits the false zero (quick-260928-sfo,
+ * `UserHomePage.js:214-217`, `const upcomingPending`'s third clause), and the wait and the
+ * read are now ONE read: the number is parsed from the exact string that satisfied the
+ * matcher, so they cannot diverge. A counted -> bare flip that the poll cannot see is caught by
+ * `assertNoCalendarLabelFlip` below.
+ *
+ * DECISION quick-260928-sfo (WINDOWS 188): CHOSEN — a value-atomic `expect.poll` plus an
+ * in-page label recorder, landed WITH the app fix (never before it: on the unfixed app the
+ * recorder turns an intermittent flake into an intermittent hard red). What the poll does NOT
+ * do: it cannot see a transient counted -> bare -> counted flip — every later read auto-waits
+ * through it — so the recorder is the only detector of one (round-3 finding). quick-002's "the
+ * one-shot read is kept deliberately" note is SUPERSEDED: the number is still read once, but
+ * from the read that matched, because a separate wait-then-read IS the race.
+ * REJECTED: (i) retry-until-pass tolerance (CI `retries: 1` at `playwright.config.ts:33`, or
+ * any wrapper) — it waits through a user-visible lie and reports green-on-retry as green;
+ * (ii) a locator narrowed to the counted name (`getByRole('button', { name:
+ * COUNTED_CALENDAR_LABEL })`) — locators re-resolve and auto-wait, so a counted -> bare ->
+ * counted flip is waited through and masked (gap-lap ML-9); (iii) an `elementHandle()` pin —
+ * taken after the wait it is just another lazy re-resolution of the same `.first()` locator
+ * and closes nothing; taken before the wait it pins the bare pending-state node and fails on a
+ * legitimate pre-count remount (round-2 H-C).
+ * ZERO, decided here: `COUNTED_CALENDAR_LABEL` keeps `(\d+)` and still accepts `0`, because it
+ * describes the UI-SPEC 6.1.5 copy, in which a settled zero is a legitimate label pinned by the
+ * unit suite. Narrowing it to `[1-9]\d*` is the todo's REJECTED fix: it would wait through a
+ * false zero and hide it, and turn a genuine zero-event fixture into an opaque timeout instead
+ * of the precise fixture message. A zero on the seeded account is caught by the `count >= 1`
+ * check below, whose message names both possible causes. Changing any of this is a decision,
+ * not a cleanup.
  */
 async function readCalendarCount(page: Page): Promise<number> {
   const button = calendarButton(page).first();
-  await expect(
-    button,
-    `the Calendar button never announced a counted name — SPEC Req 2 / UI-SPEC 6.1.5 requires "Calendar, {n} upcoming game(s) this week" once the upcoming-events fetch resolves. A name still bare after the expect timeout means the count is SUPPRESSED (identity or events fetch pending/errored — \`UserHomePage.js:222-224\`), and since the pill is aria-hidden that name is the only place the number exists for assistive tech. On the seeded account this is a FIXTURE or backend failure owned by ${FIXTURE_OWNER}, not a pass.`,
-  ).toHaveAccessibleName(COUNTED_CALENDAR_LABEL);
+  let label = '';
+  await expect
+    .poll(async () => (label = (await button.getAttribute('aria-label')) ?? ''), {
+      message: `the Calendar button never announced a counted name — SPEC Req 2 / UI-SPEC 6.1.5 requires "Calendar, {n} upcoming game(s) this week" once the upcoming-events fetch resolves. A name still bare after the expect timeout means the count is SUPPRESSED (identity or events fetch pending/errored — \`UserHomePage.js:351-354\`, \`const upcomingCount\`), and since the pill is aria-hidden that name is the only place the number exists for assistive tech. On the seeded account this is a FIXTURE or backend failure owned by ${FIXTURE_OWNER}, not a pass.`,
+    })
+    .toMatch(COUNTED_CALENDAR_LABEL);
 
-  const label = (await button.getAttribute('aria-label')) ?? '';
   const match = COUNTED_CALENDAR_LABEL.exec(label);
+  // Unreachable by construction now (the poll above only returns on a match) — kept so the
+  // fixture diagnosis survives any future re-split of the wait and the read.
   expect(
     match,
     `the Calendar button's accessible name is "${label}" — SPEC Req 2 / UI-SPEC 6.1.5 requires "Calendar, {n} upcoming game(s) this week". A bare "Calendar" means the count is SUPPRESSED (pending or errored fetch), and since the pill is aria-hidden that name is the only place the number exists for assistive tech. On the seeded account this is a FIXTURE or backend failure owned by ${FIXTURE_OWNER}, not a pass.`,
@@ -293,9 +339,144 @@ async function readCalendarCount(page: Page): Promise<number> {
   const count = Number(match?.[1] ?? 0);
   expect(
     count,
-    `the Calendar button announces ${count} upcoming games this week, so the pill renders NOTHING (UpcomingCountPill returns null for 0 as well as for null) and every pill assertion below would be vacuous. The seeded account must have at least one event inside 7 days — FIXTURE failure owned by ${FIXTURE_OWNER}.`,
+    `the Calendar button announces ${count} upcoming games this week, so the pill renders NOTHING (UpcomingCountPill returns null for 0 as well as for null) and every pill assertion below would be vacuous. The seeded account must have at least one event inside 7 days — FIXTURE failure owned by ${FIXTURE_OWNER}. SECOND possible cause: a pre-fetch FALSE ZERO, i.e. a regression of quick-260928-sfo at \`UserHomePage.js:214-217\` (\`const upcomingPending\` — a resolved identity whose fetch has not settled must read as pending); if the fixture rows are present, check that first — the label recorder read-back would otherwise report it as a flip.`,
   ).toBeGreaterThanOrEqual(1);
   return count;
+}
+
+/**
+ * quick-260928-sfo (WINDOWS 188): install an in-page recorder of every Calendar-button
+ * `aria-label` value, BEFORE `page.goto`, via `page.addInitScript` — so it sees every label
+ * change from first paint, including any that lands before the `load` event (a post-goto
+ * `page.evaluate` install cannot). Call it as the statement immediately before
+ * `await page.goto('/')`; `assertNoCalendarLabelFlip` reads the trace back.
+ *
+ * WHAT IT RECORDS: `window.__calLabels`, one `{ id, label }` entry per distinct label state of
+ * each `button[aria-label^="Calendar"]`, in order. `id` is a per-NODE id kept in
+ * `data-cal-rec-id` (assigned on first sight; `attributeFilter` excludes `data-*`, so tagging
+ * never records itself), so a REMOUNTED button appears as a NEW id.
+ *
+ * WHY THE oldValue CHAIN: two mutations delivered in one observer callback both read the LATER
+ * value at callback time — the 88.6-55 probe's own first line ("Calendar" -> "Calendar") is
+ * that collapse, and it hid the very false zero it was looking for. Each attribute record's
+ * `oldValue` is exact, so per batch the recorder appends every touched node's `oldValue`s in
+ * record order, then its current label.
+ *
+ * It observes `document.documentElement` (falling back to `document` if there is no root
+ * element yet) because `document.body` does not exist at init-script time; it runs only in the
+ * top frame, and each navigation starts a fresh trace.
+ */
+async function installCalendarLabelRecorder(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    const SELECTOR = 'button[aria-label^="Calendar"]';
+    const trace: Array<{ id: string; label: string | null }> = [];
+    window.__calLabels = trace;
+    let nextId = 0;
+    const idOf = (el: HTMLElement): string => {
+      if (!el.dataset.calRecId) {
+        nextId += 1;
+        el.dataset.calRecId = String(nextId);
+      }
+      return el.dataset.calRecId;
+    };
+    const append = (id: string, label: string | null) => {
+      for (let i = trace.length - 1; i >= 0; i -= 1) {
+        if (trace[i].id === id) {
+          if (trace[i].label === label) return;
+          break;
+        }
+      }
+      trace.push({ id, label });
+    };
+    const startsCalendar = (value: string | null) =>
+      typeof value === 'string' && value.startsWith('Calendar');
+
+    document.querySelectorAll<HTMLElement>(SELECTOR).forEach((el) => {
+      append(idOf(el), el.getAttribute('aria-label'));
+    });
+
+    const observer = new MutationObserver((records) => {
+      const touched: HTMLElement[] = [];
+      const oldValues = new Map<HTMLElement, Array<string | null>>();
+      const touch = (el: HTMLElement): Array<string | null> => {
+        let list = oldValues.get(el);
+        if (!list) {
+          list = [];
+          oldValues.set(el, list);
+          touched.push(el);
+        }
+        return list;
+      };
+      for (const record of records) {
+        if (record.type === 'childList') {
+          record.addedNodes.forEach((node) => {
+            if (!(node instanceof HTMLElement)) return;
+            if (node.matches(SELECTOR)) touch(node);
+            node.querySelectorAll<HTMLElement>(SELECTOR).forEach((el) => touch(el));
+          });
+        } else if (record.type === 'attributes') {
+          const target = record.target;
+          if (
+            target instanceof HTMLButtonElement &&
+            (startsCalendar(target.getAttribute('aria-label')) || startsCalendar(record.oldValue))
+          ) {
+            touch(target).push(record.oldValue);
+          }
+        }
+      }
+      for (const el of touched) {
+        const id = idOf(el);
+        for (const old of oldValues.get(el) ?? []) append(id, old);
+        append(id, el.getAttribute('aria-label'));
+      }
+    });
+    observer.observe(document.documentElement ?? document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['aria-label'],
+      attributeOldValue: true,
+    });
+  });
+}
+
+/**
+ * quick-260928-sfo (WINDOWS 188): read the recorder's trace back and FAIL on a counted ->
+ * not-counted flip, or on a remount, AFTER the button first carried a count. Called once, as
+ * the last step of `assertCountedCalendarButton` (after the pill and 44x44 checks, so a flip
+ * has had time to show). A legitimate PRE-count remount (`app/page.js` swapping `UserHome` out
+ * while auth `isLoading`) is tolerated: only entries after the first counted one are judged.
+ */
+async function assertNoCalendarLabelFlip(page: Page): Promise<void> {
+  const trace = await page.evaluate(() => window.__calLabels ?? null);
+  const shown = JSON.stringify(trace);
+  expect(
+    trace,
+    `the label recorder was never installed — call installCalendarLabelRecorder(page) right before page.goto; without it this check is vacuous. Trace: ${shown}`,
+  ).not.toBeNull();
+  const entries = trace ?? [];
+  expect(
+    entries.length,
+    `the recorder saw no Calendar button. Trace: ${shown}`,
+  ).toBeGreaterThan(0);
+  const first = entries.findIndex((entry) => COUNTED_CALENDAR_LABEL.test(entry.label ?? ''));
+  expect(
+    first,
+    `the recorder never saw a counted Calendar label although readCalendarCount did — the recorder is broken (fix the probe, not the app). Trace: ${shown}`,
+  ).toBeGreaterThanOrEqual(0);
+  const countedId = entries[first].id;
+  const later = entries.slice(first + 1);
+  const flipped = later.filter((entry) => !COUNTED_CALENDAR_LABEL.test(entry.label ?? ''));
+  expect(
+    flipped,
+    `the Calendar button went counted -> not-counted after it first announced a count — a user-visible lie (quick-260928-sfo; cause lives at UserHomePage.js \`const upcomingPending\`, :214-217). Trace: ${shown}`,
+  ).toEqual([]);
+  const remounted = later.filter((entry) => entry.id !== countedId);
+  expect(
+    remounted,
+    `the Calendar button REMOUNTED after it first announced a count (a new node id after id ${countedId}) — quick-260928-sfo; check UserHomePage.js \`const upcomingPending\` (:214-217) and whatever unmounted UserHome. Trace: ${shown}`,
+  ).toEqual([]);
 }
 
 /**
@@ -324,6 +505,9 @@ async function assertCountedCalendarButton(page: Page): Promise<number> {
   // button), so this is the assertion that the pill did not push the control off its floor
   // in some future layout change.
   await assertMin44(button, 'the phone Calendar button (with the count pill inside it)');
+
+  // quick-260928-sfo: last, so a counted -> bare flip or a post-count remount has had time to show.
+  await assertNoCalendarLabelFlip(page);
 
   return count;
 }
@@ -425,6 +609,7 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
   test('SPEC Req 2: the Calendar button shows the count pill, still meets 44x44, and opens the sheet', async ({
     page,
   }) => {
+    await installCalendarLabelRecorder(page);
     await page.goto('/');
     await assertDarkTheme(page);
 
@@ -437,6 +622,7 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
   test('SPEC Req 3: the sheet leads with the NEXT GAME NIGHT hero and a counted This week subheader', async ({
     page,
   }) => {
+    await installCalendarLabelRecorder(page);
     await page.goto('/');
     await assertDarkTheme(page);
 
@@ -755,6 +941,7 @@ test.describe('Phase 88.5 Req 2/3 — the counted button and the hero, LIGHT (ph
   test('SPEC Req 2/3 in LIGHT: the counted button, the NEXT GAME NIGHT hero and the This week pill', async ({
     page,
   }) => {
+    await installCalendarLabelRecorder(page);
     await page.goto('/');
     await assertTheme(page, 'light');
 
