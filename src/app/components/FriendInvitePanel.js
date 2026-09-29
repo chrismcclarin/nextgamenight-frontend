@@ -330,7 +330,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                    never takes; `group_id` is app-supplied. Any NEW raw 400 on the email path must
                    land as `sendError` with its OWN code (Phase 93's rule, entry "(f) TELLING THAT
                    ROUTE'S THREE 400 OUTCOMES APART NEEDS A BACKEND `code`", parent-repo
-                   .planning/deferred/phase-93.md:255 as of 2026-09-28) — never widen this
+                   .planning/deferred/phase-93.md:261 as of 2026-09-28) — never widen this
                    override. REJECTED: editing `MESSAGE_BY_CODE.validation` globally (shared
                    register; 11 other non-test `byCode:` override sites at d03f728, git grep
                    2026-09-28), and a client-side format regex (a hand-written
