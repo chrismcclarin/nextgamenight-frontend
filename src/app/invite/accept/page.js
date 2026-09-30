@@ -114,7 +114,10 @@ function InviteAcceptPage() {
          of this file (`/invite/accept?token=…`) is the post-login carrier. REJECTED: keeping the
          write "as a backup" — nothing reads it, and a future reader added back would re-open
          the stored-token hijack above. The `finally` `removeItem` is KEPT for one release on
-         purpose, to sweep tokens that older builds stored; a later phase may delete it. Deleting
+         purpose, to sweep tokens that older builds stored; Phase 90 deletes it once `043734d`
+         has been in production for 30 days — `.planning/deferred/phase-90.md` (the `[cleanup]
+         Delete the transitional pendingInviteToken removeItem sweep` entry; re-pointed by plan
+         88.6-63, review round 2 #19). Deleting
          that sweep early is a decision, not a cleanup. */
       const tokenToUse = token;
 
