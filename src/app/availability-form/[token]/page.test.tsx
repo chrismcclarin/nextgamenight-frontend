@@ -59,12 +59,42 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import AvailabilityFormPage from './page';
-import { magicAuthAPI, availabilityFormAPI, ApiError } from '@/lib/api';
+import { magicAuthAPI, availabilityFormAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 
 type Mock = ReturnType<typeof vi.fn>;
 const validate = () => magicAuthAPI.validateToken as unknown as Mock;
 const existing = () => availabilityFormAPI.getExistingResponse as unknown as Mock;
+
+/*
+ * REAL-HELPER ARMS (plan 88.6-62, review round 2 #7). Before this plan the error arms here
+ * rejected `validateToken` with a HAND-BUILT `ApiError(…, 'network', 0)` — green coverage of a
+ * contract the shipped helper could not produce (it threw a plain `Error`). These helpers route
+ * the mocked function to the REAL one from the actual module, so only global `fetch` is stubbed
+ * and the page sees exactly what `lib/api.ts` throws or resolves.
+ */
+const actualApi = () => vi.importActual<typeof import('@/lib/api')>('@/lib/api');
+async function useRealValidate() {
+  const actual = await actualApi();
+  validate().mockImplementation((...args: Parameters<typeof actual.magicAuthAPI.validateToken>) =>
+    actual.magicAuthAPI.validateToken(...args),
+  );
+}
+async function useRealExisting() {
+  const actual = await actualApi();
+  existing().mockImplementation(
+    (...args: Parameters<typeof actual.availabilityFormAPI.getExistingResponse>) =>
+      actual.availabilityFormAPI.getExistingResponse(...args),
+  );
+}
+/** A `fetch` resolving one response whose body is `bodyText`. */
+const respond = (status: number, bodyText: string) =>
+  vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText });
+const dropped = () => vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+const ORGANIZER_GUIDANCE = /please contact your group organizer to request a new availability link\./i;
+const NETWORK_LINE = "We couldn't reach the server. Check your connection and try again.";
+const INTERNAL_LINE = 'Something went wrong on our end. Please try again shortly.';
 
 const VALID_TOKEN_BODY = {
   valid: true,
@@ -81,7 +111,10 @@ beforeEach(() => {
   existing().mockResolvedValue(null);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 /** The page-level region, addressed unambiguously. */
 const pageRegion = () => screen.getByTestId(STATUS_TESTID);
@@ -135,13 +168,19 @@ describe('availability-form/[token] — AC-19, the SUBMITTED announcement', () =
 
 describe('availability-form/[token] — AC-19 widened, the ERROR announcement', () => {
   it('fills the SAME slot-0 region on the LOADING -> ERROR flip', async () => {
-    // A deferred validation so the LOADING render can be observed first.
-    let rejectValidate: (e: unknown) => void = () => {};
-    validate().mockReturnValue(
-      new Promise((_resolve, reject) => {
-        rejectValidate = reject;
-      })
+    // A deferred FETCH (rebuilt by plan 88.6-62 on the real helper) so the LOADING render can
+    // be observed first; rejecting it with a TypeError is what a dropped connection looks like.
+    let rejectFetch: (e: unknown) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFetch = reject;
+          }),
+      ),
     );
+    await useRealValidate();
 
     render(<AvailabilityFormPage />);
 
@@ -150,13 +189,11 @@ describe('availability-form/[token] — AC-19 widened, the ERROR announcement', 
     const region = pageRegion();
     expect(region).toHaveTextContent('');
 
-    rejectValidate(new ApiError('Network error', 'network', 0));
+    rejectFetch(new TypeError('Failed to fetch'));
 
-    await screen.findByRole('heading', { name: /link no longer valid/i });
+    await screen.findByRole('heading', { name: /something went wrong/i });
     expect(region).toBeInTheDocument();
-    expect(region).toHaveTextContent(
-      "We couldn't reach the server. Check your connection and try again."
-    );
+    expect(region).toHaveTextContent(NETWORK_LINE);
   });
 
   it('the region is EMPTY on READY — it is not a permanent announcement', async () => {
@@ -188,11 +225,12 @@ describe('availability-form/[token] — AC-19, the FOCUS half', () => {
   });
 
   it('does NOT move focus on the ERROR flip — the branch has no control the user was operating', async () => {
-    validate().mockRejectedValue(new ApiError('Network error', 'network', 0));
+    vi.stubGlobal('fetch', dropped());
+    await useRealValidate();
 
     render(<AvailabilityFormPage />);
 
-    const heading = await screen.findByRole('heading', { name: /link no longer valid/i });
+    const heading = await screen.findByRole('heading', { name: /something went wrong/i });
     expect(document.activeElement).not.toBe(heading);
     expect(heading).not.toHaveAttribute('tabindex');
   });
@@ -206,7 +244,10 @@ describe('availability-form/[token] — the anonymous-entry fallback backstop (S
 
     render(<AvailabilityFormPage />);
 
-    await screen.findByRole('heading', { name: /link no longer valid/i });
+    // AMENDED by plan 88.6-62: a THROWN failure is not a dead link, so the heading is the
+    // ratified FetchErrorBanner title, not "Link No Longer Valid" (this arm used to find that).
+    await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+    expect(screen.queryByRole('heading', { name: /link no longer valid/i })).toBeNull();
 
     const line = 'Something went wrong. Refresh the page to try again.';
     // TWO matches by design: the visible `<p>` and the slot-0 live region that announces it.
@@ -219,19 +260,21 @@ describe('availability-form/[token] — the anonymous-entry fallback backstop (S
     expect(matches.some((el) => el.tagName === 'P')).toBe(true);
     expect(screen.getByTestId(STATUS_TESTID)).toHaveTextContent(line);
     expect(screen.queryByText('undefined')).toBeNull();
-    // And the always-rendered organizer guidance is still beside it.
-    expect(
-      screen.getByText(/please contact your group organizer to request a new availability link\./i)
-    ).toBeInTheDocument();
+    // AMENDED by plan 88.6-62 (review round 2 cluster A): this arm used to assert the organizer
+    // guidance was "still beside it" — it pinned the defect. "Request a new link" contradicts a
+    // line that is not about the link at all, so the guidance now renders ONLY for an invalid link.
+    expect(screen.queryByText(ORGANIZER_GUIDANCE)).toBeNull();
   });
 });
 
 describe('availability-form/[token] — AC-2: the token-validation failure is a breadcrumb', () => {
   it('calls logger.info with the frozen message and a keyed ctx, never the raw Error', async () => {
-    validate().mockRejectedValue(new ApiError('HTTP error! status: 500', 'internal', 500));
+    // Rebuilt by plan 88.6-62 over a REAL 500 (Sonnet/routes/magicAuth.js's raw catch body).
+    vi.stubGlobal('fetch', respond(500, '{"error":"Validation failed","action":"request_new"}'));
+    await useRealValidate();
 
     render(<AvailabilityFormPage />);
-    await screen.findByRole('heading', { name: /link no longer valid/i });
+    await screen.findByRole('heading', { name: /something went wrong/i });
 
     expect(logger.info).toHaveBeenCalledWith(
       'Token validation error:',
@@ -245,9 +288,36 @@ describe('availability-form/[token] — AC-2: the token-validation failure is a 
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('a missing pre-fill response files NO breadcrumb — the log there was deleted, not converted', async () => {
+  // REPLACED by plan 88.6-62 (review round 2 #20): the arm that stood here rejected the
+  // pre-fill lookup with a plain Error and asserted NO breadcrumb. After plans 58/62 the only
+  // REJECTION that reaches that catch is a transport failure (non-2xx and unparseable 2xx both
+  // resolve null), which has operator value — so it now files ONE breadcrumb. The DELETE arm's
+  // point is kept for the NORMAL outcome, the confirm-only case below.
+  it('#20: a pre-fill lookup that REJECTS (transport) files ONE breadcrumb and the page still reaches READY', async () => {
     validate().mockResolvedValue(VALID_TOKEN_BODY);
-    existing().mockRejectedValue(new Error('no pre-fill'));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url.includes('/availability-responses/')
+          ? Promise.reject(new TypeError('Failed to fetch'))
+          : Promise.reject(new Error(`unexpected fetch in this arm: ${url}`)),
+      ),
+    );
+    await useRealExisting();
+
+    render(<AvailabilityFormPage />);
+    await screen.findByRole('button', { name: /submit availability/i });
+
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith('Availability pre-fill lookup failed:', {
+      name: 'ApiError',
+      message: 'availability existing-response lookup did not complete',
+    });
+  });
+
+  it('#20 CONFIRM-ONLY: the normal no-prior-response outcome (404 -> null) files NO breadcrumb', async () => {
+    validate().mockResolvedValue(VALID_TOKEN_BODY);
+    existing().mockResolvedValue(null);
 
     render(<AvailabilityFormPage />);
     await screen.findByRole('button', { name: /submit availability/i });
@@ -257,6 +327,80 @@ describe('availability-form/[token] — AC-2: the token-validation failure is a 
       'AC-2 `console.log` rule, DELETE arm: a normal control-flow outcome with no operator ' +
         'value is removed, not turned into a Sentry breadcrumb'
     ).not.toHaveBeenCalled();
+  });
+});
+
+// ADDED by plan 88.6-62 task 2 (2026-09-29, /code-adversarial-review 88.6 round 2 cluster A
+// #1/#7/#12, owner ruling `R2-FIXNOW-SET-RULING: yes`). A dropped packet, a rate limit and a
+// backend 500 used to render "Link No Longer Valid" + "request a new link" on a working link.
+// Every arm runs the REAL `validateToken` over a stubbed `fetch`. All but the CONFIRM-ONLY arm
+// were RED on FE 6238108 (task 1 landed the helper contract; this page still said "dead link").
+describe('availability-form/[token] — 88.6-62: a dead link is told apart from a failed request', () => {
+  const expectFailedRequest = async (line: string) => {
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+    expect(heading).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /link no longer valid/i })).toBeNull();
+    const matches = screen.getAllByText(line);
+    expect(matches.some((el) => el.tagName === 'P')).toBe(true);
+    expect(pageRegion()).toHaveTextContent(line);
+    expect(screen.queryByText(ORGANIZER_GUIDANCE)).toBeNull();
+  };
+
+  it('a dropped connection says check your connection — not that the link is dead', async () => {
+    vi.stubGlobal('fetch', dropped());
+    await useRealValidate();
+    render(<AvailabilityFormPage />);
+    await expectFailedRequest(NETWORK_LINE);
+  });
+
+  it('the magic-token limiter 429 renders the rate_limited line', async () => {
+    vi.stubGlobal(
+      'fetch',
+      respond(
+        429,
+        '{"code":"rate_limited","message":"Too many attempts. Please try again later.","error":"Too many attempts. Please try again later."}',
+      ),
+    );
+    await useRealValidate();
+    render(<AvailabilityFormPage />);
+    await expectFailedRequest("You're going a little fast — give it a moment, then try again.");
+  });
+
+  it('the raw code-less 500 renders the internal line', async () => {
+    vi.stubGlobal('fetch', respond(500, '{"error":"Validation failed","action":"request_new"}'));
+    await useRealValidate();
+    render(<AvailabilityFormPage />);
+    await expectFailedRequest(INTERNAL_LINE);
+  });
+
+  it('an unparseable 200 (a gateway HTML page) renders the internal line', async () => {
+    vi.stubGlobal('fetch', respond(200, '<!DOCTYPE html><html><body>gateway</body></html>'));
+    await useRealValidate();
+    render(<AvailabilityFormPage />);
+    await expectFailedRequest(INTERNAL_LINE);
+  });
+
+  it('CONFIRM-ONLY: the 400 token_invalid envelope keeps the invalid-link heading, copy and organizer guidance', async () => {
+    vi.stubGlobal(
+      'fetch',
+      respond(
+        400,
+        JSON.stringify({
+          code: 'token_invalid',
+          message: 'This link is no longer valid.',
+          error: 'This link is no longer valid.',
+          details: { action: 'request_new' },
+        }),
+      ),
+    );
+    await useRealValidate();
+    render(<AvailabilityFormPage />);
+    await screen.findByRole('heading', { level: 1, name: 'Link No Longer Valid' });
+    expect(
+      screen.getAllByText('This link is no longer valid. It may have expired or already been used.')
+        .some((el) => el.tagName === 'P'),
+    ).toBe(true);
+    expect(screen.getByText(ORGANIZER_GUIDANCE)).toBeInTheDocument();
   });
 });
 

@@ -26,6 +26,16 @@ const PAGE_STATES = {
  */
 const SUBMITTED_HEADLINE = 'Availability Submitted!';
 
+/**
+ * The ERROR branch's two headlines (plan 88.6-62, review round 2 cluster A). Neither is new copy
+ * (P1): `LINK_INVALID_HEADLINE` is the string this page already shipped, and `FAILURE_HEADLINE`
+ * REUSES `FetchErrorBanner`'s ratified default title (`FetchErrorBanner.tsx` `title = 'Something
+ * went wrong'`), which is also the RSVP page's shipped ERROR headline (`rsvp/[token]/page.js`
+ * `ERROR_HEADLINE`). See the amended DECISION Phase 88.6-23 marker in the validate catch.
+ */
+const LINK_INVALID_HEADLINE = 'Link No Longer Valid';
+const FAILURE_HEADLINE = 'Something went wrong';
+
 /** The `data-testid` the page-level live region is addressed by. See the AC-19 marker below. */
 const PAGE_STATUS_TESTID = 'availability-page-status';
 
@@ -45,6 +55,10 @@ export default function AvailabilityFormPage() {
   // Page state
   const [pageState, setPageState] = useState(PAGE_STATES.LOADING);
   const [errorMessage, setErrorMessage] = useState(null);
+  // TRUE only for the two INVALID-LINK outcomes (no token; the 400 `token_invalid` that
+  // `validateToken` resolves) — the only ERROR states where "Link No Longer Valid" and the
+  // organizer's "request a new link" guidance are true. A thrown failure leaves it false.
+  const [linkInvalid, setLinkInvalid] = useState(false);
 
   // Token validation data
   const [tokenData, setTokenData] = useState(null);
@@ -74,6 +88,7 @@ export default function AvailabilityFormPage() {
     const validateAndFetch = async () => {
       if (!token) {
         setErrorMessage('No token provided');
+        setLinkInvalid(true);
         setPageState(PAGE_STATES.ERROR);
         return;
       }
@@ -93,6 +108,7 @@ export default function AvailabilityFormPage() {
         // `!validation.valid` arm beside it already caught every failure identically.
         if (!validation || !validation.valid) {
           setErrorMessage('This link is no longer valid. It may have expired or already been used.');
+          setLinkInvalid(true);
           setPageState(PAGE_STATES.ERROR);
           return;
         }
@@ -141,7 +157,9 @@ export default function AvailabilityFormPage() {
             setExistingResponse(existing);
           }
         } catch (prefillError) {
-          // Pre-fill is optional - ignore errors.
+          // Pre-fill is optional — a failed lookup never blocks READY, but a transport failure
+          // leaves a breadcrumb (see the 2026-09-29 amendment at the foot of the marker below).
+          logger.info('Availability pre-fill lookup failed:', errCtx(prefillError));
           /* DECISION Phase 88.6-23 (AC-2): the browser-console LOG that stood here — its message
              was the string "No existing response to pre-fill", written without parentheses so
              the acceptance grep for a call-shaped `console.` stays satisfiable on this file —
@@ -152,7 +170,20 @@ export default function AvailabilityFormPage() {
              diagnostic value becomes `logger.info` (a Sentry breadcrumb, never an event). This
              was a success-path branch note on a page that renders its own empty pre-fill state,
              so the DELETE arm applies. It is the only `console.log` in the entire widened AC-2
-             population. Reviving it as a breadcrumb is a decision, not a cleanup. */
+             population. Reviving it as a breadcrumb is a decision, not a cleanup.
+             [AMENDED IN PLACE 2026-09-29 — DECISION Phase 88.6-62 (review round 2 #20 / cluster
+             A, owner ruling `R2-FIXNOW-SET-RULING: yes`); this is an AMENDMENT, the ruling above
+             stands for what it ruled on. After plans 58 and 62 the only REJECTION that reaches
+             this catch is a TRANSPORT failure — `getExistingResponse` RESOLVES `null` for a
+             non-2xx and for an unparseable 2xx, and REJECTS only for a network error, the 20 s
+             timeout or a stalled body. That is not the normal no-prior-response outcome the
+             DELETE arm governs (a 404 resolves `null` and files nothing); it HAS operator value.
+             So this catch now files `logger.info('Availability pre-fill lookup failed:',
+             errCtx(prefillError))` — a breadcrumb, event-free, name + message only (T-84-01).
+             REJECTED: keeping the catch silent (it made the helper's own transport-failure
+             message dead — review #20). REJECTED: `logger.error` (an EVENT per optional
+             pre-fill miss, flushing Session Replay on a token route). Reverting to a silent
+             catch is a decision, not a cleanup.] */
         }
 
         if (cancelled) return;
@@ -168,6 +199,7 @@ export default function AvailabilityFormPage() {
            typecheck catches that at a `.js` call site). `errCtx` also keeps the `message:` key
            off this line, which is what stops a correct conversion redding R1's gate. */
         logger.info('Token validation error:', errCtx(error));
+        setLinkInvalid(false);
         /* R1 + SPEC Edge Coverage `empty / R1`: the ratified register replaces the blanket
            authored line this catch used to set unconditionally.
 
@@ -182,7 +214,27 @@ export default function AvailabilityFormPage() {
            owns it, with its authored copy untouched. Second, a code-less, message-less throw now
            renders the register's ratified `unknown` line rather than an empty string or the
            literal `undefined`. The organizer guidance is NOT lost either way — it is a separate
-           always-rendered `<p>` in the error branch below. */
+           always-rendered `<p>` in the error branch below.
+
+           [AMENDED IN PLACE 2026-09-29 — DECISION Phase 88.6-62 (review round 2 cluster A
+           #1/#7/#12, owner ruling `R2-FIXNOW-SET-RULING: yes`); an AMENDMENT, not a rewrite.
+           (1) "The genuinely-expired link never reaches here at all: `validateToken` resolves
+           200 with `valid: false`" was FALSE: the backend answers a bad token with a 400
+           `token_invalid` envelope (Sonnet/routes/magicAuth.js `sendError(res, 'token_invalid',
+           …)`), which `validateToken` RESOLVES — 400 is the one non-OK status it does not throw
+           on — into the `!validation.valid` branch above. The conclusion held; the mechanism was
+           wrong. (2) The transport / 429 / 5xx failures this marker says arrive as coded
+           `ApiError`s now actually do (lib/api.ts `timedPublicFetch` / `guardedJson` /
+           `validateToken`, plan 88.6-62 task 1); before, they were plain `Error`s and rendered
+           the `unknown` line. (3) "The organizer guidance is NOT lost either way — it is a
+           separate always-rendered `<p>`" was the same lie as the one this marker corrects, in a
+           second paragraph: the heading "Link No Longer Valid" and the guidance both tell the
+           visitor their link is dead. Both now render ONLY when `linkInvalid` (no token, or the
+           resolved 400); a thrown failure shows `FAILURE_HEADLINE` over its register line.
+           REJECTED: keeping the guidance always-rendered (it contradicts the network /
+           rate-limited lines beneath the same heading). REJECTED: minting a new failure heading
+           (P1) — `FetchErrorBanner`'s ratified default title is REUSED. Restoring the
+           always-rendered guidance or the fixed heading is a decision, not a cleanup.] */
         setErrorMessage(getFetchErrorMessage(error));
         setPageState(PAGE_STATES.ERROR);
       }
@@ -301,14 +353,17 @@ export default function AvailabilityFormPage() {
           {/* h1 @ 20 STAYS at 20 (D-04 row 2). This is the ERROR branch, mutually exclusive with
               the page title below — not a loading branch, and not the title. */}
           <Heading level={1} size="heading" className="text-content-primary mb-2">
-            Link No Longer Valid
+            {linkInvalid ? LINK_INVALID_HEADLINE : FAILURE_HEADLINE}
           </Heading>
           <p className="text-content-secondary mb-6">
             {errorMessage}
           </p>
-          <p className="text-sm text-content-muted">
-            Please contact your group organizer to request a new availability link.
-          </p>
+          {/* Invalid-link outcomes only — see the amended DECISION Phase 88.6-23 marker. */}
+          {linkInvalid && (
+            <p className="text-sm text-content-muted">
+              Please contact your group organizer to request a new availability link.
+            </p>
+          )}
         </div>
       </div>
     );
