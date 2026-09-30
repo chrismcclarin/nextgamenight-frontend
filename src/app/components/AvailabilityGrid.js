@@ -10,6 +10,7 @@ import { format, addDays, addMinutes, startOfWeek, nextMonday, parseISO } from '
 import { wallClockToUtc } from '../../lib/datetime';
 import WriteCell from './heatmap/WriteCell';
 import { Button } from '../../components/ui/Button';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 
 // Zero-pad an hour/minute to two digits for the "yyyy-MM-ddTHH:mm" wall-clock
 // string handed to wallClockToUtc. Module-level (stable identity, no deps).
@@ -603,9 +604,12 @@ export default function AvailabilityGrid({
   // "only clear checked days" branch left with the broadcast; every checkbox
   // derives to unchecked from the emptied selection, so the 2026-05-16
   // stranded-checkbox bug cannot recur.)
+  // Plan 88.6-63: the button stays mounted when the selection is empty (aria-disabled, see the
+  // DECISION at the button), so an empty-state press is REFUSED here, on the first line.
   const handleClearAll = useCallback(() => {
+    if (value.length === 0) return;
     onChange?.([]);
-  }, [onChange]);
+  }, [onChange, value.length]);
 
   return (
     <div className="w-full">
@@ -674,17 +678,29 @@ export default function AvailabilityGrid({
             {paintMode === 'preferred' ? 'Adding: Preferred' : 'Adding: If Need Be'}
           </Button>
 
-          {/* Clear all button */}
-          {value.length > 0 && (
-            <Button
-              variant="ghost"
-              onClick={handleClearAll}
-              disabled={disabled}
-              className="border border-line text-content-secondary bg-surface-card"
-            >
-              Clear All
-            </Button>
-          )}
+          {/* Clear all button.
+
+              DECISION Phase 88.6-63 (review round 2 #23): ALWAYS MOUNTED, `aria-disabled` when
+              the selection is empty (the press refused on `handleClearAll`'s first line). Chosen
+              OVER the conditional mount it replaces — activating Clear All emptied the selection,
+              which unmounted the button the user was standing on and dropped focus to <body> on
+              the magic-link write grid — and OVER native `disabled` for the empty state, because a
+              natively-disabled focused control ALSO blurs to <body> (the house split,
+              `KebabMenu.js` DECISION Phase 88.6-16 D-12: the control being ACTED ON gets
+              `aria-disabled`). Native `disabled={disabled}` STAYS, but only as the unavailable-week
+              MODE gate — the 88.6-25 rule of kind recorded on the paint-mode toggle above. LOOK
+              NOTE for /gsd-ui-review: Clear All is now visible on an empty grid at 375px, gated in
+              the ghost variant's muted ink. Restoring the conditional mount is a decision, not a
+              cleanup. */}
+          <Button
+            variant="ghost"
+            onClick={handleClearAll}
+            disabled={disabled}
+            aria-disabled={value.length === 0 ? 'true' : undefined}
+            className="border border-line text-content-secondary bg-surface-card"
+          >
+            Clear All
+          </Button>
         </div>
       </div>
 
@@ -888,8 +904,10 @@ export default function AvailabilityGrid({
         </div>
       </div>
 
-      {/* Selection summary */}
-      <div className="mt-3 text-sm text-content-secondary">
+      {/* Selection summary — ONE always-mounted polite StatusRegion (plan 88.6-63, review round 2
+          #23): only its CONTENT swaps, because a live region mounted together with its content
+          announces nothing. `text-sm` comes from the primitive's base. */}
+      <StatusRegion className="mt-3 text-content-secondary">
         {value.length === 0 ? (
           <span>Click and drag to select your available times</span>
         ) : (
@@ -898,7 +916,7 @@ export default function AvailabilityGrid({
             {value.filter((s) => s.preference === 'if-need-be').length} if-need-be slots selected
           </span>
         )}
-      </div>
+      </StatusRegion>
     </div>
   );
 }

@@ -75,7 +75,11 @@ async function gotoCleanGrid(page: Page): Promise<void> {
   // Grid rendered: the Select All checkbox is the grid's stable landmark.
   await expect(page.getByRole('checkbox', { name: /^all$/i }).first()).toBeVisible();
   const clearAll = page.getByRole('button', { name: 'Clear All' });
-  if ((await clearAll.count()) > 0) {
+  // Plan 88.6-63 (review round 2 #23): Clear All is now ALWAYS mounted and `aria-disabled="true"`
+  // on an empty selection. Playwright treats aria-disabled as NOT enabled, and `click()` waits for
+  // enabled — so the old `count() > 0` guard would hang to the test timeout on an empty grid.
+  // `isEnabled()` is the guard now: click only when there is something to clear.
+  if (await clearAll.isEnabled()) {
     await clearAll.click();
   }
   await expect(paintedCells(page)).toHaveCount(0);

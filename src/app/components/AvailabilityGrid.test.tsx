@@ -334,3 +334,49 @@ describe('AvailabilityGrid — mirror day checkboxes + bulk fill/clear (SPEC R9,
     expect(after).toHaveLength(before.length + 1);
   });
 });
+
+// Plan 88.6-63 (review round 2 #23). Before this, Clear All rendered only while `value.length > 0`,
+// so ACTIVATING it unmounted it and focus fell to <body> on the magic-link write grid; and the
+// selection summary was a plain div, so the running count was never announced. The fix keeps the
+// button mounted (aria-disabled + a first-line refusal when empty) and makes the summary ONE
+// always-mounted polite StatusRegion. Copy is the shipped copy (P1).
+describe('88.6-63 (review round 2 #23) — Clear All keeps focus; the summary announces', () => {
+  it('activating Clear All empties the selection and focus STAYS on it, now aria-disabled', () => {
+    const onChange = renderHarness(2);
+    fireEvent.pointerDown(cellsByLabel()[0]); // paint one slot
+
+    const clear = screen.getByRole('button', { name: 'Clear All' });
+    clear.focus();
+    expect(document.activeElement).toBe(clear);
+    fireEvent.click(clear);
+
+    expect(lastEmitted(onChange)).toEqual([]);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Clear All' }));
+    expect(screen.getByRole('button', { name: 'Clear All' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('at an empty selection Clear All is present, aria-disabled, and refuses the press', () => {
+    const onChange = renderHarness(2);
+
+    const clear = screen.getByRole('button', { name: 'Clear All' });
+    expect(clear).toHaveAttribute('aria-disabled', 'true');
+    // Not NATIVELY disabled — a natively-disabled focused control blurs to <body>.
+    expect(clear).not.toBeDisabled();
+    fireEvent.click(clear);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('the selection summary is ONE always-mounted polite status region whose text changes', () => {
+    renderHarness(2);
+
+    const region = screen.getByRole('status');
+    expect(region).toHaveTextContent('Click and drag to select your available times');
+
+    fireEvent.pointerDown(cellsByLabel()[0]); // paint one slot (default mode: preferred)
+
+    // The SAME node — a region mounted with its content announces nothing.
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region).toHaveTextContent('1 preferred, 0 if-need-be slots selected');
+  });
+});
