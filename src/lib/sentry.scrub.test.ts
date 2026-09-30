@@ -10,6 +10,8 @@ import {
   scrubUrl,
   scrubEvent,
   scrubRecordingEvent,
+  scrubSpanJson,
+  scrubTransaction,
   TOKEN_PATH_PATTERNS_FE_ROUTES,
   TOKEN_PATH_PATTERNS_API_PATHS,
 } from '../../sentry.scrub.js';
@@ -491,5 +493,83 @@ describe('scrubRecordingEvent (replay pipeline)', () => {
     expect(out.data.payload.magic_token).toBe(R);
     // …and a harmless sibling key under the same parent is NOT redacted wholesale.
     expect(out.data.payload.note).toBe(ALPHA);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-61 (review round 2 H-1, owner ruling R2-H1-RULING). Performance payloads —
+// transactions (`beforeSendTransaction`) and spans (`beforeSendSpan`, which is ALSO the only
+// hook that reaches standalone INP/CLS spans) — bypassed every scrub layer: `beforeSend` never
+// runs on them. These arms were shown RED against identity versions of both functions (the
+// exports existed and returned their input unchanged), never against a missing import.
+// ---------------------------------------------------------------------------
+describe('scrubSpanJson / scrubTransaction — performance egress (R2 H-1)', () => {
+  it('scrubTransaction: a token-route pageload name, request URL and query are redacted; trace ids link', () => {
+    const event = {
+      type: 'transaction',
+      transaction: `/availability-form/${JWT}`,
+      request: {
+        url: `https://www.x.app/availability-form/${JWT}?magic_token=${JWT}`,
+        query_string: `magic_token=${JWT}`,
+      },
+      contexts: { trace: { trace_id: TRACE_ID, span_id: 'a1b2c3d4e5f60718' } },
+    };
+    const out = scrubTransaction(event) as typeof event;
+    expect(out.transaction).toBe(`/availability-form/${R}`);
+    expect(JSON.stringify(out)).not.toContain('eyJ');
+    expect(out.request.query_string).toBe(R);
+    expect(out.contexts.trace.trace_id).toBe(TRACE_ID);
+  });
+
+  it('scrubSpanJson: a fetch span carrying a searched email in description / url / http.url is redacted', () => {
+    const fetchUrl = 'https://api.x.app/friendships/search?email=bob%40example.com';
+    const span = {
+      description: `GET ${fetchUrl}`,
+      data: { url: fetchUrl, 'http.url': fetchUrl, 'http.method': 'GET' },
+      span_id: 'a1b2c3d4e5f60718',
+      trace_id: TRACE_ID,
+      parent_span_id: 'b1b2c3d4e5f60718',
+    };
+    const out = scrubSpanJson(span) as typeof span;
+    const serialised = JSON.stringify(out);
+    expect(serialised).not.toContain('bob');
+    expect(serialised).not.toContain('example.com');
+    expect(out.data['http.method']).toBe('GET');
+  });
+
+  it('scrubSpanJson: an INP-shaped span carries the token pathname as its data.transaction — redacted', () => {
+    // `@sentry-internal/browser-utils` inp.js: the span NAME is the HTML selector and the
+    // route name (the raw pathname) rides as the `transaction` attribute.
+    const span = {
+      description: 'body > div > button',
+      op: 'ui.interaction.click',
+      data: { transaction: `/rsvp/${RSVP_TOKEN}`, 'sentry.op': 'ui.interaction.click' },
+    };
+    const out = scrubSpanJson(span) as typeof span;
+    expect(out.data.transaction).toBe(`/rsvp/${R}`);
+    expect(out.description).toBe('body > div > button');
+  });
+
+  it('scrubSpanJson: a LoAF-shaped span with a tokened code.filepath keeps neither the token nor the sub', () => {
+    const span = { data: { 'code.filepath': 'https://x/invite/accept?token=abc&u=auth0|123' } };
+    const out = scrubSpanJson(span) as typeof span;
+    expect(out.data['code.filepath']).not.toContain('abc');
+    expect(out.data['code.filepath']).not.toContain('auth0|123');
+  });
+
+  it('CONFIRM-ONLY (marker (iii)): span trace_id / span_id / parent_span_id survive byte-identical', () => {
+    // Green on the identity baseline too, by design: this pins marker (iii) against a future
+    // "scrub every field" edit, which would silently break FE-to-BE trace linking.
+    const span = {
+      description: 'GET https://api.x.app/x',
+      data: {},
+      trace_id: TRACE_ID,
+      span_id: 'a1b2c3d4e5f60718',
+      parent_span_id: 'b1b2c3d4e5f60718',
+    };
+    const out = scrubSpanJson(span) as typeof span;
+    expect(out.trace_id).toBe(TRACE_ID);
+    expect(out.span_id).toBe('a1b2c3d4e5f60718');
+    expect(out.parent_span_id).toBe('b1b2c3d4e5f60718');
   });
 });

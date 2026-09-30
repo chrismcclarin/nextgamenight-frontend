@@ -4,8 +4,19 @@
  * Imported by all three runtime configs (client/server/edge) and wired into
  * `Sentry.init({ beforeSend })`, plus the client `replayIntegration`'s
  * `beforeAddRecordingEvent` (because `beforeSend` does NOT run on Session Replay
- * events, and an on-error replay still uploads at the BOUNDED rate set at
- * `sentry.client.config.js:28` — corrected in Phase 88.6-13, it is no longer 1.0).
+ * events, and an on-error replay still uploads at the BOUNDED rate set by the
+ * `replaysOnErrorSampleRate` key in `sentry.client.config.js` — corrected in Phase 88.6-13,
+ * it is no longer 1.0; anchored on the KEY, never a line number, which drifts).
+ *
+ * FOUR SEPARATELY HOOKED EGRESS VECTORS — `beforeSend` reaches only the first:
+ *   1. error events        -> `beforeSend`              -> `scrubEvent`
+ *   2. Session Replay      -> `beforeAddRecordingEvent` -> `scrubRecordingEvent`
+ *   3. transactions        -> `beforeSendTransaction`   -> `scrubTransaction` (88.6-61, H-1)
+ *   4. spans (child spans AND standalone INP/CLS spans)
+ *                          -> `beforeSendSpan`          -> `scrubSpanJson`    (88.6-61, H-1)
+ * The CLIENT config wires all four. The server/edge configs wire only `beforeSend` today —
+ * server init never runs (no `instrumentation.ts`); wiring 3 and 4 there is owned by Phase 90
+ * (`.planning/deferred/phase-90.md`, the "Server-side Sentry never initialises" entry).
  *
  * Redaction is REGEX/PATTERN-based (email, JWT/bearer token, secret/auth/password,
  * long digit runs) — NOT a hardcoded key list — so PII is caught regardless of the
@@ -280,6 +291,16 @@ function scrubUrl(url) {
 }
 
 /**
+ * THE one URL-like predicate: an absolute URL, anything with a query, or anything naming an
+ * invite route. Such strings get `scrubUrl` (which strips the whole query); everything else
+ * gets `scrubString`. Extracted from `deepScrubRecording` in 88.6-61 so the span walker
+ * (`scrubSpanJson`) routes values by the SAME rule — one predicate, not a second copy.
+ */
+function isUrlLike(value) {
+  return /https?:\/\//.test(value) || value.includes('?') || /invite/i.test(value);
+}
+
+/**
  * Deep-walk an arbitrary object, redacting string values. If a key name matches
  * SECRET_KEY_RE its value is redacted wholesale; otherwise string values are
  * pattern-scrubbed (so PII is caught by VALUE even when the key looks innocent).
@@ -433,7 +454,7 @@ function deepScrubRecording(value, keyHint) {
     if (keyHint && SECRET_KEY_RE.test(keyHint)) return REDACTED;
     // Treat URL-looking strings (and anything with a query or token segment) via
     // scrubUrl; everything else via scrubString.
-    if (/https?:\/\//.test(value) || value.includes('?') || /invite/i.test(value)) {
+    if (isUrlLike(value)) {
       return scrubUrl(value);
     }
     return scrubString(value);
@@ -453,11 +474,66 @@ function deepScrubRecording(value, keyHint) {
   return value;
 }
 
+/* DECISION Phase 88.6-61 (review round 2 H-1, owner ruling R2-H1-RULING): performance payloads
+   get their own two hooks because `beforeSend` never runs on them.
+   - `scrubSpanJson` WALKS EVERY STRING VALUE of `span.data`, chosen OVER a key allowlist
+     (REJECTED): the attribute names are SDK-owned and change between versions — fetch spans
+     carry `url` / `http.url`, INP spans carry the route as `transaction`, LoAF spans carry
+     `code.filepath`, and the `http.query` key the review's remedy named does not exist in
+     8.55.2 at all. A value walk catches a leak under a key nobody listed; an allowlist misses it.
+   - `scrubUrl` on `span.description` because fetch span names are `METHOD <full url>`
+     (`@sentry/core` 8.55.2 build/cjs/fetch.js:61-67), query string included.
+   - `trace_id` / `span_id` / `parent_span_id` (and every other top-level key) are NEVER touched —
+     marker (iii): scrubbing them kills FE-to-BE trace linking. Pinned by the CONFIRM-ONLY case.
+   - `beforeSendSpan` is the ONLY hook that reaches standalone INP/CLS web-vital spans
+     (`@sentry/core` 8.55.2 build/cjs/envelope.js:104-107); they never become transactions.
+   - It never returns `null`: a null from `beforeSendSpan` DROPS the span and warns
+     (`@sentry/core` 8.55.2 build/cjs/baseclient.js:792-800).
+   - `scrubTransaction` does NOT walk `event.spans`: `beforeSendSpan` has already processed them
+     before `beforeSendTransaction` runs (baseclient.js:792-795 precedes :805), and it does NOT
+     re-implement `request.url` / `request.query_string` — `scrubEvent` already does both, and a
+     second copy is what the duplication tenet forbids.
+   Narrowing the walk to named keys is a decision, not a cleanup. */
+function scrubSpanJson(span) {
+  if (!span || typeof span !== 'object') return span;
+  if (typeof span.description === 'string') {
+    span.description = scrubUrl(span.description);
+  }
+  if (span.data && typeof span.data === 'object') {
+    for (const k of Object.keys(span.data)) {
+      const v = span.data[k];
+      if (typeof v === 'string') {
+        span.data[k] = scrubSpanDataString(v);
+      } else if (Array.isArray(v)) {
+        for (let i = 0; i < v.length; i += 1) {
+          if (typeof v[i] === 'string') v[i] = scrubSpanDataString(v[i]);
+        }
+      }
+      // numbers / booleans are left untouched.
+    }
+  }
+  return span;
+}
+
+function scrubSpanDataString(value) {
+  return isUrlLike(value) ? scrubUrl(value) : scrubString(value);
+}
+
+function scrubTransaction(event) {
+  if (!event || typeof event !== 'object') return event;
+  if (typeof event.transaction === 'string') {
+    event.transaction = scrubUrl(event.transaction);
+  }
+  return scrubEvent(event);
+}
+
 export {
   scrubString,
   scrubUrl,
   scrubEvent,
   scrubRecordingEvent,
+  scrubSpanJson,
+  scrubTransaction,
   REDACTED,
   // Exported SEPARATELY from the API-path entries so the set-equality arm in
   // `src/lib/sentry.scrub.test.ts` has an FE-ROUTE subject to compare against
