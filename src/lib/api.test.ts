@@ -12,12 +12,13 @@ import {
   availabilityFormAPI,
   magicAuthAPI,
   mapErrorToCode,
+  publicFetch,
   rsvpAPI,
   rsvpPublicAPI,
   usersAPI,
 } from './api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
-import { logger } from '@/lib/logger';
+import { errCtx, logger } from '@/lib/logger';
 
 describe('ApiError — shape', () => {
   it('is both an Error and an ApiError, carrying code + status + details', () => {
@@ -719,5 +720,175 @@ describe('88.6-42 / D41 cluster C — usersAPI.deleteAccount takes an OPTIONAL A
     vi.stubGlobal('fetch', fetchMock);
     await usersAPI.deleteAccount();
     expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBeUndefined();
+  });
+});
+
+// ADDED by plan 88.6-62 task 1 (2026-09-29, /code-adversarial-review 88.6 round 2 cluster A
+// #1/#7/#12, #3 and #4/#13; owner ruling `R2-FIXNOW-SET-RULING: yes`). Plan 42 hardened the six
+// apiFetch-bypassing helpers against a HANG, but every failure left them as a plain `Error`, so
+// the magic-link page could not tell "your connection dropped" from "your link is dead", and the
+// 20 s timer was cleared when HEADERS arrived — a stalled BODY still hung. Every case below
+// except the two labelled CONFIRM-ONLY was RED on FE b654e42.
+describe('88.6-62 — the magic-link transport contract (review round 2 cluster A, #3, #4/#13)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const jsonOnce = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText });
+
+  const PREFILL = { magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' };
+
+  // [helper, call, the helper's own failure constant]
+  const SIX: Array<[string, () => Promise<unknown>, string]> = [
+    ['rsvpPublicAPI.respondViaToken', () => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'), 'rsvp respond request did not complete'],
+    ['magicAuthAPI.validateToken', () => magicAuthAPI.validateToken('t'), 'magic-auth validate request did not complete'],
+    ['availabilityFormAPI.submitResponse', () => availabilityFormAPI.submitResponse({ a: 1 }), 'availability response submission did not complete'],
+    ['availabilityFormAPI.getExistingResponse', () => availabilityFormAPI.getExistingResponse('p1', 'tok'), 'availability existing-response lookup did not complete'],
+    ['availabilityFormAPI.prefillFromGcal', () => availabilityFormAPI.prefillFromGcal(PREFILL), 'Failed to import from Google Calendar'],
+    ['availabilityFormAPI.prefillFromSaved', () => availabilityFormAPI.prefillFromSaved(PREFILL), 'Failed to use saved availability'],
+  ];
+  // getExistingResponse keeps its `object | null` contract: an unparseable 2xx resolves null.
+  const FIVE = SIX.filter(([name]) => name !== 'availabilityFormAPI.getExistingResponse');
+
+  const capture = async (run: () => Promise<unknown>): Promise<unknown> => {
+    try {
+      await run();
+    } catch (err) {
+      return err;
+    }
+    return null;
+  };
+
+  it.each(SIX)('%s rejects a transport failure as ApiError(network, 0) with its own message', async (_name, run, failure) => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const caught = await capture(run);
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'network', status: 0, message: failure });
+  });
+
+  it.each(FIVE)('%s rejects an unparseable 200 as ApiError(internal, 200) with its own message', async (_name, run, failure) => {
+    vi.stubGlobal('fetch', jsonOnce(200, '<!DOCTYPE html><html><body>gateway</body></html>'));
+    const caught = await capture(run);
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 200, message: failure });
+  });
+
+  it.each(SIX)('%s — a STALLED BODY rejects ApiError(network) at exactly 20 000 ms (#4/#13)', async (_name, run, failure) => {
+    vi.useFakeTimers();
+    // Headers arrive at once; the body read models real `fetch`: it settles only by rejecting
+    // when the request's signal aborts. With the timer cleared at headers, nothing ever aborts.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => ({
+        ok: true,
+        status: 200,
+        text: () =>
+          new Promise<string>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            );
+          }),
+      })),
+    );
+    const settled = vi.fn();
+    run().then(
+      (v) => settled('resolved', v),
+      (e) => settled('rejected', e),
+    );
+
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(settled).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toHaveBeenCalledTimes(1);
+    const [outcome, value] = settled.mock.calls[0];
+    expect(outcome).toBe('rejected');
+    expect(value).toBeInstanceOf(ApiError);
+    expect(value).toMatchObject({ code: 'network', status: 0, message: failure });
+  });
+
+  it.each(SIX)('CONFIRM-ONLY: %s leaves NO timer pending once it resolves', async (_name, run) => {
+    // Green before this plan too (the `finally` cleared the timer at headers). It pins the fold
+    // against a "keep the timer armed after headers" shortcut — a timer that outlives every call.
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', jsonOnce(200, '{"slot_ids":[],"count":0}'));
+    await run();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('validateToken rejects a 429 limiter envelope as a coded ApiError (upstream text off the display path)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      jsonOnce(
+        429,
+        '{"code":"rate_limited","message":"Too many attempts. Please try again later.","error":"Too many attempts. Please try again later."}',
+      ),
+    );
+    const caught = await capture(() => magicAuthAPI.validateToken('t'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({
+      code: 'rate_limited',
+      status: 429,
+      upstreamMessage: 'Too many attempts. Please try again later.',
+    });
+  });
+
+  it('validateToken rejects the raw code-less 500 as ApiError(internal, 500)', async () => {
+    // Sonnet/routes/magicAuth.js:236 — `res.status(500).json({ error, action })`, no code.
+    vi.stubGlobal('fetch', jsonOnce(500, '{"error":"Validation failed","action":"request_new"}'));
+    const caught = await capture(() => magicAuthAPI.validateToken('t'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 500, message: 'HTTP error! status: 500' });
+  });
+
+  it('CONFIRM-ONLY: validateToken RESOLVES the 400 token_invalid body — the page\'s invalid-link branch owns it', async () => {
+    const body = {
+      code: 'token_invalid',
+      message: 'This link is no longer valid.',
+      error: 'This link is no longer valid.',
+      details: { action: 'request_new' },
+    };
+    vi.stubGlobal('fetch', jsonOnce(400, JSON.stringify(body)));
+    await expect(magicAuthAPI.validateToken('t')).resolves.toEqual(body);
+  });
+
+  describe('#3 — a non-JSON error body is capped where it is reshaped, at BOTH sites', () => {
+    const HUGE = 'Bad Gateway: ' + 'x'.repeat(5000);
+    const CAPPED = HUGE.slice(0, 200) + ' [truncated]';
+
+    const publicRejection = async (status: number, bodyText: string): Promise<ApiError> => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status, text: async () => bodyText }));
+      const caught = await capture(() => publicFetch('/anything'));
+      expect(caught, 'publicFetch must REJECT on a non-ok response').toBeInstanceOf(ApiError);
+      return caught as ApiError;
+    };
+    const apiRejection = async (status: number, bodyText: string): Promise<ApiError> => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status, text: async () => bodyText }));
+      const caught = await capture(() => apiFetch('/anything'));
+      expect(caught, 'apiFetch must REJECT on a non-ok response').toBeInstanceOf(ApiError);
+      return caught as ApiError;
+    };
+
+    it.each([
+      ['apiFetch', apiRejection],
+      ['publicFetch', publicRejection],
+    ] as const)('%s — message, details.message and the errCtx breadcrumb are all bounded', async (_name, reject) => {
+      const err = await reject(502, HUGE);
+      expect(err.message.length).toBeLessThanOrEqual(200 + ' [truncated]'.length);
+      expect(err.message.startsWith(HUGE.slice(0, 200))).toBe(true);
+      expect(err.message).toBe(CAPPED);
+      expect((err.details as { message: string }).message).toBe(CAPPED);
+      expect(errCtx(err).message).toBe(CAPPED);
+    });
+
+    it.each([
+      ['apiFetch', apiRejection],
+      ['publicFetch', publicRejection],
+    ] as const)('CONFIRM-ONLY: %s passes a body of exactly 200 characters through untouched', async (_name, reject) => {
+      const exact = 'y'.repeat(200);
+      const err = await reject(502, exact);
+      expect(err.message).toBe(exact);
+    });
   });
 });
