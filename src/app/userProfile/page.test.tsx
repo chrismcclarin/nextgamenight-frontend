@@ -1118,6 +1118,18 @@ async function openDefaultTabControls(user: ReturnType<typeof userEvent.setup>) 
 }
 
 describe('userProfile form controls (Req 1 — the 16px floor)', () => {
+  // UI review 2026-09-30 (Top Fix 2, WINDOWS #33): the Edit-username pencil was a bare emoji
+  // button (~20x24). It now carries the same negative-margin 44px idiom as the SMS banner
+  // dismiss, so the tap target grows while nothing visible moves. Pinned on the class idiom
+  // because jsdom has no layout — the geometry half is the owner's device check.
+  it('the Edit-username pencil carries the 44px tap-target idiom', async () => {
+    renderProfile();
+    const pencil = await screen.findByRole('button', { name: 'Edit username' });
+    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center']) {
+      expect(pencil.className.split(/\s+/)).toContain(cls);
+    }
+  });
+
   it('carries no sub-16px size class on any control', async () => {
     const user = userEvent.setup();
     renderProfile({ sms_enabled: true, phone_verified: false });

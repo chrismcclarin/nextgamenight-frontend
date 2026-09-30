@@ -573,7 +573,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             <StatusRegion
               id={screenshotErrorId}
               politeness="assertive"
-              className={screenshotError ? 'text-xs text-red-600 mt-1' : undefined}
+              className={screenshotError ? 'text-xs text-content-status-error mt-1' : undefined}
             >
               {screenshotError}
             </StatusRegion>
@@ -634,7 +634,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             politeness="assertive"
             className={
               error
-                ? 'text-base bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-sm'
+                ? 'text-base bg-status-error-subtle border border-status-error text-content-status-error px-4 py-3 rounded-sm'
                 : undefined
             }
           >

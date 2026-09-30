@@ -473,7 +473,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
 
                   {/* Error */}
                   {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-sm text-sm">
+                    <div className="bg-status-error-subtle border border-status-error text-content-status-error px-4 py-3 rounded-sm text-sm">
                       {error}
                     </div>
                   )}

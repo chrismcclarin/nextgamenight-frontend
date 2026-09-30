@@ -1643,9 +1643,13 @@ function Profile(){
                                             name; the pencil glyph is the whole content, so
                                             without this the name announced was the emoji, and
                                             a `title` does not count. */}
+                                        {/* UI review 2026-09-30 (Top Fix 2, WINDOWS #33): the bare emoji measured
+                                            ~20x24 — below the 44px floor. Same negative-margin idiom as the
+                                            banner dismiss above (`-m-2 inline-flex min-h-11 min-w-11`): the
+                                            target grows, nothing visible moves. */}
                                         <button
                                             onClick={() => setEditingUsername(true)}
-                                            className="text-content-link hover:text-content-link-hover text-base"
+                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base"
                                             aria-label="Edit username"
                                             title="Edit username"
                                         >
@@ -1942,7 +1946,7 @@ function Profile(){
                                                 className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                                                     removeArmed
                                                         ? 'text-content-status-error font-semibold'
-                                                        : 'text-content-status-error hover:text-red-700'
+                                                        : 'text-content-status-error hover:text-content-status-error'
                                                 }`}
                                             >
                                                 {removeArmed ? 'Tap again to remove' : 'Remove'}

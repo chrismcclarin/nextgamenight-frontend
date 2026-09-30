@@ -133,7 +133,7 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = 
         {showReset && onReset && (
           <button
             onClick={onReset}
-            className="w-full px-4 py-2 text-red-600 hover:text-red-700 text-sm font-normal text-center transition-colors mb-3"
+            className="w-full min-h-11 px-4 py-2 text-content-status-error hover:text-content-status-error text-sm font-normal text-center transition-colors mb-3"
           >
             Reset Token
           </button>

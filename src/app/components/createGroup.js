@@ -279,7 +279,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 a screen reader, which would make replacing the native `alert()`
                                 above an a11y REGRESSION — an alert dialog is announced. */}
                             {errorMessage && (
-                                <p id="create-group-error" role="alert" className="mt-2 text-sm text-red-600">{errorMessage}</p>
+                                <p id="create-group-error" role="alert" className="mt-2 text-sm text-content-status-error">{errorMessage}</p>
                             )}
                         </div>
                         {/* Owner report 2026-08-04: button sat off-center under the input.
