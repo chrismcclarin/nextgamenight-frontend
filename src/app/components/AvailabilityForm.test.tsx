@@ -100,6 +100,12 @@ describe('AvailabilityForm submit-error path', () => {
     // (`prompt_closed`, `prompt_deadline_expired`, `rate_limited`) now reach the catch as an
     // `ApiError` and render their own register lines — the `it.each` cases below. The
     // `lib/api.ts:1086-1091` cite above is stale; read `submitResponse: async` in lib/api.ts.
+    //
+    // CORRECTED 2026-09-29 by plan 88.6-62 task 3 (review round 2 #12): the mocked plain `Error`
+    // this case rejects with models a NON-ApiError throw only. A REAL transport failure no longer
+    // reaches the catch as a plain `Error` — `submitResponse` now rejects `ApiError('network')`
+    // (lib/api.ts `timedPublicFetch`) and renders the `network` line; see the #12 case in the
+    // 88.6-62 describe below, which runs the real helper over a stubbed `fetch`.
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(
         'Something went wrong. Refresh the page to try again.',
@@ -184,6 +190,77 @@ describe('AvailabilityForm submit-error path', () => {
     expect(thrown).toBeInstanceOf(ApiError);
     expect(thrown.code).toBe('prompt_deadline_expired');
     expect(thrown.upstreamMessage).toBe(backendMessage);
+  });
+
+  // ADDED by plan 88.6-62 task 3 (2026-09-29, /code-adversarial-review 88.6 round 2 #11 / #12,
+  // owner ruling `R2-FIXNOW-SET-RULING: yes`). #11: success is decided by the backend's POSITIVE
+  // `success: true` (Sonnet/routes/availabilityResponse.js:190, the POST's only 2xx), never by
+  // the ABSENCE of `error` — an infra JSON body with neither read as saved. #12: a real transport
+  // failure must render the `network` line, never "Refresh the page" (a refresh wipes the grid
+  // the person just painted). The `{}` case was RED on the pre-plan guard; the #12 case was RED
+  // against the pre-plan api.ts (FE b654e42) and went GREEN with task 1's ApiError('network').
+  describe('88.6-62 — success is `success: true`; a transport failure keeps the grid', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const WithSuccess = AvailabilityFormDefault as unknown as ComponentType<{
+      magicToken?: string;
+      userName?: string;
+      promptId?: string;
+      onSuccess?: (result: unknown) => void;
+    }>;
+
+    async function submitWithSpy(onSuccess: (result: unknown) => void) {
+      const user = userEvent.setup();
+      render(<WithSuccess magicToken="tok" userName="Sam" promptId="p1" onSuccess={onSuccess} />);
+      await user.click(screen.getByRole('checkbox', { name: /unavailable this week/i }));
+      await user.click(screen.getByRole('button', { name: /submit availability/i }));
+    }
+
+    it('#11: an infra JSON body with neither `error` nor `success` is NOT a saved submit', async () => {
+      (availabilityFormAPI.submitResponse as Mock).mockResolvedValueOnce({});
+      const onSuccess = vi.fn();
+      await submitWithSpy(onSuccess);
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Something went wrong. Refresh the page to try again.',
+        );
+      });
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
+
+    it('CONFIRM-ONLY: the backend success body `{ success: true, … }` calls onSuccess once, no alert', async () => {
+      (availabilityFormAPI.submitResponse as Mock).mockResolvedValueOnce({
+        success: true,
+        response_id: 'r1',
+        updated: false,
+      });
+      const onSuccess = vi.fn();
+      await submitWithSpy(onSuccess);
+      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+      expect(onSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ slotCount: 0, isUnavailable: true }),
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('#12: the REAL submitResponse over a dropped connection renders the network line, not "Refresh the page"', async () => {
+      const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
+      (availabilityFormAPI.submitResponse as Mock).mockImplementationOnce(
+        (data: Record<string, unknown>) => actual.availabilityFormAPI.submitResponse(data),
+      );
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+      const onSuccess = vi.fn();
+      await submitWithSpy(onSuccess);
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          "We couldn't reach the server. Check your connection and try again.",
+        );
+      });
+      expect(document.body.textContent).not.toMatch(/refresh the page/i);
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
   });
 });
 

@@ -698,7 +698,9 @@ export async function apiFetch<T = unknown>(
    `sendError(res, 'token_invalid', …)`), which the page's invalid-link branch owns. Where D62
    branch B genuinely BINDS is the SUBMIT path (`submitResponse`, and `respondViaToken` for the
    RSVP page): a CONSEQUENCE constraint — an res.ok throw there strands the `response.error` /
-   `result.error` reads those consumers still make. `getExistingResponse` and the two prefill
+   `result.error` reads those consumers still make (the availability form's became a
+   `success: true` gate plus a Sentry-only `upstreamMessage` read in task 3 of this plan — the
+   constraint still binds; see the note on `submitResponse`). `getExistingResponse` and the two prefill
    helpers also keep their resolved shapes. Every transport failure out of all six is now an
    `ApiError('network')` and every unparseable body an `ApiError('internal')` (see
    `timedPublicFetch` / `guardedJson` below).]
@@ -1483,6 +1485,12 @@ export const availabilityFormAPI = {
   // distinguishes a rejected submit from a successful one SOLELY by reading
   // `response.error` off the parsed body, and that read deliberately SURVIVES this phase.
   // Adding an res.ok throw here is branch A, which the owner rejected.
+  // [AMENDED 2026-09-29, plan 88.6-62 task 3 (review round 2 #11): AvailabilityForm.js now
+  // decides success by the body's POSITIVE `success: true`, not by `response.error`; its one
+  // surviving `.error` read is the coded throw's `upstreamMessage` (Sentry only). The rule
+  // above is unchanged: this helper still resolves the parsed body whatever the status — an
+  // res.ok throw here would re-code a code-less 400 as `validation` and bypass the form's
+  // body-code throw (see the 88.6-58 paragraph of DECISION Phase 88.6-25 in that file).]
   submitResponse: async (data: Record<string, unknown>) => {
     const { res, text } = await timedPublicFetch(
       `${PUBLIC_API_BASE_URL}/availability-responses`,

@@ -340,7 +340,8 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
   // read, and this roster entry is DELETED rather than re-worded. Assertion 7 below is what
   // holds the redaction and the four-body census in place from here on.
   'app/components/AvailabilityForm.js': {
-    sites: 2,
+    // 2 → 1 on 2026-09-29 (plan 88.6-62, review round 2 #11): the guard reads success, not error.
+    sites: 1,
     why:
       'THE ONE LIVE PHASE-93 BLOCKER this seed adds. :130 guards on `response.error` and ' +
       ':131 throws it. `availabilityFormAPI.submitResponse` (lib/api.ts:1086-1091) does ' +
@@ -405,7 +406,21 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       'the `unknown` line. The Phase 93 ordering hazard above is UNCHANGED — the guard still ' +
       'branches on the presence of `body.error`. LINE CITES RE-DERIVED 2026-09-28: guard ' +
       'AvailabilityForm.js:168, throw :172-178 with its `.error` read on :177, ' +
-      '`onSuccess?.()` :181.',
+      '`onSuccess?.()` :181. ' +
+      // APPENDED by plan 88.6-62 task 3 (2026-09-29, /code-adversarial-review 88.6 round 2 #11,
+      // owner ruling `R2-FIXNOW-SET-RULING: yes`), per the append-don't-rewrite convention.
+      // `sites` moved 2 -> 1 and was RE-RUN after the edit (MEASURED: this file 1, lib/api.ts 3,
+      // rsvp 4, total 8 — exactly the plan's prediction).
+      'SUPERSEDED IN PART 2026-09-29 by plan 88.6-62: the guard no longer branches on the ' +
+      'presence of `body.error` — it reads the backend\'s POSITIVE `success: true` ' +
+      '(Sonnet/routes/availabilityResponse.js:190, the POST\'s only 2xx body), so an infra ' +
+      'JSON body without `error` no longer reads as saved and the Phase 93 ordering hazard ' +
+      'above (alias removal flipping every failed submit to "Availability Submitted!") is ' +
+      'CLOSED BY CONSTRUCTION: removing the alias can no longer make a failure look like a ' +
+      'success. The one surviving `.error` read is the throw\'s `upstreamMessage` argument ' +
+      '(Sentry, off the display path), on ONE line. Still FE-only, still no `res.ok` throw, ' +
+      'still body-based: D62 branch B holds and branch A stays rejected. The remaining Phase 93 ' +
+      'dependency is that one Sentry read, which goes when the backend drops the alias.',
     owner: {
       kind: 'owner',
       date: '2026-09-09',
@@ -490,10 +505,12 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
       'lib/api.ts': 3,
       // 2 → 4 on 2026-09-29 (plan 88.6-58 task 7): the two 403 discriminants joined the two 410s.
       'app/rsvp/[token]/page.js': 4,
-      'app/components/AvailabilityForm.js': 2,
+      // 2 → 1 on 2026-09-29 (plan 88.6-62, review round 2 #11): the guard reads success, not error.
+      'app/components/AvailabilityForm.js': 1,
     });
     const total = Object.values(MEASURED).reduce((a, b) => a + b, 0);
-    expect(total, '7 → 9 on 2026-09-29 (plan 88.6-58 task 7)').toBe(9);
+    // 9 → 8 on 2026-09-29 (plan 88.6-62, review round 2 #11): the AvailabilityForm guard read.
+    expect(total, '7 → 9 on 2026-09-29 (plan 88.6-58 task 7); 9 → 8 the same day (plan 88.6-62)').toBe(8);
     expect(Object.keys(ENVELOPE_READ_ROSTER).sort()).toEqual(Object.keys(MEASURED).sort());
   });
 

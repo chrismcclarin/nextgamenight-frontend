@@ -165,16 +165,33 @@ export default function AvailabilityForm({
         is_unavailable: data.is_unavailable,
       });
 
-      if (response.error) {
-        // Coded throw (plan 88.6-58, review H2) — see the AMENDED 88.6-25 marker in the catch.
-        // The backend string rides ONLY as `upstreamMessage` (5th arg: Sentry, never the DOM),
-        // and its read stays on ONE line so the errorEnvelopeReads roster count stays 2.
+      /* DECISION Phase 88.6-62 (review round 2 #11 / 88.6.1 W003; D-35 amended): success is
+         decided by the backend's POSITIVE flag — `success: true`, the POST's only 2xx body
+         (Sonnet/routes/availabilityResponse.js:190) — chosen OVER the absence of `error` that
+         stood here, and OVER an `res.ok` check in `submitResponse`.
+         The absence of `error` read an infra JSON body without `error` as SAVED, and removing
+         the backend alias (Phase 93) would have flipped every failure to "Availability
+         Submitted!" — the ordering hazard errorEnvelopeReads' AvailabilityForm row named; this
+         guard closes it by construction. The `res.ok` arm is D62 branch A, REJECTED (owner,
+         2026-09-09): this stays FE-only and body-based, with no res.ok throw and no change to
+         the resolved body shape — D62 branch B's CONSEQUENCE constraint is fully kept.
+         PRIOR DECISIONS OVERRIDDEN, named: plan 88.6-58 kept this guard "byte-unchanged (the D62
+         branch-B discriminant and the roster's guard read)", and the comment that stood here
+         said the `.error` read "stays on ONE line so the errorEnvelopeReads roster count stays
+         2". On the merits the success flag is the right discriminant; that record is a
+         BOOKKEEPING constraint (a count), not a consequence one — the roster moves 2 -> 1 and
+         says why. Body-less, infra and coded bodies all throw; only the positive success
+         resolves. The throw is unchanged in kind (plan 58's coded ApiError, optional-chained so
+         a nullish body cannot TypeError), and `response?.error` is still read ONLY as the 5th
+         `upstreamMessage` argument (Sentry, never the DOM), on ONE line. Going back to
+         `if (response.error)` is a decision, not a cleanup. */
+      if (response?.success !== true) {
         throw new ApiError(
-          typeof response.message === 'string' ? response.message : 'availability submit rejected',
-          typeof response.code === 'string' ? response.code : 'unknown',
+          typeof response?.message === 'string' ? response.message : 'availability submit rejected',
+          typeof response?.code === 'string' ? response.code : 'unknown',
           400,
           response,
-          typeof response.error === 'string' ? response.error : undefined
+          typeof response?.error === 'string' ? response.error : undefined
         );
       }
 
@@ -224,7 +241,18 @@ export default function AvailabilityForm({
          weighed. REJECTED here: routing the throw through `mapErrorToCode(response, 400)` — a
          code-less 400 resolves `validation`, which would tell someone holding an expired link
          "Something looks off with that request". `'unknown'` is the deliberate fallback.
-         Changing this is a decision, not a cleanup. */
+         Changing this is a decision, not a cleanup.
+         [AMENDED IN PLACE 2026-09-29 — DECISION Phase 88.6-62 (review round 2 #11 / #12, owner
+         ruling `R2-FIXNOW-SET-RULING: yes`; D-35 bracketed in 88.6-CONTEXT.md): the guard is no
+         longer "the guard above ... `response.error`". It reads the backend's POSITIVE
+         `success: true` (see the DECISION Phase 88.6-62 marker at the guard), so a body with
+         NEITHER `error` NOR `success` — an infra JSON body — now throws (`unknown` line) instead
+         of reporting a submit that saved nothing. Everything this paragraph says about the coded
+         arms and the D-35 residual still holds. And the transport rejection the 88.6-25
+         paragraph calls a "plain `Error`" is now an `ApiError('network')` from `submitResponse`
+         (lib/api.ts `timedPublicFetch`, plan 88.6-62 task 1), so a dropped connection renders
+         the register's `network` line — never "Refresh the page…", which would wipe the grid
+         the person just painted.] */
       setSubmitError(getFetchErrorMessage(error));
       throw error;
     } finally {
