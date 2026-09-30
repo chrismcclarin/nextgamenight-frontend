@@ -3,7 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
-import { scrubEvent, scrubRecordingEvent } from "./sentry.scrub.js";
+import { scrubEvent, scrubRecordingEvent, scrubTransaction, scrubSpanJson } from "./sentry.scrub.js";
 import { isTokenBearingPath } from "./src/lib/scrubFeedbackPageUrl";
 
 /* DECISION Phase 88.6 R-7 (code-adversarial-review N1; owner check 2026-09-29 found no
@@ -17,15 +17,41 @@ import { isTokenBearingPath } from "./src/lib/scrubFeedbackPageUrl";
    no client-side navigation INTO them from elsewhere in the app. Chosen OVER scrubbing the
    Meta href (no hook for it in @sentry-internal/replay 8.55.2) and OVER `beforeErrorSampling`
    (session sampling ignores it). Pinned by `src/lib/sentryClientReplayGate.test.ts`.
-   Re-registering replay on these routes is a decision, not a cleanup. */
+   Re-registering replay on these routes is a decision, not a cleanup.
+   [AMENDED 2026-09-29 — plan 88.6-61, review round 2 H-1: this gate never disabled TRACING.
+   The empty `integrations` array below is MERGED with the SDK defaults, which include
+   `browserTracingIntegration()` (`@sentry/core` 8.55.2 build/cjs/integration.js:49-50), so
+   token-route pageloads still produced transactions. Tracing on these routes is gated by the
+   `tracesSampler` below, keyed on this same `onTokenRoute`.] */
 const onTokenRoute =
   typeof window !== 'undefined' && isTokenBearingPath(window.location.pathname);
+
+// The shipped performance sample rate, unchanged — hoisted so the sampler below reads it.
+const RATE = process.env.NODE_ENV === 'production' ? 0.1 : 1.0;
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
-  // Adjust this value in production, or use tracesSampler for greater control
-  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  /* DECISION Phase 88.6-61 (review round 2 H-1, owner ruling R2-H1-RULING). Performance tracing
+     is gated here and scrubbed by the two hooks beside `beforeSend` below.
+     (a) Keyed on the INIT-TIME pathname (`onTokenRoute`), chosen OVER `samplingContext.name`
+         (REJECTED): standalone INP root spans are named by HTML selector
+         (`@sentry-internal/browser-utils` 8.55.2 build/cjs/metrics/inp.js:87), so a name check
+         samples them straight through on a token route.
+     (b) `parentSampled ?? RATE`, chosen OVER a bare rate (REJECTED): no `sentry-trace` meta is
+         emitted today (no `instrumentation.ts`), but a bare rate silently breaks FE-to-BE trace
+         linking the day Phase 90 lands server init. The token gate still outranks a parent.
+     (c) `tracesSampleRate` DELETED, not kept: `@sentry/core` 8.55.2 build/cjs/tracing/sampling.js:36-41
+         never reads it while a sampler exists, and a dead rate beside the sampler reads as the
+         control. Tracing stays ON with the sampler alone (utils/hasTracingEnabled.js:22).
+     (d) REJECTED: the `integrations` FUNCTION form filtering `browserTracingIntegration` out on
+         token routes — same egress result, but it breaks R-7's pinned empty-array shape
+         (`src/lib/sentryClientReplayGate.test.ts`, the `toEqual([])` arm) and keys on an SDK
+         integration NAME that can change between versions.
+     (e) The two scrub hooks run on EVERY route, not only token routes: ordinary pages carry
+         `?email=` fetch URLs (CR-501), and a client navigation can still name a token path.
+     Re-adding `tracesSampleRate` or a name-keyed sampler is a decision, not a cleanup. */
+  tracesSampler: ({ parentSampled }) => (onTokenRoute ? 0 : (parentSampled ?? RATE)),
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
@@ -38,6 +64,16 @@ Sentry.init({
   // extra/contexts (by pattern, regardless of key name) before egress.
   beforeSend(event) {
     return scrubEvent(event);
+  },
+
+  // Review round 2 H-1: `beforeSend` never runs on transactions or spans. Transactions (pageload /
+  // navigation names are the raw pathname) and spans (fetch URLs incl. query; standalone INP/CLS
+  // spans, which ONLY this hook reaches) get the same scrub — see the DECISION above the sampler.
+  beforeSendTransaction(event) {
+    return scrubTransaction(event);
+  },
+  beforeSendSpan(span) {
+    return scrubSpanJson(span);
   },
 
   // Replay can be used to record user sessions

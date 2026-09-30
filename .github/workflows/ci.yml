@@ -321,6 +321,14 @@ jobs:
         # Floors MEASURED with this loop's regex on FE d69e681, 2026-09-29. Button.e2eReplica is H1's ONLY
         # durable guard: unregistered, deleting it would have re-opened the stale-replica hole with a green build.
         #
+        # AMENDMENT — Phase 88.6 gap plan 61 (review round 2 #18 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING).
+        # Two rows added — the guards on the magic-link Sentry egress fixes:
+        #   src/lib/sentryClientReplayGate.test.ts   R-7 (cb5c403) + plan 61 H-1 — replay gate + tracing wiring  floor 9
+        #   src/lib/sentry.scrub.test.ts             Phase 84 T-84-01 + plan 61 H-1 — the scrub functions         floor 39
+        # Floors MEASURED with this loop's regex after plan 61's edits (FE branch over 1eb23fd), 2026-09-29.
+        # They are R-7's and H-1's ONLY durable guards: unregistered, either file was deletable with a green
+        # build, exactly as the two rows `85b0263` registered were.
+        #
         # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
         # file list out of this workflow, located by the step name above, and asserts every
         # listed file exists and really carries at least the stated number of assertions.
@@ -359,6 +367,8 @@ jobs:
             "src/app/interpolatedClassCensus.test.ts:4" \
             "src/components/ui/Button.e2eReplica.test.ts:5" \
             "src/app/components/CalendarListView.emptyStates.test.tsx:1" \
+            "src/lib/sentryClientReplayGate.test.ts:9" \
+            "src/lib/sentry.scrub.test.ts:39" \
             "src/test-utils/sourceScan.ts:0" \
           ; do
             f="${entry%:*}"; min="${entry##*:}"

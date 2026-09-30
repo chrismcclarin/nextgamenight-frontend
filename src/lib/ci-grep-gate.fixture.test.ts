@@ -543,6 +543,12 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
       'src/app/components/btnCensus.test.tsx', //        Phase 88.6-10 — the legacy .btn element census
       'src/app/shadowTier.test.ts', //                   Phase 88.6-12 — off-tier shadow families
       'src/app/interpolatedClassCensus.test.ts', //      Phase 88.6-47 — interpolated Tailwind classes that emit no CSS
+      // Phase 88.6-61 (review round 2 #18 / R-7 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING):
+      // the ONLY durable guards on the magic-link Sentry egress fixes — the replay gate + tracing
+      // wiring (R-7, H-1) and the scrub functions (H-1). Unregistered, each was deletable with a
+      // green build.
+      'src/lib/sentryClientReplayGate.test.ts', //       Phase 88.6 R-7 + 88.6-61 H-1 — Sentry init is handed the gates
+      'src/lib/sentry.scrub.test.ts', //                 Phase 84 T-84-01 + 88.6-61 H-1 — the scrub functions
       'src/test-utils/sourceScan.ts', //                 the scanner all of them share
     ]) {
       expect(files, `registry lost ${required}`).toContain(required);
