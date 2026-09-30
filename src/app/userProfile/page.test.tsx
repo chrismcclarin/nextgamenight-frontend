@@ -1125,7 +1125,7 @@ describe('userProfile form controls (Req 1 — the 16px floor)', () => {
   it('the Edit-username pencil carries the 44px tap-target idiom', async () => {
     renderProfile();
     const pencil = await screen.findByRole('button', { name: 'Edit username' });
-    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center']) {
+    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-offset-2']) {
       expect(pencil.className.split(/\s+/)).toContain(cls);
     }
   });

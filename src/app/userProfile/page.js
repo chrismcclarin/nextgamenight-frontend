@@ -1646,10 +1646,12 @@ function Profile(){
                                         {/* UI review 2026-09-30 (Top Fix 2, WINDOWS #33): the bare emoji measured
                                             ~20x24 — below the 44px floor. Same negative-margin idiom as the
                                             banner dismiss above (`-m-2 inline-flex min-h-11 min-w-11`): the
-                                            target grows, nothing visible moves. */}
+                                            target grows; the glyph shifts ~4px right (the -8px margin consumes the row's gap-2).
+                                            The focus ring is the house string, per-site as `globals.css` records; the bare
+                                            emoji button carried none (UI re-audit 2026-09-30, N-2). */}
                                         <button
                                             onClick={() => setEditingUsername(true)}
-                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base"
+                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                                             aria-label="Edit username"
                                             title="Edit username"
                                         >
