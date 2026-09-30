@@ -950,6 +950,77 @@ describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on eve
     }
   });
 
+  test('88.6 R2-H5: the login step takes no page capture, and no upload ships an error-context.md', () => {
+    // The channel CR-01 missed (review round 2 H-5, owner ruling R2-H5-RULING "source-level",
+    // 2026-09-29 — "why are we recording passwords?"). On ANY failed test Playwright 1.60 writes
+    // `test-results/<test>/error-context.md` with an aria snapshot of the page, and the aria
+    // snapshot serialises every text/password INPUT's value — so a login that fails after
+    // `fill(E2E_AUTH0_PASS)` wrote the real password there, and the `if: failure()` upload
+    // published it from a PUBLIC repo. Trace settings never reached it. Five arms, all pinned:
+    //   (a) the setup project takes NO capture of any kind: screenshot 'off' beside trace 'off';
+    //   (b) CI runs setup as its OWN invocation, first, with the copy prompt disabled and no json
+    //       report; then journeys + phone with `--no-deps` (without it Playwright re-runs setup as
+    //       a dependency, env-free, and the login happens twice);
+    //   (c) `PLAYWRIGHT_NO_COPY_PROMPT` is on the setup COMMAND only — never a step `env:` key;
+    //   (d) every uploaded directory excludes `**/error-context.md` (the structural arm: the env
+    //       var is an undocumented internal and survives no rename);
+    //   (e) auth.setup.ts has no page-level matcher — a failing `expect(page)` matcher attaches
+    //       its OWN whole-body aria snapshot, which the env var never reaches.
+    // `expect.soft` on every arm: one run reports EVERY broken arm, not just the first.
+    const isComment = (l: string) => l.trim().startsWith('#');
+    const stepLines = stepWindow(PLAYWRIGHT_STEP).filter((l) => !isComment(l));
+
+    // (a)
+    const cfg = readFileSync(resolve(__dirname, '../../playwright.config.ts'), 'utf8');
+    const setup = cfg.match(/name:\s*'setup'([\s\S]*?)name:\s*'journeys'/)?.[1];
+    expect(setup, "playwright.config.ts no longer declares the 'setup' project ahead of 'journeys'").toBeDefined();
+    expect.soft(setup, "(a) the setup project must take no screenshot: screenshot: 'off' (R2-H5)").toMatch(/screenshot:\s*'off'/);
+    expect.soft(setup, "(a) the setup project must record no trace: trace: 'off' (CR-01)").toMatch(/trace:\s*'off'/);
+
+    // (b)
+    const invocations = stepLines.filter((l) => l.includes('npx playwright test')).map((l) => l.trim());
+    expect.soft(invocations, '(b) the e2e step must run EXACTLY two playwright invocations: setup, then journeys + phone').toHaveLength(2);
+    const setupCmd = invocations[0] ?? '';
+    const journeysCmd = invocations[1] ?? '';
+    expect.soft(setupCmd.startsWith('PLAYWRIGHT_NO_COPY_PROMPT=1 npx playwright test'), `(b) first invocation must be the copy-prompt-free setup run: ${setupCmd}`).toBe(true);
+    expect.soft(setupCmd).toContain('--project=setup');
+    expect.soft(setupCmd, '(b) the setup invocation must write NO json report (Gate C / D10 read journeys + phone only)').toContain('--reporter=github');
+    expect.soft(setupCmd).not.toContain('--project=journeys');
+    expect.soft(setupCmd).not.toContain('--project=phone');
+    expect.soft(journeysCmd).toContain('--project=journeys');
+    expect.soft(journeysCmd).toContain('--project=phone');
+    expect.soft(journeysCmd, '(b) without --no-deps Playwright re-runs setup as a dependency, WITHOUT the env var').toContain('--no-deps');
+    expect.soft(journeysCmd).not.toContain('--project=setup');
+    expect.soft(journeysCmd).not.toContain('PLAYWRIGHT_NO_COPY_PROMPT');
+
+    // (c)
+    const envVarLines = stepLines.filter((l) => l.includes('PLAYWRIGHT_NO_COPY_PROMPT')).map((l) => l.trim());
+    expect.soft(envVarLines, '(c) PLAYWRIGHT_NO_COPY_PROMPT must appear on exactly one non-comment line — the setup command').toEqual([setupCmd]);
+    expect.soft(stepLines.some((l) => /^\s*PLAYWRIGHT_NO_COPY_PROMPT\s*:/.test(l)), '(c) the env var must never be a step env: key (process-wide)').toBe(false);
+
+    // (d)
+    const uploads = uploadArtifactSteps();
+    expect(uploads.length, 'uploadArtifactSteps() found fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
+    let dirsChecked = 0;
+    for (const { name, paths } of uploads) {
+      const dirs = paths.filter((p) => !p.startsWith('!') && p.endsWith('/'));
+      for (const dir of dirs) {
+        dirsChecked += 1;
+        expect.soft(
+          paths,
+          `(d) upload step "${name}" uploads the directory ${dir} without excluding ${dir}**/error-context.md (R2-H5: the aria snapshot serialises typed input values)`,
+        ).toContain(`!${dir}**/error-context.md`);
+      }
+    }
+    expect.soft(dirsChecked, '(d) non-vacuity: no uploaded directory was found to check').toBeGreaterThan(0);
+
+    // (e)
+    const authSetup = readFileSync(resolve(__dirname, '../../e2e/auth.setup.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '$1');
+    expect.soft(authSetup, '(e) auth.setup.ts must not use a page-level matcher (its failure attaches a whole-body aria snapshot)').not.toMatch(/expect\(\s*page\b/);
+  });
+
   test('the storageState and the json report both live OUTSIDE test-results/, where the uploads read', () => {
     // The glob's safety rests on where these two files are written. playwright.config.ts
     // writes the json report at the repo root and the storageState under .auth/; if either

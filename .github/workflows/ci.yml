@@ -687,12 +687,41 @@ jobs:
       # negative control 30844455459 (red on exactly the five planted padding assertions).
       # Removing `--project=phone` from the run line DISARMS the phone-forward gate (MOB-03) —
       # that is a decision, not a cleanup.
+      #
+      # DECISION Phase 88.6-61 (review round 2 H-5, owner ruling R2-H5-RULING "source-level",
+      # 2026-09-29). The e2e step below runs TWO invocations, setup first, and the login project
+      # takes no page capture of any kind (playwright.config.ts). WHY: on any failed test
+      # Playwright 1.60 writes `error-context.md` with an aria snapshot that serialises typed
+      # input values, so a login failing after the password fill wrote E2E_AUTH0_PASS into
+      # test-results/ — which the failure upload below publishes from a PUBLIC repo.
+      # - PLAYWRIGHT_NO_COPY_PROMPT=1 sits on the setup COMMAND only, chosen OVER the step's
+      #   `env:` (process-wide — journeys/phone would lose their failure snapshot too). It is an
+      #   undocumented internal whose only reader is `@playwright/test` 1.60
+      #   playwright/lib/index.js:624, so it is NOT the structural arm: the `error-context.md`
+      #   exclusion on the upload is.
+      # - `--no-deps` on the journeys+phone invocation is LOAD-BEARING: without it Playwright
+      #   re-runs `setup` as a dependency of both projects, WITHOUT the env var, and logs in twice.
+      #   The storageState the first invocation wrote under .auth/ carries over on disk.
+      # - The setup invocation writes NO json report: a CLI `--reporter=github` REPLACES the
+      #   config's reporter list (`@playwright/test` 1.60 playwright/lib/common/index.js:576), so
+      #   the Gate C and D10 floors below read the journeys+phone report only. Chosen OVER
+      #   `PLAYWRIGHT_JSON_OUTPUT_NAME` (ignored while the config sets `outputFile`,
+      #   playwright/lib/runner/index.js:1483-1495) and OVER merging the two reports (no step
+      #   reads setup results).
+      # - The second invocation clears test-results/ at start (playwright/lib/runner/index.js:
+      #   5919-5938). Harmless: bash -e stops the step after a failed setup, so a setup failure's
+      #   evidence is never cleared — the same stop the single invocation's dependency skip gave.
+      # Folding the two invocations back into one, or moving the env var into `env:`, is a
+      # decision, not a cleanup. Lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts
+      # ("88.6 R2-H5").
       - name: Run Playwright journeys (setup logs in once; all specs in the journeys project reuse storageState)
         env:
           # Auth credentials cross into the runner ONLY via env — never echoed (T-82-11).
           E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
-        run: npx playwright test --project=setup --project=journeys --project=phone
+        run: |
+          PLAYWRIGHT_NO_COPY_PROMPT=1 npx playwright test --project=setup --reporter=github
+          npx playwright test --project=journeys --project=phone --no-deps
 
       # Phase 88.3-cr, CR-09: the pinned `--project=phone` above is what makes Gate C
       # RUN, and the lockstep test in `src/lib/ci-grep-gate.fixture.test.ts` is what
@@ -733,13 +762,25 @@ jobs:
           # every action's parameters in plain text, and a retried login journey
           # would carry the typed E2E_AUTH0_PASS. The setup project now records
           # no trace (playwright.config.ts) — this exclusion is the independent
-          # second arm, so a future trace elsewhere still cannot leave a PUBLIC
-          # repo. Lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts.
+          # second arm for the TRACE channel.
+          # 88.6-61 (review round 2 H-5): NO error-context.md either. Its aria
+          # snapshot serialises typed input values (the password included), and
+          # trace settings never reached it — CR-01's "cannot leave a PUBLIC repo"
+          # was false for that channel until this exclusion. With BOTH exclusions,
+          # neither a trace nor a page snapshot can leave a PUBLIC repo. The
+          # journeys/phone error-context.md is excluded too (the error text stays in
+          # the CI log), chosen OVER a setup-directory-only glob: Playwright derives
+          # that directory name from the test title, so a rename silently stops a
+          # per-directory glob matching. No comment lines inside the path block —
+          # there a `#` line would be read as a glob. Lockstep-pinned by
+          # src/lib/ci-grep-gate.fixture.test.ts ("88.6 CR-01", "88.6 R2-H5").
           path: |
             playwright-report/
             !playwright-report/**/*.zip
+            !playwright-report/**/error-context.md
             test-results/
             !test-results/**/*.zip
+            !test-results/**/error-context.md
           retention-days: 7
           if-no-files-found: ignore
 
