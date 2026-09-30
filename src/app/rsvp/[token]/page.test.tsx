@@ -112,9 +112,25 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
       screen.getByText('This event has already taken place or has been cancelled.')
     ).toBeInTheDocument();
 
-    // `group_id` reached `errorInfo`: the CTA exists and its href is built from it.
+    // `group_id` reached `errorInfo`: the CTA exists and its href is built from it. Plan 88.6-63
+    // (review round 2 #10): the target is the canonical group page `/groupHomePage?id=` (read at
+    // groupHomePage/page.js `searchParams.get('id')`); the old `/groups/<id>` has no tracked route.
     const cta = screen.getByRole('link', { name: 'Go to Group' });
-    expect(cta).toHaveAttribute('href', `/groups/${GROUP_ID}`);
+    expect(cta).toHaveAttribute('href', `/groupHomePage?id=${encodeURIComponent(GROUP_ID)}`);
+  });
+
+  it('1b. the Go to Group href percent-encodes group_id (T-88.6-G47, plan 88.6-63)', async () => {
+    // A UUID encodes to itself, so arm 1 cannot tell an encoded href from a raw one. This arm
+    // feeds a group_id carrying query metacharacters: raw interpolation would let `&x=1` smuggle
+    // a second parameter into the group page URL.
+    respond().mockResolvedValue({ error: 'event_cancelled', group_id: 'g&x=1/2' });
+
+    render(<RsvpPage />);
+
+    expect(await screen.findByRole('link', { name: 'Go to Group' })).toHaveAttribute(
+      'href',
+      '/groupHomePage?id=g%26x%3D1%2F2'
+    );
   });
 
   it('2. the passed 410 body drives EVENT_PASSED, renders the passed copy, and carries event_name AND group_id into errorInfo', async () => {
@@ -135,7 +151,7 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
 
     expect(screen.getByRole('link', { name: 'Go to Group' })).toHaveAttribute(
       'href',
-      `/groups/${GROUP_ID}`
+      `/groupHomePage?id=${encodeURIComponent(GROUP_ID)}`
     );
   });
 
@@ -148,6 +164,14 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
     // The status-keyed message, so the branch is proven to be the SUCCESS one and not a
     // coincidentally-similar screen.
     expect(screen.getByText('See you at Tuesday Trivia Night on March 3.')).toBeInTheDocument();
+    // Plan 88.6-63 (R2-RSVP-COPY-RULING: b, review round 2 #2): the helper line is the ratified
+    // sentence, byte-equal to UI-SPEC section 6.3. The backend REVOKES sibling links on consume, so
+    // no success-branch copy may tell the user to reuse another RSVP link from the email.
+    expect(
+      screen.getByText('Changed your mind? Sign in and open the event to update your response.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/RSVP link from the email/i)).toBeNull();
+    expect(screen.queryByText(/different RSVP link/i)).toBeNull();
   });
 
   it('3b. a success body with NO responseData-bearing shape still cannot reach SUCCESS without data', async () => {
@@ -215,7 +239,7 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
         'error screen'
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Each RSVP link works once. Open the event to change your answer.')
+      screen.getByText('Each RSVP link works once. Sign in and open the event to change your answer.')
     ).toBeInTheDocument();
     // The old advice is gone from this outcome, and the backend's prose is not the display string.
     expect(screen.queryByText(/try clicking the RSVP link/)).toBeNull();
@@ -225,7 +249,7 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
     expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
     // The live region composes the same two strings (AC-19 idiom).
     expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
-      'This link has already been used Each RSVP link works once. Open the event to change your answer.'
+      'This link has already been used Each RSVP link works once. Sign in and open the event to change your answer.'
     );
   });
 

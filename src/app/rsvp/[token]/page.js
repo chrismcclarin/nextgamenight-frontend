@@ -54,7 +54,7 @@ const ERROR_DETAIL =
    display string). Same hoist idiom as above: each string ONCE, rendered by the `<h1>` AND the
    live announcement. */
 const EXPIRED_LINK_HEADLINE = 'This link has already been used';
-const EXPIRED_LINK_DETAIL = 'Each RSVP link works once. Open the event to change your answer.';
+const EXPIRED_LINK_DETAIL = 'Each RSVP link works once. Sign in and open the event to change your answer.';
 const ACCOUNT_NOT_FOUND_HEADLINE = "We couldn't find your account";
 const ACCOUNT_NOT_FOUND_DETAIL = 'Sign in and open the event to RSVP.';
 const LINK_STATE_COPY = {
@@ -350,7 +350,7 @@ export default function RsvpPage() {
               {/* §4.2: helper text is a named Caption role, stays at 12 — the same shape plan
                   88.6-23 kept at 12 for "Made a mistake?…". */}
               <p className="text-xs text-content-muted">
-                Changed your mind? Click a different RSVP link from the email to update your response.
+                Changed your mind? Sign in and open the event to update your response.
               </p>
             </div>
           </div>
@@ -375,12 +375,18 @@ export default function RsvpPage() {
             {eventPassedDetail}
           </p>
           {errorInfo?.group_id && (
-            /* §3.2's `asChild` row: this stays an `<a>` and its `href` is byte-identical — the
-               element kind is not a cleanup target. `inline-block` is DELETED as dead: unlayered
-               `.btn` sets `display: inline-flex` (globals.css:2195), so the utility never applied.
-               `min-h-11` is not added at the site — the cva base supplies it at every viewport. */
+            /* DECISION Phase 88.6-63 (review round 2 #10): the href is the canonical group page
+               `/groupHomePage?id=<encoded group_id>` (the page reads `searchParams.get('id')`,
+               groupHomePage/page.js:80; the backend builds the same URL, Sonnet/routes/events.js:1698),
+               chosen OVER keeping `/groups/<id>` — no `src/app/groups/` route is tracked, so that
+               link 404ed — and OVER adding a `/groups/[id]` route for one link. `encodeURIComponent`
+               keeps a body value from injecting query parameters (T-88.6-G47). §3.2's `asChild`
+               row: this stays an `<a>` — the element kind is not a cleanup target. `inline-block`
+               is DELETED as dead: unlayered `.btn` sets `display: inline-flex` (globals.css:2195),
+               so the utility never applied. `min-h-11` is not added at the site — the cva base
+               supplies it at every viewport. */
             <Button asChild variant="primary" size="default">
-              <a href={`/groups/${errorInfo.group_id}`}>
+              <a href={`/groupHomePage?id=${encodeURIComponent(errorInfo.group_id)}`}>
                 Go to Group
               </a>
             </Button>
