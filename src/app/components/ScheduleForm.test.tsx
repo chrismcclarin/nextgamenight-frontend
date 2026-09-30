@@ -69,6 +69,7 @@ vi.mock('./MemberSelector', () => ({
 import type { ComponentType } from 'react';
 import ScheduleFormDefault from './ScheduleForm';
 import { logger } from '@/lib/logger';
+import { promptSettingsAPI } from '../../lib/api';
 
 // ScheduleForm is a JS component; its inferred prop type marks every prop
 // required. Cast to a permissive type so the test can render with only the
@@ -232,5 +233,66 @@ describe('ScheduleForm — R7 composed axe audit + house rule + focus contract (
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // NAMED identity, never "not body": a bare open-from-mount render lands on <body> correctly.
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+});
+
+// Plan 88.6-63 (review round 2 #25). The submit used to be natively `disabled` while in flight: in a
+// real browser a natively-disabled FOCUSED button blurs to <body>, so a keyboard user whose save
+// failed was no longer standing on it. It is now `aria-disabled` (advisory) with a synchronous
+// first-line ref latch in `onSubmit` as the actual refusal — the AvailabilityForm D-8 / KebabMenu
+// D-12 idiom.
+describe('88.6-63 (review round 2 #25) — the submit is aria-disabled + latched, and keeps focus through a failure', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const UNKNOWN_COPY = 'Something went wrong. Refresh the page to try again.';
+
+  function holdCreate() {
+    let reject!: (e: unknown) => void;
+    const pending = new Promise((_resolve, rej) => {
+      reject = rej;
+    });
+    (promptSettingsAPI.createSchedule as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => pending,
+    );
+    return { reject };
+  }
+
+  it('while the save is in flight the button is aria-disabled, NOT natively disabled, and holds focus', async () => {
+    const held = holdCreate();
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    const submit = screen.getByRole('button', { name: /create schedule/i });
+    await user.click(submit);
+
+    await waitFor(() => expect(submit).toHaveAttribute('aria-disabled', 'true'));
+    expect(submit).not.toBeDisabled();
+    expect(submit).not.toHaveAttribute('disabled');
+    expect(document.activeElement).toBe(submit);
+
+    // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element; the real-browser blur is the
+    // motivation): after the save REJECTS the alert shows, the gate lifts, and focus is still here.
+    held.reject(new Error('Server boom'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(UNKNOWN_COPY));
+    expect(submit).not.toHaveAttribute('aria-disabled');
+    expect(document.activeElement).toBe(submit);
+  });
+
+  it('a second click while the save is in flight makes NO second request (the latch)', async () => {
+    const held = holdCreate();
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    const submit = screen.getByRole('button', { name: /create schedule/i });
+    await user.click(submit);
+    await waitFor(() => expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1));
+
+    await user.click(submit);
+    // Let a second submit (if any) run its validation and reach the API call.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1);
+
+    held.reject(new Error('Server boom'));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
   });
 });
