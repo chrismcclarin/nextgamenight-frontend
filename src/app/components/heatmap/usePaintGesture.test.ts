@@ -15,6 +15,8 @@
 //   owner ruling that fixed the threshold could be revised; these pins must survive that, and
 //   must never be the reason someone "fixes" the value back to the pre-88.1 one.
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -31,6 +33,7 @@ import {
   subscribePaintGestureActive,
   usePaintGestureHold,
 } from './paintGestureActiveStore';
+import { withoutComments } from '../../../test-utils/sourceScan';
 
 /** A fixed, INJECTED bounds rect — never read from the DOM (P7). */
 const BOUNDS = { top: 0, left: 0, bottom: 1000, right: 1000 };
@@ -570,5 +573,36 @@ describe('usePaintGestureHold — holds a change under the finger, applies it on
     unmount();
     // No act() wrapper and no warning: with the listener gone this sets no state anywhere.
     expect(() => setPaintGestureActive(true)).not.toThrow();
+  });
+
+  // Plan 88.6-63 (review round 2 #14). A MECHANISM pin, NOT a behaviour pin — labelled so nobody
+  // reads its green as proof of the painted frame. The defect is one stale PAINTED frame after a
+  // value change with no finger down (the passive `[value]` sync ran after paint). jsdom cannot
+  // observe paint: MEASURED 2026-09-29 (throwaway probe, deleted) — with React 18.2, a microtask
+  // queued from the first commit after a change reads the NEW value under BOTH the passive effect
+  // and a layout-effect variant, because the scheduler runs the passive effect in the same task.
+  // So this pins the mechanism that closes it: the sync runs in an isomorphic LAYOUT effect.
+  it('MECHANISM pin (not behaviour): the [value] sync runs in an isomorphic layout effect (review round 2 #14)', () => {
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'paintGestureActiveStore.ts'), 'utf8')
+    );
+    // (a) the module-level isomorphic alias — layout effect in the browser, plain effect on the
+    // server (where `useLayoutEffect` warns and TimezoneNudgeBanner's pages render).
+    expect(src).toMatch(
+      /const useIsomorphicLayoutEffect\s*=\s*typeof window !== 'undefined'\s*\?\s*useLayoutEffect\s*:\s*useEffect\s*;/
+    );
+    // (b) the hook's `[value]` sync is called THROUGH it: the alias call is the nearest effect
+    // call before the commit-time read.
+    const body = src.slice(src.indexOf('export function usePaintGestureHold'));
+    const read = body.indexOf('if (isPaintGestureActive()) return;');
+    expect(read).toBeGreaterThan(-1);
+    const before = body.slice(0, read);
+    expect(before.lastIndexOf('useIsomorphicLayoutEffect(')).toBeGreaterThan(-1);
+    expect(before.lastIndexOf('useIsomorphicLayoutEffect(')).toBeGreaterThan(
+      before.lastIndexOf('useEffect(')
+    );
+    // The store's own rule (DECISION 88.6-39): the ONE `isPaintGestureActive()` read in the hook
+    // stays inside an effect — no render-time read was added to close the frame.
+    expect(body.match(/isPaintGestureActive\(\)/g)).toHaveLength(1);
   });
 });

@@ -42,7 +42,7 @@
 // mount, so a settle can arrive with nothing in flight.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 type ActiveListener = (active: boolean) => void;
 
@@ -79,11 +79,28 @@ export function __resetPaintGestureActiveStore(): void {
   listeners.clear();
 }
 
+/* DECISION Phase 88.6-63 (review round 2 #14): the hold's `[value]` sync runs in an ISOMORPHIC
+   LAYOUT effect, so with no finger down the one render that still returns the previous value is
+   corrected before the browser paints it. Chosen OVER a render-time `isPaintGestureActive()` read
+   (IN-301 option 1, 88.6.1 W034 — it would also drop the second render, but it breaks this store's
+   own rule that the imperative read never runs at a render top level, DECISION 88.6-39 above) and
+   OVER correcting the docblock only (the stale frame would stay). ISOMORPHIC because
+   `TimezoneNudgeBanner` renders on server-rendered pages, where `useLayoutEffect` warns; on the
+   server there is no paint to protect, so the plain effect is the correct stand-in. The FALSE-edge
+   listener stays a passive `useEffect` — it subscribes, it does not correct a frame. Swapping the
+   sync back to `useEffect` is a decision, not a cleanup. */
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 /**
  * Hold `value`'s CHANGES while a paint gesture is active; apply them on finger-up.
  *
- * The returned value equals `value` whenever no gesture is running, so this is inert on every
- * surface with no scheduler in the tree (the inactive default above). While a gesture IS running
+ * With no gesture running, the returned value equals `value` from the first PAINTED frame after a
+ * change: the sync runs in a layout effect, so the one render that returns the previous value is
+ * never painted. A second render per change still occurs (88.6.1 W034). This is therefore inert on
+ * every surface with no scheduler in the tree (the inactive default above). CORRECTED 2026-09-29
+ * (plan 88.6-63, review round 2 #14): this paragraph used to say the returned value equals `value`
+ * "whenever no gesture is running", which was false for the first render after a change. While a
+ * gesture IS running
  * the last committed value keeps being returned, and the pending one is applied on the FALSE
  * edge — the only edge that sets state here.
  *
@@ -96,8 +113,9 @@ export function usePaintGestureHold<T>(value: T): T {
   desiredRef.current = value;
 
   // COMMIT-TIME READ. This is the `isPaintGestureActive()` call the decision block above
-  // describes: the change is applied now if no finger is down, and parked if one is.
-  useEffect(() => {
+  // describes: the change is applied now if no finger is down, and parked if one is. It runs in the
+  // isomorphic LAYOUT effect (DECISION 88.6-63 above), before paint.
+  useIsomorphicLayoutEffect(() => {
     if (isPaintGestureActive()) return;
     setHeld((prev) => (Object.is(prev, value) ? prev : value));
   }, [value]);
