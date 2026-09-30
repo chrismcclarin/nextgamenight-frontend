@@ -103,6 +103,9 @@ export default function ResponseDashboard({
       // the generation guard on purpose — a request that really failed is a real diagnostic
       // even when its answer is no longer wanted. The error OBJECT is the only second argument
       // (T-84-01): no respondent list, no member email, no identity field.
+      // Re-confirmed 2026-09-29 (plan 88.6-63, review round 2 #6, R2-6-RECONFIRM: keep) — the swap to
+      // guard-first was ruled on a misread of RsvpSection.js's marker and is void; this log-first
+      // order is pinned by ResponseDashboard.test.tsx ("a superseded failure is still REPORTED").
       logger.error('Failed to fetch respondents:', err);
       if (generation !== generationRef.current) return;
       // Store the ERROR OBJECT, never a flattened string: `useFetchErrorState` derives the

@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentType } from 'react';
 import { formatDateTime } from '@/lib/datetime';
 import ResponseDashboardDefault from './ResponseDashboard';
+import { logger } from '@/lib/logger';
 
 // `ResponseDashboard` is a JS component; its inferred prop type marks every prop required and
 // mis-widens the destructured defaults. Cast to a permissive type so the suite can render with
@@ -280,5 +281,69 @@ describe('ResponseDashboard — the §6.3 title on the respondents-fetch banner 
     // not become a second place upstream text could enter.
     expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
     expect(screen.queryByText(/RAW UPSTREAM TEXT/)).toBeNull();
+  });
+});
+
+// Plan 88.6-63 (review round 2 #6) — ARM K, `R2-6-RECONFIRM: keep`. The review asked to move the
+// generation guard ABOVE `logger.error`, citing RsvpSection's marker as the guard-first idiom; that
+// marker actually names THIS component's log-first order as a deliberate divergence (AC-16 needs a
+// Sentry EVENT on this path). The owner's swap ruling rested on that misread and is VOID; the
+// recorded DECISION stands. These cases are CONFIRM-ONLY (green on the shipped order) and pin it,
+// so a future "tidy to guard-first" goes red here. Their red was demonstrated by MUTATION (guard
+// moved above the log -> red -> restored -> green).
+describe('ResponseDashboard — a superseded failure is still REPORTED (review round 2 #6, R2-6-RECONFIRM: keep)', () => {
+  const errorCalls = () =>
+    (logger.error as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => c[0] === 'Failed to fetch respondents:',
+    );
+
+  beforeEach(() => {
+    (logger.error as unknown as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it('a failure that lands AFTER promptId moved on is logged once, and writes no banner', async () => {
+    let rejectFirst: ((e: unknown) => void) | undefined;
+    api.getRespondents
+      .mockImplementationOnce(() => new Promise((_res, rej) => { rejectFirst = rej; }))
+      .mockResolvedValue([{ user_id: 'u2', username: 'Second prompt member', has_responded: true, slot_count: 2 }]);
+
+    const view = render(<ResponseDashboard {...baseProps} />);
+    view.rerender(<ResponseDashboard {...baseProps} promptId="prompt-2" />);
+    await screen.findByText('Second prompt member');
+
+    const failure = await codedError('internal', 500);
+    await act(async () => {
+      rejectFirst?.(failure);
+    });
+
+    expect(errorCalls()).toHaveLength(1);
+    expect(errorCalls()[0][1]).toBe(failure);
+    // Logged, but the generation guard still drops the STATE write: no banner for a poll the
+    // user has moved away from.
+    expect(screen.queryByText("We couldn't load the respondents.")).toBeNull();
+    expect(screen.getByText('Second prompt member')).toBeInTheDocument();
+  });
+
+  it('a failure that lands AFTER unmount is logged once', async () => {
+    let rejectFirst: ((e: unknown) => void) | undefined;
+    api.getRespondents.mockImplementationOnce(
+      () => new Promise((_res, rej) => { rejectFirst = rej; }),
+    );
+
+    const view = render(<ResponseDashboard {...baseProps} />);
+    await waitFor(() => expect(api.getRespondents).toHaveBeenCalledTimes(1));
+    view.unmount();
+
+    await act(async () => {
+      rejectFirst?.(new Error('late'));
+    });
+    expect(errorCalls()).toHaveLength(1);
+  });
+
+  it('a CURRENT failure is logged exactly once (the non-superseded baseline)', async () => {
+    api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
+    render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText(FORBIDDEN_COPY);
+    expect(errorCalls()).toHaveLength(1);
   });
 });
