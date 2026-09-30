@@ -83,7 +83,11 @@ export default function ClickableMemberName({ userId, username, children, showIn
   const [isOpen, setIsOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [sendError, setSendError] = useState(false);
+  // True only when the failed send came from the inline mobile "+" (plan 88.6-63): the popover's
+  // "Add friend" has its own alert and focus management, so the inline alert must not double it.
+  const [inlineSendError, setInlineSendError] = useState(false);
   const pendingIndicatorRef = useRef(null);
+  const failedIndicatorRef = useRef(null);
 
   const status = getStatus(userId);
 
@@ -132,6 +136,16 @@ export default function ClickableMemberName({ userId, username, children, showIn
     }
   }, [sent, status]);
 
+  // The FAILURE twin of the effect above (plan 88.6-63, review round 2 #22): a failed "+" is
+  // replaced in place by the assertive "Failed to send request" span, so focus moves there rather
+  // than dropping to <body>. Keyed on the INLINE failure only — a failure from the popover's "Add
+  // friend" keeps focus inside the popover, which announces it itself.
+  useEffect(() => {
+    if (inlineSendError && failedIndicatorRef.current) {
+      failedIndicatorRef.current.focus();
+    }
+  }, [inlineSendError]);
+
   // Reset sent/error state when tooltip closes so stale messages don't persist
   useEffect(() => {
     if (!isOpen) {
@@ -143,12 +157,13 @@ export default function ClickableMemberName({ userId, username, children, showIn
     }
   }, [isOpen]);
 
-  const handleSendRequest = async (e) => {
+  const handleSendRequest = async (e, { inline = false } = {}) => {
     // Stop propagation so a tap on the inline "+" doesn't bubble up to the
     // wrapping name span and toggle the popover. The "+" and the popover
     // are independent affordances on devices that have both.
     if (e?.stopPropagation) e.stopPropagation();
     setSendError(false);
+    setInlineSendError(false);
     try {
       await sendRequest(userId);
       setSent(true);
@@ -179,6 +194,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // body or a per-item loop.
       logger.info('Failed to send friend request:', errCtx(err));
       setSendError(true);
+      if (inline) setInlineSendError(true);
     }
   };
 
@@ -298,6 +314,21 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // with nine different container sizes. 12 is the app's FLOOR, not below it, so nothing here is
   // illegible. Promoting them is a decision, not a cleanup.
   //
+  // The mobile "+" add-friend button. Hoisted out of `renderMobileIndicator` (plan 88.6-63) so the
+  // send-error branch can render it again for a retry; the decision markers that govern its hit
+  // extension, tint and focus handling stay at the `status === 'none'` branch below, where they
+  // have always been.
+  const renderAddButton = () => (
+    <button
+      type="button"
+      onClick={(e) => handleSendRequest(e, { inline: true })}
+      className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      aria-label={`Add ${username} as a friend`}
+    >
+      +
+    </button>
+  );
+
   // Mobile inline indicator. md:hidden so desktop visuals stay untouched.
   const renderMobileIndicator = () => {
     // Self has no mobile inline indicator — informational only, surfaced
@@ -308,7 +339,38 @@ export default function ClickableMemberName({ userId, username, children, showIn
     if (status === 'accepted') {
       return <span className="md:hidden ml-1 text-xs text-content-status-success">✓ Friend</span>;
     }
+    if (inlineSendError) {
+      // DECISION Phase 88.6-63 (review round 2 #22): a failed "+" mirrors the Pending idiom below
+      // (ref + tabIndex={-1} + a live role, focused by the effect near the top) so focus lands where
+      // the destroyed "+" was — chosen OVER the bare "Failed" span this replaced (focus fell to
+      // <body>, nothing was announced, and there was no retry) and OVER focusing the re-rendered
+      // "+" (the announcement must come first; the "+" is the very next tab stop). ASSERTIVE
+      // (`role="alert"`) to match the popover's own failure twin; the copy is REUSED from it, no
+      // new string (P1). The "+" renders again beside it for a retry, and both this branch and the
+      // `none` branch return the SAME fragment shape so the "+" keeps its identity (and its focus)
+      // when a retry clears the alert. SCOPED to a failure of the inline "+" (`inlineSendError`),
+      // chosen OVER keying on `sendError`: a failure from the popover's "Add friend" already has
+      // the popover's alert and FloatingFocusManager, and keying on `sendError` announced
+      // "Failed to send request" TWICE and pulled focus out of the open popover on a phone
+      // (keyboardOperability.test.tsx 4c went red on the duplicate). Changing either half is a
+      // decision, not a cleanup.
+      return (
+        <>
+          <span
+            ref={failedIndicatorRef}
+            tabIndex={-1}
+            role="alert"
+            className="md:hidden ml-1 text-xs text-content-status-error"
+          >
+            Failed to send request
+          </span>
+          {status === 'none' ? renderAddButton() : null}
+        </>
+      );
+    }
     if (sendError) {
+      // A failure from the POPOVER's "Add friend" (see above): the pre-88.6-63 inline marker,
+      // unchanged — the popover carries the announcement and the focus.
       return <span className="md:hidden ml-1 text-xs text-content-status-error">Failed</span>;
     }
     if (status === 'pending_sent' || status === 'pending_received') {
@@ -448,15 +510,15 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // After a successful add, focus moves to the ⏳ Pending span that
     // replaces this button (see the focus effect near the top of the
     // component and the comment on the pending branch above).
+    //
+    // The `{null}` is the send-error alert's slot (plan 88.6-63): this branch and the sendError
+    // branch return the same two-child fragment, so React keeps the "+" as the same node when a
+    // retry clears the alert and focus stays on it. `return renderAddButton();` would remount it.
     return (
-      <button
-        type="button"
-        onClick={handleSendRequest}
-        className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-        aria-label={`Add ${username} as a friend`}
-      >
-        +
-      </button>
+      <>
+        {null}
+        {renderAddButton()}
+      </>
     );
   };
 

@@ -6,8 +6,10 @@
  * -------------------------
  * `ClickableMemberName` renders `renderMobileIndicator()` as a SIBLING of the trigger span,
  * outside the element `children` renders into. Every branch of it is `md:hidden`, i.e. VISIBLE
- * at 375px: `✓ Friend` for `accepted`, `⏳ Pending` for either pending direction, `Failed` on a
- * send error, and for `none` a 24px `+` button carrying a 10px horizontal hit extension
+ * at 375px: `✓ Friend` for `accepted`, `⏳ Pending` for either pending direction, an assertive
+ * `Failed to send request` (plus the `+` again, for a retry) when the `+` send fails (plan
+ * 88.6-63; a popover-origin failure keeps the bare `Failed`), and
+ * for `none` a 24px `+` button carrying a 10px horizontal hit extension
  * (`after:-inset-x-2.5`). Phase 88.5's member chips sit in a `gap-3` (12px) flex-wrap, so
  * shipping them WITHOUT an opt-out would do two bad things at once:
  *
@@ -42,7 +44,7 @@
  */
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 
 import ClickableMemberName from './ClickableMemberName';
 import { FriendshipContext } from './FriendshipStatusProvider';
@@ -144,5 +146,50 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
     cleanup();
     expect(friendIndicator()).not.toBeInTheDocument();
     expect(addFriendPlus()).not.toBeInTheDocument();
+  });
+});
+
+// Plan 88.6-63 (review round 2 #22). Before this, a failed mobile "+" replaced the FOCUSED button
+// with a bare "Failed" span: focus dropped to <body>, nothing was announced, and there was no way to
+// retry. The two cases below pin the fix: the failure is an assertive alert that holds focus where
+// the "+" was, and the "+" is back beside it. The copy is REUSED from the popover's own alert
+// ("Failed to send request") — no new string (P1).
+describe('88.6-63 (review round 2 #22) — a failed "+" keeps focus, announces, and offers a retry', () => {
+  it('a failed send leaves focus on an alert reading "Failed to send request", with the + restored', async () => {
+    sendRequest.mockRejectedValueOnce(new Error('boom'));
+    renderName('none');
+
+    const plus = addFriendPlus()!;
+    plus.focus();
+    expect(document.activeElement).toBe(plus);
+    fireEvent.click(plus);
+
+    // Settle on the failure outcome in EITHER shape (the old bare "Failed" span or the fix), so the
+    // focus assertion below is what fails first on a tree that drops focus.
+    await screen.findByText(/^Failed/);
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Failed to send request');
+    expect(document.activeElement).toBe(alert);
+    // The retry affordance is back, in the next tab stop after the announcement.
+    expect(addFriendPlus()).toBeInTheDocument();
+  });
+
+  it('the restored + retries: a second send is made, the alert clears, and focus stays on the +', async () => {
+    sendRequest.mockRejectedValueOnce(new Error('boom'));
+    renderName('none');
+
+    fireEvent.click(addFriendPlus()!);
+    await screen.findByRole('alert');
+
+    const retry = addFriendPlus()!;
+    retry.focus();
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(sendRequest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    // The + is the SAME node across the alert's removal (the branch keeps one shape), so a retry
+    // that succeeds without a status flip does not drop focus to <body> either.
+    expect(document.activeElement).toBe(retry);
   });
 });
