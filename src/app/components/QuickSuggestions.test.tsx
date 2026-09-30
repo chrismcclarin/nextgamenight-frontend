@@ -559,3 +559,32 @@ describe('QuickSuggestions — the slot introduces NO animation', () => {
     expect(slot().className).not.toMatch(/transition|animate|duration-/);
   });
 });
+
+// Plan 88.6-63 (review round 2 #5 — REFUTED at planning, 2026-09-29). The review claimed the 500ms
+// debounce is not cleared on unmount, having read the debounced effect's cleanup (which only bumps
+// the generation) in isolation. A dedicated unmount-only effect DOES `clearTimeout(debounceRef…)`.
+// Nothing was broken, so nothing is fixed here: this CONFIRM-ONLY pin guards the existing cleanup,
+// and its red was demonstrated by MUTATION (that effect deleted -> red -> restored -> green).
+describe('QuickSuggestions — the debounce is cancelled on unmount (review round 2 #5, confirm-only)', () => {
+  it('unmount before the 500ms debounce fires cancels the fetch (review round 2 #5 — refuted; pinned)', async () => {
+    // POSITIVE CONTROL FIRST, in the same test, so the negative below cannot pass vacuously: a
+    // mounted component whose debounce runs out DOES fetch, exactly once.
+    const mounted = renderSuggestions();
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(1);
+    mounted.unmount();
+
+    api.getGroupSuggestions.mockClear();
+    const early = renderSuggestions();
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    early.unmount();
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(api.getGroupSuggestions).not.toHaveBeenCalled();
+  });
+});
