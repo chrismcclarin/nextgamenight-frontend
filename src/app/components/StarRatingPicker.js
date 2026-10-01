@@ -11,7 +11,8 @@ import { useState } from 'react';
  * - Empty state (value = 0): 5 outlined grey stars + "—" indicator
  *
  * Props:
- *   value: number (0-5, 0.5 increments)
+ *   value: number or numeric string (0-5, 0.5 increments; the API sends a saved rating as "4.0"),
+ *          converted to a number once at the top of the component
  *   onChange: (newValue: number) => void
  *   ariaLabel?: string
  *
@@ -49,7 +50,13 @@ import { useState } from 'react';
  */
 export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rating' }) {
   const [hoverValue, setHoverValue] = useState(null);
-  const displayValue = hoverValue !== null ? hoverValue : value;
+  // DECISION quick-260930-w9v: the picker turns its value prop into a number itself, chosen over
+  // trusting every caller to pass one. A saved rating reaches the page as the API's DECIMAL string
+  // ("4.0"); the readout's toFixed threw on it and crashed the edit dialog, and the strict-equality
+  // radio checks never matched it. gameDetail also converts at its prefill; keeping both is
+  // deliberate, so removing either is a decision, not a cleanup.
+  const committedValue = Number(value) || 0;
+  const displayValue = hoverValue !== null ? hoverValue : committedValue;
 
   const stars = [1, 2, 3, 4, 5];
 
@@ -109,7 +116,7 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
               onClick={() => handleHalfClick(starIndex, 'left')}
               aria-label={`${starIndex - 0.5} stars`}
               role="radio"
-              aria-checked={value === starIndex - 0.5}
+              aria-checked={committedValue === starIndex - 0.5}
             />
             <button
               type="button"
@@ -118,7 +125,7 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
               onClick={() => handleHalfClick(starIndex, 'right')}
               aria-label={`${starIndex} stars`}
               role="radio"
-              aria-checked={value === starIndex}
+              aria-checked={committedValue === starIndex}
             />
           </div>
         );
