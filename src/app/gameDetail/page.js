@@ -1020,8 +1020,15 @@ export default function GameDetailPage() {
                         const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === selfUuid) : null;
                         if (myReview) {
                             setUserReview(myReview);
+                            // DECISION quick-260930-w9v: the saved rating is converted to a number here and a
+                            // stored 0 is kept, chosen over Number(...) || 2.5. The API sends the DECIMAL column
+                            // as a string; the review form before Phase 70 was a number input that accepted 0,
+                            // and || 2.5 would show such a review as 2.5 stars and resave it as 2.5 on a
+                            // text-only edit. Only a missing or non-numeric rating takes the 2.5 default.
+                            // StarRatingPicker converts too; both are deliberate.
+                            const savedRating = Number(myReview.rating);
                             setReviewForm({
-                                rating: myReview.rating || 2.5,
+                                rating: myReview.rating != null && Number.isFinite(savedRating) ? savedRating : 2.5,
                                 review_text: myReview.review_text || '',
                                 is_recommended: myReview.is_recommended !== false
                             });
