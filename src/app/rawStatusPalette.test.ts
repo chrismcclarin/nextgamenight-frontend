@@ -48,26 +48,35 @@ function rawStatusRedSites(): { hits: string[]; exceptionsSeen: number } {
     const rel = path.relative(SRC, file);
     const src = withoutComments(fs.readFileSync(file, 'utf8'));
     for (const chunk of stringChunks(src)) {
-      if (!RAW_STATUS_RED.test(chunk.text)) continue;
-      if (RECORDED_EXCEPTIONS.some((e) => e.file === rel && e.literal.test(chunk.text))) {
+      // The exemption is scoped to the excepted CLASS, not to the string it sits in: strip each
+      // recorded literal out of the chunk first (counting it), then test what is left. Skipping
+      // the whole chunk instead let a new raw red class added to the same className pass silently
+      // (code review round 4, M1 — demonstrated at c6d0e50 with `text-red-600` on the divider).
+      let residual = chunk.text;
+      for (const e of RECORDED_EXCEPTIONS) {
+        if (e.file !== rel || !e.literal.test(residual)) continue;
         exceptionsSeen += 1;
-        continue;
+        residual = residual.replace(e.literal, ' ');
       }
-      hits.push(`${rel}:${lineAt(src, chunk.offset)}`);
+      if (RAW_STATUS_RED.test(residual)) hits.push(`${rel}:${lineAt(src, chunk.offset)}`);
     }
   }
   return { hits: hits.sort(), exceptionsSeen };
 }
 
 describe('raw red palette on status ink (UI review 2026-09-30, Top Fix 1)', () => {
+  // One walk of the tree for both assertions (code review round 4, M3: each `it` used to lex all
+  // ~357 source files on its own).
+  const scan = rawStatusRedSites();
+
   it('no non-test source file carries a raw red status class in a string literal', () => {
     // Was, at FE 3751aeb: app/components/FeedbackButton.js:476, app/components/FeedbackForm.js:576
     // and :637, app/components/QRCodeModal.js:136, app/components/createGroup.js:282,
     // app/userProfile/page.js:1945 — six sites, all converged in the same commit as this file.
-    expect(rawStatusRedSites().hits).toEqual([]);
+    expect(scan.hits).toEqual([]);
   });
 
   it('every recorded exception is still present (the roster does not go stale)', () => {
-    expect(rawStatusRedSites().exceptionsSeen).toBe(RECORDED_EXCEPTIONS.length);
+    expect(scan.exceptionsSeen).toBe(RECORDED_EXCEPTIONS.length);
   });
 });
