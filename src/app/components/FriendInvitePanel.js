@@ -885,12 +885,15 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                 fleet, and the title is still the DialogTitle so Radix keeps
                 auto-wiring `aria-labelledby`. */}
             <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-5">
-                <div className="min-w-0">
-                    {/* UAT3-D2 (owner device check 2026-09-30): the post-creation title interpolates the
-                        group name; a 40-character unbroken name overflowed the dialog and painted under
-                        the × beside it. `wrap-break-word` lets the word break inside the `min-w-0` column.
-                        Pinned in FriendInvitePanel.test.tsx. */}
-                    <DialogTitle className="text-xl font-bold text-content-primary wrap-break-word">
+                {/* UAT3-D2 (owner device check 2026-09-30) + code review round 6: the user-supplied group
+                    name lands in this column on EVERY entry point — in the title after creation
+                    ("<name> is live — who's in?"), in the lead-in otherwise ("to <name>"). A 40-character
+                    unbroken name overflowed the column and painted under the × beside it. `wrap-break-word`
+                    sits on the COLUMN because overflow-wrap inherits — a class on the title alone left the
+                    lead-in (a sibling) overflowing, which is what round 6 caught. Pinned for both paths in
+                    FriendInvitePanel.test.tsx. */}
+                <div className="min-w-0 wrap-break-word">
+                    <DialogTitle className="text-xl font-bold text-content-primary">
                         {headerTitle}
                     </DialogTitle>
                     {headerLeadIn && (

@@ -551,9 +551,12 @@ function GroupHomePage(){
                 container, which is the only way `overflow-wrap` can ever break a 40-character name
                 (an uncapped inline-block grows to fit the word, so the crumb's `wrap-break-word`
                 below was inert — the owner's name ran off a 375px screen). `wrap-break-word` sits on
-                the nav because overflow-wrap inherits. Pinned on all five navs by
-                `breadcrumbNavOverflow.test.ts`; "tidying" to `block` or dropping `max-w-full` is a
-                decision, not a cleanup. */}
+                the nav because overflow-wrap inherits (groupPlanning's group link additionally
+                carries `max-w-[200px] truncate`, so it truncates rather than wraps — by design).
+                `min-w-0` is deliberately NOT added: no breadcrumb nav is a flex item (every parent is
+                a block div), so it would be inert; add it if one ever becomes one. Pinned on all five
+                navs by `breadcrumbNavOverflow.test.ts`; "tidying" to `block` or dropping `max-w-full`
+                is a decision, not a cleanup. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>

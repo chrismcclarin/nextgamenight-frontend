@@ -541,15 +541,6 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
   // (createGroup.js). Without the context copy the generic header reads as an
   // accidental click-through — the owner himself misread it that way.
 
-
-  it("the post-creation header wraps a long unbroken group name instead of running under the close button (UAT3-D1/D2, 2026-09-30)", async () => {
-    // Owner device check 2026-09-30: a 40-character name with no spaces overflowed the dialog and
-    // painted under the ×. jsdom has no layout, so the pin is the wrap class on the DialogTitle
-    // (overflow-wrap: break-word); the geometry half is the owner's post-merge device check.
-    renderPanel({ openedFrom: 'create', group: { ...GROUP, name: 'M'.repeat(40) } });
-    const heading = await screen.findByRole('heading', { name: `${'M'.repeat(40)} is live — who's in?` });
-    expect(heading.className.split(/\s+/)).toContain('wrap-break-word');
-  });
   it('names the freshly created group in the header and explains why it opened', async () => {
     renderPanel({ openedFrom: 'create' });
     expect(
@@ -563,6 +554,25 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     expect(screen.queryByRole('heading', { name: 'Invite Members' })).not.toBeInTheDocument();
   });
 
+
+  it("the post-creation header wraps a long unbroken group name instead of running under the close button (UAT3-D2, 2026-09-30)", async () => {
+    // Owner device check 2026-09-30: a 40-character name with no spaces overflowed the dialog and
+    // painted under the ×. jsdom has no layout, so the pin is the wrap class on the header's shared
+    // text column (overflow-wrap inherits into the title AND the lead-in); the geometry half is the
+    // owner's re-check on preview after CI.
+    renderPanel({ openedFrom: 'create', group: { ...GROUP, name: 'M'.repeat(40) } });
+    const heading = await screen.findByRole('heading', { name: `${'M'.repeat(40)} is live — who's in?` });
+    expect(heading.closest('div')?.className.split(/\s+/)).toContain('wrap-break-word');
+  });
+
+  it("the default-path header's 'to <group>' lead-in wraps a long unbroken group name too (code review round 6 HIGH, 2026-09-30)", async () => {
+    // Round 6 caught the half the device check missed: opened from Manage Members / the home page
+    // (no openedFrom), the user-supplied name is in the LEAD-IN, a sibling of the title, which
+    // inherits nothing from a class on the title. Pinned on the shared column for the same reason.
+    renderPanel({ group: { ...GROUP, name: 'M'.repeat(40) } });
+    const leadIn = await screen.findByText(`to ${'M'.repeat(40)}`);
+    expect(leadIn.closest('div')?.className.split(/\s+/)).toContain('wrap-break-word');
+  });
   it('leaves every other entry point on the generic header', async () => {
     renderPanel();
     expect(await screen.findByRole('heading', { name: 'Invite Members' })).toBeInTheDocument();
