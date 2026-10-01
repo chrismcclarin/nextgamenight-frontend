@@ -1357,6 +1357,24 @@ describe('quick-260930-w9v — editing a saved review whose rating arrives as a 
     );
   });
 
+  // G4 — the pin the prefill conversion itself needs (independent review, 2026-09-30: G1-G3 all
+  // pass with the picker change alone). A rating of 0 sent as a NUMBER — what the API would send
+  // the day its DECIMAL-as-string contract is changed — was replaced by 2.5 under the old
+  // rating || 2.5 prefill: the editor opened on 2.5 stars and an untouched resubmit saved 2.5.
+  it('keeps a saved rating of numeric 0 as 0: no star checked, and an untouched resubmit sends 0', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member', reviews: [{ ...SAVED_REVIEW, rating: 0 }] });
+    (gameReviewsAPI.submitReview as Mock).mockResolvedValueOnce({ ...SAVED_REVIEW, rating: 0 });
+
+    const dialog = await openEditDialog(user);
+    expect(within(dialog).queryAllByRole('radio', { checked: true })).toHaveLength(0);
+    await user.click(within(dialog).getByRole('button', { name: 'Update Review' }));
+
+    await waitFor(() =>
+      expect(gameReviewsAPI.submitReview).toHaveBeenCalledWith(expect.objectContaining({ rating: 0 }))
+    );
+  });
+
   // G3 — a review saved with no rating still opens at the 2.5 default. A conversion that
   // forgot the null check would turn null into 0 here.
   it('opens the editor at the 2.5 default when the saved review has no rating', async () => {
