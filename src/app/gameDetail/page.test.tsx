@@ -1306,6 +1306,69 @@ describe('gameDetail control labelling (DEF-88-10-01)', () => {
   });
 });
 
+// quick-260930-w9v — editing a saved review whose rating arrives as a string.
+//
+// Owner report (production, 2026-09-30): tapping Edit on his own saved review showed the
+// "Something went wrong" screen, with "TypeError: o.toFixed is not a function" in the console.
+// The wire shape: the rating column is DECIMAL(3, 1)
+// (periodictabletopbackend_v2/Sonnet/models/GameReview.js:25), so the API sends it as a string
+// such as "4.0"; the backend's own test reads it through Number(...)
+// (tests/routes/gameReviews.test.js:149). These pins rely on StarRatingPicker being REAL in this
+// file (see the "deliberately NOT stubbed" note near the top) — a stub would make G1 vacuous.
+const SAVED_REVIEW = {
+  id: 'rev-1',
+  rating: '4.0',
+  review_text: 'Great engine',
+  is_recommended: true,
+  createdAt: '2026-09-01T00:00:00Z',
+  User: { id: SELF_UUID, username: 'Me' },
+};
+
+async function openEditDialog(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  await user.click(await within(await reviewsSection()).findByRole('button', { name: 'Edit' }));
+  return screen.findByRole('dialog', { name: 'Edit Your Review' });
+}
+
+describe('quick-260930-w9v — editing a saved review whose rating arrives as a string', () => {
+  // G1 — the crash pin: the dialog used to throw on open (toFixed on the string).
+  it('opens the editor on a saved rating of "4.0" with the 4-star radio checked and 4.0 shown', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member', reviews: [SAVED_REVIEW] });
+
+    const dialog = await openEditDialog(user);
+    expect(within(dialog).getByRole('radio', { name: '4 stars' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(dialog).getAllByRole('radio', { checked: true })).toHaveLength(1);
+    expect(within(dialog).getByText('4.0')).toBeInTheDocument();
+  });
+
+  // G2 — a legacy review rated 0 (the pre-Phase-70 number input allowed it) stays 0 on an
+  // untouched resubmit. A prefill of Number(rating) || 2.5 would silently resave it as 2.5.
+  it('keeps a legacy saved rating of "0.0" as 0 when the review is resubmitted untouched', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member', reviews: [{ ...SAVED_REVIEW, rating: '0.0' }] });
+    (gameReviewsAPI.submitReview as Mock).mockResolvedValueOnce({ ...SAVED_REVIEW, rating: '0.0' });
+
+    const dialog = await openEditDialog(user);
+    expect(within(dialog).queryAllByRole('radio', { checked: true })).toHaveLength(0);
+    await user.click(within(dialog).getByRole('button', { name: 'Update Review' }));
+
+    await waitFor(() =>
+      expect(gameReviewsAPI.submitReview).toHaveBeenCalledWith(expect.objectContaining({ rating: 0 }))
+    );
+  });
+
+  // G3 — a review saved with no rating still opens at the 2.5 default. A conversion that
+  // forgot the null check would turn null into 0 here.
+  it('opens the editor at the 2.5 default when the saved review has no rating', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member', reviews: [{ ...SAVED_REVIEW, rating: null }] });
+
+    const dialog = await openEditDialog(user);
+    expect(within(dialog).getByRole('radio', { name: '2.5 stars' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(dialog).getByText('2.5')).toBeInTheDocument();
+  });
+});
+
 describe('gameDetail plan-a-game-night CTA', () => {
   it('is offered to a non-pending group member', async () => {
     renderGameDetail({ role: 'member' });
