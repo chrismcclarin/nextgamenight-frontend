@@ -104,6 +104,17 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 
 vi.mock('@/lib/hooks/selfIdentityCache', () => ({ patchSelfCache: vi.fn() }));
 
+// AC-2 (plan 88.6-17): the page's 20 raw console calls became `logger.info` breadcrumbs.
+// `errCtx` is kept REAL — it is a pure name+message reducer and mocking it would make the
+// PII half of T-84-01 unassertable, which is the only half a test can actually see.
+vi.mock('@/lib/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/logger')>();
+  return {
+    ...actual,
+    logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+  };
+});
+
 vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({
     user: h.authUser,
@@ -209,6 +220,16 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import Profile from './page';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
+
+/** Accessor for the mocked house logger — AC-2's channel on this surface. */
+export function loggerMock() {
+  return logger as unknown as {
+    error: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    info: ReturnType<typeof vi.fn>;
+  };
+}
 
 /** The four notification rows the page renders, in source order. */
 export const NOTIFICATION_LABELS = [
@@ -442,6 +463,120 @@ describe('userProfile availability settings', () => {
     expect(
       screen.queryByRole('heading', { name: 'Availability Schedules' })
     ).not.toBeInTheDocument();
+  });
+
+  // ── Phase 88.6-30 (W53 reopen, row alignment) ────────────────────────────
+  //
+  // THE DEFECT (owner's iPhone screenshot, 2026-09-21): "Available From (Start
+  // Time)" wraps to two lines at phone width while "Available Until (End Time)"
+  // does not, so the right-hand control starts a line higher than the left and
+  // the left hint text collides with the right column. The fix is a subgrid:
+  // the container declares three row tracks and each cell adopts them, so
+  // label / control / hint line up across both columns whatever the labels do.
+  //
+  // WHAT THIS CAN AND CANNOT ASSERT. jsdom performs NO LAYOUT, so the alignment
+  // itself is unobservable here — this pins the STRUCTURE that produces it and
+  // nothing more. Two specific things it is written to catch: the row-span
+  // silently reverting to 2 (measured: at span 2 the hint falls outside the
+  // shared tracks and overlaps the control), and the container losing its
+  // explicit row tracks, which makes `subgrid` on the cells inert.
+  //
+  // The three utilities are written as LITERALS, which is the whole difference
+  // from the W53 class failure this plan reopened for — an interpolated class
+  // is invisible to Tailwind's scanner. Emission verified by command at this
+  // commit: compiling globals.css emits `.grid-rows-subgrid`,
+  // `.grid-rows-[auto_auto_auto]` and `.row-span-3`.
+  it('aligns the two-column availability rows as a subgrid, spanning all three tracks', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+
+    const startTime = await screen.findByLabelText('Available From (Start Time)');
+    const startDate = screen.getByLabelText('Start Date');
+
+    for (const control of [startTime, startDate]) {
+      const cell = control.parentElement as HTMLElement;
+      const row = cell.parentElement as HTMLElement;
+
+      // The container supplies the tracks the cells adopt. Without these,
+      // `grid-rows-subgrid` below has nothing to inherit and does nothing.
+      expect(row.className).toContain('grid-cols-2');
+      expect(
+        row.className,
+        'the row lost its explicit track list — subgrid on the cells is inert without it'
+      ).toContain('grid-rows-[auto_auto_auto]');
+
+      expect(cell.className).toContain('grid-rows-subgrid');
+      expect(
+        cell.className,
+        'row-span must be 3: at 2 the hint paragraph falls outside the shared tracks and overlaps the control'
+      ).toContain('row-span-3');
+    }
+  });
+
+  // ── Phase 88.6-47 (todo 2026-09-21, "date range inputs allow end before start") ──
+  //
+  // The recurring DATE pair had NO client guard of any kind: the server rejects an
+  // inverted range with a code-less 400 that renders the generic register copy and
+  // discards the form (`routes/availability.js:137`). The TIME pair on the same form
+  // already refuses it with a ratified toast (`userProfile/page.js:1252`,
+  // 88-CODE-REVIEW MED#7) and is deliberately untouched.
+  //
+  // THIS ASSERTS THE DERIVATION, NOT A DATE. A test that pinned a literal would pass
+  // just as happily on a hard-coded bound, which is the wrong fix wearing the right
+  // assertion — so each bound is set from a variable and then CHANGED, and the sibling's
+  // attribute has to follow. It also pins the empty case: an unset sibling must place
+  // NO bound (attribute absent), never an empty string, because the End Date is optional
+  // and `min=""` is a real bound of nothing.
+  it('bounds each recurring date control by its sibling, and places no bound while the sibling is empty', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+
+    const startDate = screen.getByLabelText('Start Date') as HTMLInputElement;
+    const endDate = screen.getByLabelText('End Date (Optional)') as HTMLInputElement;
+
+    // THE EMPTY-SIBLING CASE, on the control that actually has one. `start_date` seeds to
+    // today (userProfile/page.js:210, HEAT-02 expansion 4) while `end_date` seeds to '', so
+    // it is the START control whose bound must be ABSENT here — not an empty string, which
+    // would be a real bound of nothing on a field the user is entitled to leave blank.
+    expect(
+      startDate.getAttribute('max'),
+      'Start Date carries an upper bound while End Date is empty — an empty-string bound is a real bound of nothing, and the End Date is OPTIONAL'
+    ).toBeNull();
+
+    // And the seeded start already bounds the END control, derived from the rendered value
+    // rather than from any date this test knows.
+    expect(
+      endDate.getAttribute('min'),
+      'End Date lower bound does not track the seeded Start Date value'
+    ).toBe(startDate.value);
+
+    // A start value bounds the END control from below, and the value is the one set.
+    const firstStart = '2026-03-10';
+    fireEvent.change(startDate, { target: { value: firstStart } });
+    expect(
+      endDate.getAttribute('min'),
+      'End Date lower bound does not track the Start Date value — the bound must be DERIVED from the sibling, never hard-coded'
+    ).toBe(firstStart);
+
+    // CHANGE it: a hard-coded bound would still read the first date here.
+    const secondStart = '2026-07-04';
+    fireEvent.change(startDate, { target: { value: secondStart } });
+    expect(
+      endDate.getAttribute('min'),
+      'End Date lower bound did not follow a CHANGED Start Date — this is the assertion that separates a derived bound from a constant'
+    ).toBe(secondStart);
+
+    // And the reverse direction, so neither edit order can dead-end the user.
+    const end = '2026-09-01';
+    fireEvent.change(endDate, { target: { value: end } });
+    expect(
+      startDate.getAttribute('max'),
+      'Start Date upper bound does not track the End Date value — the bounds are two-sided on purpose: a user who sets the end first must still be able to reach a valid start'
+    ).toBe(end);
   });
 });
 
@@ -983,6 +1118,19 @@ async function openDefaultTabControls(user: ReturnType<typeof userEvent.setup>) 
 }
 
 describe('userProfile form controls (Req 1 — the 16px floor)', () => {
+  // UI review 2026-09-30 (Top Fix 2, WINDOWS #33): the Edit-username pencil was a bare emoji
+  // button (~20x24). It now carries the same negative-margin 44px idiom as the SMS banner
+  // dismiss, so the tap target grows; the glyph shifts ~4px right because the -8px margin
+  // consumes the row's gap-2 (page.js says the same). Pinned on the class idiom because jsdom
+  // has no layout — the geometry half is the owner's device check (88.6-UAT.md test 3, arm (n)).
+  it('the Edit-username pencil carries the 44px tap-target idiom', async () => {
+    renderProfile();
+    const pencil = await screen.findByRole('button', { name: 'Edit username' });
+    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-offset-2']) {
+      expect(pencil.className.split(/\s+/)).toContain(cls);
+    }
+  });
+
   it('carries no sub-16px size class on any control', async () => {
     const user = userEvent.setup();
     renderProfile({ sms_enabled: true, phone_verified: false });
@@ -1079,36 +1227,124 @@ describe('userProfile type scale (Req 2)', () => {
     expect(h1s[0].className).toMatch(/\bfont-bold\b/);
   });
 
-  // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it
-  // exactly one home — the Button primitive. No heading on this surface may
-  // carry it at any size.
-  it('pairs no heading with font-semibold at any size', async () => {
+  // AMENDED Phase 88.6-17 (D-04 / D-05). The three pins below used to read RAW
+  // `<hN className="…">` opening tags. All fourteen headings on this surface now
+  // render through `<Heading>`, so a raw-tag scan matches ZERO — every one of them
+  // would have gone green while asserting nothing about a single heading, which is
+  // the "gate that stops measuring" failure this phase keeps finding. They are
+  // RE-AIMED at the primitive rather than deleted: the tree-wide rule lives in
+  // `typeScaleTouchedSurfaces.test.ts`, but this file is the per-surface guard and
+  // a surface with no guard is how a fifth size creeps back into one page.
+  //
+  // The FOUND-COUNT floor is the anti-vacuity half and is load-bearing: without it
+  // a scanner that matched nothing would satisfy every `for` loop below.
+  const headingTags = (source: string) =>
+    [...source.matchAll(/<Heading\s([^>]*)>/g)].map((m) => m[1]);
+
+  it('renders every heading through the primitive, none raw', async () => {
     const source = await pageSource();
-    const offenders = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)]
-      .map((m) => m[1])
-      .filter((cls) => /\bfont-semibold\b/.test(cls));
-    expect(offenders).toEqual([]);
+    // Raw heading TAGS survive only inside comment prose (the `DECISION Phase 88-19`
+    // block and the inline-editor marker), which is why the count is taken on tags
+    // that carry a className — prose does not.
+    const raw = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)];
+    expect(raw.map((m) => m[0])).toEqual([]);
+    expect(headingTags(source).length).toBe(14);
   });
 
-  // The whole point of a 4-size working set is that a fifth size cannot creep
-  // back in. `text-lg` (18) and `text-2xl` (24) were both on this surface.
-  it('keeps every heading inside the 4-size working set', async () => {
+  // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it exactly
+  // one home — the Button primitive. On the primitive the weight comes from the cva
+  // base, so the way 600 could come back is a caller OVERRIDE.
+  it('pairs no heading with an off-scale weight override', async () => {
     const source = await pageSource();
-    const offenders = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)]
-      .map((m) => m[1])
-      .filter((cls) => /\b(?:[a-z]+:)?text-(lg|2xl|4xl|5xl)\b/.test(cls));
-    expect(offenders).toEqual([]);
-  });
-
-  it('gives every heading an explicit size and the 700 weight', async () => {
-    const source = await pageSource();
-    const headings = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)].map(
-      (m) => m[1]
+    const offenders = headingTags(source).filter((attrs) =>
+      /\bfont-(?:medium|semibold|normal)\b/.test(attrs)
     );
-    expect(headings.length).toBeGreaterThanOrEqual(13);
-    for (const cls of headings) {
-      expect(cls).toMatch(/\btext-(base|xl|3xl)\b/);
-      expect(cls).toMatch(/\bfont-bold\b/);
+    expect(offenders).toEqual([]);
+  });
+
+  // The whole point of a 4-size working set is that a fifth size cannot creep back
+  // in. `text-lg` (18) and `text-2xl` (24) were both on this surface.
+  it('keeps every heading inside the working set', async () => {
+    const source = await pageSource();
+    const tags = headingTags(source);
+    expect(tags.length).toBe(14);
+    const offenders = tags.filter((attrs) =>
+      /\b(?:[a-z]+:)?text-(?:lg|2xl|4xl|5xl)\b/.test(attrs)
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it('gives every heading an explicit size and an explicit level', async () => {
+    const source = await pageSource();
+    const tags = headingTags(source);
+    expect(tags.length).toBe(14);
+    for (const attrs of tags) {
+      // UI-SPEC §4.4: every migrated call site records its rung rather than
+      // inheriting one from the level.
+      expect(attrs, attrs).toMatch(/\bsize="(?:display|heading|body|label)"/);
+      expect(attrs, attrs).toMatch(/\blevel=\{[1-6]\}/);
+    }
+  });
+
+  // P4. The level distribution is the thing the migration must not move, and it is
+  // asserted HERE per surface as well as tree-wide in `typeScaleTouchedSurfaces`.
+  it('preserves the level distribution across the migration', async () => {
+    const source = await pageSource();
+    const counts: Record<string, number> = {};
+    for (const attrs of headingTags(source)) {
+      const lvl = /\blevel=\{([1-6])\}/.exec(attrs)?.[1] as string;
+      counts[lvl] = (counts[lvl] ?? 0) + 1;
+    }
+    expect(counts).toEqual({ '1': 1, '2': 7, '3': 4, '4': 2 });
+  });
+
+  // The two h4s at 16 are the one judgement D-04's table does not make for us.
+  it('renders the two h4 sub-headings on the body rung', async () => {
+    const source = await pageSource();
+    const h4s = headingTags(source).filter((a) => /\blevel=\{4\}/.test(a));
+    expect(h4s).toHaveLength(2);
+    for (const attrs of h4s) expect(attrs).toMatch(/\bsize="body"/);
+  });
+
+  // A-1: the page title WRAPS. `Heading`'s base is `wrap-anywhere`, and a call-site
+  // `truncate` would be a clip policy fighting it.
+  it('leaves no clip utility on the page title', async () => {
+    const source = await pageSource();
+    const h1 = headingTags(source).filter((a) => /\blevel=\{1\}/.test(a));
+    expect(h1).toHaveLength(1);
+    expect(h1[0]).not.toMatch(/\b(?:truncate|line-clamp-\d|text-ellipsis|whitespace-nowrap)\b/);
+  });
+
+  // Plan 08 re-pointed `ModalAction` at `Button` internally and left the call-site
+  // API untouched, so a sweep that "helpfully" converted these to `<Button>` would
+  // break the contract that plan preserved. Pinned so the non-change is visible.
+  it('leaves the two `Modal.Action` call sites on their own API', async () => {
+    const source = await pageSource();
+    // Matched to end-of-line, not to the first `>`: an arrow function in the handler
+    // carries a `>` of its own, and a `[^>]*` form truncates there and pins a prefix.
+    const actions = [...source.matchAll(/<Modal\.Action\s.*$/gm)].map((m) => m[0]);
+    expect(actions).toEqual([
+      '<Modal.Action variant="secondary" onClick={() => setBggImportPromptOpen(false)}>',
+      '<Modal.Action variant="primary" onClick={importBGGCollection}>',
+    ]);
+  });
+
+  // §3.4 rule 3 / AC-3: on a `.btn` element `text-*`, `p*-`, `font-*`, `rounded-*`
+  // and `gap-*` are DEAD, so carrying one is a lie about what paints.
+  it('leaves no dead class on any `Button` in this file', async () => {
+    const source = await pageSource();
+    const buttons = [...source.matchAll(/<Button\n((?:\s+[^\n]*\n)*?)\s*>/g)].map((m) => m[1]);
+    expect(buttons.length).toBeGreaterThanOrEqual(13);
+    for (const attrs of buttons) {
+      const cls = /className="([^"]*)"/.exec(attrs)?.[1] ?? '';
+      for (const token of cls.split(/\s+/).filter(Boolean)) {
+        expect(
+          /^(?:[a-z0-9]+:)?(?:text-(?:xs|sm|base|lg|xl|2xl|3xl)|p[xytrbl]?-[\w.]+|font-(?:medium|semibold|bold)|rounded(?:-[\w.]+)?|gap-[\w.]+)$/.test(
+            token
+          ),
+          `${token} is dead on a .btn element`
+        ).toBe(false);
+      }
     }
   });
 
@@ -1142,36 +1378,53 @@ describe('userProfile microcopy (Req 7)', () => {
   // upstream message as its entire body, with no action offered. Asserted at
   // RUNTIME rather than by grepping the source — a source grep for the
   // interpolation also matches the marker that explains why it was removed.
+  //
+  // AMENDED Phase 88.6-17 (AC-2 convert-on-touch): the developer half of this pin
+  // moved CHANNEL. It used to assert `console.error` was called; the report is now a
+  // Sentry breadcrumb via `logger.info`, emitted from a guarded top-level effect rather
+  // than from the render body. The PROPERTY is unchanged and is what is asserted — the
+  // upstream text reaches the developer and never the person — so this is a re-aim, not
+  // a weakening. Asserting the new channel rather than deleting the half is deliberate:
+  // an in-place swap here would have flooded the session's finite breadcrumb buffer, and
+  // a pin that stopped watching would not have noticed the report disappearing entirely.
   it('renders designed copy, not the raw error, when the session errors', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      h.authError = new Error('ECONNREFUSED 10.0.0.4:5432 — pool exhausted');
-      renderProfile();
+    h.authError = new Error('ECONNREFUSED 10.0.0.4:5432 — pool exhausted');
+    renderProfile();
 
-      expect(
-        await screen.findByText("We couldn't load your profile")
-      ).toBeInTheDocument();
-      // The upstream text reaches the developer, never the person.
-      expect(screen.queryByText(/ECONNREFUSED/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/pool exhausted/)).not.toBeInTheDocument();
-      expect(consoleError).toHaveBeenCalled();
-    } finally {
-      consoleError.mockRestore();
-    }
+    expect(
+      await screen.findByText("We couldn't load your profile")
+    ).toBeInTheDocument();
+    // The upstream text reaches the developer, never the person.
+    expect(screen.queryByText(/ECONNREFUSED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pool exhausted/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(loggerMock().info).toHaveBeenCalledWith(
+        'Auth0 session error on /userProfile:',
+        expect.objectContaining({ message: expect.stringContaining('ECONNREFUSED') })
+      )
+    );
+    // And the raw console channel this file used to write to is gone.
+    expect(loggerMock().error).not.toHaveBeenCalled();
+  });
+
+  // AC-2: the effect is GUARDED. Without the `if (!error) return;` it would fire on every
+  // error-free load and evict the session's other breadcrumbs.
+  it('files no session-error breadcrumb on an error-free load', async () => {
+    renderProfile();
+    await screen.findByRole('heading', { name: 'Notification Preferences' });
+    expect(loggerMock().info).not.toHaveBeenCalledWith(
+      'Auth0 session error on /userProfile:',
+      expect.anything()
+    );
   });
 
   // The branch was also a dead end — one red line and nothing to click.
   it('offers a way out of the session-error screen', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      h.authError = new Error('boom');
-      renderProfile();
-      expect(
-        await screen.findByRole('button', { name: 'Reload page' })
-      ).toBeInTheDocument();
-    } finally {
-      consoleError.mockRestore();
-    }
+    h.authError = new Error('boom');
+    renderProfile();
+    expect(
+      await screen.findByRole('button', { name: 'Reload page' })
+    ).toBeInTheDocument();
   });
 
   // Errors state what failed AND what to do next (§6.1). Deliberately worded so
@@ -1342,6 +1595,431 @@ describe('userProfile save-status slots (DEF-88-10-02)', () => {
 // body. Before H1 it discarded it: a wrong code marked the phone verified in
 // local state and the immortal self cache while the DB row stayed false — the
 // SMS toggles enabled and SMS silently never sent. These pins hold the gate.
+// ===========================================================================
+// Plan 88.6-17 — the sms_enabled phone block and the theme toggles
+// ===========================================================================
+// Every arm below was run against the PRE-SWEEP component (or a deliberately
+// planted wrong fix) before being accepted; the red-then-green ledger is in
+// `88.6-17-SUMMARY.md`. jsdom performs no layout and loads no stylesheet, so no
+// arm here asserts a width, a height or a computed style — the geometry half is
+// the rendered 375px measurement recorded in the summary.
+// ---------------------------------------------------------------------------
+
+describe('userProfile phone block (plan 88.6-17)', () => {
+  const VALID = '+1 415 555 2671';
+
+  async function reachEditing() {
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    const phone = await screen.findByRole('textbox', { name: 'Phone number' });
+    fireEvent.change(phone, { target: { value: VALID } });
+    return phone;
+  }
+
+  async function reachVerifying() {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    await reachEditing();
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
+    await screen.findByRole('textbox', { name: 'Verification code' });
+  }
+
+  // R3 #13 / T-88.6-147. The defect: `'input'` and `'saving'` were SIBLING branches, so
+  // pressing Save & Verify destroyed the focused element and dropped focus to <body>
+  // mid-submit. The property is a DOM fact and needs no layout.
+  it('keeps the pressed Save & Verify control mounted and focused while the request is in flight', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    await reachEditing();
+    const save = screen.getByRole('button', { name: 'Save & Verify' });
+    save.focus();
+    expect(document.activeElement).toBe(save);
+
+    fireEvent.click(save);
+
+    // Settle on the POSITIVE signal — the in-flight label landing on the SAME node —
+    // rather than on an absence, which is satisfied on the first tick.
+    await waitFor(() => expect(save).toHaveTextContent('Sending code...'));
+    expect(save.isConnected).toBe(true);
+    expect(document.activeElement).toBe(save);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toBeDisabled();
+
+    release({});
+    await screen.findByRole('textbox', { name: 'Verification code' });
+  });
+
+  // The other half of the same pair. An `aria-disabled` control with no handler refusal is
+  // a re-submittable button — and the shipped `resendCooldown > 0` guard shape cannot help
+  // here at all, because nothing is set before the await.
+  it('dispatches savePhone exactly once when Save & Verify is pressed three times in flight', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    await reachEditing();
+    const save = screen.getByRole('button', { name: 'Save & Verify' });
+    fireEvent.click(save);
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(usersAPI.savePhone).toHaveBeenCalledTimes(1);
+    release({});
+    await screen.findByRole('textbox', { name: 'Verification code' });
+  });
+
+  // Rule of KIND: a precondition gate sits on a control nobody has activated, so it stays
+  // native. Only the control the user is standing on moves to `aria-disabled`.
+  it('leaves the invalid-input and incomplete-code precondition gates natively disabled', async () => {
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    const save = await screen.findByRole('button', { name: 'Save & Verify' });
+    expect(save).toBeDisabled();
+    expect(save).not.toHaveAttribute('aria-disabled');
+
+    cleanup();
+    await reachVerifying();
+    const code = screen.getByRole('textbox', { name: 'Verification code' });
+    const verify = within(code.parentElement as HTMLElement).getByRole('button', { name: 'Verify' });
+    expect(verify).toBeDisabled();
+    expect(verify).not.toHaveAttribute('aria-disabled');
+  });
+
+  // D-11 / §3.4 rule 3 / §3.5: on the primitive, with the dead classes gone and the floor
+  // supplied by the cva base rather than by a call-site utility.
+  it('renders the migrated phone-block controls as `Button` with the primitive floor and no dead classes', async () => {
+    await reachEditing();
+    const save = screen.getByRole('button', { name: 'Save & Verify' });
+    const classes = save.className.split(/\s+/);
+    expect(classes).toContain('btn');
+    expect(classes).toContain('btn-primary');
+    expect(classes).toContain('min-h-11');
+    expect(classes).not.toContain('bg-indigo-600');
+    for (const dead of ['text-sm', 'px-4', 'py-2', 'rounded-lg', 'font-semibold', 'gap-2']) {
+      expect(classes, `${dead} is dead on a .btn element and must not survive`).not.toContain(dead);
+    }
+  });
+
+  // D-8. The countdown is a label the user has to READ, so it must not be washed out by
+  // `.btn:disabled { opacity: .5 }` — which is exactly what keeping the native attribute
+  // would have done, while ghost's gated ink (keyed on `aria-disabled:`) never fired.
+  it('gates Resend with aria-disabled, never natively, and keeps the countdown ink readable', async () => {
+    await reachVerifying();
+    const resend = screen.getByRole('button', { name: 'Resend code' });
+    expect(resend).not.toBeDisabled();
+
+    fireEvent.click(resend);
+    const cooling = await screen.findByRole('button', { name: /^Resend in \d+s$/ });
+    expect(cooling).toHaveAttribute('aria-disabled', 'true');
+    expect(cooling).not.toBeDisabled();
+    const classes = cooling.className.split(/\s+/);
+    expect(classes).toContain('aria-disabled:text-content-muted');
+    expect(classes.some((c) => /^disabled:opacity-/.test(c))).toBe(false);
+  });
+
+  // R2 #29 / T-88.6-146. This control's per-press side effect is an outbound SMS — the one
+  // control in this phase with a money cost per press. `setResendCooldown(60)` runs AFTER
+  // the await, so the shipped cooldown guard passes for the whole in-flight window.
+  it('dispatches one outbound SMS when Resend is pressed three times in flight', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    await reachVerifying();
+
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockClear();
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    const resend = screen.getByRole('button', { name: 'Resend code' });
+    fireEvent.click(resend);
+    fireEvent.click(resend);
+    fireEvent.click(resend);
+
+    expect(usersAPI.savePhone).toHaveBeenCalledTimes(1);
+    release({});
+    await screen.findByRole('button', { name: /^Resend in \d+s$/ });
+  });
+
+  // R2 #29, second defect: the ticker was a LOCAL `const timer`, cleared only by its own
+  // tick, so an unmount mid-countdown leaked it.
+  it('clears the cooldown ticker on unmount', async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    try {
+      await reachVerifying();
+      fireEvent.click(screen.getByRole('button', { name: 'Resend code' }));
+      await screen.findByRole('button', { name: /^Resend in \d+s$/ });
+
+      const timerId = setIntervalSpy.mock.results.at(-1)?.value;
+      expect(timerId).toBeDefined();
+      clearIntervalSpy.mockClear();
+      cleanup();
+      expect(clearIntervalSpy).toHaveBeenCalledWith(timerId);
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    }
+  });
+
+  // A10 / T-88.6-43 + T-88.6-41. These three stay RAW `<button>`s: `.btn`'s unlayered
+  // `font-weight: 600` would render both arms of the Remove ternary at 600 and delete the
+  // armed cue on the SOLE path to removing a verified phone number. This arm pins the
+  // MECHANISM and the preserved ink; the 44px measurement is the rendered one.
+  it('floors the token-inked block controls in place, keeps them off the primitive, and preserves the armed cue', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+    const change = await screen.findByRole('button', { name: 'Change number' });
+    const remove = screen.getByRole('button', { name: 'Remove' });
+
+    for (const el of [change, remove]) {
+      const classes = el.className.split(/\s+/);
+      expect(classes).toContain('min-h-11');
+      expect(classes, 'these are floored IN PLACE, not migrated').not.toContain('btn');
+      expect(classes).toContain('focus-visible:ring-focus-ring');
+      expect(classes).toContain('focus-visible:ring-offset-2');
+    }
+    expect(remove.className).toMatch(/\btext-content-status-error\b/);
+
+    fireEvent.click(remove);
+    const armed = screen.getByRole('button', { name: 'Tap again to remove' });
+    expect(armed.className).toMatch(/\bfont-semibold\b/);
+    expect(usersAPI.removePhone).not.toHaveBeenCalled();
+  });
+
+  it('floors the SMS-disabled banner dismiss in place and leaves its glyph sizing alone', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sms_enabled: true,
+      phone: null,
+      notification_preferences: DEFAULT_PREFS,
+    });
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
+
+    const dismiss = await screen.findByRole('button', { name: 'Dismiss' });
+    const classes = dismiss.className.split(/\s+/);
+    expect(classes).toContain('min-h-11');
+    expect(classes).toContain('min-w-11');
+    expect(classes).toContain('focus-visible:ring-focus-ring');
+    // §4.3: a glyph-only control is ICON sizing, never a type rung — byte-unchanged.
+    expect(classes).toContain('text-lg');
+  });
+});
+
+describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () => {
+  // W19's precondition, asserted HERE as well as in `cascadeOrder.test.ts`, because this is
+  // the file whose controls lose a visible border if the reset goes back to being unlayered
+  // — and that failure is silent.
+  it('W19: the `.btn` border reset is inside `@layer components`', async () => {
+    const css = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/app/globals.css', 'utf8')
+    );
+    expect(css).toMatch(/@layer components\s*\{\s*\.btn\s*\{\s*border:\s*none;\s*\}\s*\}/);
+  });
+
+  // D-11 outcome (a). The fill is byte-unchanged (P6) and the border survives (W19).
+  it('renders both theme toggles as `Button` with their fills, borders and pressed state intact', async () => {
+    renderProfile();
+    const light = await screen.findByRole('button', { name: 'Light' });
+    const dark = screen.getByRole('button', { name: 'Dark' });
+    const lightClasses = light.className.split(/\s+/);
+
+    expect(lightClasses).toContain('btn');
+    expect(lightClasses).toContain('min-h-11');
+    expect(light).toHaveAttribute('aria-pressed', 'true');
+    expect(dark).toHaveAttribute('aria-pressed', 'false');
+
+    // P6: the fill and the amber border are byte-unchanged.
+    expect(lightClasses).toContain('bg-amber-50');
+    expect(lightClasses).toContain('border-amber-500');
+    expect(lightClasses).toContain('border');
+    // `resolvedTheme` is mocked 'light', so Dark renders its UNSELECTED arm here.
+    expect(dark.className.split(/\s+/)).toContain('bg-surface-card');
+    expect(dark.className.split(/\s+/)).toContain('border-line');
+    // The selected DARK arm is unreachable under this mock, so its fill and its hover pin
+    // are held at the source rather than left unasserted.
+    const source = await pageSource();
+    expect(source).toContain("'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'");
+
+    // The selected fill is PINNED through hover: ghost's base carries
+    // `enabled-hover:bg-surface-hover`, which would otherwise wash the amber on hover.
+    expect(lightClasses).toContain('enabled-hover:bg-amber-50');
+    expect(lightClasses).not.toContain('enabled-hover:bg-surface-hover');
+
+    // The dead classes went with the migration.
+    for (const dead of ['px-4', 'py-2', 'rounded-lg', 'font-semibold', 'gap-2']) {
+      expect(lightClasses).not.toContain(dead);
+    }
+  });
+
+  // Owner ruling 175 (2026-09-14). The property is the landmark's accessible NAME, so it is
+  // asserted by a role-plus-name query and not by pinning the attribute.
+  it('names the breadcrumb landmark', async () => {
+    renderProfile();
+    expect(
+      await screen.findByRole('navigation', { name: 'Breadcrumb' })
+    ).toBeInTheDocument();
+  });
+
+  // T-88.6-138: once the current-page span drops to 400, colour is the only remaining
+  // VISUAL cue, so the state is exposed programmatically as well.
+  it('exposes the breadcrumb current page programmatically, at 400', async () => {
+    renderProfile();
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    const current = within(nav).getByText('Profile');
+    expect(current).toHaveAttribute('aria-current', 'page');
+    const classes = current.className.split(/\s+/);
+    expect(classes).toContain('font-normal');
+    expect(classes).not.toContain('font-semibold');
+    expect(classes).toContain('text-content-primary');
+  });
+
+  // D-01 / T-88.6-42: legal text is never caption-sized.
+  it('renders the TCPA disclosure at 14, with its three inner spans dispositioned', async () => {
+    renderProfile({ sms_enabled: true });
+    const label = await screen.findByText('SMS Notifications Disclosure');
+    expect(label.className.split(/\s+/)).toContain('text-sm');
+    expect(label.className.split(/\s+/)).toContain('font-bold');
+    expect(label.className.split(/\s+/)).not.toContain('text-xs');
+
+    const stop = screen.getByText('STOP');
+    const body = stop.parentElement as HTMLElement;
+    expect(body.className.split(/\s+/)).toContain('text-sm');
+    expect(body.className.split(/\s+/)).not.toContain('text-xs');
+
+    // STOP / HELP keep `font-mono`, a NON-COLOUR cue, so they drop to 400.
+    for (const keyword of ['STOP', 'HELP']) {
+      const span = screen.getByText(keyword);
+      expect(span.className.split(/\s+/)).toContain('font-mono');
+      expect(span.className.split(/\s+/)).toContain('font-normal');
+    }
+    // The brand span has no surviving non-colour cue, so it takes 700 rather than
+    // 400-plus-colour, which would leave a colour-only distinction inside legal text.
+    expect(screen.getByText('NextGameNight').className.split(/\s+/)).toContain('font-bold');
+
+    // P1: the wording is byte-unchanged.
+    expect(body.textContent).toContain(
+      'Consent is not a condition of using the service.'
+    );
+  });
+});
+
+// ===========================================================================
+// Plan 88.6-17 task 3 — the type/weight sweep and the muted-ground re-ink
+// ===========================================================================
+
+describe('userProfile type + weight sweep (plan 88.6-17)', () => {
+  // D-16 / T-88.6-42's sibling: `text-content-link` on `bg-surface-muted` measures 3.9909,
+  // below AA. It was never a LINK — zero of the 61 `text-content-link` sites on this ground
+  // is — so the token was wrong, not the ground.
+  it('re-inks the import-progress banner off the failing muted pairing', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (userGamesAPI.importBGGCollection as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    renderProfile();
+    const field = await screen.findByRole('textbox', { name: 'BoardGameGeek username' });
+    fireEvent.change(field, { target: { value: 'someone' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+
+    const banner = (await screen.findByText('Fetching your BGG collection...')).parentElement as HTMLElement;
+    const classes = banner.className.split(/\s+/);
+    expect(classes).toContain('bg-surface-muted');
+    expect(classes).toContain('text-content-secondary');
+    expect(classes).not.toContain('text-content-link');
+    release({ imported: 0 });
+  });
+
+  // D-03's floor for this file, held as an ENUMERATION rather than a count: the five 600s that
+  // survive are named, so a sixth is a decision and not a rebase.
+  it('leaves exactly five 600 weights, all of them armed-state or the armed-label sizer', async () => {
+    const source = await pageSource();
+    const stripped = source
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+    const sites = [...stripped.matchAll(/\bfont-(?:medium|semibold)\b/g)];
+    expect(sites).toHaveLength(5);
+    expect(sites.every((m) => m[0] === 'font-semibold')).toBe(true);
+
+    // Each survivor sits within reach of the thing that justifies it.
+    const windows = sites.map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60));
+    const armed = windows.filter((w) => /isArmed|removeArmed/.test(w));
+    const sizer = windows.filter((w) => /aria-hidden="true"[^>]*invisible/.test(w));
+    expect(armed.length + sizer.length).toBe(5);
+    expect(sizer).toHaveLength(1);
+  });
+
+  // P1 / 88-UI-SPEC §6.2 OI-5 / D-12: the existing toasts are OUT OF CONTRACT by decision and
+  // must survive the sweep untouched. Pinned as the exact SET, not as a count, because a count
+  // survives a reworded string.
+  it('leaves every existing toast string byte-unchanged', async () => {
+    const source = await pageSource();
+    // The quote class is `(?!\1)[^\\]` and not `[^'"]`: the Google Calendar error toast is a
+    // DOUBLE-quoted string containing an apostrophe, and a naive class drops it silently — an
+    // out-of-contract string escaping the pin that exists to protect it.
+    const strings = [
+      ...source.matchAll(/toast(?:\.(?:success|error))?\(\s*(['"])((?:\\.|(?!\1)[^\\])*)\1/g),
+    ].map((m) => m[2]);
+    expect(strings).toEqual([
+      'Still loading your account — please try again in a moment.',
+      'Please enter a username',
+      'Username must be 50 characters or less',
+      'Still loading your account — please try again in a moment.',
+      'Username updated',
+      "We couldn't connect Google Calendar. Please try again.",
+      'Google Calendar disconnected',
+      'Still loading your account — please try again in a moment.',
+      'No games found. Try a different search term.',
+      'Still loading your account — please try again in a moment.',
+      'Game added',
+      'Still loading your account — please try again in a moment.',
+      'Game removed',
+      'Please select at least one day.',
+      'Start time must be before end time.',
+      'Schedules created',
+      'Start time must be before end time.',
+      'Override created',
+      'Pattern deleted',
+      'Please enter your BGG username',
+      'Still loading your account — please try again in a moment.',
+    ]);
+    // And none of them drifted into the chattier register OI-5 closed.
+    for (const value of strings) expect(value).not.toMatch(/successfully/i);
+  });
+
+  // §4.3: a glyph-only control is ICON sizing. It leaves the type scale and is never converged.
+  it('leaves the glyph-only dismiss on its icon size', async () => {
+    const source = await pageSource();
+    const dismiss = /className="(-m-2 inline-flex[^"]*)"/.exec(source)?.[1] ?? '';
+    expect(dismiss.split(/\s+/)).toContain('text-lg');
+  });
+
+  // T-88.6-138's general half (R2 #171): the breadcrumb is the one site in this file where the
+  // weight was carrying INFORMATION, and it gained a programmatic cue in the same edit. The
+  // timezone picker's current-row highlight is the second; it is pinned here so the sweep cannot
+  // net to a colour-only "this is your timezone".
+  it('exposes the current timezone programmatically, not by colour alone', async () => {
+    renderProfile();
+    const tz = await screen.findByRole('combobox', { name: 'Timezone' });
+    fireEvent.focus(tz);
+    await waitFor(() => expect(tz).toHaveAttribute('aria-expanded', 'true'));
+    const current = await screen.findByText('America/New York');
+    expect(current).toHaveAttribute('aria-current', 'true');
+    expect(current.className).not.toMatch(/\bfont-medium\b/);
+    expect(current.className).toMatch(/\btext-content-link\b/);
+  });
+});
+
 describe('phone verification — wrong code shows error, never verifies (H1)', () => {
   async function reachArmedVerify() {
     renderProfile({ sms_enabled: true, phone_verified: false });

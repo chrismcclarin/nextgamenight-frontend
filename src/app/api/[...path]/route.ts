@@ -104,8 +104,37 @@ async function proxy(
   const method = request.method.toUpperCase();
 
   // CSRF gate on state-changing methods, BEFORE any backend forward.
+  /* DECISION Phase 88.6-23 (D-46 / T-88.6-149): the body carries `csrf_rejected: true` — a
+     STRUCTURAL marker, chosen OVER (a) leaving the body as a bare `{ error }` and (b) giving it
+     an envelope `code`.
+
+     WHY A MARKER IS NEEDED AT ALL. This gate is the SECOND source of a code-less 403 on every
+     unsafe-method call that traverses this proxy; the first is whatever the backend handler
+     refuses with. `mapErrorToCode` (`src/lib/api.ts`) therefore resolves BOTH to
+     `statusToCode(403)` = `'forbidden'`, and a consumer that keys a specific outcome on
+     `err.code === 'forbidden'` cannot tell them apart. The live case is
+     `src/app/invite/accept/page.js`, whose wrong-email arm would otherwise tell a
+     CSRF-rejected visitor their invite was sent to a different email address.
+
+     WHY NOT AN ENVELOPE `code`. `ApiErrorCode` is a closed union and `MESSAGE_BY_CODE`
+     (`useFetchErrorState.ts`) is EXHAUSTIVE over it by design, so a new member costs a union
+     row plus ratified copy plus a `NON_RETRYABLE_API_CODES` row — and a code OUTSIDE the union
+     is the silent-pass-through hazard that Record's own docblock exists to prevent.
+
+     WHY NOT MATCH THE PROSE. `'Cross-origin request rejected'` reaches the consumer today only
+     through `extractErrorMessage`'s `body.error` alias, which plan 88.6-42 DROPS in wave 8; and
+     reading `err.details.error` instead would trip `errorEnvelopeReads.test.ts` (whose scanner
+     matches `X.error` on any receiver) at a site that is not on its roster. A field the scanner
+     does not match, that survives the alias drop, is the only shape that works in both.
+
+     ADDITIVE AND CLOSED: nothing else reads this key; the message is unchanged; it leaks
+     nothing the message does not already say. Removing it re-opens the wrong-email
+     mis-attribution, so it is a decision, not a cleanup. */
   if (UNSAFE_METHODS.has(method) && !isSameOriginRequest(request)) {
-    return NextResponse.json({ error: 'Cross-origin request rejected' }, { status: 403 });
+    return NextResponse.json(
+      { error: 'Cross-origin request rejected', csrf_rejected: true },
+      { status: 403 }
+    );
   }
 
   const segments = params.path ?? [];

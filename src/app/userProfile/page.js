@@ -44,6 +44,13 @@ import { Combobox } from '../../components/ui/Combobox';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+// AC-2 convert-on-touch (owner ruling 2026-09-09; LEVEL AMENDED 2026-09-13). This file's
+// 20 raw console calls route through the house logger at `info`, which is
+// Sentry.addBreadcrumb (logger.ts:34-36) — a BREADCRUMB, not an event. `errCtx` is the
+// shared name+message builder (88.6-13); the raw Error is never passed as `ctx`.
+import { logger, errCtx } from '../../lib/logger';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -80,7 +87,20 @@ const REMINDER_WINDOWS = [
 
    `text-lg` (18) and `text-2xl` (24) both appeared on this surface and are gone
    deliberately — they are not in the working set. So are the `md:`-prefixed
-   heading sizes: a heading that grows at a breakpoint is a second scale. */
+   heading sizes: a heading that grows at a breakpoint is a second scale.
+
+   ——— AMENDED Phase 88.6-17, 2026-09-16 (D-04 / D-05) ———
+   All FOURTEEN headings on this surface now render through the `Heading` primitive,
+   so the three roles above are supplied by `size` — `display` (30), `heading` (20),
+   `body` (16) — and the 700 by the primitive's own cva base, instead of by class
+   strings at each site. Nothing about the ROLES changed and every LEVEL is preserved
+   (P4); only where they come from did. Two consequences worth stating, because a
+   reader who greps this file for `text-xl` or `font-bold` on a heading will now find
+   nothing: the weight is no longer overridable at a call site (which is the point —
+   §4.2 states 700/400 as a prohibition on 600), and the three heading tags that
+   appear in COMMENT PROSE further down are prose, not markup, and were deliberately
+   left alone. The h4-at-16 pair is `size="body"`: D-04's table has no h4@16 row, and
+   16 is a rung, so "stays" is the mechanical read — recorded rather than assumed. */
 
 /**
  * The status a notification ROW shows, derived from its two per-channel slots
@@ -209,6 +229,29 @@ function Profile(){
     const [verificationCode, setVerificationCode] = useState('');
     const [phoneError, setPhoneError] = useState(null);
     const [resendCooldown, setResendCooldown] = useState(0);
+
+    /* DECISION Phase 88.6-17 (R2 #29 / T-88.6-146, T-88.6-147): the two phone-flow senders
+       carry a SYNCHRONOUS in-flight latch as their handler's first statement, released in a
+       `finally` — chosen OVER relying on the rendered gate alone.
+
+       WHICH WINDOW THE SHIPPED GUARD COVERS. `handleResendCode`'s `if (… || resendCooldown > 0)`
+       early return guards the COOLDOWN window ONLY: `setResendCooldown(60)` runs AFTER the
+       `await usersAPI.savePhone(...)`, so `resendCooldown` is still 0 for the whole in-flight
+       window and that guard PASSES. D-8 removes this control's native `disabled` attribute, and
+       `aria-disabled` refuses nothing at the DOM level — so without the latch a second press
+       while the first request is in flight dispatches a second outbound SMS, the one per-press
+       money cost in this phase. The same shape applies to Save & Verify once its in-flight arm
+       moves to `aria-disabled` (R3 #13): the pressed control now SURVIVES the submit, which is
+       the point, and a surviving control can be pressed again.
+
+       Both halves land together or neither does: an `aria-disabled` control with no handler
+       refusal is a re-submittable button. Removing either one is a decision, not a cleanup. */
+    const saveInFlightRef = useRef(false);
+    const resendInFlightRef = useRef(false);
+    /* R2 #29, second defect: the cooldown ticker used to be a LOCAL `const timer`, cleared only
+       by its own tick — nothing cancelled it on unmount. Held in a ref and cleared in the
+       existing unmount effect below, alongside removeArmedTimerRef. */
+    const resendTimerRef = useRef(null);
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -417,7 +460,10 @@ function Profile(){
                 // sections the hand-rolled panel drew by hand.
                 group: slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other',
                 label: (
-                    <span className={tz.value === timezone ? 'font-medium text-content-link' : undefined}>
+                    <span
+                        aria-current={tz.value === timezone ? 'true' : undefined}
+                        className={tz.value === timezone ? 'text-content-link' : undefined}
+                    >
                         {tz.value.replace(/_/g, ' ')}
                         {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
                     </span>
@@ -482,7 +528,7 @@ function Profile(){
             await usersAPI.resetTutorial(selfUuid);
             replayTutorial();
         } catch (error) {
-            console.error('Error replaying tutorial:', error);
+            logger.info('Error replaying tutorial:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't restart the tour. Please try again.",
@@ -522,11 +568,16 @@ function Profile(){
     };
 
     const handleSaveAndVerify = async () => {
+        // R3 #13 / T-88.6-147: the in-flight refusal, synchronous and FIRST. The rendered
+        // control is `aria-disabled` while saving, not natively `disabled`, so it stays in the
+        // document (and keeps focus) — see the marker on `saveInFlightRef`.
+        if (saveInFlightRef.current) return;
         if (!user?.sub || !phoneValidation.valid) return;
         if (!selfUuid) {
             setPhoneError('Still loading your account — please try again in a moment.');
             return;
         }
+        saveInFlightRef.current = true;
         try {
             setPhoneState('saving');
             setPhoneError(null);
@@ -537,7 +588,7 @@ function Profile(){
             patchSelfCache(queryClient, { phone: phoneInput, phone_verified: false });
             setPhoneState('verifying');
         } catch (error) {
-            console.error('Error saving phone:', error);
+            logger.info('Error saving phone:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't send the code. Check the number and try again.",
@@ -545,6 +596,9 @@ function Profile(){
                 })
             );
             setPhoneState('editing');
+        } finally {
+            // Released in `finally` so a FAILED request does not strand the control.
+            saveInFlightRef.current = false;
         }
     };
 
@@ -576,7 +630,7 @@ function Profile(){
             setUserData(prev => (prev ? { ...prev, phone: phoneInput, phone_verified: true } : prev));
             patchSelfCache(queryClient, { phone: phoneInput, phone_verified: true });
         } catch (error) {
-            console.error('Error verifying code:', error);
+            logger.info('Error verifying code:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't check that code. Please try again.",
@@ -596,40 +650,57 @@ function Profile(){
     };
 
     const handleResendCode = async () => {
+        // R2 #29 / T-88.6-146: the IN-FLIGHT refusal, synchronous and FIRST. The line below
+        // guards the COOLDOWN window only — `setResendCooldown(60)` runs after the await, so
+        // during the request `resendCooldown` is still 0 and that guard passes. This control's
+        // per-press side effect is an outbound SMS.
+        if (resendInFlightRef.current) return;
         if (!user?.sub || resendCooldown > 0) return;
         if (!selfUuid) {
             setPhoneError('Still loading your account — please try again in a moment.');
             return;
         }
+        resendInFlightRef.current = true;
         try {
             setPhoneError(null);
             await usersAPI.savePhone(selfUuid, phoneInput);
             setResendCooldown(60);
-            const timer = setInterval(() => {
+            if (resendTimerRef.current) clearInterval(resendTimerRef.current);
+            resendTimerRef.current = setInterval(() => {
                 setResendCooldown(prev => {
                     if (prev <= 1) {
-                        clearInterval(timer);
+                        clearInterval(resendTimerRef.current);
+                        resendTimerRef.current = null;
                         return 0;
                     }
                     return prev - 1;
                 });
             }, 1000);
         } catch (error) {
-            console.error('Error resending code:', error);
+            logger.info('Error resending code:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't resend the code. Please try again.",
                 })
             );
+        } finally {
+            // Released in `finally` so a FAILED resend does not strand the control.
+            resendInFlightRef.current = false;
         }
     };
 
     // Cleanup the two-tap revert timer on unmount (mirrors KebabMenu lines 64-71).
+    // R2 #29: the resend cooldown ticker is cleared HERE too — an ADDITION to this effect's
+    // body, deliberately not a second unmount effect.
     useEffect(() => {
         return () => {
             if (removeArmedTimerRef.current) {
                 clearTimeout(removeArmedTimerRef.current);
                 removeArmedTimerRef.current = null;
+            }
+            if (resendTimerRef.current) {
+                clearInterval(resendTimerRef.current);
+                resendTimerRef.current = null;
             }
         };
     }, []);
@@ -678,7 +749,7 @@ function Profile(){
             setPhoneJustRemoved(true); // Session flag — gates the amber banner.
             setSmsDisabledBannerDismissed(false); // Reset dismissal so banner shows fresh.
         } catch (error) {
-            console.error('Error removing phone:', error);
+            logger.info('Error removing phone:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't remove your number. Please try again.",
@@ -747,7 +818,7 @@ function Profile(){
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
             setSaveStatus(slot, 'saved', 2000);
         } catch (error) {
-            console.error('Error updating preference:', error);
+            logger.info('Error updating preference:', errCtx(error));
             setPreferences(previousPrefs);
             setSaveStatus(slot, 'error', 3000);
         }
@@ -773,7 +844,7 @@ function Profile(){
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
             setSaveStatus(REMINDER_WINDOW_SLOT, 'saved', 2000);
         } catch (error) {
-            console.error('Error updating reminder window:', error);
+            logger.info('Error updating reminder window:', errCtx(error));
             setPreferences(previousPrefs);
             setSaveStatus(REMINDER_WINDOW_SLOT, 'error', 3000);
         }
@@ -795,7 +866,7 @@ function Profile(){
             patchSelfCache(queryClient, { notification_preferences: DEFAULT_PREFERENCES });
             setSaveStatus(RESET_SLOT, 'saved', 2000);
         } catch (error) {
-            console.error('Error resetting preferences:', error);
+            logger.info('Error resetting preferences:', errCtx(error));
             setPreferences(previousPrefs);
             setSaveStatus(RESET_SLOT, 'error', 3000);
         }
@@ -905,7 +976,7 @@ function Profile(){
             setEditingUsername(false);
             toast.success('Username updated');
         } catch (error) {
-            console.error('Error updating username:', error);
+            logger.info('Error updating username:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't save your username. Please try again.",
@@ -928,7 +999,7 @@ function Profile(){
             const status = await googleCalendarAPI.getStatus(selfUuid);
             setGoogleCalendarConnected(status.connected || false);
         } catch (error) {
-            console.error('Error checking Google Calendar status:', error.message);
+            logger.info('Error checking Google Calendar status:', errCtx(error));
             setGoogleCalendarConnected(false);
         } finally {
             setCheckingCalendarStatus(false);
@@ -991,7 +1062,7 @@ function Profile(){
             setGoogleCalendarConnected(false);
             toast.success('Google Calendar disconnected');
         } catch (error) {
-            console.error('Error disconnecting Google Calendar:', error);
+            logger.info('Error disconnecting Google Calendar:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't disconnect Google Calendar. Please try again.",
@@ -1033,7 +1104,7 @@ function Profile(){
             const games = await userGamesAPI.getOwnedGames(selfUuid);
             setOwnedGames(games || []);
         } catch (error) {
-            console.error('Error fetching owned games:', error);
+            logger.info('Error fetching owned games:', errCtx(error));
             setOwnedGames([]);
         } finally {
             setLoadingGames(false);
@@ -1050,7 +1121,7 @@ function Profile(){
                 toast('No games found. Try a different search term.');
             }
         } catch (error) {
-            console.error('Error searching BGG:', error);
+            logger.info('Error searching BGG:', errCtx(error));
             setBggSearchResults([]);
             /* DECISION Phase 88-25 (Req 14 / T-88-25-01): the BGG-unavailable case is selected by
                `ApiError.code`, chosen OVER the shipped `errorMessage.includes('401')` /
@@ -1101,7 +1172,7 @@ function Profile(){
             // without a receipt the only feedback is a panel vanishing.
             toast.success('Game added');
         } catch (error) {
-            console.error('Error adding game to collection:', error);
+            logger.info('Error adding game to collection:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't add that game. Please try again.",
@@ -1121,7 +1192,7 @@ function Profile(){
             await fetchOwnedGames();
             toast.success('Game removed');
         } catch (error) {
-            console.error('Error removing game from collection:', error);
+            logger.info('Error removing game from collection:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't remove that game. Please try again.",
@@ -1208,7 +1279,7 @@ function Profile(){
             // into it. The created rows are visible in the list directly below.
             toast.success('Schedules created');
         } catch (error) {
-            console.error('Error creating schedule:', error);
+            logger.info('Error creating schedule:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't save that schedule. Please try again.",
@@ -1242,7 +1313,7 @@ function Profile(){
             });
             toast.success('Override created');
         } catch (error) {
-            console.error('Error creating specific override:', error);
+            logger.info('Error creating specific override:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't save that override. Please try again.",
@@ -1259,7 +1330,7 @@ function Profile(){
             await patternsQuery.refetch();
             toast.success('Pattern deleted');
         } catch (error) {
-            console.error('Error deleting pattern:', error);
+            logger.info('Error deleting pattern:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't delete that entry. Please try again.",
@@ -1341,7 +1412,7 @@ function Profile(){
                 setImportProgress(null);
             }, 5000);
         } catch (error) {
-            console.error('Error importing BGG collection:', error);
+            logger.info('Error importing BGG collection:', errCtx(error));
             setImportProgress({
                 status: 'error',
                 message: getFetchErrorMessage(error, {
@@ -1352,6 +1423,41 @@ function Profile(){
             setImportingCollection(false);
         }
     };
+
+    /* DECISION Phase 88.6-17 (AC-2): the Auth0 session-error report is a GUARDED TOP-LEVEL
+       EFFECT — chosen OVER the IN-PLACE swap every one of this file's other nineteen
+       converted sites gets, and over escalating this one site to `logger.error`.
+
+       WHY NOT THE IN-PLACE SWAP. The report it replaces executed in the component's RENDER
+       BODY, inside the `if (error)` branch below — not in a handler, not in an effect. An
+       unlatched render-body report re-enters on EVERY paint, and the Sentry breadcrumb buffer
+       is finite (`@sentry/core/build/cjs/breadcrumbs.js:11`, DEFAULT_BREADCRUMBS = 100; nothing
+       sets `maxBreadcrumbs` in `sentry.client.config.js`). So an in-place swap would evict
+       every other breadcrumb in the session and destroy the diagnostic value of whatever event
+       that session later files. That is the same unbounded per-paint flood
+       `src/lib/colorUtils.js:583-602` already litigated and rejected — including the tempting
+       escape hatch, since `dedupeIntegration` compares only against the immediately preceding
+       event. That precedent is worded in EVENTS and these calls emit none; it is cited anyway
+       because it is the shipped LATCH idiom, and a latch is what an unbounded per-paint report
+       needs at ANY level.
+
+       WHY NOT `logger.error` HERE. (1) AC-2's uniformity is the property the owner's ruling
+       bought — executors do not re-decide the level per call. (2) It would not even deliver a
+       diagnostic: Auth0's `RequestError` calls a bare `super()` and carries its only detail on
+       `.status` (`@auth0/nextjs-auth0/dist/client/use-user.js`), so the message is empty and
+       the name is 'Error', and no extra-error-data integration is configured to carry `.status`
+       into the payload. An escalation here would file an empty-valued, fingerprint-collapsed
+       issue strictly LESS informative than the line it replaced.
+
+       The guard is part of the requirement, not a refinement: without it the effect fires on an
+       error-free load. `@auth0/nextjs-auth0`'s `error` identity is stable across renders, so a
+       guarded effect keyed on it reports once per distinct error. It is declared HERE, above the
+       early returns, because a hook inside the `if (error)` block is a conditional hook the
+       `react-hooks` rules reject. */
+    useEffect(() => {
+        if (!error) return;
+        logger.info('Auth0 session error on /userProfile:', errCtx(error));
+    }, [error]);
 
     // §6.3: loading copy NAMES the thing. Worded identically to this route's own
     // `loading.tsx` fallback so the boundary and the component do not greet the
@@ -1372,9 +1478,17 @@ function Profile(){
        The fallback ships both affordances.
 
        Deliberately NOT worded "failed to load" — plan 88-25 arms a negative gate
-       on that phrase across this file. */
+       on that phrase across this file.
+
+       ——— AMENDED Phase 88.6-17, 2026-09-16 (D12 / AC-2) ———
+       Clause (1)'s last sentence described a CHANNEL this file no longer has. Under AC-2's
+       convert-on-touch gate the developer-facing detail now travels as a Sentry BREADCRUMB,
+       emitted from the guarded top-level effect declared above, rather than to the browser's
+       developer output. The security half is UNCHANGED and is the load-bearing half: the
+       fallback still takes NO error prop by contract (ASVS V7), so no upstream message can
+       reach the DOM, and the move changes only where the developer detail goes — it does not
+       delete the report. The rest of this marker stands as written. */
     if (error) {
-        console.error('Auth0 session error on /userProfile:', error);
         return (
             <ErrorFallback
                 title="We couldn't load your profile"
@@ -1397,10 +1511,23 @@ function Profile(){
                         <p className="flex-1 text-sm text-amber-900 dark:text-amber-100">
                             SMS disabled — add a phone number to re-enable.
                         </p>
+                        {/* DECISION Phase 88.6-17 (A10 / T-88.6-43 + R3 finding 144): this dismiss stays a
+                            RAW `<button>` and is floored to 44x44 IN PLACE — chosen OVER migrating it
+                            to the primitive as an icon-sized ghost. `.btn`'s unlayered
+                            `font-size: .875rem` would shrink the `×` glyph, and `.btn`'s padding would
+                            widen a control that has to sit flush in a `flex items-start` banner row.
+                            `inline-flex` + `min-h-11 min-w-11` + `items-center justify-center` supply the
+                            floor without changing the glyph's own size or the row's rhythm; the negative
+                            `-m-2` keeps the banner's visual padding unchanged while the TAP TARGET grows
+                            outward. The INK classes and the glyph's `text-lg` icon sizing are
+                            byte-unchanged (§4.3: a glyph-only control is icon sizing, never a type rung).
+                            The focus ring is the house string `globals.css` states verbatim, added
+                            PER-SITE under the rule recorded there — this control carried none, so a
+                            keyboard or switch user got only whatever the UA supplies. */}
                         <button
                             type="button"
                             onClick={() => setSmsDisabledBannerDismissed(true)}
-                            className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0"
+                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                             aria-label="Dismiss"
                         >
                             ×
@@ -1408,11 +1535,20 @@ function Profile(){
                     </div>
                 )}
 
-                {/* Breadcrumbs */}
-                <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                {/* Breadcrumbs. Owner ruling 175 (2026-09-14): every breadcrumb `<nav>` in the
+                    tree carries an accessible NAME, so it does not announce as one more unnamed
+                    navigation landmark beside the page's others. This plan owns one of the five;
+                    plans 18 and 21 own the other four. */}
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                     <span className="text-content-muted mx-2">{'>'}</span>
-                    <span className="text-content-primary font-semibold">Profile</span>
+                    {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
+                        takes 400 plus a colour token, and gains `aria-current="page"` in the SAME
+                        edit — chosen OVER the colour token alone. Its `font-semibold` was the only
+                        thing distinguishing it from the sibling link; once that becomes 400, colour
+                        is the sole remaining VISUAL cue, so the state is exposed programmatically
+                        as well. Dropping `aria-current` later is a decision, not a cleanup. */}
+                    <span aria-current="page" className="text-content-primary font-normal">Profile</span>
                 </nav>
 
                 {/* Profile Header */}
@@ -1456,38 +1592,66 @@ function Profile(){
                                             autoFocus
                                         />
                                         <div className="flex gap-2">
-                                            <button
+                                            <Button
+                                                variant="primary"
                                                 onClick={handleSaveUsername}
                                                 disabled={savingUsername || !username.trim()}
-                                                className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
+                                                className="whitespace-nowrap"
                                             >
                                                 {savingUsername ? 'Saving...' : 'Save'}
-                                            </button>
-                                            <button
+                                            </Button>
+                                            <Button
+                                                variant="secondary"
                                                 onClick={() => {
                                                     setEditingUsername(false);
                                                     setUsername(userData?.username || user.name || user.email?.split('@')[0] || '');
                                                 }}
                                                 disabled={savingUsername}
-                                                className="btn btn-secondary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
+                                                className="whitespace-nowrap"
                                             >
                                                 Cancel
-                                            </button>
+                                            </Button>
                                         </div>
                                         <p className="text-xs text-content-muted">{username.length}/50</p>
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-2">
-                                        <h1 className="text-3xl font-bold text-content-primary truncate">
+                                        {/* DECISION Phase 88.6-17 (A-1): the page title's `truncate` is
+                                            DROPPED, chosen OVER keeping a single-line clip. `Heading`'s
+                                            cva base carries `wrap-anywhere`, so a call-site `truncate`
+                                            is a clip policy fighting a wrap policy, and only one of them
+                                            can be the shipped behaviour.
+
+                                            Dropping it is safe even though this flex parent carries no
+                                            `min-w-0`: `wrap-anywhere` is `overflow-wrap: anywhere`,
+                                            which DOES count in min-content, so a long unbroken username
+                                            breaks itself rather than widening the column and inducing
+                                            horizontal scroll at 375px. That is the exact case the
+                                            `truncate` existed for, and the primitive handles it without
+                                            hiding the rest of the name.
+
+                                            The phone reading is what settles it: at 375px a clip shows
+                                            the first few characters of a long username and no way to see
+                                            the rest; wrapping shows all of it and costs one line.
+                                            Re-adding `truncate` here is a decision, not a cleanup —
+                                            `Heading.tsx`'s own docblock names this site as an owner of
+                                            that call. */}
+                                        <Heading level={1} size="display" className="text-content-primary">
                                             {userData?.username || user.name}
-                                        </h1>
+                                        </Heading>
                                         {/* §7.3: an icon-only control needs a real accessible
                                             name; the pencil glyph is the whole content, so
                                             without this the name announced was the emoji, and
                                             a `title` does not count. */}
+                                        {/* UI review 2026-09-30 (Top Fix 2, WINDOWS #33): the bare emoji measured
+                                            ~20x24 — below the 44px floor. Same negative-margin idiom as the
+                                            banner dismiss above (`-m-2 inline-flex min-h-11 min-w-11`): the
+                                            target grows; the glyph shifts ~4px right (the -8px margin consumes the row's gap-2).
+                                            The focus ring is the house string, per-site as `globals.css` records; the bare
+                                            emoji button carried none (UI re-audit 2026-09-30, N-2). */}
                                         <button
                                             onClick={() => setEditingUsername(true)}
-                                            className="text-content-link hover:text-content-link-hover text-sm md:text-base"
+                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                                             aria-label="Edit username"
                                             title="Edit username"
                                         >
@@ -1541,14 +1705,14 @@ function Profile(){
                                     section below correctly said "No email address on
                                     file". Same shape as the section's own guard,
                                     `currentAddress && !currentIsSynthetic`. */}
-                                <p className="text-sm md:text-base text-content-secondary truncate">
+                                <p className="text-base text-content-secondary truncate">
                                     {(() => {
                                         const addr = self?.email ?? user.email;
                                         return addr && !isSyntheticAddress(addr) ? addr : NO_ADDRESS_ON_FILE;
                                     })()}
                                 </p>
                                 {userData?.username && userData.username !== user.name && (
-                                    <p className="text-xs text-content-muted mt-1">
+                                    <p className="text-sm text-content-muted mt-1">
                                         Display name: {userData.username} (from Google: {user.name})
                                     </p>
                                 )}
@@ -1556,12 +1720,12 @@ function Profile(){
                         </div>
                     ) : (
                         // Skeleton placeholder — shimmer bars sized to typical username + email.
-                        // Uses bg-surface-card-hover token so it auto-themes.
+                        // Uses bg-surface-muted token so it auto-themes.
                         <div className="flex items-center gap-3 md:gap-4 w-full">
-                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card-hover animate-pulse shrink-0" />
+                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-muted animate-pulse shrink-0" />
                             <div className="flex-1 space-y-2">
-                                <div className="h-7 w-40 bg-surface-card-hover rounded-sm animate-pulse" />
-                                <div className="h-4 w-56 bg-surface-card-hover rounded-sm animate-pulse" />
+                                <div className="h-7 w-40 bg-surface-muted rounded-sm animate-pulse" />
+                                <div className="h-4 w-56 bg-surface-muted rounded-sm animate-pulse" />
                             </div>
                         </div>
                     )}
@@ -1575,7 +1739,29 @@ function Profile(){
                         scrollIntoView + focus the inner <input type="tel">. */}
                     {userData?.sms_enabled && (
                     <div className="mt-2" ref={phoneInputRef}>
-                                    {(phoneState === 'idle' || phoneState === 'editing') && (
+                                    {/* DECISION Phase 88.6-17 (R3 #13 / T-88.6-147): the input-plus-action
+                                        row renders ONCE across the `'input'` and `'saving'` states —
+                                        chosen OVER the two sibling `phoneState` branches this shipped as.
+
+                                        Those were not one control in two states: the Save & Verify
+                                        button lived inside the idle/editing branch and a second,
+                                        natively-disabled "Sending code..." button lived inside the
+                                        `'saving'` branch. Pressing Save & Verify therefore DESTROYED the
+                                        focused element and dropped focus to `<body>` mid-submit, on an
+                                        account-level flow. Now the Input's disabled state, the button's
+                                        label and the button's `aria-disabled` are all driven by
+                                        `phoneState`, so the element the user pressed is still in the
+                                        document and still focused while the request is in flight.
+
+                                        The native `disabled` attribute still carries the INVALID-INPUT
+                                        precondition — a gate on a control nobody has activated, which the
+                                        rule of KIND leaves native. Only the in-flight state moved to
+                                        `aria-disabled`, and it is paired with the synchronous first-line
+                                        refusal in `handleSaveAndVerify` (see the `saveInFlightRef` marker):
+                                        an `aria-disabled` control with no handler refusal is a
+                                        re-submittable button. Splitting these branches apart again, or
+                                        dropping either half of the pair, is a decision, not a cleanup. */}
+                                    {(phoneState === 'idle' || phoneState === 'editing' || phoneState === 'saving') && (
                                         <div className="flex flex-col sm:flex-row sm:items-start gap-2">
                                             <div className="flex-1 relative">
                                                 {/* Named explicitly: this control has no visible
@@ -1587,6 +1773,7 @@ function Profile(){
                                                     value={phoneInput}
                                                     onChange={(e) => handlePhoneChange(e.target.value)}
                                                     placeholder="+1 555-123-4567"
+                                                    disabled={phoneState === 'saving'}
                                                     aria-invalid={
                                                         phoneValidation.error || phoneError ? 'true' : undefined
                                                     }
@@ -1599,6 +1786,7 @@ function Profile(){
                                                             .join(' ') || undefined
                                                     }
                                                     className={
+                                                        phoneState === 'saving' ? 'bg-surface-muted' :
                                                         phoneValidation.valid ? 'border-status-success' :
                                                         phoneValidation.error ? 'border-status-error' :
                                                         ''
@@ -1628,38 +1816,32 @@ function Profile(){
                                                     </p>
                                                 )}
                                             </div>
-                                            <button
+                                            {/* The in-flight cue is the LABEL SWAP plus the muted input
+                                                ground, stated rather than inherited: the retired
+                                                `'saving'` branch carried an unconditional
+                                                `opacity-50 cursor-not-allowed`, and `.btn:disabled`'s
+                                                own opacity wash keys on the NATIVE attribute this
+                                                control no longer sets while in flight. A call-site
+                                                `disabled:opacity-*` is DEAD on a `.btn` element and is
+                                                deliberately not used as the replacement. The
+                                                not-allowed cursor still arrives, from
+                                                `.btn[aria-disabled='true']` in globals.css. */}
+                                            <Button
+                                                variant="primary"
                                                 onClick={handleSaveAndVerify}
                                                 disabled={!phoneValidation.valid}
-                                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                                aria-disabled={phoneState === 'saving' ? 'true' : undefined}
+                                                className="whitespace-nowrap"
                                             >
-                                                Save & Verify
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {phoneState === 'saving' && (
-                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                            <Input
-                                                type="tel"
-                                                aria-label="Phone number"
-                                                value={phoneInput}
-                                                disabled
-                                                className="flex-1 bg-surface-card-hover"
-                                            />
-                                            <button
-                                                disabled
-                                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm opacity-50 cursor-not-allowed whitespace-nowrap"
-                                            >
-                                                Sending code...
-                                            </button>
+                                                {phoneState === 'saving' ? 'Sending code...' : 'Save & Verify'}
+                                            </Button>
                                         </div>
                                     )}
 
                                     {phoneState === 'verifying' && (
                                         <div>
                                             <p className="text-sm text-content-secondary mb-2">
-                                                Code sent to <span className="font-medium">{phoneValidation.formatted || phoneInput}</span>
+                                                Code sent to <span className="text-content-primary">{phoneValidation.formatted || phoneInput}</span>
                                             </p>
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                                 <Input
@@ -1672,24 +1854,51 @@ function Profile(){
                                                     aria-describedby={phoneError ? 'phone-flow-error' : undefined}
                                                     className="w-32 text-center tracking-widest"
                                                 />
-                                                <button
+                                                {/* An incomplete-code PRECONDITION gate on a control
+                                                    nobody has activated — the rule of kind leaves it
+                                                    natively `disabled`. */}
+                                                <Button
+                                                    variant="primary"
                                                     onClick={handleVerifyCode}
                                                     disabled={verificationCode.length !== 6}
-                                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                                    className="whitespace-nowrap"
                                                 >
                                                     Verify
-                                                </button>
-                                                <button
+                                                </Button>
+                                                {/* DECISION Phase 88.6-17 (D-8): the cooldown gate is
+                                                    `aria-disabled`, with the native `disabled` attribute
+                                                    REMOVED — the shipped EmailAddressSection cooldown
+                                                    idiom, reused verbatim. Keeping `disabled` here would
+                                                    be a defect, not a no-op: the unlayered
+                                                    `.btn:disabled { opacity: .5 }` would WASH OUT a
+                                                    countdown label the user has to READ, and ghost's
+                                                    gated ink is keyed on `aria-disabled:`
+                                                    (Button.tsx), so it would never fire. A call-site
+                                                    `disabled:opacity-100` cannot rescue it —
+                                                    `disabled:opacity-*` is dead on a `.btn`. The
+                                                    disclosed behaviour delta is that a cooling-down
+                                                    Resend stays in the tab order, which is DR-C's chosen
+                                                    behaviour, and the re-press is refused in
+                                                    `handleResendCode`. */}
+                                                <Button
+                                                    variant="ghost"
                                                     onClick={handleResendCode}
-                                                    disabled={resendCooldown > 0}
-                                                    className="text-sm text-indigo-600 hover:text-indigo-700 disabled:text-content-muted whitespace-nowrap"
+                                                    aria-disabled={resendCooldown > 0 ? 'true' : undefined}
+                                                    className="whitespace-nowrap"
                                                 >
                                                     {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
-                                                </button>
+                                                </Button>
                                             </div>
+                                            {/* A10: floored to 44px IN PLACE as a raw `<button>` — see the
+                                                marker on the Remove control below for why these three
+                                                block links do not migrate. `inline-flex min-h-11
+                                                items-center` plus the negative inline margins keeps the
+                                                ink, the label and the row rhythm byte-identical while the
+                                                tap target grows to the floor. Focus ring added per-site
+                                                (R3 finding 144) — this control carried none. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="text-sm text-content-muted hover:text-content-secondary mt-1"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                                             >
                                                 Change number
                                             </button>
@@ -1703,21 +1912,43 @@ function Profile(){
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </span>
-                                            <span className="text-sm text-content-status-success font-medium">Phone verified</span>
+                                            <span className="text-sm text-content-status-success">Phone verified</span>
+                                            {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="text-sm text-content-muted hover:text-content-secondary underline ml-2"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                                             >
                                                 Change number
                                             </button>
                                             {/* Two-tap remove link (D-PHONE-01): first tap arms 3s revert timer
-                                                + flips label red; second tap commits via usersAPI.removePhone. */}
+                                                + flips label red; second tap commits via usersAPI.removePhone.
+
+                                                DECISION Phase 88.6-17 (A10 / T-88.6-43, with T-88.6-41):
+                                                this control is floored to 44px IN PLACE as a raw
+                                                `<button>` and is deliberately NOT migrated to `<Button>`.
+                                                `.btn` declares `font-weight: 600` UNLAYERED, so on the
+                                                primitive both arms of the ternary below would render at
+                                                600 and the ARMED `font-semibold` cue — the thing that
+                                                tells you the destructive second tap is live — would be
+                                                deleted with nothing red anywhere. That is a CONSEQUENCE
+                                                constraint: this is the SOLE path to removing a verified
+                                                phone number. The two `Change number` links above are
+                                                floored the same way for consistency of mechanism within
+                                                the block.
+
+                                                Neither shipped gate can see these three: `btnCensus`'s
+                                                rule for this file is raw PALETTE fills and they carry
+                                                tokens, and `controlSizeFloor` proves the floor only for
+                                                `Button` elements. The floor here is therefore held by
+                                                this marker and by the rendered 375px measurement recorded
+                                                in `88.6-17-SUMMARY.md`, not by a class-list pin. Removing
+                                                `min-h-11` is a decision, not a cleanup. */}
                                             <button
                                                 onClick={handleRemovePhone}
-                                                className={`text-sm underline ml-3 ${
+                                                className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                                                     removeArmed
                                                         ? 'text-content-status-error font-semibold'
-                                                        : 'text-content-status-error hover:text-red-700'
+                                                        : 'text-content-status-error hover:text-content-status-error'
                                                 }`}
                                             >
                                                 {removeArmed ? 'Tap again to remove' : 'Remove'}
@@ -1771,8 +2002,8 @@ function Profile(){
                                     so an h3 skipped a level (axe heading-order). The type role is
                                     carried by the classes, which are unchanged — the tag moved,
                                     the look did not. */}
-                                <h2 className="text-xl font-bold text-content-primary mb-1">Google Calendar Integration</h2>
-                                <p className="text-xs text-content-secondary">
+                                <Heading level={2} size="heading" className="text-content-primary mb-1">Google Calendar Integration</Heading>
+                                <p className="text-sm text-content-secondary">
                                     {googleCalendarConnected 
                                         ? 'Connected - Future game events will be automatically added to your calendar'
                                         : 'Connect your Google Calendar to automatically add future game events'}
@@ -1786,16 +2017,18 @@ function Profile(){
                             ) : checkingCalendarStatus ? (
                                 <div className="text-sm text-content-muted">Checking your calendar...</div>
                             ) : googleCalendarConnected ? (
-                                <button
+                                <Button
+                                    variant="danger"
                                     onClick={handleDisconnectGoogleCalendar}
-                                    className="btn btn-danger px-4 py-2 text-sm whitespace-nowrap"
+                                    className="whitespace-nowrap"
                                 >
                                     Disconnect Calendar
-                                </button>
+                                </Button>
                             ) : (
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={handleConnectGoogleCalendar}
-                                    className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap flex items-center gap-2"
+                                    className="whitespace-nowrap"
                                 >
                                     {/* DECISION Phase 88-22 (Req 2), re-affirmed 88-19: Google
                                         LOGO ART — the four brand fills stay raw in every
@@ -1820,7 +2053,7 @@ function Profile(){
                                         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
                                     </svg>
                                     Connect Google Calendar
-                                </button>
+                                </Button>
                             )}
                         </div>
                     </div>
@@ -1839,7 +2072,7 @@ function Profile(){
 
                 {/* Theme Setting */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-1">Theme</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-1">Theme</Heading>
                     <p className="text-sm text-content-muted mb-3">Choose your preferred appearance</p>
                     {/* DECISION Phase 88-10 (Req 5 / F-357): the two theme buttons carry
                         `aria-pressed`, chosen OVER converting them to the `Switch`
@@ -1852,45 +2085,92 @@ function Profile(){
                         and `aria-pressed` is their state attribute. Converting these to
                         a Switch "for consistency with the toggles below" is a decision
                         about what the control MEANS, not a cleanup. */}
+                    {/* DECISION Phase 88.6-17 (D-11, outcome (a)): both theme toggles MIGRATE to
+                        `<Button variant="ghost">` and KEEP their own fill utilities on `className` —
+                        chosen OVER outcome (b), leaving them raw behind an exclusion marker.
+
+                        TWO DELTAS FALL OUT OF THIS AND ARE ACCEPTED, NOT OVERLOOKED. (1) The label
+                        goes 16px -> 14px: these carried no size class and no ancestor sets one, and
+                        `.btn`'s unlayered `font-size: .875rem` beats any call-site `text-base`. (2)
+                        The UNSELECTED arm goes 400 -> 600, because `.btn` declares `font-weight: 600`
+                        — so the weight half of the selection cue is gone. What still carries
+                        selection: the amber border, the fill, and `aria-pressed`, which the
+                        `DECISION Phase 88-10` marker above records as this control's state mechanism.
+
+                        WHY (a) OVER (b). Under (b) neither shipped gate can see these controls —
+                        `btnCensus`'s palette rule keys on the FILL (which survives either way) and
+                        `controlSizeFloor` proves the 44px floor only for `Button` elements — so a
+                        hand-rolled floor here would be watched by nothing and could be undone
+                        silently. On the primitive the floor is `min-h-11` on the cva base, at every
+                        viewport, and is gated forever. 14px is also the size every other button on
+                        this page already renders at; the 16px floor is a TEXT-ENTRY rule (iOS
+                        focus-zoom), not a button-label rule.
+
+                        W19 PRECONDITION, CHECKED BEFORE THIS EDIT: `.btn { border: none }` now lives
+                        inside `@layer components` in globals.css, so these controls' visible border
+                        survives the migration. Before that move it would have been DELETED with no
+                        test failure. If a future edit un-layers that reset, this pair loses its
+                        border silently.
+
+                        THE FILL STAYS RAW (P6) and therefore so does this file's raw-palette roster
+                        entry, at 2 with decision provenance. `bg-purple-900` is ambiguous BY NAME —
+                        the repo mints its own `--purple-900` as well — and it was RESOLVED before
+                        this edit rather than assumed: `@theme` exposes `--color-purple-900` as
+                        Tailwind's own default step, and the repo's dark-navy `--purple-900` is never
+                        exposed as a utility at all, so this is a palette STEP under both readings.
+                        `bg-amber-50` resolves the same way. The measured values are recorded in
+                        `88.6-17-SUMMARY.md` rather than spelled here, so this file's own
+                        untagged-raw-hex pin stays honest — the same reason the BGG input comment
+                        below spells a utility in words. Converging these fills onto semantic tokens
+                        is a look change and is out of this phase's contract.
+
+                        `enabled-hover:bg-*` pins the SELECTED arm's fill through hover: ghost's base
+                        carries `enabled-hover:bg-surface-hover`, which would otherwise wash the amber
+                        (and the purple) on hover — a fill change P6 forbids. */}
                     {themeMounted ? (
                         <div className="flex gap-3">
-                            <button
+                            <Button
+                                variant="ghost"
                                 onClick={() => setTheme('light')}
                                 aria-pressed={resolvedTheme === 'light'}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                                className={`border transition-colors ${
                                     resolvedTheme === 'light'
-                                        ? 'border-amber-500 bg-amber-50 font-semibold text-content-primary'
-                                        : 'border-line bg-surface-card hover:bg-surface-hover text-content-secondary'
+                                        ? 'border-amber-500 bg-amber-50 enabled-hover:bg-amber-50 text-content-primary'
+                                        : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
                                 Light
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant="ghost"
                                 onClick={() => setTheme('dark')}
                                 aria-pressed={resolvedTheme === 'dark'}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                                className={`border transition-colors ${
                                     resolvedTheme === 'dark'
-                                        ? 'border-amber-500 bg-purple-900 font-semibold text-white'
-                                        : 'border-line bg-surface-card hover:bg-surface-hover text-content-secondary'
+                                        ? 'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'
+                                        : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                 </svg>
                                 Dark
-                            </button>
+                            </Button>
                         </div>
                     ) : (
-                        <div className="h-10 w-48 bg-surface-card-hover rounded-lg animate-pulse" />
+                        // The skeleton matches the control it stands in for: `min-h-11` (44px), not
+                        // the `h-10` (40px) it shipped as, so the placeholder does not disagree with
+                        // the migrated pair's floor.
+                        <div className="min-h-11 w-48 bg-surface-muted rounded-lg animate-pulse" />
                     )}
                 </div>
 
                 {/* Timezone Setting */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-1">Timezone</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-1">Timezone</Heading>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
                     {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
                         operation, Esc AND click-outside close, and focus restore all come
@@ -1926,7 +2206,7 @@ function Profile(){
                 {/* Notification Preferences Section */}
                 {preferences && (
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-1">Notification Preferences</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-1">Notification Preferences</Heading>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
 
                     {/* 88-CODE-REVIEW MED#15: always-mounted sr-only outcome regions —
@@ -1938,9 +2218,24 @@ function Profile(){
                     {/* SMS Consent Disclosure (TCPA / carrier compliance) */}
                     {userData?.sms_enabled && (
                         <div className="mb-4 p-3 rounded-card border border-line bg-surface-sunken">
-                            <p className="text-xs font-semibold text-content-primary mb-1">SMS Notifications Disclosure</p>
-                            <p className="text-xs text-content-secondary leading-relaxed">
-                                By enabling any SMS toggle below, you agree to receive recurring text messages from <span className="font-semibold">NextGameNight</span> about your game group activity, including event creation, updates, cancellations, and reminders. Message frequency varies based on group activity. Message and data rates may apply. Reply <span className="font-mono font-semibold">STOP</span> to unsubscribe at any time, or <span className="font-mono font-semibold">HELP</span> for help. Consent is not a condition of using the service. See our{' '}
+                            {/* DECISION Phase 88.6-17 (D-01 / T-88.6-42): legal text moves OFF the
+                                caption rung — label 14/700, body 14/400. Caption's closed role list is
+                                chips, counters, timestamps, eyebrows, dense-grid cells and helper text;
+                                a compliance disclosure is none of them, so 12px here was MISUSE, not a
+                                caption. The wording is byte-unchanged (P1).
+
+                                The three inner spans are dispositioned individually, and neither
+                                disposition generalises — D-03 is a recorded CONSEQUENCE constraint and
+                                these are two narrow carve-outs, not a licence for 600 anywhere. STOP and
+                                HELP drop to 400 because `font-mono` is a NON-COLOUR cue that survives
+                                the weight change intact, so the keywords stay distinguishable without
+                                relying on colour. The brand span has no such surviving cue, so it takes
+                                700 (D-03's hierarchy outcome) rather than the 400-plus-colour emphasis
+                                outcome, which would leave a colour-only distinction inside a compliance
+                                surface. */}
+                            <p className="text-sm font-bold text-content-primary mb-1">SMS Notifications Disclosure</p>
+                            <p className="text-sm text-content-secondary leading-relaxed">
+                                By enabling any SMS toggle below, you agree to receive recurring text messages from <span className="font-bold">NextGameNight</span> about your game group activity, including event creation, updates, cancellations, and reminders. Message frequency varies based on group activity. Message and data rates may apply. Reply <span className="font-mono font-normal">STOP</span> to unsubscribe at any time, or <span className="font-mono font-normal">HELP</span> for help. Consent is not a condition of using the service. See our{' '}
                                 <a href="/privacy" className="text-content-link hover:underline">Privacy Policy</a>
                                 {' '}and{' '}
                                 <a href="/terms" className="text-content-link hover:underline">Terms of Service</a>.
@@ -1976,7 +2271,7 @@ function Profile(){
                                 <button
                                     type="button"
                                     onClick={handleVerifyPhoneCta}
-                                    className="text-content-link hover:text-content-link-hover font-medium underline"
+                                    className="text-content-link hover:text-content-link-hover underline"
                                 >
                                     Verify
                                 </button>
@@ -1984,13 +2279,13 @@ function Profile(){
                         )}
                         {/* Header row */}
                         <div className="flex items-center py-2 border-b border-line">
-                            <div className="flex-1 text-sm font-medium text-content-muted">Notification Type</div>
-                            <div className="w-16 text-center text-sm font-medium text-content-muted">Email</div>
+                            <div className="flex-1 text-sm text-content-muted">Notification Type</div>
+                            <div className="w-16 text-center text-sm text-content-muted">Email</div>
                             {/* SMS column — only rendered for entitled users (sms_enabled=true).
                                 Non-entitled users see an Email-only matrix and never know
                                 SMS is a feature of the app. */}
                             {userData?.sms_enabled && (
-                                <div className="w-16 text-center text-sm font-medium text-content-muted">SMS</div>
+                                <div className="w-16 text-center text-sm text-content-muted">SMS</div>
                             )}
                             <div className="w-20"></div>
                         </div>
@@ -1999,7 +2294,7 @@ function Profile(){
                             <div key={type.key} className="py-3 border-b border-line last:border-b-0">
                                 <div className="flex items-center">
                                     <div className="flex-1">
-                                        <p className="text-sm font-medium text-content-primary">{type.label}</p>
+                                        <p className="text-base text-content-primary">{type.label}</p>
                                         <p className="text-xs text-content-muted">{type.description}</p>
                                     </div>
 
@@ -2137,8 +2432,8 @@ function Profile(){
                     tutorial handoff (ONBD-04, Phase 73). Read by the
                     ?section=availability useEffect above. */}
                 <div id="availability-settings" className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-4">Availability Settings</h2>
-                    <p className="text-sm text-content-secondary mb-4">
+                    <Heading level={2} size="heading" className="text-content-primary mb-4">Availability Settings</Heading>
+                    <p className="text-base text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
                         {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
                     </p>
@@ -2163,26 +2458,26 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="text-base font-bold text-content-primary">Availability Schedules</h3>
-                                    <p className="text-xs text-content-secondary mt-1">Set your recurring availability schedule</p>
+                                    <Heading level={3} size="body" className="text-content-primary">Availability Schedules</Heading>
+                                    <p className="text-sm text-content-secondary mt-1">Set your recurring availability schedule</p>
                                 </div>
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={() => setShowRecurringForm(!showRecurringForm)}
-                                    className="btn btn-primary px-4 py-2 text-sm"
                                 >
                                     {showRecurringForm ? 'Cancel' : '+ Add Schedule'}
-                                </button>
+                                </Button>
                             </div>
 
                             {showRecurringForm && (
                                 <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
-                                    <h4 className="text-base font-bold mb-3 text-content-primary">New Schedule</h4>
+                                    <Heading level={4} size="body" className="mb-3 text-content-primary">New Schedule</Heading>
                                     <div className="space-y-3">
                                         <div>
                                             {/* Not a <label>: this names a GROUP of toggle
                                                 buttons, not a single form control, and a label
                                                 with no control is a label pointing at nothing. */}
-                                            <span id="days-of-week-label" className="block text-sm font-medium text-content-secondary mb-1">Days of Week</span>
+                                            <span id="days-of-week-label" className="block text-sm text-content-secondary mb-1">Days of Week</span>
                                             <div role="group" aria-labelledby="days-of-week-label" className="flex flex-wrap gap-2 mt-1">
                                                 {[0, 1, 2, 3, 4, 5, 6].map(day => (
                                                     <button
@@ -2197,7 +2492,7 @@ function Profile(){
                                                                     : [...days, day].sort((a, b) => a - b)
                                                             });
                                                         }}
-                                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                                                        className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
                                                             recurringForm.daysOfWeek.includes(day)
                                                                 ? 'bg-btn-primary text-btn-primary-text border-btn-primary'
                                                                 : 'bg-surface-card text-content-secondary border-line hover:border-line-accent'
@@ -2214,15 +2509,39 @@ function Profile(){
                                                             daysOfWeek: recurringForm.daysOfWeek.length === 7 ? [] : [0, 1, 2, 3, 4, 5, 6]
                                                         });
                                                     }}
-                                                    className="px-3 py-1.5 rounded-btn text-sm font-medium border border-line text-content-secondary hover:border-line-accent transition-colors"
+                                                    className="px-3 py-1.5 rounded-btn text-sm border border-line text-content-secondary hover:border-line-accent transition-colors"
                                                 >
                                                     {recurringForm.daysOfWeek.length === 7 ? 'Clear' : 'All'}
                                                 </button>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label htmlFor="recurring-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
+                                        {/* DECISION Phase 88.6-30 (W53 reopen, row alignment, 2026-09-21): the
+                                            two-column availability rows are SUBGRIDS — the container declares three
+                                            named row tracks and each cell adopts them with `grid-rows-subgrid
+                                            row-span-3`. CHOSEN OVER shortening the labels, which is the obvious fix
+                                            and is REJECTED because label text is visible copy (section 6.3 of the
+                                            phase's register) and therefore an owner decision, not an executor's.
+
+                                            THE DEFECT, from the owner's iPhone screenshot: "Available From (Start
+                                            Time)" wraps to two lines at phone width and "Available Until (End Time)"
+                                            does not, so with plain grid cells the right-hand input starts a line
+                                            HIGHER than the left one and the left hint text collides with the right
+                                            column. Subgrid makes label / control / hint share row tracks across both
+                                            columns, so they line up whatever the labels do.
+
+                                            ROW-SPAN IS 3, NOT 2 — measured, not chosen for symmetry: at span 2 the
+                                            hint paragraph falls outside the shared tracks and overlaps the control.
+                                            The date row below has no hint and so uses only two of the three tracks;
+                                            the empty third track collapses to zero height and the span is kept at 3
+                                            so the two rows stay structurally identical.
+
+                                            REQUIRES Safari 16+ / Chrome 117+. Below that, `grid-rows-subgrid` is
+                                            ignored and the rows render exactly as they do today — the un-fixed
+                                            layout, not a broken one. Replacing this with fixed heights or absolute
+                                            positioning is a decision, not a cleanup. */}
+                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                            <div className="grid grid-rows-subgrid row-span-3">
+                                                <label htmlFor="recurring-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
                                                     id="recurring-start-time"
                                                     type="time"
@@ -2231,8 +2550,8 @@ function Profile(){
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
-                                            <div>
-                                                <label htmlFor="recurring-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
+                                            <div className="grid grid-rows-subgrid row-span-3">
+                                                <label htmlFor="recurring-end-time" className="block text-sm text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <Input
                                                     id="recurring-end-time"
                                                     type="time"
@@ -2242,33 +2561,65 @@ function Profile(){
                                                 <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label htmlFor="recurring-start-date" className="block text-sm font-medium text-content-secondary mb-1">Start Date</label>
+                                        {/* DECISION Phase 88.6-47 (todo 2026-09-21, "date range inputs
+                                            allow end before start"): each bound is DERIVED from the
+                                            sibling's current value, never hard-coded, and passes
+                                            `undefined` when the sibling is empty — the End Date is
+                                            OPTIONAL, so an empty-string bound would be a real bound of
+                                            nothing on a field the user is entitled to leave blank.
+                                            Native attributes, so the phone pickers this was reported
+                                            from grey out the unreachable days; `Input` spreads them
+                                            straight onto the element (`src/components/ui/Input.tsx:143`).
+
+                                            THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
+                                            already refuse an end before the start with a ratified toast,
+                                            added by 88-CODE-REVIEW MED#7 —
+                                            `userProfile/page.js:1252` (recurring) and `:1299`
+                                            (specific-date). Adding a second mechanism on top of a shipped
+                                            guard is how two answers to one question get created. The
+                                            owner's report named four surfaces; two were already closed.
+
+                                            NARROWING, NOT A COMPLETE GUARD, and the gap is named rather
+                                            than left to be found: `min`/`max` ADMIT EQUALITY, while the
+                                            server's rule is STRICT — `routes/availability.js:137` rejects
+                                            `startDate >= endDateObj` — so a same-day start and end still
+                                            reaches the code-less 400 that renders the generic register
+                                            copy and discards the form. Closing that would need either a
+                                            client branch with new copy (P1 forbids minting it) or a
+                                            server change, and neither is this plan's scope.
+                                            REJECTED — an inline error for the typed path, for the same P1
+                                            reason recorded at the gameDetail pair; routed to Phase 88.9
+                                            with a row in `.planning/deferred/phase-88.6.md`. */}
+                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                            <div className="grid grid-rows-subgrid row-span-3">
+                                                <label htmlFor="recurring-start-date" className="block text-sm text-content-secondary mb-1">Start Date</label>
                                                 <Input
                                                     id="recurring-start-date"
                                                     type="date"
                                                     value={recurringForm.start_date}
+                                                    max={recurringForm.end_date || undefined}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
                                                 />
                                             </div>
-                                            <div>
-                                                <label htmlFor="recurring-end-date" className="block text-sm font-medium text-content-secondary mb-1">End Date (Optional)</label>
+                                            <div className="grid grid-rows-subgrid row-span-3">
+                                                <label htmlFor="recurring-end-date" className="block text-sm text-content-secondary mb-1">End Date (Optional)</label>
                                                 <Input
                                                     id="recurring-end-date"
                                                     type="date"
                                                     value={recurringForm.end_date}
+                                                    min={recurringForm.start_date || undefined}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
                                                 />
                                             </div>
                                         </div>
-                                        <button
+                                        <Button
+                                            variant="primary"
                                             onClick={handleCreateRecurringPattern}
                                             disabled={savingPattern}
-                                            className="btn btn-primary w-full px-4 py-2 disabled:opacity-50"
+                                            className="w-full"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Schedule'}
-                                        </button>
+                                        </Button>
                                     </div>
                                 </div>
                             )}
@@ -2289,7 +2640,7 @@ function Profile(){
                                         .map(pattern => (
                                             <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
-                                                    <p className="font-medium text-content-primary">
+                                                    <p className="text-content-primary">
                                                         {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                     </p>
                                                     <p className="text-sm text-content-secondary">
@@ -2332,23 +2683,23 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="text-base font-bold text-content-primary">Specific Date Overrides</h3>
-                                    <p className="text-xs text-content-secondary mt-1">Override your schedules for specific dates</p>
+                                    <Heading level={3} size="body" className="text-content-primary">Specific Date Overrides</Heading>
+                                    <p className="text-sm text-content-secondary mt-1">Override your schedules for specific dates</p>
                                 </div>
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={() => setShowSpecificForm(!showSpecificForm)}
-                                    className="btn btn-primary px-4 py-2 text-sm"
                                 >
                                     {showSpecificForm ? 'Cancel' : '+ Add Override'}
-                                </button>
+                                </Button>
                             </div>
 
                             {showSpecificForm && (
                                 <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
-                                    <h4 className="text-base font-bold mb-3 text-content-primary">New Specific Override</h4>
+                                    <Heading level={4} size="body" className="mb-3 text-content-primary">New Specific Override</Heading>
                                     <div className="space-y-3">
                                         <div>
-                                            <label htmlFor="specific-date" className="block text-sm font-medium text-content-secondary mb-1">Date</label>
+                                            <label htmlFor="specific-date" className="block text-sm text-content-secondary mb-1">Date</label>
                                             <Input
                                                 id="specific-date"
                                                 type="date"
@@ -2356,9 +2707,11 @@ function Profile(){
                                                 onChange={(e) => setSpecificForm({ ...specificForm, date: e.target.value })}
                                             />
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label htmlFor="specific-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
+                                        {/* Same subgrid row alignment as the Schedules tab — see the
+                                            DECISION Phase 88.6-30 marker at the recurring form's time row. */}
+                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                            <div className="grid grid-rows-subgrid row-span-3">
+                                                <label htmlFor="specific-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
                                                     id="specific-start-time"
                                                     type="time"
@@ -2367,8 +2720,8 @@ function Profile(){
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
-                                            <div>
-                                                <label htmlFor="specific-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
+                                            <div className="grid grid-rows-subgrid row-span-3">
+                                                <label htmlFor="specific-end-time" className="block text-sm text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <Input
                                                     id="specific-end-time"
                                                     type="time"
@@ -2399,13 +2752,14 @@ function Profile(){
                                                 <span className="text-sm text-content-secondary">Mark as available (uncheck to mark as busy)</span>
                                             </label>
                                         </div>
-                                        <button
+                                        <Button
+                                            variant="primary"
                                             onClick={handleCreateSpecificOverride}
                                             disabled={savingPattern}
-                                            className="btn btn-primary w-full px-4 py-2 disabled:opacity-50"
+                                            className="w-full"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Override'}
-                                        </button>
+                                        </Button>
                                     </div>
                                 </div>
                             )}
@@ -2426,7 +2780,7 @@ function Profile(){
                                         .map(pattern => (
                                             <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
-                                                    <p className="font-medium text-content-primary">
+                                                    <p className="text-content-primary">
                                                         {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                     </p>
                                                     <p className="text-sm text-content-secondary">
@@ -2467,17 +2821,17 @@ function Profile(){
 
                 {/* Tutorial Section */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-2">Tutorial</h2>
-                    <p className="text-sm text-content-secondary mb-4">
+                    <Heading level={2} size="heading" className="text-content-primary mb-2">Tutorial</Heading>
+                    <p className="text-base text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
                     </p>
-                    <button
+                    <Button
+                        variant="primary"
                         onClick={handleReplayTutorial}
                         disabled={replayingTutorial}
-                        className="btn btn-primary px-4 py-2 text-sm disabled:opacity-50"
                     >
                         {replayingTutorial ? 'Starting...' : 'Replay Tutorial'}
-                    </button>
+                    </Button>
                 </div>
 
                 {/* Owned Games Section */}
@@ -2486,23 +2840,24 @@ function Profile(){
                         {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
                             owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
                             conflation on the count itself; an em-dash holds the slot meanwhile. */}
-                        <h2 className="text-xl font-bold text-content-primary">
+                        <Heading level={2} size="heading" className="text-content-primary">
                             My Game Collection ({loadingGames ? '—' : ownedGames.length})
-                        </h2>
+                        </Heading>
                         <div className="flex gap-2">
-                            <button
+                            <Button
+                                variant="primary"
                                 onClick={() => setShowBggSearch(!showBggSearch)}
-                                className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap"
+                                className="whitespace-nowrap"
                             >
                                 {showBggSearch ? 'Hide Search' : '+ Add from BGG'}
-                            </button>
+                            </Button>
                         </div>
                     </div>
 
                     {/* BGG Collection Import */}
                     <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
-                        <h3 className="text-base font-bold mb-2 text-content-primary">Import Your Entire BGG Collection</h3>
-                        <p className="text-xs md:text-sm text-content-secondary mb-3">
+                        <Heading level={3} size="body" className="mb-2 text-content-primary">Import Your Entire BGG Collection</Heading>
+                        <p className="text-sm text-content-secondary mb-3">
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-2">
@@ -2524,21 +2879,22 @@ function Profile(){
                                 className="flex-1"
                                 disabled={importingCollection}
                             />
-                            <button
+                            <Button
+                                variant="primary"
                                 onClick={handleImportCollectionClick}
                                 disabled={importingCollection || !bggUsername.trim()}
-                                className="btn btn-primary px-4 md:px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base whitespace-nowrap"
+                                className="whitespace-nowrap"
                             >
                                 {importingCollection ? 'Importing...' : 'Import Collection'}
-                            </button>
+                            </Button>
                         </div>
                         {importProgress && (
                             <div className={`mt-3 p-3 rounded-btn ${
                                 importProgress.status === 'error' ? 'bg-status-error-subtle text-content-status-error' :
                                 importProgress.status === 'complete' ? 'bg-status-success-subtle text-content-status-success' :
-                                'bg-surface-card-hover text-content-link'
+                                'bg-surface-muted text-content-secondary'
                             }`}>
-                                <p className="font-medium">{importProgress.message}</p>
+                                <p className="text-content-primary">{importProgress.message}</p>
                                 {importProgress.details && (
                                     <p className="text-sm mt-1">
                                         Imported: {importProgress.details.imported} | 
@@ -2562,13 +2918,14 @@ function Profile(){
                                     placeholder="Search BoardGameGeek..."
                                     className="flex-1"
                                 />
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={searchBGG}
                                     disabled={bggSearching || !bggSearchQuery.trim()}
-                                    className="btn btn-primary px-4 py-2 disabled:opacity-50 text-sm md:text-base whitespace-nowrap"
+                                    className="whitespace-nowrap"
                                 >
                                     {bggSearching ? 'Searching...' : 'Search'}
-                                </button>
+                                </Button>
                             </div>
                             
                             {bggSearchResults.length > 0 && (
@@ -2577,17 +2934,18 @@ function Profile(){
                                         const isAlreadyOwned = ownedGames.some(g => g.bgg_id === result.bgg_id);
                                         return (
                                             <div key={result.bgg_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-surface-card border border-line rounded-btn">
-                                                <span className="text-sm text-content-primary wrap-break-word flex-1 min-w-0">
+                                                <span className="text-base text-content-primary wrap-break-word flex-1 min-w-0">
                                                     {result.name} {result.year_published ? `(${result.year_published})` : ''}
                                                 </span>
-                                                <button
+                                                <Button
+                                                    variant="primary"
                                                     type="button"
                                                     onClick={() => addGameToCollection(result.bgg_id)}
                                                     disabled={isAlreadyOwned}
-                                                    className="btn btn-primary text-xs px-3 py-1 disabled:opacity-50 whitespace-nowrap shrink-0"
+                                                    className="whitespace-nowrap shrink-0"
                                                 >
                                                     {isAlreadyOwned ? 'Already Owned' : 'Add to Collection'}
-                                                </button>
+                                                </Button>
                                             </div>
                                         );
                                     })}
@@ -2607,10 +2965,16 @@ function Profile(){
                     ) : ownedGames.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
-                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-md transition-shadow">
+                                // D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` here was
+                                // Tailwind's INLINED built-in scale, not the theme tier, so it snaps to
+                                // `hover:shadow-theme-md`. Plain `hover:` and not plan 05's
+                                // `enabled-hover:` — this is a card `div`, not a `.btn`. The snap
+                                // changes hue (warm tint in light, purple hairline plus glow in dark);
+                                // that is disclosed, not accidental.
+                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-theme-md transition-shadow">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
-                                            <h3 className="text-base font-bold text-content-primary">{game.name}</h3>
+                                            <Heading level={3} size="body" className="text-content-primary">{game.name}</Heading>
                                             {game.year_published && (
                                                 <p className="text-sm text-content-secondary">({game.year_published})</p>
                                             )}
@@ -2640,6 +3004,25 @@ function Profile(){
                                                     : 'border-status-error hover:bg-status-error-subtle'
                                             }`}
                                         >
+                                            {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
+                                                `font-semibold` STAYS, and it is deliberately NOT one of
+                                                the 600s the weight sweep converted. It is not emphasis —
+                                                it is a MEASUREMENT. The span reserves the width of the
+                                                ARMED label at rest, so it has to be set in the same
+                                                weight the armed label renders at (the 600 on the line
+                                                above). Drop it to 400 and the reservation under-measures,
+                                                arming reflows the game title beside it, and walk row
+                                                573's squeeze class comes back — silently, because no gate
+                                                measures text advance width.
+
+                                                `typeScaleTouchedSurfaces`'s ARMED_STATE_600_ROSTER cannot
+                                                carry this one: its predicate reads the surrounding source
+                                                for `isArmed`, and 160 characters back from here lands
+                                                inside the className template rather than on the
+                                                `removeGameGate.isArmed(...)` call four lines up. It is
+                                                therefore carried in WEIGHT_ROSTER instead, which is why
+                                                that entry floors at FIVE and not at the armed roster's
+                                                four. Converting it is a decision, not a cleanup. */}
                                             <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
                                                 Remove
                                             </span>
@@ -2690,7 +3073,7 @@ function Profile(){
                     <Modal.Body>
                         <p className="text-base text-content-secondary">
                             This imports every game from your BoardGameGeek collection (username:{' '}
-                            <span className="font-semibold text-content-primary">{bggUsername}</span>
+                            <span className="text-content-primary">{bggUsername}</span>
                             ). It may take a few minutes.
                         </p>
                     </Modal.Body>

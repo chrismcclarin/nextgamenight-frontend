@@ -29,7 +29,14 @@ import { EmptyState } from '@/components/ui/EmptyState';
 export default function NotFound() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center bg-surface-page px-4 py-12">
-      <div className="w-full max-w-md rounded-card border border-line-strong bg-surface-card p-8 shadow-lg">
+      {/* DECISION Phase 88.6-36 (D49-b, owner ruling 2026-09-09 option i): the project
+          elevation tier, chosen OVER the alias-spelled built-in utility this shipped with. A
+          VALUE change, not a rename — the built-in inlines Tailwind's cold black literal in both
+          themes, the theme tier resolves a warm light value and a purple-hairline-plus-glow dark
+          one (`DECISION Phase 87.7` in `globals.css`; full before/after at the twin site in
+          `ErrorFallback.tsx`, which this page's frame deliberately mirrors). This is the ONLY
+          change plan 88.6-36 makes in this file. */}
+      <div className="w-full max-w-md rounded-card border border-line-strong bg-surface-card p-8 shadow-theme-lg">
         <EmptyState
           icon="Compass"
           heading="This page took a wrong turn"

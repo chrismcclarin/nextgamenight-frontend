@@ -65,6 +65,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
+import { assertExactCounts, assertRosterShape, type Exemption } from '../test-utils/exemption';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -212,21 +213,106 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
     expect(offenders).toEqual([]);
   });
 
+  /* DECISION Phase 88.6-21 (W42): ONE named carve-out, and it is a carve-out from the
+     DETECTOR, not from the property.
+
+     This rule's stated property (docblock above) is "every control that already had pointer
+     press-feedback has the keyboard counterpart". `grouplist.js`'s group card still has the
+     press feedback and still HAS a keyboard counterpart — but after the W42 remedy that
+     counterpart is a CHILD element, the `role="button"` title block, not the card itself. The
+     card is now a pointer-only surface with an `onClick` and no role, no `tabIndex` and no key
+     handler (that is the whole remedy: `role="button"` on a container with interactive
+     descendants is children-presentational and was stealing Enter from them). A non-focusable
+     element cannot paint a focus ring, so pairing one onto this className would be a class
+     string that never renders — a lie that also reads as "this is focusable" to the next editor.
+
+     A className text scan cannot see a control's keyboard counterpart living one element down,
+     which is why this is an entry rather than a rule change. It KEEPS TEETH, and NOT by a
+     file-level presence check: a bare `src.includes('focus-visible:ring-2')` is satisfied by any
+     other control in the same file (measured — `grouplist.js`'s settings cog carries its own
+     ring, so the file-level form stayed green with the title block's ring deleted). The entry
+     therefore names an ANCHOR identifying the counterpart ELEMENT and a byte window, the same
+     shape `cascadeOrder.test.ts` uses for exactly this reason. Deleting
+     `active:opacity-75` from the card instead was REJECTED — it is the tap feedback on the home
+     surface's primary target on a phone, and removing a shipped visual state is a P6 breach.
+
+     Growing this list is a decision, not a cleanup: a second entry means a second surface put a
+     press state on something a keyboard cannot reach, which is the defect this rule exists for.
+
+     AMENDED Phase 88.6-57 (WR-409, 88.6-REVIEW.md, 2026-09-28): "Growing this list is a
+     decision" is now ENFORCED by a count, not asserted in prose. The entry was a FILE-LEVEL
+     skip — every unpaired `active:opacity-75` in `grouplist.js` was exempt, uncounted, so a
+     second press site on something a keyboard cannot reach would have hidden behind the card's.
+     It is now a D-19 roster row (`sites`, `why`, `owner`, `src/test-utils/exemption.ts`) and
+     test 2 compares the measured unpaired hits in each exempt file EXACTLY, both directions.
+     The counterpart window is read through `withoutComments`, so a comment quoting
+     `focus-visible:ring-2` near the anchor can no longer stand in for the real ring. */
+  const PRESS_WITHOUT_OWN_FOCUS: Record<
+    string,
+    Exemption & { counterpartAnchor: string; window: number }
+  > = {
+    'app/components/grouplist.js': {
+      sites: 1,
+      why:
+        'the group CARD, pointer-only since 88.6-21 W42; its keyboard control is the ' +
+        '`role="button"` title block inside it',
+      owner: {
+        kind: 'decision',
+        marker: 'DECISION Phase 88.6-21 (W42) — the PRESS_WITHOUT_OWN_FOCUS block in this file',
+      },
+      // The title block's opening tag. Comments in this file quote `role="button"` in prose, so
+      // the anchor is the CODE form — attribute plus the `tabIndex` that always follows it.
+      counterpartAnchor: 'role="button"\n                        tabIndex={0}',
+      window: 2500,
+    },
+  };
+
   it('2. every `active:opacity-75` press site has a `focus-visible:` pairing on the same control', () => {
     const offenders: string[] = [];
+    // WR-409 (plan 88.6-57): unpaired hits in an EXEMPT file are TALLIED, not skipped, and the
+    // tally must equal the entry's `sites` exactly — see the AMENDED paragraph above.
+    const exemptUnpaired: Record<string, number> = {};
     let paired = 0;
     for (const file of files) {
       const src = fs.readFileSync(file, 'utf8');
+      const rel = path.relative(SRC, file);
       for (const { line, text } of classNameValues(src)) {
         if (!text.includes('active:opacity-75')) continue;
         if (text.includes('focus-visible:')) {
           paired += 1;
           continue;
         }
-        offenders.push(`${path.relative(SRC, file)}:${line}`);
+        if (PRESS_WITHOUT_OWN_FOCUS[rel]) {
+          exemptUnpaired[rel] = (exemptUnpaired[rel] ?? 0) + 1;
+          continue;
+        }
+        offenders.push(`${rel}:${line}`);
       }
     }
     expect(offenders).toEqual([]);
+    expect(assertRosterShape(PRESS_WITHOUT_OWN_FOCUS)).toEqual([]);
+    expect(assertExactCounts(PRESS_WITHOUT_OWN_FOCUS, exemptUnpaired)).toEqual([]);
+    // The carve-out's teeth: the named COUNTERPART element must still ring. Anchored, not
+    // file-level — see the DECISION block above for the measurement that rules the file-level
+    // form out.
+    for (const [rel, entry] of Object.entries(PRESS_WITHOUT_OWN_FOCUS)) {
+      // Comments BLANKED (length-preserving), so prose quoting the ring cannot satisfy it (WR-409).
+      const src = withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
+      const at = src.indexOf(entry.counterpartAnchor);
+      expect(
+        at,
+        `${rel} is exempt because ${entry.why}, and that counterpart is located by the anchor ` +
+          `\`${entry.counterpartAnchor.replace(/\n\s+/g, ' ')}\` — which is no longer in the file. ` +
+          'Either the remedy was reverted or the anchor needs re-deriving; both are decisions.',
+      ).toBeGreaterThan(-1);
+      const slice = src.slice(at, at + entry.counterpartAnchor.length + entry.window);
+      expect(
+        slice.includes('focus-visible:ring-2'),
+        `${rel}: the keyboard counterpart this exemption rests on carries no house ring within ` +
+          `${entry.window} chars of its anchor. The card's press state is then paired with ` +
+          'nothing a keyboard user can see.',
+      ).toBe(true);
+    }
     // Anti-vacuity: without this, deleting every `active:opacity-75` in the app would make
     // the assertion above pass. 87.8-08 censused 42 non-comment sites; a drop below 40 means
     // the press idiom itself is being removed, which is a decision, not a refactor.

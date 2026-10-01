@@ -59,7 +59,30 @@ export default defineConfig({
   },
   projects: [
     // The login journey + storageState producer (D-05).
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    //
+    // DECISION Phase 88.6 CR-01 (built-in review 2026-09-29): the setup project records NO
+    // trace, chosen OVER inheriting the shared `trace: 'on-first-retry'`. This journey types
+    // `E2E_AUTH0_PASS` (`auth.setup.ts`), and a trace keeps every action's parameters in plain
+    // text — with `retries: 1` in CI a single failed login would have re-run WITH tracing and
+    // written the real Auth0 password into `test-results/**/trace.zip`, which the failure
+    // upload publishes from a PUBLIC repo. REJECTED: masking the value in the trace (Playwright
+    // offers no such option) and relying on the upload's exclusion alone (that is the second,
+    // independent arm in ci.yml, not a substitute for this one). Lockstep-pinned by
+    // `src/lib/ci-grep-gate.fixture.test.ts` ("88.6 CR-01"). Re-enabling tracing here is a
+    // decision, not a cleanup.
+    // [AMENDED 2026-09-29 — plan 88.6-61, review round 2 H-5, owner ruling R2-H5-RULING "source-level"
+    // ("why are we recording passwords?")]: the "second, independent arm" claim above was INCOMPLETE.
+    // A failed test ALSO writes `test-results/<test>/error-context.md` with an aria snapshot that
+    // serialises typed input values — password inputs included (measured: a throwaway probe's fake
+    // value appeared as `- textbox: <value>`). Trace settings never reach it, and the failure upload
+    // shipped it. So the setup project now takes NO capture of any kind: `screenshot: 'off'` beside
+    // `trace: 'off'`, chosen OVER keeping the failure screenshot for Auth0-markup diagnosis (it
+    // shows the typed identifier; the locator error text stays in the CI log). CI also runs this
+    // project as its OWN invocation with the aria-snapshot copy prompt disabled (ci.yml, the e2e
+    // step), and `auth.setup.ts` makes no page-level matcher after the fill. Lockstep-pinned by
+    // `src/lib/ci-grep-gate.fixture.test.ts` ("88.6 R2-H5"). Re-enabling either capture on the
+    // setup project is a decision, not a cleanup.
+    { name: 'setup', testMatch: /auth\.setup\.ts/, use: { trace: 'off', screenshot: 'off' } },
     {
       name: 'journeys',
       testMatch: /.*\.spec\.ts/,

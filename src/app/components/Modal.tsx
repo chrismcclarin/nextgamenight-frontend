@@ -11,7 +11,7 @@
  *
  * The chrome reproduces today's `globals.css` `.modal-*` rules 1:1 so the
  * Phase-88 migration is a near-mechanical class -> component swap:
- *   - Content: radius 12px, max-h 90vh, scroll contained to the Body
+ *   - Content: radius 12px, max-h 90dvh, scroll contained to the Body
  *   - Header:  1.25rem 1.5rem (20/24) padding, 1px bottom border, title 20px/700
  *   - Body:    1.5rem (24) padding, flex:1, scroll-y
  *   - Footer:  1rem 1.5rem (16/24) padding, justify-end, gap 0.75rem (12)
@@ -23,6 +23,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@/components/ui/Button';
 import {
   Dialog,
   DialogClose,
@@ -55,6 +56,25 @@ export function preventNonDismissableClose(
   event: Pick<Event, 'preventDefault'>
 ): void {
   if (!dismissable) event.preventDefault();
+}
+
+/**
+ * Escape guard for an EXPANDED combobox (Phase 88.6-57, CR-502). Radix's `useEscapeKeydown`
+ * listens on `document` in the CAPTURE phase, so it sees Escape BEFORE the Combobox's own
+ * React `onKeyDown` — which therefore cannot stop the dialog from closing. When the keydown
+ * originates inside a combobox ROOT (`data-combobox-root`, `Combobox.tsx`) whose input is
+ * expanded, cancel it here: Radix checks `defaultPrevented` and skips the dismiss, and the
+ * Combobox's own handler (and floating-ui's dismiss) still close the LIST.
+ *
+ * Scoped to the ROOT, not the input: `role="combobox"` sits on the INPUT, and a trailing
+ * control such as `GameComboInput`'s Clear button is a SIBLING inside the same root, so a
+ * guard keyed on the input alone lets Escape from that button close the whole Modal while the
+ * list is open.
+ */
+function preventComboboxEscape(event: Pick<KeyboardEvent, 'target' | 'preventDefault'>): void {
+  const target = event.target;
+  const root = target instanceof Element ? target.closest('[data-combobox-root]') : null;
+  if (root?.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
 }
 
 /**
@@ -105,7 +125,10 @@ export interface ModalProps {
    * unmounts, so a caller that restores focus itself (FeedbackModalProvider's
    * invoker restore, T-87.8-22) must do it HERE with `event.preventDefault()`
    * — restoring in a close() handler runs first and is then clobbered by
-   * Radix's default. Omit for the default behaviour.
+   * Radix's default. Omit for the default behaviour — which, since Phase
+   * 88.6-44, is a real restore to the element that held focus when the dialog
+   * opened (see `handleCloseAutoFocus`). A caller that prevents default keeps
+   * full control, exactly as before.
    */
   onCloseAutoFocus?: (event: Event) => void;
   /** Extra classes merged onto the dialog content surface. */
@@ -133,16 +156,71 @@ function ModalRoot({
   // Defeat outside-click dismissal when locked. onPointerDownOutside +
   // onInteractOutside cover the overlay/focus-outside paths; Esc is handled by
   // Radix's onEscapeKeyDown, which we intentionally leave enabled.
+  //
+  // DECISION Phase 88.6-57 (CR-502, 88.6-REVIEW.md, 2026-09-28): Escape STAYS enabled for
+  // the dialog (the `dismissable` contract is unchanged — keyboard is never trapped). The ONE
+  // exception is a keydown that originates inside an EXPANDED combobox: that Escape belongs
+  // to the combobox (close the suggestions), not the dialog (discard the form) — see
+  // `preventComboboxEscape`. Chosen OVER handling it in `Combobox.tsx` (REJECTED: Radix
+  // listens on `document` in the capture phase, so the child's React handler runs too late
+  // to stop the dialog — the host is the only place that sees the event first). Removing
+  // the guard re-opens createEvent's form loss; it is a decision, not a cleanup.
   const preventOutsideDismiss = React.useCallback(
     (event: Event) => preventNonDismissableClose(dismissable, event),
     [dismissable]
   );
 
+  /* DECISION Phase 88.6-44 (T-88.6-141, WCAG 2.4.3): the primitive RESTORES FOCUS ON CLOSE to
+     the element that held it when the dialog opened, chosen OVER leaving it to Radix — which
+     does NOT do this here, contrary to what this file's own docblock assumed until now.
+
+     MEASURED (2026-09-22, @radix-ui/react-dialog 1.1.17 `DialogContentModal`): Radix composes
+     the consumer's `onCloseAutoFocus` with its own handler that calls `event.preventDefault()`
+     and then `context.triggerRef.current?.focus()`. `FocusScope`'s "restore to the previously
+     focused element" is therefore ALWAYS cancelled for a modal dialog, and the replacement
+     focuses `Dialog.Trigger` — a component this primitive never renders (every consumer opens
+     from its own button and flips `open`), so `triggerRef.current` is null and nothing is
+     focused. The measured outcome on every `Modal` consumer without an `onCloseAutoFocus`:
+     focus lands on `<body>` after close, and a keyboard or screen-reader user is dropped at the
+     top of the page. `FeedbackModalProvider` (T-87.8-22) had already hand-rolled this exact
+     restore for ONE consumer; this is the same restore for the fleet, in the one place.
+
+     WHY THE OPENER IS CAPTURED IN `onOpenAutoFocus` and not in an effect: `FocusScope` reads
+     `document.activeElement` and dispatches the open-autofocus event BEFORE it moves focus into
+     the content, whereas a `useEffect` in this component runs AFTER the child scope has already
+     focused the first tabbable (React runs child effects first) and would capture the header
+     Close control. `onCloseAutoFocus` fires from a `setTimeout` after unmount, so the opener
+     may be gone by then — a detached node is skipped and the browser's own fallback stands.
+
+     REJECTED: rendering a `Dialog.Trigger` per consumer (~37 call sites, and the opener is
+     often not a single static button); REJECTED: each consumer passing its own
+     `onCloseAutoFocus` (the FeedbackModalProvider shape times the fleet — the duplication the
+     tenet forbids). A consumer that prevents default in its own handler still wins — checked
+     BEFORE the restore. Pinned by `Modal.test.tsx` ("returns focus to the opener"); five
+     surface suites (plan 88.6-44) assert it against a NAMED trigger. Removing this handler is a
+     decision, not a cleanup. */
+  const openerRef = React.useRef<HTMLElement | null>(null);
+
   const handleOpenAutoFocus = React.useCallback(
     (event: Event) => {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
       applyInitialFocus(initialFocusRef, event);
     },
     [initialFocusRef]
+  );
+
+  const handleCloseAutoFocus = React.useCallback(
+    (event: Event) => {
+      onCloseAutoFocus?.(event);
+      if (event.defaultPrevented) return;
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (!opener || !opener.isConnected) return;
+      event.preventDefault();
+      opener.focus();
+    },
+    [onCloseAutoFocus]
   );
 
   return (
@@ -150,7 +228,7 @@ function ModalRoot({
       <DialogContent
         hideCloseButton
         onOpenAutoFocus={handleOpenAutoFocus}
-        onCloseAutoFocus={onCloseAutoFocus}
+        onCloseAutoFocus={handleCloseAutoFocus}
         // This Radix build does not emit aria-modal on Content; set it
         // explicitly so the dialog advertises modality to assistive tech.
         aria-modal="true"
@@ -159,9 +237,10 @@ function ModalRoot({
         aria-describedby={undefined}
         onPointerDownOutside={preventOutsideDismiss}
         onInteractOutside={preventOutsideDismiss}
+        onEscapeKeyDown={preventComboboxEscape}
         className={cn(
           // Reset shadcn Dialog defaults (grid/gap-4/p-6/bg-background/max-w-lg)
-          // to the `.modal-content` chrome: card surface, 12px radius, 90vh cap,
+          // to the `.modal-content` chrome: card surface, 12px radius, 90dvh cap,
           // flex column with the Body owning the scroll.
           //
           /* DECISION Phase 88-16 (DEF-88-17-01): `w-[calc(100%-1.5rem)] md:w-full`
@@ -183,7 +262,48 @@ function ModalRoot({
              dialog" globals.css` -> no matches) — unlike the `.btn` case DEC-2
              fixed. Reverting to `w-full` re-opens DEF-88-17-01; that is a
              decision, not a cleanup. Pinned by Modal.test.tsx. */
-          'flex max-h-[90vh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full',
+          /* DECISION Phase 88.6-08 (D-30 / W34): the height cap is `90dvh` — the DYNAMIC
+             viewport unit — converging the dialog family onto the one unit `BottomSheet`
+             already ships (`BottomSheet.tsx:80`, `:82`). W34 was the recorded divergence:
+             two viewport-unit idioms inside one primitive family.
+
+             (a) CHOSEN OVER `svh`, and `svh` is a real alternative rather than a strawman.
+             `svh` pins the SMALL viewport — the one left when mobile browser chrome is
+             fully EXTENDED — so the cap never changes while that chrome animates in and
+             out, and a dialog sized against it can never be clipped mid-scroll. Its cost
+             is the mirror: once the chrome retracts, an `svh` cap leaves real height
+             unused on a surface whose whole job is to fit a form. `dvh` tracks the live
+             viewport, which is what D-30 locks and what the sheet already uses.
+
+             (b) WHY THE ANSWER DIFFERS FROM A BOTTOM SHEET'S, and why that is not an
+             inconsistency. `BottomSheet` is anchored to the BOTTOM edge — precisely the
+             edge iOS Safari's dynamic toolbar occupies — so for it the unit choice decides
+             whether the rows a person is reaching for sit UNDER the toolbar; that argument
+             is written out at `BottomSheet.tsx:62-77`. `Modal` is CENTRE-anchored and its
+             cap is a max rather than a floor, with `Modal.Body` (`:336`) owning the scroll,
+             so an over-tall viewport estimate costs scroll distance here rather than
+             reachability. Same unit, different reason — recorded so the next reader does
+             not conclude the two were converged by coincidence.
+
+             (c) THIS IS A DISCLOSURE, NOT AN OBJECTION. D-30 stands, and `BottomSheet`'s
+             `dvh` is never reverted — "simplifying" either side back to `vh` re-opens D-06
+             and W34 together. Nothing here re-opens the convergence.
+
+             (d) THE SCROLL CONTAINER DOES NOT MOVE. `Modal.Body` (`:336`) is still the
+             only scrolling region, so `FetchErrorBanner`'s §6.2 placement rule — top of
+             the surface's scroll container, above the first content element — is
+             unaffected by the unit change. RESEARCH § Assumptions Log A7 flags a
+             scroll-container change as the thing that would silently move it.
+
+             (e) STALE ON THE OTHER SIDE, routed not edited: `BottomSheet.tsx:62-63` still
+             says in the present tense that "`Modal.tsx:186` caps at `max-h-[90vh]` and is
+             the known-divergent sibling". That sentence is now false. This plan declares
+             neither that file nor its suite, and an edit lands only in a file its plan
+             declares — plan 37 declares `BottomSheet.tsx` and owns the amendment.
+
+             Gated by `Modal.test.tsx`: the rendered shell carries `max-h-[90dvh]`, and a
+             comment-stripped scan of this file finds no viewport-height unit but `dvh`. */
+          'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full',
           SIZE_CLASS[size],
           className
         )}
@@ -319,35 +439,97 @@ function ModalFooter({ children, className }: ModalFooterProps) {
 
 export type ModalActionVariant = 'primary' | 'secondary' | 'danger';
 
-const ACTION_CLASS: Record<ModalActionVariant, string> = {
-  primary: 'btn-primary',
-  secondary: 'btn-secondary',
-  // Destructive-footer affordance hook for Phase-88 (maps to --color-error).
-  // No destructive flow is wired this phase — only the variant is provided.
-  danger: 'btn-danger',
-};
+/* DECISION Phase 88.6-08 (D-08): `Modal.Action` RENDERS THE `Button` PRIMITIVE.
 
+   RETIRED WITH THIS CHANGE: the module-private variant map that used to sit on this line —
+   named `ACTION_CLASS`, a `Record<ModalActionVariant, string>` holding `btn-primary`,
+   `btn-secondary` and `btn-danger` — and the `cn('btn', …)` call it fed, which was the
+   tree's SECOND `.btn` emitter after `Button`'s cva base. The name is spelled out here on
+   purpose: the project's DECISION convention is greppable, and a future reader asking why
+   the variant map vanished will search for it. (This retirement is gated on
+   COMMENT-STRIPPED source in `Modal.test.tsx`, not by a raw `git grep`, precisely so a
+   faithful marker and a passing gate are not mutually exclusive.)
+
+   CHOSEN OVER: exempting `ModalAction` as a second primitive and keeping the map here.
+   That arm expresses the variant mapping in two places — the house duplication tenet's
+   explicit target — and leaves the phase's `.btn` emitter census permanently non-zero, so
+   it could never honestly reach one emitter. The swap DELETES a map rather than
+   translating one because `Button.tsx:6-10` records that its variant names were aligned
+   with `ModalActionVariant` "so the later adoption plans are a mechanical swap": the three
+   entries matched 1:1 (primary/secondary/danger), byte-identically.
+
+   `ModalActionVariant` STAYS EXPORTED with the same three members. Narrowing it to
+   `Button`'s `VariantProps` would move the public API that the 14 call sites and
+   `ModalActionProps` read, and this swap's own constraint is that no call site changes.
+
+   WHAT THE 14 CALL SITES GAIN — all three are on UI-SPEC §1.2's closed list of sanctioned
+   visible deltas; none is new:
+     V-1  a 44px height floor at DESKTOP too (`min-h-11` on `Button`'s cva base). Phone was
+          already floored by the unlayered `.btn` `@media (width < 48rem)` rule.
+     V-2  hover elevation — INHERITED ALREADY NARROWED, not introduced here. THIS FILE
+          AUTHORS NO HOVER TOKEN. The lift lives on `Button`'s base as
+          `enabled-hover:shadow-theme-md` (plan 06), and plan 05's `enabled-hover`
+          `@custom-variant` (`globals.css:177-183`) compiles inside a hover-capability
+          media query and excludes BOTH `:disabled` and `[aria-disabled='true']`. So the
+          eight GATED footer actions do not lift: a hover lift on a gated dialog action
+          would be a regression, never a sanctioned V-2 delta. Those eight, read live
+          2026-09-16: `DangerZoneDeleteAccount.tsx:391`, `StartPollModal.js:274` and `:282`,
+          `GroupSettings.js:1168`, `ManageMembers.js:743`, `:750`, `:796`, `:803` — all on
+          the NATIVE `disabled` attribute, which `enabled-hover` excludes directly.
+     V-3  the house focus ring, whose ONE home is `Button`'s cva base (plan 05, ARM A).
+
+   NO `size` PROP IS ADDED. Dialog footer actions are `size="default"` per UI-SPEC §3.3,
+   which caps the `sm` rung at two named adopters; a third `sm` consumer is a decision.
+
+   THE `ref` IS FORWARDED, and that is not scope creep. `ModalAction` was a plain function
+   component, so on React 18 a caller's `ref` was silently dropped — which made this file's
+   own contract at `:61-71` ("A destructive confirmation must open with CANCEL focused")
+   UNREACHABLE through `Modal.Action`. `ConfirmDialog.tsx` gets CANCEL focus only because it
+   uses a bare `<Button ref={cancelRef}>` instead, while `DangerZoneDeleteAccount.tsx:384`'s
+   Cancel IS a `Modal.Action` and that file passes no `initialFocusRef` at all. `Button` is
+   already `forwardRef`, so this is purely additive, and it is a LATENT gap rather than a
+   live regression: zero `Modal.Action` sites pass a `ref` today (measured 2026-09-16 —
+   `grep -rn 'Modal.Action' src | grep -c 'ref='` returns 0 across all 32 matched lines).
+
+   WHAT THE ref DOES NOT DO: it changes no call site's behaviour today, and this plan wires
+   no `initialFocusRef` anywhere. That wiring is ROUTED, not done: plan 30 owns
+   `DangerZoneDeleteAccount.tsx` and plan 19 owns `ManageMembers.js`; `StartPollModal.js:171`
+   already passes its own. This is also NOT the `DialogContent` ref plan 30 routes — that is
+   a different target (the dialog content container, not the footer action) — and D52's
+   mechanism is untouched.
+
+   Re-pointing this back at a bare `<button>` with a local variant map is a decision, not a
+   cleanup. */
 export interface ModalActionProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   /** Visual intent. @default 'primary' */
   variant?: ModalActionVariant;
 }
 
-/** Footer action button mapping to the existing `.btn` variants. Copy via children. */
-function ModalAction({
-  variant = 'primary',
-  className,
-  type = 'button',
-  ...props
-}: ModalActionProps) {
-  return (
-    <button
-      type={type}
-      className={cn('btn', ACTION_CLASS[variant], className)}
-      {...props}
-    />
-  );
-}
+/**
+ * Footer action button — the `Button` primitive behind this file's stable API. Copy via
+ * children. The `danger` rung is the destructive-footer affordance (maps to
+ * `--color-error` through `.btn-danger`).
+ */
+const ModalAction = React.forwardRef<HTMLButtonElement, ModalActionProps>(
+  function ModalAction({ variant = 'primary', className, type = 'button', ...props }, ref) {
+    // `type` is forwarded explicitly even though `Button` also defaults it to 'button':
+    // a caller overriding it to 'submit' (StartPollModal's poll form) must keep that value.
+    return (
+      <Button
+        ref={ref}
+        variant={variant}
+        type={type}
+        className={className}
+        {...props}
+      />
+    );
+  }
+);
+
+// Preserves the devtools name the plain function component gave for free — a bare
+// `forwardRef` wrapper renders as "ForwardRef" in the component tree.
+ModalAction.displayName = 'ModalAction';
 
 export const Modal = Object.assign(ModalRoot, {
   Header: ModalHeader,

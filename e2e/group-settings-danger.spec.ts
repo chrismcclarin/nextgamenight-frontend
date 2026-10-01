@@ -35,7 +35,7 @@ import { assertTheme, forceLightMode } from './support/contrast';
  *
  * ENTRY PATH (the way a user reaches it): groupHomePage title-row kebab
  * ("Group actions", CONTEXT D-LEAVE-01 — groupHomePage/page.js:362-371) →
- * "Group settings" menuitem → the Customize Group modal. The Danger Zone renders
+ * the "Group settings" item → the Customize Group modal. The Danger Zone renders
  * only for the group OWNER; the CI login identity (Alice) owns the seeded group
  * that scripts/e2e-fixtures.js emits as E2E_GROUP_ID, so it must render here —
  * the vacuity guards assert that instead of silently passing.
@@ -127,11 +127,22 @@ async function openGroupSettings(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
   // Title-row kebab → Group settings (KebabMenu.js: trigger aria-label
-  // "Group actions", items role="menuitem").
+  // "Group actions"). Plan 88.6-16 (D-12) dropped the ARIA menu pattern: the items
+  // are plain buttons inside a `<ul role="list">` the trigger names through
+  // `aria-controls` while open. The id comes from React's `useId` and contains
+  // colons, so it is matched with an attribute selector rather than `#id`.
   const kebab = page.getByRole('button', { name: /group actions/i });
   await expect(kebab).toBeVisible({ timeout: 15_000 });
   await kebab.click();
-  await page.getByRole('menuitem', { name: /group settings/i }).click();
+  const listId = await kebab.getAttribute('aria-controls');
+  expect(
+    listId,
+    'the KebabMenu trigger exposes aria-controls while its menu is open (88.6-16 D-12)',
+  ).toBeTruthy();
+  await page
+    .locator(`[id="${listId}"]`)
+    .getByRole('button', { name: /group settings/i })
+    .click();
 
   // The Customize Group modal is mounted.
   await expect(page.getByRole('heading', { name: /customize group/i })).toBeVisible();

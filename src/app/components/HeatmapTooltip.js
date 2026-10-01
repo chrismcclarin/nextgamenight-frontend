@@ -292,9 +292,18 @@ function HeatmapTooltip({
   // tone. Mobile tone unchanged.
   // z-index lives on the outer positioned div — see render below. Inner has no
   // z-class so it can't fight the outer's stacking context.
+  // DECISION Phase 88.6-34 (D-03 / UI-SPEC §4.5): the mobile tone's `font-medium` is DELETED —
+  // §4.5's EMPHASIS outcome (400, with a colour token doing the work), chosen OVER HIERARCHY (700).
+  // 700 would bold an entire tooltip BODY, which is not hierarchy; and the row already carries
+  // `text-content-primary`, the strongest ink there is, so 400 loses nothing it was carrying. The
+  // mobile tone keeps every other thing that distinguishes it from the default — more padding
+  // (`py-3` vs `py-2.5`), the `ring-1 ring-line`, and the wider `max-w`. Note the comment above is
+  // now partly stale on one point: BOTH tones have been `text-base` since the 72-02 hotfix, so
+  // "larger type" no longer distinguishes them. Visible delta 500 -> 400 on the mobile heatmap
+  // tooltip, covered by V-6. Restoring 500 is a decision, not a cleanup.
   const toneClassName =
     tone === 'mobile'
-      ? 'bg-surface-elevated text-content-primary rounded-card px-4 py-3 text-base font-medium shadow-theme-lg max-w-[calc(100vw-2rem)] ring-1 ring-line'
+      ? 'bg-surface-elevated text-content-primary rounded-card px-4 py-3 text-base shadow-theme-lg max-w-[calc(100vw-2rem)] ring-1 ring-line'
       : 'bg-surface-elevated text-content-primary rounded-card px-4 py-2.5 text-base shadow-theme-lg max-w-xs';
 
   // Arrow positioning per floating-ui's arrow-middleware contract.

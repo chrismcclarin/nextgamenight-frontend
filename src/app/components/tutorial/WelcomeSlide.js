@@ -1,5 +1,8 @@
 'use client';
 
+import { Button } from '../../../components/ui/Button';
+import { Heading } from '../../../components/ui/Heading';
+
 /**
  * Welcome slide for the explanatory tutorial (Phase 73 ONBD-04).
  *
@@ -14,19 +17,22 @@
 export default function WelcomeSlide({ onStart }) {
   return (
     <div className="max-w-md w-full text-center">
-      <h1 className="text-3xl font-bold text-content-primary mb-2">
+      <Heading level={1} size="display" className="text-content-primary mb-2">
         Find the night your whole group is free.
-      </h1>
+      </Heading>
       <p className="text-content-secondary text-base mb-8">
         In one glance.
       </p>
 
-      <button
-        onClick={onStart}
-        className="btn btn-primary w-full py-3 px-6 font-semibold transition-colors text-base"
-      >
+      {/* DECISION Phase 88.6-35 (UI-SPEC §3.2, §3.4 rule 3): the file's ONE `.btn` element.
+          `py-3 px-6` (padding, globals.css:2202), `font-semibold` (weight `:2200`) and
+          `text-base` (font-size `:2201`) are all DEAD under unlayered `.btn` and go;
+          `transition-colors` goes with them, because `.btn` declares
+          `transition: var(--theme-transition)` unlayered at `:2203`. `w-full` STAYS — `.btn`
+          declares no width, so it was never dead. */}
+      <Button variant="primary" onClick={onStart} className="w-full">
         Show me how it works
-      </button>
+      </Button>
     </div>
   );
 }

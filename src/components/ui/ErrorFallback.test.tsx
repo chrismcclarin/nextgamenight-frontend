@@ -38,6 +38,70 @@ describe('ErrorFallback', () => {
     ).toBeInTheDocument();
   });
 
+  // Plan 88.6-36 task 2 (D-05). THE ANTI-GROWTH PIN — this is the assertion that stops a future
+  // "consistency" pass growing this heading to Display.
+  //
+  // WHY 20 AND NOT 30, in the one place a reader will look for it: `<h1>` is the document
+  // OUTLINE (this is the only heading on a crashed boundary) and 20 is the type ROLE. They are
+  // different facts, which is exactly what `Heading`'s two independent props express and what
+  // this file has been the shipped precedent for since 88-04. `typeScaleTouchedSurfaces.test.ts`'s
+  // 30/700 Display assertion is scoped to `PAGE_SURFACES` for this reason and its own comment
+  // says so: growing THIS `<h1>` to `text-3xl` "would be that exact demotion in reverse, on nine
+  // error boundaries at once".
+  //
+  // The `text-3xl` half is a NEGATIVE assertion and is therefore paired with the positive
+  // `text-xl` one — a bare not-`text-3xl` would stay green if the heading vanished entirely.
+  it('renders the heading through Heading at level 1 and size 20 — never grown to Display', () => {
+    render(<ErrorFallback onRetry={vi.fn()} onReload={vi.fn()} />);
+    const heading = screen.getByRole('heading', {
+      level: 1,
+      name: 'Something went wrong',
+    });
+    expect(heading.tagName).toBe('H1');
+    expect(heading, 'the 20px Heading rung').toHaveClass('text-xl');
+    expect(heading, 'the 30px Display rung is the rejected alternative — see 88-29').not.toHaveClass(
+      'text-3xl'
+    );
+    // Supplied by Heading's cva base, so this arm also proves the element is the PRIMITIVE and
+    // not a raw tag that happens to carry the same size. It is RED against the pre-migration
+    // `<h1 className="text-xl font-bold text-content-primary">`.
+    expect(heading, '700 from the primitive base, not from the call site').toHaveClass('font-bold');
+    expect(heading, 'wrap utility from the primitive base').toHaveClass('wrap-anywhere');
+    expect(heading).toHaveClass('leading-tight');
+    expect(heading).toHaveClass('text-content-primary');
+  });
+
+  // Plan 88.6-36 task 2 (D-03 / UI-SPEC §4.5). The two affordances are raw `<button>`s by
+  // D-20's recorded decision, so their `font-medium` was LIVE, not dead-on-a-`.btn`. It deletes
+  // to 400 and the 14px control-label rung STAYS. Class-level, because jsdom performs no layout
+  // and loads no stylesheet: a computed `fontWeight` here reads the UA default before and after
+  // and would prove nothing (the D28 rule).
+  it('carries no off-scale weight on either affordance, and keeps the 14px control rung', () => {
+    render(<ErrorFallback onRetry={vi.fn()} onReload={vi.fn()} />);
+    for (const name of ['Try again', 'Reload page']) {
+      const button = screen.getByRole('button', { name });
+      expect(button, `${name}: 500 is a §4.5 prohibition outside Button`).not.toHaveClass(
+        'font-medium'
+      );
+      expect(button, `${name}: 600 likewise`).not.toHaveClass('font-semibold');
+      expect(button, `${name}: the control-label rung is unchanged`).toHaveClass('text-sm');
+    }
+  });
+
+  // Plan 88.6-36 task 2 (D49-b, owner ruling 2026-09-09 option i). The card's elevation is the
+  // PROJECT tier, not Tailwind's alias-spelled built-in. `shadowTier.test.ts` scans the source
+  // tree-wide; this arm pins the RENDERED element, so the class cannot be moved onto a wrapper
+  // the source scan still counts as this file's.
+  it('elevates the card on the project shadow tier, never the alias-spelled built-in', () => {
+    const { container } = render(<ErrorFallback onRetry={vi.fn()} onReload={vi.fn()} />);
+    const card = container.querySelector('.rounded-card');
+    expect(card).not.toBeNull();
+    expect(card).toHaveClass('shadow-theme-lg');
+    expect(card, 'the built-in inlines a cold black literal in BOTH themes').not.toHaveClass(
+      'shadow-lg'
+    );
+  });
+
   it('calls onRetry when "Try again" is pressed', async () => {
     const onRetry = vi.fn();
     render(<ErrorFallback onRetry={onRetry} onReload={vi.fn()} />);

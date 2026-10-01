@@ -28,7 +28,15 @@
  * only — an `it.each(` block does NOT count toward the floor, which is why every block below is
  * a plain `it(`.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
+
+// Phase 88.6-20 (A10): test 15b-ii reads the picker's SOURCE to assert which CSS slot the
+// selected cue occupies. Comments are blanked first — the markers in that file quote the
+// very class strings being asserted on, and a raw scan would match the prose.
+import { withoutComments } from '../test-utils/sourceScan';
 
 import {
   getBrightness,
@@ -788,59 +796,166 @@ describe('the swatch resting boundary — M33 (UI-SPEC §10.1 test 15)', () => {
   });
 });
 
-describe('the swatch resting boundary in DARK mode — ACCEPTED FAILURE, owner ruling 2026-08-30', () => {
-  it('15b. DISCLOSED: `green` reads 2.7912 against its own dark band, under the 3:1 this control invoked', () => {
+describe('the swatch resting boundary in DARK mode — FIXED by D-17, owner re-ruling 2026-09-08', () => {
+  it('15b. ALL EIGHT dark resting boundaries clear 3:1 on the APPLIED colour, and the retired token still would not', () => {
     /*
-     * ACCEPTED FOREVER — owner ruling 2026-08-30, code review 88.3.1 fork F2, option (b).
+     * REWRITTEN Phase 88.6-20 (D-17, owner fork 2026-09-08). This test used to assert
+     * "green is the ONLY preset below 3:1, and that is accepted forever". The owner
+     * RE-EXAMINED that 2026-08-30 ruling against Phase 88.6's zero-remaining doctrine and
+     * ruled the other way, so the assertion is inverted: an EIGHT-WAY >= 3:1 floor on the
+     * colour the swatch's dark resting arm now APPLIES.
      *
-     * THE FINDING. M33 / AMENDMENT D upgraded this swatch's resting boundary from
-     * `border-line` to `border-line-strong` on an explicit WCAG 1.4.11 argument: a swatch is a
-     * colour-only control, so its edge needs 3:1 against the fill it surrounds. Test 15 above
-     * proves that for LIGHT mode and stops there — `BORDER_STRONG_LIGHT` was, until this test,
-     * the only boundary constant in the file. The dark half was never computed. It does not
-     * hold: in `.dark`, `--color-border-strong` resolves to `--purple-500` `#6b7fa3`, and
-     * against `green`'s dark band `#004511` that is **2.7912**, under the floor the change
-     * itself invoked. The swatch carries no text of its own (the caption is a sibling `<span>`,
-     * `aria-hidden`), so this edge really is the only in-component cue.
+     * THE APPLIED COLOUR IS `content-muted` (`dark:border-content-muted`,
+     * `GroupSettings.js`, the shared resting arm), reached through the `dark:` variant the
+     * retired record itself named as the only sanctioned fix shape. All eight, not green
+     * alone: a per-preset branch has no stateable rule.
      *
-     * WHY IT IS ACCEPTED AND NOT FIXED. The owner ruled (b): leave it, record it. Four
-     * alternatives were measured and all four clear the floor — `purple-400` #8a9bba (worst
-     * case 4.02), `content-muted` warm-400 (4.89), `purple-300` #b0bdd3 (5.95),
-     * `content-secondary` warm-300 (7.08) — so this is a look decision taken with the numbers
-     * in hand, not an oversight. One preset, one theme, on a control whose selected state is
-     * additionally marked by a `ring-2` and whose accessible name is on the button.
+     * `BORDER_STRONG_DARK` IS KEPT AS A COUNTER-ASSERTION, deliberately. It is the record
+     * that the OLD token still reads 2.7912 against green and must never be re-adopted for
+     * this edge — a future "simplification" that drops the `dark:` variant reds here rather
+     * than silently restoring the accepted failure.
      *
-     * WHY THIS IS A TEST AND NOT A PARAGRAPH. House precedent: `--color-text-link` was left
-     * under AA by ruling 1c and pinned as a DISCLOSED FAILURE by Gate A tests 48-49 "so it can
-     * never be invisible again". Same treatment. This test PASSES on the accepted value and
-     * REDS if the number moves in either direction — a drift further down is caught, and so is
-     * a silent fix that would leave this record lying.
+     * TEST 15 (the LIGHT arm, 3.0361-3.0648) IS BYTE-UNCHANGED. Light mode was never the
+     * failing half and `border-line-strong` still carries it.
      *
-     * DO NOT "fix" this by moving the token. `--color-border-strong` has 27 class usages across
-     * `src`, and `globals.css:1073-1136` records it as the 3:1 control edge and forbids nudging
-     * it. Any future fix is a `dark:` variant at the ONE swatch site
-     * (`GroupSettings.js`, the resting arm), and it must update this test in the same commit.
+     * WHAT THIS TEST DOES NOT SAY, labelled rather than counted: it is a PALETTE-DATA
+     * assertion. On its own it is NOT discriminating against the component — it stays green
+     * whatever `GroupSettings.js` applies, because it never reads that file. The link from
+     * "content-muted clears 3:1 eight ways" to "the swatch applies content-muted" is supplied
+     * by test 15b-ii below, which asserts the resting arm's class string from SOURCE. The two
+     * are a pair; neither is the gate alone. It also measures FILL-vs-BORDER only, so it says
+     * nothing about A10 (selection surviving focus) — also 15b-ii.
      */
     const NON_TEXT_FLOOR = 3.0;
-    const dark = GROUP_COLOUR_PRESETS.map((p) => contrast(BORDER_STRONG_DARK, p.dark));
-    expect(dark).toHaveLength(8);
 
-    const byName = Object.fromEntries(GROUP_COLOUR_PRESETS.map((p, i) => [p.name, dark[i]]));
+    // THE FLOOR, eight ways, on the colour the resting arm applies in dark mode.
+    const applied = GROUP_COLOUR_PRESETS.map((p) => contrast(CONTENT_MUTED_DARK, p.dark));
+    expect(applied).toHaveLength(8);
+    for (let i = 0; i < 8; i += 1) {
+      expect(
+        applied[i],
+        `${GROUP_COLOUR_PRESETS[i].name}: dark resting boundary ${applied[i].toFixed(4)}`,
+      ).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
+    }
+    // Measured 2026-09-16: red 6.1320, orange 6.2258, amber 6.1387, green 4.8902,
+    // teal 5.8049, blue 6.5069, violet 5.8547, rose 6.6699. Banded rather than pinned
+    // exactly (Pitfall 6), with green — the site of the retired failure — as the worst.
+    expect(Math.min(...applied)).toBeGreaterThanOrEqual(4.88);
+    expect(Math.min(...applied)).toBeLessThanOrEqual(4.90);
+    const byNameApplied = Object.fromEntries(
+      GROUP_COLOUR_PRESETS.map((p, i) => [p.name, applied[i]]),
+    );
+    expect(
+      Math.min(...applied),
+      'green is no longer the worst pairing — re-read D-17 before re-banding this',
+    ).toBe(byNameApplied.green);
 
-    // The accepted failure, pinned to its exact measured value in both directions.
-    expect(byName.green).toBeGreaterThan(2.79);
-    expect(byName.green).toBeLessThan(2.80);
-    expect(byName.green, 'green is the ACCEPTED dark-mode failure').toBeLessThan(NON_TEXT_FLOOR);
+    // THE COUNTER-ASSERTION. The retired token is still below the floor on green, and
+    // every preset is STRICTLY BETTER under the applied colour — i.e. no preset regressed
+    // in exchange for fixing green, which is the thing a one-preset fix cannot promise.
+    const retired = GROUP_COLOUR_PRESETS.map((p) => contrast(BORDER_STRONG_DARK, p.dark));
+    const byNameRetired = Object.fromEntries(
+      GROUP_COLOUR_PRESETS.map((p, i) => [p.name, retired[i]]),
+    );
+    expect(byNameRetired.green).toBeGreaterThan(2.79);
+    expect(byNameRetired.green).toBeLessThan(2.80);
+    expect(
+      byNameRetired.green,
+      '`border-line-strong` alone is still under 3:1 on green — do not re-adopt it here',
+    ).toBeLessThan(NON_TEXT_FLOOR);
+    for (let i = 0; i < 8; i += 1) {
+      expect(
+        applied[i],
+        `${GROUP_COLOUR_PRESETS[i].name}: the fix must not regress any preset`,
+      ).toBeGreaterThan(retired[i]);
+    }
+  });
 
-    // …and it is the ONLY one. A second preset dropping under 3:1 is NOT covered by the
-    // ruling and must red here rather than join the accepted set silently.
-    const failing = GROUP_COLOUR_PRESETS.filter((p, i) => dark[i] < NON_TEXT_FLOOR).map((p) => p.name);
-    expect(failing, 'only `green` is accepted below 3:1 in dark mode').toEqual(['green']);
+  it('15b-ii. the SELECTED cue lives in a slot the focus ring does not write, and its colour clears 3:1 on all eight fills', () => {
+    /*
+     * NEW Phase 88.6-20 (A10). Test 15b above measures fill-vs-border and is silent about
+     * selection; this is the half that is not silent.
+     *
+     * THE DEFECT. `ring-2 ring-content-primary` (selected) and
+     * `focus-visible:ring-2 focus-visible:ring-focus-ring` (focus) both write the SINGLE
+     * `--tw-ring-shadow` custom property, so a swatch that is selected AND focused shows
+     * only the focus ring. That was survivable while the resting-vs-selected BORDER delta
+     * was 3.8172; D-17 drops it to 2.1787, so it is not.
+     *
+     * (a) CLASS-LEVEL, ANCHORED ON THE ELEMENT THAT ACTUALLY CARRIES THE BORDER-2 TERNARY.
+     * The anchor is the `border-2 rounded-lg` class string, NOT a tag name and NOT a line
+     * number — task 2 of this same plan (W76) moves that ternary from the `<button>` onto
+     * an inner `<span>`, and an assertion anchored on the button would keep passing while
+     * the cue sat on the wrong element.
+     *
+     * (b) THE BAND'S COLOUR, MEASURED rather than assumed: `content-primary` is warm-900
+     * `#1a1614` in light and warm-50 `#faf8f5` in dark, so the band is measured against the
+     * LIGHT fill in light mode and the DARK fill in dark mode.
+     *
+     * SCOPE, STATED: light and dark. `forced-colors: active` discards box-shadows, so the
+     * inset band is erased there — the selected arm carries an ADDITIVE forced-colors-only
+     * outline for that mode (ACCEPT §4 / #152, owner ruling 2026-09-14), asserted below as
+     * a class but NOT measured: this suite cannot render a forced-colors UA.
+     */
+    const src = withoutComments(
+      fs.readFileSync(path.resolve(__dirname, '../app/components/GroupSettings.js'), 'utf8'),
+    );
 
-    // The other seven, pinned as a band so a palette re-tune that erodes them reds here.
-    const rest = GROUP_COLOUR_PRESETS.filter((p) => p.name !== 'green').map((p) => contrast(BORDER_STRONG_DARK, p.dark));
-    expect(Math.min(...rest)).toBeGreaterThanOrEqual(3.31); // teal 3.3133, the tightest passer
-    expect(Math.max(...rest)).toBeLessThanOrEqual(3.81);    // rose 3.8070
+    // The swatch chip is the ONE className in this file that states `aspect-square`.
+    // NOT `border-2 rounded-lg` — the eight default-profile-picture buttons carry that same
+    // pair (`p-4 border-2 rounded-lg text-3xl`), so it selects the wrong element half the
+    // time. Measured, not assumed: that anchor returned two hits on this file.
+    const ANCHOR = 'aspect-square';
+    const at = src.indexOf(ANCHOR);
+    expect(at, 'the swatch chip no longer states `aspect-square` — re-anchor').toBeGreaterThan(-1);
+    expect(
+      src.indexOf(ANCHOR, at + 1),
+      'more than one `aspect-square` in this file — this anchor is no longer unique',
+    ).toBe(-1);
+
+    // Its className is a single template literal with no nested backticks.
+    const open = src.lastIndexOf('`', at);
+    const close = src.indexOf('`', at);
+    expect(open).toBeGreaterThan(-1);
+    expect(close).toBeGreaterThan(at);
+    const chip = src.slice(open, close + 1);
+    expect(chip, 'the anchored element is not the bordered chip').toContain('border-2');
+
+    const arms = /isSelected[\s\S]*?\?\s*'([^']*)'\s*:\s*'([^']*)'/.exec(chip);
+    expect(arms, 'the selected/resting ternary is no longer a two-string ternary').not.toBeNull();
+    const [, selectedArm, restingArm] = arms as RegExpExecArray;
+
+    // The selected cue is in the INSET slot…
+    expect(selectedArm).toContain('inset-ring-2');
+    expect(selectedArm).toContain('inset-ring-content-primary');
+    // …and NOT in the shared `ring` slot the focus ring writes. `inset-ring-*` is excluded
+    // by construction: this looks for a ring utility that is not prefixed.
+    expect(
+      selectedArm.split(/\s+/).filter((c) => /^ring-/.test(c)),
+      'the selected cue is back on the shared `ring` slot — focus will repaint it away',
+    ).toEqual([]);
+    // The forced-colors fallback is present and additive.
+    expect(selectedArm).toContain('forced-colors:outline-[Highlight]');
+
+    // The resting arm carries D-17's variant, and NOT the ramp step `@theme` never exposes.
+    expect(restingArm).toContain('border-line-strong');
+    expect(restingArm).toContain('dark:border-content-muted');
+    expect(src, '`border-purple-400` compiles against TAILWIND\'S default purple ramp').not.toContain(
+      'border-purple-400',
+    );
+
+    // The focus ring itself survives, on the project string.
+    expect(src).toContain('focus-visible:ring-focus-ring');
+
+    // (b) the band's colour against all eight fills, per theme. Measured 2026-09-16:
+    // dark 10.6544-14.5319, light 13.2663-13.3918.
+    const NON_TEXT_FLOOR = 3.0;
+    for (const p of GROUP_COLOUR_PRESETS) {
+      const dark = contrast(CONTENT_PRIMARY_DARK, p.dark);
+      const light = contrast(CONTENT_PRIMARY_LIGHT, p.light);
+      expect(dark, `${p.name}: selection band vs dark fill ${dark.toFixed(4)}`).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
+      expect(light, `${p.name}: selection band vs light fill ${light.toFixed(4)}`).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
+    }
   });
 });
 

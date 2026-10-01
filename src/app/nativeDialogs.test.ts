@@ -36,12 +36,40 @@
  * The property here is repo-wide, so this scan is repo-wide and the residue is carried as
  * an explicit, counted, self-expiring exemption instead. `fetchErrorTreatment.test.ts`
  * keeps its own per-surface assertion; the two are complementary, not duplicates.
+ *
+ * PHASE 88.6-13 REVISITED THIS AND DELIBERATELY DID NOT WIDEN THE OTHER FILE'S `alert(`
+ * SCAN — recorded here so it is not re-attempted as a consistency cleanup.
+ * ---------------------------------------------------------------------------------
+ * That plan DID widen `fetchErrorTreatment.test.ts`'s raw-message and `Failed to X`
+ * assertions from the nine named surfaces to the whole `src/` tree, for exactly the
+ * vacuity reason the paragraph above gives. Its `alert(` assertion stays on the nine, and
+ * that asymmetry is a CONSEQUENCE, not an oversight:
+ *
+ *   - This file owns the repo-wide `alert(` property by the explicit written decision
+ *     above, and holds `app/components/GameComboInput.js` as an exact-count `sites: 1`
+ *     exemption in `ALERT_EXEMPT` below.
+ *   - Widening the other file's `alert(` scan repo-wide would red on that same site — a
+ *     site this suite already governs, counts exactly and expires automatically — and
+ *     would create a SECOND answer to a question this suite already answers. Two answers
+ *     is the drift the whole shared-scanner pass exists to remove.
+ *   [CORRECTED 2026-09-29 — plan 88.6-60, review MEDLOW-24: the two bullets above are stale
+ *   on the `GameComboInput.js` half. Plan 88.6-32 closed that site and `ALERT_EXEMPT` below is
+ *   EMPTY, so a repo-wide scan there would NOT red today. The "second answer" reason is the one
+ *   that still stands; the other file's 9-file `alert(` assertion is now a redundant subset,
+ *   kept (not deleted) as its exact-count scope pin — see its `DECISION Phase 88.6-60` marker.]
+ *
+ * So `SURFACES` survives in that file ONLY as the `alert(` assertion's scope, pinned there
+ * by a `SURFACES.length === 9` exact-count assertion so a later plan cannot change the
+ * reach by quietly adding or removing an entry. Its `GameComboInput.js` raw-message and
+ * `Failed to X` roster entries point at the SAME line as this file's `alert(` exemption;
+ * plan 88.6-32 closes all three together.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { assertRosterShape, type ExemptionRoster } from '../test-utils/exemption';
 import { lineAt, sourceFiles, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
@@ -58,30 +86,41 @@ const rel = (file: string): string => path.relative(SRC, file);
  * population it cared about. Test 4 asserts each count is exact in BOTH directions: adding
  * a fifth alert here reds, and fixing one of these reds too — so closing a site forces the
  * exemption to be deleted rather than left behind as a fossil permission.
+ *
+ * D-19 (plan 88.6-04): this roster is now typed on the SHARED schema in
+ * `src/test-utils/exemption.ts`, and it is that module's first real subject. The only
+ * change is `owner`: it was a prose STRING, in which "DEF-88-25-01 — same routing as
+ * above." and "someone said it was fine" are the same type and pass the same check. It is
+ * now the discriminated union, so the provenance is machine-checkable. Every `why` and both
+ * `sites` counts are byte-unchanged — they are the record of why each site survived Phase
+ * 88 and are not rewritten while being re-typed.
+ *
+ * CLOSED by plan 88.6-15 (2026-09-16): `PromptScheduleManager.js`'s TWO sites are gone and its
+ * entry is DELETED rather than zeroed — the count is exact in both directions, so a fossil
+ * `sites: 0` reds exactly as hard as a stale `sites: 2`. Both alerts became
+ * `toast.error(getFetchErrorMessage(err, { fallback }))` carrying the UI-SPEC §6.3 ratified
+ * strings ("We couldn't update/delete the schedule. Please try again."), which is precisely
+ * what the deleted `why` said was blocking them: the register now has copy for both. Plan
+ * 88.6-32 still owns GameComboInput's one; the target for this roster is 0.
  */
-const ALERT_EXEMPT: Record<string, { sites: number; why: string; owner: string }> = {
-  'app/components/PromptScheduleManager.js': {
-    sites: 2,
-    why:
-      'Both carry "Failed to X" copy, which is the idiom Req 14 / plan 88-25 is ' +
-      'standardising away. Routing them to a toast means choosing a fallback string, and ' +
-      'this phase forbids authoring copy outside the ratified register — which has none ' +
-      'for a schedule toggle or delete. Rewording them independently of the Req 14 ' +
-      'register would create a second register, which is the defect, not the fix.',
-    owner:
-      'DEF-88-25-01 — one of the 19 residual primitive-adoption sites with no owning ' +
-      'phase; the owner routes them in 88-32 UAT (onto an existing phase, into 88-31 ' +
-      "88-RESIDUAL-CENSUS.md, or as an explicit accepted-forever record).",
-  },
-  'app/components/GameComboInput.js': {
-    sites: 1,
-    why:
-      'Interpolates a raw upstream `error.message` into user-facing text as well as ' +
-      'using a native dialog, so it is a T-88-25-01 site AND a Req 11 site. The fix is ' +
-      '`getFetchErrorMessage(err, { fallback })` — the mechanism exists — but it still ' +
-      'needs a fallback string from the Req 14 register.',
-    owner: 'DEF-88-25-01 — same routing as above.',
-  },
+const ALERT_EXEMPT: ExemptionRoster = {
+  // CLOSED by plan 88.6-32 task 1 (2026-09-16), and with it THIS ROSTER IS EMPTY — the app now
+  // raises no native dialog of any kind, which is Req 11 / AC-1 in full.
+  //
+  // `app/components/GameComboInput.js` carried the LAST entry, `sites: 1` at `:131` (the plan's
+  // CONTEXT and the SPEC both cite `:124`; that was stale, and the correction is recorded in
+  // `88.6-32-SUMMARY.md`). It read
+  // ``alert(`Failed to import game from BGG: ${error.message || 'Please try again.'}`)`` and now
+  // reads `toast.error(getFetchErrorMessage(error, { fallback: … }))` on the UI-SPEC §6.2.1
+  // ratified string — which is exactly what the deleted `why` said was blocking it: the register
+  // now has copy for this site. Deleted rather than zeroed; the count is exact in both
+  // directions, so a fossil `sites: 0` reds as hard as a stale `sites: 1`.
+  //
+  // AN EMPTY ROSTER IS THE GOAL STATE, NOT A BROKEN ONE. Tests 1 and 2 still scan the whole
+  // tree and now have no file to skip; test 0's anti-vacuity floor was RE-POINTED in the same
+  // commit (it used to prove liveness by finding this very site, which an empty roster makes
+  // impossible). Do not delete the roster declaration itself — test 3/3b/4 are what force the
+  // next native dialog to arrive as a NAMED, COUNTED, OWNED exemption rather than a silent one.
 };
 
 /** The three blocking browser dialogs, as bare globals or explicitly off `window`. */
@@ -119,13 +158,31 @@ describe('Req 11 native browser dialogs', () => {
 
   it('0. the sweep is scanning a representative app, and the detector is not dead', () => {
     expect(files.length).toBeGreaterThan(100);
-    // It still finds the KNOWN survivors. Without this, "zero offenders" and "the matcher
-    // went blind" look identical — and this gate's whole job is telling those apart.
+    // RE-POINTED by plan 88.6-32 (2026-09-16), because the thing this floor used to stand on
+    // is gone. It read
+    // `expect(byFile.get('app/components/GameComboInput.js')?.length).toBeGreaterThan(0)` —
+    // liveness proved by finding the one KNOWN survivor. That survivor was the last entry in
+    // `ALERT_EXEMPT`, so the assertion could only ever hold while the roster was non-empty, and
+    // the commit that achieved this suite's stated goal (`the target for this roster is 0`)
+    // is the commit that made it unsatisfiable. Deleting it outright was REJECTED: "zero
+    // offenders" and "the matcher went blind" would then look identical, which is the single
+    // failure mode this test exists to tell apart.
     //
-    // Deliberately `> 0` and not an exact count: the exact counts are test 4's job, and
-    // duplicating them here would make one planted defect fail two assertions, which
-    // muddies every future negative check of this file.
-    expect(byFile.get('app/components/GameComboInput.js')?.length).toBeGreaterThan(0);
+    // The replacement proves the same two things WITHOUT depending on a live defect: that the
+    // scanner is reading real file CONTENT off the tree (not empty strings, the shape a broken
+    // `sourceFiles`/`readFileSync` produces — under which tests 1 and 2 pass vacuously), and
+    // that the detector fires on that real content when a dialog IS present. It plants the call
+    // rather than finding one, so it stays meaningful at zero offenders forever.
+    //
+    // This is NOT a duplicate of test 5: that one feeds hand-written fixture strings and proves
+    // the REGEX discriminates; this one feeds shipped source off the scanned tree and proves the
+    // PIPELINE is live. A broken file read passes test 5 and fails this one.
+    const scanned = files.map((f) => fs.readFileSync(f, 'utf8'));
+    const nonEmpty = scanned.filter((s) => s.trim().length > 0);
+    expect(nonEmpty.length).toBe(files.length);
+    expect(scanned.reduce((n, s) => n + s.length, 0)).toBeGreaterThan(100_000);
+    const planted = `${scanned.find((s) => s.length > 1000)}\nalert('planted');\n`;
+    expect(nativeDialogCalls(planted).filter((h) => h.fn === 'alert')).toHaveLength(1);
   });
 
   it('1. no source file raises a native `confirm()` or `prompt()` — no exemptions', () => {
@@ -156,8 +213,28 @@ describe('Req 11 native browser dialogs', () => {
     // "nothing exits scope into thin air" only holds if the owner is written down.
     for (const [file, entry] of Object.entries(ALERT_EXEMPT)) {
       expect(entry.why.length, `${file}: no reason`).toBeGreaterThan(80);
-      expect(entry.owner, `${file}: no owner`).toMatch(/DEF-|Phase |plan /);
+      // D-19: `owner` is the union now, so the old `toMatch` on the raw value cannot run.
+      // The floor is UNCHANGED in strength — the same regex, applied to the cite text read
+      // out of whichever arm carries it. That read is exactly what the union bought: under
+      // the old string there was no arm to read, so any sentence containing "Phase " passed.
+      // This file keeps its own `> 80` reason floor, which is stricter than the shared
+      // schema's 40; `assertRosterShape` is an addition to it, never a replacement.
+      const cite =
+        entry.owner.kind === 'spec'
+          ? entry.owner.id
+          : entry.owner.kind === 'decision'
+            ? entry.owner.marker
+            : entry.owner.ruling;
+      expect(cite, `${file}: no owner`).toMatch(/DEF-|Phase |plan /);
     }
+  });
+
+  it('3b. the roster satisfies the shared D-19 schema (test-utils/exemption)', () => {
+    // The shipped roster is the shared schema's first real subject: a schema validated only
+    // against fixtures is a schema nobody has to satisfy. `assertRosterShape` returns NAMED
+    // violations, so a future hand edit that drops a reason or writes a prose owner fails
+    // here with the file and the field, not as a boolean.
+    expect(assertRosterShape(ALERT_EXEMPT)).toEqual([]);
   });
 
   it('4. each exemption\'s call-site count is EXACT — it can neither grow nor go stale', () => {

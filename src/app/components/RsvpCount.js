@@ -28,6 +28,24 @@ export default function RsvpCount({
 
   const hasAny = yes > 0 || maybe > 0 || no > 0;
 
+  /* DECISION Phase 88.6-29 (R2 / UI-SPEC §4.2 vs §4.3): this component is classified as
+     **Label 14**, not Caption 12, and the determination is made from the MARKUP rather than the
+     component name. §4.2's closed Caption list would apply if this rendered as a chip/pill/badge;
+     it does not. BOTH variants render bare `<span>`s inside a plain `flex` row — no
+     `rounded-full`, no background, no border, no padding — i.e. a standalone count display, which
+     is §4.3's "counts" case and Label's rung. The zero state below is the file's ONLY explicit
+     size utility and stays at `text-sm`.
+
+     THE COMPACT VARIANT AUTHORS NO SIZE AT ALL, deliberately: it inherits from its call sites, and
+     one of those is the dense month tile that plan 88.6-27 folded to the 12px Caption floor
+     (`CalendarMonthView.js`, V-7's reflow-checked surface). Authoring a size here would override
+     that tile's ruled rung and re-open a measurement this phase already paid for. Do not "converge"
+     the compact spans onto this file's rung — it is a decision, not a cleanup.
+
+     The three `font-medium` weights below are GONE, not promoted: §4.5's EMPHASIS outcome is 400
+     plus a colour token, and every one of these spans already carries its `text-content-status-*`
+     token. Same call, same reason, as the count banner in `RsvpSection.js`, which renders the
+     same three numbers. */
   if (!hasAny) {
     return (
       <span className={`text-content-muted text-sm ${className}`.trim()}>
@@ -43,7 +61,7 @@ export default function RsvpCount({
 
        WHY IT EXISTS: plan 16 gives the compact month tile the group tint, and these three
        colours are hard-coded and pass 4.5:1 only against the tile's SHIPPED
-       `bg-surface-card-hover` ground (success 5.46, warning 5.25, error 6.37). Measured
+       `bg-surface-muted` ground (success 5.46, warning 5.25, error 6.37). Measured
        2026-08-27 with `src/lib/wcag.ts` against the eight pinned t = 0.70 tints
        (`colorUtils.test.ts`), EVERY success pairing (3.70-3.92) and EVERY warning pairing
        (3.55-3.76) FAIL, and 5 of 8 error pairings (4.31-4.56) fail too. Tinting the tile
@@ -78,21 +96,21 @@ export default function RsvpCount({
   const parts = [];
   if (yes > 0) {
     parts.push(
-      <span key="yes" className="text-content-status-success font-medium">
+      <span key="yes" className="text-content-status-success">
         {yes} going
       </span>
     );
   }
   if (maybe > 0) {
     parts.push(
-      <span key="maybe" className="text-content-status-warning font-medium">
+      <span key="maybe" className="text-content-status-warning">
         {maybe} maybe
       </span>
     );
   }
   if (no > 0) {
     parts.push(
-      <span key="no" className="text-content-status-error font-medium">
+      <span key="no" className="text-content-status-error">
         {no} can&apos;t
       </span>
     );

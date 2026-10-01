@@ -28,7 +28,7 @@
  */
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { promptSettingsAPI, promptAPI } from '@/lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
@@ -130,10 +130,20 @@ describe('prompts trio integration (GAP13/GAP14)', () => {
     // The next open fetch returns the reduced set (auto-prompt removed).
     openBody = { prompts: [CAPTURED_OPEN_PROMPTS_BODY.prompts[1]] };
 
-    // Open the kebab and two-tap "End check-in".
-    fireEvent.click(screen.getByRole('button', { name: 'Check-in actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'End check-in' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Tap again to end' }));
+    // Open the kebab and two-tap "End check-in". Plan 88.6-16 dropped the ARIA
+    // menu pattern from KebabMenu (D-12): the items are plain buttons inside the
+    // list the trigger names through `aria-controls` while open. Scoping through
+    // that attribute keeps the query inside the OPEN list and proves the
+    // relationship is live — no assertion or coverage changed, only the selector.
+    const kebab = screen.getByRole('button', { name: 'Check-in actions' });
+    fireEvent.click(kebab);
+    const kebabList = document.getElementById(kebab.getAttribute('aria-controls') as string);
+    expect(kebabList, 'the kebab names its open list through aria-controls').not.toBeNull();
+    const endItem = within(kebabList as HTMLElement).getByRole('button', { name: 'End check-in' });
+    fireEvent.click(endItem);
+    fireEvent.click(
+      within(kebabList as HTMLElement).getByRole('button', { name: 'Tap again to end' }),
+    );
 
     await waitFor(() =>
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: promptKeys.openPolls('g1') }),

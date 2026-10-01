@@ -536,6 +536,19 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
       // cross-repo-guard argument (Amendment Z) and is NOT named here; that is a gap
       // in the earlier amendment rather than a precedent to copy.
       'src/lib/syntheticAddress.test.ts', //             Phase 88.8 R12 — the broad @auth0 guard
+      // Phase 88.6 plan 55 (owner-ruled 2026-09-28, NEW OWNER ITEM 4): the five gates 88.6
+      // minted itself, each deletable with a green build until registered.
+      'src/app/groundInk.test.ts', //                    Phase 88.6-09 D-16 — ground-aware ink
+      'src/app/errorEnvelopeReads.test.ts', //           Phase 88.6-14 R9 — default-deny error-envelope reads
+      'src/app/components/btnCensus.test.tsx', //        Phase 88.6-10 — the legacy .btn element census
+      'src/app/shadowTier.test.ts', //                   Phase 88.6-12 — off-tier shadow families
+      'src/app/interpolatedClassCensus.test.ts', //      Phase 88.6-47 — interpolated Tailwind classes that emit no CSS
+      // Phase 88.6-61 (review round 2 #18 / R-7 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING):
+      // the ONLY durable guards on the magic-link Sentry egress fixes — the replay gate + tracing
+      // wiring (R-7, H-1) and the scrub functions (H-1). Unregistered, each was deletable with a
+      // green build.
+      'src/lib/sentryClientReplayGate.test.ts', //       Phase 88.6 R-7 + 88.6-61 H-1 — Sentry init is handed the gates
+      'src/lib/sentry.scrub.test.ts', //                 Phase 84 T-84-01 + 88.6-61 H-1 — the scrub functions
       'src/test-utils/sourceScan.ts', //                 the scanner all of them share
     ]) {
       expect(files, `registry lost ${required}`).toContain(required);
@@ -762,5 +775,266 @@ describe('Phase 88.3-cr CR-09 — Gate C\'s executed-count floor (parsed from ci
     ).toBeLessThanOrEqual(declared);
     // ...and it must not be vacuous either. A floor of 0 passes every run.
     expect(floor, 'the Gate C floor was zeroed, which passes a run that skipped everything').toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6 plan 55 (owner-ruled 2026-09-28, NEW OWNER ITEM 4) — the D10 arm's
+// EXECUTED-COUNT FLOOR, Gate C's hole mirrored.
+//
+// touch-targets.spec.ts's D10 describe (gated hover, focus ring, hover pin) skips
+// when `isMobile`, so it runs ONLY in the desktop `journeys` project, and Playwright
+// exits 0 on a run that skipped all three. The ci.yml step reuses the Gate C script
+// through its optional flags rather than a second copy of it. This block is its
+// lockstep, and as with Gate C the load-bearing assertion is the last one: the floor
+// may never exceed the `test('D10` declarations the spec actually carries.
+// Closes WINDOWS 20 / ledger row R104 (88.6-46-SUMMARY.md).
+// ---------------------------------------------------------------------------
+
+const D10_FLOOR_STEP =
+  "D10 executed-count floor — touch-targets.spec.ts's D10 arm must actually run in the journeys project";
+
+describe('Phase 88.6-55 — the D10 journeys executed-count floor (parsed from ci.yml by step name)', () => {
+  const window = stepWindow(D10_FLOOR_STEP).join('\n');
+  const runLine = window.match(/^\s*run:\s*(.+?)\s*$/m)?.[1] ?? '';
+  const scriptPath = resolve(__dirname, '../../scripts/gate-c-executed-floor.mjs');
+
+  test('the step runs the SHARED floor script on the json report, with all four flags', () => {
+    expect(runLine, 'the D10 floor step no longer runs the shared floor script').toMatch(
+      /^node scripts\/gate-c-executed-floor\.mjs playwright-results\.json\s/,
+    );
+    expect(runLine).toContain('--spec e2e/touch-targets.spec.ts');
+    expect(runLine).toContain('--project journeys');
+    expect(runLine).toContain('--title-prefix D10');
+    expect(runLine).toMatch(/--floor \d+(\s|$)/);
+  });
+
+  test('the step carries no `if:` — it must run on the workflow_dispatch lane too', () => {
+    expect(window, 'the D10 floor step gained an `if:` condition').not.toMatch(/^\s*if:/m);
+  });
+
+  test('the shared script still accepts the flags this step passes, and still fails the job', () => {
+    const src = readFileSync(scriptPath, 'utf8');
+    for (const flag of ['--spec', '--project', '--floor', '--title-prefix']) {
+      expect(src, `gate-c-executed-floor.mjs no longer parses ${flag}`).toContain(`'${flag}'`);
+    }
+    expect(src).toMatch(/Executed-count floor DISARMED/);
+  });
+
+  test("the floor is > 0 and never exceeds the spec's `test('D10` declarations", () => {
+    // Measured, not quoted: `npx playwright test --list --project=journeys
+    // e2e/touch-targets.spec.ts -g "D10"` lists 3 on 2026-09-28. A floor above the real
+    // count is a permanently red `main`; a floor of 0 passes a run that skipped everything.
+    const floor = Number(runLine.match(/--floor (\d+)/)?.[1]);
+    const spec = readFileSync(resolve(__dirname, '../../e2e/touch-targets.spec.ts'), 'utf8');
+    const declared = (spec.match(/^\s*test\(\s*'D10/gm) ?? []).length;
+    expect(declared, "e2e/touch-targets.spec.ts declares no `test('D10` tests at all").toBeGreaterThan(0);
+    expect(
+      floor,
+      `the D10 floor is ${floor} but e2e/touch-targets.spec.ts declares only ${declared} ` +
+        "`test('D10` tests — the gate would be permanently red. Lower the floor, or add the tests.",
+    ).toBeLessThanOrEqual(declared);
+    expect(floor, 'the D10 floor was zeroed, which passes a run that skipped everything').toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6 plan 55 (NEW OWNER ITEM 4, ledger R140; gap-lap ML-18) — the
+// month-tile PNG always-upload, and T-82-12 for EVERY upload step.
+//
+// The FE repo is PUBLIC, so every artifact is downloadable by any signed-in GitHub
+// user. `.auth/user.json` is the appSession storageState (a live session) and
+// `playwright-results.json` carries every test title and error message; neither may
+// ever be uploaded. That was a comment until now — these tests make it mechanical.
+//
+// The upload step is located by `- name: ` + its name, not by the bare name: the
+// permissions docblock at the top of ci.yml quotes the same step name in prose, and
+// `stepWindow` takes the FIRST line that contains the string it is given.
+// ---------------------------------------------------------------------------
+
+const MONTH_TILE_UPLOAD_STEP = '- name: Upload desktop month-tile screenshots';
+
+/** Every `actions/upload-artifact` step in ci.yml, with its `path:` entries. */
+function uploadArtifactSteps(): { name: string; paths: string[] }[] {
+  const lines = CI_YML.split('\n');
+  const indentOf = (l: string) => (l.match(/^\s*/)?.[0].length ?? 0);
+  const out: { name: string; paths: string[] }[] = [];
+  lines.forEach((line, i) => {
+    if (!/^\s*uses:\s*actions\/upload-artifact@/.test(line)) return;
+    // Walk back to the step's `- ` opener, then forward to the next step at that indent.
+    let start = i;
+    while (start > 0 && !(/^\s*- /.test(lines[start]) && indentOf(lines[start]) < indentOf(line))) start -= 1;
+    const stepIndent = indentOf(lines[start]);
+    let end = i + 1;
+    while (
+      end < lines.length &&
+      !(/^\s*- /.test(lines[end]) && indentOf(lines[end]) === stepIndent) &&
+      !(lines[end].trim() !== '' && indentOf(lines[end]) < stepIndent)
+    ) {
+      end += 1;
+    }
+    const step = lines.slice(start, end);
+    const name = step[0].match(/- name:\s*(.+?)\s*$/)?.[1] ?? '(unnamed upload step)';
+    const pathAt = step.findIndex((l) => /^\s*path:/.test(l));
+    const paths: string[] = [];
+    if (pathAt !== -1) {
+      const inline = step[pathAt].replace(/^\s*path:\s*/, '').trim();
+      if (inline !== '' && inline !== '|' && inline !== '>') {
+        paths.push(inline);
+      } else {
+        for (const l of step.slice(pathAt + 1)) {
+          if (l.trim() === '') continue;
+          if (indentOf(l) <= indentOf(step[pathAt])) break;
+          paths.push(l.trim());
+        }
+      }
+    }
+    out.push({ name, paths });
+  });
+  return out;
+}
+
+describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on every upload step', () => {
+  test('the month-tile upload is PNG-only by glob, runs always(), and warns when it finds nothing', () => {
+    const window = stepWindow(MONTH_TILE_UPLOAD_STEP).join('\n');
+    const path = window.match(/^\s*path:\s*(.+?)\s*$/m)?.[1];
+    expect(path, 'the month-tile upload path widened or moved').toBe(
+      'test-results/**/month-tile-desktop-*.png',
+    );
+    expect(window).toMatch(/^\s*if:\s*always\(\)\s*$/m);
+    expect(window).toMatch(/^\s*uses:\s*actions\/upload-artifact@v4\s*$/m);
+    expect(window).toMatch(/^\s*if-no-files-found:\s*warn\s*$/m);
+  });
+
+  test('no upload step, of any name, uploads .auth/ or playwright-results.json', () => {
+    const uploads = uploadArtifactSteps();
+    // Non-vacuity: the reader must actually find both steps the permissions census names.
+    expect(uploads.length, 'uploadArtifactSteps() found fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
+    for (const { name, paths } of uploads) {
+      expect(paths.length, `upload step "${name}" has no parsable path:`).toBeGreaterThan(0);
+      for (const p of paths) {
+        expect(p, `upload step "${name}" uploads a path under .auth/ (T-82-12)`).not.toContain('.auth');
+        expect(p, `upload step "${name}" uploads the json report`).not.toContain('playwright-results.json');
+      }
+    }
+  });
+
+  test('88.6 CR-01: the login journey records no trace, and no upload ships a zip from a directory it uploads', () => {
+    // The chain this pins shut (built-in review 2026-09-29, CR-01): the shared `use` block
+    // sets `trace: 'on-first-retry'` and CI sets `retries: 1`, so a login journey that fails
+    // once RE-RUNS WITH TRACING ON, and that journey does `fill(E2E_AUTH0_PASS)` — the real
+    // Auth0 password, kept in plain text in the trace's Call tab. The `if: failure()` upload
+    // then publishes `test-results/` whole from a PUBLIC repo for 7 days; GitHub's secret
+    // masking covers logs, not artifacts. Two independent arms, each sufficient alone, both
+    // pinned so neither reads as a cleanup:
+    //   (1) the `setup` project overrides trace to 'off' — the credential is never recorded;
+    //   (2) every uploaded DIRECTORY carries a `!<dir>**/*.zip` exclusion — no trace archive
+    //       (Playwright's `trace.zip`, or the html reporter's `data/*.zip`) can leave CI.
+    const cfg = readFileSync(resolve(__dirname, '../../playwright.config.ts'), 'utf8');
+    const setup = cfg.match(/name:\s*'setup'([\s\S]*?)name:\s*'journeys'/)?.[1];
+    expect(setup, "playwright.config.ts no longer declares the 'setup' project ahead of 'journeys'").toBeDefined();
+    expect(setup, "the setup project must override the shared trace setting with trace: 'off' (CR-01)").toMatch(
+      /trace:\s*'off'/,
+    );
+
+    const uploads = uploadArtifactSteps();
+    expect(uploads.length, 'uploadArtifactSteps() found fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
+    for (const { name, paths } of uploads) {
+      const dirs = paths.filter((p) => !p.startsWith('!') && p.endsWith('/'));
+      for (const dir of dirs) {
+        expect(
+          paths,
+          `upload step "${name}" uploads the directory ${dir} without excluding ${dir}**/*.zip (CR-01: a retried-setup trace.zip carries the typed password)`,
+        ).toContain(`!${dir}**/*.zip`);
+      }
+    }
+  });
+
+  test('88.6 R2-H5: the login step takes no page capture, and no upload ships an error-context.md', () => {
+    // The channel CR-01 missed (review round 2 H-5, owner ruling R2-H5-RULING "source-level",
+    // 2026-09-29 — "why are we recording passwords?"). On ANY failed test Playwright 1.60 writes
+    // `test-results/<test>/error-context.md` with an aria snapshot of the page, and the aria
+    // snapshot serialises every text/password INPUT's value — so a login that fails after
+    // `fill(E2E_AUTH0_PASS)` wrote the real password there, and the `if: failure()` upload
+    // published it from a PUBLIC repo. Trace settings never reached it. Five arms, all pinned:
+    //   (a) the setup project takes NO capture of any kind: screenshot 'off' beside trace 'off';
+    //   (b) CI runs setup as its OWN invocation, first, with the copy prompt disabled and no json
+    //       report; then journeys + phone with `--no-deps` (without it Playwright re-runs setup as
+    //       a dependency, env-free, and the login happens twice);
+    //   (c) `PLAYWRIGHT_NO_COPY_PROMPT` is on the setup COMMAND only — never a step `env:` key;
+    //   (d) every uploaded directory excludes `**/error-context.md` (the structural arm: the env
+    //       var is an undocumented internal and survives no rename);
+    //   (e) auth.setup.ts has no page-level matcher — a failing `expect(page)` matcher attaches
+    //       its OWN whole-body aria snapshot, which the env var never reaches.
+    // `expect.soft` on every arm: one run reports EVERY broken arm, not just the first.
+    const isComment = (l: string) => l.trim().startsWith('#');
+    const stepLines = stepWindow(PLAYWRIGHT_STEP).filter((l) => !isComment(l));
+
+    // (a)
+    const cfg = readFileSync(resolve(__dirname, '../../playwright.config.ts'), 'utf8');
+    const setup = cfg.match(/name:\s*'setup'([\s\S]*?)name:\s*'journeys'/)?.[1];
+    expect(setup, "playwright.config.ts no longer declares the 'setup' project ahead of 'journeys'").toBeDefined();
+    expect.soft(setup, "(a) the setup project must take no screenshot: screenshot: 'off' (R2-H5)").toMatch(/screenshot:\s*'off'/);
+    expect.soft(setup, "(a) the setup project must record no trace: trace: 'off' (CR-01)").toMatch(/trace:\s*'off'/);
+
+    // (b)
+    const invocations = stepLines.filter((l) => l.includes('npx playwright test')).map((l) => l.trim());
+    expect.soft(invocations, '(b) the e2e step must run EXACTLY two playwright invocations: setup, then journeys + phone').toHaveLength(2);
+    const setupCmd = invocations[0] ?? '';
+    const journeysCmd = invocations[1] ?? '';
+    expect.soft(setupCmd.startsWith('PLAYWRIGHT_NO_COPY_PROMPT=1 npx playwright test'), `(b) first invocation must be the copy-prompt-free setup run: ${setupCmd}`).toBe(true);
+    expect.soft(setupCmd).toContain('--project=setup');
+    expect.soft(setupCmd, '(b) the setup invocation must write NO json report (Gate C / D10 read journeys + phone only)').toContain('--reporter=github');
+    expect.soft(setupCmd).not.toContain('--project=journeys');
+    expect.soft(setupCmd).not.toContain('--project=phone');
+    expect.soft(journeysCmd).toContain('--project=journeys');
+    expect.soft(journeysCmd).toContain('--project=phone');
+    expect.soft(journeysCmd, '(b) without --no-deps Playwright re-runs setup as a dependency, WITHOUT the env var').toContain('--no-deps');
+    expect.soft(journeysCmd).not.toContain('--project=setup');
+    expect.soft(journeysCmd).not.toContain('PLAYWRIGHT_NO_COPY_PROMPT');
+
+    // (c)
+    const envVarLines = stepLines.filter((l) => l.includes('PLAYWRIGHT_NO_COPY_PROMPT')).map((l) => l.trim());
+    expect.soft(envVarLines, '(c) PLAYWRIGHT_NO_COPY_PROMPT must appear on exactly one non-comment line — the setup command').toEqual([setupCmd]);
+    expect.soft(stepLines.some((l) => /^\s*PLAYWRIGHT_NO_COPY_PROMPT\s*:/.test(l)), '(c) the env var must never be a step env: key (process-wide)').toBe(false);
+
+    // (d)
+    const uploads = uploadArtifactSteps();
+    expect(uploads.length, 'uploadArtifactSteps() found fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
+    let dirsChecked = 0;
+    for (const { name, paths } of uploads) {
+      const dirs = paths.filter((p) => !p.startsWith('!') && p.endsWith('/'));
+      for (const dir of dirs) {
+        dirsChecked += 1;
+        expect.soft(
+          paths,
+          `(d) upload step "${name}" uploads the directory ${dir} without excluding ${dir}**/error-context.md (R2-H5: the aria snapshot serialises typed input values)`,
+        ).toContain(`!${dir}**/error-context.md`);
+      }
+    }
+    expect.soft(dirsChecked, '(d) non-vacuity: no uploaded directory was found to check').toBeGreaterThan(0);
+
+    // (e)
+    const authSetup = readFileSync(resolve(__dirname, '../../e2e/auth.setup.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '$1');
+    expect.soft(authSetup, '(e) auth.setup.ts must not use a page-level matcher (its failure attaches a whole-body aria snapshot)').not.toMatch(/expect\(\s*page\b/);
+  });
+
+  test('the storageState and the json report both live OUTSIDE test-results/, where the uploads read', () => {
+    // The glob's safety rests on where these two files are written. playwright.config.ts
+    // writes the json report at the repo root and the storageState under .auth/; if either
+    // moved INTO test-results/, a test-results/ upload could reach it.
+    const cfg = readFileSync(resolve(__dirname, '../../playwright.config.ts'), 'utf8');
+    const stateFiles = [...cfg.matchAll(/storageState:\s*'([^']+)'/g)].map((m) => m[1]);
+    expect(stateFiles.length, 'playwright.config.ts no longer declares a storageState path').toBeGreaterThan(0);
+    for (const f of stateFiles) {
+      expect(f.startsWith('.auth/'), `storageState ${f} is no longer under .auth/`).toBe(true);
+    }
+    const report = cfg.match(/outputFile:\s*'([^']+)'/)?.[1] ?? '';
+    expect(report).toBe('playwright-results.json');
+    expect(cfg, 'playwright.config.ts now sets an outputDir — re-check what test-results/ uploads can reach').not.toMatch(
+      /^\s*outputDir:/m,
+    );
   });
 });

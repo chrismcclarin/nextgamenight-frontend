@@ -14,6 +14,7 @@ import type {
 import type { EmailChangeResponse, User } from './schemas/users';
 import type { AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
+import { logger } from '@/lib/logger';
 
 // Absolute backend origin. Used ONLY by PUBLIC/unauthenticated callers that must
 // bypass the BFF proxy (magic-link, invite-preview, public RSVP respond,
@@ -152,12 +153,30 @@ export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;
   readonly details?: unknown;
-  constructor(message: string, code: ApiErrorCode, status: number, details?: unknown) {
+  /**
+   * The BACKEND's own error string, off the DISPLAY path. Populated from the
+   * legacy `error` key by `extractUpstreamMessage` (see its DECISION marker)
+   * and read by NOTHING but `queryCacheOnError`'s Sentry `extra` forward.
+   * [AMENDED 2026-09-28, plan 88.6-58 / review MEDLOW-13: TWO readers now, both Sentry
+   * `extra` forwards — `queryCacheOnError` (query path) and `logger.error` (every
+   * mutation/action path; a structural string read, since logger.ts cannot import this file).]
+   * A STRING or undefined — never the parsed body, never `errorData`.
+   * Rendering this anywhere is a defect, not a simplification.
+   */
+  readonly upstreamMessage?: string;
+  constructor(
+    message: string,
+    code: ApiErrorCode,
+    status: number,
+    details?: unknown,
+    upstreamMessage?: string
+  ) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
     this.details = details;
+    this.upstreamMessage = upstreamMessage;
     Object.setPrototypeOf(this, ApiError.prototype); // instanceof works post-transpile
   }
 }
@@ -294,27 +313,111 @@ function statusToCode(status: number): ApiErrorCode {
 // raw `{ error }` body. Call sites NEVER change — they only read err.code.
 export function mapErrorToCode(body: any, status: number): ApiErrorCode {
   if (body && typeof body.code === 'string') return body.code as ApiErrorCode; // PREFERRED: envelope code
-  // Legacy validation hint: a body carrying a top-level errors[] (the Phase 85
-  // legacy mirror, or an old raw validation body) is a validation failure
-  // regardless of status. Retained as a FALLBACK for unconverted routes.
-  if (body?.errors && Array.isArray(body.errors)) return 'validation';
+  // Validation hint, CANONICAL SHAPE ONLY. Phase 88.6 plan 42 moved this arm off
+  // the TOP-LEVEL `errors[]` legacy mirror onto the sanctioned Phase 85/86
+  // `details.errors`. BEHAVIOUR-NEUTRAL for the unconverted producers measured
+  // 2026-09-17 — routes/invites.js:216, routes/friendships.js:278 and
+  // routes/availability.js:55-64 all emit their top-level `errors[]` on a 400,
+  // and statusToCode(400) already returns 'validation'. The Array.isArray guard
+  // stays: a malformed `details.errors` must not produce 'validation' and must
+  // not throw (AC-9).
+  if (body?.details?.errors && Array.isArray(body.details.errors)) return 'validation';
   return statusToCode(status); // FALLBACK: HTTP-status -> code
 }
 
-// Envelope-PREFERRED human message. Prefer the envelope `body.message`; fall
-// back to the legacy `body.error` alias (RETAINED for the ~497 unconverted
-// routes until Phase 93 / BAPI-03 removes both sides). This is the fallback
-// chain the acceptance criteria pins.
+// Envelope-ONLY human message: the envelope `body.message`, else the bare status
+// template. Phase 88.6 plan 42 DROPPED the legacy alias arm — the FE no longer
+// derives `ApiError.message` from the backend's raw `error` key on any path.
+// The dropped string is not lost: `extractUpstreamMessage` below carries it on a
+// NON-RENDERED `ApiError` field for Sentry. Both self-constructed non-JSON error
+// bodies (publicFetch and apiFetch) were reshaped onto `message` in the SAME
+// commit, so a proxy/gateway failure still surfaces its text here.
 function extractErrorMessage(body: any, status: number): string {
-  return body?.message ?? body?.error ?? `HTTP error! status: ${status}`;
+  return body?.message ?? `HTTP error! status: ${status}`;
 }
 
-// Envelope-PREFERRED validation field-errors. Prefer `body.details.errors`
-// (Phase 85 envelope); fall back to the top-level legacy `body.errors[]` mirror
-// (RETAINED for unconverted routes until Phase 93).
+// DECISION Phase 88.6-42 (AC-4): the backend's own error string is retained on a
+// NON-RENDERED `ApiError` field and forwarded to Sentry `extra` — over a clean
+// delete (arm B), which would have dropped that string from the event ENTIRELY
+// for the ~455 unconverted raw-`{ error }` routes until Phase 93, leaving only
+// "HTTP error! status: N" to read. GROUPING is unchanged either way: that capture
+// (queryClient.ts:162) carries tags and no Sentry fingerprint (measured 2026-09-17: the
+// three grep hits for that word under src/ are all prose), and Sentry's default
+// grouping does not key on extra — so the field buys per-event READABILITY, not
+// issue separation. `ApiError.message` is the display contract and does NOT read
+// this field; the single by-name roster exemption in errorEnvelopeReads.test.ts
+// is what keeps AC-9 exact. Owner ruling 2026-09-09 (AC-4 a). Rendering this
+// field anywhere is a defect, not a simplification.
+//
+// T-84-01 RECONCILIATION (so a later sweep finds the answer, not the conflict):
+// this MOVES a string that already egresses today, it opens no channel. Before
+// this plan `extractErrorMessage` already returned `body.message ?? body.error`
+// (api.ts:308-309 pre-edit), that message was already thrown (api.ts:441
+// pre-edit) and queryClient.ts:162 already captured it. Arm A relocates it off
+// the display path onto a non-rendered field — same string, same destination,
+// narrower blast radius. The bound on it is sentry.scrub.js:171-172, which
+// deep-scrubs `event.extra`; the shape mirrored is the T-84-05 {path, code}
+// forward at queryClient.ts:150-158.
+//
+// This is the ONE sanctioned legacy-key read left in this module's apiFetch path
+// and the ONE by-name exemption in the R9 roster. It returns a STRING or
+// undefined and NOTHING else: never `errorData`, never the parsed body, never a
+// widened payload. Widening it is a different change with a different threat
+// model.
+function extractUpstreamMessage(body: any): string | undefined {
+  return typeof body?.error === 'string' ? body.error : undefined;
+}
+
+// Envelope-ONLY validation field-errors: `body.details.errors` (the sanctioned
+// Phase 85/86 envelope shape). Phase 88.6 plan 42 DROPPED the second arm, the
+// top-level legacy `body.errors[]` mirror. No consumer reads either shape for
+// control flow, and mapErrorToCode still yields 'validation' for a 400 via
+// statusToCode, so nothing downstream loses a kind.
 function extractFieldErrors(body: any): any[] | undefined {
-  const fieldErrors = body?.details?.errors ?? body?.errors;
+  const fieldErrors = body?.details?.errors;
   return Array.isArray(fieldErrors) ? fieldErrors : undefined;
+}
+
+/**
+ * One field-error entry rendered as text, or '' when it can render none.
+ *
+ * D25 / T-88.6-119: the old inline `err.message || \`${err.field}: ${err.msg}\``
+ * turned a `details.errors` of `[{}]` into the literal string
+ * "undefined: undefined". An entry with NEITHER a usable `message` NOR a
+ * `field`/`msg` pair now contributes NOTHING, and the formatter falls through
+ * to extractErrorMessage.
+ */
+function fieldErrorText(err: any): string {
+  // The param is deliberately named `err`, the name fetchErrorTreatment's
+  // RAW_MESSAGE_READ scanner matches: this IS a raw upstream read and it stays
+  // VISIBLE to that gate as one roster site. Renaming it to dodge the scanner is
+  // the anti-pattern logger.ts's errCtx docblock names by hand.
+  if (typeof err?.message === 'string' && err.message) return err.message;
+  return err?.field != null && err?.msg != null ? `${err.field}: ${err.msg}` : '';
+}
+
+/* DECISION Phase 88.6-62 (review round 2 #3, T-84-01): a NON-JSON error body is capped at
+   NON_JSON_ERROR_TEXT_CAP characters WHERE IT IS RESHAPED, through this ONE helper, at BOTH
+   reshape sites (publicFetch and apiFetch). Plan 42 keyed that text onto `message`
+   (T-88.6-118) so a gateway failure still surfaces it — which made it `ApiError.message`, and
+   that reaches TWO sinks: every `errCtx(err)` breadcrumb (logger.ts `errCtx`, name + message)
+   and the Sentry exception value (`logger.error` / `queryCacheOnError` capture the ApiError).
+   Capping where the value is BUILT bounds both at once.
+   REJECTED: editing `errCtx` (the owner-ruled #3 disposition leaves it untouched,
+   R2-FIXNOW-SET-RULING 2026-09-29; `grep -rn "errCtx(" src` outside tests = 92 lines across
+   28 files, comments included, measured 2026-09-29). REJECTED: capping only publicFetch's
+   site, which the review first named — apiFetch carries nearly every errCtx consumer, so one
+   site bounds neither sink for them. 200 keeps a gateway page's diagnostic first line.
+   Raising the cap or dropping a site is a decision, not a cleanup. */
+const NON_JSON_ERROR_TEXT_CAP = 200;
+
+/** The self-constructed error body for a non-JSON error response (keyed `message`, capped). */
+function nonJsonErrorBody(responseText: string, status: number): { message: string } {
+  const capped =
+    responseText.length > NON_JSON_ERROR_TEXT_CAP
+      ? `${responseText.slice(0, NON_JSON_ERROR_TEXT_CAP)} [truncated]`
+      : responseText;
+  return { message: capped || `HTTP error! status: ${status}` };
 }
 
 /**
@@ -360,10 +463,22 @@ export async function publicFetch<T = unknown>(
     try {
       errorData = JSON.parse(responseText);
     } catch {
-      errorData = { error: responseText || `HTTP error! status: ${response.status}` };
+      // Keyed 'message', not 'error' (Phase 88.6 plan 42, T-88.6-118): the moment
+      // extractErrorMessage stopped reading the legacy alias, a self-constructed body
+      // keyed 'error' would have silently discarded its text and rendered only the
+      // status fallback for every proxy/gateway failure. Reshaped in the SAME commit
+      // as the drop. [Capped at 200 characters 2026-09-29, plan 88.6-62 — see the
+      // DECISION marker on nonJsonErrorBody.]
+      errorData = nonJsonErrorBody(responseText, response.status);
     }
     const msg = extractErrorMessage(errorData, response.status);
-    throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
+    throw new ApiError(
+      msg,
+      mapErrorToCode(errorData, response.status),
+      response.status,
+      errorData,
+      extractUpstreamMessage(errorData)
+    );
   }
 
   try {
@@ -403,11 +518,19 @@ export async function apiFetch<T = unknown>(
     
     // Check if response is HTML (means we're hitting the wrong endpoint)
     if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
-      console.error(`API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.`);
-      console.error(`Attempted URL: ${url}`);
-      console.error(`Current API_BASE_URL: ${API_BASE_URL}`);
+      // AC-2 WIDENED (owner 2026-09-09; LEVEL amended 2026-09-13, D2): ONE
+      // logger.info breadcrumb, message kept verbatim in substance. The ctx carries
+      // the BFF-RELATIVE path, which IS the whole diagnosis on this branch (WHICH
+      // call got HTML back) and cannot embed a magic-link token -- BFF_BASE is
+      // '/api' and every token-bearing helper in this module BYPASSES apiFetch.
+      // The third console line printed API_BASE_URL, the BACKEND origin this
+      // request never dialled; it is DROPPED rather than converted.
+      logger.info('API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.', { url });
+      // Phase 88.6-57 (CR-501): the MESSAGE carries the path only -- it becomes the Sentry
+      // exception value via queryCacheOnError, and a query can carry a third party's
+      // email. The `{ url }` ctx above is safe as-is: key `url` goes through scrubUrl.
       throw new ApiError(
-        `API configuration error: Backend URL appears to be incorrect. Check NEXT_PUBLIC_API_URL environment variable. Current: ${API_BASE_URL}`,
+        `API configuration error: the same-origin BFF route handler (app/api/[...path]/route.ts) returned HTML instead of JSON for ${url.split('?')[0]}. Check the NEXT_PUBLIC_API_URL environment variable that route resolves its upstream from.`,
         'config',
         response.status
       );
@@ -419,8 +542,12 @@ export async function apiFetch<T = unknown>(
         // Try to parse as JSON
         errorData = JSON.parse(responseText);
       } catch (jsonError) {
-        // If not JSON, use the text as error message
-        errorData = { error: responseText || `HTTP error! status: ${response.status}` };
+        // If not JSON, use the text as the envelope MESSAGE. Keyed 'message', not
+        // 'error' (Phase 88.6 plan 42, T-88.6-118) -- see the twin comment in
+        // publicFetch. Reshaped in the SAME commit as the alias drop; split across
+        // two commits the repo is broken in between. [Capped at 200 characters
+        // 2026-09-29, plan 88.6-62 — the SAME helper as publicFetch's site.]
+        errorData = nonJsonErrorBody(responseText, response.status);
       }
 
       // The single throw site (D-07). mapErrorToCode is envelope-PREFERRED;
@@ -431,14 +558,27 @@ export async function apiFetch<T = unknown>(
       const fieldErrors = extractFieldErrors(errorData);
       if (fieldErrors && fieldErrors.length > 0) {
         const errorMessages = fieldErrors
-          .map((err: any) => err.message || `${err.field}: ${err.msg}`)
+          .map(fieldErrorText)
+          .filter(Boolean)
           .join('. ');
         const msg = errorMessages || extractErrorMessage(errorData, response.status);
-        throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
+        throw new ApiError(
+          msg,
+          mapErrorToCode(errorData, response.status),
+          response.status,
+          errorData,
+          extractUpstreamMessage(errorData)
+        );
       }
 
       const msg = extractErrorMessage(errorData, response.status);
-      throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
+      throw new ApiError(
+        msg,
+        mapErrorToCode(errorData, response.status),
+        response.status,
+        errorData,
+        extractUpstreamMessage(errorData)
+      );
     }
 
     // Parse successful response as JSON
@@ -449,9 +589,52 @@ export async function apiFetch<T = unknown>(
       return responseText as unknown as T;
     }
   } catch (error) {
-    const errMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`API Error (${endpoint}):`, errMessage || 'Unknown error');
-    console.error(`API URL: ${url}`);
+    // DECISION Phase 88.6-42 (AC-2 / D2): a BREADCRUMB at the fetch boundary, not
+    // Sentry.captureException -- chosen OVER an event here, and OVER deleting the log
+    // entirely. An event at this catch fires for every expected 401/404/410 (it sees
+    // every ApiError this module throws) and duplicates QueryCache.onError
+    // (queryClient.ts:167). AC-2's convert-on-touch level is logger.info phase-wide as
+    // of the owner ruling of 2026-09-13, so this is the RULE rather than an exception to
+    // it -- but it was independently the right call here and the reasoning is kept for
+    // whoever revisits the fetch boundary. If an event is ever wanted here it must be
+    // FILTERED (status >= 500), never blanket. Changing this to logger.error is a
+    // decision, not a cleanup.
+    //
+    // AND: plan 13's shared errCtx(err) helper is DECLINED at THIS ONE SITE, deliberately.
+    // errCtx returns the caught error name AND MESSAGE, and for the ApiError this module
+    // throws that message is extractErrorMessage output -- which, after this same commit
+    // reshaped the non-JSON bodies onto the message key, is the ENTIRE RAW RESPONSE TEXT
+    // on a non-JSON error response. Forwarding it would put a whole response body into a
+    // Sentry BREADCRUMB: a T-84-01 violation (logger.ts:8-13). So this call carries the
+    // endpoint, the error NAME and -- when it is an ApiError -- its status and code, and
+    // NOTHING derived from the response body. The full url is not carried either
+    // (T-88.6-124, defence in depth complementing AC-1 beforeSend scrub, never a
+    // substitute for it).
+    // [AMENDED 2026-09-29, plan 88.6-62 (review round 2 #3): "the ENTIRE RAW RESPONSE TEXT"
+    // is now AT MOST 200 characters (plus " [truncated]") — `nonJsonErrorBody` caps it at
+    // both reshape sites, which bounds the errCtx breadcrumbs every CONSUMER files and the
+    // captured exception value. The decline of errCtx at THIS site STANDS: 200 characters
+    // of a response body are still body text, and this breadcrumb needs none of it.]
+    //
+    // AMENDED Phase 88.6-57 (CR-501, 88.6-REVIEW.md, 2026-09-28): "the full url is not
+    // carried" was true of the ORIGIN and FALSE of the QUERY STRING until this plan --
+    // `endpoint` is the url minus `/api`, so `friendshipsAPI.searchUserByEmail`'s
+    // `?email=bob%40example.com` rode into both the message and the ctx on every 404 (the
+    // invite-by-email flow's normal path). The endpoint is now PATH-ONLY in both, and the
+    // beforeSend EMAIL rule (sentry.scrub.js) additionally catches `%40`. Scope, stated
+    // honestly: this closes the breadcrumb and exception sinks only; the GET-query
+    // CONTRACT (Sentry transactions, backend request logs) is routed to Phase 93 (G13).
+    // Re-adding the query here is a decision, not a cleanup.
+    //
+    // NOT A PRECEDENT AGAINST THE AC-4 FIELD ABOVE: that field is a STRING forwarded to
+    // Sentry extra on an EVENT that already egresses today and is deep-scrubbed at
+    // sentry.scrub.js:171-172. This site would carry the raw response TEXT into a
+    // breadcrumb that does not egress today. Different site, different payload, different
+    // existing baseline -- both rules stand, and neither licenses the other. Restoring
+    // errCtx here is a decision, not a consistency fix.
+    const apiErr = error instanceof ApiError ? error : undefined;
+    const path = endpoint.split('?')[0];
+    logger.info(`API Error (${path})`, { endpoint: path, error: error instanceof Error ? error.name : typeof error, status: apiErr?.status, code: apiErr?.code });
     // Re-throw with more context if it's a network error. ANY TypeError thrown
     // by fetch() is a network-level failure per the spec, but the message text
     // is engine-specific — Chrome throws "Failed to fetch", Safari throws
@@ -466,6 +649,151 @@ export async function apiFetch<T = unknown>(
       );
     }
     throw error;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// TRANSPORT FOR THE FIVE apiFetch-BYPASSING PUBLIC HELPERS (T-88.6-122) — SIX since 88.6-58
+// -----------------------------------------------------------------------------
+/* DECISION Phase 88.6-42 (R8 §3 / §7 / §12): the five public helpers that BYPASS apiFetch
+   -- rsvpPublicAPI.respondViaToken, magicAuthAPI.validateToken,
+   availabilityFormAPI.submitResponse, prefillFromGcal and prefillFromSaved -- are hardened
+   IN PLACE at the TRANSPORT level, chosen OVER (a) rostering them for Phase 93, and OVER
+   (b) retrofitting a default timeout into apiFetch itself.
+
+   (a) is rejected because this is the only 88.6 plan that may legally edit this file, so
+   deferring means the next legal window is a BACKEND phase while the change is the same
+   five call sites either way. (b) is THE FENCE, and it matters: once the honest cause is
+   stated, a default at the shared boundary looks like the "proper" fix -- and it would
+   change EVERY fetch in the app, at wave 8, with no census and no owner.
+
+   THE HONEST CAUSE, because the wrong one invites the wrong fix: these helpers lack a
+   timeout NOT because they bypass apiFetch but because NOTHING in this module had one,
+   apiFetch included. (Measured 2026-09-17: the only AbortController/AbortSignal/timeout
+   token in this file before this plan was a COMMENT in apiFetch's catch.) The bypass is
+   why they ALSO lacked res.ok and a guarded success parse. The app-wide absence is an
+   OWNED RESIDUAL with Phase 93 named in .planning/deferred/phase-93.md.
+
+   WHY THIS IS NOT COSMETIC: AvailabilityForm.js sets setIsPrefilling(true) BEFORE the
+   await and clears it ONLY in finally, and both pre-fill buttons are disabled on that
+   flag. A request that never settles leaves TWO PERMANENTLY DISABLED BUTTONS on the
+   SMS/email magic-link flow, with no recovery short of a reload, on the phone-primary
+   surface. An AbortError that is SWALLOWED re-creates exactly that state, which is why it
+   is MAPPED to a rejection here and never absorbed.
+
+   BINDING CONSTRAINT -- NO res.ok THROW is added to any of the five, and no resolved body
+   SHAPE changes. Every consumer reads the parsed body's fields directly
+   (rsvp/[token]/page.js branches on result.error === 'event_cancelled';
+   AvailabilityForm.js reads response.error), and the owner's D62 branch-B ruling
+   (2026-09-09) KEEPS those reads. An res.ok throw would strand them -- that is branch A,
+   which the owner rejected. Adding one here is a decision, not a hardening.
+   [AMENDED IN PLACE 2026-09-29 — DECISION Phase 88.6-62 (review round 2 cluster A #1/#7/#12,
+   owner ruling `R2-FIXNOW-SET-RULING: yes`): the constraint above HOLDS for five of the six
+   helpers and `magicAuthAPI.validateToken` is its ONE scoped exception — it now throws a coded
+   `ApiError` for every non-OK status EXCEPT 400. The exception is sound because its only
+   consumer reads NO error discriminant off the body: the page's `validation.error` read was
+   deleted by plan 42 (availability-form/[token]/page.js records the deletion beside its
+   `!validation.valid` guard), and it reads `.valid` plus success-body fields only. 400 is kept
+   resolving because that is the backend's `token_invalid` answer (Sonnet/routes/magicAuth.js
+   `sendError(res, 'token_invalid', …)`), which the page's invalid-link branch owns. Where D62
+   branch B genuinely BINDS is the SUBMIT path (`submitResponse`, and `respondViaToken` for the
+   RSVP page): a CONSEQUENCE constraint — an res.ok throw there strands the `response.error` /
+   `result.error` reads those consumers still make (the availability form's became a
+   `success: true` gate plus a Sentry-only `upstreamMessage` read in task 3 of this plan — the
+   constraint still binds; see the note on `submitResponse`). `getExistingResponse` and the two prefill
+   helpers also keep their resolved shapes. Every transport failure out of all six is now an
+   `ApiError('network')` and every unparseable body an `ApiError('internal')` (see
+   `timedPublicFetch` / `guardedJson` below).]
+
+   AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review MEDLOW-2, owner ruling
+   `FIX-NOW-SET-RULING: as-recommended`): the census above was FIVE and is SIX. The sixth,
+   `availabilityFormAPI.getExistingResponse`, was MISSED — a raw `fetch(...).then(res =>
+   res.ok ? res.json() : null)` with no timer, no signal, no guarded parse and an unencoded
+   `promptId`. Its one consumer (availability-form/[token]/page.js, the `await
+   availabilityFormAPI.getExistingResponse(` inside the validate try) awaits it BEFORE
+   `setPageState(PAGE_STATES.READY)`, so a stalled GET was the same "spun forever" class this
+   marker claims closed. It now uses `timedPublicFetch` + `guardedJson` like the other five,
+   keeps its `object | null` resolved contract (non-2xx and unparseable 2xx both resolve
+   `null`; only a transport failure rejects), and encodes `promptId`. The binding constraint
+   above still holds for it: no res.ok THROW and no body-shape change. */
+const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
+
+/**
+ * `fetch` AND the body read under ONE timeout whose abort is MAPPED to a rejection, never
+ * swallowed.
+ *
+ * Every rejection out of `fetch` is a transport-level failure (a network error, an abort,
+ * a DNS failure), and every consumer of these five helpers renders ONE failure outcome for
+ * all of them, so they are collapsed onto `failureMessage` rather than discriminated here.
+ * Telling a transport failure apart from a genuine token rejection needs a backend `code`
+ * these routes do not carry -- an owned residual with Phase 93 named.
+ * [AMENDED 2026-09-29, plan 88.6-62 (review round 2 cluster A, #4/#13): the paragraph above
+ * is superseded in two ways. (1) A failure is now an `ApiError(failureMessage, 'network', 0)`
+ * (and an unparseable body, via `guardedJson`, an `ApiError(failureMessage, 'internal',
+ * status)`), so consumers CAN tell a transport failure from a token rejection — the backend
+ * already sends `token_invalid` for the latter; the premise "needs a backend code these
+ * routes do not carry" was false for the validate route. (2) The body is read INSIDE the
+ * deadline, so a response whose headers arrive and whose body then stalls rejects at 20 s
+ * instead of hanging; the helper therefore returns `{ res, text }`.]
+ *
+ * DECISION Phase 88.6-62 (review round 2 #4/#13): the body read is FOLDED into this timed
+ * helper (the review's first-named option) and the timer is still cleared in `finally`, so
+ * the deadline spans headers + body and no timer outlives its request. REJECTED: leaving the
+ * timer armed after headers (a timer that outlives every successful call and that nothing
+ * clears). REJECTED: `AbortSignal.timeout` (a second deadline mechanism beside the controller
+ * the six helpers already share). Reading the body outside this helper again is a decision,
+ * not a cleanup — it re-opens the stalled-body hang on the magic-link critical path.
+ */
+async function timedPublicFetch(
+  url: string,
+  init: RequestInit,
+  failureMessage: string
+): Promise<{ res: Response; text: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUBLIC_TRANSPORT_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    const text = await res.text();
+    return { res, text };
+  } catch {
+    throw new ApiError(failureMessage, 'network', 0);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Parse an already-read body as JSON, or REJECT with `ApiError(failureMessage, 'internal',
+ * status)`.
+ *
+ * The gap this closes: `return res.json()` on the SUCCESS path threw an unhandled
+ * `SyntaxError` for a non-JSON 200 -- a proxy or gateway HTML page -- while the error path
+ * beside it was already guarded. The status is deliberately NOT inspected (see the binding
+ * constraint above): this reads the body the caller asked for and nothing else.
+ * [AMENDED 2026-09-29, plan 88.6-62: takes the TEXT `timedPublicFetch` read under its deadline
+ * (plus the status, for the ApiError) instead of reading the body itself, and throws a coded
+ * `ApiError('internal')` instead of a plain Error. Same name, so every marker naming it holds.]
+ */
+function guardedJson(text: string, status: number, failureMessage: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError(failureMessage, 'internal', status);
+  }
+}
+
+/**
+ * A prefill helper's non-OK body as an object for its `err.error` read: the parsed JSON when
+ * it is an object, else `{}` (a non-JSON body, or a JSON `null` / scalar). Replaces
+ * `res.json().catch(() => ({}))` now that `timedPublicFetch` has already read the text
+ * (plan 88.6-62); the `{}` for `null` also closes a `null.error` TypeError that form allowed.
+ */
+function objectBodyOrEmpty(text: string): any {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed !== null && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
   }
 }
 
@@ -726,13 +1054,28 @@ export const rsvpAPI = {
  * API functions for public RSVP (magic link, no Auth0 required)
  * Uses direct fetch without Auth0 token injection
  */
+const RSVP_RESPOND_TRANSPORT_FAILURE = 'rsvp respond request did not complete';
+
 export const rsvpPublicAPI = {
   // Respond to RSVP via magic link token (no auth required) — direct-to-backend
   // (PUBLIC_API_BASE_URL), never the BFF proxy.
-  respondViaToken: (token: string, eventId: string, userId: string, status: string) =>
-    fetch(
-      `${PUBLIC_API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${eventId}&u=${encodeURIComponent(userId)}&s=${status}`
-    ).then(res => res.json()),
+  //
+  // T-88.6-123 (#103, routed here from plan 24 by D41): `eventId` and `status` are now
+  // percent-encoded like the `token` and `userId` arms beside them, which always were.
+  // DEFENCE-IN-DEPTH, not a live hole — verified at source: Sonnet/routes/rsvp.js:212
+  // allow-lists the status and :217-220 recomputes the HMAC over (eventId, userId, status)
+  // and 403s on mismatch. The asymmetry is closed because a reader would otherwise tidy it
+  // the WRONG way, by dropping the two encodings that are there.
+  respondViaToken: async (token: string, eventId: string, userId: string, status: string) => {
+    const { res, text } = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${encodeURIComponent(eventId)}&u=${encodeURIComponent(userId)}&s=${encodeURIComponent(status)}`,
+      {},
+      RSVP_RESPOND_TRANSPORT_FAILURE
+    );
+    // NO res.ok throw — rsvp/[token]/page.js reads `result.error` off the parsed 410 body
+    // to tell "cancelled" from "already happened", and D62 branch B keeps that read.
+    return guardedJson(text, res.status, RSVP_RESPOND_TRANSPORT_FAILURE);
+  },
 };
 
 /**
@@ -835,8 +1178,18 @@ export const usersAPI = {
   // DELETE with same-origin CSRF checks; caller identity comes from the Auth0
   // token server-side. On success the caller MUST navigate to logout IMMEDIATELY
   // (no toast-then-wait) so no authenticated fetch re-provisions a JIT ghost row.
-  deleteAccount: () =>
-    apiFetch<{ message: string }>('/users/me', { method: 'DELETE' }),
+  //
+  // The OPTIONAL `signal` is hosted HERE rather than in plan 88.6-30, which threads a client
+  // timeout into this call but does not declare src/lib/api.ts (D41 / cluster C): two wave-8
+  // plans writing one file with no declared ordering is the sequencing hazard D41 exists to
+  // prevent. SIGNATURE-ONLY — no default timeout is introduced, no call site changes, and all
+  // three existing sites (DangerZoneDeleteAccount.tsx and its two mocks) are unaffected.
+  // apiFetch itself needs no change: it spreads {...options} into fetch, and its catch
+  // converts ONLY TypeError, rethrowing everything else raw — so an abort/timeout rejection
+  // (a DOMException) falls through to classifyDeleteError's non-ApiError branch and the
+  // 'ambiguous' lane, which already exists and is currently unreachable.
+  deleteAccount: (signal?: AbortSignal) =>
+    apiFetch<{ message: string }>('/users/me', { method: 'DELETE', signal }),
 
   // ── Email change (Phase 88.8 plan 13, SPEC R12 / D-09 as re-ruled) ─────────
   //
@@ -1067,34 +1420,111 @@ export const availabilityAPI = {
  * API functions for Magic Auth (no Auth0 required)
  * These use direct fetch without Auth0 token injection
  */
+const MAGIC_VALIDATE_TRANSPORT_FAILURE = 'magic-auth validate request did not complete';
+
 export const magicAuthAPI = {
-  // Validate a magic token (returns user info, prompt_id, expiry)
-  validateToken: (token: string, formLoadedAt = null) =>
-    fetch(`${PUBLIC_API_BASE_URL}/magic-auth/validate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, formLoadedAt }),
-    }).then(res => res.json()),
+  // Validate a magic token (returns user info, prompt_id, expiry).
+  //
+  // The FIRST call the availability magic-link page makes, and its consumer catches
+  // EVERYTHING this throws to render "This link is no longer valid. Please request a new
+  // one from your group organizer." — so before this hardening a hung request spun forever
+  // and a proxy HTML page told the user their link was permanently dead via an unhandled
+  // SyntaxError. The residual is named, not implied: a transport failure and a genuine
+  // token rejection still render the SAME copy, because telling them apart needs a backend
+  // `code` these rejects do not carry. Phase 93 owns it.
+  // [AMENDED 2026-09-29, plan 88.6-62 (review round 2 cluster A; the remaining half of
+  // 88.6.1 W002): that residual's premise was FALSE — Sonnet/routes/magicAuth.js answers a bad
+  // token with a 400 `token_invalid` envelope (`sendError(res, 'token_invalid', …)`); the raw
+  // 500 in its catch is the one code-less body. It is now RESOLVED here, FE-only: a transport
+  // failure rejects `ApiError('network')`, an unparseable body `ApiError('internal')`, and any
+  // non-OK status except 400 a coded ApiError (429 → rate_limited, the raw 500 → internal),
+  // while the 400 still RESOLVES into the page's invalid-link branch. See the DECISION Phase
+  // 88.6-42 binding-constraint amendment for why this one helper may throw on status.]
+  validateToken: async (token: string, formLoadedAt = null) => {
+    const { res, text } = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/magic-auth/validate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, formLoadedAt }),
+      },
+      MAGIC_VALIDATE_TRANSPORT_FAILURE
+    );
+    const body = guardedJson(text, res.status, MAGIC_VALIDATE_TRANSPORT_FAILURE);
+    // The ONE scoped exception to the DECISION Phase 88.6-42 binding constraint (see its
+    // 2026-09-29 amendment): any non-OK status except the 400 `token_invalid` answer throws a
+    // coded ApiError, so a 429 / 5xx renders the register's rate_limited / internal line
+    // instead of the invalid-link copy. No new `.error` read: the upstream string rides on
+    // `extractUpstreamMessage`, the one sanctioned read (errorEnvelopeReads assertion 6).
+    if (!res.ok && res.status !== 400) {
+      throw new ApiError(
+        extractErrorMessage(body, res.status),
+        mapErrorToCode(body, res.status),
+        res.status,
+        body,
+        extractUpstreamMessage(body)
+      );
+    }
+    return body;
+  },
 };
 
 /**
  * API functions for Availability Form submission (magic token auth, no Auth0)
  * These use direct fetch without Auth0 token injection
  */
-export const availabilityFormAPI = {
-  // Submit availability response via magic token
-  submitResponse: (data: Record<string, unknown>) =>
-    fetch(`${PUBLIC_API_BASE_URL}/availability-responses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }).then(res => res.json()),
+const AVAILABILITY_SUBMIT_TRANSPORT_FAILURE = 'availability response submission did not complete';
+const AVAILABILITY_EXISTING_TRANSPORT_FAILURE = 'availability existing-response lookup did not complete';
+const GCAL_PREFILL_FAILURE = 'Failed to import from Google Calendar';
+const SAVED_PREFILL_FAILURE = 'Failed to use saved availability';
 
-  // Get existing response for pre-fill (if user returns to edit)
-  getExistingResponse: (promptId: string, token: string) =>
-    fetch(`${PUBLIC_API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
-      headers: { 'Content-Type': 'application/json' },
-    }).then(res => res.ok ? res.json() : null),
+export const availabilityFormAPI = {
+  // Submit availability response via magic token.
+  //
+  // NO res.ok check is added (D62 branch B, owner 2026-09-09): AvailabilityForm.js
+  // distinguishes a rejected submit from a successful one SOLELY by reading
+  // `response.error` off the parsed body, and that read deliberately SURVIVES this phase.
+  // Adding an res.ok throw here is branch A, which the owner rejected.
+  // [AMENDED 2026-09-29, plan 88.6-62 task 3 (review round 2 #11): AvailabilityForm.js now
+  // decides success by the body's POSITIVE `success: true`, not by `response.error`; its one
+  // surviving `.error` read is the coded throw's `upstreamMessage` (Sentry only). The rule
+  // above is unchanged: this helper still resolves the parsed body whatever the status — an
+  // res.ok throw here would re-code a code-less 400 as `validation` and bypass the form's
+  // body-code throw (see the 88.6-58 paragraph of DECISION Phase 88.6-25 in that file).]
+  submitResponse: async (data: Record<string, unknown>) => {
+    const { res, text } = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/availability-responses`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      },
+      AVAILABILITY_SUBMIT_TRANSPORT_FAILURE
+    );
+    return guardedJson(text, res.status, AVAILABILITY_SUBMIT_TRANSPORT_FAILURE);
+  },
+
+  // Get existing response for pre-fill (if user returns to edit).
+  //
+  // The SIXTH apiFetch-bypassing helper (plan 88.6-58, review MEDLOW-2) — see the
+  // `DECISION Phase 88.6-42` transport marker, amended to say six. The resolved contract is
+  // UNCHANGED: the parsed body on a 2xx, `null` otherwise — a non-2xx AND an unparseable 2xx
+  // both mean "nothing to pre-fill" to the one consumer. A TRANSPORT failure (incl. the 20s
+  // timeout) REJECTS, and the consumer's own catch treats it as optional pre-fill and proceeds
+  // to READY; before this, a stalled GET held the page on "Loading" forever.
+  getExistingResponse: async (promptId: string, token: string) => {
+    const { res, text } = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/availability-responses/${encodeURIComponent(promptId)}?magic_token=${encodeURIComponent(token)}`,
+      { headers: { 'Content-Type': 'application/json' } },
+      AVAILABILITY_EXISTING_TRANSPORT_FAILURE
+    );
+    if (!res.ok) return null;
+    try {
+      return guardedJson(text, res.status, AVAILABILITY_EXISTING_TRANSPORT_FAILURE);
+    } catch {
+      return null;
+    }
+  },
 
   // Phase 81 Plan 02 (CHKIN-05) — pre-fill the grid from the magic-token user's
   // Google Calendar. Returns { slot_ids: ["ISO datetime", ...], count } for
@@ -1111,21 +1541,33 @@ export const availabilityFormAPI = {
     numDays: number;
     timezone: string;
   }) => {
-    const res = await fetch(`${PUBLIC_API_BASE_URL}/availability-prefill/gcal`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        magic_token: magicToken,
-        start_date: startDate,
-        num_days: numDays,
-        timezone,
-      }),
-    });
+    const { res, text } = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/availability-prefill/gcal`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          magic_token: magicToken,
+          start_date: startDate,
+          num_days: numDays,
+          timezone,
+        }),
+      },
+      GCAL_PREFILL_FAILURE
+    );
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to import from Google Calendar');
+      // RETAINED under D62 branch B (owner, 2026-09-09): availabilityPrefill.js emits
+      // { error: string } with NO code and NO message at every one of its eight error
+      // branches (re-opened at source 2026-09-17: :187, :190, :194, :197, :203-206, :213,
+      // :216, :241), so a mechanical conversion to body.code/body.message here produces an
+      // EMPTY message. Phase 93 owns the backend code; this read goes when that lands.
+      const err = objectBodyOrEmpty(text);
+      throw new Error(err.error || GCAL_PREFILL_FAILURE);
     }
-    return res.json(); // { slot_ids, count }
+    // An unparseable 200 (a proxy or gateway HTML page) now surfaces the SAME failure the
+    // error branch above produces, instead of an unhandled SyntaxError. The resolved SHAPE
+    // is unchanged — { slot_ids, count } — so AvailabilityForm's destructuring is untouched.
+    return guardedJson(text, res.status, GCAL_PREFILL_FAILURE);
   },
 
   // Phase 81 Plan 03 (CHKIN-06) — pre-fill the grid from the magic-token
@@ -1144,21 +1586,27 @@ export const availabilityFormAPI = {
     numDays: number;
     timezone: string;
   }) => {
-    const res = await fetch(`${PUBLIC_API_BASE_URL}/availability-prefill/saved`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        magic_token: magicToken,
-        start_date: startDate,
-        num_days: numDays,
-        timezone,
-      }),
-    });
+    const { res, text } = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/availability-prefill/saved`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          magic_token: magicToken,
+          start_date: startDate,
+          num_days: numDays,
+          timezone,
+        }),
+      },
+      SAVED_PREFILL_FAILURE
+    );
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to use saved availability');
+      // RETAINED under D62 branch B — see the twin comment in prefillFromGcal above.
+      const err = objectBodyOrEmpty(text);
+      throw new Error(err.error || SAVED_PREFILL_FAILURE);
     }
-    return res.json(); // { slot_ids, count }
+    // Same guard, same reason, same unchanged { slot_ids, count } shape.
+    return guardedJson(text, res.status, SAVED_PREFILL_FAILURE);
   },
 };
 

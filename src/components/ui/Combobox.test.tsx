@@ -340,3 +340,152 @@ describe('Combobox', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+// ---------------------------------------------------------------------------------------
+// W38 (plan 88.6-37): the ONE always-mounted sr-only status region.
+//
+// The defect these pin: the loading/"No results" row carried `role="status"` INSIDE
+// `{open && (` and `{status && (`, so the live region was created in the same commit as the
+// text it carried. Screen readers announce CHANGES to a mounted region, not the conditional
+// mount of a new one (`StatusRegion.tsx:9-12`), so those strings may never have announced.
+//
+// The fix is a TWO-NODE shape, and these assertions are written so the obvious wrong
+// readings fail:
+//   - hoisting the VISIBLE row out of `{open &&` would show "No results found" under every
+//     CLOSED combobox on all five render paths -> the closed-is-silent arm fails;
+//   - keeping `role="status"` on the visible row beside the new region would give the
+//     primitive TWO live regions -> the one-region arm AND the pre-existing
+//     "announces the loading and empty rows outside the listbox" pin (which uses
+//     `getByRole('status')`, singular) both fail.
+// ---------------------------------------------------------------------------------------
+describe('Combobox — W38: exactly one always-mounted sr-only status region', () => {
+  const region = () => screen.getByRole('status');
+  // `Harness` holds `open` in its OWN state and reads `initialOpen` once, so it cannot drive
+  // the open->closed transition. This one is fully controlled.
+  function Controlled({
+    items = makeItems(),
+    open = true,
+    ...rest
+  }: { items?: ComboboxItem[]; open?: boolean } & Record<string, unknown>) {
+    return (
+      <Combobox
+        aria-label="Search for a game"
+        items={items}
+        value="cat"
+        onValueChange={() => {}}
+        open={open}
+        onOpenChange={() => {}}
+        {...rest}
+      />
+    );
+  }
+
+  it('mounts the region EMPTY on first render (EMPTY-FIRST, StatusRegion.tsx:9-12)', () => {
+    // FIRST RENDER IS THE CLOSED STATE FOR EVERY SHIPPED CONSUMER, measured not assumed:
+    // `GameComboInput.js:34` is `useState(false)` and `userProfile/page.js:378` is
+    // `useState(false)`, so both mount closed and the region's first commit is empty. That
+    // is what makes the first real announcement a CHANGE to a mounted region rather than the
+    // mount of a new one.
+    //
+    // THE RESIDUAL, stated rather than hidden by picking a friendly fixture: a caller that
+    // mounts ALREADY OPEN with results would find the count in the region's initial DOM, and
+    // that initial value does not announce. No shipped caller does this, and closing it would
+    // need a first-render latch — i.e. exactly the `useState`/`useEffect` the source-shape
+    // pin below forbids, to fix a state nothing produces.
+    render(<Controlled open={false} />);
+    expect(region()).toBeInTheDocument();
+    expect(region()).toBeEmptyDOMElement();
+  });
+
+  it('is present and EMPTY while CLOSED, and renders no visible status text (DECISION 88-10 F-359)', () => {
+    // The `open` gate is MANDATORY, not defensive: `userProfile/page.js:451` returns `[]`
+    // when the picker is closed, so an `open`-ungated derivation would speak the empty
+    // label every single time a user closes the picker.
+    render(<Controlled open={false} items={[]} />);
+    expect(region()).toBeInTheDocument();
+    expect(region()).toBeEmptyDOMElement();
+    expect(screen.queryByText('No results found')).toBeNull();
+    expect(screen.queryByText('Searching…')).toBeNull();
+  });
+
+  it('keeps the SAME NODE across empty -> loading -> results -> closed', () => {
+    // Node IDENTITY, not presence at each state. A region torn down and rebuilt between
+    // states is the same defect wearing a passing presence check — this is the shape
+    // `useConfirmAction.ts:162-180` records as REJECTED ALTERNATIVE 1.
+    const { rerender } = render(<Controlled open={false} />);
+    const node = region();
+    expect(node).toBeEmptyDOMElement();
+
+    rerender(<Controlled items={[]} loading />);
+    expect(region()).toBe(node);
+    expect(node).toHaveTextContent('Searching');
+
+    rerender(<Controlled items={[]} />);
+    expect(region()).toBe(node);
+    expect(node).toHaveTextContent('No results found');
+
+    rerender(<Controlled />);
+    expect(region()).toBe(node);
+    expect(node).toHaveTextContent('3 results available');
+
+    rerender(<Controlled open={false} />);
+    expect(region()).toBe(node);
+    expect(node).toBeEmptyDOMElement();
+  });
+
+  it('announces the RESULT COUNT, which the visible popover never shows', () => {
+    render(<Controlled />);
+    expect(region()).toHaveTextContent('3 results available');
+    // `Combobox.tsx`'s visible `status` still yields null at one-or-more results: the count
+    // is the sr-only region's business alone. Asserted against the EXACT announcement, not
+    // /result/i — the fixture's own group heading is literally "BGG results", so the loose
+    // regex would red on correct code.
+    const popover = screen.getByRole('listbox').parentElement as HTMLElement;
+    expect(popover.textContent).not.toContain('3 results available');
+    expect(popover.textContent).not.toMatch(/No results found|Searching/);
+  });
+
+  it('singularises the count (one result, not "1 results")', () => {
+    render(<Controlled items={[makeItems()[0]]} />);
+    expect(region()).toHaveTextContent('1 result available');
+  });
+
+  it('takes a caller-supplied count formatter (all strings are props with defaults)', () => {
+    render(<Controlled countLabel={(n: number) => `${n} matches`} />);
+    expect(region()).toHaveTextContent('3 matches');
+  });
+
+  it('renders exactly ONE live region in its own tree, and NONE inside the popover', () => {
+    // Scoped to this component, NOT a global invariant: `userProfile/page.js` legitimately
+    // renders two regions on its own host page.
+    const { container } = render(<Controlled items={[]} />);
+    expect(container.querySelectorAll('[role="status"], [role="alert"]')).toHaveLength(1);
+    const popover = screen.getByRole('listbox').parentElement as HTMLElement;
+    expect(popover.querySelectorAll('[role="status"], [role="alert"]')).toHaveLength(0);
+  });
+
+  it('the visible empty row survives as PLAIN TEXT inside the popover (not aria-hidden)', () => {
+    // Removing the role must NOT hide the row from browse mode — that would regress the
+    // sighted screen-reader user who can see it. Scoped with `within(popover)` because the
+    // sr-only region carries the SAME string, which is the point: one node speaks it, the
+    // other shows it.
+    render(<Controlled items={[]} />);
+    const popover = screen.getByRole('listbox').parentElement as HTMLElement;
+    const row = within(popover).getByText('No results found');
+    expect(row).not.toHaveAttribute('role');
+    expect(row).not.toHaveAttribute('aria-live');
+    expect(row.closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('derives the announcement INLINE — no new useState/useEffect in the source', async () => {
+    // An ADDITION to the node-identity arm above, which it does not replace: identity
+    // catches a region torn down and rebuilt; it does NOT catch a state-write that keeps
+    // the node and doubles the render on every text change.
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/components/ui/Combobox.tsx', 'utf8')
+    );
+    const stripped = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(stripped.match(/useState/g) ?? []).toHaveLength(1); // the pre-existing activeIndex
+    expect(stripped.match(/useEffect/g) ?? []).toHaveLength(0);
+  });
+});

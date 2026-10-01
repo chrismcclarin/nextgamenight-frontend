@@ -118,7 +118,24 @@ function deriveCode(error: unknown): FetchErrorCode {
 }
 
 export interface FetchErrorMessageOptions {
-  /** Copy used when the failure carries no `ApiError.code` (i.e. `unknown`). */
+  /**
+   * Copy used when the failure carries no `ApiError.code` (i.e. `unknown`).
+   *
+   * This applies ONLY when the resolved code is `unknown` — see `:171`, the
+   * `code === 'unknown' && options.fallback` gate. A `forbidden` or a
+   * `conflict` error resolves through `MESSAGE_BY_CODE` and ignores `fallback` entirely —
+   * which is deliberate: the register's strings are ratified copy and a caller-supplied
+   * string must not be able to shadow them.
+   *
+   * DECISION Phase 88.6-14 (D-33): renaming this to `unknownFallbackMessage` was considered
+   * and REJECTED as churn across every call site (`OpenPollsList.js:103-119` and its
+   * siblings across the R1 sweeps) for no behaviour change — and it would put a rename
+   * inside the same waves as a behaviour migration. The narrowing is documented here
+   * instead, and pinned by `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown`
+   * assertion. The sibling spelling `UseFetchErrorStateOptions.fallbackMessage` (`:198`)
+   * carries the same record so the two cannot drift. Changing this is a decision, not a
+   * cleanup.
+   */
   fallback?: string;
   /** Per-code copy overrides for a surface-specific outcome (e.g. `validation`). */
   byCode?: Partial<Record<FetchErrorCode, string>>;
@@ -130,9 +147,14 @@ export interface FetchErrorMessageOptions {
    groupPlanning and OpenPollsList.
 
    WHY THE SHIPPED IDIOM LOSES — it is an information-disclosure bug, not just a copy nit.
-   `ApiError.message` is `body.message ?? body.error ?? \`HTTP error! status: ${status}\``
-   (api.ts extractErrorMessage), so whatever the backend says lands verbatim in the DOM, and an
-   unhandled 500 paints a raw status string at the user. 88-19 closed the same hole on the
+   `ApiError.message` was `body.message ?? body.error ?? \`HTTP error! status: ${status}\``
+   when this was written, so whatever the backend said landed verbatim in the DOM, and an
+   unhandled 500 painted a raw status string at the user. AMENDED Phase 88.6-42 (2026-09-17):
+   the legacy `body.error` arm is GONE — the chain is now `body.message ?? \`HTTP error!
+   status: ${status}\`` (api.ts extractErrorMessage) — so the raw-status half of that hazard
+   stands and the verbatim-backend-string half now only reaches an `ApiError` through a
+   converted route's own envelope `message`. The ARGUMENT below is unchanged: copy is DERIVED
+   from the code, never from the message. 88-19 closed the same hole on the
    page-level branch by giving `ErrorFallback` NO error prop by contract; this is that ruling
    applied to the action path, at the mechanism rather than string by string.
 
@@ -156,7 +178,28 @@ export function getFetchErrorMessage(
 }
 
 export interface UseFetchErrorStateOptions {
-  /** Override the derived copy (e.g. a surface-specific message). */
+  /**
+   * Copy used when the failure carries no `ApiError.code` (i.e. `unknown`).
+   *
+   * NOT a general override, despite the name. This applies ONLY when the resolved code is
+   * `unknown` (see `:171`, reached via `getFetchErrorMessage`'s `fallback`). A `forbidden`
+   * or `conflict` error resolves through `MESSAGE_BY_CODE` and ignores `fallbackMessage`
+   * entirely — which is deliberate: the register's strings are ratified copy and a
+   * caller-supplied string must not be able to shadow them.
+   *
+   * DECISION Phase 88.6-14 (D-33, closing the 2026-07-09 todo from the phase 87.2 code
+   * review IN-10): this docblock previously read "Override the derived copy (e.g. a
+   * surface-specific message)", which describes a general override this option has never
+   * been. Renaming it to `unknownFallbackMessage` was considered and REJECTED as churn
+   * across every call site (`OpenPollsList.js:103-119` and its siblings across the R1
+   * sweeps) for no behaviour change — and it would put a rename inside the same waves as a
+   * behaviour migration. The narrowing is documented here instead, and pinned by
+   * `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown` assertion. The sibling
+   * spelling `FetchErrorMessageOptions.fallback` (`:139`) carries the same record so the two
+   * cannot drift. The body comment at `:214-216` says the same thing, but a caller reading
+   * this exported interface never sees it — it is not a substitute for this docblock.
+   * Changing this is a decision, not a cleanup.
+   */
   fallbackMessage?: string;
 }
 

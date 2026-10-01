@@ -143,6 +143,45 @@
    Tailwind still orders variants last within the utilities layer. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ===== TAILWIND v4: GATED-HOVER VARIANT =====
+   DECISION Phase 88.6-05 (D10): the `Button` primitive's rest -> hover elevation is expressed
+   through ONE custom variant that reproduces, for utilities, exactly the gating the legacy CSS
+   already performs — `@media (hover: hover)` plus a negation of BOTH the native `:disabled` state
+   and `[aria-disabled="true"]`. The four shipped rules it is reproducing are
+   `.btn-primary:hover:not(:disabled):not([aria-disabled='true'])` (`globals.css:2227`),
+   `.btn-accent...` (`:2298`), `.btn-secondary...` (`:2448`) and `.btn-danger...` (`:2458`) — all four
+   re-derived against THIS file as this plan leaves it, 2026-09-15; the reasoning for using
+   `aria-disabled` rather than the native attribute alone is the DR-C marker block at `:2099-2167`.
+
+   Plan 06 (wave 4) writes the `Button.tsx` half — the cva base and every UI-SPEC §3.4 rule-2
+   per-variant hover pin express the lift through THIS ONE variant, so `tailwind-merge` dedupes the
+   pair cleanly instead of shipping two competing hover shadows. This plan owns only the CSS half.
+
+   REJECTED — a bare `hover:` prefix in the cva base. It gives natively-disabled and
+   `aria-disabled` controls a hover lift that the four rules above deliberately suppress, so the
+   primitive would REINTRODUCE the exact state the DR-C marker block removed.
+
+   REJECTED — pairing `hover:` with a `disabled:`/`aria-disabled:` hover override that reaches for
+   `--shadow-sm`. That token is the one task 3(c) of this plan is fixing precisely because the bare
+   `none` keyword annihilates Tailwind's composite `box-shadow` list — so this "fix" would delete
+   the focus ring on every gated control.
+
+   REJECTED — compound `not-disabled:not-aria-disabled:hover:` prefixes at the call sites. At
+   (0,4,0) they outrank every §3.4 rule-2 pin, and `not-disabled:` alone does not see
+   `[aria-disabled]` at all.
+
+   All three of this variant's properties are GATED by `src/app/cascadeOrder.test.ts`, separately,
+   on comment-stripped source — because a variant that drops exactly ONE of them compiles clean and
+   is indistinguishable from a correct one until a gated control visibly lifts under the pointer.
+   Dropping a clause here is a decision, not a cleanup. */
+@custom-variant enabled-hover {
+  @media (hover: hover) {
+    &:not(:disabled):not([aria-disabled='true']):hover {
+      @slot;
+    }
+  }
+}
+
 /* ===== TAILWIND v4: RAW DEFAULT-PALETTE PIN (v3 sRGB VALUES) ===== */
 @theme {
   /* DECISION Phase 87.7 (Plan 04, D-17 / RESEARCH Pitfall 3): pin EVERY raw default-palette key
@@ -321,7 +360,31 @@
   /* surfaces  (tailwind.config.js:30-40) */
   --color-surface-page: var(--color-bg-page);
   --color-surface-card: var(--color-bg-card);
-  --color-surface-card-hover: var(--color-bg-card-hover);
+  /* DECISION Phase 88.6-02 (D-15): this key is RENAMED IN PLACE from
+     `--color-surface-card-hover` (runtime property `--color-bg-card-hover`), chosen OVER three
+     rejected names. The old name was a lie: the token serves ~44 STATIC surfaces — pills, badges,
+     chips, skeletons, selected/disabled states — and no hover at all (the hover wash is
+     `--color-bg-hover`, a different token), and the shadcn bridge `--muted` at the bottom of this
+     file — which pointed at the old `--color-bg-card-hover` property — read as a contradiction.
+     CHOSEN `muted`. REJECTED:
+       - `chip` — wrong at ~20 of the 46 sites. The skeletons at `GroupLibrary.js`, `Switch.tsx`,
+         `Combobox.tsx`, `StartPollModal.js` and `CalendarMonthView.js` are not chips.
+       - `static-raised` — inverts the shipped L* ordering recorded at `:736-739` below; this
+         surface sits UNDER the card, not above it.
+       - `subtle` — already means HUE TINT in this file (`--color-surface-accent-subtle`, the
+         `-subtle` status family, and `tintTreatment.test.ts:156`'s `RESTING_SUBTLE` regex); reusing
+         it for a neutral step would collapse two distinct ideas onto one word.
+     BOTH token VALUES ARE BYTE-EQUAL ACROSS THE RENAME — light `var(--warm-250)` (#dbd1c7), dark
+     `var(--purple-800)` — so this is a naming change, not a look change: no rendered pixel moves.
+     Renaming the key IN PLACE (rather than moving it) preserves `@theme inline` declaration order,
+     which is what Tailwind v4 emits from. Reverting to the old name is a decision, not a cleanup.
+     HISTORY DISPOSITION (88.6-02, D-15): prose elsewhere in this file that names the old spelling
+     (`card-hover`, `--color-bg-card-hover`, `bg-surface-card-hover`) records MEASUREMENTS and
+     RULINGS taken under that name — contrast tables, L* ladders, rejected alternatives, prior
+     sweeps. Those lines are deliberately LEFT AS HISTORY and are NOT offenders: rewriting a
+     measurement's label would turn a true statement about what was measured then into a false one.
+     Only pointers that direct a reader AT a live declaration or a live call site were amended. */
+  --color-surface-muted: var(--color-bg-muted);
   --color-surface-elevated: var(--color-bg-elevated);
   --color-surface-input: var(--color-bg-input);
   /* Phase 88.3 (D-02 / D-03, UI-SPEC §9.4): the two new surfaces, bridged in the house shape —
@@ -555,6 +618,74 @@
     opacity: 1;
     color: #9ca3af;
   }
+
+  /* DECISION Phase 88.6-30 (W53 reopen, 2026-09-21): the native date/time normalisation is
+     PLAIN CSS IN THIS STYLESHEET, chosen OVER the attribute-gated Tailwind utilities that
+     plan 30 originally shipped in `Input.tsx`'s `controlClass`.
+
+     THE REJECTED ARM AND WHY IT FAILED IN PRODUCTION, not in theory. Plan 30 wrote the
+     utilities by INTERPOLATION -- a `DATE_TIME_CONTROL` constant composed into
+     `<gate>:appearance-none` inside a template literal. Tailwind v4 extracts candidates from
+     RAW SOURCE TEXT, so the full candidate string never appeared in any scanned file and the
+     compiler emitted NOTHING for either utility. The class names reached the DOM; the rules
+     did not exist. Measured at the pre-fix commit ee26eef with the project's own engine:
+     `npx @tailwindcss/cli@4 -i src/app/globals.css` then grep for `type=date` -> 0 matches.
+     The plan's own emission pin was green throughout because it fed the already-resolved
+     strings straight to `compiler.build()`, bypassing the scanner it needed to exercise.
+     Re-introducing an interpolated class is a decision, not a cleanup -- and it is the exact
+     decision that shipped this defect to the owner's phone twice.
+
+     SECOND REASON THE UTILITY ARM CANNOT WORK HERE: `-webkit-appearance` is not reachable from
+     a Tailwind utility at all, and the unprefixed property alone is unproven on the owner's
+     iOS. Both spellings ship here because plain CSS can carry both.
+
+     THE MECHANISM. iOS Safari resolves `width: 100%` on a NATIVE date/time control against the
+     CONTENT box and then adds padding and border, so the control overruns its cell by exactly
+     `p-2` plus the hairline -- a constant ~18px at 430 CSS px, independent of cell width
+     (measured over a 348px filter cell and a 168px profile column; an intrinsic-content
+     minimum would have scaled with the content). Dropping the native appearance is the only
+     declaration that changes that outcome: +18 -> 0 on every control, with the sibling text
+     inputs byte-identical.
+
+     TWO THINGS MEASURED AS NO-OPS AND THEREFORE NOT SHIPPED. `box-sizing: border-box` is
+     already in force via Tailwind's preflight `*` rule, and `min-w-0` -- half of what plan 30
+     shipped -- changes nothing: the computed `min-width` of these controls was already `0px`
+     before and after. A grid-cell cause was refuted the same way: forcing `min-width: 0` on
+     every grid item left the overflow at +18, and the tracks measure exactly their nominal
+     width.
+
+     SCOPE. The selector is `input`-qualified, so it cannot reach the 19 `<SelectControl>`
+     sites -- an `input[type=...]` selector can never match a `<select>`, which is a stronger
+     guarantee than the class-level gating it replaces. `text-base` (the 16px iOS-zoom floor,
+     UI-SPEC section 4.1) is untouched; shrinking the type to make the box fit is the wrong fix.
+
+     UNPROVEN AND OWED: iOS Safari itself is not rendered anywhere in this project -- Playwright
+     has no WebKit build for this macOS version. The mechanism above is inferred from three
+     independent measurements of the owner's screenshots and reproduced under emulation. The
+     owner's device re-check is still the only proof. `src/components/ui/Input.test.tsx`
+     compiles THIS file through the real engine with the real `@source` tree and asserts the
+     selector is present in the OUTPUT -- the recurrence guard the original emission pin was
+     supposed to be.
+
+     DECISION Phase 88.6-30 (W53 reopen, round 2 -- `min-width: 0`): a SECOND, engine-neutral
+     mechanism. The availability rows' cells became subgrids (9fd831b), which makes each
+     `<Input>` a direct GRID ITEM, and a grid item's `min-width: auto` resolves to its
+     min-content width -- for a date control that is `mm/dd/yyyy` + the picker icon (~162-167px),
+     wider than a 140.5px column at 375px. On a block-level child that minimum is inert, which
+     is why the first reproduction measured `min-w-0` as a no-op (plain-div cells, 430px) and
+     why CI's phone lane (Chromium, 375px) caught it only after the subgrid landed. Measured in
+     Chromium at 375: date 162 -> 140.5, panel scrollWidth 331 -> 325; no change at 430; WebKit
+     byte-identical; sibling text inputs untouched. REJECTED: `max-width`, `overflow:hidden`,
+     `field-sizing`, `::-webkit-datetime-edit` minimums -- none moves the number without this.
+     `type=time` fits at 375 today only because its intrinsic width is narrower; it gets the
+     same floor so a wider locale cannot reopen this. */
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+  }
 }
 
 /* ===== DESIGN SYSTEM: Palette Primitives ===== */
@@ -566,6 +697,42 @@
   --purple-300: #b0bdd3;
   --purple-400: #8a9bba;
   --purple-500: #6b7fa3;
+  /* DECISION Phase 88.6-05 (D-14a, owner ruling 2026-09-14, arm β+): `--purple-550` is MINTED as
+     the DARK primary-button HOVER fill, chosen OVER re-pointing `--color-btn-primary-hover` to an
+     existing step. Minting is the established move here — `--purple-650` below was minted the same
+     way under the 88.3-18 ruling. `#5f7496` is t=0.5 on the `purple-600 #536889` -> `purple-500
+     #6b7fa3` line; `grep -rni '5f7496\|purple-550' src e2e` returned nothing before authoring.
+
+     THE DEFECT IT CLOSES: dark hover shipped `purple-500`, which measures **4.0464** with a white
+     label — an AA failure on every hovered dark primary button in the app today.
+
+     MEASURED 2026-09-14, re-measured 2026-09-15 with `src/lib/wcag.ts`, unrounded:
+       white label on the hover fill  **4.7456** — the AA failure closes;
+       ring-vs-fill                   **1.6425** against the dark hover ring
+                                      (`--shadow-md: 0 0 0 1px var(--purple-700)` in the `.dark`
+                                      block), so `Button.tsx`'s recorded hairline still reads as a
+                                      separate cue instead of collapsing into the fill;
+       fill-vs-card                   **2.9182**, UP from the resting **2.4461** against dark
+                                      `--color-bg-card` (`--purple-900 #232d3e`) — the lift still
+                                      brightens AWAY from the card.
+
+     THE DISCLOSED COST, stated rather than hidden: the hover STEP against the resting `purple-600`
+     weakens **1.3992 -> 1.1930**, because the white-AA ceiling on this line sits BETWEEN purple-600
+     and purple-500 — no AA-clearing value on it holds a step much above ~1.26. A weaker but
+     still-present step was ruled the better trade than a ring that stops reading.
+
+     REJECTED — `purple-700 #42536e` (the candidate of record through review round 3, and the value
+     `88.6-UI-SPEC.md:117` and §5.4's table still name): white 7.7948 and the strongest step
+     (1.3768), but ring-vs-fill collapses to **1.0000** because it IS `--shadow-md`'s ring, and
+     fill-vs-card INVERTS **2.4461 -> 1.7767** — the hover would darken TOWARD the card.
+     REJECTED — `purple-800 #2f3b50`: fill-vs-card **1.2281**; the button all but merges with its
+     ground.
+     REJECTED — stepping `--shadow-md` instead of the fill: it repaints resting dark chrome across
+     that token's many consumers, and its neighbours are taken (`purple-600` IS `--shadow-lg`'s
+     ring, `purple-500` IS dark `--color-border-strong`).
+
+     Collapsing this onto purple-500 or purple-600 is a decision, not a cleanup. */
+  --purple-550: #5f7496;
   --purple-600: #536889;
   /* DECISION Phase 88.3-18 (owner ruling 2026-08-28, option c): `--purple-650` is MINTED as the
      light-mode LINK ink, chosen OVER re-pointing `--color-text-link` to purple-700. Ruling 1c moved
@@ -595,7 +762,9 @@
   /* DECISION Phase 88.3 (Req 4 / UI-SPEC §5.6.2, §9.1): two NEW steps on the APP's own `--amber-*`
      ramp, minted so the re-meant `--color-accent-text` below has a pinned home. Chosen OVER
      (rejected) pointing the semantic token at `var(--color-amber-800)` / `var(--color-amber-900)`
-     in the D-17 Tailwind-palette pin block at `:216-217` — that block is TAILWIND's palette
+     in the D-17 Tailwind-palette pin block at `:255-256` (RE-DERIVED Phase 88.6-41, W67: the cite
+     read `:216-217`, which is now that block's closing prose; the two declarations themselves are
+     at `:255-256` and their hexes are unchanged) — that block is TAILWIND's palette
      namespace and this ramp is the APP's. A semantic token reaching across namespaces makes the
      app ramp look like it stops at 700, which is exactly the kind of thing a future reader
      "tidies" by deleting these two lines. The hexes are identical to the pinned Tailwind pair on
@@ -612,7 +781,8 @@
      `--warm-550` is RETIRED in the same commit — the ramp keeps its step count.
      CHOSEN: `#dbd1c7`, the 70% point on warm-200 -> warm-300 (verified: interpolating each
      channel at t = 0.70 reproduces `dbd1c7` exactly), L* 84.3726. Its SOLE consumer is
-     `--color-bg-card-hover`; the full rationale lives at that marker below.
+     `--color-bg-muted` (named `--color-bg-card-hover` until 88.6-02 (D-15); value byte-unchanged);
+     the full rationale lives at that marker below.
      WHY NEITHER EXISTING NEIGHBOUR WORKS, and this is the whole reason a step was minted rather
      than reused:
        - warm-200 `#e8e0d8` is now THE PAGE (ruling 1c). Leaving card-hover on it makes a resting
@@ -627,7 +797,12 @@
          `CalendarMonthView.js:228`). warm-250 measures 4.7121.
      The feasible window on the warm-200 -> warm-300 line is t ∈ [0.60, 0.92]; 0.70 is mid-window
      so no floor is near. Deleting this step and collapsing card-hover back onto a neighbour is a
-     decision, not a cleanup. */
+     decision, not a cleanup.
+     AMENDED Phase 88.6-02 (D-15): the class spelling quoted throughout this marker
+     (`bg-surface-card-hover`) is now `bg-surface-muted` and the property is `--color-bg-muted`.
+     The cited file:line sites and every measured number above are unchanged — the rename is
+     name-only, at byte-equal values. The old spelling is left quoted here as the history of the
+     ruling that minted this step. */
   --warm-250: #dbd1c7;
   --warm-300: #d6cbc0;
   --warm-400: #b8a898;
@@ -771,15 +946,21 @@
          cheaper than three collapsed accent tokens.
        - warm-100 or warm-50. Both sit ABOVE the page in L*, which reverses the D-01 split stated
          above and reds test 2c.
-     Collapsing this back onto a neighbouring ramp step is a decision, not a cleanup. */
-  --color-bg-card-hover: var(--warm-250);
+     Collapsing this back onto a neighbouring ramp step is a decision, not a cleanup.
+     AMENDED Phase 88.6-02 (D-15): this property is RENAMED to `--color-bg-muted` (Tailwind class
+     `bg-surface-card-hover` -> `bg-surface-muted`). The VALUE is byte-unchanged (`--warm-250`
+     #dbd1c7), so every measurement recorded above still holds exactly; only the name moved. The
+     rejected names and the full rationale are at the `@theme inline` marker near the top of this
+     file. */
+  --color-bg-muted: var(--warm-250);
   /* Phase 88.3 (D-02 / D-03, UI-SPEC §5.2): the two NEW surfaces archetype A needs. `hover` is
      the owner's "S3 press" look — warm-50 is LIGHTER than the page but fainter than the card
      (ΔL* 2.30), so a hovered card reads pressed rather than lifted. `sunken` is the same value in
      LIGHT because a block recessed inside a white card wants the same single step; the two names
      diverge in DARK, where `sunken` is a minted literal (see the `.dark` block below). Bridged as
      `bg-surface-hover` / `bg-surface-sunken` in `@theme inline` above. Full rationale for the
-     split is at the `--color-bg-card-hover` marker directly above. */
+     split is at the `--color-bg-muted` marker directly above (that property was named
+     `--color-bg-card-hover` until 88.6-02 (D-15); value byte-unchanged). */
   --color-bg-hover: var(--warm-50);
   --color-bg-sunken: var(--warm-50);
   --color-bg-elevated: #ffffff;
@@ -1082,8 +1263,32 @@
      RANGE — not a rule derived from a standard. The survey says exactly that, and this marker does
      not overstate it.
 
+     AMENDED Phase 88.6-41 (W67) — READ THIS BEFORE THE PARAGRAPH BELOW, which is kept verbatim as
+     the 2026-08-27 record and is NO LONGER TRUE of the tree. W67 said this block "cites a line and
+     a token value that are both now wrong"; verified INDEPENDENTLY, 2026-09-17, and both halves of
+     that finding hold — for the `--input` cite, while the `--color-bg-input` cite is half right:
+
+       claimed                                  measured 2026-09-17
+       `--input` aliases `--color-border`        `--input: var(--color-border-strong);` — the TOKEN
+                                                 changed: plan 88.6-05 (FE `4757ead`, "close three
+                                                 measured token defects — W29, D-14a, N1")
+                                                 re-pointed it. The 2.31:1 hairline consequence
+                                                 described below is therefore SPENT at the token.
+       at `:1323`                                the declaration is at `:2007`. LINE wrong.
+       `--color-bg-input: #ffffff`               VALUE correct, byte for byte.
+       at `:644`                                 the declaration is at `:900`. LINE wrong.
+
+     So: three of four halves had drifted, and the one that mattered most is the TOKEN — a reader
+     acting on the paragraph below would have "fixed" something 88.6-05 already fixed. What this
+     amendment does NOT claim: that the deferred entry it points at is closed. `--input` resolving
+     to `--color-border-strong` is the token half; whether the shared `Input`/`Textarea`/`Select`
+     primitive's own `border-input` box now lands >=3:1 is a RENDERED question about that component,
+     and that component is another plan's to speak for. Do not read this note as closing it.
+     The old values are recorded above rather than silently overwritten, so the drift stays legible.
+
      `--input` CONSEQUENCE, DISCLOSED HERE RATHER THAN DISCOVERED LATER (owner ruling C,
-     2026-08-27): `--input` aliases `--color-border` (`:1323`), so this edit hands every input box
+     2026-08-27; SEE THE AMENDMENT ABOVE — the token and both line cites have since moved):
+     `--input` aliases `--color-border` (`:1323`), so this edit hands every input box
      the same warm-400 edge — **2.31:1 on a white card, 2.04:1 on the page** — while the input's own
      fill is `--color-bg-input: #ffffff` (`:644`), which on a white card makes that border the SOLE
      boundary. Said plainly, because it sits against this marker's own claim that >=3:1 belongs to
@@ -1125,14 +1330,44 @@
      Material 3's container-highest (FILLED-card) tier, the top of the whole measured peer range —
      and M3 ships ZERO border there. Keeping warm-400 means we now pair a top-of-range tonal step
      WITH a 2.31:1 border, which no surveyed system does. The owner was shown that trade-off as
-     fork 1a-bis and chose to keep the border. It is on his final re-check list. */
+     fork 1a-bis and chose to keep the border. It is on his final re-check list.
+
+     ——— AMENDED Phase 88.6-05 (W29), EVERYTHING ABOVE KEPT AS HISTORY ———
+
+     THE PHASE 88.6 `--input` DEFERRAL IS **CLOSED**, and the two present-tense sentences above are
+     now history. Owner ruling C (2026-08-27) deferred widening `--input` to the >=3:1 token this
+     marker says input boxes own, and the 88.3-18 continuation closed with "The Phase 88.6 deferral
+     is amended in place, not closed." Plan 88.6-05 has now closed it.
+
+     WHAT `--input` NOW POINTS AT: **`--color-border-strong`** — light `var(--warm-500)` #8c7a6a,
+     dark `var(--purple-500)` #6b7fa3. The re-point is one line, in the shadcn bridge `:root` below,
+     under its own `DECISION Phase 88.6-05 (W29)` marker. Read the two sentences above as: `--input`
+     USED TO inherit the 2.31:1 card hairline, and the shared primitive DID NOT YET take
+     `--color-border-strong`. Both are now false by design.
+
+     MEASURED 2026-09-15 with `src/lib/wcag.ts`, unrounded, all four grounds:
+       light card **4.1120** (was 2.3096) · light page **3.1496** (was 1.7690)
+       dark  card **3.4225** (was 1.7767) · dark  page **4.1790** (was 2.1694)
+     Three of the four were BELOW WCAG 1.4.11's 3.0 floor before; all four clear it now.
+
+     `--color-border` ITSELF DID NOT MOVE. warm-400 stands, and every 88.3-14 / 88.3-18 ruling above
+     — including 1a-bis "A, keep" — is untouched. What changed is only which token the INPUT border
+     reads. The `.planning/deferred/phase-88.6.md` entry "[a11y] Input primitive border aliases
+     `--color-border` and lands at 2.31:1" is closed in the same pass, citing these four ratios. */
   --color-border: var(--warm-400);
   /* AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28) — DISCLOSURE, not a failure.
      `--color-border-strong` did not move, but its ground did: on the new warm-200 page it thins
      from **3.6292 to 3.1496** against WCAG 1.4.11's 3.0 floor (Gate A test 8). It still PASSES,
      with a margin of 0.15. Recorded here so a future editor nudging warm-500, or moving the page
      again, sees how little headroom is left before this token reds — rather than discovering it
-     from a red run. Against a white card it is unchanged. */
+     from a red run. Against a white card it is unchanged.
+
+     ——— AMENDED Phase 88.6-05 (W29) ——— this token is now ALSO the input border: `--input` was
+     re-pointed here from `--color-border` (see the marker at that bridge declaration, and the
+     closed deferral recorded at the end of the `--color-border` marker above). The 3.1496 page
+     margin recorded above therefore now carries the Input/Textarea/SelectControl box as well as
+     the container separators, which is a REASON to leave warm-500 alone, not a new risk: the
+     4-ground measurement is pinned in `tokenContrast.test.ts` on BOTH this token and `--input`. */
   --color-border-strong: var(--warm-500);
   --color-border-accent: var(--amber-600);
 
@@ -1197,8 +1432,27 @@
      `--shadow-md` and `--shadow-lg` are DELIBERATELY UNTOUCHED — hover lift, dropdowns, sheets and
      modals keep their elevation — and the legacy `@utility card` rule moves its RESTING shadow
      DOWN to `-sm` to match `<Card>` rather than `-md` staying put (OI-2 marker at that rule).
-     Restoring a resting `-sm` shadow, in either theme, is a decision, not a cleanup. */
-  --shadow-sm: none;
+     Restoring a resting `-sm` shadow, in either theme, is a decision, not a cleanup.
+
+     ——— AMENDED Phase 88.6-05 (N1), the reasoning above KEPT AS HISTORY AND STILL STANDS ———
+     THE INTENT IS UNCHANGED — nothing renders at rest, in either theme. The VALUE changes from the
+     bare `none` keyword to the VALID transparent zero-length shadow `0 0 #0000`, in BOTH themes
+     (light here, dark at its own declaration in the `.dark` block below).
+
+     WHY: inside Tailwind's COMPOSITE `box-shadow` list the bare keyword is
+     invalid-at-computed-value-time, so it poisons the ENTIRE list — including the layer the
+     `focus-visible:ring-2` utility writes into. Chromium-verified 2026-09-09: as shipped, every
+     default `<Button>` has NO visible focus ring at rest, across the 20 non-test `<Button` sites in
+     12 files. `88.6-UI-SPEC.md` §1.2 V-3 is false as shipped. `0 0 #0000` is a valid shadow that
+     paints nothing, so archetype A's intent survives byte-for-byte for `@utility card`,
+     `Card.tsx:22` and every other `shadow-theme-sm` consumer, while the composite list stays valid
+     and the ring paints. Nothing looks different at rest; only the focus state changes.
+
+     PUTTING THE BARE KEYWORD BACK IS A DECISION, NOT A CLEANUP — and a silent one, which is why it
+     is guarded twice: `tokenContrast.test.ts` test 9 asserts TWO-SIDEDLY (a valid transparent
+     zero-length shadow AND not the bare keyword), and the two rendered Gate C pins in
+     `e2e/contrast.spec.ts` do the same on the computed value. */
+  --shadow-sm: 0 0 #0000;
   --shadow-md: 0 4px 6px rgba(120, 80, 40, 0.08);
   --shadow-lg: 0 10px 15px rgba(120, 80, 40, 0.10);
 
@@ -1370,7 +1624,9 @@
      (7.09 / 6.26 / 6.05) and is the obvious pick because it is already on the ramp — but it is
      THE SAME HEX as `--color-accent-text` above. Shipping it would recreate OI-4's
      `--color-warning == --color-accent` collision one layer down, in a NEW light value, which is
-     precisely what SPEC Req 6 forbids. `#854d0e` (yellow-800, pinned at the D-17 block `:284`) is
+     precisely what SPEC Req 6 forbids. `#854d0e` (yellow-800, pinned at the D-17 block `:317`
+     — RE-DERIVED Phase 88.6-41, W67: the cite read `:284`, which is `--color-indigo-600`; the HEX
+     was verified correct and is unchanged, only the line had drifted) is
      measurably equivalent, visually distinct from both amber-800 and red-800, and already pinned.
      Re-pointing light warning at amber-800 "because it matches the accent" is a decision, not a
      cleanup.
@@ -1528,10 +1784,11 @@
 .dark {
   --color-bg-page: var(--purple-950);
   --color-bg-card: var(--purple-900);
-  --color-bg-card-hover: var(--purple-800);
-  /* Phase 88.3 (D-02): deliberately IDENTICAL to `--color-bg-card-hover` directly above, so every
-     one of the 42 sites swept from `hover:bg-surface-card-hover` to `hover:bg-surface-hover` in
-     plan 06 is BYTE-IDENTICAL in dark. The two values diverge in LIGHT only, which is the whole
+  --color-bg-muted: var(--purple-800);
+  /* Phase 88.3 (D-02): deliberately IDENTICAL to `--color-bg-muted` directly above — renamed from
+     `--color-bg-card-hover` in 88.6-02 (D-15), value byte-unchanged — so every one of the 42 sites
+     swept from `hover:bg-surface-card-hover` to `hover:bg-surface-hover` in plan 06 is
+     BYTE-IDENTICAL in dark. The two values diverge in LIGHT only, which is the whole
      point of the split (marker at the light declaration). */
   --color-bg-hover: var(--purple-800);
   /* DECISION Phase 88.3 (D-03 / UI-SPEC §5.2.1): `#1c2432` is a MINTED literal — the 45% point on
@@ -1596,7 +1853,12 @@
   --color-border-accent: var(--amber-500);
 
   /* Dark mode: minimal shadows, replaced by borders/glow */
-  --shadow-sm: none;
+  /* AMENDED Phase 88.6-05 (N1): the DARK half of the same change — the bare `none` keyword becomes
+     the valid transparent zero-length shadow `0 0 #0000`. Nothing renders at rest in dark either,
+     exactly as before; the keyword was invalidating Tailwind's composite `box-shadow` list and
+     taking every default `<Button>`'s `focus-visible:ring-2` with it (Chromium-verified
+     2026-09-09). Full reasoning at the light declaration's `DECISION Phase 88.3` marker above. */
+  --shadow-sm: 0 0 #0000;
   --shadow-md: 0 0 0 1px var(--purple-700);
   --shadow-lg: 0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85, 247, 0.05);
 
@@ -1611,7 +1873,47 @@
   --color-badge-member-border: var(--warm-600);
 
   --color-btn-primary-bg: var(--purple-600);
-  --color-btn-primary-hover: var(--purple-500);
+  /* DECISION Phase 88.6-05 (D-14a): the dark primary HOVER fill moves `purple-500` -> the minted
+     `purple-550` (see the mint marker in the palette block for the full ruling and the two rejected
+     values). Owner ruling 2026-09-14, arm β+.
+
+     WHAT MOVED, measured 2026-09-15 with `src/lib/wcag.ts`, unrounded — and deliberately NOT the
+     label ratio alone, because reading only the label is what hid the ring collision for six
+     review rounds:
+       white label       4.0464 -> **4.7456**   (an AA failure on every hovered dark primary
+                                                 button in the app today, now closed)
+       ring-vs-fill      1.3768-if-purple-700 was **1.0000** -> **1.6425** at purple-550. The ring
+                                                 is `--shadow-md: 0 0 0 1px var(--purple-700)`,
+                                                 declared ~15 lines above in this same `.dark`
+                                                 block; `Button.tsx`'s `hover:shadow-theme-md` is a
+                                                 RECORDED deliberate dark hover hairline ("intended,
+                                                 not a bug"), so pointing the FILL at purple-700
+                                                 would have made the ring invisible against it.
+       fill-vs-card      resting 2.4461 -> hover **2.9182** (dark `--color-bg-card` is
+                                                 `--purple-900 #232d3e`). The lift brightens AWAY
+                                                 from the card; purple-700 would have INVERTED it
+                                                 to 1.7767.
+       hover step        1.3992 -> **1.1930**, the disclosed cost. The white-AA ceiling on this line
+                                                 sits between purple-600 and purple-500, so no
+                                                 AA-clearing value holds a step much above ~1.26.
+
+     FILL-VS-CARD FLOOR: **2.40 is taken; 3.0 is REJECTED.** A 3:1 rule here would red an UNTOUCHED
+     shipped state — the resting `purple-600` already measures 2.4461 — and WCAG 1.4.11 exempts a
+     filled control's boundary where the label identifies it (already reasoned at the `.btn-accent`
+     marker block below). CONTEXT D-14a's parenthetical "verify fill-vs-card >= 3:1 too" is a
+     CORRECTION, recorded in UI-SPEC §13 item 3, and is knowingly not honoured. 2.40 is today's
+     shipped resting separation, so the floor reds an INVERSION without redding anything shipped.
+
+     NO ring-vs-fill PIN is written, and that is deliberate rather than an omission:
+     `resolveShadow()` returns RAW declaration text and `resolve()` THROWS on a non-colour terminus,
+     so an `expectRatio` over `--shadow-md` cannot be expressed. The ring number lives in this
+     marker. The three pins that ARE written: white-on-hover >= 4.5 in BOTH themes (the suite's
+     first hover pins in either theme), dark hover != dark resting, dark fill-vs-card >= 2.40.
+
+     Blast radius, counted 2026-09-15: 7 `btn-primary-hover` references across `src` + `e2e`. The
+     RING collision was confined to `<Button variant="primary">`, but all 7 take the new value.
+     Collapsing this back onto purple-500 is a decision, not a cleanup — it re-opens an AA failure. */
+  --color-btn-primary-hover: var(--purple-550);
   --color-btn-primary-text: #ffffff;
   /* Phase 88.3-18: BYTE-IDENTICAL to the light arm, deliberately. The Create-Event button this
      matches carries one inline amber in both themes, so the accent CTA is theme-invariant by
@@ -1737,14 +2039,40 @@
   --primary-foreground: var(--color-btn-primary-text);
   --secondary: var(--color-btn-secondary-bg);
   --secondary-foreground: var(--color-btn-secondary-text);
-  --muted: var(--color-bg-card-hover);
+  --muted: var(--color-bg-muted);
   --muted-foreground: var(--color-text-muted);
   --accent: var(--color-accent);
   --accent-foreground: var(--color-on-accent);
   --destructive: var(--color-error);
   --destructive-foreground: #ffffff;
   --border: var(--color-border);
-  --input: var(--color-border);
+  /* DECISION Phase 88.6-05 (W29): `--input` re-points from `--color-border` to
+     `--color-border-strong`, closing the >=3:1 deferral owner ruling C parked with Phase 88.6 on
+     2026-08-27 (see the amended `--color-border` marker above and `.planning/deferred/phase-88.6.md`).
+
+     The TOKEN moves, not `Input.tsx`. Re-pointing `border-input` at the call site would leave this
+     shadcn bridge property lying about what an input border is; `border-input` compiles to
+     `border-color: var(--input)` (confirmed in the built stylesheet), so this line IS the border.
+
+     BLESSED, not bulldozed — `tokenContrast.test.ts` already records that `--color-border-strong`
+     "is for INPUT boxes, where the box is the affordance". This edit makes the token layer agree
+     with that sentence for the first time.
+
+     MEASURED 2026-09-15 with `src/lib/wcag.ts`, all four grounds, unrounded:
+       light  warm-500 #8c7a6a on the white card 4.1120 (was warm-400 #b8a898 at 2.3096)
+       light  warm-500 #8c7a6a on the warm-200 page 3.1496 (was 1.7690)
+       dark   purple-500 #6b7fa3 on the purple-900 card 3.4225 (was purple-700 #42536e at 1.7767)
+       dark   purple-500 #6b7fa3 on the purple-950 page 4.1790 (was 2.1694)
+     Every ground clears WCAG 1.4.11's 3.0 floor; three of the four were BELOW it before.
+
+     Consumers: exactly one — `controlClass` at `src/components/ui/Input.tsx:74`, shared by `Input`,
+     `Textarea` and `SelectControl`. `--color-border-control` is deliberately NOT touched: that is a
+     different control's hairline ring and Gate A test 35's `ratio < 1.6` upper bound reds on it.
+
+     Pinned by `tokenContrast.test.ts` on `--input` ITSELF, in both themes and on both grounds — not
+     only on `--color-border-strong`, because a `--color-border-strong`-only assertion stays green
+     when this line is reverted. Reverting it is a decision, not a cleanup. */
+  --input: var(--color-border-strong);
   --ring: var(--color-focus-ring);
   --radius: 12px;
 
@@ -1908,7 +2236,14 @@ body {
    deleted here (see the amended DEC-3 marker below, where `.modal-overlay` used to sit).
    The sentence is amended rather than rewritten so a reader who remembers the original
    four-item list can see which item went and why. The unlayered requirement stands
-   unchanged for every remaining item. */
+   unchanged for every remaining item.
+   AMENDED BY PHASE 88.6-05 (W19): `.btn` and `.btn-*` are still in that list and still MUST STAY
+   unlayered — the CLASSES do not move. What DID move is exactly one DECLARATION: `.btn`'s
+   `border: none` reset now sits in `@layer components` beside the unlayered block (see the W19
+   marker there for why the layer NAME is load-bearing). D-30 draws that line deliberately: layering
+   the class would make every size/padding/font utility on every `.btn` element live at once;
+   layering the one reset makes only `border-*` live, which is the whole point. Read this sentence
+   as "the classes stay unlayered", not "no declaration of theirs may ever be layered". */
 @utility card {
   background-color: var(--color-bg-card);
   border-radius: var(--radius-card);
@@ -1963,7 +2298,49 @@ body {
   padding: 0.5rem 1rem;
   transition: var(--theme-transition);
   cursor: pointer;
-  border: none;
+}
+
+/* DECISION Phase 88.6-05 (W19): `.btn`'s `border: none` RESET — and ONLY that one declaration —
+   moves out of the unlayered block above into `@layer components`. The `.btn` CLASS itself stays
+   UNLAYERED with every other declaration it has today (D-30).
+
+   WHAT THIS BUYS: `@import 'tailwindcss' source(none)` (`globals.css:10`) pulls in upstream's
+   `@layer theme, base, components, utilities;` — the first line of `node_modules/tailwindcss/
+   index.css` — so `components` PRECEDES `utilities` in the declared layer order. A `border-*`
+   utility on a `.btn` element therefore now WINS over this reset and actually paints. Until this
+   move it could not: an unlayered author rule beats every `@layer utilities` rule regardless of
+   specificity, which is why the marker below at the `.btn-secondary` edge ruling records a
+   call-site `border-*` utility as "dead on arrival". That sentence is amended there, in place.
+
+   THE LAYER NAME IS THE LOAD-BEARING HALF, not merely "inside some `@layer`". This file already
+   declares two other author layers — `@layer base` (the `cursor: pointer` reset) and, further
+   down, `@layer utilities` (the `.surface-flat-phone` flatten). Dropping this reset into that
+   EXISTING `@layer utilities` block would put it in the SAME layer as the border utilities and
+   LATER in source order, defeating W19 entirely with nothing red anywhere.
+   `src/app/cascadeOrder.test.ts` therefore pins the NAME, not the presence of a layer.
+
+   POSITION: authored here, adjacent to the block it modifies, rather than beside the other author
+   `@layer` blocks. Layer precedence in CSS is set by the order the layer NAMES are declared, not
+   by where a block appears, so this is free — and a reset 1,400 lines away from the rule it resets
+   is exactly the kind of thing that gets "tidied" back.
+
+   REJECTED — per-call-site unlayered overrides (`[border:1px_solid_var(--color-line)]` and
+   friends). Recorded REJECTED by 88.3-09; it pushes cascade knowledge into ~100 call sites.
+   REJECTED — layering the whole `.btn` CLASS. That would make every size/padding/font utility on
+   every `.btn` element suddenly live at once — a tree-wide look change and a P6 breach. The
+   `@utility card` guardrail above says `.btn` MUST STAY unlayered and it still does.
+
+   BLAST RADIUS, measured: ZERO of the 120 live `btn btn-*` call sites carries a `border-*` utility
+   today, so nothing changes on screen right now. The live consumers are the two gameDetail row
+   actions plan 18 migrates — `gameDetail/page.js:198-206` (`border border-line`) and `:1979-1983`
+   (`border border-status-error`) — whose visible 1px border would otherwise be DELETED by the
+   migration with nothing red. That is why this cannot be traded away as "nothing depends on it".
+
+   Moving this declaration back inline, or into a different layer, is a decision, not a cleanup. */
+@layer components {
+  .btn {
+    border: none;
+  }
 }
 
 .btn:disabled {
@@ -2164,7 +2541,36 @@ body {
    1.1414-1.2086) describe a `.btn-secondary` treatment this rule REMOVES. Do not carry them forward.
 
    Adding a second inline amber, or re-pointing either call site back to `.btn-secondary`, is a
-   decision, not a cleanup — and the two source-scan pins in `tokenContrast.test.ts` will red. */
+   decision, not a cleanup — and the two source-scan pins in `tokenContrast.test.ts` will red.
+
+   ——— AMENDED Phase 88.6-05 (D23/D17), EVERYTHING ABOVE KEPT AS HISTORY ———
+   THE MIGRATION THIS MARKER ROUTES TO IS HAPPENING NOW, so two of its sentences need updating
+   rather than deleting.
+
+   (1) THE FOCUS-RING ROUTE IS ANSWERED, and the answer is NOT the global rule this marker
+   contemplated. Owner ruling 2026-09-15 (UI-SPEC §12 A-2, ARM A): no `.btn:focus-visible` rule is
+   authored; the ring is expressed ONCE in `Button.tsx`'s cva base, and the per-site strings delete
+   as their sites migrate. So "adding one here would be a shared-surface change across 119 call
+   sites" stayed true and is exactly why the global rule was rejected. Re-measured 2026-09-15: the
+   live figure is **120** `btn btn-*` occurrences across 38 non-test files, and **10** `.btn`-family
+   elements carry a focus string, not 4 — the 119/4 figures above are an August measurement and are
+   kept as such. `src/app/cascadeOrder.test.ts` now gates that exactly ONE of the two mechanisms
+   exists.
+
+   (2) THE PER-SITE RING IS RETIRED AT BOTH OF THIS MARKER'S CALL SITES IN WAVE 7 —
+   `gameDetail/page.js` by plan 18 and `EventDayModal.js` by plan 27, the SAME wave. The ring then
+   comes from the cva base, so it is no longer inside either button's own source slice.
+
+   (3) THE "two source-scan pins will red" SENTENCE IS NOW OBSOLETE AS WRITTEN, and plan 05 fixed it
+   upstream rather than letting wave 7 discover it: `tokenContrast.test.ts` test 47 was rewritten
+   SPELLING-AGNOSTIC here, at wave 3. It accepts either `<Button`/`</Button>` or
+   `<button`/`</button>` as its locator, asserts legacy-XOR-primitive treatment, counts the SUM of
+   both spellings per file, and makes the per-site ring assertion conditional on the legacy spelling.
+   Without that rewrite, plan 27 would have left `EventDayModal.js` with zero `</button>` and test
+   47's forward locator would have returned -1 — a hard LOCATOR failure — while the ring assertion
+   red in every arm. The pins still red on the things this marker cares about (a second inline
+   amber, a revert to `.btn-secondary`, a third untreated copy); only the SPELLING they tolerate
+   widened. */
 .btn-accent {
   background-color: var(--color-btn-accent-bg);
   color: var(--color-btn-accent-text);
@@ -2252,6 +2658,14 @@ body {
 
    REJECTED — a `border-*` UTILITY at the call sites. Dead on arrival: `.btn { border: none }` above
    is unlayered and beats every `@layer utilities` rule regardless of specificity.
+   ——— AMENDED Phase 88.6-05 (W19), the reasoning above KEPT AS HISTORY because it was true of the
+   tree it was written against: that premise NO LONGER HOLDS. The `border: none` reset now lives in
+   `@layer components` (see the W19 marker at the `.btn` block above), and `components` precedes
+   `utilities` in the order `@import 'tailwindcss' source(none)` declares at `globals.css:10` — so a
+   call-site `border-*` utility on a `.btn` element is ALIVE and paints. The rejection of the
+   utility approach FOR THIS RULING still stands on its own merits (the edge belongs on
+   `.btn-secondary` itself, not spread across 29 call sites); only the "dead on arrival" mechanism
+   is retired. Do not read the amendment as reopening the `.btn-secondary` edge decision. ———
 
    REJECTED — restoring the resting shadow. Req 3 / OI-2 is an owner ruling and the owner
    RE-CONFIRMED the no-shadow half on 2026-08-27. The fix is a fill and an edge, not a shadow.
@@ -2360,6 +2774,50 @@ body {
   .btn {
     min-height: 2.75rem;
   }
+}
+
+/* DECISION Phase 88.6-05 (A-6 amended): `.btn-sm` sits BEFORE `.btn-compact` — chosen OVER the
+   A-6 after-`.btn-compact` position the record named. Owner ruling 2026-09-09 (AC-9).
+
+   WHY. `.btn-compact` below ends `padding-left: 0; padding-right: 0;` under the
+   `DECISION Phase 88.3-17` marker, whose closing sentence reads "Re-adding horizontal padding here
+   re-deforms both steppers and reds `touch-targets.spec.ts:428`" — a regression CI found (dispatch
+   run 33137056149), not review. (That quoted `:428` cite has DRIFTED since 88.3-17 wrote it;
+   re-derived 2026-09-15 the squareness assertion is `e2e/touch-targets.spec.ts:871`, inside the
+   test at `:823`. The sentence is quoted verbatim, so the correction is recorded here rather than
+   made silently in someone else's marker.) `.btn-sm` and `.btn-compact` are both (0,1,0), so on any element
+   carrying BOTH the later rule wins on source order: an after-positioned `.btn-sm` would put the
+   8px horizontal padding straight back. The before-position removes the collision BY CONSTRUCTION
+   rather than by anyone remembering not to combine the two classes.
+
+   REJECTED — keep A-6's after-position plus a source-scan assertion that no className carries both
+   `btn-sm` and `btn-compact`. That is a behavioural guard where a structural one is available.
+
+   THE RECORD said AFTER: UI-SPEC §12 A-6 and CONTEXT D-09 both did, and A-6 justified it as
+   "strictly safer and changes nothing about `.btn-compact`'s own opt-out" — which is factually
+   false for any element carrying both classes. Classified BOOKKEEPING: nothing breaks if A-6 is
+   amended and its whole cost is one line, carried by plan 46's amendment table. This plan edits no
+   UI-SPEC.
+
+   LATENT TODAY, NOT HARMLESS: `.btn-sm` has zero call sites right now and the two BrowseMoreModal
+   steppers are raw `.btn`, not `<Button>`. But plan 06 (wave 4) makes `Button`'s `sm` rung emit
+   `btn-sm`, so `<Button size="sm" className="btn-compact">` or any later compact migration
+   reintroduces the exact CI-found deformation.
+
+   NO `min-width`, NO `font-size`, NO `min-height`, and that is reasoned rather than sanctioned.
+   The `sm` label is 14px, forced by `.btn`'s own unlayered `font-size: .875rem` above. The desktop
+   44px floor is `min-h-11` on the cva base. `sm` is a WIDE-TEXT rung — all eight `D-36` markers
+   record "No `min-w-11`: wide text button" — and UI-SPEC §3.3 caps it at exactly two adopters
+   (`gameDetail/page.js:198` and `:1979`, plan 18), both of which ship `min-h-11 text-xs px-2` today
+   and get WIDER under the migration, not narrower.
+
+   The POSITION is load-bearing and silent when broken — this repo has hit that twice already
+   (87.8 DEC-2/DEC-3). `src/app/cascadeOrder.test.ts` pins both directions of the order on
+   comment-stripped source, and pins that neither rule sits inside an `@layer`. Reordering this, or
+   layering it, is a decision, not a cleanup. */
+.btn-sm {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 .btn-compact {

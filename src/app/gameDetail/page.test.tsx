@@ -58,6 +58,10 @@ const EVENT_ID = 'EVT1';
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
   search: '',
+  // 88.6-18: hoisted so a test can model the AUTH half of a handler pre-check the
+  // same way `selfUuid` models the identity half. Defaults to the shipped literal,
+  // so every pre-existing test is byte-equivalent.
+  userSub: 'auth0|self-sub' as string | undefined,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -76,7 +80,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: { sub: 'auth0|self-sub' }, isLoading: false }),
+  useUser: () => ({ user: h.userSub ? { sub: h.userSub } : undefined, isLoading: false }),
 }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -330,6 +334,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
   h.search = '';
+  h.userSub = 'auth0|self-sub';
 });
 
 afterEach(cleanup);
@@ -370,18 +375,73 @@ describe('gameDetail render harness', () => {
 // Game Sessions with their RSVP/Ballot/Bring surfaces intact; Game Sessions
 // renders ONLY the history partition, as pure session records.
 // ---------------------------------------------------------------------------
+/*
+ * DECISION Phase 88.6-41 (W64) — the ONE anchor this partition is measured
+ * against, both sides of the comparison.
+ *
+ * WHAT WAS WRONG. `FUTURE_SESSION.start_date` was
+ * `new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()` under the comment
+ * "Always in the future relative to the test run" — a fixture derived from the WALL
+ * CLOCK at module-evaluation time. That is the full-run-only, near-midnight failure
+ * signature W64 recorded: the module evaluates at one instant, the component computes
+ * the Upcoming-vs-history partition at another, and in a long full run those two can
+ * straddle a local-midnight boundary.
+ *
+ * WHY OBSERVATIONAL CLOSURE WAS REFUSED. "The full run passed" passes on essentially
+ * every non-midnight run, so it would have recorded W64 closed with the gate green and
+ * nothing actually verified. The cause was located, so the fix is the only path.
+ *
+ * BOTH HALVES ARE REQUIRED, and this is a requirement rather than a preference.
+ *   (1) the FIXTURE derives from `TEST_NOW`, never from `Date.now()`/`new Date()`;
+ *   (2) the CLOCK the partition is computed against is pinned to the SAME `TEST_NOW`
+ *       for this describe.
+ * A bare future-dated constant read against the live wall clock is NOT a fix — it
+ * converts a once-a-day flake into a one-time cliff on a fixed calendar date, which is
+ * strictly worse because nothing will be looking when it arrives. Both sides of the
+ * comparison have to move together.
+ *
+ * SCOPE IS LOAD-BEARING. The clock control lives in THIS describe's own
+ * `beforeEach`/`afterEach` and is never file-level. A file-level `useFakeTimers` in a
+ * global `beforeEach` would collide with the deliberately-scoped
+ * `vi.useFakeTimers({ shouldAdvanceTime: true })` in the two-tap describe below and its
+ * recorded reason (RTL's `waitFor` sniffs for JEST fake timers, does not recognise
+ * vitest's, and every `findBy*` in this file then hangs for 5s). `shouldAdvanceTime` is
+ * carried here for exactly that reason, and the two blocks stay separate.
+ *
+ * WHY THIS DATE. It is AFTER `SESSION`'s fixed `2026-01-15T18:00:00Z`, so the history
+ * event stays history; `TEST_NOW + 3d` is the upcoming one. Both fixtures are now fixed
+ * points, so the partition is arithmetic rather than a race with the calendar.
+ *
+ * HAND-OFF, plan 45 (wave 10, this same file, adds composed axe audits): do NOT
+ * re-introduce a `Date.now()`-derived fixture here, and confirm this anchoring survives
+ * the audit addition — lengthening this file's runtime is precisely what moved it
+ * across the boundary in the first place.
+ */
+const TEST_NOW = new Date('2026-06-15T12:00:00Z');
+
 const FUTURE_SESSION = {
   id: 'evt-future',
   game_id: GAME_ID,
   group_id: GROUP_ID,
-  // Always in the future relative to the test run.
-  start_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+  // Three days after TEST_NOW — a FIXED point, not "three days from whenever this
+  // module happened to evaluate". See the W64 marker above.
+  start_date: new Date(TEST_NOW.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
   duration_minutes: 120,
   comments: 'The upcoming night',
   EventParticipations: [],
 };
 
 describe('gameDetail Upcoming/history split (fork G, 88-33 Task 7)', () => {
+  // W64, the COMPARISON half. The component computes this partition against the LIVE
+  // clock, so pinning only the fixture would relocate the cliff rather than remove it.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(TEST_NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders a future event in the Upcoming section WITH its RSVP surface, never in Game Sessions', async () => {
     renderGameDetail({ events: [SESSION, FUTURE_SESSION] });
 
@@ -551,8 +611,14 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     // sessionsSection() now resolves only on the settled heading (rows present);
     // findByRole keeps the kebab query itself retrying too.
     const sessions = await sessionsSection();
-    await user.click(await within(sessions).findByRole('button', { name: 'Session actions' }));
-    await user.click(within(sessions).getByRole('menuitem', { name: 'Delete' }));
+    const trigger = await within(sessions).findByRole('button', { name: 'Session actions' });
+    await user.click(trigger);
+    // Plan 88.6-16 (D-12) dropped the ARIA menu pattern from KebabMenu: the items
+    // are plain buttons inside the list the trigger names through `aria-controls`
+    // while open. Same scoping as the old role query, no assertion changed.
+    const list = document.getElementById(trigger.getAttribute('aria-controls') as string);
+    expect(list, 'the Session actions kebab names its open list through aria-controls').not.toBeNull();
+    await user.click(within(list as HTMLElement).getByRole('button', { name: 'Delete' }));
     return screen.findByRole('dialog');
   }
 
@@ -841,7 +907,11 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     // The email is resolved server-side (83-06 PII default-deny), so the client
     // must send the UUID and nothing else.
     expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledWith(GROUP_ID, 'guest-uuid');
-    expect(await screen.findByRole('button', { name: 'Invite sent!' })).toBeInTheDocument();
+    // 88.6-18 (D8 arm B, owner 2026-09-09): the four SETTLED outcomes render a
+    // non-interactive status chip, not a button — so these are text queries. The
+    // `Retry` queries below stay role-based, because `error` is still a Button.
+    expect(await screen.findByText('Invite sent!')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Invite sent!' })).toBeNull();
   });
 
   it('falls back to the shipped 409 -> "Already invited" copy for an UNCODED conflict', async () => {
@@ -851,7 +921,8 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
 
     await user.click(await screen.findByRole('button', { name: INVITE }));
     // 409 is "already a member or already invited" — not a failure to retry.
-    expect(await screen.findByRole('button', { name: 'Already invited' })).toBeInTheDocument();
+    expect(await screen.findByText('Already invited')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Already invited' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
@@ -867,7 +938,8 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
 
     await user.click(await screen.findByRole('button', { name: INVITE }));
-    expect(await screen.findByRole('button', { name: 'Invite pending' })).toBeInTheDocument();
+    expect(await screen.findByText('Invite pending')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Invite pending' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
@@ -879,7 +951,8 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
 
     await user.click(await screen.findByRole('button', { name: INVITE }));
-    expect(await screen.findByRole('button', { name: 'Already a member' })).toBeInTheDocument();
+    expect(await screen.findByText('Already a member')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Already a member' })).toBeNull();
   });
 
   // The "CODE-LESS 409 (production, pre-88-34)" test that lived here was
@@ -888,6 +961,240 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
   // (owner-ruled removal condition — see the amended DECISION in page.js's
   // GuestInviteButton). The bare-409 safety net stays pinned by the
   // "UNCODED conflict" test above.
+});
+
+// ---------------------------------------------------------------------------
+// Plan 88.6-18 — the GuestInvite control after the D8 arm-B ruling and its
+// 2026-09-14 `sending` amendment.
+//
+// jsdom performs NO layout and loads NO stylesheet, so nothing below rests on
+// `getComputedStyle` of a stylesheet-driven property. The `.btn:disabled` wash
+// whose loss V-17 discloses is a BROWSER-only measurement and is deliberately
+// not asserted here (review D28). What jsdom can prove is asserted: attributes,
+// class lists, roles, `document.activeElement` and call counts.
+// ---------------------------------------------------------------------------
+
+describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-50)', () => {
+  const GUEST = participantRow({
+    user_id: 'guest-uuid',
+    username: 'Visiting Pat',
+    is_guest: true,
+  });
+
+  /** An invite mock that stays IN FLIGHT until the returned `settle` is called. */
+  function deferredInvite() {
+    let settle: (value?: unknown) => void = () => {};
+    let fail: (reason?: unknown) => void = () => {};
+    (invitesAPI.sendParticipantInvite as Mock).mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          settle = resolve;
+          fail = reject;
+        })
+    );
+    return {
+      settle: (v?: unknown) => settle(v),
+      fail: (r?: unknown) => fail(r),
+    };
+  }
+
+  it('sends ONCE for two activations dispatched with NO render flush between them', async () => {
+    deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    // THE NO-FLUSH SHAPE IS LOAD-BEARING. Both activations are dispatched inside
+    // ONE `act()`, so React has not re-rendered between them and the previous
+    // render's closure still reads `status === null`. After a flush the state
+    // term alone satisfies this assertion and it passes with no latch in the
+    // code — which is the vacuity this shape exists to avoid. Under the
+    // 2026-09-14 amendment the latch is the ONLY thing refusing the second
+    // press: an `aria-disabled` control still fires its handler.
+    await act(async () => {
+      invite.click();
+      invite.click();
+    });
+
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes aria-disabled and NO native disabled attribute while sending', async () => {
+    deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await act(async () => {
+      invite.click();
+    });
+
+    const sending = screen.getByRole('button', { name: 'Sending...' });
+    expect(sending).toHaveAttribute('aria-disabled', 'true');
+    expect(sending.hasAttribute('disabled')).toBe(false);
+    // The visible in-flight cue that replaces the `.btn:disabled` wash (V-17).
+    expect(sending).toHaveTextContent('Sending...');
+    // No `disabled:opacity-*` utility was added at the call site — it keys on
+    // the native attribute this control no longer carries.
+    expect(sending.className).not.toMatch(/(^|[\s:])disabled:opacity-/);
+  });
+
+  it('keeps focus ON the control while sending, and does not move it when the outcome settles', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await user.click(invite);
+    // The whole point of the 2026-09-14 amendment: a natively-disabled element
+    // leaves the focus order and focus drops to <body> mid-submit.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Sending...' }));
+
+    await act(async () => {
+      invite$.settle({});
+    });
+    await screen.findByText('Invite sent!');
+    // RECORDED, not asserted as a landing target: focus is NOT moved. Under arm B
+    // the button is replaced by a non-focusable status chip, so the user lands
+    // wherever its removal leaves them — `<body>`. This is a DOM fact and belongs
+    // in the jsdom half; it is disclosed in 88.6-18-SUMMARY.md rather than
+    // silently absorbed.
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('re-enables and re-sends after a failure — the latch clears in the error branch only', async () => {
+    const first = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await act(async () => {
+      invite.click();
+    });
+    await act(async () => {
+      first.fail(new Error('network'));
+    });
+
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    expect(retry.hasAttribute('disabled')).toBe(false);
+    expect(retry).not.toHaveAttribute('aria-disabled');
+
+    (invitesAPI.sendParticipantInvite as Mock).mockResolvedValue({});
+    await act(async () => {
+      retry.click();
+    });
+    // TWICE, not once: a latch that never released would make the retry dead.
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders each settled outcome as a non-interactive chip carrying its fuller explanation', async () => {
+    (invitesAPI.sendParticipantInvite as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await act(async () => {
+      invite.click();
+    });
+
+    const chip = await screen.findByText('Invite sent!');
+    expect(chip.tagName).toBe('SPAN');
+    expect(chip).not.toHaveAttribute('role');
+    expect(chip).not.toHaveAttribute('aria-live');
+    expect(chip).not.toHaveAttribute('tabindex');
+    // The branch `title` is the only fuller explanation each settled state has.
+    expect(chip).toHaveAttribute('title', 'Invite sent!');
+    // Geometry survives: on a <span> nothing supplies what `.btn` supplied.
+    expect(chip.className).toContain('min-h-11');
+    expect(chip.className).toContain('rounded-sm');
+    expect(chip.className).toContain('border');
+    // The shipped colour pair is preserved verbatim, which is why the SETTLED
+    // states take no UI-SPEC §1.2 V-row.
+    expect(chip.className).toContain('bg-status-success-subtle');
+    expect(chip.className).toContain('text-content-status-success');
+    // EXACTLY ONE live region in the settled subtree: the always-mounted sr-only
+    // StatusRegion. `88.6-UI-SPEC.md:571-573`.
+    //
+    // SCOPE CORRECTED by plan 88.6-36 task 3 (2026-09-16): this queried `document`, i.e. the
+    // WHOLE PAGE, while its own comment says "in the settled subtree" — the two disagreed and
+    // nothing surfaced it until a second legitimate region appeared elsewhere on the page.
+    // `FetchErrorBanner`'s compact branch is now EMPTY-FIRST, so its `sr-only` polite region is
+    // mounted on this page unconditionally (gameDetail is one of the six call sites that fix
+    // closes), and a page-wide count of 1 became a count of 2. The ASSERTION'S INTENT is
+    // unchanged and is now actually enforced where it claims to be: the GuestInvite region is
+    // this chip's own sibling (`gameDetail/page.js:294-306` returns the two inside one
+    // fragment), so scoping to the chip's parent is the subtree the comment always meant. A
+    // page-wide count here would also have gone red for any unrelated surface adding a region,
+    // which is the wrong gate to hand the next executor.
+    const regions = chip.parentElement!.querySelectorAll('[aria-live]');
+    expect(regions).toHaveLength(1);
+    expect(regions[0].className).toContain('sr-only');
+  });
+
+  it('puts the live invite states on the `sm` Button rung with the W19 border intact', async () => {
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    expect(invite.className).toContain('btn');
+    expect(invite.className).toContain('btn-sm');
+    // The border survives migration ONLY because plan 05 layered `.btn`'s reset.
+    expect(invite.className).toContain('border-line');
+    // Dead-on-`.btn` utilities are gone from the states that became a Button.
+    for (const dead of ['text-xs', 'px-2', 'py-1', 'rounded-sm']) {
+      expect(invite.className.split(/\s+/)).not.toContain(dead);
+    }
+    // `min-h-11` is still present — from the cva base, not the call site.
+    expect(invite.className).toContain('min-h-11');
+  });
+});
+
+// UI-SPEC §9.3 E10-long-text / SPEC AC-5 — the quote-bearing-name backstop.
+// The two-tap Remove interpolates a user-supplied display name into its
+// accessible name; a name carrying a double quote and an apostrophe must render
+// intact inside it rather than truncating or escaping the label.
+describe('gameDetail row actions: quote-bearing names (§9.3 E10-long-text)', () => {
+  const AWKWARD = 'Pat "The Wall" O\'Brien-Smith';
+
+  it('renders a quote-and-apostrophe name intact inside the Remove accessible name', async () => {
+    const user = userEvent.setup();
+    const rows = Array.from({ length: 6 }, (_, i) =>
+      participantRow({ user_id: `p-${i}`, username: i === 0 ? AWKWARD : `Player ${i}` })
+    );
+    renderEventDetail({ role: 'owner', participants: rows });
+
+    const dialog = await openParticipantsModal(user);
+    expect(
+      within(dialog).getByRole('button', { name: `Remove ${AWKWARD} from this event` })
+    ).toBeInTheDocument();
+  });
+});
+
+// Req 15 ORDERING. `page.js` records "the invite sits BEFORE Remove, not after"
+// as a source comment and this plan's prohibition names an ordering TEST that
+// must stay green — measured 2026-09-16, NO such test existed. It is written
+// here rather than assumed, so the prohibition is checkable.
+describe('gameDetail row actions: invite before remove (Req 15)', () => {
+  it('renders the guest invite BEFORE the two-tap Remove in document order', async () => {
+    const user = userEvent.setup();
+    const guest = participantRow({
+      user_id: 'guest-uuid',
+      username: 'Visiting Pat',
+      is_guest: true,
+    });
+    const rows = [
+      guest,
+      ...Array.from({ length: 5 }, (_, i) =>
+        participantRow({ user_id: `p-${i}`, username: `Player ${i}` })
+      ),
+    ];
+    renderEventDetail({ role: 'owner', participants: rows });
+
+    const dialog = await openParticipantsModal(user);
+    const invite = within(dialog).getByRole('button', { name: INVITE });
+    const remove = within(dialog).getByRole('button', {
+      name: 'Remove Visiting Pat from this event',
+    });
+    expect(
+      invite.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the constructive action must come first — swapping them puts "Remove" under the thumb that was reaching for "Invite"'
+    ).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1140,5 +1447,375 @@ describe('gameDetail guest-removal disclosure (row 530 FE half)', () => {
     expect(
       within(dialog).queryByText('Guests and your own row are removed via Edit Event.')
     ).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan 88.6-18 — the event-actions kebab after the hand-rolled menu was retired
+// onto the shared `KebabMenu` component.
+//
+// THREE AUTHORIZATION GATES ride on this swap (review D56). `KebabMenu` maps its
+// `items` UNCONDITIONALLY, so a gate not written into the items array is a LEAKED
+// action — and the backend accepts self-leave for any matching `User.id`, so a
+// leaked Leave item does not fail, it SUCCEEDS. Each is proven by role, not read.
+//
+// Everything here is a DOM fact (attributes, `document.activeElement`, call
+// counts), so no Playwright arm is needed for any of it (review D28).
+// ---------------------------------------------------------------------------
+
+/** Open the Event-actions kebab and return the list the trigger names while open. */
+async function openEventActions(user: ReturnType<typeof userEvent.setup>) {
+  const trigger = await screen.findByRole('button', { name: 'Event actions' });
+  await user.click(trigger);
+  const list = document.getElementById(trigger.getAttribute('aria-controls') as string);
+  expect(list, 'the open kebab must name its list through aria-controls').not.toBeNull();
+  return { trigger, list: list as HTMLElement };
+}
+
+/** A promise-returning mock that stays IN FLIGHT until `settle`/`fail` is called. */
+function deferred(mock: Mock) {
+  let settle: (value?: unknown) => void = () => {};
+  let fail: (reason?: unknown) => void = () => {};
+  mock.mockImplementation(
+    () =>
+      new Promise((resolve, reject) => {
+        settle = resolve;
+        fail = reject;
+      })
+  );
+  return { settle: (v?: unknown) => settle(v), fail: (r?: unknown) => fail(r) };
+}
+
+describe('gameDetail event-actions kebab: the three authorization gates (D56)', () => {
+  it.each(['owner', 'admin'] as const)(
+    'gives a group %s the Cancel item and NOT the Leave item',
+    async (role) => {
+      const user = userEvent.setup();
+      renderEventDetail({ role });
+      const { list } = await openEventActions(user);
+      expect(within(list).getByRole('button', { name: 'Cancel event' })).toBeInTheDocument();
+      expect(within(list).queryByRole('button', { name: 'Leave event' })).toBeNull();
+    }
+  );
+
+  it('gives a game-only caller the Leave item and NOT the Cancel item', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'game-only' });
+    const { list } = await openEventActions(user);
+    expect(within(list).getByRole('button', { name: 'Leave event' })).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: 'Cancel event' })).toBeNull();
+  });
+
+  it.each(['member', 'pending'] as const)(
+    'gives a %s no Event-actions trigger at all — the OUTER gate',
+    async (role) => {
+      renderEventDetail({ role });
+      // Settle on something only the loaded single-event view renders, so the
+      // absence below is a real absence and not a race on the loading screen.
+      await screen.findByRole('heading', { name: 'Game Night' });
+      expect(screen.queryByRole('button', { name: 'Event actions' })).toBeNull();
+    }
+  );
+});
+
+describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-entry latch', () => {
+  it('keeps the menu OPEN and readable while Cancel is in flight, and sends exactly one DELETE', async () => {
+    const user = userEvent.setup();
+    deferred(eventsAPI.deleteEvent as Mock);
+    renderEventDetail({ role: 'owner' });
+    const { list } = await openEventActions(user);
+
+    const cancel = within(list).getByRole('button', { name: 'Cancel event' });
+    // THE NO-FLUSH SHAPE IS LOAD-BEARING (review D63): both activations are
+    // dispatched inside ONE `act()`, so the second runs the previous render's
+    // closure where `cancellingEvent` is still false. After a flush the item gate
+    // alone satisfies this and the test passes with no latch in the code.
+    await act(async () => {
+      cancel.click();
+      cancel.click();
+    });
+
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
+    // The ruled arm (c): still OPEN, with the in-flight label readable IN PLACE —
+    // not "after reopening".
+    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('keeps the menu OPEN and readable while Leave is in flight, and sends exactly one DELETE', async () => {
+    const user = userEvent.setup();
+    deferred(eventsAPI.leaveEvent as Mock);
+    renderEventDetail({ role: 'game-only' });
+    const { list } = await openEventActions(user);
+
+    const leave = within(list).getByRole('button', { name: 'Leave event' });
+    await act(async () => {
+      leave.click();
+      leave.click();
+    });
+
+    expect(eventsAPI.leaveEvent).toHaveBeenCalledTimes(1);
+    const inFlight = within(list).getByRole('button', { name: 'Leaving…' });
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('leaves focus ON the activated item, and Escape from there closes and restores to the trigger', async () => {
+    const user = userEvent.setup();
+    deferred(eventsAPI.deleteEvent as Mock);
+    renderEventDetail({ role: 'owner' });
+    const { trigger, list } = await openEventActions(user);
+
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    // The whole reason the gate is `ariaDisabled` and not the native attribute:
+    // a natively-disabled focused element blurs to <body>, which is exactly the
+    // state this menu's container-bound Escape cannot see.
+    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    expect(document.activeElement).toBe(inFlight);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).not.toBe(trigger);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Cancelling…' })).toBeNull()
+    );
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('STRANDED-LATCH REGRESSION (Leave): a pre-check rejection leaves the retry live', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.leaveEvent as Mock).mockResolvedValue({});
+    const { rerender } = renderEventDetail({ role: 'game-only' });
+    await screen.findByRole('button', { name: 'Event actions' });
+
+    // Identity goes UNRESOLVED. `userScope` deliberately keeps its prior value
+    // (unresolved = indeterminate, never a downgrade), so the control stays.
+    h.selfUuid = undefined;
+    rerender(<GameDetailPage />);
+
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Leave event' }));
+    expect(eventsAPI.leaveEvent).not.toHaveBeenCalled();
+    // `keepOpen` means the rejected activation left the menu open, so the SAME
+    // list is still mounted for the retry — no second trigger click (which would
+    // toggle it shut).
+
+    // Identity resolves; the SAME control must still work. A latch taken above
+    // `handleLeaveEvent`'s three bare pre-check returns — all of them OUTSIDE any
+    // `try` — would never release, and Leave would be dead for the life of the
+    // mount. Nothing else in this suite catches that.
+    h.selfUuid = SELF_UUID;
+    rerender(<GameDetailPage />);
+    await user.click(within(list).getByRole('button', { name: 'Leave event' }));
+
+    await waitFor(() => expect(eventsAPI.leaveEvent).toHaveBeenCalledTimes(1));
+  });
+
+  it('STRANDED-LATCH REGRESSION (Cancel): a pre-check rejection leaves the retry live', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    const { rerender } = renderEventDetail({ role: 'owner' });
+    await screen.findByRole('button', { name: 'Event actions' });
+
+    // `handleCancelEvent`'s ONLY pre-check is `!user?.sub || !singleEvent?.id`.
+    // `singleEvent` is truthy by construction wherever this control renders (the
+    // whole branch is gated on it), so the AUTH half is the reachable one.
+    h.userSub = undefined;
+    rerender(<GameDetailPage />);
+
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+
+    h.userSub = 'auth0|self-sub';
+    rerender(<GameDetailPage />);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+
+    await waitFor(() => expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1));
+  });
+});
+
+// Owner ruling #175 (2026-09-14, option 2): all five breadcrumb navs in the tree
+// take an accessible name. This file owns TWO of the five, so each assertion has
+// to DISAMBIGUATE its surface rather than assume a single match — and the property
+// under test is the landmark's NAME, which only a role-plus-name query proves.
+describe('gameDetail breadcrumb landmarks are named (#175)', () => {
+  it('names the SINGLE-EVENT surface breadcrumb', async () => {
+    renderEventDetail({ role: 'owner' });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByText('Game Night')).toBeInTheDocument();
+  });
+
+  it('names the GAME-DETAIL surface breadcrumb', async () => {
+    renderGameDetail({ role: 'member' });
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByText('Wingspan')).toBeInTheDocument();
+  });
+});
+
+// ── Phase 88.6-47 (todo 2026-09-21, "date range inputs allow end before start") ──
+//
+// The session filter's From/To pair is pure CLIENT state — an inverted range simply
+// yields nothing and explains nothing, which is worse than the availability path where
+// the server at least says no. Native `min`/`max` close the picker path (the surface the
+// owner reported from); the typed path's missing explanation is routed to Phase 88.9
+// with its proposed string, because minting copy here would breach P1.
+//
+// THIS ASSERTS THE DERIVATION, NOT A DATE: each bound is set from a variable and then
+// CHANGED, so a hard-coded bound reds. The empty case is pinned too — this filter starts
+// empty on both ends, and an empty-string bound is a real bound of nothing.
+describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
+  it('bounds each date control by its sibling, and places no bound while the sibling is empty', async () => {
+    const user = userEvent.setup();
+    renderGameDetail();
+
+    await user.click(await screen.findByRole('button', { name: /Show Filters/ }));
+
+    const from = screen.getByLabelText('From Date') as HTMLInputElement;
+    const to = screen.getByLabelText('To Date') as HTMLInputElement;
+
+    expect(
+      from.getAttribute('max'),
+      'From Date carries an upper bound while To Date is empty — the filter starts empty on both ends, so an empty-string bound would bound a value that does not exist'
+    ).toBeNull();
+    expect(to.getAttribute('min'), 'To Date carries a lower bound while From Date is empty').toBeNull();
+
+    const firstFrom = '2026-02-01';
+    fireEvent.change(from, { target: { value: firstFrom } });
+    expect(
+      to.getAttribute('min'),
+      'To Date lower bound does not track the From Date value — the bound must be DERIVED from the sibling, never hard-coded'
+    ).toBe(firstFrom);
+
+    const secondFrom = '2026-06-15';
+    fireEvent.change(from, { target: { value: secondFrom } });
+    expect(
+      to.getAttribute('min'),
+      'To Date lower bound did not follow a CHANGED From Date — this is the assertion that separates a derived bound from a constant'
+    ).toBe(secondFrom);
+
+    const toValue = '2026-08-20';
+    fireEvent.change(to, { target: { value: toValue } });
+    expect(
+      from.getAttribute('max'),
+      'From Date upper bound does not track the To Date value — the bounds are two-sided on purpose: a user who sets To first must still be able to reach a valid From'
+    ).toBe(toValue);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-45 (R7 / AC-7, UI-SPEC §7.5) — the composed axe audits, after this surface's LAST
+// migration commit. Ordering confirmed at execution (2026-09-22): `git log -1 -- gameDetail/page.js`
+// is `461c857` (plan 88.6-47 task 5, the native date bounds) — NOT plan 18's `73af23a` and NOT plan
+// 41's (which never touched this file); the plan-45 must_have amendment predicted exactly this.
+//
+// THE AUDITED TREES HAVE NO `matchMedia` FORK. `gameDetail/page.js` calls `window.matchMedia` at
+// exactly two sites (`:2444`, `:2513`, measured 2026-09-22), both inside the game-TITLE overflow
+// handlers on the page body — neither is reachable from any dialog rendered here. One tree, one run
+// per rule set per dialog, no resize.
+//
+// THIS FILE HAS NO STACKED `ConfirmDialog`-over-`Modal` STATE, contrary to RESEARCH §Q1's reading
+// of its two imports: `removeParticipantGate` (`page.js:903`) is `tier: 'two-tap'` and renders
+// `null` by design (DECISION Phase 88-05 D-07), and `deleteSessionGate` (`:1101`) opens from the
+// page-level session rows, never from inside a `Modal`. The three dialogs this file CAN show are
+// audited one at a time below; the stacked-pair audit lives in `ManageMembers.modals.test.tsx`.
+//
+// ADDITIONS ONLY: the EVT-08 two-tap describe and the invite-before-remove ordering describe above
+// are byte-unchanged (confirmed by `git diff` at commit), and no clock-derived fixture is introduced —
+// nothing here reads the clock.
+// ---------------------------------------------------------------------------
+import { axe } from 'vitest-axe';
+import { auditFormControls } from '../../test-utils/formControlAudit';
+
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', () => {
+  it('1. the See-all participants Modal (owner: guest invite + two-tap Remove rows) passes WCAG 4.1.2 and heading-order', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+    const dialog = await openParticipantsModal(user);
+    // Settle on a branch-specific element, never on chrome: an owner's row action.
+    await within(dialog).findAllByRole('button', { name: RESTING_REMOVE });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('2. the review-form Modal passes WCAG 4.1.2, heading-order and the house rule on every control', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await user.click(await screen.findByRole('button', { name: 'Add Review' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Write a Review' });
+    await within(dialog).findByRole('button', { name: 'Submit Review' });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+    auditFormControls(dialog);
+  });
+
+  it('3. the session-delete ConfirmDialog (page-level, dialog tier) passes both rules — the ONLY ConfirmDialog this file can open', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+    const sessions = await sessionsSection();
+    await user.click(within(sessions).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete this session?' });
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('4. focus, participants Modal: on OPEN the header Close control; on CLOSE the NAMED "See all" trigger', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+    const opener = await screen.findByRole('button', { name: /^See all \(/ });
+    opener.focus();
+    await user.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: 'Participants (6)' });
+    // DERIVED BEFORE WRITING: `page.js:2033` mounts `<Modal open onClose>` with no `initialFocusRef`,
+    // so the `Modal.tsx` default stands — `<Modal.Header>`'s Close control.
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it('5. focus, review Modal: on OPEN the header Close control; on CLOSE the NAMED "Add Review" trigger', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    const opener = await screen.findByRole('button', { name: 'Add Review' });
+    opener.focus();
+    await user.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: 'Write a Review' });
+    // `page.js:3088`: `<Modal open onClose className="max-w-md">`, no `initialFocusRef`.
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it('6. focus, session-delete ConfirmDialog opened from the KEBAB: Cancel on OPEN; the NAMED kebab trigger on CLOSE (the menu item that opened it unmounts)', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+    const sessions = await sessionsSection();
+    const kebab = await within(sessions).findByRole('button', { name: 'Session actions' });
+    await user.click(kebab);
+    const list = document.getElementById(kebab.getAttribute('aria-controls') as string) as HTMLElement;
+    await user.click(within(list).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete this session?' });
+    // `ConfirmDialog.tsx` passes `initialFocusRef={cancelRef}` on button-only tiers (88-33 Task 4).
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    await user.click(cancel);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // The menu ITEM that opened the dialog is gone with the closed menu, so the element that held
+    // focus when the dialog opened is the kebab TRIGGER (`KebabMenu.js` restores to it on close,
+    // before the dialog's FocusScope reads `activeElement`). NAMED identity, never "not body".
+    await waitFor(() => expect(document.activeElement).toBe(kebab));
   });
 });

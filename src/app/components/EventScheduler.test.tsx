@@ -67,6 +67,32 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   }),
 }));
 
+// Plan 88.6-26 (D-18 / T-88.6-70): a PASS-THROUGH capture of WeekGrid, so the per-coordinate
+// payload can be asserted for REFERENTIAL STABILITY without prose standing in for the assertion.
+// The real component still renders — this wrapper records the `getCell` prop and forwards
+// everything untouched — so every other pin in this file is unaffected. `vi.hoisted` is required:
+// `vi.mock` is hoisted above the imports, so a plain module-scope `const` would be in its TDZ
+// when the factory runs.
+const capture = vi.hoisted(() => ({ getCells: [] as Array<(row: number, col: number) => unknown> }));
+
+vi.mock('./heatmap/WeekGrid', async (importOriginal) => {
+  const ReactRuntime = await import('react');
+  const mod = (await importOriginal()) as Record<string, unknown>;
+  // EventScheduler imports the NAMED export (`import { WeekGrid } …`), so wrapping only
+  // `default` captures nothing — the first attempt at this pin did exactly that and was caught
+  // by the arm failing, not by re-reading. Both exports are wrapped, and they stay the same
+  // component so an identity compare between them still holds.
+  const Real = mod.WeekGrid as ComponentType<Record<string, unknown>>;
+  const Wrapped = (props: Record<string, unknown>) => {
+    if (typeof props.getCell === 'function') {
+      capture.getCells.push(props.getCell as (row: number, col: number) => unknown);
+    }
+    return ReactRuntime.createElement(Real, props);
+  };
+  Wrapped.displayName = 'WeekGridReferentialCapture';
+  return { ...mod, WeekGrid: Wrapped, default: Wrapped };
+});
+
 import type { ComponentType } from 'react';
 import EventSchedulerDefault from './EventScheduler';
 
@@ -90,6 +116,8 @@ type EventSchedulerProps = {
   scrollToTime?: Date | null;
   onWeekChange?: (date: Date) => void;
   onTimeSelected?: (start: Date, end: Date) => void;
+  /** Plan 88.6-39 (W52 / D-18): gesture engage/disengage, for the finger-up hold above the grid. */
+  onActiveChange?: (active: boolean) => void;
   heatmapData?: {
     slots: HeatmapSlot[];
     totalMembers?: number;
@@ -312,6 +340,20 @@ describe('EventScheduler — initialDate re-syncs the visible week AFTER mount',
     const headers = columnHeaders();
     expect(headers).toHaveLength(1);
     expect(headers[0]).toContain('05');
+  });
+
+  it('a SAME-VALUE initialDate with a new identity does NOT undo a navigation (88.6-52 task 3, DR-1)', () => {
+    // The parent re-emits its anchor as a FRESH `Date` after every heatmap fetch — on the prefill
+    // and poll paths that is the ORIGINAL week's date, identical in value. Keyed on identity, the
+    // re-sync fired and snapped the grid back to where the user started.
+    const { rerender } = render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+    expect(columnHeaders()?.[0]).toContain('27');
+
+    rerender(<EventScheduler initialDate={new Date(WEEK_N.getTime())} />);
+
+    expect(columnHeaders()?.[0]).toContain('27');
+    expect(columnHeaders().some((h) => h?.includes('20 Mon'))).toBe(false);
   });
 });
 
@@ -1494,5 +1536,411 @@ describe('EventScheduler — the per-slot conflict tooltip tells self from other
 
     expect(await screen.findByText(OTHER_LINE)).toBeInTheDocument();
     expect(screen.queryByText(SELF_LINE)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan 88.6-26 task 2 — the memoization guard, made BEHAVIOURAL.
+//
+// The plan pins `getCell`'s machinery byte-for-byte, but this task's own two edits sit INSIDE
+// `compute`, i.e. inside the block being protected. A byte-comparison of the surrounding prose is
+// not a guard on a render path, so the guard has to be an assertion: the same coordinate read
+// twice must yield the SAME object, and a change to the memo's inputs must yield a new one.
+//
+// Why it matters (DECISION Phase 88.1-11, restated in one line): `tooltipContent`, `style` and
+// `children` are freshly constructed each call, so ReadCell's shallow `React.memo` sees three
+// changed props on every cell. Without the cache, one drag that crosses a cell boundary
+// re-renders ~196 cells — the smooth/janky boundary on a phone, not a micro-optimization.
+// ---------------------------------------------------------------------------
+describe('EventScheduler — the per-coordinate payload is REFERENTIALLY STABLE (D-18 / T-88.6-70)', () => {
+  it('returns the SAME object for a repeat read of one coordinate', () => {
+    capture.getCells.length = 0;
+    render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+    const getCell = capture.getCells.at(-1)!;
+    expect(typeof getCell).toBe('function');
+    const first = getCell(4, 2);
+    expect(first).toBeTruthy();
+    expect(getCell(4, 2)).toBe(first);
+    // A DIFFERENT coordinate is a different payload — otherwise "stable" would be trivially
+    // satisfied by returning one shared object for the whole grid.
+    expect(getCell(5, 2)).not.toBe(first);
+  });
+
+  it('re-creates the payload when a memo INPUT changes, so the cache cannot go stale', () => {
+    capture.getCells.length = 0;
+    const { rerender } = render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+    const before = capture.getCells.at(-1)!;
+    const beforePayload = before(4, 2);
+
+    // `selectedSlot` is one of the six dependencies; changing it must invalidate the cache, or a
+    // committed selection would never reach the cell that has to draw it.
+    rerender(
+      <EventScheduler
+        initialDate={WEEK_N}
+        heatmapData={heatmapFixture}
+        selectedSlot={{
+          start: new Date(2026, 6, 22, 19, 0, 0),
+          end: new Date(2026, 6, 22, 21, 30, 0),
+        }}
+      />
+    );
+    const after = capture.getCells.at(-1)!;
+    expect(after).not.toBe(before);
+    expect(after(4, 2)).not.toBe(beforePayload);
+    expect(after(4, 2)).toBe(after(4, 2));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLAN 88.6-39 ADDITIONS (W52 / D-18) — the active-change seam.
+//
+// `EventScheduler` owns ONE local handler and the hook is wired to THAT, with the parent's
+// forwarded prop called THROUGH it. The composition is what these pins protect: a straight
+// pass-through of the parent prop into `usePaintGesture` would compile, forward correctly, and
+// silently drop the `dragRect` clear that rides on the false edge.
+// ---------------------------------------------------------------------------
+describe('EventScheduler — pointercancel clears the live rectangle (T-88.6-110)', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  const rect = () => screen.queryByTestId('scheduler-drag-rect');
+
+  it('a cancelled gesture leaves NO rectangle drawn over the grid', () => {
+    // `setDragRect(null)` used to have exactly one call site — inside `onCommit` — and
+    // `pointercancel` never reaches `onCommit`. The rectangle outlived the gesture.
+    render(<EventScheduler initialDate={WEEK_N} />);
+
+    pointerAt('pointerDown', 4, 2);
+    pointerAt('pointerMove', 7, 2);
+    expect(rect()).toBeInTheDocument();
+
+    pointerAt('pointerCancel', 7, 2);
+    expect(rect()).not.toBeInTheDocument();
+  });
+});
+
+describe('EventScheduler — onActiveChange is forwarded THROUGH the local handler', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  it('reports true on engage and false on release, once each', () => {
+    const onActiveChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onActiveChange={onActiveChange} />);
+
+    pointerAt('pointerDown', 4, 2); // the mouse arm engages immediately
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+
+    pointerAt('pointerMove', 7, 2);
+    pointerAt('pointerUp', 7, 2);
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('reports false on the CANCEL path too, in the same call that clears the rectangle', () => {
+    const onActiveChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onActiveChange={onActiveChange} />);
+
+    pointerAt('pointerDown', 4, 2);
+    pointerAt('pointerMove', 7, 2);
+    pointerAt('pointerCancel', 7, 2);
+
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+    expect(screen.queryByTestId('scheduler-drag-rect')).not.toBeInTheDocument();
+  });
+});
+
+describe('EventScheduler — the active-change handler does NO state work of its own', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  it('an OFF-GRID gesture reports both edges and re-renders the grid ZERO times', () => {
+    /* THE DISCRIMINATING FIXTURE. Column -1 resolves to no `[data-coord]` element, so the hook
+       engages with a null target and `onExtend` never fires — which removes the pre-existing
+       `setDragRect` write from the picture and leaves ONLY the new handler on the path. If it
+       did state work on the true edge, or if its false-edge `setDragRect(null)` were not a
+       React bail-out against an already-null value, this count would move.
+
+       `capture.getCells` is pushed once per WeekGrid render (see the pass-through mock at the
+       top of this file), so its length IS the grid's render count. */
+    const onActiveChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onActiveChange={onActiveChange} />);
+    capture.getCells.length = 0;
+
+    pointerAt('pointerDown', 4, -1);
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+    expect(capture.getCells).toHaveLength(0);
+
+    pointerAt('pointerUp', 4, -1);
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+    expect(capture.getCells).toHaveLength(0);
+  });
+
+  it('the per-coordinate payload keeps its identity across an engage, so memoized cells hold', () => {
+    // The cells' `React.memo` is a shallow compare on `getCell`'s payload. Same identity in,
+    // no cell re-render — that is the ~196-cell reconcile this signal exists not to cause.
+    capture.getCells.length = 0;
+    render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} onActiveChange={vi.fn()} />);
+    const before = capture.getCells.at(-1)!;
+    const beforePayload = before(4, 2);
+
+    pointerAt('pointerDown', 4, 2);
+
+    const after = capture.getCells.at(-1)!;
+    expect(after).toBe(before);
+    expect(after(4, 2)).toBe(beforePayload);
+
+    pointerAt('pointerUp', 4, 2);
+  });
+});
+
+// =========================================================================================
+// PLAN 88.6-52 (VERIFICATION gap 1, SPEC R5) — W46's live-region half.
+//
+// The scheduler must ANNOUNCE a committed slot and a changed view. The mechanism is the house
+// idiom (D-12): ONE always-mounted polite `StatusRegion`, `sr-only`, the component root's FIRST
+// child, text injected on change. Located by ROLE only (this file's locator rule, top of file).
+//
+// P1 — NO NEW WORDS: every utterance asserted below is built here from `date-fns` `format`, in the
+// same shape the panel and the header already print, never copied from component output. The
+// "rendered twice" assertions are the proof that the region and the visible surface share one
+// formatter.
+// =========================================================================================
+describe('EventScheduler — W46 live-region half: one polite, always-mounted StatusRegion (88.6-52)', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    // The pointer path resolves cells through `document.elementFromPoint`, which jsdom only
+    // answers under this stub (gap-lap ML-4) — mirrors the drag describes above.
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  const monday = startOfWeek(WEEK_N, { weekStartsOn: 1 });
+  const region = () => screen.getByRole('status');
+  /** The commit utterance: exactly the panel's printed label + range + duration. */
+  const commitUtterance = (start: Date, end: Date, duration: string) =>
+    `Selected Time: ${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')} (${duration})`;
+
+  it('is mounted EMPTY on every render, polite, sr-only, and the root\'s FIRST element child', () => {
+    const { container } = render(
+      <EventScheduler
+        initialDate={WEEK_N}
+        selectedSlot={{
+          start: new Date(2026, 6, 22, 19, 0, 0),
+          end: new Date(2026, 6, 22, 21, 30, 0),
+        }}
+      />
+    );
+
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(1);
+    const el = statuses[0];
+    expect(el).toHaveAttribute('aria-live', 'polite');
+    expect(el.className).toContain('sr-only');
+    // A mount is not an announcement — even with a slot already selected.
+    expect(el.textContent).toBe('');
+    // FIRST child: mounted last it would hand the panel above it a new space-y-4 margin (P6).
+    expect((container.firstElementChild as HTMLElement).firstElementChild).toBe(el);
+  });
+
+  it('announces a keyboard Enter commit in the WEEK arm, in the panel\'s own words', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    cellAt(2, 2, 7).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+
+    const start = new Date(addDays(monday, 2).setHours(11, 0, 0, 0));
+    const end = new Date(addDays(monday, 2).setHours(11, 30, 0, 0));
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    expect(onTimeSelected).toHaveBeenCalledWith(start, end);
+    expect(region().textContent).toBe(commitUtterance(start, end, '30 min'));
+  });
+
+  it('announces a keyboard Space commit in the DAY arm', () => {
+    const onTimeSelected = vi.fn();
+    render(
+      <EventScheduler initialDate={WEEK_N} defaultView="day" onTimeSelected={onTimeSelected} />
+    );
+
+    cellAt(1, 0, 1).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: ' ' });
+
+    const start = new Date(startOfDay(WEEK_N).setHours(10, 30, 0, 0));
+    const end = new Date(startOfDay(WEEK_N).setHours(11, 0, 0, 0));
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    expect(onTimeSelected).toHaveBeenCalledWith(start, end);
+    expect(region().textContent).toBe(commitUtterance(start, end, '30 min'));
+  });
+
+  it('announces a pointer TAP through the same one derivation', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    pointerAt('pointerDown', 6, 3);
+    pointerAt('pointerUp', 6, 3);
+
+    // Row 6 = 13:00 on column 3 (Thursday of WEEK_N's week).
+    const start = new Date(addDays(monday, 3).setHours(13, 0, 0, 0));
+    const end = new Date(addDays(monday, 3).setHours(13, 30, 0, 0));
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    expect(onTimeSelected).toHaveBeenCalledWith(start, end);
+    expect(region().textContent).toBe(commitUtterance(start, end, '30 min'));
+  });
+
+  it('re-announces an IDENTICAL re-commit — the text node is replaced, not merely re-set (ML-1)', () => {
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={vi.fn()} />);
+
+    cellAt(2, 2, 7).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+    const first = region().firstElementChild;
+    const firstText = region().textContent;
+    expect(first).not.toBeNull();
+    expect(firstText).not.toBe('');
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+    const second = region().firstElementChild;
+    expect(second).not.toBeNull();
+    // A same-string setState is a React bail-out and speaks nothing; a NEW node is a change.
+    expect(second).not.toBe(first);
+    expect(region().textContent).toBe(firstText);
+  });
+  // --- Navigation half (task 2). The label is built here in the header's own shape. ---
+  const weekLabel = (d: Date) => {
+    const m = startOfWeek(d, { weekStartsOn: 1 });
+    return `${format(m, 'MMM d')} - ${format(addDays(m, 6), 'MMM d, yyyy')}`;
+  };
+  const dayLabel = (d: Date) => format(startOfDay(d), 'EEEE, MMMM d, yyyy');
+
+  it('announces Next in the WEEK arm with the header label — the SAME string, rendered twice', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+
+    fireEvent.click(button(/^next$/i));
+
+    const label = weekLabel(addDays(WEEK_N, 7));
+    expect(region().textContent).toBe(label);
+    // Once in the visible header, once in the region: one formatter, two consumers.
+    expect(screen.getAllByText(label)).toHaveLength(2);
+  });
+
+  it('announces Back in the WEEK arm', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(button(/^back$/i));
+    expect(region().textContent).toBe(weekLabel(addDays(WEEK_N, -7)));
+  });
+
+  it('announces Today from a navigated-away week', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(button(/^next$/i));
+    fireEvent.click(button(/^today$/i));
+    expect(region().textContent).toBe(weekLabel(new Date()));
+  });
+
+  it('announces Next and Back in the DAY arm with the day label', () => {
+    render(<EventScheduler initialDate={WEEK_N} defaultView="day" />);
+
+    fireEvent.click(button(/^next$/i));
+    expect(region().textContent).toBe(dayLabel(addDays(WEEK_N, 1)));
+
+    fireEvent.click(button(/^back$/i));
+    expect(region().textContent).toBe(dayLabel(WEEK_N));
+  });
+
+  it('announces the desktop week/day toggle: Week -> Day, then Day -> Week', () => {
+    const { restore } = renderAtViewport(DESKTOP, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      fireEvent.click(button(/^day$/i));
+      expect(region().textContent).toBe(dayLabel(WEEK_N));
+
+      fireEvent.click(button(/^week$/i));
+      expect(region().textContent).toBe(weekLabel(WEEK_N));
+    } finally {
+      restore();
+    }
+  });
+
+  it('does NOT announce a phone strip selection — it CLEARS the region instead of leaving a stale label', () => {
+    const { restore } = renderAtViewport(PHONE, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      fireEvent.click(button(/^next$/i));
+      expect(region().textContent).toBe(dayLabel(addDays(WEEK_N, 1)));
+
+      const friday = screen.getByRole('tab', { name: /friday 24/i });
+      fireEvent.click(friday);
+      // Positive control FIRST (gap-lap ML-3): the selection really moved, so the silence below
+      // is the region's choice, not a click that did nothing.
+      expect(screen.getByRole('tab', { name: /friday 24/i })).toHaveAttribute('aria-selected', 'true');
+      // The focused tab's own name already speaks the day; the region is emptied, never stale.
+      expect(region().textContent).toBe('');
+    } finally {
+      restore();
+    }
+  });
+
+  it('does NOT re-announce a press of the ALREADY-pressed toggle (a no-op, ML-2/ML-30)', () => {
+    const { restore } = renderAtViewport(DESKTOP, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      fireEvent.click(button(/^next$/i));
+      const beforeNode = region().firstElementChild;
+      const beforeText = region().textContent;
+
+      const week = button(/^week$/i);
+      expect(week).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.click(week);
+
+      expect(region().textContent).toBe(beforeText);
+      expect(region().firstElementChild).toBe(beforeNode);
+    } finally {
+      restore();
+    }
+  });
+
+  it('does NOT announce Today while today\'s week is already displayed (a no-op)', () => {
+    render(<EventScheduler initialDate={new Date()} />);
+    fireEvent.click(button(/^next$/i));
+    fireEvent.click(button(/^back$/i));
+    const beforeNode = region().firstElementChild;
+    const beforeText = region().textContent;
+
+    fireEvent.click(button(/^today$/i));
+
+    expect(region().textContent).toBe(beforeText);
+    expect(region().firstElementChild).toBe(beforeNode);
+  });
+  // --- Re-anchor half (task 3 — depends on the value-keyed re-sync effect). ---
+  it('CLEARS the region when a DIFFERENT initialDate actually moves the displayed week', () => {
+    const { rerender } = render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(button(/^next$/i));
+    expect(region().textContent).toBe(weekLabel(addDays(WEEK_N, 7)));
+
+    rerender(<EventScheduler initialDate={WEEK_N_PLUS_2} />);
+
+    // Positive control FIRST: the re-anchor really moved the grid.
+    expect(columnHeaders()[0]).toBe(format(startOfWeek(WEEK_N_PLUS_2, { weekStartsOn: 1 }), 'dd EEE'));
+    // Silent AND empty — never the label of a week the header no longer shows.
+    expect(region().textContent).toBe('');
+  });
+
+  it('KEEPS the Next label when the parent hands over the NAVIGATED week\'s Monday (the guard keeps it)', () => {
+    // The default create-event path: after a cross-week Next the refetch hands the scheduler the
+    // navigated week's Monday — a DIFFERENT value that the Monday guard keeps. An unconditional
+    // clear here would wipe the label Next just announced (round-3 finding).
+    const { rerender } = render(<EventScheduler initialDate={WEEK_N} />);
+    fireEvent.click(button(/^next$/i));
+    const label = weekLabel(addDays(WEEK_N, 7));
+    const headerBefore = columnHeaders()[0];
+    expect(region().textContent).toBe(label);
+
+    rerender(<EventScheduler initialDate={startOfWeek(addDays(WEEK_N, 7), { weekStartsOn: 1 })} />);
+
+    expect(columnHeaders()[0]).toBe(headerBefore);
+    expect(region().textContent).toBe(label);
   });
 });

@@ -14,8 +14,21 @@ import { GameSchema } from './shared';
 // ['id', 'username'] — the sub `user_id` was stripped from every nested User
 // include (Req 1). Phase 88.8 plan 08 widened all four of them to the shared
 // chip projection PUBLIC_USER_ATTRS = ['id', 'username', 'picture_url']
-// (periodictabletopbackend_v2/Sonnet/utils/publicUserAttrs.js:69; call sites
-// routes/rsvp.js:523/:565, routes/eventBrings.js:40, routes/friendships.js:36/:41).
+// (declared in periodictabletopbackend_v2/Sonnet/utils/publicUserAttrs.js as
+// `const PUBLIC_USER_ATTRS = Object.freeze([...])`; call sites are the four
+// `attributes: [...PUBLIC_USER_ATTRS]` spreads in routes/rsvp.js — the write echo
+// under `EventRsvp.findByPk` and the GET roster under `EventRsvp.findAll` —
+// routes/eventBrings.js's `EventBring.findAll` include, and the two
+// Requester/Addressee includes in routes/friendships.js).
+//
+// AMENDED Phase 88.6-41 (W69) — BACKEND CITES ARE ANCHOR-ON-TEXT FROM HERE ON.
+// The rule for this file: name the FILE and the SYMBOL or the literal being
+// pointed at, never a backend line number. A cross-repo line cite cannot be
+// re-derived by anything on this side of the boundary — the backend moves on its
+// own cadence, nothing in the FE test suite reads backend line numbers, and by the
+// time a reader notices the drift the cite has usually been wrong for months.
+// See the per-cite verification receipt at the bottom of this file for what was
+// measured on 2026-09-17, which cites held and which were corrected.
 //   `id` — the Users.id UUID. Phase 87.3 PR-B (D-04): the permanent is-me
 //          compare target (`rsvp.User.id === selfUuid`), tightened to z.uuid().
 //          Optional to tolerate an absent User association.
@@ -30,15 +43,19 @@ import { GameSchema } from './shared';
  *
  * WHY NOT A URL VALIDATOR. Validation lives at the single backend WRITE point
  * (Phase 88.8 plan 04: https scheme only, length-capped to the column, which is
- * `DataTypes.STRING` = varchar(255) at models/User.js:137-141). T-88.8-41's own
+ * the `picture_url: { type: DataTypes.STRING, … }` field in models/User.js —
+ * varchar(255)). T-88.8-41's own
  * rationale is "one validation point beats two that can disagree". A frontend
  * URL check that ever disagreed with an already-stored value would turn ONE
  * member's avatar into a ZodError on the WHOLE roster parse — and
- * src/lib/queryClient.ts:105,:110 classifies a ZodError as NEVER-RETRY, so that
+ * src/lib/queryClient.ts classifies a ZodError as NEVER-RETRY (`if (error
+ * instanceof ZodError) return false;` in the retry predicate, `:122` at this
+ * edit — the cite read `:105,:110`, both drifted), so that
  * roster would simply never load. One bad row must not cost the whole list.
  *
  * WHY NULLABLE: the backend stores null for password-connection logins (no
- * vendor `picture` claim), and routes/events.js:66 emits an EXPLICIT null for
+ * vendor `picture` claim), and routes/events.js's custom-participant serializer
+ * (the hand-written `picture_url: null,` row) emits an EXPLICIT null for
  * name-only (custom) participants.
  * WHY OPTIONAL: only twelve backend projections were widened; the same schemas
  * still type payloads from surfaces that were deliberately NOT widened.
@@ -80,9 +97,13 @@ export type RsvpStatus = z.infer<typeof RsvpStatusSchema>;
 // `picture_url` — Phase 88.8 plan 12; the canonical reasoning for this field is
 // the DECISION block above NestedUserIdentitySchema. NOTE the contrast with
 // `user_id` directly above: on THIS row the key is ALWAYS present. The
-// serializer writes `picture_url: ep.User?.picture_url ?? null` for members
-// (routes/events.js:44) and a hand-written `picture_url: null` for custom
-// participants (:47), so absence never occurs here — `.optional()` is tolerance
+// serializer writes `picture_url: ep.User?.picture_url ?? null` for members and a
+// hand-written `picture_url: null` for custom participants — both in
+// routes/events.js (the `:44` / `:47` cites that stood here were measured at this
+// edit as `:44` correct and `:47` WRONG; the custom-participant null is at `:66`,
+// which this same file already cited correctly twenty lines up. Two cites of ONE
+// literal that disagreed with each other is exactly why these are anchored on text
+// now) — so absence never occurs here — `.optional()` is tolerance
 // for older cached payloads, NOT a signal that the backend sometimes drops it.
 export const EventParticipationSchema = z.object({
   user_id: z.uuid().nullish(),
@@ -145,10 +166,14 @@ export const RsvpListSchema = z.array(RsvpSchema);
 export type RsvpList = z.infer<typeof RsvpListSchema>;
 
 // rsvpAPI (L668) — GET /rsvp/event/:event_id response wrapper.
-// The route ALWAYS returns both keys and always all three counts: it seeds
-// `const summary = { yes: 0, maybe: 0, no: 0 }` then increments
-// (periodictabletopbackend_v2/Sonnet/routes/rsvp.js:519-524) and returns
-// `{ rsvps: shapedRsvps, summary }` (:536) — so nothing here is `.optional()`.
+// The route ALWAYS returns both keys and always all three counts: in
+// periodictabletopbackend_v2/Sonnet/routes/rsvp.js it seeds
+// `const summary = { yes: 0, maybe: 0, no: 0 }`, increments it with
+// `summary[r.status]++`, and returns `return res.json({ rsvps: shapedRsvps, summary });`
+// — so nothing here is `.optional()`.
+// (W69, measured 2026-09-17: the `:519-524` cite that stood here was WRONG — that
+// range is the write-echo `findByPk`, not the summary seed, which is at `:574`;
+// the return cited as `:536` is at `:591`. Anchored on the three literals instead.)
 export const RsvpEventResponseSchema = z.object({
   rsvps: RsvpListSchema,
   summary: z.object({
@@ -203,3 +228,36 @@ export const BallotSchema = z.object({
   my_vote: z.string().nullable().optional(),
 });
 export type Ballot = z.infer<typeof BallotSchema>;
+
+// ============================================================================
+// W69 CITE RECEIPT — Phase 88.6-41, measured 2026-09-17 against the sub-repos as
+// checked out beside this one. Recorded rather than silently applied, because "the
+// cites in this file are stale" is itself a claim, and it turned out to be true of
+// only THREE of nine. A blanket rewrite would have destroyed six correct cites to
+// fix three wrong ones.
+//
+// HELD (re-derived, unchanged — anchored on text anyway, see the rule above):
+//   utils/publicUserAttrs.js:69          `const PUBLIC_USER_ATTRS = Object.freeze(…)`
+//   routes/rsvp.js:523                   write-echo `attributes: [...PUBLIC_USER_ATTRS]`
+//   routes/rsvp.js:565                   GET-roster `attributes: [...PUBLIC_USER_ATTRS]`
+//   routes/eventBrings.js:40             `{ model: User, attributes: [...PUBLIC_USER_ATTRS] }`
+//   routes/friendships.js:36 / :41       Requester / Addressee includes
+//   models/User.js:137-141               the `picture_url` column definition
+//   routes/events.js:44                  `picture_url: ep.User?.picture_url ?? null`
+//   routes/events.js:66                  the custom-participant `picture_url: null`
+//
+// CORRECTED (were wrong at this edit):
+//   routes/events.js:47   -> :66   the custom-participant null. This file cited the
+//                                  SAME literal twice, at two different lines, and
+//                                  disagreed with itself.
+//   routes/rsvp.js:519-524 -> :574 the `const summary = { yes: 0, … }` seed. The
+//                                  cited range is the write-echo `findByPk` block —
+//                                  a plausible-looking cite pointing at the wrong code.
+//   routes/rsvp.js:536    -> :591  `return res.json({ rsvps: shapedRsvps, summary });`
+//   src/lib/queryClient.ts:105,:110 -> :122 (retry predicate) and :150 (error shaper).
+//                                  FRONTEND, and drifted too — line cites rot on this
+//                                  side of the boundary as well, just more visibly.
+//
+// The line numbers above are a RECEIPT with a date on it, not an index to maintain.
+// The cites in the prose are anchored on text; do not "helpfully" re-line them.
+// ============================================================================

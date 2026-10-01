@@ -119,13 +119,28 @@ function Header(){
                         {/* Brand */}
                         <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity">
                             <DieLogo size={34} />
+                            {/* EXEMPT FROM THE R2 TYPE SWEEP — owner: Phase 88.9 (UI-SPEC §4.3,
+                                CONTEXT D-02). `text-lg md:text-xl` is a breakpoint-grown size, and
+                                §4.3's general rule says a breakpoint-grown size picks ONE rung. It
+                                is NOT applied here: the same §4.3 paragraph routes THIS site — the
+                                brand wordmark — to Phase 88.9 as a LOOK CALL, and the routing wins
+                                over the general rule. Plan 88.6-34 swept the rest of this file and
+                                deliberately left these two classes byte-unchanged. Collapsing them
+                                to one rung is 88.9's decision, not a cleanup. */}
                             <span className="text-lg md:text-xl font-bold tracking-tight text-white">
                                 Next Game Night
                             </span>
                         </Link>
 
                         {/* Desktop nav */}
-                        <ul className="hidden md:flex gap-x-6 items-center text-white text-sm font-medium">
+                        {/* DECISION Phase 88.6-34 (D-03 / UI-SPEC §4.5): `font-medium` DELETED —
+                            the EMPHASIS outcome (400, with a colour token doing the work), chosen
+                            OVER the HIERARCHY outcome (700). 700 would render the entire desktop
+                            nav bold, which is not hierarchy but shouting; the nav's separation from
+                            the page already comes from `text-white` on the dark header ground, so
+                            400 loses nothing. `text-sm` STAYS — Label 14 is the correct rung for a
+                            nav label and is already on the scale. Restoring 500 is a decision. */}
+                        <ul className="hidden md:flex gap-x-6 items-center text-white text-sm">
                             {navLinks.map(({ href, label, isLink }, index) => (
                                 <li key={label} className="flex items-center gap-x-6">
                                     {isLink ? (
@@ -246,7 +261,7 @@ function Header(){
                         the empty-string attribute form is required (React 19 would accept a
                         boolean `inert` prop). That is a decision, not a cleanup. */}
                     <div
-                        className={`md:hidden absolute top-16 left-0 right-0 bg-surface-header border-t border-line-header border-b border-line-accent shadow-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
+                        className={`md:hidden absolute top-16 left-0 right-0 bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
                                 : '-translate-y-full opacity-0 pointer-events-none'

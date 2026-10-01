@@ -41,6 +41,7 @@
 import * as React from 'react';
 
 import { cn } from '@/lib/cn';
+import { Heading } from './Heading';
 import { Icon, type IconName } from './Icon';
 
 export interface EmptyStateProps
@@ -86,14 +87,33 @@ export interface EmptyStateProps
    `EmptyState` needs `h1`, an in-card one needs `h3`), the size answers "how loud is it" (§9.1
    fixes that at one value for every adopter). Coupling them would let a caller silently demote
    the 404's type by asking for the right outline. Default stays `h3` so no shipped call site
-   moves. Splitting size back out of this prop is a decision, not a cleanup. */
+   moves. Splitting size back out of this prop is a decision, not a cleanup.
+
+   APPENDED — DECISION Phase 88.6-36 (D-05): the reasoning above is now ENFORCED BY THE PRIMITIVE
+   rather than by this comment. The headline renders `<Heading level={n} size="heading">`
+   (`Heading.tsx`, plan 88.6-03), whose whole API is this exact split — `level` is the outline
+   position, `size` is the type role, two independent props. Nothing above is retracted and nothing
+   about this component's PUBLIC contract moved: `headingLevel` keeps its `'h1' | 'h2' | 'h3'`
+   tag-string vocabulary and its `h3` default, and the tag string converts to `Heading`'s numeric
+   `level` INSIDE this file (`LEVEL_FOR_TAG` below) precisely so no caller changes. Widening this
+   prop to `'h4'`..`'h6'` remains a separate decision — the seams that need h5/h6
+   (`CalendarListView.js`'s `DayHeading` / `TitleHeading`) pass through their OWN polymorphic props,
+   not through `EmptyState`. */
+
+/* The tag-string -> numeric-level conversion, kept at the boundary INSIDE the primitive.
+   `Heading.tsx`'s `LEVEL_TAGS` allow-list would in fact accept the tag string at runtime, but
+   `HeadingProps.level` is typed `1 | 2 | 3 | 4 | 5 | 6` and that union is one half of T-88.6-05's
+   mitigation — passing a string through it would need a cast, which is precisely what the union
+   exists to stop. Chosen OVER widening `HeadingProps.level` to accept tag strings, which would
+   weaken the primitive for every one of its call sites to save three characters here. */
+const LEVEL_FOR_TAG = { h1: 1, h2: 2, h3: 3 } as const;
 
 const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
   (
     {
       icon,
       heading,
-      headingLevel: HeadingTag = 'h3',
+      headingLevel = 'h3',
       body,
       action,
       illustration,
@@ -150,9 +170,19 @@ const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
         {illustration ?? <Icon name={icon} size={56} strokeWidth={1.5} />}
       </div>
 
-      <HeadingTag className="mt-4 text-xl font-bold leading-tight text-content-primary">
+      {/* `size="heading"` is stated explicitly per UI-SPEC §4.4 even though level 2/3 would
+          derive it — and it is load-bearing at `headingLevel="h1"`, where the derived default
+          would be `display` (30) and would silently GROW the 404's title. That is the exact
+          demotion-in-reverse the 88-18 marker above forbids. The rendered rung is unchanged:
+          `heading` is `text-xl leading-tight` and the base supplies `font-bold`, which is
+          byte-for-byte what this element carried as a raw tag. */}
+      <Heading
+        level={LEVEL_FOR_TAG[headingLevel]}
+        size="heading"
+        className="mt-4 text-content-primary"
+      >
         {heading}
-      </HeadingTag>
+      </Heading>
 
       <p className="mt-2 max-w-[60ch] text-base text-content-secondary">
         {body}

@@ -67,6 +67,7 @@ import { toast } from 'sonner';
 import { FormField } from './form/FormField';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
+import { Heading } from '@/components/ui/Heading';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
@@ -74,7 +75,7 @@ import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import type { FetchErrorMessageOptions } from '@/components/ui/useFetchErrorState';
 import { ApiError, usersAPI } from '@/lib/api';
 import { invalidateSelfCache, patchSelfCache } from '@/lib/hooks/selfIdentityCache';
-import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
+import { SELF_IDENTITY_KEY, useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
 import { EmailChangeResponseSchema } from '@/lib/schemas/users';
 import type { EmailChangeResponse } from '@/lib/schemas/users';
 import { isSyntheticAddress } from '@/lib/syntheticAddress';
@@ -140,11 +141,43 @@ const ACTION_BUSY_ERROR = 'Wait for the current step to finish, then try again';
 const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
 /* Round 5 #16/#19/#29: the address the BACKEND refuses because its own sentinel
    predicate matches it (`isSyntheticAddress` — any host containing "auth0", the broad
-   NIX-AUTH0 test). Storing such a value would make seventeen backend sites and four
-   frontend ones read a real address as a provisioning sentinel, so the refusal is
-   correct — but it arrived as a bare `validation` envelope, which this section maps to
-   "reload the page", and reloading changes nothing: the same input fails identically
-   forever with no statement of what is wrong. This is the sentence that was missing. */
+   NIX-AUTH0 test). Storing such a value would make the guard sites on both sides read a
+   real address as a provisioning sentinel, so the refusal is correct.
+
+   AUDITED Phase 88.6-38 (2026-09-17). Three claims lived here; ONE was right and TWO were
+   not, and both wrong ones are corrected to what the code does rather than deleted.
+
+   1. THE PREDICATE CLAIM WAS CORRECT and is unchanged — `provisioningService.js:142-147`
+      is `value.includes('@auth0.local') || value.includes('@auth0')`, broad, with the
+      NIX-AUTH0 marker above it.
+   2. THE CENSUS WAS WRONG IN BOTH HALVES ("seventeen backend sites and four frontend
+      ones"). The numbers are replaced by the COMMANDS that produce them, because a bare
+      integer in a comment rots silently and this is the second time this one has:
+        - frontend: SIX call sites, ENUMERATED rather than counted by a grep, because a
+          grep for the helper's own name matches this comment and would count itself:
+            * `EmailAddressSection.tsx:498`  — the idle display (`currentIsSynthetic`)
+            * `EmailAddressSection.tsx:772`  — the Save pre-flight
+            * `EmailAddressSection.tsx:1440` — the BLUR pre-check (round 6 #21)
+            * `FeedbackForm.js:64`           — the prefill gate
+            * `FeedbackForm.js:204`          — the `user_email` write
+            * `userProfile/page.js:1705`     — the profile header address line
+          NOT four. The two the old count missed are this file's blur pre-check and
+          `FeedbackForm.js`'s prefill gate — both shipped in the SAME 2026-09-07 fix set
+          that wrote "four", which is how a census goes stale inside its own commit.
+        - backend, from `periodictabletopbackend_v2/Sonnet/`:
+          `{ grep -rn '@auth0' routes services; grep -rn 'isSyntheticAddress(\|isRealAddress(' routes services; } | grep -vE '^[^:]*:[0-9]+: *(//|\*)' | cut -d: -f1,2 | sort -u | wc -l`
+          -> 23 guard sites. NEITHER "seventeen" here NOR the "NINETEEN" in
+          `syntheticAddress.ts`'s docblock reproduces under any command run in the audit;
+          both are recorded there as unreproduced rather than silently re-pointed.
+   3. THE WIRE CLAIM WAS STALE — it said the refusal "arrived as a bare `validation`
+      envelope, which this section maps to 'reload the page'". It has not since round 6:
+      the backend registered `unsupported_address` @400 (`utils/errors.js:104`) and answers
+      it at `routes/users.js:1442`, and the Save catch below maps that specific code to
+      this constant. The file already said so 700 lines down and disagreed with itself
+      here. The stale sentence is why this constant EXISTS, so the history is kept as
+      history rather than dropped: the copy was minted when the refusal was generic, and
+      it survived the wire change because a specific string beats a specific code with no
+      string. */
 const RESERVED_ADDRESS_ERROR =
   "We can't use an address at that domain — it's reserved by our sign-in system. Try another address.";
 /* Round 4 #19: the five handlers used to `return` silently when the self row carried no
@@ -333,6 +366,51 @@ function isUsableMutationBody(body: EmailChangeResponse | undefined | null): boo
   return false;
 }
 
+/**
+ * LAST WRITE WINS, extracted as a pure predicate (Phase 88.6-38, T-88.6-106).
+ *
+ * `run` is the save-lane run token of the response that just landed; `applied` is the run
+ * whose body has already been written into the immortal self cache. Exported so the
+ * behavioural test can unit-call the ordering rule directly without standing up an
+ * interleave the UI cannot produce — the SAME seam shape, and the same reason, as
+ * `queryClient.ts:121` (`shouldRetry`, "Exported so the behavioral test can unit-call the
+ * truth table directly").
+ *
+ * WHY A PURE FUNCTION AND NOT A RICHER SEAM. The interleave this guard defends against (A
+ * stalls, B lands, A lands late and patches its older row back) is UNREACHABLE THROUGH THE
+ * UI: `saveInFlight` keeps the lane closed across a Cancel, so a second Save cannot start
+ * while the first is on the wire — pinned by the shipped round-6 test "the lane stays CLOSED
+ * while a cancelled Save is still on the wire". A seam that could produce it would have to
+ * put this mutation's ordering counter under externally-reachable control (a prop, a
+ * `window.__…` handle, an exported mutable ref) on the email-change lane, which is a worse
+ * trade than leaving the interleave unreachable. So the RULE is tested here and the
+ * unreachability is tested there; neither alone is the coverage.
+ *
+ * `>=` and not `>` is the load-bearing character: a run that IS the applied run must still
+ * apply (it is the same write, not an older one).
+ */
+export function shouldApplySaveRun(run: number, applied: number): boolean {
+  return run >= applied;
+}
+
+/**
+ * THE CANCELLED-MID-SAVE NOTICE RULE (Phase 88.6-38; 88.8 round-7 #25).
+ *
+ * "You cancelled, but the request had already reached us" is spoken ONLY when the landing
+ * response actually minted a change (`code_sent`) AND the user is still standing in idle at
+ * LANDING time — the state as of then, never the closure's, which is frozen at the render
+ * that started the request. Extracted for the same reason and in the same shape as
+ * `shouldApplySaveRun` above: the suppressed polarity is not reachable through the UI, and a
+ * one-sided test on a suppression rule is exactly the shape that lets a rule which ALWAYS
+ * suppresses pass.
+ */
+export function shouldAnnounceCancelledMidSave(
+  outcome: EmailChangeResponse['outcome'],
+  stateAtLanding: SectionState
+): boolean {
+  return outcome === 'code_sent' && stateAtLanding === 'idle';
+}
+
 export function EmailAddressSection() {
   const { self, query: selfQuery } = useSelfIdentity();
   const queryClient = useQueryClient();
@@ -444,6 +522,15 @@ export function EmailAddressSection() {
      older run `abandoned` before it reaches the patch) and kept because the invariant is
      the thing that must hold, not the current spelling of the branch above it. */
   const appliedSeqRef = React.useRef(0);
+  /* THE LOCALLY-CAUSED-NULL SUPPRESSION (Phase 88.6-38, T-88.6-105).
+     A count of in-flight refetches THIS SECTION asked for. The defensive expiry arm below
+     may only speak for a null it did NOT cause, and before this plan it never had to: the
+     self row is `staleTime: Infinity` and only the abandoned path ever refetched it. This
+     plan gives both schema-drift arms the same refetch, so "a null we caused" becomes a
+     reachable class and the arm needs a way to recognise it. A COUNT and not a boolean
+     because two locally-initiated refetches can overlap; ONE-SHOT on consume, so a later
+     GENUINE expiry is never suppressed by a ref nobody brings down. */
+  const localNullSuppressRef = React.useRef(0);
   /* The state as of LANDING TIME, not as of the closure. A response resolves long after
      the render that started it, and the user may be in a different panel by then — see
      the abandoned arm, which must not fire a notice into a session it is not about. */
@@ -577,21 +664,75 @@ export function EmailAddressSection() {
      with the expired copy and Resend promoted rather than silently dropping to
      idle.
 
-     THIS ARM IS UNREACHABLE TODAY and is written anyway, so it does not read as
-     dead code someone should delete: the self query is `staleTime: Infinity` and
-     its docblock states the row "NEVER self-refreshes"
-     (`useSelfIdentity.ts:34`, `:102`), so an expiry never pushes a null to a
+     THIS ARM IS UNREACHABLE FOR EXPIRY-DRIVEN NULLS and is written anyway, so it
+     does not read as dead code someone should delete: the self query is
+     `staleTime: Infinity` and its docblock states the row "NEVER self-refreshes"
+     (`useSelfIdentity.ts:34`, `:102`), so an EXPIRY never pushes a null to a
      mounted client. It costs one branch, and "silently drop to idle" is the
-     failure it prevents. */
+     failure it prevents.
+
+     AMENDED Phase 88.6-38, and the amendment is a NARROWING rather than a
+     reversal. This paragraph used to say the arm was unreachable full stop. That
+     was already imprecise before this plan — the abandoned Save path has shipped
+     a mounted-client refetch since round 6 — and this plan makes it wrong by
+     giving both schema-drift arms the same refetch. The accurate statement is the
+     one above: unreachable for EXPIRY-driven nulls, and the locally-initiated
+     refetches on the drift paths are suppressed BY CONSTRUCTION, because every one
+     of them goes through `refetchSelfAfterLocalMutation` and arms the counter this
+     effect consumes. Do NOT rewrite this as "this plan introduced the first
+     mounted-client refetch"; it did not. */
   React.useEffect(() => {
     if (!hydratedRef.current) return;
     if (self?.pending_email_change) {
       sawPendingRef.current = true;
+      /* DECISION Phase 88.6-38 (T-88.6-105): the suppression counter is NOT cleared here,
+         and the consume below sits LAST — after all four existing guards, immediately
+         before `setCodeError`. Both halves are ordering arguments and both are the
+         opposite of what looks tidy, so the reasoning lives here rather than in a plan
+         nobody will read.
+
+         WHY NOT CLEARED HERE. This effect's deps are `[self?.pending_email_change, state]`
+         and the Verify drift arm moves state `'verifying'` -> `'awaiting-code'`, so the
+         effect RE-RUNS on that commit while the un-awaited refetch is still in flight and
+         the cache still holds a non-null pending. Control therefore enters this branch once
+         with the pending still present, and a clear placed here is spent on that
+         intermediate run and gone by the time the null lands. Inside the effect, "the
+         refetch has not landed yet" and "the refetch came back still-pending" are
+         INDISTINGUISHABLE — which is exactly why the disarm lives at the arming site, on
+         the invalidation promise settling, where the cache can be read directly.
+
+         WHY THE CONSUME IS LAST. Same argument: any placement above the branch below is
+         spent on that same intermediate run. The harm both placements let through is
+         identical and specific — `EXPIRED_CODE_ERROR` overwriting `UNREADABLE_ANSWER_ERROR`
+         on a verification the server COMPLETED, telling the user their code expired about a
+         change that has already landed.
+
+         FOUR ALTERNATIVES ARE DISPROVEN, not merely unchosen: a
+         `mutating || state === 'verifying'` guard (the drift arm sets `'awaiting-code'`
+         BEFORE returning, and `mutating`'s `busy`/`saveInFlight` clauses are both false at
+         that moment); clear-on-next-user-action (the drift copy keeps Verify re-pressable
+         and names Resend, so a press arrives mid-flight); "the Save arm is already safe
+         because its row still carries a non-null pending" (what protects that arm's
+         NON-abandoned sub-branch is the `state !== 'awaiting-code'` return after
+         `setState('editing')`; its `abandoned` sub-branch has no such protection); and
+         clearing on a `self` OBJECT-IDENTITY change (`@tanstack/react-query` has structural
+         sharing on by default — `replaceData` returns `replaceEqualDeep`, so a refetch
+         returning a deeply-equal still-pending row yields the SAME reference; this effect's
+         deps would not even re-run on identity alone; and the colocated suite module-mocks
+         `useSelfIdentity`, so the rule would look correct in tests and fail in production).
+
+         Moving the consume, or moving the disarm into this branch, is a decision, not a
+         cleanup — and the colocated suite reds on both. */
       return;
     }
     if (state !== 'awaiting-code') return;
     if (!sentThisSessionRef.current) return;
     if (!sawPendingRef.current) return;
+    if (localNullSuppressRef.current > 0) {
+      // A null THIS SECTION caused. One-shot: spend it and say nothing.
+      localNullSuppressRef.current -= 1;
+      return;
+    }
     setCodeError(EXPIRED_CODE_ERROR);
     setResendPromoted(true);
     setSentLine(null);
@@ -629,6 +770,49 @@ export function EmailAddressSection() {
   }, []);
 
   /** Every mutation response lands here first: the cache patch is not optional. */
+  /**
+   * THE ONE WAY THIS SECTION REFETCHES THE SELF ROW (Phase 88.6-38).
+   *
+   * Every LOCALLY-INITIATED invalidation goes through here so it cannot be added without
+   * arming the suppression — three call expressions covering the four sub-branches that
+   * reach it (the Save drift arm, whose single call dominates BOTH its abandoned and its
+   * non-abandoned sub-branch; the shipped abandoned-success path; the Verify drift arm).
+   * A bare `invalidateSelfCache(queryClient)` anywhere in this component is a defect.
+   *
+   * THE DISARM IS THE HALF THAT IS EASY TO GET WRONG, so it is stated here. The goal is
+   * that a refetch which comes back STILL PENDING brings the ref down deterministically —
+   * otherwise one armed suppression outlives its cause and swallows the next genuine
+   * expiry. The signal is the invalidation PROMISE settling
+   * (`selfIdentityCache.ts:48-50` returns `queryClient.invalidateQueries`, which resolves
+   * after the refetch), read against the CACHE rather than against a rendered value:
+   * at settle time React may not have re-rendered yet, so anything derived from `self`
+   * would still be the pre-refetch row. Attaching a settle handler is NOT the same as
+   * awaiting the invalidation into the arm's control flow — that is the deliberately
+   * deferred `await`+reconcile design, and it stays deferred.
+   *
+   * Explicitly NOT the disarm: clearing inside the effect's pending-non-null branch (the
+   * `'verifying'` -> `'awaiting-code'` commit re-runs that effect against the PRE-refetch
+   * cache and spends the clear before the null lands — see the DECISION marker at the
+   * effect), and clearing on a user action (the drift copy names Resend as the way out
+   * while keeping Verify re-pressable, so a press arrives mid-flight).
+   */
+  const refetchSelfAfterLocalMutation = React.useCallback(() => {
+    localNullSuppressRef.current += 1;
+    const disarm = () => {
+      if (localNullSuppressRef.current > 0) localNullSuppressRef.current -= 1;
+    };
+    void invalidateSelfCache(queryClient).then(() => {
+      /* Read the CACHE, not `self`: see the docblock. `getQueriesData` prefix-matches the
+         sub-scoped live key exactly as `patchSelfCache` does. */
+      const stillPending = queryClient
+        .getQueriesData<{ pending_email_change?: unknown } | undefined>({
+          queryKey: SELF_IDENTITY_KEY,
+        })
+        .some(([, row]) => Boolean(row?.pending_email_change));
+      if (stillPending) disarm();
+    }, disarm /* the invalidation itself failed, so no refetched null is coming either */);
+  }, [queryClient]);
+
   const applyToCache = React.useCallback(
     (body: EmailChangeResponse) => {
       patchSelfCache(queryClient, {
@@ -764,7 +948,36 @@ export function EmailAddressSection() {
          a panel they explicitly left. */
       const abandoned = saveRunRef.current !== run;
       if (!isUsableMutationBody(body)) {
+        /* THE SCHEMA-DRIFT ARM NOW REFETCHES (Phase 88.6-38, T-88.6-105; 88.8 round-7
+           #14/#24). Before this, the arm reported to Sentry and left the immortal self row
+           stale for the rest of the session — but an unreadable BODY is still a response to
+           a request the server may well have PROCESSED, so the row it describes can be a
+           row the client no longer holds. The rule the abandoned path below already follows
+           is the right one here: refetch, never patch, because this body is by definition
+           one the client cannot read.
+
+           PLACED ABOVE THE `abandoned` RETURN ON PURPOSE. Both sub-branches reach it, and
+           the abandoned one is precisely the case where the server may have acted and
+           NOBODY downstream is left to refetch — a return before the invalidation would
+           leave the one path with no other owner as the only path with no refresh. */
+        refetchSelfAfterLocalMutation();
         if (abandoned) return;
+        /* RESIDUAL, STATED RATHER THAN HIDDEN (Phase 88.6-38, item 1g — routed to the owner
+           in `88.6-38-SUMMARY.md`). The refetch above can come back carrying a NON-NULL
+           `pending_email_change`: the server did act, and only its answer was unreadable.
+           The section still returns here to `editing` under a generic field error, and it
+           CANNOT re-enter the code panel this session, because the hydration effect that
+           derives `awaiting-code` from the self row is one-shot and ref-guarded and is the
+           only reader of that row. User-visible consequence: a live pending change exists on
+           the server while the section shows a generic "something went wrong" on the address
+           field, with the in-session escapes being Save again (which re-mints and re-mails a
+           code) or a reload (which re-runs hydration into awaiting-code). That state was
+           UNREACHABLE before this plan only because the cache stayed stale and therefore
+           agreed with the state machine. Reconciling instead — moving the user to the code
+           panel when the refetched row shows the change genuinely pending — is the better
+           design on the merits and is DELIBERATELY not taken here: it needs the same
+           `await`+reconcile machinery the Verify arm's residual defers, and it is a
+           user-visible change to an account-identity flow whose decisions 88.8 locked. */
         setState('editing');
         setEmailError(messageFor(null));
         setFocusTarget('email');
@@ -782,14 +995,30 @@ export function EmailAddressSection() {
            the non-abandoned path, where the body IS the freshest thing the client has.
            `invalidateSelfCache` is the module's existing helper for exactly this case
            ("the authoritative post-mutation state must come from the server"). */
-        void invalidateSelfCache(queryClient);
+        /* Phase 88.6-38: routed through the shared helper so this site ARMS the suppression
+           like the other three. It is the same invalidation it always was; what is new is
+           that the defensive expiry arm can now tell this null apart from an expiry. */
+        refetchSelfAfterLocalMutation();
         /* AND THE NOTICE ONLY SPEAKS INTO THE SESSION IT IS ABOUT. `stateRef` is read
            rather than the closure's `state`, which is frozen at the render that started
            this request: by landing time the user may have opened a new edit or be sitting
            in awaiting-code for a LATER save, and "you cancelled, but…" fired into that
            panel is a message about something else entirely. Idle is the one state this
-           sentence belongs in. */
-        if (body.outcome === 'code_sent' && stateRef.current === 'idle') {
+           sentence belongs in.
+
+           AMENDED Phase 88.6-38 — the paragraph above is kept because it records why the
+           guard exists, but its premise is now STALE and measuring it is what this plan
+           did. Under the round-6 `saveInFlight` lane (which shipped AFTER this comment was
+           written) the user CANNOT open a new edit or reach a later save while the request
+           is on the wire: `mutating` stays true across the Cancel, so Change, Save, Revert,
+           Resend and Discard all answer with the busy line, and a response is only
+           `abandoned` when Cancel bumped the run token — which leaves the section in idle.
+           So the non-idle half of this guard is DEFENSIVE-ONLY today, in the same way and
+           for the same reason as `appliedSeqRef`'s last-write-wins guard below. The rule is
+           tested in BOTH polarities through `shouldAnnounceCancelledMidSave` (module scope),
+           because a one-sided test on a suppression rule cannot tell a correct rule from one
+           that always suppresses. */
+        if (shouldAnnounceCancelledMidSave(body.outcome, stateRef.current)) {
           if (body.verification_sent) {
             setNotice({ tone: 'info', text: CANCELLED_MID_SAVE_COPY });
             announce(CANCELLED_MID_SAVE_COPY);
@@ -811,7 +1040,10 @@ export function EmailAddressSection() {
          already `abandoned` above and cannot reach this line. The guard states the
          invariant anyway, because what must hold is "no older response ever overwrites a
          newer one", not "the branch above currently happens to catch them all". */
-      if (run >= appliedSeqRef.current) {
+      // Phase 88.6-38: the comparison moves into `shouldApplySaveRun` (module scope, above)
+      // so the ordering RULE can be unit-called. Behaviour-preserving to the character —
+      // the predicate is `run >= applied`, which is what this line read.
+      if (shouldApplySaveRun(run, appliedSeqRef.current)) {
         appliedSeqRef.current = run;
         applyToCache(body);
       }
@@ -930,6 +1162,22 @@ export function EmailAddressSection() {
         // DID process, whose atomic consume already burnt the nonce. Keeping the code is
         // still right (a re-press costs nothing and wins the common case), but the copy
         // must not imply the code is known-good, so it names Resend as the way out.
+        /* AND IT REFETCHES (Phase 88.6-38, T-88.6-105; 88.8 round-7 #14/#24). The branch's
+           own comment above already says the server may have processed this request and
+           burnt the nonce — which is exactly the case where leaving an immortal self row
+           stale serves a previous identity for the rest of the session. Same rule as the
+           Save arm and as the abandoned path.
+
+           THE RESIDUAL THIS OPENS IS STATED AND ROUTED, not swallowed (item 1e, in
+           `88.6-38-SUMMARY.md`): when the server DID consume the code, the refetched row
+           carries `pending_email_change: null` AND `email` = the NEW address, so the user
+           sits in awaiting-code reading "we couldn't read the answer" over a change that has
+           already landed, with the panel naming the new address BOTH as "The address we use
+           now" and, through the remembered pending value, as "Not verified yet". Suppressing
+           the false EXPIRED report is what this plan ships; telling the user the change
+           SUCCEEDED requires awaiting the invalidation and reconciling, which is recorded as
+           a named follow-up for whichever phase next owns the email-verification contract. */
+        refetchSelfAfterLocalMutation();
         setState('awaiting-code');
         setCodeError(UNREADABLE_ANSWER_ERROR);
         setFocusTarget('code');
@@ -1149,9 +1397,24 @@ export function EmailAddressSection() {
   if (showUnavailable) {
     return (
       <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
-        <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
+        {/* DECISION Phase 88.6-38 (R3 / UI-SPEC §4.4): all THREE of this section's headings are
+            `<Heading level={2} size="heading">` carrying the `id` — the level is PRESERVED (P4)
+            and the rung is the one they already rendered at (`text-xl`, 20). The `id` is
+            LOAD-BEARING, not decoration: it is the target of the enclosing `<section>`'s
+            `aria-labelledby` in all three arms, so dropping it on migration would silently strip
+            each region's accessible name — the one hazard `Heading.tsx`'s own docblock names
+            ("It is NOT a safe `aria-labelledby` idref target unless the caller guarantees
+            non-empty content"). That guarantee HOLDS here and is why the idref is safe: the child
+            is the module constant `SECTION_TITLE` (`:95`), never a prop, never interpolated, never
+            empty — so `Heading`'s AC-3 empty-children early return is unreachable at these three
+            sites. Chosen OVER leaving them raw `<h2>`s (the file would be the phase's only
+            un-migrated heading surface) and OVER giving the `<section>` an `aria-label` instead
+            (two spellings of one fixed string, the drift this file's own copy rules forbid).
+            Pinned by the region-name tests, which RESOLVE the reference rather than walking up
+            from the heading — a walk-up passes with the `id` deleted. */}
+        <Heading level={2} size="heading" id={`${reactId}-title`} className="text-content-primary mb-1">
           {SECTION_TITLE}
-        </h2>
+        </Heading>
         {/* NO fallback to the Auth0 session address here. The profile page's own
             terminal arm does exactly that at page.js:809-821 — for the USERNAME,
             where a wrong display name is cosmetic. For the ADDRESS it is the
@@ -1169,7 +1432,12 @@ export function EmailAddressSection() {
             the effect above runs, which is the price of the empty-first contract — a
             region that mounts WITH its content announces nothing, and this arm can be the
             section's FIRST render when the self query is already settled-errored. */}
-        <StatusRegion className="text-sm text-content-secondary">{announcement}</StatusRegion>
+        {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): the authored `text-sm` was DEAD and is deleted —
+            `StatusRegion`'s own base already supplies it (`StatusRegion.tsx:44`, `cn('text-sm',
+            className)`), so this was the size utility restating what the primitive gives, the
+            §4.3 "dead size utility → delete it" shape. Zero look delta by construction. The ink
+            token STAYS: that is a real choice, not a restatement. */}
+        <StatusRegion className="text-content-secondary">{announcement}</StatusRegion>
       </section>
     );
   }
@@ -1177,9 +1445,9 @@ export function EmailAddressSection() {
   if (showUnresolved) {
     return (
       <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`} aria-busy="true">
-        <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
+        <Heading level={2} size="heading" id={`${reactId}-title`} className="text-content-primary mb-1">
           {SECTION_TITLE}
-        </h2>
+        </Heading>
         {/* Same read order as the arm above: the region follows the heading. It is empty
             in this state — nothing announces while loading — so this is consistency, not
             a fix; the arm it hands over to is where the sentence lands. */}
@@ -1215,13 +1483,18 @@ export function EmailAddressSection() {
 
   return (
     <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
-      <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
+      <Heading level={2} size="heading" id={`${reactId}-title`} className="text-content-primary mb-1">
         {SECTION_TITLE}
-      </h2>
+      </Heading>
       {/* The helper line must NOT, in the synthetic arm, claim that mail reaches
           that address — a second module-level constant rather than an
           interpolation of the normal one. */}
-      <p className="text-sm text-content-muted mb-3">
+      {/* Phase 88.6-38 (R2 / UI-SPEC §4.3 row 1, change-table V-4 "Body prose 14px → 16px"):
+          14 → 16. This is the section's standing explanatory PARAGRAPH — two full sentences of
+          running prose under the heading — not a control's helper line. The §4.2 caption role
+          "helper and error text" that keeps this file's four 12px lines at 12 does NOT reach it:
+          those sit against a specific control, this one describes the section. */}
+      <p className="text-base text-content-muted mb-3">
         {currentIsSynthetic ? SYNTHETIC_HELPER : SECTION_HELPER}
       </p>
 
@@ -1233,7 +1506,13 @@ export function EmailAddressSection() {
 
       {/* ── The current address ───────────────────────────────────────────── */}
       <div className="mb-3">
-        <p className="text-xs text-content-muted">{CURRENT_ADDRESS_LABEL}</p>
+        {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): 12 → 14. This `<p>` and its twin over the pending
+            address are FIELD LABELS in everything but the tag — the code review that added the
+            second one says so ("LABELLED, not a bare paragraph… naming what it IS"). §4.3 puts a
+            label on Label 14, §4.2's caption role list is closed and does NOT contain "field
+            label", and this file's REAL labels (`FormField`'s, `FormField.tsx:97`) already render
+            at 14 — so 12 here was the file disagreeing with itself. */}
+        <p className="text-sm text-content-muted">{CURRENT_ADDRESS_LABEL}</p>
         <p className="text-base text-content-primary break-words">
           {/* THE IDLE STATE MUST NOT PRINT A SENTINEL AS AN ADDRESS. The backend
               stores `<sub>@auth0.local` in `Users.email` as a SENTINEL, not a
@@ -1429,7 +1708,10 @@ export function EmailAddressSection() {
               two blocks up has "The address we use now" over it; this one had
               nothing tying it to the "Not verified yet" state above or naming what
               it IS, so a screen-reader user met an unexplained address. */}
-          <p className="text-xs text-content-muted">{PENDING_ADDRESS_LABEL}</p>
+          {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): 12 → 14, the twin of the current-address label
+              above and for the same reason. The two must move together or the panel prints one
+              address label at 12 and the other at 14. */}
+          <p className="text-sm text-content-muted">{PENDING_ADDRESS_LABEL}</p>
           <p className="text-base text-content-primary break-words mb-2">
             {pendingAddress ?? ''}
           </p>

@@ -10,6 +10,8 @@ import { Input, SelectControl } from '@/components/ui/Input';
 import MemberSelector from './MemberSelector';
 import GameComboInput from './GameComboInput';
 import { Modal } from './Modal';
+import { Button } from '../../components/ui/Button';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 
 /**
  * ScheduleForm - Form component for creating/editing prompt schedules
@@ -44,6 +46,10 @@ export default function ScheduleForm({
   // 88-33 Task 4 (UAT row 291): initial-focus target — merged with the RHF register
   // ref at the Day of Week SelectControl below.
   const dayOfWeekRef = useRef(null);
+  // Plan 88.6-63 (review round 2 #25): the synchronous in-flight latch. `aria-disabled` on the
+  // submit is advisory, so THIS is the refusal — a ref, not state, because `isSubmitting` is not
+  // readable synchronously at the top of `onSubmit`. Released in `finally`.
+  const submitInFlightRef = useRef(false);
 
   // Detect user's timezone using Intl API
   const userTimezone = typeof window !== 'undefined'
@@ -67,7 +73,6 @@ export default function ScheduleForm({
     control,
     watch,
     setValue,
-    setError,
     reset,
     formState: { errors, isSubmitting },
   } = useAppForm(scheduleSchema, {
@@ -143,40 +148,67 @@ export default function ScheduleForm({
 
   // Form submission handler
   const onSubmit = async (data) => {
-    setServerError(null);
-
-    // CHKIN-03 silent fallback: if the user submits with an empty template name,
-    // synthesize the auto-generated default rather than blocking the save or
-    // showing an inline error. Template names are cosmetic admin labels.
-    let templateName = data.template_name?.trim();
-    if (!templateName) {
-      const gameName = data.game_name || 'Game TBD';
-      const dayName = DAYS_OF_WEEK.find(d => d.value === data.schedule_day_of_week)?.label || '';
-      templateName = `${gameName} - ${dayName} ${data.schedule_time}`;
-    }
-
-    // Normalize game_id: empty string -> null
-    const normalizedData = {
-      ...data,
-      game_id: data.game_id || null,
-      template_name: templateName,
-    };
-    // Strip transient UI-only field — backend doesn't expect it.
-    delete normalizedData.game_name;
-
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     try {
-      if (isEditMode) {
-        await promptSettingsAPI.updateSchedule(groupId, existingSchedule.id, normalizedData);
-      } else {
-        await promptSettingsAPI.createSchedule(groupId, normalizedData);
+      setServerError(null);
+
+      // CHKIN-03 silent fallback: if the user submits with an empty template name,
+      // synthesize the auto-generated default rather than blocking the save or
+      // showing an inline error. Template names are cosmetic admin labels.
+      let templateName = data.template_name?.trim();
+      if (!templateName) {
+        const gameName = data.game_name || 'Game TBD';
+        const dayName = DAYS_OF_WEEK.find(d => d.value === data.schedule_day_of_week)?.label || '';
+        templateName = `${gameName} - ${dayName} ${data.schedule_time}`;
       }
-      onSuccess?.();
-    } catch (error) {
-      // Set inline submit-error UI, then RE-THROW so handleAppSubmit's catch
-      // logs it to logger.error -> Sentry (the reachable Sentry path, PRIM-06).
-      setServerError(error.message || 'Failed to save schedule. Please try again.');
-      setError('root', { message: error.message });
-      throw error;
+
+      // Normalize game_id: empty string -> null
+      const normalizedData = {
+        ...data,
+        game_id: data.game_id || null,
+        template_name: templateName,
+      };
+      // Strip transient UI-only field — backend doesn't expect it.
+      delete normalizedData.game_name;
+
+      try {
+        if (isEditMode) {
+          await promptSettingsAPI.updateSchedule(groupId, existingSchedule.id, normalizedData);
+        } else {
+          await promptSettingsAPI.createSchedule(groupId, normalizedData);
+        }
+        onSuccess?.();
+      } catch (error) {
+        /* DECISION Phase 88.6-32 (R1 / T-88.6-89): this catch had TWO adjacent raw-message sinks
+           and now has ONE. `serverError` survives; the `setError('root', { message })` write and
+           the box that rendered it are GONE.
+
+           WHY A PAIR AT ALL WAS THE DEFECT: both sinks rendered, in byte-identical boxes, one
+           line apart — so deriving both from a single `getFetchErrorMessage` call would have
+           printed the same ratified sentence to the user TWICE, once announced and once silent.
+           The choice was which one to keep, not how to feed both.
+
+           WHY `serverError` AND NOT `root`: its `<p>` already carries `role="alert"`, so nothing
+           a11y-shaped had to be invented; it is already cleared at submit start (`onSubmit`'s
+           first line — AMENDED 2026-09-29, plan 88.6-63, review round 2 #25: now right after the
+           in-flight latch, which takes the first lines), whereas a react-hook-form `root` error persists until something clears it
+           explicitly; and the box being deleted had no role, no `aria-live` and no association.
+           REJECTED: keeping `root` as the survivor and adding `role="alert"` to its box.
+
+           NO `fallback:` OPTION — the shipped 'Failed to save schedule…' string was hand-rolled
+           copy (it is what this file's `FAILED_COPY` roster entry counted), and
+           `getFetchErrorMessage(error)` with no fallback already yields ratified copy, so none is
+           authored. Same §6.2 W16 precedent as `AvailabilityForm.js:142`.
+
+           The RE-THROW stays: `handleAppSubmit`'s catch is what routes this to
+           `logger.error` -> Sentry (the reachable Sentry path, PRIM-06), so this file needs no
+           capture of its own. */
+        setServerError(getFetchErrorMessage(error));
+        throw error;
+      }
+    } finally {
+      submitInFlightRef.current = false;
     }
   };
 
@@ -327,10 +359,20 @@ export default function ScheduleForm({
 
           {/* Game Selection */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
+            {/* §4.5 emphasis outcome: 400 + a colour token. `font-medium` (500) is a
+                prohibition outside the `Button` label (§4.2); a field label beside its control
+                is emphasis, not hierarchy, and it already carries `text-content-secondary`. */}
+            {/* Phase 88.6-44 (T-88.6-124, house rule `Input.tsx:11-19`): `htmlFor` + an
+                `id`/`name` forwarded through GameComboInput — the `createEvent.js` 88-33
+                Task 8 idiom, which this form never received. Measured by the composed audit
+                before the fix: the game input rendered with NO id and NO name, and this
+                label was an orphan (census classes B and C on one control). */}
+            <label htmlFor="schedule-game-name" className="block text-sm text-content-secondary mb-1">
               Game
             </label>
             <GameComboInput
+              id="schedule-game-name"
+              name="schedule-game-name"
               value={{ game_id: watchedGameId, game_name: watchedGameName }}
               onChange={({ game_id, game_name }) => {
                 setValue('game_id', game_id || '', { shouldValidate: true });
@@ -417,35 +459,39 @@ export default function ScheduleForm({
             </div>
           )}
 
-          {/* Root Error (from setError) */}
-          {errors.root && (
-            <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
-              <p className="text-content-status-error text-sm">{errors.root.message}</p>
-            </div>
-          )}
+          {/* The second, silent copy of the same failure used to render here. See the DECISION
+              marker in `onSubmit` for why exactly ONE error node survives a failed submit and
+              why it is this one. */}
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t border-line">
             {onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="btn btn-secondary"
-              >
+              <Button variant="secondary" size="default" onClick={onCancel}>
                 Cancel
-              </button>
+              </Button>
             )}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            {/* `disabled:opacity-50 disabled:cursor-not-allowed` are DELETED, not moved: unlayered
+                `.btn:disabled` already ships both, and an `@layer utilities` rule cannot beat it —
+                they had been dead since the day they were written. The native `disabled` gate
+                itself is unchanged; converting it to the `aria-disabled` + ref-latch idiom is not
+                this plan's, and `tokenContrast` test 53(b2) would flag a bare `opacity-*` beside
+                an `aria-disabled` anyway.
+                AMENDED 2026-09-29 (plan 88.6-63, review round 2 #25): the conversion is now DONE —
+                `aria-disabled` while `isSubmitting` + the `submitInFlightRef` latch on `onSubmit`'s
+                first line, the idiom of `AvailabilityForm.js`'s DECISION 88.6-42 (D-8) CTA and
+                `KebabMenu.js`'s DECISION 88.6-16 (D-12). The 53(b2) concern does not bite: no bare
+                `opacity-*` utility sits within its window after this attribute (the gate is run). */}
+            {/* DECISION Phase 88.6-63 (review round 2 #25): `aria-disabled` chosen OVER native
+                `disabled`, which blurs a focused button to <body> mid-save, so a keyboard user whose
+                save FAILED was no longer standing on it. The refusal is the latch, not the
+                attribute. Reverting to `disabled` is a decision, not a cleanup. */}
+            <Button variant="primary" size="default" type="submit" aria-disabled={isSubmitting ? 'true' : undefined}>
               {isSubmitting
                 ? 'Saving...'
                 : isEditMode
                   ? 'Update Schedule'
                   : 'Create Schedule'}
-            </button>
+            </Button>
           </div>
         </form>
       </Modal.Body>

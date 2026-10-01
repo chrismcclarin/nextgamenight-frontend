@@ -27,7 +27,7 @@ export default function ThresholdSlider({
       <div className="flex items-center gap-4">
         <label
           htmlFor="threshold-slider"
-          className="text-sm font-medium text-content-secondary whitespace-nowrap"
+          className="text-sm text-content-secondary whitespace-nowrap"
         >
           Minimum participants:
         </label>
@@ -45,7 +45,22 @@ export default function ThresholdSlider({
           aria-valuenow={value}
           aria-label={`Minimum participants: ${value} of ${safeMax}`}
         />
-        <span className="text-sm font-medium min-w-[60px] text-content-secondary text-right">
+        {/* DECISION Phase 88.6-25 (UI-SPEC 4.3 / 4.5): this value display is classified
+            LABEL 14 and takes the 700 weight, and BOTH halves are choices.
+
+            SIZE — Label 14, chosen OVER Caption 12. It is a COUNT, which 4.3 puts on the Label
+            rung; the Caption rung's dense-grid role (D-01's closed list) names the month tile,
+            the week strip and the heatmap legend, and this is none of them — it is a single row
+            of control chrome beside a full-width slider whose own label element is 14. Dropping
+            it to 12 would make the live value smaller than the static label naming it.
+
+            WEIGHT — 700, chosen OVER 4.5's emphasis outcome (400 plus a colour token). The
+            emphasis outcome needs a colour to do the work the weight was doing, and this span
+            carries the SAME text-content-secondary token as the label at the other end of the
+            row — so dropping to 400 would leave the live value typographically identical to the
+            static label naming it, with nothing distinguishing them. This is 4.5's hierarchy
+            case, and converging it to 400 is a decision, not a cleanup. */}
+        <span className="text-sm font-bold min-w-[60px] text-content-secondary text-right">
           {value} / {safeMax}
         </span>
       </div>

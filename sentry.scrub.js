@@ -4,7 +4,19 @@
  * Imported by all three runtime configs (client/server/edge) and wired into
  * `Sentry.init({ beforeSend })`, plus the client `replayIntegration`'s
  * `beforeAddRecordingEvent` (because `beforeSend` does NOT run on Session Replay
- * events, and `replaysOnErrorSampleRate: 1.0` uploads a replay on every error).
+ * events, and an on-error replay still uploads at the BOUNDED rate set by the
+ * `replaysOnErrorSampleRate` key in `sentry.client.config.js` — corrected in Phase 88.6-13,
+ * it is no longer 1.0; anchored on the KEY, never a line number, which drifts).
+ *
+ * FOUR SEPARATELY HOOKED EGRESS VECTORS — `beforeSend` reaches only the first:
+ *   1. error events        -> `beforeSend`              -> `scrubEvent`
+ *   2. Session Replay      -> `beforeAddRecordingEvent` -> `scrubRecordingEvent`
+ *   3. transactions        -> `beforeSendTransaction`   -> `scrubTransaction` (88.6-61, H-1)
+ *   4. spans (child spans AND standalone INP/CLS spans)
+ *                          -> `beforeSendSpan`          -> `scrubSpanJson`    (88.6-61, H-1)
+ * The CLIENT config wires all four. The server/edge configs wire only `beforeSend` today —
+ * server init never runs (no `instrumentation.ts`); wiring 3 and 4 there is owned by Phase 90
+ * (`.planning/deferred/phase-90.md`, the "Server-side Sentry never initialises" entry).
  *
  * Redaction is REGEX/PATTERN-based (email, JWT/bearer token, secret/auth/password,
  * long digit runs) — NOT a hardcoded key list — so PII is caught regardless of the
@@ -20,7 +32,16 @@
 const REDACTED = '[REDACTED]';
 
 // --- shared regex set -------------------------------------------------------
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// DECISION Phase 88.6-57 (CR-501, 88.6-REVIEW.md, dated 2026-09-28): the separator is
+// `@` OR `%40`. `encodeURIComponent` is what every query-string producer in `src/lib/api.ts`
+// runs (e.g. `friendshipsAPI.searchUserByEmail`), so a searched address reached Sentry as
+// `bob%40example.com` and this rule — literal `@` only — let it through. The scrubber is the
+// layer that must fail INDEPENDENTLY of any one call site, so it matches the encoded form
+// itself. Chosen OVER a `decodeURIComponent` pre-pass in `scrubString` (REJECTED: it throws
+// `URIError` on a malformed `%` sequence and would crash `beforeSend`, dropping the whole
+// event). Only the separator widened — the local-part and dotted-domain shape still bound it
+// (pinned by the over-redaction negatives in `src/lib/sentry.scrub.test.ts`).
+const EMAIL = /[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // JWT: three base64url segments separated by dots, starting with the `eyJ` header.
 const JWT = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const BEARER = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
@@ -29,33 +50,229 @@ const SECRET_KV =
   /\b(token|magic_token|secret|password|authorization|api[_-]?key)\b\s*[=:]\s*[^&\s"']+/gi;
 // long digit runs (phone numbers, etc.).
 const PHONE = /(?<![\w.])\+?\d[\d\s().-]{7,}\d(?![\w.])/g;
+// DECISION Phase 88.6-59 (review MEDLOW-11, dated 2026-09-29): Auth0 subs —
+// `<connection>|<id>` or its `encodeURIComponent` form `<connection>%7C<id>`. The one apiFetch
+// path that carries a sub is `usersAPI.getUser(user?.sub …)` (`src/lib/hooks/useSelfIdentity.ts`)
+// -> `/users/${encodeURIComponent(sub)}`, so a failed self-lookup put `auth0%7C<id>` into the
+// `API Error (…)` breadcrumb message and its `data.endpoint`, and NEITHER form was redacted (a
+// hex `auth0|<id>` survived even unencoded; an all-numeric Google id was caught only by accident,
+// by PHONE). SEPARATOR-GUARDED on purpose, twice over: the literal `|` / `%7C` is REQUIRED by the
+// pattern AND checked with `indexOf` before the regex runs in `scrubString`, so it stays cheap on
+// the replay leaf (marker (v) below) and can never widen onto a bare hex id such as Sentry's own
+// `trace_id` (marker (iii) below). The `\b` keeps a connection name from matching mid-word
+// (`timeline|x`). Applied BEFORE `PHONE` so a numeric Google id is redacted by THIS rule, keeping
+// its connection prefix readable, not by accident. Chosen OVER stripping ids from the `endpoint`
+// breadcrumb inside `apiFetch` (REJECTED: the scrubber is the layer that must fail INDEPENDENTLY
+// of any one call site, and the fetch/console breadcrumb channels carried the same URL before
+// this phase). Removing the guard or the ordering is a decision, not a cleanup.
+const AUTH0_SUB =
+  /\b((?:[a-z0-9-]+-oauth2|auth0|email|sms|windowslive|facebook|twitter|github|apple|line))(?:\||%7C)([A-Za-z0-9._-]+)/gi;
 
 // key names whose VALUES should be redacted wholesale (regex, not exact-match).
 const SECRET_KEY_RE = /token|email|phone|secret|password|authorization|api[_-]?key/i;
 
-// token-bearing URL path segments (magic-link / invite tokens).
-const TOKEN_PATH_PATTERNS = [
-  /(invite-preview\/info\/)[^/?#]+/gi,
-  /(invite\/)[^/?#]+/gi,
+/* DECISION Phase 88.6-13 (D3 / review accept-candidate AC-1, RULINGS.md).
+   THE AC's NAMESPACE, spelled out because this phase uses `AC-n` in two senses: this is the
+   REVIEW's accept-candidate register in `88.6-PLAN-REVIEW-work/RULINGS.md`, NOT the SPEC's
+   acceptance criteria. A future reader following the Evidence Rule must be able to resolve
+   this marker to the right criterion without guessing.
+
+   (i) A PATTERN LIST HERE, chosen OVER per-sink redaction at the magic-link pages (owner
+       ruling 2026-09-09). ** THIS IS NOT THE APP'S ONLY TOKEN-ROUTE LIST, and a maintainer
+       who believes it is will publish a live credential. ** There are THREE, named by SYMBOL
+       and FILE — never by line number and never with a count, because both go stale:
+         - `TOKEN_PATH_PATTERNS`, here, guarding Sentry egress;
+         - `TOKEN_ROUTE_PREFIXES` in `src/lib/scrubFeedbackPageUrl.ts`, and
+         - its same-named twin in the backend's `routes/feedback.js`,
+       the latter two independently guarding the feedback -> GitHub-issue sink (87.8-05
+       round-3 security). A token-bearing route belongs in ALL THREE. Adding it here alone
+       still publishes the credential into an issue body. The two FE lists are held together
+       mechanically by the set-equality arm in `src/lib/sentry.scrub.test.ts`; the BACKEND
+       twin has NO cross-repo verifier and is owned by Phase 91.
+
+   (ii) THE PREFIX LOOP LIVES IN `scrubString`, DELIBERATELY — moved there from `scrubUrl`.
+        `scrubUrl` is NOT the shared point every sink reaches, which is the belief that let
+        this gap ship: `deepScrubRecording` routes to `scrubUrl` only on `https?://`, `?` or
+        the literal `invite`, so a relative `/rsvp/<token>` never reached it, and
+        `event.message`, `exception.values[].value`, `breadcrumb.message` and all of
+        `extra`/`contexts` bypass it entirely. `scrubString` IS that point. Moving it back is
+        a decision, not a cleanup.
+
+   (iii) THE GENERIC LONG-HEX BACKSTOP IS DELIBERATELY **NOT** HERE. It lives in `scrubUrl`
+         only and is slash-REQUIRED, because Sentry attaches `contexts.trace` to every event
+         and its `trace_id` is a bare 32-char lowercase hex string that `SECRET_KEY_RE` does
+         not catch. Hoisting the hex rule into `scrubString` redacts Sentry's own trace id
+         and silently kills error-to-transaction and FE-to-BE trace linking on every FE
+         error. A `trace_id` negative control in the test file pins that.
+
+   (iv) THE FAMILY LIST IS RE-DERIVED, NOT EDITED. Two commands reproduce it:
+          find src/app -type d -name '[[]token]'        <- the FE routes.
+              THE BRACKET MUST BE ESCAPED. The unescaped `-name '[token]'` is a CHARACTER
+              CLASS and matches nothing, which makes the enumeration vacuously "complete".
+          grep -nE '(publicFetch|apiFetch).(backtick)/' src/lib/api.ts   <- the API paths,
+              i.e. every publicFetch/apiFetch template literal that interpolates a token
+              into the PATH. The backtick is SPELLED OUT rather than written: a literal
+              backtick inside this block comment makes the oxc lexer treat the rest of the
+              file as a template literal and the module fails to parse — the same class of
+              hazard plan 88.6-11 hit with a nested comment delimiter. Do not "fix" this
+              by writing the character.
+        A standing filesystem-derived assertion in the test file re-runs the first one at
+        RUN TIME, so a new `[token]` route added without its pattern turns the suite RED
+        rather than leaving it green forever.
+
+   (v) THE TOKEN STEP IS SLASH-GUARDED **BECAUSE THIS FUNCTION IS THE REPLAY LEAF** —
+       `scrubString` is the fall-through of `deepScrubRecording`, which is wired as
+       `beforeAddRecordingEvent`, so it visits every string in every rrweb event on the
+       browser MAIN THREAD for the always-on session sample. A route prefix cannot match a
+       string containing no `/`, and under `maskAllText: true` that is most of them.
+       REMOVING THE GUARD IS A DECISION, NOT A CLEANUP.
+       * [CORRECTED 2026-09-29 — plan 88.6-60, review MEDLOW-23 / N1: the SCOPE stated above
+       * is FALSE; the guard itself stands. `beforeAddRecordingEvent` does NOT visit every rrweb
+       * event. In the installed `@sentry-internal/replay` 8.55.2 it runs ONLY on Custom events:
+       * `maybeApplyCallback` gates the call on `isCustomEvent(event)`
+       * (`build/npm/esm/index.js:6015`; `isCustomEvent` at `:5886`). Custom events are the
+       * replay's breadcrumb and performance entries (navigation, fetch, click), so THOSE are
+       * what reach `deepScrubRecording` and this leaf. It never sees rrweb FullSnapshot,
+       * IncrementalSnapshot or Meta events. Two consequences:
+       *   - the cost premise the old text implied is false: inlined stylesheets and DOM
+       *     mutations never reach this function, so the slash guard is cheap insurance, not a
+       *     hot-path necessity. It STAYS (harmless; removing it is still a decision).
+       *   - NOT COVERED BY THIS LAYER: the Meta event's `href: window.location.href`
+       *     (`index.js:3927`) and DOM `href` attributes in snapshots. `maskAttributes`
+       *     defaults to `['title', 'placeholder']` (`:9454`) and `maskAllText` masks text
+       *     nodes only. So on a replay-sampled session that lands on a token route, the
+       *     tokened URL is outside this hook. Whether one has actually reached a replay is
+       *     OPEN: owner check `R-7` (`88.6-CODE-REVIEW-work/RULINGS.md`; review N1).
+       * DECISION Phase 88.6-60 (review N1): the FE-only mitigation (route-gated replay init
+       * plus `maskAttributes` including `href`) is deliberately NOT added here, chosen OVER
+       * adding it pre-emptively, because N1 is an owner check first (`R-7`). Its absence is
+       * a pending decision, not an oversight. It is not a claimed leak either.]
+       * [SHIPPED 2026-09-29 — `R-7-RULING: fix-now` (owner check: no token-route replay in
+       * 90 days; ruling on the mechanism, not on a capture). The mitigation lives in
+       * `sentry.client.config.js` (replay not registered when `isTokenBearingPath` is true;
+       * `maskAttributes` gains `href`) and the predicate in `src/lib/scrubFeedbackPageUrl.ts`
+       * reuses `TOKEN_ROUTE_PREFIXES` plus a new `TOKEN_QUERY_ROUTES` for `/invite/accept`.
+       * Pinned by `src/lib/sentryClientReplayGate.test.ts`. THIS leaf is unchanged.]
+
+   REJECTED, recorded so it is not re-proposed: collapsing these entries into ONE
+   alternation. It has no FE-route half to export, so the set-equality arm loses its
+   subject, and it contradicts the one-entry-per-live-family rule that makes the list
+   readable against the routes.
+
+   REPLACED WHOLESALE in 88.6-13, not appended to. Both previous entries were measured DEAD
+   against the live tree: `invite-preview/info/` exists in neither repo, and the flat
+   `invite/` entry ATE the `group`/`game` segment so the token SURVIVED
+   (`/invite/group/<hex>` -> `/invite/[REDACTED]/<hex>`) while the tokenless `/invite/accept`
+   was over-redacted. Appending would have reproduced exactly that: first, and the token
+   survives; last, and the route identity is destroyed. */
+const TOKEN_PATH_PATTERNS_FE_ROUTES = [
+  // Longest prefix first. The FULL route prefix is INSIDE the capture group and there is
+  // NO leading path separator outside it — a separator outside the group is EATEN by the
+  // replacement, turning `https://x/invite/group/<tok>` into `https://xinvite/[REDACTED]`.
+  //
+  // THE TOKEN SEGMENT EXCLUDES WHITESPACE (`\s`) as well as `/?#`. The shipped patterns did
+  // not, which was harmless while this loop lived in `scrubUrl` — its input is a whole URL
+  // with no trailing prose. Moving it into `scrubString` (marker (ii)) changes that: the
+  // free-text sinks it now covers are SENTENCES, and without `\s` the matcher runs past the
+  // token and eats the rest of the line. Measured: `POST /invites/info/<tok> failed` came
+  // back as `POST /invites/info/[REDACTED]`, silently destroying the diagnostic prose this
+  // module's own docblock promises to preserve. A token never contains whitespace, so the
+  // exclusion costs nothing. Found by this plan's own (c2) arm, not by reading.
+  /(availability-form\/)[^/?#\s]+/gi,
+  /(restore\/group\/)[^/?#\s]+/gi,
+  /(invite\/group\/)[^/?#\s]+/gi,
+  /(invite\/game\/)[^/?#\s]+/gi,
+  // `rsvp` is the ONE GREEDY FAMILY and carries a tokenless-sibling exclusion.
+  // `src/app/rsvp/` contains only `[token]`, so the full route prefix is the bare `rsvp/` —
+  // and bare `rsvp/` eats two LIVE authenticated siblings, `/rsvp/event/<id>` (api.ts:722)
+  // and `/rsvp/respond?...` (api.ts:734), producing `/rsvp/[REDACTED]/<id>`. That is the
+  // same route-identity destruction the flat `invite/` entry caused, through a different
+  // door. The exclusion is written NARROWLY — it matches only when the next segment is
+  // EXACTLY `event` or `respond` — because a redaction control gets widened into
+  // uselessness one convenience at a time. The 43-char base64url positive control in the
+  // test file is what holds it narrow, and it STAYS.
+  /(rsvp\/)(?!(?:event|respond)(?:[/?#]|$))[^/?#\s]+/gi,
 ];
+
+const TOKEN_PATH_PATTERNS_API_PATHS = [
+  /(groups\/invite-preview\/)[^/?#\s]+/gi,
+  /(groups\/restore-preview\/)[^/?#\s]+/gi,
+  /(events\/invite-preview\/)[^/?#\s]+/gi,
+  /(invites\/info\/)[^/?#\s]+/gi,
+];
+
+// token-bearing URL path segments (magic-link / invite tokens), all live families.
+const TOKEN_PATH_PATTERNS = [
+  ...TOKEN_PATH_PATTERNS_API_PATHS,
+  ...TOKEN_PATH_PATTERNS_FE_ROUTES,
+];
+
+/* The generic long-hex backstop. NEW in 88.6-13 — no hex rule of ANY width existed here
+   before (`grep -nE '0-9a-f\]\{|a-f0-9\]\{'` over this module returned nothing).
+
+   SLASH-REQUIRED, and pinned in characters rather than described, because the three
+   candidate readings are not equivalent and two of them BREAK Sentry's own tracing:
+     /[0-9a-f]{32,}/gi          -> redacts a bare `trace_id`. BREAKS tracing.
+     /(^|\/)[0-9a-f]{32,}/g     -> a bare string is a whole segment. BREAKS tracing.
+     /(\/)[0-9a-f]{32,}(?=...)/ -> only inside a PATH. SAFE. <- this one.
+   Sentry attaches `contexts.trace` to every event (`@sentry/core baseclient.js:524-527`)
+   and its `trace_id` is a bare 32-char lowercase hex (`utils-hoist/misc.js:12-19`) that
+   `SECRET_KEY_RE` does not catch, so it reaches the string scrubbers. Breaking it kills
+   error-to-transaction and FE-to-BE trace linking on every FE error, and NONE of the
+   over-redaction negative controls would catch that — which is why this ships with its own
+   positive control AND a `trace_id` negative control in the test file.
+
+   IT IS A BY-CONSTRUCTION BACKSTOP, NOT THE `rsvp` MITIGATION. Token formats were derived
+   from the backend before this was written: `rsvp` is a 43-char base64url HMAC
+   (`routes/rsvp.js:95-100`) and `availability-form` is a JWT
+   (`services/magicTokenService.js:37-52`, already caught by the JWT rule above) — NEITHER
+   IS HEX. The AC-1 ruling assumed a 32+-hex floor would cover the routes it named; it does
+   not. This rule buys only `restore/group` plus the four API paths, all of which the prefix
+   entries already cover. */
+const LONG_HEX_PATH_SEGMENT = /(\/)[0-9a-f]{32,}(?=$|[/?#])/g;
 
 /**
  * Redact PII patterns within a free-text string. Surrounding non-PII text is
  * preserved (so an exception message keeps its prose, only the JWT is redacted).
  */
-function scrubString(str) {
+function scrubString(str, opts) {
   if (typeof str !== 'string' || str.length === 0) return str;
-  return str
+  let out = str
     .replace(JWT, REDACTED)
     .replace(BEARER, REDACTED)
     .replace(SECRET_KV, REDACTED)
-    .replace(EMAIL, REDACTED)
-    .replace(PHONE, REDACTED);
+    .replace(EMAIL, REDACTED);
+  // Auth0 subs — BEFORE PHONE, and only when a separator is present (see the AUTH0_SUB marker).
+  // `%7` covers both `%7C` and `%7c`; the pattern itself still requires the full separator.
+  // `opts.keepAuth0Sub` is passed by ONE caller only — `scrubEvent`'s `event.user.id` (see there).
+  if (!(opts && opts.keepAuth0Sub) && (out.indexOf('|') !== -1 || out.indexOf('%7') !== -1)) {
+    out = out.replace(AUTH0_SUB, `$1|${REDACTED}`);
+  }
+  out = out.replace(PHONE, REDACTED);
+
+  // The token-path step, moved here from `scrubUrl` in 88.6-13 — see marker (ii). This is
+  // the ONE path every sink reaches: `event.message`, every `exception.values[].value`,
+  // every `breadcrumb.message`, all of `extra`/`contexts` via `deepScrub`, AND the replay
+  // relative-path branch. SLASH-GUARDED — see marker (v); removing the guard is a decision,
+  // not a cleanup.
+  if (out.indexOf('/') === -1) return out;
+  // Prefix-PRESERVING: `$1` keeps the route identity and only the token segment goes. Do
+  // NOT fold these into the flat `.replace(X, REDACTED)` chain above — that yields
+  // `https://x/[REDACTED]`, destroys the route identity, and still passes both a
+  // `not.toContain(JWT)` and a redaction-placeholder `toContain` assertion.
+  for (const re of TOKEN_PATH_PATTERNS) {
+    out = out.replace(re, `$1${REDACTED}`);
+  }
+  return out;
 }
 
 /**
- * Strip a URL's query string entirely and redact known token path segments.
+ * Strip a URL's query string entirely, apply the long-hex path backstop, then delegate.
  * Shared by the event-request scrub and the replay-recording scrub.
+ *
+ * 88.6-13: the token-prefix loop MOVED OUT of here into `scrubString` (marker (ii)), which
+ * this function already ended by calling — so this function's observable behaviour on a
+ * token-bearing URL is unchanged, while every non-URL sink gained the coverage.
  */
 function scrubUrl(url) {
   if (typeof url !== 'string' || url.length === 0) return url;
@@ -65,12 +282,22 @@ function scrubUrl(url) {
   if (qIndex !== -1) {
     out = `${out.slice(0, qIndex)}?${REDACTED}`;
   }
-  // Redact known token path segments.
-  for (const re of TOKEN_PATH_PATTERNS) {
-    out = out.replace(re, `$1${REDACTED}`);
-  }
-  // Catch any JWT/email left in the path itself.
+  // The generic long-hex backstop lives HERE ONLY, never in `scrubString` — Sentry's own
+  // `trace_id` is a bare 32-hex string. See the constant's own note.
+  out = out.replace(LONG_HEX_PATH_SEGMENT, `$1${REDACTED}`);
+  // The token-prefix loop, the JWT/email/phone rules, and the slash guard all live in
+  // `scrubString`. One redaction path, not two.
   return scrubString(out);
+}
+
+/**
+ * THE one URL-like predicate: an absolute URL, anything with a query, or anything naming an
+ * invite route. Such strings get `scrubUrl` (which strips the whole query); everything else
+ * gets `scrubString`. Extracted from `deepScrubRecording` in 88.6-61 so the span walker
+ * (`scrubSpanJson`) routes values by the SAME rule — one predicate, not a second copy.
+ */
+function isUrlLike(value) {
+  return /https?:\/\//.test(value) || value.includes('?') || /invite/i.test(value);
 }
 
 /**
@@ -140,7 +367,18 @@ function scrubEvent(event) {
     for (const field of ['email', 'username', 'ip_address']) {
       if (typeof event.user[field] === 'string') event.user[field] = REDACTED;
     }
+    const userId = event.user.id;
     deepScrub(event.user);
+    /* DECISION Phase 88.6-59 (review MEDLOW-11): `event.user.id` is EXEMPT from the AUTH0_SUB
+       rule ONLY — every other rule still runs on it, exactly as before this plan. Chosen to
+       PRESERVE the Phase 84 T-84-01 decision (`4bf2884`, pinned by the `(e)` case in
+       `src/lib/sentry.scrub.test.ts`: "non-PII id is preserved for debugging") — Sentry's
+       structured user slot is the ONE place a pseudonymous id is kept on purpose — OVER letting
+       the new free-text rule silently reverse it. The review finding was about the sub leaking
+       through breadcrumb TEXT; it never weighed this slot. Nothing in the app calls
+       `Sentry.setUser` today, so this is latent. Whether the slot should be redacted too is an
+       OWNER call (raised in 88.6-59-SUMMARY.md), not a cleanup. */
+    if (typeof userId === 'string') event.user.id = scrubString(userId, { keepAuth0Sub: true });
   }
 
   if (event.request && typeof event.request === 'object') {
@@ -189,28 +427,119 @@ function scrubRecordingEvent(replayEvent) {
   return deepScrubRecording(replayEvent);
 }
 
-function deepScrubRecording(value) {
+/*
+ * 88.6-13 item 4(h): this walker now takes a `keyHint` and applies the SAME key-based
+ * wholesale redaction the event walker has always applied at `deepScrub`.
+ *
+ * THE ASYMMETRY IT CLOSES, measured 2026-09-15: `deepScrub(value, keyHint)` redacts on the
+ * key; `deepScrubRecording(value)` took NO key parameter at all and its object branch
+ * recursed WITHOUT passing the key. So on the replay egress path a value sitting under an
+ * obviously sensitive key survived unless it matched JWT/BEARER/SECRET_KV/EMAIL/PHONE BY
+ * VALUE. That widens with this phase: `logger.info(msg, ctx)` becomes
+ * `Sentry.addBreadcrumb({ data: ctx })` (`src/lib/logger.ts`) and AC-2 routes ~100 call
+ * sites there.
+ *
+ * This does NOT contradict marker (ii)'s "the URL router needs no edit" — it does not. The
+ * router is the `https?://` / `?` / `invite` branch below and is untouched; the key hint is
+ * a different branch. Arrays pass the hint THROUGH (the elements share the parent's key);
+ * objects replace it with their own, exactly as `deepScrub` does.
+ *
+ * NOT VERIFIED BY EXECUTION: that Sentry's Session Replay actually routes breadcrumb `data`
+ * objects through `beforeAddRecordingEvent`. That is reasoned from the SDK's documented
+ * behaviour. If replay does not carry breadcrumb `data`, the phase-widening argument above
+ * weakens — the code asymmetry and the fix stand either way.
+ */
+function deepScrubRecording(value, keyHint) {
   if (typeof value === 'string') {
+    if (keyHint && SECRET_KEY_RE.test(keyHint)) return REDACTED;
     // Treat URL-looking strings (and anything with a query or token segment) via
     // scrubUrl; everything else via scrubString.
-    if (/https?:\/\//.test(value) || value.includes('?') || /invite/i.test(value)) {
+    if (isUrlLike(value)) {
       return scrubUrl(value);
     }
     return scrubString(value);
   }
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i += 1) {
-      value[i] = deepScrubRecording(value[i]);
+      value[i] = deepScrubRecording(value[i], keyHint);
     }
     return value;
   }
   if (value && typeof value === 'object') {
     for (const k of Object.keys(value)) {
-      value[k] = deepScrubRecording(value[k]);
+      value[k] = deepScrubRecording(value[k], k);
     }
     return value;
   }
   return value;
 }
 
-export { scrubString, scrubUrl, scrubEvent, scrubRecordingEvent, REDACTED };
+/* DECISION Phase 88.6-61 (review round 2 H-1, owner ruling R2-H1-RULING): performance payloads
+   get their own two hooks because `beforeSend` never runs on them.
+   - `scrubSpanJson` WALKS EVERY STRING VALUE of `span.data`, chosen OVER a key allowlist
+     (REJECTED): the attribute names are SDK-owned and change between versions — fetch spans
+     carry `url` / `http.url`, INP spans carry the route as `transaction`, LoAF spans carry
+     `code.filepath`, and the `http.query` key the review's remedy named does not exist in
+     8.55.2 at all. A value walk catches a leak under a key nobody listed; an allowlist misses it.
+   - `scrubUrl` on `span.description` because fetch span names are `METHOD <full url>`
+     (`@sentry/core` 8.55.2 build/cjs/fetch.js:61-67), query string included.
+   - `trace_id` / `span_id` / `parent_span_id` (and every other top-level key) are NEVER touched —
+     marker (iii): scrubbing them kills FE-to-BE trace linking. Pinned by the CONFIRM-ONLY case.
+   - `beforeSendSpan` is the ONLY hook that reaches standalone INP/CLS web-vital spans
+     (`@sentry/core` 8.55.2 build/cjs/envelope.js:104-107); they never become transactions.
+   - It never returns `null`: a null from `beforeSendSpan` DROPS the span and warns
+     (`@sentry/core` 8.55.2 build/cjs/baseclient.js:792-800).
+   - `scrubTransaction` does NOT walk `event.spans`: `beforeSendSpan` has already processed them
+     before `beforeSendTransaction` runs (baseclient.js:792-795 precedes :805), and it does NOT
+     re-implement `request.url` / `request.query_string` — `scrubEvent` already does both, and a
+     second copy is what the duplication tenet forbids.
+   Narrowing the walk to named keys is a decision, not a cleanup. */
+function scrubSpanJson(span) {
+  if (!span || typeof span !== 'object') return span;
+  if (typeof span.description === 'string') {
+    span.description = scrubUrl(span.description);
+  }
+  if (span.data && typeof span.data === 'object') {
+    for (const k of Object.keys(span.data)) {
+      const v = span.data[k];
+      if (typeof v === 'string') {
+        span.data[k] = scrubSpanDataString(v);
+      } else if (Array.isArray(v)) {
+        for (let i = 0; i < v.length; i += 1) {
+          if (typeof v[i] === 'string') v[i] = scrubSpanDataString(v[i]);
+        }
+      }
+      // numbers / booleans are left untouched.
+    }
+  }
+  return span;
+}
+
+function scrubSpanDataString(value) {
+  return isUrlLike(value) ? scrubUrl(value) : scrubString(value);
+}
+
+function scrubTransaction(event) {
+  if (!event || typeof event !== 'object') return event;
+  if (typeof event.transaction === 'string') {
+    event.transaction = scrubUrl(event.transaction);
+  }
+  return scrubEvent(event);
+}
+
+export {
+  scrubString,
+  scrubUrl,
+  scrubEvent,
+  scrubRecordingEvent,
+  scrubSpanJson,
+  scrubTransaction,
+  REDACTED,
+  // Exported SEPARATELY from the API-path entries so the set-equality arm in
+  // `src/lib/sentry.scrub.test.ts` has an FE-ROUTE subject to compare against
+  // `TOKEN_ROUTE_PREFIXES`. The cross-module import lives in the TEST, never here — this
+  // module's docblock promises pure functions safe to unit-test in isolation, and it must
+  // not import a `.ts` module.
+  TOKEN_PATH_PATTERNS_FE_ROUTES,
+  TOKEN_PATH_PATTERNS_API_PATHS,
+};

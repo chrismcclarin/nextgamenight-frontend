@@ -23,6 +23,8 @@ import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+import { logger, errCtx } from '../../lib/logger';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -88,7 +90,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       const groupsData = await groupsAPI.getUserGroups(selfUuid);
       setGroups(groupsData || []);
     } catch (error) {
-      console.error('Error fetching groups:', error.message || 'Unknown error');
+      // A DEVELOPER log, deliberately NOT routed through `getFetchErrorMessage`: this line is
+      // diagnostic only and never reaches a person. The user-facing copy for this failure comes
+      // from `groupsErrorState` below, which is why the ERROR OBJECT is kept rather than a
+      // flattened string. AC-2 (owner ruling 2026-09-09, LEVEL amended 2026-09-13) moved the
+      // channel to the house logger at `info` — a Sentry BREADCRUMB, not an event. The ctx goes
+      // through `errCtx`, never a `.message` read written out here: `fetchErrorTreatment`'s R1
+      // scan matches ONE PHYSICAL LINE and its user-facing-sink pattern ends in a bare
+      // `message:` arm, so spelling the key at the call site reds a gate this line never touched.
+      logger.info('Error fetching groups:', errCtx(error));
       // Keep the ERROR object, not a flattened string: useFetchErrorState reads
       // `ApiError.code` off it to pick the right user-facing copy.
       setGroupsError(
@@ -132,17 +142,18 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     return (
       <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-          <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
+          <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
           {onCreateGroup && (
-            /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */
-            <button
-              className="btn btn-primary text-sm whitespace-nowrap min-h-11"
+            /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
+            <Button
+              variant="primary"
+              className="whitespace-nowrap"
               onClick={onCreateGroup}
               aria-label="Create new group"
               data-tutorial="create-group-btn"
             >
               + Create New Group
-            </button>
+            </Button>
           )}
         </div>
         <div className="py-8 px-4">
@@ -176,17 +187,18 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     // not a cleanup.
     <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-        <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
+        <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
         {onCreateGroup && (
-          /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */
-          <button
-            className="btn btn-primary text-sm whitespace-nowrap min-h-11"
+          /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
+          <Button
+            variant="primary"
+            className="whitespace-nowrap"
             onClick={onCreateGroup}
             aria-label="Create new group"
             data-tutorial="create-group-btn"
           >
             + Create New Group
-          </button>
+          </Button>
         )}
       </div>
 
@@ -220,7 +232,6 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               onCreateGroup ? (
                 <Button
                   variant="primary"
-                  className="min-h-11"
                   onClick={onCreateGroup}
                   aria-label="Create new group"
                 >
@@ -306,6 +317,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             // dim + white text over NO image — a solid near-black card (the
             // walk's /bgg-logo.png black-card mystery). Invalid URLs now
             // degrade to the plain color card.
+            /* W49 REFERENCE SHAPE (FSEC-03) — plans 27 and 40 converge four other
+               `hasBackgroundImage` sites onto THIS one, so it is labelled here rather than
+               re-derived there. The rule: every text treatment derives from the VALIDATED
+               `safeBgImageStyle` result, NEVER from the raw `background_image_url`. A URL the
+               allowlist rejects paints no image, so that card IS a plain coloured card and must
+               get its colour-card ink; keying off the raw string renders the 0.7 dim and white
+               text over nothing — a solid near-black card, which is the walkthrough's
+               /bgg-logo.png mystery. Copy the two lines below, not the intent. */
             const bgImageStyle = safeBgImageStyle(bgImage);
             const hasBgImage = !!bgImageStyle;
             // The text treatment forks in the CSS cascade, exactly like the
@@ -356,17 +375,60 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             const profilePic = group.profile_picture_url;
 
             return (
+              /* DECISION Phase 88.6-21 (W42/W62b, SPEC A11y mandate): the KEYBOARD target is the
+                 TITLE BLOCK below, not this card. The card keeps a pointer-only `onClick`;
+                 `role="button"` / `tabIndex` / `onKeyDown` moved onto the title `<div>` (NO
+                 aria-label — see the note there). This is `EventDayModal.js:280-359`'s H1 remedy
+                 applied VERBATIM, not a second similar-looking fix.
+
+                 WHAT WAS MEASURED HERE BEFORE THE FIX (2026-09-16, at FE `5a648e4`), because the
+                 88.5 marker below says there is no axe pin on this list to catch either half:
+                   - the card was `role="button" tabIndex={0}` with an Enter/Space `onKeyDown`, and
+                     it CONTAINED four interactive descendants — `MemberChipStack`'s stack trigger,
+                     its per-member `ClickableMemberName` triggers and `Show less`, the native
+                     "Invite Member" `<button>` and the native settings cog `<button>`;
+                   - all four were FOCUSABLE, but Enter or Space on the two native buttons ALSO
+                     fired this card's `onKeyDown` and navigated away: their `onClick` handlers
+                     call `stopPropagation`, which stops the synthetic CLICK, and nothing stopped
+                     the KEYDOWN that bubbled here first. Invite and the cog were keyboard-
+                     UNREACHABLE in effect — you could focus them and not use them;
+                   - and `role="button"` is children-presentational, so assistive technology never
+                     exposed any of the four at all (WCAG 4.1.2).
+
+                 REJECTED: converting this card to a real `<button>` — it contains interactive
+                 descendants, so that is invalid HTML and a different defect.
+                 REJECTED: a `target !== currentTarget` guard on the card's own `onKeyDown` — it
+                 fixes the hijack and leaves every descendant hidden from AT, which is the half
+                 88.9's chip-adoption widening is blocked on.
+                 The markers at `:491-510` below describe the pre-fix shape as deliberate; what
+                 changed is this phase's A11y mandate plus 88.9's blocked dependency, named here
+                 rather than overridden silently. A decision, not a cleanup. */
+              /* DECISION Phase 88.6-47 (row 4 of the 2026-09-17 CI e2e red): the keyboard-target
+                 move recorded in the marker ABOVE silently re-pointed a Gate C locator two plans
+                 later, and nothing caught it for ~25 plans. `e2e/contrast.spec.ts`'s `fixtureCard`
+                 walked the group-name heading UP to the nearest ancestor div carrying a button
+                 role; after FE `f696732` that ancestor is the TITLE BLOCK below, which carries no
+                 shadow utility, so the resting-shadow pin computed `none` and its failure message
+                 accused `--shadow-sm` of a revert. The token was intact in both themes the whole
+                 time (`globals.css:1455` light, `:1861` dark).
+
+                 `data-testid="group-card"` exists so that the CARD — not whichever descendant
+                 happens to carry a button role next — is what Gate C measures. It is inert at
+                 runtime: no class, no role, no handler, no pixel, which is what keeps it inside P6.
+
+                 REJECTED: an XPath scoped on the `rounded-card` CLASS. It has the same property
+                 that produced this defect — it survives only until someone renames or moves the
+                 class, at which point Gate C measures a different element and blames a token again
+                 — and the spec file's own selector policy avoids class and id selectors. A contract
+                 attribute is the one shape a restructure cannot silently re-point.
+                 Pinned by `groupColourRendering.test.ts` test 32, EXACTLY once and on the tag that
+                 carries `shadow-theme-sm`. Deleting this attribute reds that pin and Gate C.
+                 Owner ruling 2026-09-21, decision (1): default stands. */
               <div
                 key={group.id}
-                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
+                data-testid="group-card"
+                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    handleGroupClick(group, e);
-                  }
-                }}
                 style={{
                   ...(tinted && {
                     '--group-ground': ground,
@@ -432,7 +494,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   <div className="flex justify-between items-center mb-3">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       {profilePic && (
-                        <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl shrink-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-full bg-surface-muted flex items-center justify-center text-2xl shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
                             <SafeImage
                               src={profilePic}
@@ -452,11 +514,55 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           is gone for the same reason it was always redundant here
                           — the no-colour half of the fork already resolves to
                           `var(--color-content-primary)`. */}
-                      <h3
-                        className="text-[1.1rem] font-semibold flex-1 min-w-0 wrap-break-word max-md:text-base [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        /* NO aria-label, deliberately — the EventDayModal remedy this applies
+                           carries the same rejection verbatim (`EventDayModal.js:343-347`, "NO
+                           aria-label ... 88.3 code-adversarial-review run 4, 2026-08-28"): on a
+                           role="button" an explicit label REPLACES the name computed from the
+                           subtree, and the subtree here IS the group name. Computing it means a
+                           quote-bearing name like `Bob's "Board" Crew` arrives intact with no
+                           escaping question to get wrong. Pinned by keyboardOperability.test.tsx
+                           (role plus name, never an attribute read). */
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleGroupClick(group, e);
+                          }
+                        }}
+                        className="flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                       >
-                        {group.name}
-                      </h3>
+                        {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
+                            `role="button"` block above, and that costs a real property rather than
+                            nothing. ARIA's children-presentational rule applies to `role="button"`,
+                            so the subtree is flattened and this heading is NOT exposed as a heading
+                            to assistive technology — group names are not reachable by heading
+                            navigation on the home surface. `typeScaleTouchedSurfaces.test.ts`'s
+                            `EXPECTED_LEVELS` pin for this file is therefore a SOURCE-TAG pin: green
+                            says the tag and its level survived the migration, never that the
+                            heading is announced.
+
+                            CONSIDERED AND REJECTED HERE: inverting the nesting so the HEADING
+                            WRAPS the control (`<Heading level={3}><div role="button">…`), which
+                            WOULD expose it — the button's name still computes from its subtree, so
+                            nothing else changes. Rejected for THIS plan because the SPEC's
+                            instruction is to apply the EventDayModal H1 remedy verbatim and that
+                            remedy nests the title inside the control; inverting it here alone would
+                            fork one interaction idiom into two across a family Phase 88.9 widens
+                            (EventDayModal's twin is plan 27's, CalendarListView's EventRow a third).
+                            It is worth doing for the WHOLE family at once, and it is registered as
+                            an owner-facing residual in `.planning/deferred/phase-88.6.md` rather
+                            than left implied. Inverting it here is a decision, not a cleanup. */}
+                        <Heading
+                          level={3}
+                          size="heading"
+                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                        >
+                          {group.name}
+                        </Heading>
+                      </div>
                     </div>
                     {/* DECISION Phase 88-22 (D-28): the players pill does NOT take
                         the group's text style, unlike its three siblings in this
@@ -467,8 +573,16 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         for any colourless group. Chosen OVER keeping the sibling
                         symmetry. Re-adding the inline style is a decision, not a
                         cleanup. */}
+                    {/* DECISION Phase 88.6-21 (D-03 / UI-SPEC §4.5 pill-ink row): this pill's
+                        ink goes 600 -> 700, not 600 -> 400. REJECTED: §4.5's other outcome,
+                        "400 + a colour token" — this is a 12px label sitting in its OWN fill
+                        (`bg-btn-primary`), where 400 at that size on a saturated ground reads as
+                        a smudge; the weight is doing legibility work, not hierarchy signalling.
+                        Same call, same reason, as the `getRoleBadge` pill in `ManageMembers.js`
+                        (plan 88.6-19). The SIZE stays at 12: §4.2 names badge labels as a Caption
+                        role, so this is not a sub-12px fold site. A decision, not a cleanup. */}
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0"
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-bold ml-2 shrink-0"
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>
@@ -512,6 +626,34 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  * the home group list today to catch either. The span is chosen for IDIOM
                  * CONSISTENCY with the shipped pattern, and the rule violation is the
                  * pre-existing, 88.6-owned condition named above.
+                 *
+                 * ——— AMENDED Phase 88.6-21 (W42), everything above KEPT AS HISTORY ———
+                 *
+                 * THE 88.6-OWNED CONDITION THIS MARKER PARKS IS NOW CLOSED, and two of its
+                 * sentences are consequently no longer true of the tree. Recorded rather than
+                 * rewritten, because the reasoning above is the record of why the floor was the
+                 * right interim answer.
+                 *
+                 *   - "This card is itself a `role="button"` with its own Enter/Space handler
+                 *     (`:359-370`)" — IT IS NOT, as of this plan. The keyboard target moved onto
+                 *     the TITLE BLOCK (the `role="button"` div wrapping the group-name `Heading`
+                 *     above); the card keeps a pointer-only `onClick`. That is the STRUCTURAL
+                 *     remedy this marker says was "deliberately NOT attempted here" — it is
+                 *     EventDayModal's H1 remedy applied verbatim, and Phase 88.9's chip-adoption
+                 *     widening was explicitly blocked on it.
+                 *   - "there is no axe pin on the home group list today to catch either" — THERE
+                 *     IS ONE NOW. `keyboardOperability.test.tsx` audits the fully-mounted card
+                 *     (active `userRole`, `canEdit` true, so Invite, the cog and this stack are
+                 *     all present) with `nested-interactive` and `aria-allowed-role` explicitly in
+                 *     the ruleset. That pin is what stops a future edit from re-nesting.
+                 *
+                 * WHAT SURVIVES UNCHANGED, and must: every descendant still guards its OWN
+                 * activation with `stopPropagation` on BOTH `onClick` and `onKeyDown` (plus
+                 * `preventDefault` on Space). The card no longer has a key handler to steal from,
+                 * so the guards look redundant — they are not. They are what keeps the card's
+                 * pointer `onClick` from firing on a descendant click, and `keyboardOperability`
+                 * tests 8-11 and `MemberChipStack.test.tsx` 22-25 / 35-36 still fail without them.
+                 * Removing them is a decision, not a cleanup.
                  *
                  * `tinted` is gated on `!hasBgImage`, and that gate is LOAD-BEARING (verified
                  * 2026-09-01, `colorUtils.js:739`). The tinted chip arm paints `bg-white/85` and
@@ -608,7 +750,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       - IF YOU ARE HERE TO "RESTORE" `text-content-primary` ON THE
                         TINTED ARM: that is a decision requiring an owner ruling, not
                         a cleanup. See the DECISION marker directly below. */}
-                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-semibold' : ''}`}>
+                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-bold' : ''}`}>
                   {/* DECISION Phase 88.3.1 (SPEC Req 8, site 1 of 3 — UI-SPEC 3.5). This block
                       REPLACES the 88.3-cr M1 LIMIT block (2026-08-28), which is closed, not lost:
                       that LIMIT said these two rows take the THEME token on the tinted arm rather
@@ -679,9 +821,10 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         admin-only (D-INV-02). The settings cog below stays
                         admin-gated via `canEdit`. */}
                     {userRole && userRole !== 'pending' && (
-                      /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */
-                      <button
-                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg transition-all min-h-11"
+                      /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
+                      <Button
+                        variant="primary"
+                        className="flex-1 shadow-theme-md enabled-hover:shadow-theme-lg"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {
@@ -691,7 +834,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         aria-label="Invite member to group"
                       >
                         Invite Member
-                      </button>
+                      </Button>
                     )}
                     {canEdit && (
                       /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):
@@ -803,9 +946,49 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                          which is a layout change nobody has looked at on a phone. PHASE 88.6 owns
                          it under the `Button` migration (entry in `.planning/deferred/phase-88.6.md`).
 
+                         AMENDED Phase 88.6-40 (W40) — THE PARAGRAPH ABOVE IS KEPT AS HISTORY, AND
+                         TWO OF ITS CLAIMS ARE SUPERSEDED RATHER THAN REPEATED.
+
+                         (a) OWNERSHIP DISCHARGED. `min-h-11 min-w-11` is now declared on this
+                         button's existing `className` — a PLAIN-UTILITY addition under the D-13
+                         per-control pattern, deliberately NOT the `Button` migration the sentence
+                         above anticipated. `groupColourRendering.test.ts` anchors its cog pins on
+                         `aria-label="Customize group"` and on the `className` expression
+                         immediately preceding it (`bg-btn-secondary`, `dark:bg-surface-elevated`,
+                         `border border-line-control`, plus a no-unprefixed-`bg-surface-elevated`
+                         rule); a migration or a restructure would red those, a utility addition
+                         does not. If one of them ever reds, the ELEMENT is wrong, never the
+                         assertion. Phase 88.9's emoji-to-SVG gear item is a DIFFERENT and LATER
+                         decision on this same control and is deliberately NOT folded in — this
+                         class addition is one 88.9 can carry over unchanged.
+
+                         (b) THE GEOMETRY CLAIM ABOVE IS WRONG AND IS CORRECTED, NOT PROPAGATED.
+                         "~28px tall … adding it here reflows the card header" was true of the
+                         control's INTRINSIC box and of nothing else. Re-derived at this commit:
+                         this button is not in the card HEADER at all — it is a stretch child of
+                         the Action Buttons row (`flex gap-2 mt-3 relative z-2`, no `items-*`)
+                         whose sibling CTA is a `<Button>`, and the primitive's cva base carries
+                         `min-h-11` at EVERY viewport width (88.6 D-09), under a gate
+                         (`userRole && userRole !== 'pending'`) that strictly contains this
+                         button's own `canEdit` gate. So the row already lays this control out
+                         44px TALL, at every width — the real deficit is WIDTH (~40px: a `text-sm`
+                         glyph plus `px-3`), which is what `min-w-11` closes. The only layout
+                         delta from this addition is a few px of row width absorbed by the
+                         `flex-1` sibling; there is no header reflow to look at.
+
+                         `min-h-11` IS STILL DECLARED, and not as decoration: it is what makes the
+                         44px height a PROPERTY OF THIS CONTROL rather than a side effect of a
+                         sibling's presence. Both are optional in the row — this one on `canEdit`,
+                         the CTA on a role gate — so a card rendering the cog without the CTA
+                         would otherwise fall back to the intrinsic ~28px. (A note for whoever
+                         reads this next: a plan-era claim that `Button`'s `size: default` variant
+                         declares no min-height is STALE — the floor moved to the cva BASE in
+                         88.6 D-09. It is the base, not the size variant, that holds the sibling
+                         at 44px.)
+
                          Any of this is a decision, not a cleanup. */
                       <button
-                        className="px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                        className="min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);

@@ -1,8 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import { gamesAPI } from '../../lib/api';
 import { Combobox } from '@/components/ui/Combobox';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { logger, errCtx } from '@/lib/logger';
 
 /**
  * GameComboInput — the game picker. Phase 88-08 rebuilt its internals on the
@@ -67,7 +70,12 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
       setLocalResults(results.local || []);
       setBggResults(results.bgg || []);
     } catch (error) {
-      console.error('Error searching games:', error);
+      // AC-2 WIDENED (owner 2026-09-09) x D2 (owner 2026-09-13): a SEARCH failure is not an
+      // AC-16 (a) site, so it takes `logger.info` — a Sentry breadcrumb, not an event. The
+      // message string is byte-identical to the `console.error` it replaces. `errCtx` carries
+      // only the error's name and message (T-84-01); the raw `Error` is never passed here
+      // (`logger.ts:24` types `ctx` as `Record<string, unknown>`).
+      logger.info('Error searching games:', errCtx(error));
       setLocalResults([]);
       setBggResults([]);
     } finally {
@@ -120,15 +128,42 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
       onChange({ game_id: imported.id, game_name: imported.name || game.name });
       setIsOpen(false);
     } catch (error) {
-      console.error('Error importing BGG game:', error);
+      /* DECISION Phase 88.6-32 (AC-2 WIDENED x AC-16 (a); ACCEPT §6, owner 2026-09-14): the log
+         for this catch SPLITS into ONE CALL PER BRANCH, chosen OVER the two arms below. The
+         catch runs for every `importFromBGG` failure, but only the `else` is user-facing: when
+         `game.db_id` exists the handler falls back silently, sets the game, closes the dropdown,
+         and the operation SUCCEEDS from the user's point of view.
+
+         REJECTED (2) — ONE `logger.error` for the whole catch, with the false-positive source
+         recorded only in a plan summary. It files a real Sentry EVENT (and, under
+         `replaysOnErrorSampleRate`, converts that session to a continuous Session Replay upload)
+         for an import the user experienced as success.
+         REJECTED (3) — demoting the WHOLE catch to `logger.info`. It un-delivers AC-16 (a) at
+         the one branch that needs it: the genuinely user-facing failure in the `else` below.
+
+         Collapsing these two calls back into one "for consistency" is a decision, not a
+         cleanup. */
       // Fallback: if import fails but we have a db_id, use it directly
       if (game.db_id) {
+        // The RECOVERED branch: a breadcrumb, not an escalation — no Sentry event, no replay
+        // conversion, and no false-positive event for an operation that succeeded. `errCtx`
+        // bounds the payload to the error's name and message (T-84-01, `logger.ts:8-13`).
+        logger.info('BGG import failed; used the existing library game instead:', errCtx(error));
         isInternalChange.current = true;
         setInputValue(game.name);
         onChange({ game_id: game.db_id, game_name: game.name });
         setIsOpen(false);
       } else {
-        alert(`Failed to import game from BGG: ${error.message || 'Please try again.'}`);
+        // The USER-FACING branch. AC-16 (a) as AMENDED (owner 2026-09-13, D7 arm A — the
+        // criterion's word "class-only" became "a Sentry capture"): `logger.error` routes to
+        // `Sentry.captureException` (`logger.ts:28-30`) and is this path's ONLY escalation.
+        // Do NOT add a hand-rolled `Sentry.captureException` beside it.
+        logger.error('Error importing BGG game:', error);
+        toast.error(
+          getFetchErrorMessage(error, {
+            fallback: "We couldn't import that game from BGG. Please try again.",
+          })
+        );
       }
     } finally {
       setImportingBggId(null);

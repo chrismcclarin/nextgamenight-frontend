@@ -32,8 +32,12 @@ import { test, expect, type Page } from '@playwright/test';
  *     payload produces an empty list, not a throw. A test that depended on finding a
  *     NON-defensive call site would silently stop testing the boundary the moment that
  *     site was hardened — a gate that goes green when the app improves.
- *   - `test-sentry/page.js` reports to Sentry from a try/catch and from a `setTimeout`;
- *     neither is a render throw, so neither reaches an `error.tsx`.
+ *   - `test-sentry/page.js` — REMOVED in Phase 88.6 (owner ruling D3, 2026-09-09: an
+ *     unauthenticated, un-navigated error-injection route). The reasoning it carried is
+ *     KEPT, because it is still the answer to "why not just add a page like that one":
+ *     it reported to Sentry from a try/catch and from a `setTimeout`, so neither path was
+ *     a render throw and neither reached an `error.tsx`. Re-adding such a page would not
+ *     close this gap — it would only restore the surface D3 deleted.
  * What DOES cover it: `AppErrorBoundary.test.tsx` drives a real render throw through the
  * real `ErrorFallback` JSX (styled fallback, both actions, Sentry auto-report, reset-loop
  * guard), `ErrorFallback.test.tsx` covers the primitive, and 88-09's grep covers the ASVS

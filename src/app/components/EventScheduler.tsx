@@ -49,6 +49,7 @@ import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityCol
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
 import { maxAvailabilityPerDay, peakHourForDay } from './heatmap/dayAggregate';
 import SchedulerWeekStrip, { stripTabId } from './SchedulerWeekStrip';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import {
   usePaintGesture,
   pointResolver,
@@ -143,6 +144,12 @@ export interface EventSchedulerProps {
   scrollToTime?: Date | null;
   /** Bubbles navigation so the parent's heatmap fetch follows the user (SPEC Req 4). */
   onWeekChange?: (date: Date) => void;
+  /**
+   * Plan 88.6-39 (W52 / D-18): reports gesture engage/disengage to the parent, so blocks ABOVE
+   * the grid can hold a height change until the finger lifts. Called THROUGH this component's
+   * own active-change handler, never wired straight into the hook — see `handleActiveChange`.
+   */
+  onActiveChange?: (active: boolean) => void;
 }
 
 /** Wall-clock start of the slot at (row, col). setHours/setMinutes, so DST days stay honest. */
@@ -195,6 +202,30 @@ function formatDuration(start: Date, end: Date): string {
   } else {
     return `${hours}h ${mins}m`;
   }
+}
+
+/**
+ * Plan 88.6-52 (W46 live-region half, SPEC R5 P1): the Selected Time panel's label and range text,
+ * declared ONCE so the panel and the live region cannot drift. The region speaks exactly what the
+ * panel prints — no new words.
+ */
+const SELECTED_TIME_LABEL = 'Selected Time:';
+
+/** The panel's range text, e.g. "Wednesday, July 22, 7:00 PM - 9:30 PM". */
+function formatSlotRange(start: Date, end: Date): string {
+  return `${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')}`;
+}
+
+/**
+ * Plan 88.6-52: the nav-row header label, and the ONLY producer of it — the header and the
+ * navigation announcement both read this, so the spoken and printed text cannot drift. Byte-identical
+ * to what the header computed from `columnDates` before (day arm `[startOfDay(date)]`; week arm the
+ * Monday-first week containing `date`).
+ */
+function formatViewLabel(date: Date, view: 'week' | 'day'): string {
+  if (view === 'day') return format(startOfDay(date), 'EEEE, MMMM d, yyyy');
+  const monday = startOfWeek(date, { weekStartsOn: 1 });
+  return `${format(monday, 'MMM d')} - ${format(addDays(monday, 6), 'MMM d, yyyy')}`;
 }
 
 const NAV_BUTTON_CLASS =
@@ -291,6 +322,7 @@ export default function EventScheduler({
   selectedSlot = null,
   scrollToTime = null,
   onWeekChange,
+  onActiveChange,
 }: EventSchedulerProps) {
   // ---------------------------------------------------------------------------
   // Displayed-date ownership. INTERNAL state seeded from `initialDate`, with exactly TWO writers
@@ -320,6 +352,19 @@ export default function EventScheduler({
   const [currentDate, setCurrentDate] = useState<Date>(initialDate || new Date());
   const [currentView, setCurrentView] = useState<'week' | 'day'>(
     defaultView === 'day' ? 'day' : 'week'
+  );
+
+  // Plan 88.6-52 (W46 live-region half): what the always-mounted polite region says. `seq` keys the
+  // rendered text node, so every utterance REPLACES it — see the DECISION marker at the region.
+  // Every utterance goes through `announce`, never through `setAnnouncement` directly: a same-string
+  // set would be a React bail-out and speak nothing (gap-lap ML-1).
+  const [announcement, setAnnouncement] = useState<{ seq: number; text: string }>({
+    seq: 0,
+    text: '',
+  });
+  const announce = useCallback(
+    (text: string) => setAnnouncement((prev) => ({ seq: prev.seq + 1, text })),
+    []
   );
 
   /* DECISION Phase 88.1-20 (CR-01, 88.1-REVIEW.md): writer (b) ignores exactly one class of
@@ -358,18 +403,53 @@ export default function EventScheduler({
      snap (`createEvent.js:352`), `resolveWeekNav` and `weekDates` below — a different boundary
      here would suppress re-anchors the fetch considers cross-week and vice versa.
      The FUNCTIONAL form is load-bearing: adding `currentDate` to the deps would re-run this
-     effect on every navigation and defeat the guard. */
+     effect on every navigation and defeat the guard.
+
+     AMENDED Phase 88.6-52 (gap-lap DR-1, owner ruling 2026-09-28 "F1 - fix now"), everything above
+     KEPT: the effect is now keyed on the anchor's VALUE (`initialDate.getTime()`), not its
+     IDENTITY. The parent's per-fetch re-emission described above hands over a fresh `Date` even
+     when the value has not changed — on the prefill (day-tap) and poll paths that value is the
+     ORIGINAL week's date, so after a cross-week Back/Next the refetch re-fired this effect, the
+     guard saw a cross-week value, and the grid snapped back to where the user started (measured
+     2026-09-24 by the gap-lap review; re-measured RED by plan 88.6-52's pins before this edit). A
+     same-value re-emission now never re-fires; a DIFFERENT value (the 71.2 poll anchor arriving,
+     the CR-01 same-week different-day hand-over) still re-anchors through the unchanged guard.
+     Chosen OVER alternative (i) AGAIN — stabilising the anchor's identity in `createEvent.js` —
+     for the reason recorded above: the guard belongs to the consumer's contract, and this extends
+     the consumer's own guard. KNOWN RESIDUE: `createEvent.js`'s today-substitution branch
+     (`!fromNavigation && isSameWeek(now, monday) ? now : monday`) yields a new `now` VALUE per memo
+     run; it is gated on `!fromNavigation`, so it fires only when no navigation caused the fetch
+     and cannot revert one.
+     The effect ALSO clears the live region (see the marker there) — but ONLY when the anchor
+     actually MOVES the displayed date. The refetch after a cross-week Next hands over the
+     NAVIGATED week's Monday, a different value the guard KEEPS; an unconditional clear would wipe
+     the label Next just announced. The displayed date is read from `currentDateRef` (a render-time
+     mirror, the `commitRef` idiom) and NOT from the closure or the deps — adding `currentDate` to
+     the deps re-opens DR-1, for the reason in the paragraph above. The one added line in the
+     updater (`prev.getTime() === initialDateKey`) keeps the old identity bail-out at mount, where
+     the old code returned the very object `useState` was seeded with. */
+  const initialDateKey = initialDate ? initialDate.getTime() : null;
+  const currentDateRef = useRef(currentDate);
+  currentDateRef.current = currentDate;
   useEffect(() => {
-    if (initialDate) {
-      setCurrentDate((prev) => {
-        const displayedMonday = startOfWeek(prev, { weekStartsOn: 1 });
-        const isAnchorForDisplayedWeek =
-          isSameWeek(initialDate, prev, { weekStartsOn: 1 }) &&
-          isSameDay(initialDate, displayedMonday);
-        return isAnchorForDisplayedWeek ? prev : initialDate;
-      });
-    }
-  }, [initialDate]);
+    if (initialDateKey == null) return;
+    const anchor = new Date(initialDateKey);
+    const shown = currentDateRef.current;
+    const reanchors =
+      !(
+        isSameWeek(anchor, shown, { weekStartsOn: 1 }) &&
+        isSameDay(anchor, startOfWeek(shown, { weekStartsOn: 1 }))
+      ) && !isSameDay(anchor, shown);
+    if (reanchors) announce('');
+    setCurrentDate((prev) => {
+      if (prev.getTime() === initialDateKey) return prev;
+      const displayedMonday = startOfWeek(prev, { weekStartsOn: 1 });
+      const isAnchorForDisplayedWeek =
+        isSameWeek(anchor, prev, { weekStartsOn: 1 }) &&
+        isSameDay(anchor, displayedMonday);
+      return isAnchorForDisplayedWeek ? prev : anchor;
+    });
+  }, [initialDateKey, announce]);
 
   /* DECISION Phase 88.1-11: the prompt's breakpoint fork is a matchMedia STATE fork, chosen OVER
      rendering both strings and hiding one with responsive utility classes.
@@ -530,21 +610,32 @@ export default function EventScheduler({
   // then re-renders on the week containing it, which is how you cross a week boundary there. Both
   // arms still bubble through `onWeekChange`, so the parent's same-week skip does the de-duping.
   const stepDays = effectiveView === 'day' ? 1 : 7;
-  const goBack = useCallback(
-    () => navigateTo(addDays(currentDate, -stepDays)),
-    [navigateTo, currentDate, stepDays]
-  );
-  const goNext = useCallback(
-    () => navigateTo(addDays(currentDate, stepDays)),
-    [navigateTo, currentDate, stepDays]
-  );
+  const goBack = useCallback(() => {
+    const target = addDays(currentDate, -stepDays);
+    navigateTo(target);
+    announce(formatViewLabel(target, effectiveView));
+  }, [navigateTo, announce, currentDate, stepDays, effectiveView]);
+  const goNext = useCallback(() => {
+    const target = addDays(currentDate, stepDays);
+    navigateTo(target);
+    announce(formatViewLabel(target, effectiveView));
+  }, [navigateTo, announce, currentDate, stepDays, effectiveView]);
   /* DECISION Phase 88.1-09 (owner ruling 2026-08-22): the Today control is CARRIED, chosen OVER
      dropping it as chrome the rebuild does not need. The outgoing toolbar rendered one for free
      (no toolbar override existed, so it was in shipped UI), and the rebuild's promise is parity
      of NAV AFFORDANCES, not just of the grid. It routes through `navigateTo` exactly like Next
      and Back, so the parent sees an ordinary navigation and `resolveWeekNav` skips it when today
      is already inside the displayed week. Removing it is a decision, not a cleanup. */
-  const goToday = useCallback(() => navigateTo(new Date()), [navigateTo]);
+  // Plan 88.6-52: Today announces ONLY when the label actually changes — Today on the week (or day)
+  // already shown is a no-op and must not speak a "change" (gap-lap ML-30). The shown label is
+  // computed INLINE here: the render-scope `viewLabel` is declared far below, and reading it from
+  // this callback is a temporal-dead-zone error, not a shortcut.
+  const goToday = useCallback(() => {
+    const target = new Date();
+    navigateTo(target);
+    const label = formatViewLabel(target, effectiveView);
+    if (label !== formatViewLabel(currentDate, effectiveView)) announce(label);
+  }, [navigateTo, announce, currentDate, effectiveView]);
 
   // A strip tap is NAVIGATION at day granularity, so it routes through `navigateTo` rather than
   // becoming a third writer of `currentDate` (the two-writer rule at the top of this component is
@@ -553,9 +644,13 @@ export default function EventScheduler({
   const handleStripSelect = useCallback(
     (index: number) => {
       const day = weekDates[index];
-      if (day) navigateTo(day);
+      if (day) {
+        navigateTo(day);
+        // Plan 88.6-52: CLEARED, not announced — see the DECISION marker at the live region.
+        announce('');
+      }
     },
-    [weekDates, navigateTo]
+    [weekDates, navigateTo, announce]
   );
 
   // ---------------------------------------------------------------------------
@@ -577,8 +672,18 @@ export default function EventScheduler({
       const start = slotStartFor(day, first);
       const end = slotStartFor(day, last + 1);
       if (onTimeSelected) onTimeSelected(start, end);
+      /* DECISION Phase 88.6-52 (W46 live-region half, SPEC R5): the commit is announced HERE, in
+         the one derivation, chosen OVER a keyboard-only hook in `handleCellSelect` — that would be
+         a second path, and the tap and drag commits would stay silent. What reaches this line is
+         MEASURED: keyboard Enter/Space (`handleCellSelect`), a mouse tap or drag, and a touch
+         LONG-PRESS (`usePaintGesture.ts` `LONG_PRESS_MS = 300`; grid cells carry no click
+         handler). NOT MEASURED, and not claimed: whether a plain assistive-technology double-tap
+         on a phone grid cell commits anything at all (gap-lap ML-29) — it may reach no commit and
+         so no announcement. Plan 88.6-49 routes that gap. The utterance is the panel's printed
+         text verbatim (label + range + duration), so a screen-reader user hears no new words. */
+      announce(`${SELECTED_TIME_LABEL} ${formatSlotRange(start, end)} (${formatDuration(start, end)})`);
     },
-    [columnDates, onTimeSelected]
+    [columnDates, onTimeSelected, announce]
   );
   const commitRef = useRef(commitRows);
   commitRef.current = commitRows;
@@ -723,6 +828,32 @@ export default function EventScheduler({
     [measureDragRect]
   );
 
+  /**
+   * THE ONE ACTIVE-CHANGE HANDLER (Plan 88.6-39, W52 / D-18). The hook's `onActiveChange` is
+   * wired to THIS, and the parent's forwarded prop is called THROUGH it — never wired straight
+   * into the hook. Two things depend on that composition:
+   *
+   *   - The FALSE edge is also where `dragRect` gets cleared. `setDragRect(null)` had exactly one
+   *     call site, inside `handleRangeCommit` (the hook's `onCommit`), and `pointercancel` never
+   *     reaches `onCommit` — so a cancelled gesture used to leave its selection rectangle drawn
+   *     over the grid (threat T-88.6-110). Passing the parent's prop straight through drops this
+   *     clear, and the `pointercancel` pin in `EventScheduler.test.tsx` reds on it.
+   *   - The TRUE edge does NO state work here, deliberately. A `setState` at gesture engage
+   *     re-renders this component and reconciles ~196 memoized cells — the jank this whole
+   *     signal exists to prevent. On the false edge `setDragRect(null)` when `dragRect` is
+   *     already `null` is a React bail-out, so the quiet path stays quiet there too.
+   *
+   * Built once with a ref mirror for the parent prop (the `argsRef` idiom this file already uses
+   * for `commitRef`), because the hook keeps its handlers stable only if what it is given is.
+   */
+  const activeChangeRef = useRef(onActiveChange);
+  activeChangeRef.current = onActiveChange;
+
+  const handleActiveChange = useCallback((active: boolean) => {
+    if (!active) setDragRect(null);
+    activeChangeRef.current?.(active);
+  }, []);
+
   const handleRangeCommit = useCallback((anchorCoord: string, currentCoord: string) => {
     setDragRect(null);
     const anchor = parseCoord(anchorCoord);
@@ -779,6 +910,7 @@ export default function EventScheduler({
     resolvePoint,
     onExtend: handleExtend,
     onCommit: handleRangeCommit,
+    onActiveChange: handleActiveChange,
     edgeScroll,
   });
 
@@ -938,11 +1070,18 @@ export default function EventScheduler({
                 // The count badge is the mandatory NON-COLOUR cue, not decoration — a wash-only
                 // encoding is unreadable to the ~8% of men with colour-vision deficiency.
                 <span
+                  // The badge's SIZE is a utility now, not an inline declaration. An inline
+                  // declaration is neither a class nor a token, so it is invisible to every
+                  // source-scan gate in this phase — which is why D-01 names this site separately
+                  // from the 30 class-based ones, and why moving it also closes a permanent blind
+                  // spot. It folds 10px -> 12px, the D-01 floor, like the other nine sites in this
+                  // cluster. MEASURED in Chromium at 375px before it landed: see the DECISION
+                  // marker on this element's weight below.
+                  className="text-xs"
                   style={{
                     position: 'absolute',
                     top: '2px',
                     right: '4px',
-                    fontSize: '10px',
                     // DECISION Phase 88.3 (Req 6 / OI-1): the ONE status text site in the app that
                     // is an INLINE STYLE reading the custom property directly rather than a
                     // `text-content-status-success` utility class. It is therefore invisible to the
@@ -953,7 +1092,21 @@ export default function EventScheduler({
                     // border). Pointing this back at the shared `var(--color-status-success)` key,
                     // which now resolves to the BORDER value, is a decision, not a cleanup.
                     color: 'var(--color-status-success-text)',
-                    fontWeight: 600,
+                    // DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400, because the
+                    // fill/ink pairing needs the weight. This badge is the mandatory NON-COLOUR cue
+                    // for the cell's translucent wash — see the comment on the element above — and
+                    // it is small ink on a coloured fill at FIXED geometry: absolutely positioned
+                    // at top 2px / right 4px inside a ~196-cell grid, so it cannot widen its cell,
+                    // it can only overlap it. 400 at this size on a tinted fill loses the
+                    // legibility the weight is carrying, and the cue is a colour-vision-deficiency
+                    // requirement (~8% of men), not decoration. UI-SPEC 4.5's table has no family
+                    // for it, so a mechanical read would send it to 400. Settled at 700 alongside
+                    // its two siblings, the per-cell count in EventHeatmapBackground.js and the
+                    // aggregate in SchedulerWeekStrip.tsx, so one cue does not end this phase at
+                    // three different weights. MEASURED over the wash in both themes 2026-09-16 —
+                    // the darkest step falls below 4.5:1 and that is PRE-EXISTING (a weight change
+                    // moves no ratio); it is routed to Phase 88.9 in .planning/deferred/phase-88.6.md.
+                    fontWeight: 700,
                     zIndex: 1,
                   }}
                 >
@@ -1061,10 +1214,7 @@ export default function EventScheduler({
     />
   ) : null;
 
-  const viewLabel =
-    effectiveView === 'day'
-      ? format(columnDates[0], 'EEEE, MMMM d, yyyy')
-      : `${format(columnDates[0], 'MMM d')} - ${format(columnDates[columnDates.length - 1], 'MMM d, yyyy')}`;
+  const viewLabel = formatViewLabel(currentDate, effectiveView);
 
   // Namespaces the strip's per-cell ids so the day column's `aria-labelledby` resolves even if two
   // schedulers ever mount in one document.
@@ -1085,10 +1235,15 @@ export default function EventScheduler({
   const viewToggleButton = (value: 'week' | 'day', label: string) => (
     <button
       type="button"
-      onClick={() => setCurrentView(value)}
+      onClick={() => {
+        setCurrentView(value);
+        // Plan 88.6-52: pressing the ALREADY-pressed arm changes nothing, so it says nothing
+        // (gap-lap ML-2). The toggle never moves the date, so the label is `currentDate`'s.
+        if (value !== currentView) announce(formatViewLabel(currentDate, value));
+      }}
       aria-pressed={currentView === value}
       className={`${NAV_BUTTON_CLASS} ${
-        currentView === value ? 'bg-surface-card-hover text-content-primary' : ''
+        currentView === value ? 'bg-surface-muted text-content-primary' : ''
       }`}
     >
       {label}
@@ -1102,6 +1257,42 @@ export default function EventScheduler({
     // Removing this style attribute silently reverts the pick to the pre-88.1 strength — see the
     // DECISION marker on the constant.
     <div className="space-y-4" style={TODAY_TINT_SCOPE}>
+      {/* DECISION Phase 88.6-52 (W46 live-region half, SPEC R5): ONE always-mounted polite
+          `sr-only` StatusRegion, the root's FIRST child, text injected on change. Chosen OVER:
+            (a) making the Selected Time panel itself live — it mounts CONDITIONALLY, and a
+                conditionally-mounted region does not announce (`StatusRegion.tsx` EMPTY-FIRST);
+            (b) a VISIBLE-when-set region — the owner's #32+#166 ruling (2026-09-14) made three
+                OTHER regions visible because their strings appear nowhere else on screen; every
+                string here is ALREADY printed (the panel), and the V-20 ruling rejected printing
+                one string twice. Plan 36's sr-only region is the same call;
+            (c) mounting it LAST — Tailwind v4's `space-y-4` puts its margin on every child but the
+                last, so a last-mounted region would hand the panel above it a new 16px bottom
+                margin: a 375px layout change. FIRST, it moves nothing (`sr-only` is absolute).
+          The text sits in a span KEYED on `seq`, so every utterance remounts the text node and an
+          aria-atomic region announces even an utterance identical to the last one (gap-lap ML-1).
+          A mount is not an announcement: the region renders empty until the first commit.
+
+          NAVIGATION HALF: Back / Next / Today and the desktop week/day toggle announce the NEW
+          header label (`formatViewLabel`, the header's own producer), because focus stays on a
+          control that did not change while the view did — nothing else would speak it. NOT
+          announced, deliberately:
+            - a phone STRIP selection — the focused tab's own name already speaks the day, so a
+              second announcement would double-speak. The region is CLEARED there (an empty
+              utterance is silent), so it can never hold a stale week label that contradicts the
+              header for someone reading linearly;
+            - the parent's `initialDate` re-anchor — a fetch anchor, not a user action; announcing
+              it would narrate network timing. Since the re-sync is keyed on the anchor's VALUE
+              (the amended 88.1-20 marker), a same-value re-emission can no longer UNDO a
+              navigation; a genuinely different anchor that moves the displayed date (an
+              out-of-order older response, or the today-substitution after a NON-navigation fetch)
+              CLEARS the region rather than announcing, so it never contradicts the header;
+            - a no-op: the already-pressed toggle, or Today on the week/day already shown.
+          ACCEPTED COST, chosen OVER clearing the region on blur: a browse-mode reader can hear the
+          CURRENT label twice (once from the region, once from the header) — the same words, never
+          a contradiction. */}
+      <StatusRegion politeness="polite" className="sr-only">
+        <span key={announcement.seq}>{announcement.text}</span>
+      </StatusRegion>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button type="button" onClick={goBack} className={NAV_BUTTON_CLASS}>
@@ -1114,7 +1305,7 @@ export default function EventScheduler({
             Next
           </button>
         </div>
-        <span className="text-sm font-medium text-content-primary">{viewLabel}</span>
+        <span className="text-sm text-content-primary">{viewLabel}</span>
         {/* D-04: no week/day toggle at phone. The strip IS the week view there, so a control
             offering to switch to it would be offering a state that does not exist. */}
         {!isPhoneViewport && (
@@ -1201,11 +1392,16 @@ export default function EventScheduler({
 
       {selectedSlot && (
         <div className="p-4 bg-surface-sunken rounded-card border border-line-accent">
-          <p className="text-sm font-medium text-content-primary mb-1">Selected Time:</p>
-          <p className="text-lg text-content-accent font-semibold">
-            {format(selectedSlot.start, 'EEEE, MMMM d, h:mm a')}
-            {' - '}
-            {format(selectedSlot.end, 'h:mm a')}
+          {/* The label takes UI-SPEC 4.5's EMPHASIS outcome — text-content-primary against the
+              value's text-content-accent below it already carries the pairing, and the value is
+              about to be 20/700 against this 14/400, which is hierarchy enough for a two-line box.
+              The VALUE is one of UI-SPEC 4.3's enumerated non-heading text-lg residue sites and
+              resolves to text-xl / font-bold under R2's primary-string clause. It does NOT become
+              a Heading: it has no semantic level today and P4 forbids inventing one. Phase 92 owns
+              the outline review that would decide whether this box should have a real heading. */}
+          <p className="text-sm text-content-primary mb-1">{SELECTED_TIME_LABEL}</p>
+          <p className="text-xl text-content-accent font-bold">
+            {formatSlotRange(selectedSlot.start, selectedSlot.end)}
             {' '}
             <span className="text-content-accent">({formatDuration(selectedSlot.start, selectedSlot.end)})</span>
           </p>
@@ -1221,7 +1417,7 @@ export default function EventScheduler({
               naming a mouse gesture on a touch device is a phone-forward failure, not a wording
               nit. Both strings are kept — the desktop one is verbatim
               (`EventScheduler.js:582`) and is what the plan-01 pin locates. */}
-          <p className="text-sm text-content-secondary">
+          <p className="text-base text-content-secondary">
             {isPhoneViewport
               ? 'Tap and hold on a day to pick a time.'
               : 'Click and drag on the calendar to select a time slot for your event.'}

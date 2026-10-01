@@ -23,6 +23,22 @@
  *   2 - recurring schedule card slides in below
  *   3 - settled (timer-driven advance handled by parent)
  */
+/* DECISION Phase 88.6-35 (UI-SPEC §4.5): the three simulated PRIMARY STRINGS in this file —
+   the email sender name, the email CTA label and the recurring-schedule line — take 700, chosen
+   OVER §4.5's emphasis outcome (400 + a colour token), which is what plan 88.6-34 took for the
+   desktop nav and what this plan took for the tutorial footer's Back/Next pair.
+
+   WHY THEY GO THE OTHER WAY. Each of these three is ink inside its OWN FILL or the SUBJECT of
+   its row — §4.5's pill/chip-ink reason verbatim ("the ink must hold against its own fill") for
+   the CTA, and the primary-string reason for the other two. Dropping them to 400 would flatten
+   a mock whose entire job is to be recognisable as the production email and card it imitates.
+   None of the three is a `.btn` element, so none of these weights was dead: this is a real
+   500/600 -> 700 delta on a tutorial surface and is disclosed for `/gsd-ui-review`.
+
+   The two EYEBROWS ("Members set their own availability", "Or send them a check-in") resolve on
+   §4.5's eyebrow row — Caption 12 / 700 / uppercase / tracking — and keep their own
+   `tracking-wide` rather than converging on the ratified eyebrow's tracking, which is the same
+   recorded call plans 22, 28 and 29 made at their own sites. */
 export default function CheckInDemo({ stage }) {
   return (
     <div className="text-center space-y-3">
@@ -38,7 +54,7 @@ export default function CheckInDemo({ stage }) {
         }}
       >
         <div className="px-4 pt-3 pb-1 border-b border-line">
-          <div className="text-[10px] uppercase tracking-wide font-semibold text-content-muted mb-1">
+          <div className="text-xs uppercase tracking-wide font-bold text-content-muted mb-1">
             Members set their own availability
           </div>
           <div className="text-sm font-bold text-content-primary">
@@ -74,15 +90,15 @@ export default function CheckInDemo({ stage }) {
         }}
       >
         <div className="px-4 pt-3 pb-1 border-b border-line">
-          <div className="text-[10px] uppercase tracking-wide font-semibold text-content-muted mb-1">
+          <div className="text-xs uppercase tracking-wide font-bold text-content-muted mb-1">
             Or send them a check-in
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-btn-primary text-btn-primary-content flex items-center justify-center text-[10px] font-bold shrink-0">
+            <div className="w-7 h-7 rounded-full bg-btn-primary text-btn-primary-content flex items-center justify-center text-xs font-bold shrink-0">
               NG
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-content-primary truncate">
+              <div className="text-sm font-bold text-content-primary truncate">
                 Tabletop Crew
               </div>
               <div className="text-xs text-content-muted truncate">
@@ -101,7 +117,7 @@ export default function CheckInDemo({ stage }) {
           </p>
           <button
             disabled
-            className="text-sm font-medium text-btn-primary-content bg-btn-primary px-4 py-2 rounded-btn"
+            className="text-sm font-bold text-btn-primary-content bg-btn-primary px-4 py-2 rounded-btn"
           >
             When Can You Play?
           </button>
@@ -133,7 +149,7 @@ export default function CheckInDemo({ stage }) {
             </svg>
           </div>
           <div className="text-left">
-            <div className="text-sm font-medium text-content-primary">
+            <div className="text-sm font-bold text-content-primary">
               Every Sunday · 6 PM
             </div>
             <div className="text-xs text-content-secondary">

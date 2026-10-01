@@ -8,6 +8,7 @@ import UserHome from './userHome/UserHomePage';
 import LandingPage from './components/LandingPage';
 import { groupsAPI, API_BASE_URL } from '../lib/api';
 import { useSelfIdentity } from '../lib/hooks/useSelfIdentity';
+import { logger, errCtx } from '@/lib/logger';
 
 function App(){
 
@@ -37,7 +38,36 @@ function App(){
       const data = await groupsAPI.getUserGroups(selfUuid);
       setGroupList(data);
     } catch (error) {
-      console.error('Error fetching groups:', error.message || 'Unknown error');
+      // DEVELOPER LOG, not a user-facing read. This is the designed destination for the raw
+      // error text; nothing here renders. It is exempted PER LINE by the R1 gate's developer-log
+      // rule, NEVER by file — that gate scans the whole `src/` tree and excludes no file by name,
+      // which is exactly why the LIVE render further down this same file is seen separately.
+      //
+      // DECISION Phase 88.6-34 (AC-2 WIDENED 2026-09-09, level AMENDED 2026-09-13): `logger.info`,
+      // chosen OVER `logger.error` and OVER `logger.warn`. `logger.error` is `captureException`
+      // with no throttle, dedupe or level gate, and `replaysOnErrorSampleRate` (1.0) against
+      // `replaysSessionSampleRate` (0.1) means most sessions are BUFFERING — so the first captured
+      // event flushes the Session Replay buffer and converts that session to continuous recording
+      // and upload, replay egress bought for a gate that only asked for the raw call to go.
+      // `logger.warn` is not cheaper (`captureMessage` is an event too, so the flush is identical);
+      // only `logger.info` is event-free. What changed is the CHANNEL and the lint gate, NOT the
+      // egress: this was a breadcrumb at most before and is a breadcrumb now.
+      //
+      // The ARGUMENT changed too, and that is the point: it used to forward
+      // `error.message || 'Unknown error'`, a pre-stringified upstream message that threw away the
+      // error's CLASS. `errCtx` carries name AND message in the ctx object — and it is used rather
+      // than a hand-written `{ name, message }` literal on purpose: the literal spells `message:`
+      // on this line and would match the R1 scanner's user-facing-sink pattern, reddening a gate a
+      // correct conversion never touched. Never pass the raw `Error` as the ctx: the signature is
+      // `Record<string, unknown>` and a `.js` call site gets no typecheck. Converts IN PLACE
+      // because this is a catch inside an async handler, not a render body or a per-item loop.
+      //
+      // NOT FIXED HERE, and a converted log line must not be read as if it were: this catch logs
+      // and RETURNS. `setGroupList` is never called on the failure path, so a failed fetch renders
+      // the signed-in home page as "you have no groups" — no error state, no retry. Routed with
+      // its two siblings in `.planning/deferred/phase-88.6.md`; the fix is the shipped
+      // `useFetchErrorState` / `FetchErrorBanner` pattern and it is an owner call, not a cleanup.
+      logger.info('Error fetching groups:', errCtx(error));
     }
   };
 

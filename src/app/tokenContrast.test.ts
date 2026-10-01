@@ -5,6 +5,15 @@
  * chain down to a literal inside the correct block, and asserts the floors this phase
  * claims. One bare `it(` per floor group, so a red run names the requirement.
  *
+ * AMENDED Phase 88.6-02 (D-15): the property this file resolved as `--color-bg-card-hover` is
+ * now `--color-bg-muted` (class `bg-surface-muted`), at BYTE-EQUAL values in both themes — so
+ * every ratio, L* and ΔL* recorded below is unaffected and no assertion was loosened. Every LIVE
+ * reference (each `resolve(...)` argument, each `expectRatio*` argument, and the `@utility card`
+ * regex in test 11) moved to the new name. Comment prose that still says `card-hover` /
+ * `--color-bg-card-hover` records MEASUREMENTS AND RULINGS TAKEN UNDER THAT NAME and is left as
+ * history on purpose — rewriting a measurement's label would make a true statement about what was
+ * measured then into a false one.
+ *
  * ---------------------------------------------------------------------------------------
  * DECISION Phase 88.3-05 (D-06): this gate reads the DECLARED token layer, not rendered
  * pixels — chosen OVER relying only on the Playwright contrast probe (Gate C).
@@ -38,6 +47,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { FORBIDDEN_INK_ON_MUTED, MUTED_GROUND_TOKEN } from '../test-utils/inkRules';
 import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../lib/wcag';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
@@ -441,9 +451,9 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   it('2. Req 1 — light card-hover is a third value, below the page (§5.2 ladder self-check)', () => {
     const card = resolve('light', '--color-bg-card');
     const page = resolve('light', '--color-bg-page');
-    const cardHover = resolve('light', '--color-bg-card-hover');
-    expect(cardHover, `Req 1 — light --color-bg-card-hover (${cardHover}) must differ from the card`).not.toBe(card);
-    expect(cardHover, `Req 1 — light --color-bg-card-hover (${cardHover}) must differ from the page`).not.toBe(page);
+    const cardHover = resolve('light', '--color-bg-muted');
+    expect(cardHover, `Req 1 — light --color-bg-muted (${cardHover}) must differ from the card`).not.toBe(card);
+    expect(cardHover, `Req 1 — light --color-bg-muted (${cardHover}) must differ from the page`).not.toBe(page);
     // Deliberately DARKER than the page: a pill is darker than its surroundings while a
     // hovered card is lighter. Those are opposite directions and D-01 split the token for
     // exactly that reason. Flipping this ordering is a decision, not a cleanup.
@@ -486,8 +496,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   it('5. Req 1 — dark bg-hover is byte-identical to the dark card-hover value', () => {
     // The claim that makes "dark does not move" true for all 42 swept hover sites.
     const hover = resolve('dark', '--color-bg-hover');
-    const cardHover = resolve('dark', '--color-bg-card-hover');
-    expect(hover, `Req 1 — dark --color-bg-hover (${hover}) must equal dark --color-bg-card-hover (${cardHover}) so every swept site is byte-identical in dark`).toBe(cardHover);
+    const cardHover = resolve('dark', '--color-bg-muted');
+    expect(hover, `Req 1 — dark --color-bg-hover (${hover}) must equal dark --color-bg-muted (${cardHover}) so every swept site is byte-identical in dark`).toBe(cardHover);
   });
 
   it('6. Req 1 — the modal scrim really dims, in both themes (the one composited row Gate A can compute)', () => {
@@ -547,14 +557,92 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expectRatio('dark', '--color-border-strong', '--color-bg-page', 3.0, 'Req 2 / §5.11 row 10');
   });
 
+  it('8b. W29 (88.6-05) — --color-border-strong clears 3:1 on the CARD too, in BOTH themes', () => {
+    // ADDED beside test 8, never in place of it: test 8's PAGE assertion is byte-unchanged above.
+    // The card ground matters now because `--input` points here (test 8c), and an input box most
+    // often sits ON a card. Measured 2026-09-15 with `src/lib/wcag.ts`, unrounded:
+    // light warm-500 #8c7a6a on #ffffff = 4.1120; dark purple-500 #6b7fa3 on purple-900 #232d3e
+    // = 3.4225. Both are floors, not equalities — a future re-tint that still clears 3.0 is fine.
+    expectRatio('light', '--color-border-strong', '--color-bg-card', 3.0, 'W29 / 1.4.11');
+    expectRatio('dark', '--color-border-strong', '--color-bg-card', 3.0, 'W29 / 1.4.11');
+  });
+
+  it('8c. W29 (88.6-05) — the CONSUMING token `--input` clears 3:1 on card AND page, both themes', () => {
+    /* WHY THIS EXISTS SEPARATELY FROM 8b, and it is the load-bearing half.
+     *
+     * Test 8/8b measure `--color-border-strong`. The Input/Textarea/SelectControl border reads a
+     * DIFFERENT property: `border-input` compiles to `border-color: var(--input)` (confirmed in the
+     * built stylesheet), and `--input` is declared once, in the shadcn bridge `:root`. Reverting
+     * that one line back to `var(--color-border)` restores the sub-3:1 border with tests 8 and 8b
+     * still green. Only an assertion on `--input` itself reds on that revert.
+     *
+     * ⚠ CORRECTION TO THE PLAN, measured 2026-09-15 rather than assumed. `88.6-05-PLAN.md` says to
+     * pin `--color-input` because "`resolve()` walks the chain `--color-input` -> `--input` ->
+     * `--color-border-strong`". It does NOT: `--color-input` is an `@theme inline` KEY, and
+     * `lookup()` reads only `.dark`, light `:root`, bridge `:root` and the palette — by design
+     * (plan 88.6-02 hit the same thing and recorded it). `resolve('light', '--color-input')` THROWS
+     * `TokenContrastParseError`, proven by running it. `--input` is both resolvable AND the
+     * property the utility actually reads, so it is the strictly better pin. The `@theme inline`
+     * bridge key is pinned separately below, by declaration text, so the full chain is covered.
+     *
+     * Measured 2026-09-15, unrounded — after / before the W29 re-point:
+     *   light card 4.1120 / 2.3096 · light page 3.1496 / 1.7690
+     *   dark  card 3.4225 / 1.7767 · dark  page 4.1790 / 2.1694
+     * Three of the four were BELOW the 3.0 floor before. */
+    expectRatio('light', '--input', '--color-bg-card', 3.0, 'W29 / 1.4.11 (the input box IS the affordance)');
+    expectRatio('light', '--input', '--color-bg-page', 3.0, 'W29 / 1.4.11 (the input box IS the affordance)');
+    expectRatio('dark', '--input', '--color-bg-card', 3.0, 'W29 / 1.4.11 (the input box IS the affordance)');
+    expectRatio('dark', '--input', '--color-bg-page', 3.0, 'W29 / 1.4.11 (the input box IS the affordance)');
+
+    // The `@theme inline` half of the chain: `border-input` only exists because this key bridges
+    // the utility family onto the runtime property. Asserted by declaration TEXT because
+    // `resolve()` cannot see this block at all (see the correction above).
+    expect(
+      declIn(blockOf('theme'), '--color-input'),
+      'W29 — the `@theme inline` key `--color-input` must still bridge to `var(--input)`. Break ' +
+        'this and `border-input` stops emitting, which no ratio assertion above can see.',
+    ).toBe('var(--input)');
+  });
+
   // ===================================================================================
   // Req 3 — shadows (UI-SPEC §5.4)
   // ===================================================================================
 
-  it('9. Req 3 — --shadow-sm is exactly `none` in both themes', () => {
+  it('9. Req 3 / N1 — --shadow-sm paints nothing at rest AND is not the bare keyword, both themes', () => {
+    /* RE-EXPRESSED Phase 88.6-05 (N1) — STRICTLY TIGHTER THAN THE LITERAL IT REPLACES, NOT LOOSENED.
+     *
+     * This row used to read `.toBe('none')`. That literal held only because of a DEFECT: inside
+     * Tailwind's composite `box-shadow` list the bare `none` keyword is
+     * invalid-at-computed-value-time and poisons the whole list — including the layer
+     * `focus-visible:ring-2` writes into. Chromium-verified 2026-09-09: as shipped, every default
+     * `<Button>` had NO visible focus ring at rest. The token now holds `0 0 #0000`, a VALID
+     * shadow that paints nothing, so archetype A's intent is byte-for-byte preserved while the
+     * composite stays valid.
+     *
+     * BOTH HALVES ARE LOAD-BEARING. `resolveShadow()` returns the RAW declaration text, so a
+     * one-sided "resolves to something that paints nothing at rest" wording is ALSO satisfied by
+     * the literal keyword — i.e. by exactly the reverted state this pin exists to prevent, and that
+     * revert silently takes the focus-ring fix with it. Hence: transparent-and-zero-length AND not
+     * the bare keyword. Accepting "the keyword OR a transparent list" would whitelist the broken
+     * state and leave N1 with no unit guard at all.
+     *
+     * Test 11's `@utility card` pin on `var(--shadow-sm)` is unaffected and stays byte-unchanged —
+     * it matches source text, not the resolved value. */
     for (const theme of ['light', 'dark'] as const) {
       const value = resolveShadow(theme, '--shadow-sm');
-      expect(value, `Req 3 — [${theme}] --shadow-sm is "${value}", expected "none" (archetype A: the page tone carries depth, the resting shadow goes away)`).toBe('none');
+      expect(
+        value,
+        `Req 3 / N1 — [${theme}] --shadow-sm is the bare keyword "none". That is INVALID inside ` +
+          "Tailwind's composite `box-shadow` list and annihilates every default `<Button>`'s " +
+          'focus-visible ring (Chromium-verified 2026-09-09). Use a valid transparent ' +
+          'zero-length shadow such as `0 0 #0000`. Reverting is a decision, not a cleanup.',
+      ).not.toBe('none');
+      expect(
+        value,
+        `Req 3 / N1 — [${theme}] --shadow-sm is "${value}", which is not a transparent zero-length ` +
+          'shadow. Archetype A: the page tone carries the depth and nothing paints at rest, so the ' +
+          'offsets, blur and spread must all be zero and the colour fully transparent.',
+      ).toMatch(/^0\s+0(\s+0)?(\s+0)?\s+(#0000|#00000000|rgba?\(\s*0[\s,]+0[\s,]+0[\s,/]+0\s*\)|transparent)$/i);
     }
   });
 
@@ -579,7 +667,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // `--color-bg-card-hover` is now the minted `--warm-250`, so pointing the legacy `.card` hover
     // back at it would be a ΔL* 15.6274 wash from the white card (was 10.4) — a HEAVIER pill-weight
     // jump, same rejection. `--color-bg-hover` (warm-50) gives ΔL* 2.35, the "S3 press" look chosen.
-    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must NOT use var(--color-bg-card-hover); after D-01 that is warm-200 and after 88.3-18 the minted warm-250 — a pill-weight ΔL* 15.63 wash from the card').not.toMatch(/background-color:\s*var\(--color-bg-card-hover\)/);
+    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must NOT use var(--color-bg-muted); after D-01 that is warm-200 and after 88.3-18 the minted warm-250 — a pill-weight ΔL* 15.63 wash from the card').not.toMatch(/background-color:\s*var\(--color-bg-muted\)/);
   });
 
   // ===================================================================================
@@ -613,7 +701,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // it: GroupGamesList.js:372, ManageMembers.js:342, CalendarMonthView.js:228.
     expectRatio('light', '--color-accent-text', '--color-bg-card', 4.5, 'Req 4 / §5.11 row 11');
     expectRatio('light', '--color-accent-text', '--color-bg-page', 4.5, 'Req 4 / §5.11 row 12');
-    expectRatio('light', '--color-accent-text', '--color-bg-card-hover', 4.5, 'Req 4 / §5.11 row 13');
+    expectRatio('light', '--color-accent-text', '--color-bg-muted', 4.5, 'Req 4 / §5.11 row 13');
     expectRatio('light', '--color-accent-text', '--color-bg-sunken', 4.5, 'Req 4 / §5.11 row 14');
     // The token is unreachable from a class string without its `@theme inline` key, so the
     // key is part of the requirement, not a detail. `--color-content-accent` is the name
@@ -831,13 +919,13 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // warm-600: muted 4.1460 -> 4.3725 (still under the 4.5 ceiling this row asserts) and the
     // prescribed replacement secondary 5.0392 -> 6.9620 (better). Both figures below are amended.
     //
-    // THE PHASE RULE, and it is the thing to read here: on a `bg-surface-card-hover`
+    // THE PHASE RULE, and it is the thing to read here: on a `bg-surface-muted`
     // (warm-250) pill / badge / chip, use `text-content-secondary` (6.9620 ✓), NEVER
     // `text-content-muted` (4.3725 ✗). Carried to `.planning/deferred/phase-88.6.md` with
     // its site count. If a future phase closes it, this test reds — close the deferral in
     // the same commit rather than deleting the assertion.
-    expectRatioBelow('light', '--color-text-muted', '--color-bg-card-hover', 4.5, 'Req 8 / §5.9.1 (disclosed residual)');
-    expectRatio('light', '--color-text-secondary', '--color-bg-card-hover', 4.5, 'Req 8 / §5.9.1 (the prescribed replacement)');
+    expectRatioBelow('light', '--color-text-muted', '--color-bg-muted', 4.5, 'Req 8 / §5.9.1 (disclosed residual)');
+    expectRatio('light', '--color-text-secondary', '--color-bg-muted', 4.5, 'Req 8 / §5.9.1 (the prescribed replacement)');
   });
 
   // ===================================================================================
@@ -850,6 +938,54 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // asserted here rather than left to a gate that runs ten minutes later.
     expectRatio('light', '--color-btn-primary-text', '--color-btn-primary-bg', 4.5, '§5.11 row 47');
     expectRatio('light', '--color-text-primary', '--color-bg-elevated', 4.5, '§5.11 row 49');
+  });
+
+  it('31b. D-14a (88.6-05) — the primary-button HOVER label clears 4.5:1 in BOTH themes', () => {
+    /* THE SUITE'S FIRST `--color-btn-primary-hover` PINS, in either theme. Verified 2026-09-15:
+     * before this row, no hover pin existed anywhere — test 31 above pins the RESTING
+     * `--color-btn-primary-bg` and stays byte-unchanged. The LIGHT hover (`purple-700`) has shipped
+     * and passed all along and is pinned here for the first time too, because "unguarded and
+     * currently passing" is how the dark one got to ship an AA failure.
+     *
+     * DARK was the defect: `purple-500 #6b7fa3` measures **4.0464** with a white label — an AA
+     * failure on every hovered dark primary button in the app. Owner ruling 2026-09-14 (arm β+)
+     * moved it to the minted `--purple-550 #5f7496`, measured **4.7456**. Light `purple-700` on
+     * white measures 7.7948. Both re-measured 2026-09-15 with `src/lib/wcag.ts`. */
+    expectRatio('light', '--color-btn-primary-text', '--color-btn-primary-hover', 4.5, 'D-14a / §5.11 row 47-hover');
+    expectRatio('dark', '--color-btn-primary-text', '--color-btn-primary-hover', 4.5, 'D-14a / §5.11 row 47-hover');
+  });
+
+  it('31c. D-14a (88.6-05) — the dark hover is a real step AND still brightens away from the card', () => {
+    /* TWO floors, both narrower than they look, and one deliberately-NOT-taken third.
+     *
+     * (1) NOT A NO-OP. A byte-EQUALITY guard, in the shape test 32 already uses: the dark hover
+     *     must not be tuned back into the resting fill. Byte-inequality alone does NOT
+     *     discriminate good values from bad — `purple-800` would satisfy a naive ring pin at
+     *     1.4467 while collapsing fill-vs-card to 1.2281 — so this is a floor against a no-op, not
+     *     a substitute for the ruling.
+     *
+     * (2) FILL-VS-CARD >= 2.40, NOT 3.0, and that is a recorded correction rather than an
+     *     oversight. CONTEXT D-14a's parenthetical "verify fill-vs-card >= 3:1 too" is corrected in
+     *     UI-SPEC §13 item 3 and knowingly not honoured: the shipped RESTING `purple-600` already
+     *     measures 2.4461 on the dark card, so a 3:1 rule would red an untouched shipped state this
+     *     phase has no mandate to change, and WCAG 1.4.11 exempts a filled control's boundary where
+     *     the label identifies it. 2.40 is today's shipped resting separation, so this floor reds an
+     *     INVERSION — a hover that sinks TOWARD the card, which is what `purple-700` would have done
+     *     (2.4461 -> 1.7767) — without redding anything shipped. The ruled `purple-550` measures
+     *     **2.9182**.
+     *
+     * (3) NO ring-vs-fill PIN, and it is not an omission. `resolveShadow()` returns RAW declaration
+     *     text and `resolve()` THROWS on a non-colour terminus, so an `expectRatio` over
+     *     `--shadow-md` cannot be written. The ring number (1.6425 at purple-550, 1.0000 at
+     *     purple-700 — it IS `--shadow-md`'s ring) lives in the `DECISION Phase 88.6-05 (D-14a)`
+     *     marker in `globals.css`. */
+    expect(
+      resolve('dark', '--color-btn-primary-hover'),
+      'D-14a — the dark primary hover must not be byte-equal to the dark resting fill; a hover ' +
+        'tuned into a no-op passes every ratio floor above while doing nothing on screen.',
+    ).not.toBe(resolve('dark', '--color-btn-primary-bg'));
+
+    expectRatio('dark', '--color-btn-primary-hover', '--color-bg-card', 2.4, 'D-14a / fill-vs-card, floor 2.40 NOT 3.0');
   });
 
   // ===================================================================================
@@ -904,10 +1040,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // in `globals.css`, and the closure is recorded in both and ONLY in both. Do not add a line to
     // `phase-88.6.md` and do not write a pointer to one here.
     const fill = resolve('light', '--color-btn-secondary-bg');
-    const cardHover = resolve('light', '--color-bg-card-hover');
-    expect(fill, `88.3-18 ruling 1c — the CLOSED third ground: light --color-btn-secondary-bg (${fill}) must NO LONGER be byte-equal to --color-bg-card-hover (${cardHover}); the 88.3-14 disclosure is dissolved, not deleted`).not.toBe(cardHover);
+    const cardHover = resolve('light', '--color-bg-muted');
+    expect(fill, `88.3-18 ruling 1c — the CLOSED third ground: light --color-btn-secondary-bg (${fill}) must NO LONGER be byte-equal to --color-bg-muted (${cardHover}); the 88.3-14 disclosure is dissolved, not deleted`).not.toBe(cardHover);
     // The fill must actually carry that ground now, not merely differ from it.
-    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-card-hover', 1.05, '88.3-18 ruling 1c / the fill now reads on the third ground (1.3280)');
+    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-muted', 1.05, '88.3-18 ruling 1c / the fill now reads on the third ground (1.3280)');
   });
 
   it('34. 88.3-14 / ruling 2 — the fill sits inside the shipped fill-vs-ground band', () => {
@@ -1060,7 +1196,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
 
   it('43. 88.3-18 / ruling 1c — `--warm-250` is MINTED, carries card-hover, and sits strictly between warm-200 and warm-300', () => {
     // The mint half. `--warm-250` `#dbd1c7` is the 70% point on warm-200 -> warm-300 and its SOLE
-    // consumer is `--color-bg-card-hover`. The L* ordering is asserted rather than the hex, so a
+    // consumer is `--color-bg-muted`. The L* ordering is asserted rather than the hex, so a
     // future re-tint inside the feasible window (t ∈ [0.60, 0.92]) does not churn this row — but a
     // collapse back onto either neighbour does red it. warm-200 IS the page (byte-equality, a real
     // render defect at GroupLibrary.js:149-153 and CalendarMonthView.js:224-226); warm-300 drops
@@ -1068,8 +1204,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const mint = resolve('light', '--warm-250');
     expect(mint, '88.3-18 ruling 1c — `--warm-250` must be declared in the palette').toMatch(/^#[0-9a-f]{6}$/i);
     expect(
-      resolve('light', '--color-bg-card-hover'),
-      '88.3-18 ruling 1c — light --color-bg-card-hover must resolve THROUGH the minted --warm-250',
+      resolve('light', '--color-bg-muted'),
+      '88.3-18 ruling 1c — light --color-bg-muted must resolve THROUGH the minted --warm-250',
     ).toBe(mint);
     const l250 = lStarOf(mint, '--warm-250');
     const l200 = lStarOf(resolve('light', '--warm-200'), '--warm-200');
@@ -1158,8 +1294,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // survived every gate. Both files are read.
     //
     // ⚠️ THE NEGATIVE ASSERTIONS ARE SCOPED TO THE BUTTON'S SLICE ON PURPOSE — a file-level version
-    // reds on day one. `EventDayModal.js:239` already carries
-    // `backgroundColor: groupBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'` — the
+    // reds on day one. `EventDayModal.js:427` already carries
+    // `backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'` — the
+    // (RE-DERIVED plan 88.6-41: the cite read `:239` and the gate was spelled `groupBgImage`.
+    // W49 moved that wash onto the VALIDATED flag and the line drifted. Same wash, same
+    // rationale, same out-of-scope-ness for this button's slice — only the record was stale.)
     // group-background-image wash on the event row, verified 2026-08-28, unrelated to this button
     // and out of scope by construction. A file-wide "no backgroundColor literal" pin would fail
     // against that line, and the predictable reaction is to weaken or delete the pin — leaving the
@@ -1172,15 +1311,40 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       const src = fs.readFileSync(file, 'utf8');
 
       // Cut the button's own JSX out first: find the title, walk BACK to the nearest preceding
-      // `<button`, walk FORWARD to the next `</button>`.
+      // button OPEN tag, walk FORWARD to the next button CLOSE tag.
+      //
+      // ⚠ REWRITTEN SPELLING-AGNOSTIC, Phase 88.6-05 (D23/D17 collapsed into one upstream fix).
+      // Both of these sites migrate to the `<Button>` primitive in WAVE 7 — `gameDetail/page.js` by
+      // plan 18 and `EventDayModal.js` by plan 27, the SAME wave. After plan 27, `EventDayModal.js`
+      // contains ZERO `</button>` (it has 2 today), so a `</button>`-only forward locator returns
+      // -1: a hard LOCATOR failure that looks like a treatment failure. This plan (wave 3) is the
+      // only `tokenContrast.test.ts` editor in its wave and already owns the `globals.css` 88.3-18
+      // marker this amends, so hosting the rewrite here makes all four wave-7 orderings safe with
+      // NO `depends_on` edit and NO wave move for plan 18 or plan 27.
       const titleIdx = src.indexOf('title="Share Game QR"');
       expect(titleIdx, `88.3-18 — no \`title="Share Game QR"\` found in ${rel}; the LOCATOR is broken, not the treatment. This must fail loudly rather than pass on an empty slice`).toBeGreaterThan(-1);
-      const openIdx = src.lastIndexOf('<button', titleIdx);
-      expect(openIdx, `88.3-18 — no \`<button\` precedes \`title="Share Game QR"\` in ${rel}; LOCATOR failure`).toBeGreaterThan(-1);
-      const closeIdx = src.indexOf('</button>', titleIdx);
-      expect(closeIdx, `88.3-18 — no \`</button>\` follows \`title="Share Game QR"\` in ${rel}; LOCATOR failure`).toBeGreaterThan(-1);
+
+      /** The NEAREST preceding open tag of either spelling. */
+      const openIdx = Math.max(src.lastIndexOf('<button', titleIdx), src.lastIndexOf('<Button', titleIdx));
+      expect(openIdx, `88.3-18 — no \`<button\` or \`<Button\` precedes \`title="Share Game QR"\` in ${rel}; LOCATOR failure (both spellings were tried)`).toBeGreaterThan(-1);
+
+      /** The NEAREST following close tag of either spelling — nearest NON-MISSING of the two. */
+      const closeCandidates = [src.indexOf('</button>', titleIdx), src.indexOf('</Button>', titleIdx)].filter((i) => i > -1);
+      expect(closeCandidates.length, `88.3-18 — no \`</button>\` or \`</Button>\` follows \`title="Share Game QR"\` in ${rel}; LOCATOR failure (both spellings were tried)`).toBeGreaterThan(0);
+      const closeIdx = Math.min(...closeCandidates);
+
       const rawSlice = src.slice(openIdx, closeIdx);
       expect(rawSlice.length, `88.3-18 — the Share Game QR button slice in ${rel} came back empty; a zero-length slice would make every assertion below pass vacuously`).toBeGreaterThan(50);
+
+      // ANTI-BALLOON GUARD. A locator that overshoots — picking up a preceding sibling's open tag,
+      // or running past this button's close — must red as a LOCATOR failure rather than pass
+      // loosely on a slice that happens to contain the right strings somewhere. Counted on the RAW
+      // slice minus its own opening tag, so the button's own `<Button`/`<button` is not a second.
+      const inner = rawSlice.slice(1);
+      const secondOpen = (inner.match(/<[Bb]utton[\s>]/g) ?? []).length;
+      expect(secondOpen, `88.3-18 — the Share Game QR slice in ${rel} contains ${secondOpen} further button open tag(s); the locator ballooned past this control`).toBe(0);
+      const titleAttrs = (rawSlice.match(/\btitle=/g) ?? []).length;
+      expect(titleAttrs, `88.3-18 — the Share Game QR slice in ${rel} contains ${titleAttrs} \`title=\` attributes, expected exactly 1; the locator ballooned past this control`).toBe(1);
 
       // ⚠️ COMMENTS ARE STRIPPED, for the same reason test 46 strips them — and this one is not
       // hypothetical, it RED on first run. The `DECISION Phase 88.3-18` marker that sits INSIDE
@@ -1191,17 +1355,55 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       // `/* … */` attribute comments are removed; the ASSERTIONS then read only rendered code.
       const slice = rawSlice.replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
 
-      expect(slice, `88.3-18 — the Share Game QR button in ${rel} must carry \`btn btn-accent\` (owner: "Lets make it amber, like the create event button")`).toContain('btn btn-accent');
+      /* TREATMENT — legacy XOR primitive, Phase 88.6-05. Identical semantics before and after the
+         wave-7 migration: exactly ONE of the two spellings of "this control wears the accent
+         treatment" must be present. The legacy spelling is the `btn btn-accent` class string; the
+         primitive spelling is `<Button variant="accent">` (plan 06 adds the `accent` variant). */
+      const legacy = slice.includes('btn btn-accent');
+      const primitive = /<Button\b[\s\S]*?variant=(?:"accent"|'accent'|\{['"]accent['"]\})/.test(slice);
+      expect(
+        Number(legacy) + Number(primitive),
+        `88.3-18 — the Share Game QR button in ${rel} must carry EXACTLY ONE of the legacy ` +
+          '`btn btn-accent` class string or the primitive `<Button variant="accent">` spelling ' +
+          `(owner: "Lets make it amber, like the create event button"). Found legacy=${legacy}, ` +
+          `primitive=${primitive}. Neither means the treatment was dropped; both means the ` +
+          'migration left the class string behind.',
+      ).toBe(1);
+
       expect(slice, `88.3-18 — the Share Game QR button in ${rel} must NOT carry \`btn-secondary\`; reverting it is a decision, not a cleanup`).not.toContain('btn-secondary');
       expect(slice, `88.3-18 — the Share Game QR button in ${rel} must NOT carry an inline \`backgroundColor\`; the amber lives ONCE in the \`.btn-accent\` rule`).not.toContain('backgroundColor');
       expect(slice, `88.3-18 — the Share Game QR button in ${rel} must NOT name an amber literal inline`).not.toContain('amber');
-      expect(slice, `88.3-18 — the Share Game QR button in ${rel} must carry the house focus-visible ring string, like the Create-Event button it copies`).toContain('focus-visible:ring-focus-ring');
+
+      /* RING — conditional on the spelling, Phase 88.6-05. On the LEGACY spelling the per-site
+         house string is required, exactly as it always was. On the PRIMITIVE spelling it must be
+         ABSENT: the ring comes from `Button.tsx`'s cva base (UI-SPEC §12 A-2, ARM A, owner ruling
+         2026-09-15), so a per-site string there would be a second copy of one decision. Where that
+         coverage moved: plan 06's `Button` base/accent assertions, plus
+         `src/app/cascadeOrder.test.ts`'s exactly-one-ring gate. Nothing is dropped silently.
+         Correct under BOTH A-2 arms — under ARM B the cva utilities are deleted and a global
+         `.btn:focus-visible` rule owns the ring, which is likewise not in this slice. */
+      if (legacy) {
+        expect(slice, `88.3-18 — the Share Game QR button in ${rel} still wears the legacy \`btn btn-accent\` string, so it must carry the house focus-visible ring string, like the Create-Event button it copies`).toContain('focus-visible:ring-focus-ring');
+      } else {
+        expect(slice, `88.3-18 / A-2 — the Share Game QR button in ${rel} is now a \`<Button>\`, so it must NOT carry a per-site \`focus-visible:ring\` string; the ring lives once in \`Button.tsx\`'s cva base and a second copy paints nothing extra but re-splits the decision`).not.toContain('focus-visible:ring');
+      }
+
       expect(slice, `88.3-18 — the Share Game QR button's decorative icon in ${rel} must be hidden from AT; the visible label already names the control`).toContain('aria-hidden="true"');
 
-      // File-level: exactly one `btn btn-accent` per file, so a THIRD untreated copy of this
-      // control cannot appear alongside the treated one.
-      const count = (src.match(/btn btn-accent/g) ?? []).length;
-      expect(count, `88.3-18 — expected exactly ONE \`btn btn-accent\` in ${rel}, found ${count}. A second copy of this control must take the same treatment, not a new one`).toBe(1);
+      // File-level: exactly one treated copy per file — the SUM of both spellings, Phase 88.6-05 —
+      // so a THIRD untreated copy of this control cannot appear alongside the treated one, and the
+      // count survives the wave-7 migration unchanged.
+      const legacyCount = (src.match(/btn btn-accent/g) ?? []).length;
+      // Counted on the `variant="accent"` PROP alone, not on `<Button …variant="accent"`, and that
+      // is measured rather than stylistic: at both of these sites a multi-line `DECISION` comment
+      // sits between the opening tag and the prop, and that comment contains `>` characters, so a
+      // `<Button\b[^>]*variant=` form silently counts ZERO on a correctly migrated file — which is
+      // exactly how it behaved when this rewrite was first run against a simulated wave-7 tree. An
+      // unbounded `[\s\S]*?` bridge would instead let one `<Button` reach a LATER sibling's prop.
+      // In these two files an accent variant IS this control.
+      const primitiveCount = (src.match(/variant=(?:"accent"|'accent'|\{\s*['"]accent['"]\s*\})/g) ?? []).length;
+      const count = legacyCount + primitiveCount;
+      expect(count, `88.3-18 — expected exactly ONE accent-treated Share Game QR control in ${rel} counting BOTH spellings, found ${count} (legacy \`btn btn-accent\` x${legacyCount}, primitive \`<Button variant="accent">\` x${primitiveCount}). A second copy of this control must take the same treatment, not a new one`).toBe(1);
     }
   });
 
@@ -1226,7 +1428,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(link, `88.3-18 — light --color-text-link (${link}) must NOT be byte-equal to --color-text-link-hover (${hover}); collapsing them leaves links with no visible hover state. If a link re-colour reds this row, mint a step instead of taking purple-700`).not.toBe(hover);
   });
 
-  it('49. 88.3-18 — ⚠ DISCLOSED FAILURE: light --color-text-link is BELOW 4.5:1 on card-hover (page pairing PROMOTED to test 48 by owner ruling c)', () => {
+  it('49. 88.6-09 (D-16) — ZERO-CONSUMER ROW: the forbidden ink set is MEASURED below 4.5:1 on the muted ground, and `src/app/groundInk.test.ts` proves it has no consumers (page pairing PROMOTED to test 48 by owner ruling c)', () => {
     // OWNER RULED 2026-08-28, option (c) — mint #506484 (`--purple-650`). The PAGE row below is
     // now GREEN (4.5995) and lives in test 48. What remains here is the PRE-EXISTING card-hover
     // residual (3.7628 -> 3.9909), knowingly left open by ruling (c) over option (d) `#495b79`
@@ -1247,6 +1449,38 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // `GroupLibrary.js:265` and `:338` (inside the `bg-surface-page` containers at `:261`/`:326`)
     // and `GroupGamesList.js:432` (inside `:428`); live on card-hover at `friends/page.js:748`.
     //
+    // AMENDED Phase 88.6-09 (D-16), 2026-09-15 — the sentence above stays as HISTORY; this is
+    // what replaced it. That REACH count was HAND-VERIFIED once and never re-checked, which is
+    // exactly the "prose instead of a gate" shape D-16 exists to end. The evidence is now
+    // `src/app/groundInk.test.ts`: a ground-aware ancestor-stack scan that resolves every
+    // resting ink class against the ground its nearest ancestor sets, so the ink-on-a-child /
+    // ground-on-an-ancestor pairings no line-based read can see are machine-checked on every
+    // run. It MEASURED 18 forbidden-ink sites on the muted ground (14 real across 8 files, 4
+    // structurally impossible and excluded by name) — not the 6 the D-16 census listed, and
+    // `friends/page.js:748` above is one of them. That suite carries the zero-consumer half of
+    // this row as an exact-count roster that must shrink to empty; this row keeps the RATIO
+    // half. Do not delete either: a measurement with no gate goes stale, and a gate with no
+    // measurement cannot say why it exists.
+    //
+    // AMENDED Phase 88.6-19 (D-16), 2026-09-16 — APPENDED, and the two sentences above are left
+    // exactly as they stand because they are the record of what was true when they were written.
+    // `friends/page.js:748` — the site BOTH paragraphs above name as this row's hand-verified
+    // live example — IS NOW FIXED. It was the tab-count pill's ACTIVE arm, a `<span>` carrying
+    // `text-content-link` on `bg-surface-muted`; it took `text-content-secondary` (6.9620),
+    // which its own INACTIVE arm already used. It was never a link, so the example this row
+    // reached for was, on inspection, an instance of the token being applied to the wrong kind
+    // of thing rather than of a link failing on a ground. Its `groundInk.test.ts` entries — the
+    // class-rule roster AND the test-3 by-name row — were both closed in the same commit.
+    // THIS ROW IS UNCHANGED AND STAYS RED-BY-DESIGN: the RATIO it measures is a property of the
+    // TOKEN PAIR, not of any consumer, and it is exactly as far below 4.5 as it was. Do not read
+    // "the example is fixed" as "the row can go".
+    //
+    // THE TOKEN IS NOT THE FIX, and this is recorded so it is not re-proposed a third time.
+    // `--color-text-link` keeps its dL* 7.03 step to `--color-text-link-hover`, and MEASURED:
+    // no point on the purple-650 -> purple-700 ramp clears 4.5 on the muted fill while holding
+    // dL* >= 4. Re-pointing the token is not an available fix. The fix is at the SITES, which
+    // is why the roster in `groundInk.test.ts` is per-file and per-count.
+    //
     // NOT CLOSED IN PLAN 18, deliberately: every fix re-colours a brand token across 61 sites, and
     // the obvious one (purple-700) is byte-equal to `--color-text-link-hover` — the exact collapse
     // this phase already rejected for amber-900. It is an OWNER FORK with four measured options in
@@ -1256,7 +1490,29 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // WHEN THE OWNER RULES AND THE LINK MOVES, THIS ROW REDS. That is the intended behaviour: close
     // the deferral and promote these two pairings into test 48 in the SAME commit, rather than
     // deleting the assertion.
-    expectRatioBelow('light', '--color-text-link', '--color-bg-card-hover', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.9909 after ruling c; 3.7628 before) — Phase 88.6 owns it');
+    expectRatioBelow('light', '--color-text-link', '--color-bg-muted', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.9909 after ruling c; 3.7628 before) — Phase 88.6 owns it');
+
+    // The zero-consumer half is enforced in `src/app/groundInk.test.ts` — named by path, never
+    // imported: a test file importing another test file re-registers its suites here.
+    //
+    // What IS shared is the SET, from `src/test-utils/inkRules.ts`, and this loop is what keeps
+    // the two ends honest: every member of the set `groundInk.test.ts` enforces is re-measured
+    // here against the same ground and must still be below AA. If a token is re-pointed and
+    // clears 4.5, this row reds and the pair must be retired together — the set cannot silently
+    // come to mean something different from what this row describes.
+    expect(FORBIDDEN_INK_ON_MUTED.map((entry) => entry.utility)).toEqual([
+      'text-content-muted',
+      'text-content-link',
+    ]);
+    for (const entry of FORBIDDEN_INK_ON_MUTED) {
+      expectRatioBelow(
+        'light',
+        entry.cssVar,
+        MUTED_GROUND_TOKEN,
+        4.5,
+        `88.6-09 / D-16 — \`${entry.utility}\` is in the forbidden set groundInk.test.ts enforces, so it must still measure below AA on the muted ground`,
+      );
+    }
   });
 
   it('50. 88.3-cr3 M3 — EVERY light text / status-text token clears 4.5:1 on the PAGE ground (iterated, not enumerated)', () => {
@@ -1305,7 +1561,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   // ===================================================================================
 
   it('51. 88.5 — the count pill clears its floors in BOTH themes, at BOTH use sites', () => {
-    // Ink on fill (4.5, AA text). The digits are text, small and semibold.
+    // Ink on fill (4.5, AA text). The digits are text, small and BOLD — 700 since plan
+    // 88.6-28 settled 88.5's declared weight exception (was 600). Re-measured at that commit:
+    // every ratio below is byte-unchanged, because a font-weight change moves no contrast
+    // ratio. Recorded because the sentence used to say "semibold" and a stale one here would
+    // read as a pin on something this file cannot see.
     expectRatio('light', '--color-btn-accent-text', '--color-btn-accent-bg', 4.5, '88.5 Req 2 / LIGHT arm — white on amber-700 (5.0216)');
     expectRatio('dark', '--warm-900', '--amber-500', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-500 (8.3660). White here is 2.1477, an AA failure: the ink MUST fork with the fill');
 
@@ -1448,5 +1708,75 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(ghostLine, '88.8 HIGH-A — LOCATOR failure: no `ghost: \'…\'` variant string found in Button.tsx').not.toBeNull();
     expect(ghostLine![1], '88.8 HIGH-A — the ghost variant must carry `aria-disabled:text-content-muted`').toContain('aria-disabled:text-content-muted');
     expect(ghostLine![1], '88.8 HIGH-A — the ghost variant must NOT carry an `aria-disabled:opacity-*` utility').not.toMatch(/aria-disabled:opacity/);
+  });
+});
+
+// =====================================================================================
+// Phase 88.6-02 (D-15) — leg (b) of the old-name completeness census.
+// =====================================================================================
+
+describe('Phase 88.6-02 (D-15) — the retired card-hover property names are ABSENT at the declaration layer', () => {
+  // WHY THIS LEG EXISTS, and why it is HERE rather than in a class-token scan: a comment-blind
+  // scan for the CLASS token (`bg-surface-card-hover`, leg (a) in `surfaceHoverSweep.test.ts`)
+  // cannot see a surviving CSS custom-property DECLARATION. `globals.css` is not a JS/TS source
+  // file, so `sourceFiles()` never reaches it at all. This file already parses `globals.css` by
+  // brace depth and resolves `var()` chains, so it is the one place the declaration layer is
+  // observable.
+  //
+  // AND WHY IT ASSERTS A THROW rather than an empty string: `resolve()` THROWS
+  // (`TokenContrastParseError`) on a property declared in none of the four blocks, and never
+  // returns `''` — see its docblock above (threat T-88.3-15). An `expect(resolve(...)).toBe('')`
+  // would be satisfiable by a resolver bug; `toThrow` proves ABSENCE.
+  //
+  // The most dangerous survivor this catches is the shadcn bridge `--muted`: left pointing at the
+  // retired `--color-bg-card-hover` it becomes invalid-at-computed-value-time, `--color-muted`
+  // resolves to nothing, and there is NO build error and NO other failing test (T-88.6-05).
+  // THE TWO RETIRED NAMES LIVE IN DIFFERENT LAYERS, and asserting both through `resolve()` would
+  // make half this leg VACUOUS — it was written that way first and the positive control caught it:
+  //   * `--color-bg-card-hover` was a RUNTIME property, declared in light `:root` and `.dark`.
+  //     `resolve()` reaches those, so `toThrow` here is a real assertion — before the rename it
+  //     returned `#dbd1c7` / the dark purple and this test would have FAILED.
+  //   * `--color-surface-card-hover` was an `@theme inline` KEY. `lookup()` reads four blocks and
+  //     `@theme inline` is NOT one of them, so `resolve()` threw on that name BEFORE the rename
+  //     too. Asserting a throw for it would have been green against the un-renamed tree — a gate
+  //     that cannot go red. It is therefore checked in the theme block directly, where its
+  //     presence/absence is the real fact.
+  const themeInlineBlock = (): string =>
+    braceBlock(uniqueMatch(/^@theme inline[ \t]*\{/gm, '@theme inline {'), 'theme inline');
+
+  for (const theme of ['light', 'dark'] as const) {
+    it(`${theme}: the runtime property \`--color-bg-card-hover\` resolves as ABSENT`, () => {
+      expect(
+        () => resolve(theme, '--color-bg-card-hover'),
+        `88.6-02 (D-15) — \`--color-bg-card-hover\` still resolves in ${theme}; the rename left a declaration behind`,
+      ).toThrow(TokenContrastParseError);
+    });
+  }
+
+  it('the `@theme inline` key `--color-surface-card-hover` is ABSENT from the theme block', () => {
+    expect(
+      declIn(themeInlineBlock(), '--color-surface-card-hover'),
+      '88.6-02 (D-15) — the retired `@theme inline` key survives; Tailwind would still emit `bg-surface-card-hover`',
+    ).toBeNull();
+  });
+
+  it('the REPLACEMENT names are present in their OWN layers — leg (b) is not passing by a broken resolver', () => {
+    // A negative-only leg stays green if the resolver breaks outright (a parse regression, a moved
+    // block, a renamed file). These are the control: each replacement is asserted in the layer it
+    // actually lives in, so the four negatives above mean "absent" and not "resolver broken".
+    expect(resolve('light', '--color-bg-muted')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(resolve('dark', '--color-bg-muted')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(declIn(themeInlineBlock(), '--color-surface-muted')).toBe('var(--color-bg-muted)');
+  });
+
+  it('the shadcn bridge `--muted` still resolves — the silent-failure case T-88.6-05 names', () => {
+    // `--muted` is the one line whose omission fails SILENTLY: left pointing at the retired name it
+    // becomes invalid-at-computed-value-time, with NO build error and NO other failing test.
+    // `resolve()` reaches it because it is declared in the bridge `:root`; its Tailwind side
+    // `--color-muted` is an `@theme inline` key, so that half is checked in the theme block and
+    // its `var()` target is followed by hand.
+    expect(resolve('light', '--muted')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(resolve('dark', '--muted')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(declIn(themeInlineBlock(), '--color-muted')).toBe('var(--muted)');
   });
 });

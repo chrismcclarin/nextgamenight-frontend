@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTimezone } from '../components/TimezoneProvider';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { Heading } from '../../components/ui/Heading';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
 
@@ -153,7 +154,26 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
 
   return (
     <div className="card p-3 md:p-6 mb-4">
-      <h3 className="font-medium text-content-primary">Upcoming Events</h3>
+      {/* DECISION Phase 88.6-28 (D-04/§4.4 size-less-headings row, §4.5): this card title moves
+          onto the `Heading` primitive at `level={3} size="body"` — 16px, the size-less-heading
+          rung — and takes its 700 from the primitive's cva base.
+
+          THE WEIGHT IS WHY THIS SITE IS RECORDED SEPARATELY: at HEAD it carried `font-medium`,
+          and it was the ONLY heading in the entire tree at weight 500. It is the single site that
+          makes `typeScaleTouchedSurfaces.test.ts`'s "raw headings need a weight edit" population
+          read "N-1 font-semibold and 1 font-medium" rather than being uniformly 600. That
+          sentence in the gate's own assertion message is updated in the same commit.
+
+          LEVEL PRESERVED (P4): it was an `<h3>` and it renders an `<h3>`. `EXPECTED_LEVELS`'
+          `{ 3: 1 }` entry for this file is byte-unchanged, which is the assertion that proves it.
+          `size` is passed EXPLICITLY rather than derived — the primitive would derive `heading`
+          (20) from level 3, and §4.4 routes a SIZE-LESS heading to Body 16 instead, so inheriting
+          here would be a silent +4px. `font-medium` is DELETED rather than carried: the base is
+          `font-bold` and a 500 utility beside it would lose to the cascade anyway while reading
+          like an intentional override. */}
+      <Heading level={3} size="body" className="text-content-primary">
+        Upcoming Events
+      </Heading>
 
       {loading ? (
         /* 88-33 Task 1 (M1's in-page-spinner class, walk row "In-page loading states name
@@ -242,6 +262,25 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                 onClick={() => handleEventClick(event)}
                 className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
               >
+                {/* DECISION Phase 88.6-28 (R2 / UI-SPEC §4.3): every span in this row STAYS at
+                    Label 14 (`text-sm`), chosen OVER promoting `{gameName}` to Body 16 under
+                    §4.3's "the ONE primary string per row or card" clause.
+
+                    ON THE MERITS a row title at 16 over its metadata at 14 is the hierarchy §4.3
+                    is written to produce — that reading of the clause is real and is why this is
+                    recorded rather than silently skipped. THE RECORD AND THE GEOMETRY BOTH GO THE
+                    OTHER WAY here, and for a CONSEQUENCE reason rather than a bookkeeping one:
+                    this is not a title line over a metadata line, it is ONE inline run —
+                    `{gameName} · {dateTime} · {groupName}` plus the Guest pill — inside a single
+                    wrapping `<button>`. Promoting one span in that run sets a 16px word beside
+                    14px words on the SAME baseline at 375px, which is a visible delta with no row
+                    in UI-SPEC §1.2's closed sanctioned-delta list (V-4's authority is "the R2
+                    sweep, §4.3", and §4.3's own tie-break is "primary content, not a caption" —
+                    a content-vs-caption distinction, not an instruction to split an inline run).
+                    Every span here is §4.3's metadata/timestamp case.
+
+                    So: no size change in this row, and the file's rung roster entry names only
+                    the heading. Promoting the game name is a look decision and wants a V-row. */}
                 <span className="text-sm text-content-secondary">{gameName}</span>
                 <span className="text-sm text-content-muted"> · </span>
                 <span className="text-sm text-content-secondary">{dateTime}</span>
@@ -252,8 +291,20 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                   </>
                 )}
                 {isGuestEvent && (
+                  /* DECISION Phase 88.6-28 (D-01, UI-SPEC §4.2 "12px is the floor", V-7): the
+                     Guest pill folds UP `text-[10px]` -> `text-xs` (12). An arbitrary value is
+                     off the closed rung set by definition, and 10px is under the app's floor.
+                     Badge labels are an enumerated Caption role, so 12 is this pill's rung and
+                     it goes no further up.
+
+                     V-7 REFLOW: D-01's screenshot gate is scoped to the DENSE GRIDS — the month
+                     tile and the week strip, both fixed-height boxes. This pill is not one: it
+                     is an `inline-flex` with `px-1.5 py-0.5` inside a wrapping `<button>` row
+                     that has no height constraint (`min-h-11 md:min-h-0` is a FLOOR), so the
+                     +2px grows the pill and, at worst, wraps it to the row's next line the way
+                     a long game name already can. No fixed box is crossed. */
                   <span
-                    className="inline-flex items-center px-1.5 py-0.5 ml-2 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                    className="inline-flex items-center px-1.5 py-0.5 ml-2 text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
                     title="You joined this event as a guest (not a group member)"
                   >
                     Guest

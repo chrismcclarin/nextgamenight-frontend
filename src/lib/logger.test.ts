@@ -36,6 +36,38 @@ describe('logger', () => {
     expect(opts).toEqual({ extra: { msg: 'lonely message' } });
   });
 
+  // ADDED by plan 88.6-58 task 5 (2026-09-28, /code-adversarial-review 88.6 MEDLOW-13, AC-4
+  // arm A). After the error-alias drop the backend's own string rides ONLY on
+  // `ApiError.upstreamMessage`, and before this plan only `queryCacheOnError` forwarded it —
+  // so the mutation/action paths, which all reach Sentry through `logger.error`, lost it.
+  // The error is matched STRUCTURALLY (no `ApiError` import: api.ts imports this module).
+  it('logger.error forwards a string `upstreamMessage` off the error into extra', () => {
+    const err = Object.assign(new Error('HTTP error! status: 409'), {
+      upstreamMessage: 'This availability prompt no longer exists.',
+    });
+    logger.error('save failed', err);
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(err, {
+      extra: { msg: 'save failed', upstreamMessage: 'This availability prompt no longer exists.' },
+    });
+  });
+
+  it('CONFIRM-ONLY: a plain Error lands `{ extra: { msg } }` exactly — no upstreamMessage key', () => {
+    const err = new Error('plain');
+    logger.error('x', err);
+
+    const [, opts] = (Sentry.captureException as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(opts).toEqual({ extra: { msg: 'x' } });
+    expect(Object.keys(opts.extra)).toEqual(['msg']);
+  });
+
+  it('a NON-string `upstreamMessage` is not forwarded (string-only structural read, T-88.6-G30)', () => {
+    const err = Object.assign(new Error('odd'), { upstreamMessage: { body: 'whole parsed body' } });
+    logger.error('y', err);
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(err, { extra: { msg: 'y' } });
+  });
+
   it('logger.warn(msg, ctx) routes to captureMessage at warning level with ctx in extra', () => {
     logger.warn('heads up', { k: 1 });
 

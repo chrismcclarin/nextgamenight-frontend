@@ -21,9 +21,11 @@ import ClickableMemberName from '../components/ClickableMemberName';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { logger, errCtx } from '../../lib/logger';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
@@ -44,18 +46,26 @@ function RsvpStatusPill({ status }) {
     const map = {
         yes: { label: 'Going', cls: 'bg-status-success-subtle text-content-status-success' },
         maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-content-status-warning' },
-        no: { label: 'No', cls: 'bg-surface-card-hover text-content-muted' },
+        // D-15 (88.6-18): `text-content-muted` on `bg-surface-muted` measures 4.3725, below AA.
+        // `text-content-secondary` measures 6.9620 on the same ground.
+        no: { label: 'No', cls: 'bg-surface-muted text-content-secondary' },
     };
+    /* `whitespace-nowrap` below is a D-01 FOLD MITIGATION, not decoration. MEASURED in Chromium
+       at 375px over the compiled stylesheet: at 10px "NO REPLY" fitted one line inside the
+       width-capped chip; folded up to 12px it wrapped mid-phrase and took the chip from 27.33px
+       to 46px tall. D-01 names a 375px screenshot check as a GATE on this fold, and this is what
+       that gate found. The two-word badges — this one and "New Player" — are the only ones that
+       can wrap; every other badge on this surface is a single word. */
     if (!status) {
         return (
-            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-card-hover text-content-muted">
+            <span className="text-xs whitespace-nowrap uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-secondary">
                 No reply
             </span>
         );
     }
     const m = map[status] || map.no;
     return (
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${m.cls}`}>
+        <span className={`text-xs uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${m.cls}`}>
             {m.label}
         </span>
     );
@@ -96,8 +106,8 @@ function canInviteGuest(participant, viewerRole) {
 function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId }) {
     const isCustom = !!participant.is_custom;
     return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-xs max-w-full">
-            <span className="font-medium text-content-primary truncate">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
+            <span className="text-content-primary truncate">
                 {isCustom ? (
                     <>{participant.username || 'Guest'}<span className="text-content-muted ml-1">(Guest)</span></>
                 ) : (
@@ -106,14 +116,14 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             </span>
             <RsvpStatusPill status={rsvpStatus} />
             {role === 'owner' && (
-                <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-semibold">Owner</span>
+                <span className="text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
             )}
             {role === 'admin' && (
-                <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded-sm font-semibold">Admin</span>
+                <span className="text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded-sm font-bold">Admin</span>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
                 <span
-                    className="text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
+                    className="text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
                     title="Joined via game-invite QR (not a group member)"
                 >
                     Guest
@@ -132,8 +142,37 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
 function GuestInviteButton({ groupId, userId }) {
     // null | 'sending' | 'sent' | 'pending' | 'member' | 'already' | 'error'
     const [status, setStatus] = useState(null);
+    const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
+
+    /* DECISION Phase 88.6-18 (T-88.6-50): a synchronous ref latch, declared PER INSTANCE and
+       checked ALONGSIDE the state predicate — never instead of it, and never at module scope.
+
+       WHY A REF AND NOT THE STATE. The second activation runs the PREVIOUS render's closure,
+       where `status` is still null, so a state-only guard here is byte-equivalent to the gating
+       prop on the control it is meant to back up. The house states the rule in prose at
+       `src/components/ui/useConfirmAction.ts:210-212` — "Refs mirror the state the event handlers
+       must read SYNCHRONOUSLY. Two clicks inside one tick see stale state but never a stale ref."
+       Keeping the state term beside it matches the recorded belt-and-braces at
+       `src/app/restore/group/[token]/page.tsx:343` / `:346-347`.
+
+       WHY PER INSTANCE. This component renders once per participant (three render sites:
+       `:126`, `:1351`, `:1964`), so a module-scope or page-level flag would let one guest's
+       in-flight invite silently swallow every other row's press.
+
+       PLACEMENT IS THE WHOLE RULE — the ref MIRRORS the gate state. It is set immediately before
+       `setStatus('sending')` and cleared beside the ONE setter that re-enables the control, the
+       `error` branch. Never in a `finally`, never above an early `return`: the four settled
+       outcomes are terminal and deliberately never re-enable, so the latch is deliberately not
+       released on them.
+
+       IT IS LOAD-BEARING FOR THE GATE, not merely for the double-send. Under the owner's
+       2026-09-14 amendment the in-flight gate is `aria-disabled`, which does not stop the browser
+       firing this handler. The attribute without this latch is a re-sendable invite button. */
+    const sendingRef = useRef(false);
 
     const handleInvite = async () => {
+        if (sendingRef.current || status === 'sending' || settled) return;
+        sendingRef.current = true;
         setStatus('sending');
         try {
             // Invite by participant user_id — the guest's email is resolved
@@ -165,11 +204,12 @@ function GuestInviteButton({ groupId, userId }) {
                 // 409 with no recognisable code — terminal either way, so never "Retry".
                 setStatus('already');
             } else {
+                // The ONE branch that re-enables the control, so the ONE place the latch clears.
+                sendingRef.current = false;
                 setStatus('error');
             }
         }
     };
-    const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
 
     /* Wave-12 review MED #19: the outcome label swaps on a control that just
        became disabled — silent to screen readers. Announce the settled outcome
@@ -182,48 +222,123 @@ function GuestInviteButton({ groupId, userId }) {
         : status === 'error' ? 'Something went wrong sending the invite. Use the Retry button to try again.'
         : '';
 
+    const title =
+        status === 'sent'
+            ? 'Invite sent!'
+            : status === 'pending'
+                ? 'They already have an invite waiting — nothing more to send'
+                : status === 'member'
+                    ? 'They are already in this group'
+                    : status === 'already'
+                        ? 'This guest is already invited or a member'
+                        : 'Invite this guest to join the group';
+
+    /* DECISION Phase 88-27 (D-32 buckets A/B/C): base keeps the neutral, branches override
+       it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
+       `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
+       is no tailwind-merge on this template literal.
+       (88.6-18: still true of the SETTLED chip below, which is a `<span>` carrying the whole
+       string. On the live `<Button>` states `cn()` DOES tailwind-merge, which is why the two
+       branches below spell their overrides separately.) */
+    const branchInk =
+        status === 'sent'
+            ? 'bg-status-success-subtle border-status-success text-content-status-success'
+            : status === 'pending' || status === 'member' || status === 'already'
+                ? 'text-content-muted border-line bg-surface-page'
+                : status === 'error'
+                    ? 'bg-status-error-subtle border-status-error enabled-hover:bg-status-error-subtle-hover text-content-status-error'
+                    : 'text-content-link';
+
+    /* DECISION Phase 88.6-18 (D8): in the four SETTLED states (`sent`, `pending`, `member`,
+       `already`) this control renders a NON-INTERACTIVE status chip — a plain `<span>`, no
+       `role`, no `aria-live`, not focusable, no handler. Owner ruling 2026-09-09, arm B.
+
+       WHY: `globals.css`'s unlayered `.btn:disabled { opacity: 0.5 }` can be undone by no
+       utility, and these four labels are colour-coded OUTCOMES the user must READ. A terminal
+       control that never re-enables and whose label is an outcome is a STATUS, not a button.
+
+       REJECTED, same date — arm C: keep it a natively `disabled` `<Button>` and disclose the
+       50% wash on a colour-coded outcome as a UI-SPEC §1.2 V-row. REJECTED, same date — arm A:
+       an `aria-disabled` button with `aria-disabled:`-modifier twin utilities, i.e. an
+       inert-but-focusable control plus twin classes a future reader would dedupe.
+
+       THREE THINGS ABOUT THE CHIP ARE DECIDED HERE because the obvious reading of each is wrong:
+        - NO `role="status"`. "Status element" points straight at it, and it would be a SECOND
+          live region: the sr-only `StatusRegion` above is mounted UNCONDITIONALLY and already
+          announces every outcome. `88.6-UI-SPEC.md:571-573` — "exactly one live region per
+          failure … Do not add a second region".
+        - IT KEEPS ITS BRANCH `title`. Those four strings are the only fuller explanation each
+          settled state has ("They already have an invite waiting — nothing more to send" says
+          what "Invite pending" cannot). On a `<span>` a `title` is the accessible DESCRIPTION,
+          so the information survives arm B rather than being silently dropped.
+        - IT KEEPS ITS GEOMETRY. `inline-flex items-center text-xs px-2 py-1 rounded-sm border`
+          are dead only against the UNLAYERED `.btn`; on a `<span>` nothing supplies them.
+          Stripping them because the migration strips them from the `<Button>` states would be a
+          silent-green regression — no suite in this plan measures a settled chip's box.
+
+       DECISION Phase 88.6-18 (D8) — AMENDMENT, owner 2026-09-14 (accept §3, #21+#145). The
+       in-flight `sending` gate below is `aria-disabled` with the re-press refused in
+       `handleInvite`'s synchronous latch — over the NATIVE `disabled` attribute, which is how D8
+       first read on 2026-09-09 and which drops focus to `<body>` mid-submit on the control the
+       user just activated (`src/app/components/NextGameNightCard.tsx:377-391`;
+       `src/app/components/EmailAddressSection.tsx:1572-1598` states the split outright — the
+       control being ACTED ON gets `aria-disabled`, a control nobody is standing on may be
+       natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
+       sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is the shipped
+       "Sending..." label swap plus the house `aria-disabled` treatment already in globals.css
+       (`cursor: not-allowed`) and on ghost (`aria-disabled:text-content-muted`, which beats this
+       call site's `text-content-link` on specificity). Do NOT add a `disabled:opacity-*` utility
+       here: it keys on the native attribute this control no longer carries and is dead on a
+       `.btn` besides. Both halves land or neither — the attribute without the latch is a
+       re-sendable button. */
+    if (settled) {
+        return (
+            <>
+            <StatusRegion className="sr-only" message={outcomeMessage} />
+            <span
+                className={`inline-flex min-h-11 items-center text-sm px-2 py-1 rounded-sm border border-line transition-colors ${branchInk}`}
+                title={title}
+            >
+                {status === 'sent' && 'Invite sent!'}
+                {status === 'pending' && 'Invite pending'}
+                {status === 'member' && 'Already a member'}
+                {status === 'already' && 'Already invited'}
+            </span>
+            </>
+        );
+    }
+
     return (
         <>
         <StatusRegion className="sr-only" message={outcomeMessage} />
-        <button
+        <Button
+            size="sm"
+            variant="ghost"
             onClick={handleInvite}
-            disabled={status === 'sending' || settled}
-            /* DECISION Phase 88-27 (D-32 buckets A/B/C): base keeps the neutral, branches override
-               it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
-               `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
-               is no tailwind-merge on this template literal. */
-            /* Wave-12 review MED #18: inline-flex min-h-11 — the 44px floor this
-               plan imposed on the sibling row controls (ParticipantRow Remove,
-               the min-h-11 sweep in this file); this control sat at ~22px. */
-            className={`inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors ${
-                status === 'sent'
-                    ? 'bg-status-success-subtle border-status-success text-content-status-success'
-                    : status === 'pending' || status === 'member' || status === 'already'
-                        ? 'text-content-muted border-line bg-surface-page'
-                        : status === 'error'
-                            ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-content-status-error'
-                            : 'hover:bg-surface-hover text-content-link'
-            }`}
-            title={
-                status === 'sent'
-                    ? 'Invite sent!'
-                    : status === 'pending'
-                        ? 'They already have an invite waiting — nothing more to send'
-                        : status === 'member'
-                            ? 'They are already in this group'
-                            : status === 'already'
-                                ? 'This guest is already invited or a member'
-                                : 'Invite this guest to join the group'
-            }
+            {...(status === 'sending' ? { 'aria-disabled': true } : {})}
+            /* `border border-line` is KEPT and is ALIVE: plan 05's W19 move put `.btn`'s
+               `border: none` reset inside `@layer components`, so a `border-*` utility on a
+               `.btn` element now wins. This control and the two-tap Remove below are the only
+               two elements in the tree whose visible border depends on that move.
+               DELETED as dead against the unlayered `.btn`: `text-xs` (label is now 14px —
+               UI-SPEC §1.2 delta V-8), `px-2 py-1` (`.btn-sm` reproduces the shipped 8px
+               horizontal exactly), `rounded-sm` (radius becomes `.btn`'s 8px — also V-8),
+               `inline-flex items-center`, `transition-colors`, and `min-h-11` (now on the cva
+               base at every viewport, 88.6-06 D-09).
+               The idle branch's `hover:bg-surface-hover` is DELETED rather than carried: the
+               ghost variant already supplies the byte-equal `enabled-hover:bg-surface-hover`,
+               and a BARE `hover:` would re-light the control while it is `aria-disabled`
+               mid-send, which is the exact failure `enabled-hover` exists to prevent
+               (`Button.tsx`'s D10 marker). The `error` branch's hover is spelled
+               `enabled-hover:` for the same reason, and so `tailwind-merge` sees it as
+               conflicting with the base token instead of stacking a second background. */
+            className={`border border-line ${branchInk}`}
+            title={title}
         >
             {status === 'sending' && 'Sending...'}
-            {status === 'sent' && 'Invite sent!'}
-            {status === 'pending' && 'Invite pending'}
-            {status === 'member' && 'Already a member'}
-            {status === 'already' && 'Already invited'}
             {status === 'error' && 'Retry'}
             {!status && 'Invite to group'}
-        </button>
+        </Button>
         </>
     );
 }
@@ -305,9 +420,29 @@ export default function GameDetailPage() {
 
     // Phase 65-02 single-event view state: kebab actions menu, participant
     // strip + See-all modal, Share-Game-QR modal, and Remove-with-confirm.
-    const [showActionsMenu, setShowActionsMenu] = useState(false);
     const [cancellingEvent, setCancellingEvent] = useState(false);
-    const actionsMenuRef = useRef(null);
+    /* DECISION Phase 88.6-18 (T-88.6-49): THREE inline synchronous latches — one here, one for
+       Leave, one inside `GuestInviteButton` — chosen OVER a shared hook. Each mirrors a
+       differently named state flag, so a shared hook would invent a fourth latch shape in a file
+       being restructured; and the house's reusable form for this pattern, `useConfirmAction`,
+       cannot be reused at all, because every tier of it adds a confirm gate and the Phase 65-02
+       decision recorded at the kebab is that the PLACEMENT is the friction. A helper instead of
+       three inline latches is a taste call, not a correctness one; the helper is recorded here as
+       the rejected alternative so the choice is visible.
+
+       PLACEMENT IS ONE INVARIANT, not a per-handler instruction: the ref MIRRORS the gate state.
+       Set it immediately before the setter it mirrors; clear it beside the setter that RE-ENABLES
+       the control. Never in a `finally`, and never above an early `return`. This AMENDS an earlier
+       instruction that the Cancel guard be the FIRST statement of `handleCancelEvent`, ahead of
+       the `!user?.sub` check — `handleLeaveEvent`'s three pre-check returns are bare `return`s
+       OUTSIDE any `try`, one of them a DESIGNED retry ("Still loading your account — please try
+       again in a moment"), so a latch taken above them is never released and Leave would be dead
+       for the life of the mount. Mirroring is also the only release rule consistent with what
+       these handlers already do: on success both `router.push` and deliberately do NOT reset their
+       flag, and only the catch resets it. A `finally` release would re-open the handler during the
+       App Router transition while the page is still mounted. */
+    const cancellingRef = useRef(false);
+    const leavingRef = useRef(false);
     const [participants, setParticipants] = useState([]);
     const [groupMembersByUserId, setGroupMembersByUserId] = useState({}); // keyed by User.id (UUID)
     const [bringersSet, setBringersSet] = useState(new Set()); // set of User.id (UUID) bringing games
@@ -610,24 +745,12 @@ export default function GameDetailPage() {
                 await refreshBringersSet(event_id);
             }
         } catch (error) {
-            console.error('Error fetching event:', error);
+            logger.info('Error fetching event:', errCtx(error));
         } finally {
             loadedEntityKeyRef.current = entityKey;
             setLoading(false);
         }
     };
-
-    // Phase 65-02: outside-click handler to close the kebab actions menu.
-    useEffect(() => {
-        if (!showActionsMenu) return;
-        const handleClickOutside = (e) => {
-            if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target)) {
-                setShowActionsMenu(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showActionsMenu]);
 
     // (88-33 Task 5: the 65-02 "clean up the second-click confirm timer on unmount"
     // effect that lived here is gone with the hand-rolled timer — useConfirmAction
@@ -639,12 +762,19 @@ export default function GameDetailPage() {
     // cancellation email gate inside the backend DELETE handler.
     const handleCancelEvent = async () => {
         if (!user?.sub || !singleEvent?.id) return;
+        // The ref MIRRORS `cancellingEvent` — see the invariant at its declaration. It is read
+        // SYNCHRONOUSLY because the second activation runs the PREVIOUS render's closure, where
+        // the state flag is still false; a state-only guard here is byte-equivalent to the item
+        // gate it is meant to back up. The state term is KEPT beside it, matching the recorded
+        // belt-and-braces at `restore/group/[token]/page.tsx:343`/`:346-347`.
+        if (cancellingRef.current || cancellingEvent) return;
+        cancellingRef.current = true;
         setCancellingEvent(true);
         try {
             await eventsAPI.deleteEvent(singleEvent.id);
             router.push(`/groupHomePage?id=${group_id}`);
         } catch (err) {
-            console.error('Error cancelling event:', err);
+            logger.info('Error cancelling event:', errCtx(err));
             /* DECISION Phase 88-25 (Req 14 / T-88-25-01): failure copy is DERIVED from
                `ApiError.code` via getFetchErrorMessage, chosen OVER the `err.message || '…'`
                idiom every toast on this page used. `ApiError.message` is whatever the backend
@@ -658,8 +788,8 @@ export default function GameDetailPage() {
                     byCode: { forbidden: 'Only group owners and admins can cancel an event.' },
                 })
             );
+            cancellingRef.current = false;
             setCancellingEvent(false);
-            setShowActionsMenu(false);
         }
     };
 
@@ -682,7 +812,7 @@ export default function GameDetailPage() {
 
         const myDbUser = (groupMembers || []).find(m => m.id === selfUuid);
         if (!myDbUser?.id) {
-            console.error('[handleLeaveEvent] Caller row missing from groupMembers — backend contract violation. Plan 71.1-01 should always inject caller-self row for game-only scope.', {
+            logger.info('[handleLeaveEvent] Caller row missing from groupMembers — backend contract violation. Plan 71.1-01 should always inject caller-self row for game-only scope.', {
                 callerUuid: selfUuid,
                 groupMembersLength: (groupMembers || []).length,
             });
@@ -690,20 +820,24 @@ export default function GameDetailPage() {
             return;
         }
 
+        // Taken AFTER all three pre-checks above — they are bare `return`s outside any `try`,
+        // and one of them is a designed retry path, so a latch above them would never release.
+        if (leavingRef.current || leavingEvent) return;
+        leavingRef.current = true;
         setLeavingEvent(true);
         try {
             await eventsAPI.leaveEvent(singleEvent.id, myDbUser.id);
             // Redirect to home — the event is gone from their UpcomingEvents anyway.
             router.push('/');
         } catch (err) {
-            console.error('[handleLeaveEvent] DELETE failed:', err);
+            logger.info('[handleLeaveEvent] DELETE failed:', errCtx(err));
             toast.error(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't take you off this event. Please try again.",
                 })
             );
+            leavingRef.current = false;
             setLeavingEvent(false);
-            setShowActionsMenu(false);
         }
     };
 
@@ -717,7 +851,7 @@ export default function GameDetailPage() {
             setGameInviteUrl(data.invite_url);
             setShowGameQR(true);
         } catch (err) {
-            console.error('Failed to get game invite token:', err);
+            logger.info('Failed to get game invite token:', errCtx(err));
             toast.error(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't build the share code. Please try again.",
@@ -753,7 +887,7 @@ export default function GameDetailPage() {
             // Optimistically drop the row. No toast (per CONTEXT decision).
             setParticipants(prev => prev.filter(p => p.user_id !== targetUserDbId));
         } catch (err) {
-            console.error('Failed to remove participant:', err);
+            logger.info('Failed to remove participant:', errCtx(err));
             toast.error(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't remove them from this event. Please try again.",
@@ -794,13 +928,24 @@ export default function GameDetailPage() {
                 try {
                     eventsData = await eventsAPI.getGroupEvents(group_id);
                 } catch (error) {
-                    console.error('Error fetching events:', error);
+                    logger.info('Error fetching events:', errCtx(error));
                     eventsData = [];
                 }
 
                 // Ensure eventsData is an array before filtering
                 if (!Array.isArray(eventsData)) {
-                    console.warn('Events data is not an array:', eventsData);
+                    /* DECISION Phase 88.6-18 (AC-2, T-84-01): this conversion carries a SHAPE
+                       DESCRIPTOR of the received value, never the value — chosen OVER passing
+                       `eventsData` through as `logger.info`'s ctx the way the other ten
+                       conversions pass `errCtx(err)`. There is no caught error here; the second
+                       argument WAS the response payload, which is exactly the shape
+                       `logger.ts`'s T-84-01 rule forbids reaching the Sentry payload. Re-adding
+                       the payload "so the log is useful" is a decision, not a fix.
+                       Level is `logger.info` and NOT `logger.warn` for the reason AC-2's owner
+                       amendment of 2026-09-13 records: `logger.warn` is `Sentry.captureMessage`,
+                       an EVENT, and under `replaysOnErrorSampleRate: 1.0` an event flushes the
+                       Session Replay buffer. The severity lives in the message, not the channel. */
+                    logger.info('Events data is not an array:', { received: eventsData === null ? 'null' : typeof eventsData });
                     eventsData = [];
                 }
 
@@ -885,7 +1030,7 @@ export default function GameDetailPage() {
                 }
             }
         } catch (error) {
-            console.error('Error fetching game data:', error);
+            logger.info('Error fetching game data:', errCtx(error));
             /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a failed load is TRACKED and rendered as
                the shared fetch-error treatment, chosen OVER the silent `console.error` this
                shipped with. `game` stays null after a swallowed failure, so the render fell
@@ -927,7 +1072,7 @@ export default function GameDetailPage() {
             // Refresh events after deletion
             fetchGameData();
         } catch (error) {
-            console.error('Error deleting event:', error);
+            logger.info('Error deleting event:', errCtx(error));
             // The shipped copy stated the owner/admin rule unconditionally, so a network blip
             // was reported as a permissions problem. It is now the `forbidden` branch only.
             toast.error(
@@ -1031,7 +1176,7 @@ export default function GameDetailPage() {
             // Refresh reviews
             fetchGameData();
         } catch (error) {
-            console.error('Error submitting review:', error);
+            logger.info('Error submitting review:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't save your review. Please try again.",
@@ -1212,7 +1357,7 @@ export default function GameDetailPage() {
                                 <div className="flex items-start justify-between gap-4 mb-2">
                                     <div className="flex-1">
                                         <div className="flex items-center gap-3 mb-2">
-                                            <p className="font-semibold text-content-primary">
+                                            <p className="font-bold text-content-primary">
                                                 {formatDate(event.start_date, timezone)}
                                             </p>
                                             {event.duration_minutes && (
@@ -1221,13 +1366,17 @@ export default function GameDetailPage() {
                                                 </span>
                                             )}
                                         </div>
+                                        {/* D-03 / R2 #171: the Group-Win line below goes 600 -> 400.
+                                            The weight was not the differentiator here — the ✓ glyph
+                                            is a NON-COLOUR cue and it stays, beside the success
+                                            colour token. */}
                                         {event.is_group_win ? (
-                                            <p className="text-sm text-content-status-success font-semibold mb-1">
+                                            <p className="text-sm text-content-status-success mb-1">
                                                 ✓ Group Win
                                             </p>
                                         ) : event.Winner && (
                                             <p className="text-sm text-content-secondary mb-1">
-                                                Winner: <span className="font-semibold text-content-link">
+                                                Winner: <span className="text-content-link">
                                                     {event.Winner.is_custom ? (
                                                         <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                                     ) : (
@@ -1279,10 +1428,17 @@ export default function GameDetailPage() {
                                             {/* Desktop: still visible, demoted to ghost so they stop
                                                 outranking the plain-text content they act on (F-6c). */}
                                             <div className="hidden md:flex gap-2 shrink-0">
+                                                {/* 88.6-18 (AC-3): `px-3 py-1 text-sm` DELETED from
+                                                    both — every one of the three is dead against the
+                                                    unlayered `.btn` rule, which declares its own
+                                                    `font-size` and `padding`. They are the tree's only
+                                                    two entries on `btnCensus`'s TYPED_BUTTON roster and
+                                                    that entry goes with them. The ghost DEMOTION these
+                                                    two carry (F-6c) is unchanged — it is the variant,
+                                                    not the size. */}
                                                 <Button
                                                     variant="ghost"
                                                     onClick={() => handleEditEvent(event)}
-                                                    className="px-3 py-1 text-sm"
                                                     title="Edit this session"
                                                 >
                                                     Edit
@@ -1290,7 +1446,6 @@ export default function GameDetailPage() {
                                                 <Button
                                                     variant="ghost"
                                                     onClick={() => handleDeleteEvent(event.id)}
-                                                    className="px-3 py-1 text-sm"
                                                     title="Delete this session"
                                                 >
                                                     Delete
@@ -1301,14 +1456,14 @@ export default function GameDetailPage() {
                                 </div>
                                 {event.EventParticipations && event.EventParticipations.length > 0 && (
                                     <div className="text-sm mt-3 pt-2 border-t border-line">
-                                        <p className="font-semibold mb-2 text-content-primary">Participants:</p>
+                                        <p className="font-bold mb-2 text-content-primary">Participants:</p>
                                         <div className="space-y-2">
                                             {event.EventParticipations.map((participation, idx) => (
                                                 <div key={idx} className="flex items-center gap-2 flex-wrap">
-                                                    <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
-                                                        <span className="font-medium">
+                                                    <span className="bg-surface-muted text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
+                                                        <span>
                                                             {participation.is_custom ? (
-                                                                <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                                <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-secondary ml-1">(Guest)</span></>
                                                             ) : (
                                                                 // Phase 87.3-06: SANCTIONED flat read. Past-events participation
                                                                 // rows come through formatEventWithCustomParticipants (events.js),
@@ -1322,12 +1477,17 @@ export default function GameDetailPage() {
                                                             )}
                                                         </span>
                                                         {participation.is_guest && (
-                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-medium">
+                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-bold">
                                                                 Guest
                                                             </span>
                                                         )}
+                                                        {/* D-16 (88.6-18): `text-content-link` on `bg-surface-muted`
+                                                            measures 3.9909, below AA. As a BADGE the "New Player" chip
+                                                            below takes `text-content-accent` (4.7121) rather than
+                                                            `text-content-secondary` — D-16 distinguishes the two badges
+                                                            from its four other sites on exactly that basis. */}
                                                         {participation.is_new_player && (
-                                                            <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
+                                                            <span className="text-xs whitespace-nowrap bg-surface-muted text-content-accent px-1.5 py-0.5 rounded-sm font-bold">
                                                                 New Player
                                                             </span>
                                                         )}
@@ -1337,12 +1497,12 @@ export default function GameDetailPage() {
                                                             </span>
                                                         )}
                                                         {participation.score !== null && (
-                                                            <span className="text-xs font-semibold text-content-secondary">
+                                                            <span className="text-xs text-content-secondary">
                                                                 Score: {participation.score}
                                                             </span>
                                                         )}
                                                         {participation.placement && (
-                                                            <span className="text-xs text-content-muted">
+                                                            <span className="text-xs text-content-secondary">
                                                                 #{participation.placement}
                                                             </span>
                                                         )}
@@ -1435,8 +1595,8 @@ export default function GameDetailPage() {
                intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
                actually renders, so it is the one the padding-budget e2e loads. */
             <div className="p-3 md:p-6 max-w-6xl mx-auto">
-                <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                     {effectiveGroupId && singleEvent?.Group?.name && (
                         /* Phase 71.1-02 Blocker 2 fix: only render the group
                            segment when we actually have a group name. The
@@ -1450,7 +1610,7 @@ export default function GameDetailPage() {
                         <>
                             <span className="text-content-muted mx-2">{'>'}</span>
                             {(userScope === 'group-member' || userScope === 'pending') ? (
-                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
+                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors">
                                     {singleEvent.Group.name}
                                 </Link>
                             ) : (
@@ -1459,14 +1619,18 @@ export default function GameDetailPage() {
                                    name is shown as context but is not a link — they
                                    can't navigate to a group page they don't belong
                                    to." */
-                                <span className="text-content-secondary font-medium">
+                                <span className="text-content-secondary">
                                     Game night with {singleEvent.Group.name}
                                 </span>
                             )}
                         </>
                     )}
                     <span className="text-content-muted mx-2">{'>'}</span>
-                    <span className="text-content-primary font-semibold">{singleEvent.title || 'Game Night'}</span>
+                    {/* D-03 / R2 #171 (T-88.6-138, same shape as plan 17's breadcrumb): the
+                        weight was the ONLY thing marking the current page, so 700 is KEPT as the
+                        hierarchy outcome AND the distinction gains a PROGRAMMATIC cue. Without
+                        `aria-current` this would have been a visual-weight-only signal. */}
+                    <span aria-current="page" className="text-content-primary font-bold">{singleEvent.title || 'Game Night'}</span>
                 </nav>
 
                 {/* Phase 62-02: nudge banner so users without a profile TZ
@@ -1513,53 +1677,84 @@ export default function GameDetailPage() {
                         - game-only scope: Leave event
                         - pending or none: no kebab at all (matches prior pending behavior) */}
                     <div className="flex justify-between items-start gap-3 mb-2">
-                        <h1 className="text-3xl font-bold text-content-primary">{singleEvent.title || 'Game Night'}</h1>
+                        <Heading level={1} size="display" className="text-content-primary">{singleEvent.title || 'Game Night'}</Heading>
+                        {/* DECISION Phase 88.6-18 (D-12): the second, hand-rolled kebab that lived
+                            here CONVERGES onto the shared `KebabMenu` component this file already
+                            imports and renders one screen over. It shipped the same dropdown-role
+                            markup plan 16 just dropped from the component — a duplicate ARIA
+                            contract with a second owner. Re-implementing the post-plan-16 markup in
+                            place is NOT a peer option: duplication is rejected by the house tenet,
+                            and the dead-state fence forecloses it anyway, because the hand-rolled
+                            open state is what the swap deletes.
+                            THE OUTER GATE IS KEPT EXPLICITLY (review D56) rather than leaning on
+                            plan 16's zero-items-renders-no-trigger rule: that rule is a TEST
+                            CONTRACT, not an authorization gate, and keeping the wrapper is cheaper
+                            than depending on it. `KebabMenu` maps its `items` UNCONDITIONALLY, so a
+                            gate not written into the array is a LEAKED action — and the backend
+                            accepts self-leave for any matching `User.id`, so a leaked Leave item
+                            does not fail, it SUCCEEDS.
+                            The trigger's own size, geometry and ⋮ glyph are DELETED, not converged:
+                            the glyph is ICON sizing, stays out of the type scale, and is now
+                            `KebabMenu`'s (`KebabMenu.js:125`, `:132`, owned by plan 16). This file
+                            adds no geometry of its own.
+
+                            DECISION Phase 88.6-18 (D24): both destructive items carry plan 16's
+                            opt-in per-item `keepOpen` flag, so the menu stays open for the whole
+                            request and "Cancelling…" / "Leaving…" stays readable — exactly
+                            today's behaviour, because the hand-rolled menu closed only from its
+                            CATCH blocks and its success paths were a `router.push`. Owner ruling
+                            2026-09-09 (D24 c). REJECTED, same date: arm (b), a plain swap closing
+                            the menu on activation, which would have hidden the in-flight label
+                            entirely; and arm (a), re-implementing the markup here, REJECTED-by-tenet
+                            as duplication. ONE DELTA IS DISCLOSED rather than hidden, on the FAILURE
+                            path only: the menu now stays open with the item re-enabled plus the
+                            error toast, where the hand-rolled menu closed. Retry in place.
+
+                            DECISION Phase 88.6-18 (D3): the in-flight gate on both items is plan
+                            16's per-item `ariaDisabled` flag and NEVER its native `disabled` key.
+                            REJECTED — the NATIVE attribute (`KebabMenu.js:150` renders `item.disabled`
+                            as the real attribute): `keepOpen` deliberately keeps these items mounted
+                            AND FOCUSED for the whole request, and a natively-disabled focused element
+                            blurs to `<body>`, which is exactly the state this menu's container-bound
+                            Escape cannot see — keyboard dismissal would degrade to tabbing the whole
+                            document, and it would ship silently green, because jsdom fires no
+                            focusout on a disabled item. Two shipped markers carry the split verbatim:
+                            the control being ACTED ON gets `aria-disabled`, a control nobody is
+                            standing on may stay natively disabled
+                            (`src/app/components/NextGameNightCard.tsx:377-391`,
+                            `src/app/components/EmailAddressSection.tsx:1572-1598`).
+                            REJECTED — passing NO gate at all and letting the handler latch be the
+                            whole guard: it deletes the busy affordance that ships today
+                            (`KebabMenu.js:156`) and the programmatic busy state assistive tech
+                            depends on, leaving a destructive item looking fully live while a DELETE
+                            is in flight.
+                            Neither item is `twoTap`: single-tap commit is the Phase 65-02 decision
+                            recorded above — the kebab PLACEMENT is the friction — and adding a
+                            confirm here would be a behaviour change, not a hardening. */}
                         {((userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')) || userScope === 'game-only') && (
-                            <div className="relative shrink-0" ref={actionsMenuRef}>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowActionsMenu(prev => !prev)}
-                                    className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded-sm hover:bg-surface-hover transition-colors"
-                                    aria-haspopup="menu"
-                                    aria-expanded={showActionsMenu}
-                                    aria-label="Event actions"
-                                    title="Event actions"
-                                >
-                                    {/* Use the unicode vertical-ellipsis glyph
-                                        (⋮) — readable at text-2xl, no extra
-                                        SVG import needed. */}
-                                    ⋮
-                                </button>
-                                {showActionsMenu && (
-                                    <div
-                                        role="menu"
-                                        className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-lg py-1"
-                                    >
-                                        {userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin') && (
-                                            <button
-                                                type="button"
-                                                role="menuitem"
-                                                onClick={handleCancelEvent}
-                                                disabled={cancellingEvent}
-                                                className="w-full text-left px-3 py-2 text-sm text-content-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {cancellingEvent ? 'Cancelling…' : 'Cancel event'}
-                                            </button>
-                                        )}
-                                        {userScope === 'game-only' && (
-                                            <button
-                                                type="button"
-                                                role="menuitem"
-                                                onClick={handleLeaveEvent}
-                                                disabled={leavingEvent}
-                                                className="w-full text-left px-3 py-2 text-sm text-content-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {leavingEvent ? 'Leaving…' : 'Leave event'}
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                            <KebabMenu
+                                ariaLabel="Event actions"
+                                items={[
+                                    ...(userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')
+                                        ? [{
+                                            label: cancellingEvent ? 'Cancelling…' : 'Cancel event',
+                                            onClick: handleCancelEvent,
+                                            ariaDisabled: cancellingEvent,
+                                            danger: true,
+                                            keepOpen: true,
+                                        }]
+                                        : []),
+                                    ...(userScope === 'game-only'
+                                        ? [{
+                                            label: leavingEvent ? 'Leaving…' : 'Leave event',
+                                            onClick: handleLeaveEvent,
+                                            ariaDisabled: leavingEvent,
+                                            danger: true,
+                                            keepOpen: true,
+                                        }]
+                                        : []),
+                                ]}
+                            />
                         )}
                     </div>
                     <div className="text-content-secondary space-y-1">
@@ -1590,12 +1785,12 @@ export default function GameDetailPage() {
                 {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
                     <div className="card p-3 md:p-6 mb-6">
                         <div className="flex items-center justify-between gap-3 mb-3">
-                            <h2 className="text-xl font-bold text-content-primary">
+                            <Heading level={2} size="heading" className="text-content-primary">
                                 Participants ({participants.length})
-                            </h2>
+                            </Heading>
                             {userScope === 'group-member' && (
-                                <button
-                                    type="button"
+                                <Button
+                                    variant="accent"
                                     onClick={handleShowGameQR}
                                     disabled={qrLoading}
                                     /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 /
@@ -1616,8 +1811,22 @@ export default function GameDetailPage() {
                                        dropping it lets this button squeeze against the
                                        "Participants (N)" heading in its `justify-between` row.
                                        Ground is the white `.card` at `:1592`, so 5.0216 as above.
-                                       Full marker at the `.btn-accent` rule in `globals.css`. */
-                                    className="btn btn-accent font-semibold text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                                       Full marker at the `.btn-accent` rule in `globals.css`.
+                                       APPENDED 88.6-18 (D23): the amber treatment is unchanged and
+                                       its spelling moved onto the `Button` primitive's accent
+                                       variant. `shrink-0` is the ONLY retained className; the six
+                                       weight/size/layout utilities that sat beside it were all dead
+                                       against the unlayered `.btn` rule and are deleted. The
+                                       per-site focus string is gone too — the ring now has ONE home,
+                                       the cva base (owner ruling 2026-09-15, A-2 arm A).
+                                       NEITHER spelling of this control's treatment is QUOTED in this
+                                       marker, and that is a receipt constraint rather than style:
+                                       `tokenContrast.test.ts` test 47 counts BOTH the legacy class
+                                       pair and the primitive prop in this file's RAW source, so a
+                                       comment naming either one reds the very gate it documents.
+                                       Measured 2026-09-16 — the first draft of this line quoted the
+                                       prop and took the count to 2. */
+                                    className="shrink-0"
                                     title="Share Game QR"
                                 >
                                     {/* Decorative — the visible label names the button. Same pair
@@ -1627,7 +1836,7 @@ export default function GameDetailPage() {
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                                     </svg>
                                     {qrLoading ? 'Loading...' : 'Share Game QR'}
-                                </button>
+                                </Button>
                             )}
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -1676,7 +1885,7 @@ export default function GameDetailPage() {
                             <button
                                 type="button"
                                 onClick={() => setShowAllParticipants(true)}
-                                className="mt-3 text-sm text-content-link hover:text-content-link-hover font-medium"
+                                className="mt-3 text-sm text-content-link hover:text-content-link-hover"
                             >
                                 See all ({participants.length}) →
                             </button>
@@ -1733,7 +1942,7 @@ export default function GameDetailPage() {
                 {/* Recommended Games Section */}
                 {eventSuggestions.length > 0 && (
                     <div className="card p-3 md:p-6 mt-6">
-                        <h2 className="text-xl font-bold text-content-primary mb-1">Recommended Games</h2>
+                        <Heading level={2} size="heading" className="text-content-primary mb-1">Recommended Games</Heading>
                         {suggestionsPlayerCount && (
                             <p className="text-sm text-content-muted mb-4">
                                 Games from your group that work for {suggestionsPlayerCount} players
@@ -1753,12 +1962,12 @@ export default function GameDetailPage() {
 
                 {(userRole === 'owner' || userRole === 'admin') && (
                     <div className="mt-4 flex gap-2">
-                        <button
+                        <Button
+                            variant="primary"
                             onClick={() => { setEditingEvent(singleEvent); setEditEventModal(true); }}
-                            className="btn btn-primary px-4 py-2 text-sm"
                         >
                             Edit Event
-                        </button>
+                        </Button>
                     </div>
                 )}
 
@@ -1879,7 +2088,7 @@ export default function GameDetailPage() {
                                         name like text; the name wraps IN FULL — display never
                                         truncates a person's name (fork 2's agreed direction). */}
                                     <div className="min-w-0 flex-1 basis-48 space-x-1.5 break-words">
-                                        <span className="font-medium text-content-primary">
+                                        <span className="text-content-primary">
                                             {p.is_custom ? (
                                                 <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                             ) : isSelfRow ? (
@@ -1911,7 +2120,7 @@ export default function GameDetailPage() {
                                             // (Owner=purple, Admin=blue) while staying distinguishable from
                                             // Owner's purple. Self is a viewer-perspective indicator, not a
                                             // role, but the visual family is the closest existing pattern.
-                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
+                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
                                                 You
                                             </span>
                                         )}
@@ -1923,15 +2132,15 @@ export default function GameDetailPage() {
                                             // through ClickableMemberName above. Emerald color echoes the
                                             // text-status-success used by that mobile inline indicator for
                                             // visual continuity across viewports.
-                                            <span className="hidden md:inline-flex items-center align-middle text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
+                                            <span className="hidden md:inline-flex items-center align-middle text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
                                                 Friend
                                             </span>
                                         )}
                                         {role === 'owner' && (
-                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-semibold">Owner</span>
+                                            <span className="align-middle text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
                                         )}
                                         {role === 'admin' && (
-                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">Admin</span>
+                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -1941,7 +2150,7 @@ export default function GameDetailPage() {
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
                                             <span
-                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
                                                 title="Joined via game-invite QR (not a group member)"
                                             >
                                                 Guest
@@ -1970,20 +2179,48 @@ export default function GameDetailPage() {
                                                destructive resting prominence (status-error
                                                box, was muted border-line). The accessible
                                                name names the TARGET, not a bare 'Remove'. */
-                                            <button
+                                            /* DECISION Phase 88.6-18 (D-09): this control and the
+                                               GuestInviteButton above are the phase's ONLY two
+                                               `size="sm"` consumers (UI-SPEC §3.3 caps the rung
+                                               at exactly these two); a third is a decision, not a
+                                               cleanup.
+                                               CHANGED: size rung (`size="sm"`), label size
+                                               (12 -> 14, forced by `.btn`'s unlayered
+                                               `font-size: .875rem`) and radius (`rounded-sm` ->
+                                               `.btn`'s 8px). Both are UI-SPEC §1.2 delta V-8 and
+                                               are sanctioned by the SPEC amendment "size and
+                                               label size; interaction and order unchanged".
+                                               UNCHANGED: the Phase 65-02 EVT-08 two-tap
+                                               interaction and its `useConfirmAction` wiring, the
+                                               invite-before-remove ORDER above, the height
+                                               (`min-h-11` moved to the cva base, same 44px) and
+                                               the horizontal padding (`px-2` -> `.btn-sm`'s 8px,
+                                               byte-identical).
+                                               `border border-status-error` is KEPT and is ALIVE
+                                               only because plan 05's W19 move layered `.btn`'s
+                                               `border: none` reset. `variant="ghost"` because
+                                               this control carries no fill today and a bare
+                                               `.btn` NEVER maps to `variant="primary"`
+                                               (UI-SPEC §3.2). The armed branch's hover is spelled
+                                               `enabled-hover:` so `tailwind-merge` sees it as
+                                               conflicting with ghost's base token rather than
+                                               stacking a second background. */
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
                                                 {...removeParticipantGate.triggerProps(
                                                     p.user_id,
                                                     p.username || 'this participant',
                                                     `Remove ${p.username || 'this participant'} from this event`
                                                 )}
-                                                className={`inline-flex min-h-11 items-center text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
+                                                className={`border shrink-0 ${
                                                     isConfirming
                                                         ? 'bg-status-error-subtle border-status-error text-content-status-error font-semibold'
-                                                        : 'border-status-error text-content-status-error hover:bg-status-error-subtle'
+                                                        : 'border-status-error text-content-status-error enabled-hover:bg-status-error-subtle'
                                                 }`}
                                             >
                                                 {removeParticipantGate.labelFor(p.user_id, 'Remove')}
-                                            </button>
+                                            </Button>
                                         )}
                                     </div>
                                     )}
@@ -2145,8 +2382,8 @@ export default function GameDetailPage() {
            two branches), not a cleanup. */
         <div className="p-3 md:p-6 max-w-6xl mx-auto">
             {/* Breadcrumbs */}
-            <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                 {group_id && (
                     <>
                         <span className="text-content-muted mx-2">{'>'}</span>
@@ -2155,7 +2392,7 @@ export default function GameDetailPage() {
                                see the link with the group name (or generic "Group"
                                while loading — graceful, not load-bearing for the
                                game-only flow). */
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors">
                                 {singleEvent?.Group?.name || 'Group'}
                             </Link>
                         ) : singleEvent?.Group?.name ? (
@@ -2163,14 +2400,17 @@ export default function GameDetailPage() {
                                static-text breadcrumb only when we have an actual
                                group name. Suppress the literal "group" word
                                fallback to avoid "Game night with group" UI. */
-                            <span className="text-content-secondary font-medium">
+                            <span className="text-content-secondary">
                                 Game night with {singleEvent.Group.name}
                             </span>
                         ) : null}
                     </>
                 )}
                 <span className="text-content-muted mx-2">{'>'}</span>
-                <span className="text-content-primary font-semibold">{game.name}</span>
+                {/* D-03 / R2 #171 (T-88.6-138): the current-page twin of the single-event
+                    breadcrumb above — 700 kept as hierarchy, `aria-current` added so the
+                    distinction is not weight-only. */}
+                <span aria-current="page" className="text-content-primary font-bold">{game.name}</span>
             </nav>
 
             {/* Game Details */}
@@ -2189,7 +2429,14 @@ export default function GameDetailPage() {
                             pointer-only; role="button" on an h1 wrapping a link is invalid).
                             The ONE-SHOT semantics (expand only, no re-collapse) are Phase 76's
                             recorded design and are preserved. */}
-                        <h1
+                        {/* RESEARCH §C.5 corrects D-04: this is NOT a size-less heading. It is
+                            an h1 already at `text-3xl`, i.e. already at Display 30, so the
+                            migration is a SPELLING move with no size change. Treating it as the
+                            "size-less → Body 16" row would shrink a page title by 14px.
+                            `font-bold` deletes — it comes from the primitive's base. */}
+                        <Heading
+                            level={1}
+                            size="display"
                             ref={setTitleNode}
                             id="game-title"
                             tabIndex={-1}
@@ -2199,7 +2446,7 @@ export default function GameDetailPage() {
                                     setTitleExpanded(true);
                                 }
                             }}
-                            className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
+                            className={`text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
                         >
                             {game.bgg_id ? (
                                 <a
@@ -2213,7 +2460,7 @@ export default function GameDetailPage() {
                             ) : (
                                 game.name
                             )}
-                        </h1>
+                        </Heading>
                         {!titleExpanded && titleOverflows && (
                             <button
                                 type="button"
@@ -2226,7 +2473,7 @@ export default function GameDetailPage() {
                                 }}
                                 aria-expanded={false}
                                 aria-controls="game-title"
-                                className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link font-medium"
+                                className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link"
                             >
                                 Show full title
                             </button>
@@ -2254,7 +2501,11 @@ export default function GameDetailPage() {
                                 the BGG <a>. Desktop renders full text + native link click.
                                 88-33 Task 9: overflow-gated + keyboard path — see the
                                 custom-branch twin's comment above; same treatment. */}
-                            <h1
+                            {/* RESEARCH §C.5, same correction as the custom-game twin above:
+                                already an h1 at Display 30, so no size change. */}
+                            <Heading
+                                level={1}
+                                size="display"
                                 ref={setTitleNode}
                                 id="game-title"
                                 tabIndex={-1}
@@ -2264,7 +2515,7 @@ export default function GameDetailPage() {
                                         setTitleExpanded(true);
                                     }
                                 }}
-                                className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
+                                className={`text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
                             >
                                 {game.bgg_id ? (
                                     <a
@@ -2278,7 +2529,7 @@ export default function GameDetailPage() {
                                 ) : (
                                     game.name
                                 )}
-                            </h1>
+                            </Heading>
                             {!titleExpanded && titleOverflows && (
                                 <button
                                     type="button"
@@ -2291,7 +2542,7 @@ export default function GameDetailPage() {
                                     }}
                                     aria-expanded={false}
                                     aria-controls="game-title"
-                                    className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link font-medium"
+                                    className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link"
                                 >
                                     Show full title
                                 </button>
@@ -2330,7 +2581,7 @@ export default function GameDetailPage() {
                                             onClick={() => setDescExpanded((v) => !v)}
                                             aria-expanded={descExpanded}
                                             aria-controls="game-description"
-                                            className="md:hidden mt-1 text-sm text-content-link hover:text-content-link-hover font-medium"
+                                            className="md:hidden mt-1 text-sm text-content-link hover:text-content-link-hover"
                                         >
                                             {descExpanded ? 'Show Less' : 'Show More'}
                                         </button>
@@ -2355,13 +2606,13 @@ export default function GameDetailPage() {
                     it back above the card is a decision, not a cleanup. */}
                 {group_id && userRole && userRole !== 'pending' && (
                     <div className="mt-6 pt-4 border-t border-line flex justify-end">
-                        <button
-                            type="button"
+                        <Button
+                            variant="primary"
                             onClick={() => setShowCreateEvent(true)}
-                            className="btn btn-primary min-h-11 w-full sm:w-auto px-6 py-2 text-base font-semibold"
+                            className="w-full sm:w-auto"
                         >
                             Plan a game night with this
-                        </button>
+                        </Button>
                     </div>
                 )}
             </div>
@@ -2377,9 +2628,9 @@ export default function GameDetailPage() {
                 always-on empty state here is a decision, not a completeness fix. */}
             {upcomingEvents.length > 0 && (
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="w-full text-xl leading-tight font-bold text-content-primary mb-4">
+                    <Heading level={2} size="heading" className="w-full text-content-primary mb-4">
                         Upcoming ({upcomingEvents.length})
-                    </h2>
+                    </Heading>
                     <div className="space-y-0">
                         {upcomingEvents.map((event, index) => renderSessionCard(event, index, { interactive: true }))}
                     </div>
@@ -2401,17 +2652,18 @@ export default function GameDetailPage() {
                     reopening. This marker's OWN subject (the conditional count and the stacking)
                     is untouched by that ruling and still stands. */}
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                    <h2 className="w-full text-xl leading-tight font-bold text-content-primary">
+                    <Heading level={2} size="heading" className="w-full text-content-primary">
                         {/* Post-split (Task 7 step 1b): counts key on the HISTORY partition —
                             keying on raw `events` would show "3 of 5" with no filter active
                             whenever upcoming events exist. */}
                         Game Sessions ({filteredEvents.length === historyEvents.length
                             ? historyEvents.length
                             : `${filteredEvents.length} of ${historyEvents.length}`})
-                    </h2>
-                    <button
+                    </Heading>
+                    <Button
+                        variant="secondary"
                         onClick={() => setShowFilters(!showFilters)}
-                        className="btn btn-secondary min-h-11 w-full sm:w-auto px-4 py-2 text-sm font-medium flex items-center justify-center gap-2"
+                        className="w-full sm:w-auto"
                     >
                         {showFilters ? (
                             <>
@@ -2424,7 +2676,7 @@ export default function GameDetailPage() {
                                 <span>▼</span>
                             </>
                         )}
-                    </button>
+                    </Button>
                 </div>
                 
                 {/* Filters and Sorting */}
@@ -2444,7 +2696,7 @@ export default function GameDetailPage() {
                             near-no-op diff; the WEIGHT is the change (§4.2 states 600 as a
                             prohibition and D-01 gives it exactly one home, the Button
                             primitive). */}
-                        <h3 className="text-base font-bold text-content-primary">Filter & Sort Sessions</h3>
+                        <Heading level={3} size="body" className="text-content-primary">Filter & Sort Sessions</Heading>
                         <button
                             onClick={clearFilters}
                             className="text-sm text-content-link hover:text-content-link-hover"
@@ -2471,28 +2723,61 @@ export default function GameDetailPage() {
                         here, and do not drop an `id`: both are decisions, not cleanups. */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Date Range */}
+                        {/* DECISION Phase 88.6-47 (todo 2026-09-21, "date range inputs allow end before
+                            start"): the two bounds below are DERIVED from the sibling's current value, and
+                            each passes `undefined` when its sibling is empty so an unset field places no
+                            bound at all — this filter starts empty on both ends, and an empty-string bound
+                            is a REAL bound of nothing that some engines treat as rejecting every value.
+
+                            These are NATIVE attributes, which is the point: iOS and Android date pickers
+                            honour `min`/`max` by greying out unreachable days, and a picker is the surface
+                            the owner was actually using when he reported this. `Input` spreads unknown
+                            props straight onto the element (`src/components/ui/Input.tsx:143`, contract
+                            recorded at `:27-29`), so no primitive changes.
+
+                            THE BOUNDS ARE TWO-SIDED ON PURPOSE. A one-sided `min` on the To control would
+                            trap a user who set To first: with From unbounded he could still pick an
+                            inverted pair, and with To bounded he could not fix it from the other end.
+                            Both directions are bounded so neither edit order dead-ends.
+
+                            WHAT THIS DOES NOT DO, stated rather than left to be discovered: it is a picker
+                            affordance, not validation. A typed value in a desktop text entry can still
+                            violate the bound, and on THIS surface the consequence is a silently empty
+                            result list with no explanation — the filter performs no fetch, so nothing
+                            surfaces.
+                            REJECTED — an inline error message for the typed path. The string would be NEW
+                            visible copy, the phase's P1 contract forbids minting it, and neither register
+                            holds a reusable one: UI-SPEC §6.3's 17 rows are all fetch-failure or
+                            save-success strings, and `MESSAGE_BY_CODE`
+                            (`src/components/ui/useFetchErrorState.ts:46-112`) is exhaustive over
+                            `FetchErrorCode` — every entry is an API-failure message and this filter calls
+                            no API. Routed to Phase 88.9 with the proposed string named on a row in
+                            `.planning/deferred/phase-88.6.md`, so the owner ratifies it in the look phase
+                            rather than an executor minting it mid-sweep. */}
                         <div>
-                            <label htmlFor="session-filter-date-from" className="block text-xs font-medium text-content-secondary mb-1">From Date</label>
+                            <label htmlFor="session-filter-date-from" className="block text-sm text-content-secondary mb-1">From Date</label>
                             <Input
                                 id="session-filter-date-from"
                                 type="date"
                                 value={filters.dateFrom}
+                                max={filters.dateTo || undefined}
                                 onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
                             />
                         </div>
                         <div>
-                            <label htmlFor="session-filter-date-to" className="block text-xs font-medium text-content-secondary mb-1">To Date</label>
+                            <label htmlFor="session-filter-date-to" className="block text-sm text-content-secondary mb-1">To Date</label>
                             <Input
                                 id="session-filter-date-to"
                                 type="date"
                                 value={filters.dateTo}
+                                min={filters.dateFrom || undefined}
                                 onChange={(e) => handleFilterChange('dateTo', e.target.value)}
                             />
                         </div>
 
                         {/* Player Filters */}
                         <div>
-                            <label htmlFor="session-filter-player-won" className="block text-xs font-medium text-content-secondary mb-1">Player Won</label>
+                            <label htmlFor="session-filter-player-won" className="block text-sm text-content-secondary mb-1">Player Won</label>
                             <Input
                                 id="session-filter-player-won"
                                 type="text"
@@ -2502,7 +2787,7 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="session-filter-player-picked" className="block text-xs font-medium text-content-secondary mb-1">Player Picked</label>
+                            <label htmlFor="session-filter-player-picked" className="block text-sm text-content-secondary mb-1">Player Picked</label>
                             <Input
                                 id="session-filter-player-picked"
                                 type="text"
@@ -2512,7 +2797,7 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="session-filter-player-participated" className="block text-xs font-medium text-content-secondary mb-1">Player Participated</label>
+                            <label htmlFor="session-filter-player-participated" className="block text-sm text-content-secondary mb-1">Player Participated</label>
                             <Input
                                 id="session-filter-player-participated"
                                 type="text"
@@ -2524,7 +2809,7 @@ export default function GameDetailPage() {
 
                         {/* Duration Filters */}
                         <div>
-                            <label htmlFor="session-filter-min-duration" className="block text-xs font-medium text-content-secondary mb-1">Min Duration (min)</label>
+                            <label htmlFor="session-filter-min-duration" className="block text-sm text-content-secondary mb-1">Min Duration (min)</label>
                             <Input
                                 id="session-filter-min-duration"
                                 type="number"
@@ -2534,7 +2819,7 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="session-filter-max-duration" className="block text-xs font-medium text-content-secondary mb-1">Max Duration (min)</label>
+                            <label htmlFor="session-filter-max-duration" className="block text-sm text-content-secondary mb-1">Max Duration (min)</label>
                             <Input
                                 id="session-filter-max-duration"
                                 type="number"
@@ -2546,7 +2831,7 @@ export default function GameDetailPage() {
 
                         {/* Player Count */}
                         <div>
-                            <label htmlFor="session-filter-min-players" className="block text-xs font-medium text-content-secondary mb-1">Min Players</label>
+                            <label htmlFor="session-filter-min-players" className="block text-sm text-content-secondary mb-1">Min Players</label>
                             <Input
                                 id="session-filter-min-players"
                                 type="number"
@@ -2558,7 +2843,7 @@ export default function GameDetailPage() {
 
                         {/* Max Score */}
                         <div>
-                            <label htmlFor="session-filter-min-score" className="block text-xs font-medium text-content-secondary mb-1">Min Score</label>
+                            <label htmlFor="session-filter-min-score" className="block text-sm text-content-secondary mb-1">Min Score</label>
                             <Input
                                 id="session-filter-min-score"
                                 type="number"
@@ -2571,7 +2856,7 @@ export default function GameDetailPage() {
 
                         {/* Sort By */}
                         <div>
-                            <label htmlFor="session-filter-sort-by" className="block text-xs font-medium text-content-secondary mb-1">Sort By</label>
+                            <label htmlFor="session-filter-sort-by" className="block text-sm text-content-secondary mb-1">Sort By</label>
                             <SelectControl
                                 id="session-filter-sort-by"
                                 value={filters.sortBy}
@@ -2623,12 +2908,12 @@ export default function GameDetailPage() {
                 {/* Show More Button */}
                 {filteredEvents.length > visibleSessions && (
                     <div className="mt-4 text-center">
-                        <button
+                        <Button
+                            variant="primary"
                             onClick={showMoreSessions}
-                            className="btn btn-primary px-6 py-2"
                         >
                             Show {Math.min(3, filteredEvents.length - visibleSessions)} More Sessions
-                        </button>
+                        </Button>
                     </div>
                 )}
             </div>
@@ -2678,14 +2963,14 @@ export default function GameDetailPage() {
                     gate. That escalation is what produced the ruling above: the deferral worked
                     exactly as designed, and is now RESOLVED. */}
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-content-primary">Reviews ({reviews.length})</h2>
+                    <Heading level={2} size="heading" className="text-content-primary">Reviews ({reviews.length})</Heading>
                     {user && !userReview && userRole && userRole !== 'pending' && (
-                        <button
+                        <Button
+                            variant="primary"
                             onClick={() => setShowReviewForm(true)}
-                            className="btn btn-primary px-4 py-2"
                         >
                             Add Review
-                        </button>
+                        </Button>
                     )}
                 </div>
 
@@ -2694,7 +2979,7 @@ export default function GameDetailPage() {
                     <div className="border-l-4 border-btn-primary pl-4 py-2 mb-4 relative">
                         <div className="flex justify-between items-start mb-2">
                             <div>
-                                <p className="font-semibold text-content-primary">
+                                <p className="font-bold text-content-primary">
                                     {userReview.User?.id ? (
                                         <ClickableMemberName userId={userReview.User.id} username={userReview.User.username || 'You'} />
                                     ) : (
@@ -2710,7 +2995,7 @@ export default function GameDetailPage() {
                                     {renderStars(userReview.rating)}
                                 </p>
                                 {userReview.is_recommended && (
-                                    <p className="text-sm text-content-status-success font-semibold">✓ Recommended</p>
+                                    <p className="text-sm text-content-status-success">✓ Recommended</p>
                                 )}
                                 <button
                                     onClick={() => setShowReviewForm(true)}
@@ -2742,7 +3027,7 @@ export default function GameDetailPage() {
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-semibold text-content-primary">
+                                                    <p className="font-bold text-content-primary">
                                                         {review.User?.id ? (
                                                             <ClickableMemberName userId={review.User.id} username={review.User.username || 'Unknown'} />
                                                         ) : (
@@ -2750,7 +3035,7 @@ export default function GameDetailPage() {
                                                         )}
                                                     </p>
                                                     {isUserReview && (
-                                                        <span className="text-xs bg-surface-card-hover text-content-link px-2 py-1 rounded-sm">
+                                                        <span className="text-xs bg-surface-muted text-content-accent px-2 py-1 rounded-sm">
                                                             You
                                                         </span>
                                                     )}
@@ -2764,7 +3049,7 @@ export default function GameDetailPage() {
                                                     {renderStars(review.rating)}
                                                 </p>
                                                 {review.is_recommended && (
-                                                    <p className="text-sm text-content-status-success font-semibold">✓ Recommended</p>
+                                                    <p className="text-sm text-content-status-success">✓ Recommended</p>
                                                 )}
                                             </div>
                                         </div>
@@ -2816,7 +3101,7 @@ export default function GameDetailPage() {
                                 missing. Left as a <label> it is an orphan that axe reports and
                                 that a reader "fixes" by wiring it to the wrong element.
                                 Turning this back into a <label> is a decision, not a cleanup. */}
-                            <span className="block text-sm font-medium text-content-primary mb-1">
+                            <span className="block text-sm text-content-primary mb-1">
                                 Rating
                             </span>
                             <StarRatingPicker
@@ -2826,11 +3111,15 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="review_text" className="block text-sm font-medium text-content-primary mb-1">
+                            <label htmlFor="review_text" className="block text-sm text-content-primary mb-1">
                                 Review
                             </label>
                             <Textarea
                                 id="review_text"
+                                /* Phase 88.6-45 (R7 house rule, `Input.tsx:11-19`): `name` beside `id` on both review
+                                   controls, found by the composed audit (`textarea#review_text[name=?]` / `input#recommended[name=?]:
+                                   missing name attribute`). The handlers read `e.target.value` / `.checked`, so inert to behaviour. */
+                                name="review_text"
                                 value={reviewForm.review_text}
                                 onChange={(e) => setReviewForm({...reviewForm, review_text: e.target.value})}
                                 rows="4"
@@ -2848,6 +3137,7 @@ export default function GameDetailPage() {
                             <input
                                 type="checkbox"
                                 id="recommended"
+                                name="recommended"
                                 checked={reviewForm.is_recommended}
                                 onChange={(e) => setReviewForm({...reviewForm, is_recommended: e.target.checked})}
                                 className="mr-2"
@@ -2856,12 +3146,12 @@ export default function GameDetailPage() {
                                 ✓ Mark as recommended (shows a "Recommended" badge on your review)
                             </label>
                         </div>
-                        <button
+                        <Button
                             type="submit"
-                            className="btn btn-primary px-6 py-2"
+                            variant="primary"
                         >
                             {userReview ? 'Update Review' : 'Submit Review'}
-                        </button>
+                        </Button>
                     </form>
                 </Modal.Body>
             </Modal>

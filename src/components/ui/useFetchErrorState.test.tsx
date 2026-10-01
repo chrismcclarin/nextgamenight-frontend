@@ -7,9 +7,11 @@
  * so no global config is in play).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { renderHook, cleanup } from '@testing-library/react';
+import { render, renderHook, screen, cleanup } from '@testing-library/react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useFetchErrorState, getFetchErrorMessage } from './useFetchErrorState';
+import { FetchErrorBanner } from './FetchErrorBanner';
+import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
 
 afterEach(() => cleanup());
@@ -173,5 +175,379 @@ describe('getFetchErrorMessage — designed copy for action-path failures', () =
     const out = getFetchErrorMessage(undefined);
     expect(out.length).toBeGreaterThan(0);
     expect(out).toMatch(/something went wrong/i);
+  });
+
+  // Phase 88.6-54 (R071 (d), WINDOWS 122): the two registry rows 88.8 added with NO behaviour
+  // test. Each is asserted as the LITERAL copy — MESSAGE_BY_CODE is module-private and this plan
+  // adds tests only, so it is not exported to be imported here. Deleting either row makes its
+  // code fall back to `unknown` ("Something went wrong…"), which reds the matching case.
+  // Demonstrated RED that way at execution (2026-09-28), then GREEN on restore.
+  it('unsupported_address (the synthetic-target 400) resolves to its own designed copy', () => {
+    expect(getFetchErrorMessage(new ApiError('x', 'unsupported_address', 400))).toBe(
+      "That address can't be used with this app — the domain is reserved by our sign-in system."
+    );
+  });
+
+  it('not_provisioned (the never-provisioned 404) resolves to its own designed copy', () => {
+    expect(getFetchErrorMessage(new ApiError('x', 'not_provisioned', 404))).toBe(
+      "Your account isn't set up yet. Reload the page and try again."
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-13 task 3 — the three R1 edge rows the SPEC marks explicit.
+//
+// WHY THEY LIVE HERE AND NOT IN `src/app/fetchErrorTreatment.test.ts`, which is the
+// file plan 13 otherwise owns: that file is STRICTLY a source scanner. Its own docblock
+// carries the heading "WHY A SOURCE SCAN AND NOT A RENDER TEST", it imports only
+// `node:fs` / `node:path` / vitest / the test-utils, and it renders nothing. Putting the
+// first RTL render in the repo's most-cited scan suite would contradict the decision that
+// file was written to record. This suite already renders (`renderHook`), already owns
+// `getFetchErrorMessage`'s derivation, and is the second file in plan 13 task 3's own
+// verify command — so the convention says here. The SINK-SET tripwire that accompanies
+// arm 1 is a source scan and correctly stays in the scanner file.
+// ---------------------------------------------------------------------------
+
+/** A `FetchErrorState` with a caller-supplied message — the render arms' subject. */
+const errorState = (message: string): FetchErrorState => ({
+  showError: true,
+  message,
+  code: 'unknown',
+  retry: vi.fn().mockResolvedValue(undefined),
+});
+
+describe('FetchErrorBanner — SPEC Edge Coverage (R1)', () => {
+  // SPEC Edge Coverage row: ENCODING / R1.
+  it('renders a markup payload as TEXT — no element is created from it', () => {
+    // The threat is an upstream `message` containing markup reaching the DOM. The
+    // derivation layer is supposed to stop it ever arriving (see "NEVER returns the
+    // upstream message" above); THIS arm pins the second line of defence — that even if
+    // one did arrive, React escapes it. Non-ASCII rides along: the same escaping path is
+    // what mangles it if anyone reaches for an HTML sink.
+    const payload = '<b>bold</b> & "quoted" — naïve ✓ <img src=x onerror=boom>';
+    const { container } = render(<FetchErrorBanner state={errorState(payload)} />);
+
+    // The literal characters, angle brackets included, are present AS TEXT.
+    expect(screen.getByText(payload)).toBeTruthy();
+    // …and no element was created from any of it.
+    expect(container.querySelector('b')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  // SPEC Edge Coverage row: EMPTY / R1.
+  it('an error with neither code nor message renders the ratified `unknown` copy', () => {
+    // A network failure, or an HTML 5xx body: nothing to derive from. P1 forbids
+    // authoring copy in a test, so the expected string is READ FROM THE MODULE rather
+    // than transcribed — `getFetchErrorMessage(undefined)` is the register's own answer
+    // for "no code at all".
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+
+    const { result } = renderHook(() =>
+      useFetchErrorState(queryStub({ isError: true, error: new Error('') }))
+    );
+    expect(result.current.code).toBe('unknown');
+    expect(result.current.message).toBe(ratifiedUnknown);
+
+    render(<FetchErrorBanner state={result.current} />);
+    const shown = screen.getByText(ratifiedUnknown);
+    expect(shown.textContent).toBe(ratifiedUnknown);
+    // The two failure shapes this row exists to catch, named rather than implied.
+    expect(shown.textContent).not.toBe('');
+    expect(shown.textContent).not.toBe('undefined');
+  });
+
+  // UI-SPEC §6.2 row: exactly one live region per failure.
+  it('mounts exactly ONE assertive and ONE polite live region', () => {
+    // WHAT THIS PROVES, and it is narrower than it looks: no SECOND region is added by a
+    // sweep. Banner's internal StatusRegion announces assertively on the warning tone;
+    // FetchErrorBanner adds a POLITE sr-only sibling for transient "Retrying…" text, and
+    // the two must never nest or duplicate.
+    //
+    // WHAT IT DOES NOT PROVE: that the failure is ANNOUNCED. The UI-SPEC §6.2
+    // ANNOUNCEMENT row is NOT marked verified by this arm, and plan 88.6-13 does not
+    // satisfy it. The reason is EMPTY-FIRST: `StatusRegion.tsx:9-12` records that screen
+    // readers announce CHANGES to a MOUNTED live region, not the conditional mount of a
+    // new one — while `FetchErrorBanner.tsx:58` is `if (!state.showError) return null;`,
+    // so the whole banner, its assertive region included, enters the DOM together with
+    // its text. Routed durably, NOT left as an observation:
+    // `.planning/deferred/phase-88.9.md`, with plan 88.6-36 (the plan that declares
+    // FetchErrorBanner.tsx) named as the in-phase home if the owner wants it sooner.
+    // No shared primitive is edited here — FetchErrorBanner has 29 call sites.
+    const { container } = render(<FetchErrorBanner state={errorState('boom')} />);
+
+    expect(container.querySelectorAll('[aria-live="assertive"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
+    // Sibling, never nested — a nested live region announces twice.
+    const assertive = container.querySelector('[aria-live="assertive"]');
+    expect(assertive?.querySelector('[aria-live]')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-36 task 3 — the `compact` branch's EMPTY-FIRST region (T-88.6-102, W38 class).
+//
+// WHAT THESE ARMS PROVE, and it is narrower than it looks: the COMPONENT is empty-first — its
+// compact live region is mounted, empty and `sr-only` BEFORE the failure, and the notice arrives
+// as a text CHANGE to that same node. They do NOT prove that any CONSUMER announces. Six of the
+// twelve `compact` call sites gate the banner on `showError` at the CALLER, so the whole
+// component is created by the failure and a component-level render like the one below passes
+// green at all twelve regardless. Those six are named by `file:line` in
+// `.planning/deferred/phase-88.6.md`. This is the same honesty clause the single-live-region arm
+// above already carries; it is restated here because this is the arm most likely to be cited as
+// if it closed the whole row.
+//
+// Three things are pinned, because a presence-only check stays green while React tears the region
+// down and rebuilds it — which is exactly the failure mode the fix is about:
+//   (a) POSITION  — the region is the FIRST child and a SIBLING of the visible compact wrapper,
+//                   never nested inside it, so the wrapper's own mount cannot carry it;
+//   (b) IDENTITY  — the element reference is CAPTURED before the transition and asserted to be
+//                   the SAME node afterwards (`toBe`), not merely present in both states;
+//   (c) VISIBILITY— `sr-only` in BOTH states, asserted mechanically. `StatusRegion` supplies no
+//                   default visibility (`StatusRegion.tsx:43` is `cn('text-sm', className)`), so
+//                   an unstated className would ship a visible empty node on every consumer.
+// ---------------------------------------------------------------------------
+
+/** The healthy twin of `errorState` — same shape, `showError` false. */
+const healthyState = (): FetchErrorState => ({
+  showError: false,
+  message: '',
+  code: 'unknown',
+  retry: vi.fn().mockResolvedValue(undefined),
+});
+
+describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () => {
+  it('mounts the compact region EMPTY and sr-only before the failure, and keeps the SAME node after it', () => {
+    const { container, rerender } = render(
+      <FetchErrorBanner compact state={healthyState()} />
+    );
+
+    // (a) POSITION, healthy: exactly one live region, and it is the FIRST child of the render.
+    const before = container.querySelectorAll('[aria-live]');
+    expect(before, 'exactly one live region in the compact branch').toHaveLength(1);
+    const region = before[0] as HTMLElement;
+    expect(region, 'the region is the first rendered node, not nested in the visible wrapper')
+      .toBe(container.firstElementChild);
+
+    // EMPTY-FIRST: mounted with no text to announce.
+    expect(region.textContent).toBe('');
+    // (c) VISIBILITY, healthy.
+    expect(region).toHaveClass('sr-only');
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    // The VISIBLE copy has NOT moved above the guard — only the announcing node did.
+    expect(container.textContent).toBe('');
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+
+    rerender(<FetchErrorBanner compact state={errorState('boom')} />);
+
+    const after = container.querySelectorAll('[aria-live]');
+    expect(after, 'still exactly one live region — the notice is a CHANGE, not a second region')
+      .toHaveLength(1);
+    // (b) IDENTITY — the load-bearing assertion. A remount here would make the fix a no-op
+    // while every presence check above still passed. PROVEN NON-VACUOUS at plan 88.6-36's
+    // commit by planting a `key` that changes with `showError` on the region: this line is the
+    // one that reds ("the SAME DOM node carries the notice … Object.is equality"). Measured in
+    // the same sitting and recorded because the component's marker was first drafted with the
+    // opposite claim: the `if (!showError) return <StatusRegion/>` early-return shape does NOT
+    // remount — React reconciles a single-element child against the first child of an array by
+    // position — so this arm does not distinguish that refactor, and does not claim to.
+    expect(after[0], 'the SAME DOM node carries the notice').toBe(region);
+    expect(region.textContent).toBe('Some personal controls are unavailable.');
+    // (c) VISIBILITY, failed.
+    expect(region).toHaveClass('sr-only');
+    // (a) POSITION, failed: still first, and the visible wrapper is its SIBLING.
+    expect(region).toBe(container.firstElementChild);
+    const visible = container.children[1] as HTMLElement;
+    expect(visible.querySelector('[aria-live]'), 'the visible wrapper holds no live region')
+      .toBeNull();
+    expect(visible).not.toHaveAttribute('role', 'status');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('adds no region to the FULL branch — the gate on `compact` is what keeps plan 13 green', () => {
+    // The `showError` guard covers BOTH branches, so an UNGATED hoist would put this polite
+    // region in the full branch alongside the one already composed there. That is the exact
+    // shape the arm above ("mounts exactly ONE assertive and ONE polite") goes red on; this is
+    // its positive control from the other side.
+    const { container } = render(<FetchErrorBanner state={healthyState()} />);
+    expect(container.innerHTML, 'the full branch still renders nothing while healthy').toBe('');
+  });
+
+  it('carries no weight utility on any of the three link-buttons, colour and underline intact', () => {
+    // UI-SPEC §4.5 names these three sites as the EMPHASIS case. CLASS-LEVEL on purpose: this
+    // suite is jsdom, which performs no layout and loads no stylesheet, so a computed
+    // `fontWeight` reads the UA default identically before and after the deletion and would
+    // prove nothing (the D28 rule). The rendered-weight half is a browser measurement this
+    // plan does not claim to have taken.
+    const { unmount } = render(<FetchErrorBanner compact state={errorState('boom')} />);
+    const compactRetry = screen.getByRole('button', { name: 'Retry' });
+    expect(compactRetry).not.toHaveClass('font-medium');
+    expect(compactRetry).toHaveClass('text-content-link');
+    expect(compactRetry).toHaveClass('underline');
+    unmount();
+
+    render(<FetchErrorBanner state={errorState('boom')} />);
+    for (const name of ['Try again', 'Report this']) {
+      const button = screen.getByRole('button', { name });
+      expect(button, `${name}: 500 is a §4.5 prohibition outside Button`).not.toHaveClass(
+        'font-medium'
+      );
+      expect(button, `${name}: the emphasis is the colour`).toHaveClass('text-content-link');
+      expect(button, `${name}: and the underline`).toHaveClass('underline');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-14 task 2 — the INCOMPLETE-ENVELOPE arms (R9 / SPEC Edge Coverage
+// rows `empty / R9` and `encoding / R9`).
+//
+// Phase 93 deletes the `body.error` alias and the top-level `errors[]` mirror.
+// What this file has to pin is the other half of that: what this function does
+// when the envelope that arrives is incomplete — a `code` with no `message`, a
+// code the register has never heard of, or no error object at all.
+//
+// HONEST SCOPE — the malformed-`details` arms below are VACUOUS BY CONSTRUCTION
+// today, and they are kept as regression guards rather than counted as coverage.
+// `getFetchErrorMessage` calls `deriveCode` (useFetchErrorState.ts:115-118) and
+// nothing else, and `deriveCode` reads `error.code` off an `ApiError`. It never
+// dereferences `details` at all, so no amount of mangling that shape can make
+// these arms fail. They WOULD red if someone later taught this function to
+// re-parse the body — which the DECISION marker above `getFetchErrorMessage`
+// forbids — and that is the whole of their value. They do NOT pin AC-9's
+// "never throws" claim, and nothing in plan 88.6-14 does.
+//
+// The real `details` consumer is `extractFieldErrors` in `lib/api.ts` (:315-318,
+// called at :431), where a `[{}]` element renders the literal `undefined: undefined`
+// into user-facing copy through the `.map` at :434. That surface belongs to plan
+// 42's `api.test.ts` consumer matrix and is deliberately NOT reached from here.
+// ---------------------------------------------------------------------------
+
+describe('getFetchErrorMessage — incomplete envelope (R9)', () => {
+  it('a code with NO message resolves through the register, identically to one with a message', () => {
+    // The Phase 93 shape: the backend stops sending `error`/`message` aliases and
+    // the FE has only `code` to go on. P1 forbids authoring copy in a test, so the
+    // expected value is not transcribed — it is the SAME code's answer when a
+    // message IS present. Equal means the message was never consulted.
+    const withMessage = getFetchErrorMessage(new ApiError('Forbidden: groups.owner', 'forbidden', 403));
+    const withoutMessage = getFetchErrorMessage(new ApiError('', 'forbidden', 403));
+
+    expect(withoutMessage).toBe(withMessage);
+    expect(withoutMessage).toMatch(/access/i);
+    expect(withoutMessage).not.toContain('groups.owner');
+    expect(withoutMessage).not.toBe('');
+    expect(withoutMessage).not.toBe('undefined');
+  });
+
+  it('a caller `byCode` arm wins over the register for a code with no message', () => {
+    const custom = 'You are not on this list.'; // caller-supplied test value, not app copy
+    const out = getFetchErrorMessage(new ApiError('', 'forbidden', 403), {
+      byCode: { forbidden: custom },
+    });
+    expect(out).toBe(custom);
+    // …and it did not silently also pick up the register entry.
+    expect(out).not.toBe(getFetchErrorMessage(new ApiError('', 'forbidden', 403)));
+  });
+
+  it('an UNKNOWN code with no message returns the ratified `unknown` copy — never the code', () => {
+    // A code the register has never heard of is exactly what a backend that ships
+    // a new code before the FE does produces. `MESSAGE_BY_CODE[code] ?? unknown`
+    // (:155) is the arm under test. The expected string is read from the module
+    // via the register's own answer for "no code at all", never transcribed.
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+    const bogus = 'teapot_overheated' as FetchErrorCode;
+
+    const out = getFetchErrorMessage(new ApiError('', bogus, 418));
+    expect(out).toBe(ratifiedUnknown);
+    expect(out).not.toContain('teapot');
+    expect(out).not.toBe('');
+    expect(out).not.toBe('undefined');
+  });
+
+  it('`fallback` applies ONLY when the resolved code is `unknown`', () => {
+    // useFetchErrorState.ts:154 — `if (code === 'unknown' && options.fallback)`.
+    // This is the assertion the two rewritten docblocks in `useFetchErrorState.ts`
+    // point at (plan 88.6-14 task 3), so it is what makes those docblocks checkable
+    // rather than a second sentence that can drift from the first.
+    const fallback = 'A surface-specific line.'; // caller-supplied test value
+
+    // A real code -> the register wins; the caller's fallback is ignored entirely.
+    const forbidden = getFetchErrorMessage(new ApiError('', 'forbidden', 403), { fallback });
+    expect(forbidden).not.toBe(fallback);
+    expect(forbidden).toBe(getFetchErrorMessage(new ApiError('', 'forbidden', 403)));
+
+    // No code at all -> `unknown` -> the caller's fallback wins.
+    expect(getFetchErrorMessage(new Error('raw'), { fallback })).toBe(fallback);
+
+    // FINDING (plan 88.6-14 task 2, 2026-09-15) — an UNRECOGNISED code does NOT
+    // take the fallback, even though the user SEES the `unknown` copy. `deriveCode`
+    // (:116) returns an ApiError's code VERBATIM, so the gate at :154 compares
+    // 'teapot_overheated' against 'unknown' and fails, while the register lookup at
+    // :155 falls through to `MESSAGE_BY_CODE.unknown`. The RESOLVED CODE and the
+    // RENDERED COPY diverge, and this is the one path where a caller who asked for a
+    // surface-specific line gets the generic one instead. Reachable: `mapErrorToCode`
+    // casts `body.code as ApiErrorCode` unchecked (api.ts:296), so any backend code
+    // the FE union has not caught up with lands here.
+    //
+    // PINNED AS SHIPPED, NOT FIXED. This is a gate task; plan 88.6-14 forbids
+    // changing `getFetchErrorMessage` for anything short of a real throw or a real
+    // blank, and this is neither — the user gets ratified copy. Routed durably as an
+    // amendment to the 88-CODE-REVIEW MED#10 entry in `.planning/deferred/phase-93.md`,
+    // which already owns the general "`fallback` only fires for 'unknown'" question.
+    // Changing this is a decision, not a cleanup.
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+    expect(
+      getFetchErrorMessage(new ApiError('', 'teapot_overheated' as FetchErrorCode, 418), { fallback })
+    ).toBe(ratifiedUnknown);
+  });
+
+  it('every non-ApiError input returns register copy — never blank, never the literal `undefined`', () => {
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+    const inputs: unknown[] = [
+      new Error('raw'),
+      null,
+      undefined,
+      {},
+      { code: 'forbidden' }, // a bare object is NOT an ApiError — `code` must not be read off it
+      'a string',
+      0,
+    ];
+    for (const input of inputs) {
+      const out = getFetchErrorMessage(input);
+      expect(out, `input ${JSON.stringify(input)}`).toBe(ratifiedUnknown);
+      expect(out).not.toBe('');
+      expect(out).not.toBe('undefined');
+    }
+  });
+
+  it('malformed `details` shapes cannot change the answer (RETAINED regression guard, VACUOUS today)', () => {
+    // READ THE BLOCK COMMENT ABOVE THIS DESCRIBE BEFORE TRUSTING THIS ARM.
+    // `getFetchErrorMessage` reaches only `deriveCode`, which reads `error.code`.
+    // `details` is never dereferenced, so this arm CANNOT fail against the current
+    // implementation however the shape is mangled. It is kept because it WOULD red
+    // if this function were ever taught to re-parse the body, and deleted the day
+    // that becomes impossible by type. It is not evidence of a never-throws
+    // guarantee — plan 42's `api.test.ts` matrix over `extractFieldErrors` is where
+    // the shape is actually walked.
+    const expected = getFetchErrorMessage(new ApiError('', 'validation', 400));
+    const malformed: unknown[] = [
+      undefined,
+      null,
+      {},
+      { errors: null },
+      { errors: 'not an array' },
+      { errors: [{}] },
+      { errors: [{ field: undefined, message: undefined }] },
+      [],
+      'string details',
+      0,
+    ];
+    for (const details of malformed) {
+      const out = getFetchErrorMessage(new ApiError('', 'validation', 400, details));
+      expect(out, `details ${JSON.stringify(details)}`).toBe(expected);
+      expect(out).not.toBe('');
+      expect(out).not.toBe('undefined');
+    }
   });
 });

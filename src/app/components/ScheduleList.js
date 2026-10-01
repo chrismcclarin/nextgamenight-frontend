@@ -6,6 +6,7 @@ import { useTimezone } from '../components/TimezoneProvider';
 import KebabMenu from './KebabMenu';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 
 // Day of week helper
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -88,14 +89,22 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
               {/* Left: Schedule info */}
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-lg font-semibold text-content-primary">{scheduleName}</h3>
-                  {/* Status badge */}
+                  <Heading level={3} size="heading" className="text-content-primary">
+                    {scheduleName}
+                  </Heading>
+                  {/* Status badge.
+
+                      DECISION Phase 88.6-32 (§4.5, the pill/chip-ink row): these two take
+                      **700**, not 400. 400 was REJECTED — a 12px label inside a tinted pill
+                      needs the weight to hold against its own fill, which is the same reason
+                      §4.5 gives for `UpcomingCountPill.tsx` and `MemberChipStack.tsx`. The
+                      500 they carried is a prohibition outside the `Button` label (§4.2). */}
                   {isActive ? (
-                    <span className="px-2 py-1 text-xs font-medium bg-status-success-subtle text-content-status-success rounded-full">
+                    <span className="px-2 py-1 text-xs font-bold bg-status-success-subtle text-content-status-success rounded-full">
                       Active
                     </span>
                   ) : (
-                    <span className="px-2 py-1 text-xs font-medium bg-status-warning-subtle text-content-status-warning rounded-full">
+                    <span className="px-2 py-1 text-xs font-bold bg-status-warning-subtle text-content-status-warning rounded-full">
                       Paused
                     </span>
                   )}
@@ -103,19 +112,19 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
 
                 <div className="space-y-1 text-sm text-content-secondary">
                   <p>
-                    <span className="font-medium">When:</span> {dayName} at {timeFormatted}
+                    <span className="text-content-primary">When:</span> {dayName} at {timeFormatted}
                   </p>
                   <p>
-                    <span className="font-medium">Game:</span> {gameName}
+                    <span className="text-content-primary">Game:</span> {gameName}
                   </p>
                   {schedule.min_participants && (
                     <p>
-                      <span className="font-medium">Min players:</span> {schedule.min_participants}
+                      <span className="text-content-primary">Min players:</span> {schedule.min_participants}
                     </p>
                   )}
                   {schedule.default_deadline_hours && (
                     <p>
-                      <span className="font-medium">Response window:</span> {(() => {
+                      <span className="text-content-primary">Response window:</span> {(() => {
                         const days = Math.round(schedule.default_deadline_hours / 24);
                         if (days < 1) return 'Less than 1 day';
                         return `${days} day${days === 1 ? '' : 's'}`;
@@ -128,13 +137,14 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
               {/* Right: Actions — desktop inline buttons (≥768px) */}
               <div className="hidden md:flex items-start gap-2 ml-4">
                 {/* Edit button */}
-                <button
+                <Button
+                  variant="primary"
+                  size="default"
                   onClick={() => onEdit?.(schedule)}
-                  className="btn btn-primary px-3 py-1.5 text-sm"
                   title="Edit schedule"
                 >
                   Edit
-                </button>
+                </Button>
 
                 {/* Pause/Resume toggle */}
                 <button
@@ -150,13 +160,14 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                 </button>
 
                 {/* Delete button */}
-                <button
+                <Button
+                  variant="danger"
+                  size="default"
                   onClick={() => handleDeleteClick(schedule)}
-                  className="btn btn-danger px-3 py-1.5 text-sm"
                   title="Delete schedule"
                 >
                   Delete
-                </button>
+                </Button>
               </div>
 
               {/* Mobile (<768px): collapse Edit/Pause/Delete into a single
@@ -189,22 +200,27 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
             {/* Delete Confirmation Dialog */}
             {deleteConfirm === schedule.id && (
               <div className="mt-4 p-3 md:p-4 bg-status-error-subtle border border-status-error rounded-card">
-                <p className="text-content-status-error font-medium mb-3">
+                {/* §4.5 emphasis outcome: 400 + a colour token. `font-medium` (500) is deleted
+                    rather than promoted to 700 — this is body prose inside an already-tinted
+                    error box, not hierarchy, and it already carries its colour token. */}
+                <p className="text-content-status-error mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>
                 <div className="flex gap-2">
-                  <button
+                  <Button
+                    variant="danger"
+                    size="default"
                     onClick={() => handleConfirmDelete(schedule.id)}
-                    className="btn btn-danger text-sm"
                   >
                     Confirm Delete
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="default"
                     onClick={handleCancelDelete}
-                    className="btn btn-secondary text-sm"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

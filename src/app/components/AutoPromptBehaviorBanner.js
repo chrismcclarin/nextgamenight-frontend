@@ -92,7 +92,15 @@ export default function AutoPromptBehaviorBanner() {
                 <button
                     type="button"
                     onClick={handleDismiss}
-                    className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm font-medium text-content-link underline transition-colors hover:no-underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                    /* `font-medium` DELETED (Phase 88.6-34, §4.5 EMPHASIS): this is the row's
+                       named precedent case — a link-styled button that ALREADY carries
+                       `text-content-link underline`, so the colour and the underline are doing the
+                       work and the weight was a third, redundant signal. `text-sm` STAYS: this is
+                       a bare `<button>`, NOT a `.btn`, so the size utility is LIVE (not dead the
+                       way it would be on a `Button`), and Label 14 is the right rung for an
+                       actionable label. `min-h-11` STAYS — it is this control's per-CTA 44px
+                       floor, and it is not supplied by anything else here. */
+                    className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm text-content-link underline transition-colors hover:no-underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                     aria-label="Dismiss banner"
                 >
                     Got it

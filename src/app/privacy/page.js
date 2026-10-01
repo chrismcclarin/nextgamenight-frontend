@@ -1,3 +1,5 @@
+import { Heading } from '../../components/ui/Heading';
+
 export const metadata = {
   title: 'Privacy Policy — Next Game Night',
 };
@@ -5,13 +7,13 @@ export const metadata = {
 export default function PrivacyPolicy() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-16">
-      <h1 className="text-4xl font-bold text-content-primary mb-2">Privacy Policy</h1>
+      <Heading level={1} size="display" className="text-content-primary mb-2">Privacy Policy</Heading>
       <p className="text-sm text-content-muted mb-10">Last updated: April 2026</p>
 
       <div className="prose prose-gray max-w-none space-y-8 text-content-secondary leading-relaxed">
 
         <section>
-          <h2 className="text-xl font-bold text-content-primary mb-3">What we collect</h2>
+          <Heading level={2} size="heading" className="text-content-primary mb-3">What we collect</Heading>
           <p>
             When you sign in with Google, we receive your name, email address, and profile picture
             from your Google account. We store this to identify you within the app.
@@ -28,7 +30,7 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-content-primary mb-3">How we use your data</h2>
+          <Heading level={2} size="heading" className="text-content-primary mb-3">How we use your data</Heading>
           <p>
             Your data is used only to make the app work for you and your group. We use it to:
           </p>
@@ -44,7 +46,7 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-content-primary mb-3">Google Calendar integration</h2>
+          <Heading level={2} size="heading" className="text-content-primary mb-3">Google Calendar integration</Heading>
           <p>
             If you choose to connect your Google Calendar, we request access to read your calendar
             data and create or manage calendar events. Specifically, we use the following Google API scopes:
@@ -84,7 +86,7 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-content-primary mb-3">Emails</h2>
+          <Heading level={2} size="heading" className="text-content-primary mb-3">Emails</Heading>
           <p>
             We may send you emails when your group requests your availability for an upcoming
             game night. You will not receive marketing emails. If you no longer want to receive
@@ -93,7 +95,7 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-content-primary mb-3">SMS notifications</h2>
+          <Heading level={2} size="heading" className="text-content-primary mb-3">SMS notifications</Heading>
           <p>
             SMS notifications are entirely optional. To enable them, you provide your mobile phone
             number, verify it with a one-time code (sent via Twilio Verify), and explicitly toggle
@@ -128,7 +130,7 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-content-primary mb-3">Data storage</h2>
+          <Heading level={2} size="heading" className="text-content-primary mb-3">Data storage</Heading>
           <p>
             Your data is stored in a secure PostgreSQL database. We take reasonable steps to
             protect it, but no internet service can guarantee absolute security.
@@ -136,7 +138,7 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-content-primary mb-3">Deleting your data</h2>
+          <Heading level={2} size="heading" className="text-content-primary mb-3">Deleting your data</Heading>
           <p>
             You can delete your account and all associated data at any time by contacting us.
             We will remove your data promptly.
@@ -144,7 +146,7 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-bold text-content-primary mb-3">Contact</h2>
+          <Heading level={2} size="heading" className="text-content-primary mb-3">Contact</Heading>
           <p>
             Questions? Reach us through the feedback link in the footer of the app.
           </p>

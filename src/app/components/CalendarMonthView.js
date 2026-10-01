@@ -12,6 +12,8 @@ import {
   SUBTEXT_MUTED_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
@@ -50,7 +52,7 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * the same custom-property + `dark:` mechanism as the ground, per the shipped
  * DECISION at EventScheduler.tsx. A decision, not a cleanup.
  *
- * DECISION Phase 88.3-16: this is a MODULE-LEVEL helper taking `groupBgImage`
+ * DECISION Phase 88.3-16: this is a MODULE-LEVEL helper taking the image flag
  * as an explicit second argument, chosen OVER the inner arrow function that
  * closed over it and was re-declared once per event inside
  * `dayEvents.slice(0, 2).map`. Both tile variants now need it, and one
@@ -102,16 +104,27 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * hoist is precisely what changed its blast radius. Gate B test 7 now asserts
  * that no identifier is ever assigned to `WebkitTextStroke` in these files.
  *
- * `groupBgImage` is passed as `null` for the COMPACT variant at the call site
- * (`tileBgImage`), because that tile deliberately paints no background image —
- * see the "NO BACKGROUND IMAGE HERE" marker further down. Passing the URL made
- * a coloured group that ALSO has an image take the heavy image-tuned black
+ * The flag is passed as `false` for the COMPACT variant at the call site
+ * (`tileHasBgImage`), because that tile deliberately paints no background image —
+ * see the "NO BACKGROUND IMAGE HERE" marker further down. Passing a truthy value
+ * made a coloured group that ALSO has an image take the heavy image-tuned black
  * shadow over a pale t = 0.70 tint. REJECTED: reading `variant` inside the
  * helper — it is deliberately module-level and argument-driven (marker above),
  * so the variant fork belongs at the call site.
+ *
+ * AMENDED Phase 88.6-41 (W49 / D-20 (i)): the second parameter is now the
+ * already-computed BOOLEAN `hasBgImage`, not the raw `background_image_url`
+ * string. Everything above is a NAMING correction only — 88.3-16's
+ * anti-memoization rejection and the call-site variant fork both stand
+ * unamended. REJECTED: calling `safeBgImageStyle` inside this helper — it runs
+ * `new URL()` twice per call and the helper runs twice per tile, so that would
+ * turn 1 validation per tile into 3 on a deliberately-unmemoized loop, and it
+ * would break `groupColourRendering.test.ts` test 29's `const F = !!X` /
+ * `const X = safeBgImageStyle(…)` derivation scan. The cheap boolean already
+ * exists at the call site.
  */
-const tileTextTreatment = (tileGround, groupBgImage) => {
-  if (groupBgImage) {
+const tileTextTreatment = (tileGround, hasBgImage) => {
+  if (hasBgImage) {
     return {
       textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
       WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
@@ -183,16 +196,19 @@ export default function CalendarMonthView({
           Task 2(B) of this plan adds that positive scan across the five
           group-page render-tree files. Removing a ring here reds it. */}
       <div className="flex justify-between items-center mb-4">
-        <button
-          onClick={() => onNavigateMonth(-1)}
-          className="btn btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-        >
+        {/* Phase 88.6-27: both `.btn btn-primary` nav controls take the primitive, and their
+            per-site focus-ring strings retire with the migration — the ring lives ONCE in the
+            primitive's cva base (A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
+            is byte-unchanged and still true of what the user sees; only WHERE the ring is
+            expressed moved. The "Go to Today" text link between them is NOT a `.btn` and KEEPS
+            its own string — it is not a member of the family that marker's ARM A covers. */}
+        <Button variant="primary" onClick={() => onNavigateMonth(-1)}>
           &larr; Previous
-        </button>
+        </Button>
         <div className="text-center">
-          <h3 className="text-xl font-semibold text-content-primary">
+          <Heading level={3} size="heading" className="text-content-primary">
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-          </h3>
+          </Heading>
           {tzLegend && (
             <p className="text-xs text-content-muted mt-0.5">
               Times shown in {tzLegend}
@@ -205,18 +221,27 @@ export default function CalendarMonthView({
             Go to Today
           </button>
         </div>
-        <button
-          onClick={() => onNavigateMonth(1)}
-          className="btn btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-        >
+        <Button variant="primary" onClick={() => onNavigateMonth(1)}>
           Next &rarr;
-        </button>
+        </Button>
       </div>
 
       {/* Calendar Grid */}
+      {/* UI-SPEC §4.5: the weekday header below is HIERARCHY, so 600 -> 700.
+          THE SIZE IS HELD AT 14 DELIBERATELY, and the reason is a premise check rather than an
+          omission. Plan 88.6-26's D-03 correction folded two OTHER weekday header rows to
+          12/700 over 12/400 on the stated ground that the header and the row beneath it "share
+          text-content-muted, so weight is the only hierarchy left". That premise is FALSE here:
+          this header is `text-content-secondary` while the day number below it forks its ink
+          four ways (accent for today, muted for an adjacent-month or past date, primary
+          otherwise), so colour is already carrying the hierarchy and this is not the one-ink
+          case D-03 addresses. Nothing in this plan's text asks for a size reduction here
+          either. Folding this row to 12 is therefore a DECISION for /gsd-ui-review or Phase
+          88.9, not a cleanup — and it is disclosed as an open question in
+          `88.6-27-SUMMARY.md` rather than taken silently. */}
       <div className="grid grid-cols-7 gap-1 mb-4">
         {dayNames.map(day => (
-          <div key={day} className="text-center font-semibold text-content-secondary py-2 text-sm">
+          <div key={day} className="text-center font-bold text-content-secondary py-2 text-sm">
             {day}
           </div>
         ))}
@@ -236,30 +261,191 @@ export default function CalendarMonthView({
 
           const cellClickable = !!date && (dayEvents.length > 0 || (isEmpty && showEmptyDayHint));
 
+          /* DECISION Phase 88.6-40 (W39, SPEC R5 / AC-5): the day's keyboard target is gated on
+             `cellClickable && dayEvents.length !== 1`, NOT on `cellClickable` alone.
+
+             REJECTED — gating on `cellClickable` alone. `cellClickable` is TRUE on a 1-event
+             day, and on a 1-event day the CELL's dispatch IS the TILE's: `EventCalendar.js`'s
+             `handleDayClick` forwards a single-event day straight into `handleEventClick`
+             (`if (dayEvents.length === 1) { handleEventClick(dayEvents[0]); return; }`), the
+             very handler the tile's `onEventClick` is bound to — and that tile is ALREADY
+             `role="button" tabIndex={0}`. So the rejected arm ships a SECOND tab stop for ONE
+             action, and a worse one, because the day target's name promises a day modal the
+             user is never taken to.
+
+             ALSO CONSIDERED AND NOT TAKEN: keeping the target on every clickable cell and
+             branching its `aria-label` on `dayEvents.length` the way `handleDayClick` branches.
+             That fixes the wrong NAME but leaves two stops for one action.
+
+             The narrowing costs nothing — every 1-event day is already fully keyboard-operable
+             through its tile — and it holds for every consumer: `<CalendarMonthView` has exactly
+             one render site in `src/` (`EventCalendar.js`). This is a decision, not a cleanup. */
+          const dayTargetActive = cellClickable && dayEvents.length !== 1;
+          const dayNumberLabel = dayTargetActive
+            ? `${monthNames?.[date.getMonth()] ?? ''} ${date.getDate()}`.trim() +
+              (dayEvents.length > 0
+                ? `, ${dayEvents.length} games. Open this day.`
+                : '. Add an event on this day.')
+            : undefined;
+
           return (
             <div
               key={index}
               onClick={() => {
                 if (date) onDayClick(date, dayEvents);
               }}
-              className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+              /* DECISION Phase 88.6-40 (W39 / T-88.6-116): `group` is HOISTED here, onto the
+                 wrapper's static class string, out of the `cellClickable` arm of the ground
+                 ternary below where it used to be this file's only occurrence.
+
+                 WHY IT HAD TO MOVE: the ternary is ordered `!date` -> `isCurrentDay` ->
+                 past-date -> `cellClickable`, so an empty TODAY cell — which IS `cellClickable`
+                 — resolves at the `isCurrentDay` arm and carried no `group` at all. Its
+                 `group-hover:opacity-40` "+" hint was therefore dead on HOVER too: a SHIPPED
+                 defect this plan surfaces rather than introduces, and the new
+                 `group-focus-within:` reveal would have inherited exactly the same dead ancestor.
+
+                 UNCONDITIONAL, chosen OVER a `${cellClickable ? ' group' : ''}` interpolation:
+                 the two are equivalent by construction (the only `group-*` utility anywhere in
+                 this cell's subtree is the "+" hint, which renders only under
+                 `isEmpty && showEmptyDayHint`, a disjunct of `cellClickable`), and the
+                 unconditional form adds no fourth template interpolation — which REMOVES the
+                 88.6-09 chunk-walker hazard instead of merely warning about it.
+
+                 FENCED: `group` PAINTS NOTHING, which is the whole reason it may leave the
+                 ternary. `cursor-pointer`, `transition-colors` and every `bg-*` / `border-*` /
+                 `hover:*` token STAY in their arms and the arms stay mutually exclusive — see
+                 the `DECISION Phase 88.3` (D-09 cascade fix) marker below, which records that
+                 stacking a permanent PAINTING ground beside a conditional one is REJECTED for
+                 this file (an emission-order paint bug jsdom cannot see). Hoisting `group` is
+                 not that pattern; FLATTENING the chain would be. This is a decision, not a
+                 cleanup. */
+              className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
                 isAdjacent ? 'opacity-60 ' : ''
               }${
                 !date ? 'bg-surface-page' :
-                isCurrentDay ? 'bg-surface-card-hover border-line-accent' :
+                isCurrentDay ? 'bg-surface-muted border-line-accent' :
                 variant === 'full' && isPastDate ? 'bg-surface-page' :
-                cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors group' :
+                cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
                 'bg-surface-card'
               }`}
             >
               {date && (
                 <>
-                  <div className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} font-medium mb-1 ${
-                    isCurrentDay ? 'text-content-accent' :
-                    isAdjacent ? 'text-content-muted' :
-                    variant === 'full' && isPastDate ? 'text-content-muted' :
-                    'text-content-primary'
-                  }`}>
+                  {/* UI-SPEC §4.5, the EMPHASIS outcome (400 + a colour token): the 500 is
+                     deleted rather than promoted, because this element ALREADY forks its colour
+                     four ways for exactly the hierarchy the weight was carrying — accent for
+                     today, muted for an adjacent-month or past date, primary otherwise — and
+                     today's cell additionally has its own ground and accent border. Promoting to
+                     700 instead would bold all 42 day numbers in the grid and flatten that fork
+                     rather than support it. */}
+                  {/* DECISION Phase 88.6-40 (W39, SPEC R5 / AC-5): THE DAY'S KEYBOARD TARGET IS
+                      THIS ELEMENT, not the cell that wraps it.
+
+                      REJECTED — `role`/`tabIndex`/`onKeyDown` on the cell `<div>`, and rejected
+                      again as a native `<button>` wrapper. The cell WRAPS two `role="button"
+                      tabIndex={0}` event tiles; promoting the wrapper is axe
+                      `nested-interactive` (WCAG 4.1.2), children-presentational hides the tiles
+                      from assistive tech, and it is the verbatim 88.3 run-3 H1 regression
+                      recorded in `groupColourRendering.test.ts`'s test 8. This is EventDayModal's
+                      H1 remedy — the same one plan 88.6-21 applied to the group card's title
+                      block, reused rather than forked into a second idiom.
+
+                      REJECTED — a native `<button>` here. A native button SYNTHESISES a bubbling
+                      click on Enter/Space, which would reach the cell's `onClick` and fire
+                      `handleDayClick` TWICE. A div + role synthesises neither, so each key is
+                      handled exactly once. For the same reason this element carries NO `onClick`
+                      of its own: a pointer click bubbles to the cell and fires once.
+
+                      NO 24px FLOOR IS DECLARED HERE, and the evidence is stated rather than the
+                      conclusion. WCAG 2.2 SC 2.5.8's "Equivalent" exception is CONDITIONAL — a
+                      target below 24x24 is exempt only when another control on the same page
+                      achieving the SAME FUNCTION does meet the minimum. That precondition is
+                      satisfied and readable from the class string above: the equivalent control
+                      is the day CELL itself, which carries the `onClick` for this same function
+                      and is `min-h-[80px]` in the compact variant, and which — as one of seven
+                      columns in `grid-cols-7 gap-1` — is ~53px wide at a 375px viewport
+                      (ARITHMETIC, not a measured render). Both axes clear 24 comfortably.
+                      REJECTED ARM: declaring `min-h-6` on the day number. It would move the tile
+                      stack down in every phone cell of the grid for a target that is already
+                      exempt on a checked precondition.
+
+                      The ARIA grid pattern (`heatmap/WeekGrid.tsx` + `useHeatmapCell.ts`) was
+                      also REJECTED: it requires the event tiles at `tabIndex={-1}`, which test 8
+                      pins against, and plan 41 edits those tiles next wave.
+
+                      Any of this is a decision, not a cleanup. */}
+                  <div
+                    {...(dayTargetActive
+                      ? {
+                          role: 'button',
+                          tabIndex: 0,
+                          'aria-label': dayNumberLabel,
+                          onKeyDown: (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onDayClick(date, dayEvents);
+                            }
+                          },
+                        }
+                      : {})}
+                    /* DECISION Phase 88.6-40 (W41): `aria-current="date"` rides THIS element,
+                       UNCONDITIONALLY on `cellClickable`, driven by the SAME `isCurrentDay`
+                       boolean as the cell tint above and the `text-content-accent` ink below.
+
+                       REJECTED — on the CELL wrapper. The cell `<div>` is role-less and has no
+                       accessible name, and ARIA has no ancestor-to-descendant state propagation:
+                       a screen reader in focus mode announces the FOCUSED node's role, name and
+                       states, so `aria-current` on the wrapper would never be conveyed when the
+                       inner day target takes focus — the user would hear the name and "button"
+                       and never "current date". The shipped sibling `SchedulerWeekStrip.tsx`
+                       puts the attribute on the NAMED `role="tab"` control (`aria-current={today
+                       ? 'date' : undefined}`) and tints an INNER span, with `EventScheduler`'s
+                       own suite asserting that pair by CONTAINMENT. The month grid INVERTS the
+                       nesting direction — attribute inner, tint outer — because here the named
+                       control IS the inner element; the RELATION (containment, on one boolean)
+                       is identical, and it is the shipped house idiom rather than a second one.
+
+                       REJECTED — gating `aria-current` on `cellClickable`: it would strip the
+                       semantic from exactly the cells that most need it (an empty TODAY cell on
+                       a calendar with no create hint). ACCEPTED CONSEQUENCE (owner ruling
+                       2026-09-14, #52): on every cell that exposes no keyboard target the
+                       attribute therefore sits on a ROLE-LESS generic. Role-less but NOT
+                       unnamed — its content is `{date.getDate()}`, the date itself — and WCAG
+                       4.1.2 applies to components WITH a role, so no SC is failed and the result
+                       is strictly better than the tint-only status quo. NOT READ: no AT was run;
+                       "exposed by most AT" is the ARIA mapping for `aria-current` on a named
+                       generic, not an observed announcement.
+
+                       NEITHER HALF IS GATED ON `isCurrentMonth`, and that is FORBIDDEN rather
+                       than merely unchosen. `isCurrentDay` is computed from the date ALONE, the
+                       cell's ground ternary awards the today treatment BEFORE the adjacent branch
+                       is reached (`isAdjacent` only prefixes `opacity-60`), and `getDaysInMonth`
+                       returns 42 cells including adjacent-month days — so a grid whose OVERFLOW
+                       contains today ALREADY renders that overflow cell tinted as today. The
+                       invariant is therefore per rendered GRID, not per month: exactly ONE
+                       `aria-current="date"` per grid, INSIDE the tinted cell. The tint must not
+                       be gated because P6 pins the visual treatment unchanged, and desyncing the
+                       pair is the failure this rule exists to prevent.
+
+                       NO `sr-only` NODE is added: the date text already serves as this element's
+                       accessible name, and a screen-reader-only text node would be this file's
+                       first (counted live: zero). No "Today" segment is added to the
+                       `aria-label` above either — the state now sits on the focused node and a
+                       name segment would double-announce. This is a decision, not a cleanup. */
+                    aria-current={isCurrentDay ? 'date' : undefined}
+                    className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} mb-1 ${
+                      dayTargetActive
+                        ? 'rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset '
+                        : ''
+                    }${
+                      isCurrentDay ? 'text-content-accent' :
+                      isAdjacent ? 'text-content-muted' :
+                      variant === 'full' && isPastDate ? 'text-content-muted' :
+                      'text-content-primary'
+                    }`}
+                  >
                     {date.getDate()}
                   </div>
                   {dayEvents.length > 0 ? (
@@ -336,32 +522,101 @@ export default function CalendarMonthView({
                         const groupProfilePic = event.Group?.profile_picture_url;
                         const groupBgImage = event.Group?.background_image_url;
                         /*
-                         * DECISION Phase 88.3.1 (plan 09, AMENDMENT AC — the same
-                         * two-flag shape plan 08 shipped at `CalendarListView.js`
-                         * and `EventDayModal.js`): a SECOND image flag derived from
-                         * the VALIDATED `safeBgImageStyle` result, read ONLY by
-                         * `groupInkVars`.
+                         * DECISION Phase 88.6-41 (W49 / FSEC-03), replacing the
+                         * 88.3.1 plan-09 two-flag marker that stood here and whose
+                         * REJECTED arm ("converging `tileBgImage` onto the validated
+                         * style … converge all of them in one pass with a rendered
+                         * check") this plan DISCHARGED. History kept, because the
+                         * reasoning that made two flags correct in 88.3.1 is the
+                         * record of why the divergence shipped:
                          *
-                         * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs
-                         * (FSEC-03), so a truthy-but-rejected URL paints NO image:
-                         * that tile IS a plain coloured tile and must get its ink.
-                         * Feeding `groupInkVars` the raw `groupBgImage` would
-                         * withhold the ink from exactly those tiles.
-                         * REJECTED: converging `tileBgImage` onto the validated
-                         * style here — it CHANGES WHAT AN INVALID-URL TILE PAINTS
-                         * (the image-tuned black shadow/stroke gives way to the
-                         * plain treatment) on a surface this plan was not scoped to
-                         * re-look at, and the same divergence is live at three
-                         * sibling files. Registered as one 4-site family in
-                         * `.planning/deferred/phase-88.6.md`; converge all of them in
-                         * one pass with a rendered check. Deleting either flag here
-                         * is a decision, not a cleanup.
+                         * WHY TWO, THEN. `safeBgImageStyle` drops relative/invalid
+                         * URLs (FSEC-03), so a truthy-but-rejected URL paints NO
+                         * image: that tile IS a plain coloured tile and must get its
+                         * ink. Feeding `groupInkVars` the RAW URL would withhold the
+                         * ink from exactly those tiles. 88.3.1 fixed the ink half and
+                         * deliberately left the TEXT-TREATMENT half raw, because
+                         * converging it changes what an invalid-URL tile paints and
+                         * that plan was not scoped to re-look at the surface.
+                         *
+                         * WHY ONE, NOW. This file is the fourth of a five-file family
+                         * (`grouplist.js` was already right, and is the reference);
+                         * all five now derive the flag from the VALIDATED style, and
+                         * the paired raw-URL consumers — the `rgba(255,255,255,0.7)`
+                         * overlay below and `tileTextTreatment`'s branch — converged
+                         * in the SAME commit, because a treatment converged without
+                         * its wash is white text under a still-raw white wash. The
+                         * rendered invalid-URL check the old marker demanded is in
+                         * `CalendarMonthView.test.tsx` and its three siblings, and the
+                         * source-scan that keeps this from silently regressing is
+                         * `groupColourRendering.test.ts` test 31 — the raw identifier
+                         * may appear TWICE in this file and no more: its own `const`
+                         * and the `safeBgImageStyle(` argument.
+                         * REJECTED: keeping the raw flag for the text treatment "so
+                         * the pixels do not move". The pixels moving IS the fix; a
+                         * treatment computed for an image the renderer refused to
+                         * apply is the defect. A decision, not a cleanup.
                          */
                         const bgImageStyle = safeBgImageStyle(groupBgImage);
                         const hasValidBgImage = !!bgImageStyle;
                         // CR-01 (88.3-cr): the COMPACT tile renders no image, so
                         // it must not take the image-tuned text treatment either.
-                        const tileBgImage = variant === 'compact' ? null : groupBgImage;
+                        // AMENDED Phase 88.6-41 (W49): the fork now carries the
+                        // BOOLEAN (and is named for it) instead of the raw URL. The
+                        // FORK ITSELF SURVIVES — dropping it would hand the compact
+                        // arm the full tile's flag and reinstate the image-tuned
+                        // shadow + stroke over a pale t = 0.70 tint, which is exactly
+                        // the regression CR-01 fixed, and nothing in the tree pins it.
+                        // REJECTED: `variant === 'compact' ? false : hasValidBgImage`
+                        // at the `groupInkVars` argument below — see the marker there;
+                        // same expression, different site, different consequence.
+                        const tileHasBgImage = variant === 'compact' ? false : hasValidBgImage;
+                        /*
+                         * DECISION Phase 88.6-41 (W51 item B) — TWO repeated
+                         * per-tile costs, ACCEPTED with their magnitude recorded,
+                         * in ONE note so they can never later read as two
+                         * different measurements of the same loop.
+                         *
+                         * THE UNIT is the shipped marker's: this loop is bounded
+                         * at 84 TILES per render (up to two event tiles across the
+                         * ~42 day cells of a month), stated at the module-level
+                         * `DECISION Phase 88.3-16` marker. The W51 register says
+                         * "~42 tiles per month"; that is the SAME loop counted per
+                         * DAY CELL rather than per tile. Any per-render total below
+                         * is ARITHMETIC from the tile bound, never a measurement.
+                         *
+                         * (1) `getEventTileTextColor` is computed on the dark ground
+                         *     and on the light tint TWICE — once in `tileTextVars`
+                         *     below, once again inside `groupInkVars`'s tile arm.
+                         *     Magnitude: 2 extra brightness computations per
+                         *     COLOURED tile.
+                         * (2) `safeBgImageStyle(groupBgImage)` above runs `new URL()`
+                         *     twice per successful call (`safeBgImageStyle.ts:43-44`,
+                         *     one ternary arm, and again at `:71`). Its INPUT is
+                         *     per-GROUP (`event.Group?.background_image_url`) while it
+                         *     is RECOMPUTED per-EVENT on this loop — that asymmetry
+                         *     is the whole shape of the cost.
+                         *
+                         * ACTING ON EITHER IS OUT OF SCOPE THIS PHASE, and recording a
+                         * magnitude is not licence to act on it.
+                         * REJECTED for (1): stopping the tile emitters being called at
+                         * all. `groupColourRendering.test.ts` test 9 requires ground and
+                         * ink to turn on and off together, and `surface: 'tile'` must
+                         * keep a real production caller; deleting one is what the
+                         * `calls >= 6` floors exist to catch (T-88.6-123).
+                         * REJECTED for (1): a cache or an optional precomputed-ink
+                         * parameter — a mechanism with no problem behind it, to save
+                         * three arithmetic operations.
+                         * REJECTED for (2): hoisting or caching the validation. Test 29
+                         * pins the literal `const F = !!X` / `const X =
+                         * safeBgImageStyle(…)` derivation chain, so either reds it.
+                         * REJECTED for both: `useMemo`/`useCallback`/`React.memo`, twice
+                         * ruled on already — the module-level `DECISION Phase 88.3-16`
+                         * marker and its `AMENDED Phase 88.3.1 (plan 09, M26)`
+                         * restatement, which stand unamended: `days` and `activeEvents`
+                         * change identity on every parent render, so a `useMemo` would
+                         * recompute every time and cost strictly more than it saves.
+                         */
                         // The R2-6 past-date theme-fork reasoning now lives with
                         // `tileTextTreatment` at module level (plan 88.3-16).
                         /*
@@ -445,7 +700,7 @@ export default function CalendarMonthView({
                          */
                         const tileTextVars = themedTextStyleVars(
                           {
-                            ...tileTextTreatment(ground, tileBgImage),
+                            ...tileTextTreatment(ground, tileHasBgImage),
                             color: isPastDate
                               ? (tinted
                                   ? (isDarkBackground(ground) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
@@ -453,7 +708,7 @@ export default function CalendarMonthView({
                               : getEventTileTextColor(ground),
                           },
                           {
-                            ...tileTextTreatment(tinted, tileBgImage),
+                            ...tileTextTreatment(tinted, tileHasBgImage),
                             color: isPastDate
                               ? (tinted
                                   ? (isDarkBackground(tinted) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
@@ -506,7 +761,7 @@ export default function CalendarMonthView({
                                `UNSET_BG_TILE_TEXT` (warm-900), so spreading it here would silently
                                recolour the UNCOLOURED tile's title from amber-800 to warm-900 — a
                                visual change on a surface the owner has not been asked about. Same
-                               reason the null ground branch stays `bg-surface-card-hover` rather
+                               reason the null ground branch stays `bg-surface-muted` rather
                                than going empty like the full tile's.
 
                                HOVER IS FORKED INSIDE THE TERNARY, and that is load-bearing.
@@ -529,9 +784,10 @@ export default function CalendarMonthView({
                                full tile does — never a raw `url()`. The new Gate B `it(` asserts
                                every `url(`/`backgroundImage` in this file sits inside a
                                `safeBgImageStyle(` call. CR-01 (88.3-cr) extends the same rule to
-                               the TEXT treatment: this tile passes `tileBgImage` (null in the
-                               compact variant), so the image-tuned black shadow can no longer land
-                               on a pale t = 0.70 tint just because the group also has a photo.
+                               the TEXT treatment: this tile passes `tileHasBgImage` (`false` in the
+                               compact variant — `null` until 88.6-41 moved the fork onto the
+                               validated boolean), so the image-tuned black shadow can no longer
+                               land on a pale t = 0.70 tint just because the group also has a photo.
 
                                TARGET SIZE — INHERITED, disclosed, not resized (owner ruling
                                2026-08-27). `role="button"` promotes this to a first-class
@@ -551,6 +807,34 @@ export default function CalendarMonthView({
                                "accept as is" for 88.3; Phase 88.6 owns it. Its absence is a recorded
                                decision, not an oversight — do not add a keyboard path to the cell.
 
+                               AMENDED Phase 88.6-40 — BOTH HALVES ABOVE ARE KEPT AS HISTORY.
+
+                               (a) KEYBOARD. 88.3 ruling B's "accept as is" ownership is
+                               DISCHARGED here, under SPEC 88.6 R5 / AC-5. The CELL IS STILL
+                               POINTER-ONLY — the sentence above stays literally true — but now
+                               for a DIFFERENT and stronger reason: the cell wraps these
+                               `role="button"` tiles, so promoting it would be axe
+                               `nested-interactive` (WCAG 4.1.2) and would hide the tiles from
+                               assistive tech under children-presentational. The day's keyboard
+                               path lives on the INNER day-number element instead (see its
+                               `DECISION Phase 88.6-40 (W39)` marker above), and it is withheld on
+                               a 1-EVENT day, whose stop for that same action is THIS tile. "Do
+                               not add a keyboard path to the cell" therefore still stands, and is
+                               now enforced by `groupColourRendering.test.ts`'s rewritten test 23.
+
+                               (b) SIZE — plan 88.6-40 task 3. "PHASE 88.6's calendar/tile pass
+                               owns the size question" is DISCHARGED here, not left to a later
+                               plan: this tile now DECLARES `min-h-6` (24px) on its own
+                               `className`, under the D-13 per-control pattern and citing WCAG 2.2
+                               SC 2.5.8 — see the marker at that `className`, which also records
+                               why 44 (SC 2.5.5, AAA) was REJECTED. The "roughly 16-20px tall"
+                               figure above is HISTORY; re-derived at this commit the pre-fix
+                               height was ~20px (16px `text-xs` line box + 2px `p-0.5` each side,
+                               ARITHMETIC not a rendered read). The paragraph's other half —
+                               "the DAY CELL (min-h 80px) is the touch surface" — is unchanged and
+                               is exactly the WCAG 2.2 "Equivalent" precondition the day-number
+                               target's own marker leans on.
+
                                Any of this is a decision, not a cleanup. */
                             <div
                               key={event.id}
@@ -564,7 +848,31 @@ export default function CalendarMonthView({
                                   onEventClick(event);
                                 }
                               }}
-                              className={`text-xs p-0.5 rounded-sm font-medium cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-card-hover hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
+                              /* §4.5 HIERARCHY -> 700: this span IS the compact tile's game
+                                 name, its primary content. `text-xs` STAYS — a month tile is a
+                                 dense-grid cell and Caption 12 is its ratified role (§4.2), so
+                                 this is one of the sites that must NOT be swept to 14.
+
+                                 DECISION Phase 88.6-40 (W40, D-13 pattern): `min-h-6` (24px)
+                                 DECLARED here, citing WCAG 2.2 SC 2.5.8 (Target Size, Minimum),
+                                 whose binding floor is 24x24 CSS px. It is DECLARED rather than
+                                 inherited because this is a `role="button"` div, not a `.btn` and
+                                 not a `<Button>`, so neither `globals.css`'s phone-only
+                                 `.btn { min-height: 2.75rem }` nor the primitive's cva base
+                                 reaches it — the same per-site pattern the 87.8 D-13 floor
+                                 markers record.
+
+                                 REJECTED — a 44px floor (SC 2.5.5, which is AAA). Seven of these
+                                 sit across a `grid-cols-7` row at 375px inside a cell that is
+                                 `min-h-[80px]`, and two tiles stack per cell: a 44px floor would
+                                 deform the month grid outright. 24 is the correct floor for THIS
+                                 element and 44 would be the wrong one, which is precisely why
+                                 D-13's pattern is a per-control declaration.
+
+                                 MEASURED BEFORE: ~20px (ARITHMETIC, not a rendered read — 16px
+                                 `text-xs` line box + 2px `p-0.5` top and bottom). This is a
+                                 decision, not a cleanup. */
+                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,
@@ -648,7 +956,41 @@ export default function CalendarMonthView({
                                   rsvpSummary={rs}
                                   variant="compact"
                                   inheritColor={!!tinted}
-                                  className="text-[10px] leading-tight mt-0.5"
+                                  /* D-01: `text-[10px]` folds UP to the 12px floor. An arbitrary
+                                     value is off the rung set by definition, and 10px is below
+                                     the app's floor. `text-xs` is the Caption rung and a
+                                     per-cell RSVP counter is on §4.2's closed role list.
+
+                                     V-7 MEASURED, and it found something — reported here rather
+                                     than fixed, because the finding is PRE-EXISTING and its
+                                     element is plan 40's. Chromium, 375x812, two identical
+                                     settled reads over a stylesheet compiled from the live
+                                     `globals.css`, markup dumped from a real jsdom render of
+                                     this component in its COMPACT variant:
+
+                                       realistic `3Y 1M 2N`: content 50px BEFORE the fold and
+                                       58px after, in a 28px box.
+                                       worst case `12Y 12M 12N`: 67px -> 78px, same 28px box.
+
+                                     So this row has NEVER fitted its cell at phone width — the
+                                     three spans are a `flex gap-1` with no wrap, no truncation
+                                     and no `overflow-hidden` on either the tile or the day cell,
+                                     so they bleed to the right over the neighbouring cell. The
+                                     fold WIDENS an existing bleed by ~8px; it does not create
+                                     one, and reverting to 10px would not close it.
+
+                                     NO VERTICAL REFLOW: the tile grows 34.5px -> 37px inside an
+                                     80px `min-h` cell, and the grid measures 500px tall before
+                                     AND after. That is the reflow half of V-7, and it passes.
+
+                                     NOT FIXED HERE, and not left as a comment beside itself:
+                                     every candidate remedy (truncating the counts, clipping the
+                                     tile, dropping to two counts) is a LOOK change on the day
+                                     cell with no ruling behind it, and the day cell is plan 40's
+                                     element (W39/W41). Routed with the full table to
+                                     `.planning/deferred/phase-88.6.md` and recorded in
+                                     `.planning/WINDOWS.md`. */
+                                  className="text-xs leading-tight mt-0.5"
                                 />
                               )}
                             </div>
@@ -682,7 +1024,12 @@ export default function CalendarMonthView({
                                 onEventClick(event);
                               }
                             }}
-                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''}`}
+                            /* §4.5: the 500 here is DELETED rather than resolved to a weight,
+                               because it governs no text. The only text inside this container is
+                               the game-name span below, which declares its own weight, and the
+                               emoji fallback, where weight is meaningless. `text-xs` STAYS —
+                               dense-grid cell, Caption 12 (§4.2). */
+                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''}`}
                             style={{
                               ...(tinted && {
                                 '--group-ground': ground,
@@ -704,8 +1051,10 @@ export default function CalendarMonthView({
                                *
                                * CAVEAT, recorded 2026-08-30 (code review #2/#28): the rule
                                * stated above does NOT hold for the COMPACT variant, and that
-                               * is accepted rather than fixed. `tileBgImage` is `null` when
-                               * `variant === 'compact'` (the compact tile paints no image),
+                               * is accepted rather than fixed. `tileHasBgImage` is `false` when
+                               * `variant === 'compact'` (the compact tile paints no image;
+                               * spelled `null` until 88.6-41 renamed the local and moved it
+                               * onto the boolean — a naming change, not a behaviour change),
                                * yet `hasValidBgImage` is derived from the FULL image — so a
                                * compact tile of an image-bearing group is handed
                                * `hasBackgroundImage: true` and gets `{}` back, i.e. it is
@@ -723,9 +1072,25 @@ export default function CalendarMonthView({
                                * call whose result is provably discarded, and test 9's
                                * derivation scan requires the literal
                                * `const F = !!X` / `const X = safeBgImageStyle(…)` chain — a
-                               * ternary on the flag itself reds it. Resolve this together with
-                               * the five-site `hasBackgroundImage` convergence that Phase 88.6
-                               * already owns (`.planning/deferred/phase-88.6.md`), not before.
+                               * ternary on the flag itself reds it.
+                               *
+                               * AMENDED Phase 88.6-41 (W49): the five-site
+                               * `hasBackgroundImage` convergence LANDED — all five files now
+                               * derive the flag from the validated `safeBgImageStyle` output
+                               * and their paired washes/scrims converged with it. The closing
+                               * sentence that used to sit here ("Resolve this together with the
+                               * five-site convergence … not before") is DISCHARGED and struck.
+                               * Everything above it is UNCHANGED and STILL ACCEPTED: the
+                               * convergence changed `tileTextTreatment`'s parameter and the
+                               * overlay gate, and it moved the compact fork onto the boolean,
+                               * but it did NOT touch THIS `groupInkVars` argument — so the
+                               * compact-variant caveat, its permanently-zero impact argument
+                               * and the REJECTED alternative above all still hold, for the same
+                               * reasons. The compact fork at the tile locals above now carries
+                               * `variant === 'compact' ? false : hasValidBgImage`; that is a
+                               * DIFFERENT SITE feeding `tileTextTreatment`, where the result is
+                               * consumed. Changing it did not license changing this one, and
+                               * keeping this one does not block that one.
                                */
                               ...groupInkVars(tileGroundPair, {
                                 surface: 'tile',
@@ -741,7 +1106,13 @@ export default function CalendarMonthView({
                             }}
                             title={tileLabel}
                           >
-                            {groupBgImage && (
+                            {/* AMENDED Phase 88.6-41 (W49 / D-20 (i)): gated on the
+                                VALIDATED flag, not the raw URL. An invalid URL paints
+                                no image, so washing that tile at 70% white dulled a
+                                plain coloured tile for nothing — and paired with the
+                                converged text treatment above it is the white-on-white
+                                case. The two convert together, never separately. */}
+                            {hasValidBgImage && (
                               <div style={{
                                 position: 'absolute',
                                 top: 0,
@@ -775,7 +1146,9 @@ export default function CalendarMonthView({
                                   `dark:` class, so a merely-overridden inline
                                   value would leave the light arm inert. */}
                               <span
-                                className="truncate font-semibold [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                                /* §4.5 HIERARCHY -> 700: the full tile's game name, the twin of
+                                   the compact tile's above. One control, one weight. */
+                                className="truncate font-bold [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
                               >
                                 {event.Game?.name || 'Game Night'}
                               </span>
@@ -785,7 +1158,21 @@ export default function CalendarMonthView({
                       })}
                       {dayEvents.length > 2 && (
                         <div
-                          className="text-xs text-content-link font-medium pointer-events-none select-none"
+                          /* DECISION Phase 88.6-27 (D-16, SPEC Req 8): `text-content-link` ->
+                             `text-content-secondary`. This span is `pointer-events-none
+                             select-none` — definitively NOT a link — and the link ink measured
+                             3.9909 on the `bg-surface-muted` day-cell ground (`:249`), below the
+                             4.5 AA floor. `text-content-secondary` measures 6.9620 on the same
+                             ground.
+                             REJECTED: making it an actual link/button to justify the ink. The
+                             day CELL already handles the tap (`onDayClick`), and a nested
+                             control inside a `role`-less clickable cell is the children-
+                             presentational trap `EventDayModal`'s H1 remedy exists for.
+                             The 500 weight goes with it, §4.5's EMPHASIS outcome: 400 plus the
+                             colour token that is now correct, rather than weight standing in for
+                             an ink that could not be read. `text-xs` STAYS — dense-grid cell,
+                             Caption 12 (§4.2). */
+                          className="text-xs text-content-secondary pointer-events-none select-none"
                           title={`Tap the day to see all ${dayEvents.length} games`}
                         >
                           +{dayEvents.length - 2} more
@@ -803,9 +1190,57 @@ export default function CalendarMonthView({
                        phase owns coaching). The cell itself STAYS tappable (cellClickable above)
                        and the v2.1 tutorial is expected to teach tap-to-create (todo:
                        2026-08-03-tutorial-teach-empty-day-tap-to-create). Making this hint
-                       touch-visible is a decision, not a cleanup. */
-                    <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 transition-opacity">
-                      <span className="text-2xl text-content-muted select-none">+</span>
+                       touch-visible is a decision, not a cleanup.
+
+                       AMENDED Phase 88.6-40 (W39 / T-88.6-116) — THE PARAGRAPH ABOVE IS KEPT AS
+                       HISTORY AND IS NOT REVERSED. Two things changed under it, and the owner is
+                       entitled to see both named.
+
+                       (1) A KEYBOARD PATH NOW EXISTS. Plan 88.6-40 makes the day-number element
+                       inside this cell a keyboard target, and `cellClickable`'s second branch is
+                       `isEmpty && showEmptyDayHint` — so empty days are now keyboard-reachable
+                       while this "+" was their ONLY affordance and was hover-gated. A
+                       `group-focus-within:opacity-40` reveal is added ALONGSIDE the existing
+                       `group-hover:` one, at the same opacity.
+
+                       WORDED ON THE RIGHT AXIS, DELIBERATELY: THE REVEAL FOLLOWS **FOCUS**, NOT
+                       "KEYBOARD ONLY". Adding the keyboard path is the REASON for it, but a tap
+                       or a click on the `tabIndex={0}` day-number target focuses that target
+                       too, so the "+" appears momentarily on the TAPPED cell — by the same tap
+                       that activates it, so it is still not a discoverable PRE-TAP affordance
+                       and R10's accepted cost ("invisible on touch") is unchanged. R10 was
+                       decided on the TOUCH axis, which is exactly what a "keyboard only"
+                       sentence here would misstate.
+
+                       `focus-within` AND NOT `focus-visible`: the keyboard target is the INNER
+                       day-number element, not the cell that carries `group`, so a
+                       `group-focus-visible:` variant on the wrapper would never fire.
+
+                       (2) A LATENT DEFECT IS DISCLOSED, NOT INTRODUCED. The `group` marker this
+                       hint depends on used to live in the `cellClickable` arm of the cell's
+                       ground ternary — an arm `isCurrentDay` is reached BEFORE — so today's
+                       EMPTY cell carried no `group` and has never revealed this "+" on HOVER
+                       either. It was silently excluded from the owner's hover-only decision. The
+                       hoist restores it. Still ONE hovered-or-focused cell at a time; the
+                       REJECTED always-visible low-opacity hint is NOT reinstated.
+
+                       (3) The glyph's ink moves `text-content-muted` -> `text-content-secondary`
+                       — see the `DECISION Phase 88.6-40 (D-16)` note at the span below. */
+                    <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 group-focus-within:opacity-40 transition-opacity">
+                      {/* DECISION Phase 88.6-40 (D-16, owner ARM A): `text-content-secondary`
+                          (6.9620) replaces `text-content-muted` (4.3725). `groundInk.test.ts`
+                          rostered this pairing as debt that was not renderable while the dead
+                          `group` arm kept the hint at opacity-0 on a today cell, and recorded
+                          that PLAN 40'S HOIST WOULD MAKE IT LIVE. It is now live, so the ink is
+                          fixed in the same commit as the hoist and the roster entry is deleted
+                          rather than carried. REJECTED: moving the day cell's muted GROUND
+                          instead — that ground is one arm of a five-arm ternary the tint
+                          decision (P6) pins, and it is the OI-5 exclusion shape. Honest residual:
+                          the glyph renders at `opacity-40`, so its COMPOSITED contrast is below
+                          AA either way; this fixes the token the gate measures and improves the
+                          hovered/focused reading, and the opacity is R10's accepted cost, not
+                          this plan's to reverse. */}
+                      <span className="text-2xl text-content-secondary select-none">+</span>
                     </div>
                   ) : null}
                 </>

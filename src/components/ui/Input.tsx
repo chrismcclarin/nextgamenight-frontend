@@ -69,6 +69,58 @@ import { cn } from '@/lib/cn';
    for controls, because an offset ring on a full-width control inside a 12px-padded phone card
    renders into its neighbour. Adding the offset to "make it consistent with Button" is the
    thing this marker exists to stop. */
+
+/* DECISION Phase 88.6-30 (W53 / SPEC R6, REOPENED and re-decided 2026-09-21): the native
+   date/time normalisation DOES NOT LIVE HERE. It is plain CSS in `src/app/globals.css`'s
+   `@layer base` block. CHOSEN OVER the attribute-gated Tailwind utilities this file shipped
+   between 2026-09-17 and 2026-09-21, which are deleted by the same commit that writes this.
+
+   THIS IS NOT A TIDY-UP OF A WORKING FIX. The utilities NEVER REACHED THE BROWSER. They were
+   composed by INTERPOLATION — a `DATE_TIME_CONTROL` constant dropped into a template literal —
+   and Tailwind v4 extracts candidates from RAW SOURCE TEXT, so the full candidate string
+   existed in no scanned file and the compiler emitted nothing for either one. The class names
+   rendered onto the DOM node; the rules did not exist. Measured at `ee26eef` with the
+   project's own engine: compiling `globals.css` and grepping the OUTPUT for a `type=date`
+   selector returned 0. The owner's iPhone failed the check twice on that fix.
+
+   The emission pin that was supposed to catch this was VACUOUS: it called `compiler.build()`
+   with the already-resolved class strings, which proves the syntax compiles and can never see
+   that the real build never produces the candidate. Its replacement in `Input.test.tsx`
+   compiles the REAL `globals.css` through the real engine with the real `@source` tree and
+   asserts the selector is present in the OUTPUT.
+
+   TWO INDEPENDENT REASONS THE UTILITY ARM CANNOT BE REVIVED. (1) Any interpolated class is
+   invisible to the scanner — the defect above, in full generality. (2) `-webkit-appearance`
+   is not reachable from a Tailwind utility at all, and the unprefixed property alone is
+   unproven on the owner's iOS, so both spellings have to ship.
+
+   WHAT THE CSS DOES, and what was measured as a no-op and therefore NOT shipped: iOS Safari
+   resolves `width: 100%` on a native date/time control against the CONTENT box and adds
+   padding and border on top, overrunning the cell by a constant ~18px (`p-2` plus the
+   hairline) regardless of cell width. Dropping the native appearance is the only declaration
+   that changes it. `min-w-0` — half of what this file used to carry — changes nothing: the
+   computed `min-width` was already `0px` before and after. `box-sizing: border-box` is
+   already in force via preflight. A third member considered in 2026-09-17, start-aligning the
+   value pseudo-element, stays REJECTED on the same evidence as then: Tailwind's own preflight
+   already ships a `text-align: inherit` rule for that pseudo-element
+   (`node_modules/tailwindcss/preflight.css:324-327`, comment: "Ensure text alignment can be
+   changed on date/time inputs in iOS Safari").
+
+   BLAST RADIUS, and why the plain-CSS arm is the SAFER one rather than the looser one. The
+   danger the 2026-09-09 AC-17 ruling was protecting against is an unconditional
+   `appearance-none` on `controlClass` stripping the UA dropdown indicator from the 19
+   `<SelectControl>` sites, which declare no `background-image` to fall back on. The shipped
+   selector is `input`-qualified, so it cannot match a `<select>` or a `<textarea>` BY
+   CONSTRUCTION — the same guarantee the class gate was chosen for, one layer lower and not
+   dependent on a scanner seeing anything. AC-17's ruling is honoured, not overridden; only
+   the mechanism moved, because the ruled mechanism did not emit.
+
+   `text-base` is NOT touched — 16px is the iOS-zoom floor (UI-SPEC §4.1) and shrinking the
+   type to make the box fit is the wrong fix. Neither are the focus rules above.
+
+   Putting an interpolated class back into this file is a decision, not a cleanup, and it is
+   the exact decision that shipped W53 to the owner's phone twice. */
+
 const controlClass = cn(
   'block w-full p-2 max-md:min-h-11',
   'rounded-btn border border-input bg-surface-input',

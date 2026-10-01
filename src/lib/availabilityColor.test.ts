@@ -136,6 +136,9 @@ describe('availabilityColor — preferenceColor (write-cell preference enum, D-0
     // empty write-grid cell on it would give a hovered cell a ΔL* 10.4 slab [now ΔL* 15.63 —
     // heavier, same conclusion] where the
     // owner picked a ΔL* 2.3 press. The `bg-surface-elevated` resting half is unchanged.
+    // AMENDED Phase 88.6-02 (D-15): `bg-surface-card-hover` above is now spelled
+    // `bg-surface-muted` (value byte-equal). The old spelling is kept quoted because it is what
+    // the D-02 sweep and the 88.3-03 re-key were recorded against; the conclusion is unchanged.
     expect(preferenceColor(null)).toBe('bg-surface-elevated hover:bg-surface-hover');
   });
 

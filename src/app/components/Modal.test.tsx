@@ -8,14 +8,23 @@
 //   3. size prop -> max-w mapping
 //   4. dismissable escape hatch (overlay-dismiss defeatable for forms)
 //   5. Close affordance carries an accessible "Close" name + fires onClose
+import fs from 'node:fs';
+import path from 'node:path';
+
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { act, render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+
+import { withoutComments } from '../../test-utils/sourceScan';
+import { Combobox, type ComboboxItem } from '../../components/ui/Combobox';
 import { Modal, preventNonDismissableClose } from './Modal';
 
 afterEach(cleanup);
+
+const MODAL_SRC_RAW = fs.readFileSync(path.resolve(__dirname, 'Modal.tsx'), 'utf8');
+const MODAL_SRC = withoutComments(MODAL_SRC_RAW);
 
 function renderModal(props: Partial<React.ComponentProps<typeof Modal>> = {}) {
   const onClose = vi.fn();
@@ -78,6 +87,69 @@ describe('Modal', () => {
     expect(dialog.className.split(/\s+/)).not.toContain('w-full');
   });
 
+  // 88.6-08 (D-30 / W34). The dialog family converges on ONE viewport unit: `dvh`, which
+  // `BottomSheet` has shipped since 88.1 and which D-30 forbids reverting. The shell's
+  // `max-h` was UNPINNED at HEAD (`grep -n 'max-h\|90vh\|90dvh'` over this file returned
+  // nothing across its 185 lines before this plan) — so this is a NEW pin, not a migrated
+  // one, and its red was demonstrated by temporarily reverting the unit after it was
+  // written rather than transcribed from a pre-existing failure.
+  it('caps the shell at 90dvh — the converged dialog viewport unit (D-30 / W34)', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('max-h-[90dvh]');
+    // Whole-token, not substring: `max-h-[90dvh]` CONTAINS neither spelling of the other,
+    // but the old unit must be gone from the rendered element, not merely outnumbered.
+    expect(dialog.className.split(/\s+/)).not.toContain('max-h-[90vh]');
+  });
+
+  // Every viewport-height unit in Modal.tsx's CODE is `dvh`. The scan is comment-stripped
+  // because this file's markers necessarily discuss the old unit and the rejected `svh` in
+  // prose — an unfiltered scan reads a marker and can never reach zero.
+  it('SOURCE SCAN: Modal.tsx uses no viewport-height unit but dvh', () => {
+    const unit = /(?<![a-zA-Z])(\d+(?:\.\d+)?)(d|s|l)?vh(?![a-zA-Z])/g;
+    const prefixes = (text: string) =>
+      [...text.matchAll(unit)].map((m) => m[2] ?? '');
+
+    // Detector self-test FIRST. A regex that has never been shown to see a bare `vh`
+    // proves nothing by not finding one — this is the anti-vacuity half, and it is a
+    // SYNTHETIC control rather than a read of the marker prose, so it cannot go silently
+    // vacuous the day a later plan rewords that prose.
+    expect(prefixes('max-h-[90vh] max-h-[90dvh] max-h-[70svh] h-[85lvh]')).toEqual([
+      '',
+      'd',
+      's',
+      'l',
+    ]);
+
+    const found = prefixes(MODAL_SRC);
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.every((p) => p === 'd')).toBe(true);
+  });
+
+  // 88.6-08 (D-08). What the footer action is COMPOSED of, now that it renders `Button`.
+  // The two discriminators below are exactly the classes the retired variant map could not
+  // emit — it carried a `.btn-*` variant class and nothing else: no height floor and no
+  // elevation at all.
+  //
+  // DELIBERATELY NOT ASSERTED: "no second `.btn`-family class". Measured 2026-09-16, the
+  // retired map and `Button`'s variant map were byte-identical (`primary: 'btn-primary'`
+  // and so on), so after a CORRECT swap a `variant="primary"` action still renders `btn`
+  // AND `btn-primary`. That clause would red on correct code, or be vacuous. The "would
+  // red if the old map came back" property is delivered by the comment-stripped retirement
+  // scan above, not restated here.
+  it('the footer action is composed by Button: the base floor and the enabled-only lift', () => {
+    renderModal();
+    const tokens = screen
+      .getByRole('button', { name: 'Start poll' })
+      .className.split(/\s+/);
+    expect(tokens).toContain('min-h-11');
+    // WHOLE TOKEN, never a substring: `enabled-hover:shadow-theme-md` CONTAINS
+    // `hover:shadow-theme-md`, so a substring check passes identically against the
+    // un-narrowed spelling and would have been green before plan 06's D10 fix.
+    expect(tokens).toContain('enabled-hover:shadow-theme-md');
+    expect(tokens).not.toContain('hover:shadow-theme-md');
+  });
+
   it('renders a single Close affordance with an accessible name that fires onClose', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
@@ -87,11 +159,145 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  // Phase 88.6-44 (T-88.6-141, WCAG 2.4.3). MEASURED before this pin existed: Radix's modal
+  // Content prevents FocusScope's restore and focuses `Dialog.Trigger`, which this primitive
+  // never renders — so focus went to <body> on every close. The assertion is a NAMED identity
+  // check against the opener; "not body" would pass on any wrong element.
+  describe('focus return on close (88.6-44)', () => {
+    function Host({ onCloseAutoFocus }: { onCloseAutoFocus?: (event: Event) => void }) {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open it
+          </button>
+          <Modal open={open} onClose={() => setOpen(false)} onCloseAutoFocus={onCloseAutoFocus}>
+            <Modal.Header>Start a check-in</Modal.Header>
+            <Modal.Body>
+              <p>When are you free?</p>
+            </Modal.Body>
+          </Modal>
+        </>
+      );
+    }
+
+    it('returns focus to the element that opened the dialog', async () => {
+      const user = userEvent.setup();
+      render(<Host />);
+      const opener = screen.getByRole('button', { name: 'Open it' });
+      opener.focus();
+      await user.click(opener);
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog.contains(document.activeElement)).toBe(true);
+
+      await user.keyboard('{Escape}');
+      await screen.findByRole('button', { name: 'Open it' });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await vi.waitFor(() => expect(document.activeElement).toBe(opener));
+    });
+
+    it('a consumer that prevents default in onCloseAutoFocus keeps control (T-87.8-22 shape)', async () => {
+      const user = userEvent.setup();
+      const elsewhere = document.createElement('button');
+      elsewhere.textContent = 'Elsewhere';
+      document.body.appendChild(elsewhere);
+      try {
+        render(
+          <Host
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              elsewhere.focus();
+            }}
+          />
+        );
+        const opener = screen.getByRole('button', { name: 'Open it' });
+        opener.focus();
+        await user.click(opener);
+        await screen.findByRole('dialog');
+        await user.keyboard('{Escape}');
+        await vi.waitFor(() => expect(document.activeElement).toBe(elsewhere));
+      } finally {
+        elsewhere.remove();
+      }
+    });
+  });
+
   it('closes on Escape via onClose by default', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // Phase 88.6-57 (CR-502, 88.6-REVIEW.md): Radix's `useEscapeKeydown` listens on `document`
+  // in the CAPTURE phase, so it saw Escape before the Combobox's own handler and closed the
+  // WHOLE dialog — createEvent opens with focus in its game combobox, so "type a game, press
+  // Escape to dismiss the suggestions" threw the form away. The host now lets an EXPANDED
+  // combobox own that Escape. The Clear button is a SIBLING of the input inside the combobox
+  // root (`GameComboInput`'s trailing slot), which is why the guard is scoped to the root.
+  describe('an open Combobox owns Escape (CR-502)', () => {
+    const ITEMS: ComboboxItem[] = [
+      { key: 'catan', label: 'Catan', onSelect: () => {} },
+      { key: 'brass', label: 'Brass', onSelect: () => {} },
+    ];
+
+    function ComboInModal({ onClose }: { onClose: () => void }) {
+      const [value, setValue] = React.useState('cat');
+      const [open, setOpen] = React.useState(true);
+      return (
+        <Modal open onClose={onClose}>
+          <Modal.Header>Create event</Modal.Header>
+          <Modal.Body>
+            <Combobox
+              aria-label="Search for a game"
+              items={ITEMS}
+              value={value}
+              onValueChange={setValue}
+              open={open}
+              onOpenChange={setOpen}
+              trailing={<button type="button">Clear game selection</button>}
+            />
+          </Modal.Body>
+        </Modal>
+      );
+    }
+
+    it('Escape in the OPEN list closes the list and keeps the dialog; a second Escape closes the dialog', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(<ComboInModal onClose={onClose} />);
+      const input = screen.getByRole('combobox', { name: 'Search for a game' });
+      await user.click(input);
+      // Positive settle signal: the list is open before the key is pressed.
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      expect(input).toHaveAttribute('aria-expanded', 'true');
+
+      await user.keyboard('{Escape}');
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.queryByRole('listbox')).toBeNull();
+      expect(input).toHaveFocus();
+
+      // The list is closed now, so a plain Escape belongs to the dialog again.
+      await user.keyboard('{Escape}');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('Escape from a sibling control INSIDE the combobox root, list open, keeps the dialog', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(<ComboInModal onClose={onClose} />);
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      const clear = screen.getByRole('button', { name: 'Clear game selection' });
+      act(() => clear.focus());
+      expect(clear).toHaveFocus();
+      expect(screen.getByRole('combobox', { name: 'Search for a game' })).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      );
+
+      await user.keyboard('{Escape}');
+      expect(onClose).not.toHaveBeenCalled();
+    });
   });
 
   it('still closes on Escape when dismissable=false (keyboard is never trapped)', async () => {
@@ -116,6 +322,49 @@ describe('Modal', () => {
       const event = { preventDefault: vi.fn() };
       preventNonDismissableClose(true, event);
       expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+  });
+
+  // 88.6-08 (D-08). The second `.btn` emitter is retired: `Modal.Action` renders the
+  // `Button` primitive and the module-private variant map is gone.
+  //
+  // THE SCAN IS COMMENT-STRIPPED, AND THAT IS LOAD-BEARING, NOT HYGIENE. The DECISION
+  // marker in `Modal.tsx` names the retired constant on purpose — greppability is the
+  // whole point of the house convention — so a RAW `git grep` for the name can never
+  // reach zero without gutting the marker. The two assertions below are a matched pair:
+  // the RAW source MUST still carry the name (the marker exists) and the STRIPPED source
+  // must NOT (no code refers to it). Either one alone can go green while lying.
+  describe('88.6-08 — the second `.btn` emitter is retired (D-08)', () => {
+    it('no code in Modal.tsx refers to the retired variant map', () => {
+      // Positive control FIRST: if this fails, the file was not read or the marker was
+      // gutted, and the absence assertion below would be vacuous rather than true.
+      expect(MODAL_SRC_RAW).toContain('ACTION_CLASS');
+      expect(MODAL_SRC.length).toBeGreaterThan(1000);
+      expect(MODAL_SRC).not.toContain('ACTION_CLASS');
+    });
+
+    it('Modal.tsx imports the Button primitive by module path (no barrel)', () => {
+      expect(MODAL_SRC).toContain("from '@/components/ui/Button'");
+    });
+
+    it('forwards a caller ref through to the underlying button element', () => {
+      const ref = React.createRef<HTMLButtonElement>();
+      render(
+        <Modal open onClose={vi.fn()}>
+          <Modal.Header>Delete group</Modal.Header>
+          <Modal.Body>This cannot be undone.</Modal.Body>
+          <Modal.Footer>
+            <Modal.Action ref={ref} variant="secondary">
+              Cancel
+            </Modal.Action>
+          </Modal.Footer>
+        </Modal>
+      );
+      // The behaviour that makes `applyInitialFocus`'s CANCEL-focus contract REACHABLE
+      // through `Modal.Action`. No call site passes a ref yet — plans 30 and 19 own the
+      // destructive dialogs' initial-focus wiring.
+      expect(ref.current).toBe(screen.getByRole('button', { name: 'Cancel' }));
+      expect(ref.current).toBeInstanceOf(HTMLButtonElement);
     });
   });
 

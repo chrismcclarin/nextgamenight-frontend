@@ -79,6 +79,20 @@ const HERO_BUTTON_TEXT: Record<(typeof HERO_KEYS)[number], string> = {
   no: "Can't make it",
 };
 
+/**
+ * The RSVP-success copy, RATIFIED by the owner on 2026-09-16 (W45(a), arm A) and written
+ * into the phase's strings register — `88.6-UI-SPEC.md` §6.3, the
+ * `Site | Ratified copy | Delivery` table — plus V-20 in §1.2's closed sanctioned-visible-
+ * delta list, which was allocated and deliberately left unwritten pending exactly this
+ * ruling. It is not authored here; it is quoted from there. Changing this string is a copy
+ * decision that needs both rows amended, not a cleanup.
+ *
+ * STATUS-NEUTRAL BY CHOICE. One fixed string for every answer is what survives a
+ * change-your-mind flow — and it is precisely why the clear-at-start in `handleRsvp` is
+ * mandatory rather than tidy: see the marker at the region itself.
+ */
+const RSVP_SUCCESS_MESSAGE = 'Response saved';
+
 export interface NextGameNightCardProps {
   /**
    * The ALREADY-SELECTED next event — whatever the shared "next upcoming" selector in
@@ -106,6 +120,11 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
     const [viewerStatus, setViewerStatus] = React.useState<ViewerStatus>(UNKNOWN);
     const [submitting, setSubmitting] = React.useState<RsvpStatusKey | null>(null);
     const [errorMessage, setErrorMessage] = React.useState('');
+    // W45(a): the SUCCESS counterpart of `errorMessage`. Separate state, not a shared
+    // "outcome" union, because the two are carried by two regions of different politeness
+    // (assertive for the failure the viewer must act on, polite for the confirmation) and
+    // a union would make the region's politeness a function of its content.
+    const [successMessage, setSuccessMessage] = React.useState('');
 
     /**
      * The stale-guard. A REF, not state, so setting it neither re-renders nor re-triggers
@@ -187,6 +206,26 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
       eventIdRef.current = eventId;
       submittedRef.current = false;
       setViewerStatus(UNKNOWN);
+      /*
+        DECISION Phase 88.6-28 (W45/#33): the hero flip CLEARS the outcome message. This effect
+        already resets the card's IDENTITY (`eventIdRef`), its stale-guard and its status — and
+        it cleared NEITHER message, while `handleRsvp`'s `eventIdRef.current !== submittedFor`
+        early return below is exactly what leaves the previous event's outcome standing. So a
+        user who answered event A, and whose hero then flipped to event B (A's start time passed
+        and a re-render reselected), was left with event A's failure banner sitting under event
+        B's buttons — a claim about a request that has nothing to do with the control beside it.
+        The clear belongs HERE and not in `handleRsvp`, because a flip can happen with no further
+        interaction at all.
+
+        EXTENDED Phase 88.6-28 continuation (W45(a), owner ruling 2026-09-16), the note above KEPT
+        AS HISTORY because it is what this line was written against: the polite SUCCESS region now
+        exists, so BOTH messages clear here. The success half is the MORE urgent of the two — a
+        stale CONFIRMATION claims a response the user never gave for the event now on screen,
+        where a stale error only mis-attributes a failure. Neither clear may be removed without
+        removing the other's reason with it.
+      */
+      setErrorMessage('');
+      setSuccessMessage('');
       if (!eventId || !selfUuid) return;
 
       let cancelled = false;
@@ -221,7 +260,26 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
       if (viewerStatus === next) return;
 
       setSubmitting(next);
+      /*
+        CLEAR-AT-START, BOTH MESSAGES — and the success half is LOAD-BEARING, not symmetry.
+        A live region announces CHANGES: re-setting an IDENTICAL string into an unchanged
+        region is a React bail-out, so there is no DOM mutation and no announcement. The
+        ratified success copy is FIXED (`RSVP_SUCCESS_MESSAGE`), and the same-status early
+        return above blocks only a repeat of the SAME status — so yes -> no -> yes is an
+        ordinary flow, and without this line only the FIRST success would ever be audible.
+        The error region has had this for free since 88.5, which is exactly why a repeat
+        FAILURE re-announces today and a repeat success would not.
+
+        These two lines are ALSO the mutual-clear: clearing at the start is what guarantees
+        the two regions can never carry contradictory outcomes, so there is deliberately no
+        second clear in the `catch` below. Precedent: `userProfile/page.js:303-311` — "the
+        next identical outcome is then a real DOM change and announces again".
+
+        The SET happens after the await resolves, never in this batch — a clear and a set in
+        one batch is a no-op and would re-open the bug this line closes.
+      */
       setErrorMessage('');
+      setSuccessMessage('');
       // Captured so the continuations below can tell whether the card still shows
       // the event this write was for (see `eventIdRef`, ML0).
       const submittedFor = eventId;
@@ -255,6 +313,9 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
         // so a later read landing is the truth and must be allowed through.
         submittedRef.current = true;
         setViewerStatus(next);
+        // AFTER the await, and after the hero-flip guard above: a confirmation for an event
+        // the card no longer shows would be the same defect the guard exists to prevent.
+        setSuccessMessage(RSVP_SUCCESS_MESSAGE);
       } catch (err) {
         logger.error('hero next-game-night RSVP submit failed', err);
         // Same hero-flip guard as the success path: an error banner about the OLD
@@ -306,7 +367,26 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2'
           )}
         >
-          <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-content-accent">
+          {/*
+            DECISION Phase 88.6-28 (D-03/W36, UI-SPEC §4.5 Eyebrow row): this converges on the
+            ratified EYEBROW role — Caption 12 / 700 / uppercase / tracking — by moving the
+            WEIGHT ONLY, 600 -> 700. The named shipped eyebrow whose treatment decision this
+            matches is `CalendarListView.js:1009`, and specifically the ruling in its own marker
+            at `:1005-1008`: "`text-xs` STAYS — 12px is this role's rung, not a miss — and only
+            the WEIGHT moves, 600 -> 700. It remains a `<span>`: an eyebrow is not a heading."
+            All four of those hold here: 12px stays, the element stays a span, uppercase stays,
+            700 lands.
+
+            REJECTED — converging the TRACKING VALUE too (`tracking-[0.08em]` -> that site's
+            `tracking-wide`). On the merits a single tracking value across the role would be
+            tidier. The record outranks it here for a CONSEQUENCE reason, not a bookkeeping one:
+            `tracking-wide` is 0.025em against this site's 0.08em, so the swap is a VISIBLE
+            letter-spacing change at 375px, and UI-SPEC §1.2's sanctioned-delta list is CLOSED
+            at V-19 with no tracking row in it — V-6 sanctions "weights 500/600 -> 400 or 700"
+            and nothing wider. Plan 22 made the identical call at the site cited above. Re-spacing
+            the eyebrow family is a look decision and belongs to a plan that opens a V-row for it.
+          */}
+          <span className="block text-xs font-bold uppercase tracking-[0.08em] text-content-accent">
             Next game night
           </span>
           {/*
@@ -320,8 +400,16 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             (Rationale refreshed 2026-09-01, ML11 — the old text cited the
             pre-88.5-08 level-5 `rowOrder()` mechanism.) Promoting this to a heading
             is a decision, not a cleanup.
+
+            AMENDED Phase 88.6-28 (R2 / UI-SPEC §4.3), everything above KEPT AS HISTORY: the
+            size moves `text-lg` (18) -> `text-xl` (20). §4.3's "non-heading `text-lg`/`text-2xl`
+            residue" list names THIS LINE (`NextGameNightCard.tsx:324`) and resolves it to
+            `text-xl` / 700 as a PSEUDO-HEADING under R2's primary-string clause. The weight was
+            already 700 and is byte-unchanged. It does NOT become a `<Heading>`: it has no
+            semantic level to preserve and P4 forbids inventing one — which is the conclusion the
+            marker above reaches by a different route, and both still stand.
           */}
-          <span className="mt-1 block text-lg font-bold leading-tight text-content-primary">
+          <span className="mt-1 block text-xl font-bold leading-tight text-content-primary">
             {whenLine}
           </span>
           {/*
@@ -344,10 +432,21 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             (WCAG 1.4.1). Its copy and colour come FROM `statusConfig`; nothing here is
             re-authored. UNKNOWN renders an EMPTY row on purpose: never claim "you have
             not answered" before the answer arrives.
+
+            DECISION Phase 88.6-53 (D-03 / UI-SPEC §4.5 emphasis): this sentence AND the
+            toggle labels below are 400 + their colour token, converging on their shipped
+            twins in RsvpSection.js (its status line and its RSVP trio carry no weight
+            utility at all). 700 was REJECTED: it would render the hero's sentence and toggle
+            labels heavier than the RsvpSection versions of the SAME RSVP idiom, splitting
+            one control into two weights. The 500 utility both sites carried was not a choice
+            anyone preserved — plan 88.6-28 moved only the eyebrow and left these two unowned
+            (its WEIGHT_ROSTER note). Selection on the toggle is carried by the 2px ring, the
+            status colour and aria-pressed, never by weight. Re-adding a weight here is a
+            decision, not a cleanup.
           */}
           <div className="min-h-5 text-sm">
             {viewerStatus === UNKNOWN ? null : viewerStatus ? (
-              <p className={cn('font-medium', statusConfig[viewerStatus].textColor)}>
+              <p className={statusConfig[viewerStatus].textColor}>
                 {statusConfig[viewerStatus].label}
               </p>
             ) : (
@@ -391,7 +490,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
                   disabled={otherInFlight}
                   onClick={() => handleRsvp(key)}
                   className={cn(
-                    'flex-1 min-h-11 px-3 text-sm font-medium active:opacity-75 transition-colors',
+                    'flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors',
                     // End buttons inherit the container's corner radius: without this the
                     // buttons are square-cornered inside a rounded overflow-hidden group,
                     // and the clip shaves the selected 2px border off exactly at the
@@ -450,18 +549,80 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           </div>
 
           {/*
-            EMPTY-FIRST, ALWAYS MOUNTED — `StatusRegion`'s documented contract
-            (`StatusRegion.tsx:9-12`): a screen reader announces CHANGES to a live region,
-            not the conditional mount of a new one. Wrapping this in `{error && …}` would
-            make the failure silent for exactly the users who need it most. Only its text
-            content changes. Do not add `empty:hidden` either — a region that is
-            `display:none` until it has something to say has the same defect.
+            THE OUTCOME PAIR. Both regions live inside THIS un-spaced wrapper rather than as
+            two direct children of the `space-y-2` stack above, and that is a requirement,
+            not tidiness: `space-y-2` is `> * + *`, so a SECOND direct child would take an
+            8px top margin even while it is empty and zero-height — an idle layout delta on
+            the phone's most prominent card, which V-20 does not sanction (V-20 sanctions the
+            line that APPEARS, not a permanent gap). One child in, no gap out. Do not hoist
+            either region back out of this wrapper.
           */}
-          <StatusRegion
-            politeness="assertive"
-            className="text-content-status-error"
-            message={errorMessage}
-          />
+          <div>
+            {/*
+              EMPTY-FIRST, ALWAYS MOUNTED — `StatusRegion`'s documented contract
+              (`StatusRegion.tsx:9-12`): a screen reader announces CHANGES to a live region,
+              not the conditional mount of a new one. Wrapping this in `{error && …}` would
+              make the failure silent for exactly the users who need it most. Only its text
+              content changes. Do not add `empty:hidden` either — a region that is
+              `display:none` until it has something to say has the same defect.
+            */}
+            <StatusRegion
+              politeness="assertive"
+              className="text-content-status-error"
+              message={errorMessage}
+            />
+            {/*
+              DECISION Phase 88.6-28 (W45(a)), owner ruling 2026-09-16 (ARM A): the RSVP
+              SUCCESS is announced through a SECOND, ALWAYS-MOUNTED `politeness="polite"`
+              region carrying the newly ratified string "Response saved" — visible when set,
+              per the 2026-09-14 ruling (#32 + #166, arm 2) that made this phase's three new
+              polite regions visible rather than `sr-only`. It is NOT a mirror of the
+              assertive region beside it: that one is `role="alert"` in error ink, and
+              routing a confirmation through it would fire a success at the user as an
+              interruption, painted red.
+
+              REJECTED, all four arms, with their costs on the record:
+                B — reuse `statusConfig[key].label` ("You're going!"), authoring no copy.
+                    It is the string the status sentence ten pixels above ALREADY renders
+                    (see the `min-h-5` row), so the card would print it twice; suppressing
+                    the sentence while the region is set is more moving parts than the
+                    announcement is worth.
+                C — make THIS region `sr-only`. Rejected because it reverses the owner's
+                    2026-09-14 visibility ruling for one site and buys a deliberate
+                    sighted/AT asymmetry.
+                D — promote the existing status sentence to a live region. Zero new copy and
+                    zero visible delta, but it also fires when the on-open read resolves,
+                    announcing "You're going!" to someone who just opened the sheet and did
+                    nothing. Announcing on load is a worse defect than the silence being fixed.
+                (and the shape this file must never take) a region mounted BY the event it
+                    announces — `{successMessage && <StatusRegion …>}`. It announces nothing.
+
+              INK: `text-content-secondary`, the ink this same card already renders at the
+              who-line — measured 10.4753 on light `--color-bg-card` (#4a3d32 on #ffffff) and
+              8.6804 on dark (#d6cbc0 on #232d3e), both far past AA. Chosen OVER a success
+              GREEN, which would be a new colour on this surface with no V-row for a colour
+              delta and no Gate A pin behind it; V-20 sanctions a line appearing, not a new
+              hue. SIZE: none authored — `StatusRegion` is `cn('text-sm', className)` and
+              14px is the rung this card's secondary text already sits on.
+
+              This is ONE of THREE arms of a single ruling (plans 28, 30, 31) and a precedent
+              for a 28-SITE idiom. RE-MEASURED 2026-09-16, and the plan's own figure of 20 does
+              NOT hold: `grep -rn "<StatusRegion" src | wc -l` returns 37 raw, but that
+              instrument counts prose — this very marker contributes two of them — so the honest
+              number is COMMENT-STRIPPED: 28 JSX sites across 16 non-test files (the two
+              directly above included), plus 5 more inside `StatusRegion.test.tsx`. Whichever
+              way it is counted it is larger than 20, never smaller.
+              THE CLEAR-AT-START IN `handleRsvp` IS PART OF THAT PRECEDENT, not
+              an incidental detail of this call site: a fixed string re-set into an unchanged
+              region is a React bail-out and announces nothing. Spelling any of the three
+              differently is the duplication this phase exists to remove.
+            */}
+            <StatusRegion
+              politeness="polite"
+              className="text-content-secondary"
+              message={successMessage}
+            />
+          </div>
         </div>
       </Card>
     );

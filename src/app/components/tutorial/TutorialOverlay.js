@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+
+import { Button } from '../../../components/ui/Button';
+
 import WelcomeSlide from './WelcomeSlide';
 import ProblemSlide from './simulated/ProblemSlide';
 import CheckInDemo from './simulated/CheckInDemo';
@@ -191,7 +194,7 @@ export default function TutorialOverlay({ onComplete }) {
       <div className="bg-surface-page rounded-card shadow-theme-lg max-w-3xl w-full max-h-[92vh] flex flex-col border border-line">
         {/* Header — step indicator */}
         <div className="px-6 pt-5 pb-3 flex items-center justify-between">
-          <div className="text-content-muted text-sm font-medium">
+          <div className="text-content-muted text-sm">
             {isWelcome
               ? 'Welcome'
               : isHandoff
@@ -221,6 +224,20 @@ export default function TutorialOverlay({ onComplete }) {
           )}
         </div>
 
+        {/* DECISION Phase 88.6-35 (UI-SPEC §4.3 residue clause, SPEC P4): the four scene lead
+            lines below (`text-xl` / 700, one per demo phase) are PSEUDO-HEADINGS and stay
+            `<p>` elements — chosen OVER promoting them to `<Heading level={N}>`, which is the
+            obvious move once they are wearing the Heading rung's size and weight.
+
+            WHY. They have no semantic outline position to state. This overlay renders inside a
+            hand-rolled full-screen surface with no dialog semantics and no heading of its own,
+            so any level chosen for them would be INVENTED — and P4's whole content is that
+            this phase preserves levels rather than minting them. §4.3 rules them explicitly:
+            non-heading `text-lg`/`text-2xl` residue resolves to `text-xl` / 700, not to the
+            primitive. `ProblemSlide.js`'s payoff line is the fifth member of the same set.
+
+            Promoting these to `<Heading>` is a decision (it changes the document outline of
+            every tutorial step), not a cleanup. */}
         {/* Main scene area — scrollable on small viewports */}
         <div className="flex-1 overflow-y-auto px-6 py-4 flex items-center justify-center">
           {phase === 'welcome' && (
@@ -231,7 +248,7 @@ export default function TutorialOverlay({ onComplete }) {
 
           {phase === 'checkin' && (
             <div className="w-full text-center">
-              <p className="text-content-primary text-lg mb-4 font-semibold">
+              <p className="text-content-primary text-xl mb-4 font-bold">
                 Two ways to fill the heatmap.
               </p>
               <CheckInDemo stage={stage} />
@@ -245,7 +262,7 @@ export default function TutorialOverlay({ onComplete }) {
 
           {phase === 'availability' && (
             <div className="w-full text-center">
-              <p className="text-content-primary text-lg mb-4 font-semibold">
+              <p className="text-content-primary text-xl mb-4 font-bold">
                 Each member marks when they&apos;re free.
               </p>
               <AvailabilityPromptDemo stage={stage} />
@@ -257,14 +274,14 @@ export default function TutorialOverlay({ onComplete }) {
 
           {phase === 'heatmap' && (
             <div className="w-full text-center">
-              <p className="text-content-primary text-lg mb-4 font-semibold">
+              <p className="text-content-primary text-xl mb-4 font-bold">
                 Their availability lights up your group&apos;s heatmap.
               </p>
               <HeatmapDemo stage={stage} />
               <p className="text-content-secondary text-sm mt-4">
                 Darker green = more people free.
                 {stage >= 2 && (
-                  <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  <span className="text-amber-600 dark:text-amber-400">
                     {' '}
                     Friday 7–8 PM is the peak — everyone&apos;s in.
                   </span>
@@ -275,7 +292,7 @@ export default function TutorialOverlay({ onComplete }) {
 
           {phase === 'schedule' && (
             <div className="w-full text-center">
-              <p className="text-content-primary text-lg mb-4 font-semibold">
+              <p className="text-content-primary text-xl mb-4 font-bold">
                 Drag across the peak to schedule.
               </p>
               <ScheduleDemo stage={stage} />
@@ -299,6 +316,21 @@ export default function TutorialOverlay({ onComplete }) {
         {/* Footer — Back / Skip / Next. Back and Next are symmetric peer
             controls (same button styling). Skip is the lighter text link
             in between because it's a different kind of action. */}
+        {/* DECISION Phase 88.6-35 (UI-SPEC §4.5 emphasis row): Back and Next lost their
+            `font-medium` (500) and take 400, chosen OVER promoting the pair to 700 under the
+            hierarchy row. They are MIGRATED AS A PAIR in one edit, because the comment above
+            makes their symmetry a stated design property — resolving one of them differently
+            from the other is the failure this note exists to prevent.
+
+            WHY 400 AND NOT 700. These are secondary step-navigation controls in a footer, and
+            what separates them from the surface is already doing the work: a border, an
+            elevated fill and a hover wash. 700 would render them louder than the scene lead
+            line they sit under. §4.5's emphasis outcome is "400 + a colour token", and both
+            already carry theirs (`text-content-primary` / `text-content-muted`). The same call
+            was taken on the desktop nav in plan 88.6-34 and on the step indicator above.
+
+            Neither is a `.btn` element — they wear `rounded-btn` only — so this weight was
+            ALIVE, not dead, and deleting it is a real 500 -> 400 delta rather than a no-op. */}
         <div className="border-t border-line px-6 py-3 flex items-center justify-between gap-3">
           {/* DECISION Phase 88-27 (D-32 buckets B/D): this button carried THREE stripped alpha
               tokens — a 40% muted text, a 40% elevated surface and a 40% neutral border, all on
@@ -314,7 +346,7 @@ export default function TutorialOverlay({ onComplete }) {
           <button
             onClick={goBack}
             disabled={isWelcome}
-            className={`px-4 py-1.5 text-sm font-medium border border-line rounded-btn transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`px-4 py-1.5 text-sm border border-line rounded-btn transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
               isWelcome
                 ? 'text-content-muted bg-surface-elevated'
                 : 'text-content-primary bg-surface-elevated hover:bg-surface-hover border-line'
@@ -333,7 +365,7 @@ export default function TutorialOverlay({ onComplete }) {
           ) : (
             <button
               onClick={goNext}
-              className="px-4 py-1.5 text-sm font-medium text-content-primary bg-surface-elevated hover:bg-surface-hover border border-line rounded-btn transition-colors"
+              className="px-4 py-1.5 text-sm text-content-primary bg-surface-elevated hover:bg-surface-hover border border-line rounded-btn transition-colors"
             >
               Next →
             </button>
@@ -352,7 +384,7 @@ function HandoffSlide({ signupSource, onPrimary, onSecondary }) {
   const isInvited = signupSource === 'invited';
   return (
     <div className="max-w-md text-center">
-      <p className="text-content-primary text-xl font-semibold mb-2">
+      <p className="text-content-primary text-xl font-bold mb-2">
         {isInvited
           ? "You're in. Mark when you're free — the heatmap fills in for everyone."
           : 'First, get your group on board. Once they join, send a check-in to start filling the heatmap.'}
@@ -361,12 +393,18 @@ function HandoffSlide({ signupSource, onPrimary, onSecondary }) {
         Once you&apos;ve got a night, your group RSVPs and votes on the game.
       </p>
       <div className="flex flex-col gap-2">
-        <button
+        {/* DECISION Phase 88.6-35 (UI-SPEC §3.2, §3.4 rule 3): this is the file's ONE `.btn`
+            element — measured, not inherited. `:212` is a `bg-btn-primary` TOKEN on a progress
+            dot and `:317`/`:336` (the Back and Next controls) carry `rounded-btn` only; none of
+            the three wears `.btn`, so none of them is migrated here and their utilities are all
+            alive. `px-6 py-3` are deleted as dead under unlayered `.btn` padding
+            (globals.css:2202); nothing else on this element survived to move. */}
+        <Button
+          variant="primary"
           onClick={onPrimary}
-          className="btn btn-primary px-6 py-3"
         >
           {isInvited ? 'Set my availability' : 'Invite your group'}
-        </button>
+        </Button>
         {!isInvited && (
           <button
             onClick={onSecondary}

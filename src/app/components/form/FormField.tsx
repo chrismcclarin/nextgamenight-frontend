@@ -6,8 +6,18 @@
  * Centralizes ONE label/error/aria treatment without imposing layout:
  *   - Label: 14px/400, emphasis carried by COLOUR (`text-content-primary`), not weight
  *     — see the DECISION marker below. `htmlFor` wired to the control id.
- *   - Error: 12px/400 (`text-xs`), `--color-error` (`text-status-error`), `role="alert"`,
- *     wired to the control via `aria-describedby` only when present.
+ *   - Error: 12px/400 (`text-xs`), `text-content-status-error`, `role="alert"`, wired to the
+ *     control via `aria-describedby` only when present.
+ *     CORRECTED Phase 88.6-37 (W66 / SPEC R8): this line named `--color-error`
+ *     (`text-status-error`) — the token the error line at `:105` STOPPED using when Phase
+ *     88.3 swept it to `text-content-status-error`. Verified before editing: `text-status-
+ *     error` appeared ONLY in this comment, nowhere in the component body. The old token is
+ *     named here rather than silently dropped, because a docblock that quietly loses a
+ *     sentence tells the next reader nothing, while one that records the drift tells them it
+ *     happened — and this is a SHARED primitive (PRIM-06 / D-10), which is exactly where a
+ *     stale token name gets copied into a new consumer. Phase 88.3 declined to fix it for a
+ *     recorded reason (`88.3-09-PLAN.md` named this one of four comment sites that "must NOT
+ *     be swept"), not by oversight.
  *   - Invalid control: `aria-invalid="true"` when errored.
  *   - Layout: NONE imposed — the wrapper is a plain `<div>` taking the consumer's
  *     `className`; ScheduleForm/AvailabilityForm keep their own grids.

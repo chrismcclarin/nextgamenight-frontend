@@ -9,6 +9,12 @@
  * (`grep -rn -E "includes\('@auth0'\)|@auth0'"` over `routes/` and `services/`);
  * the frontend guarded it in ZERO (`grep -rni 'auth0\.local' periodictabletop/src`
  * returned 0, and there was no broad `@auth0` test either).
+ * AMENDED 2026-09-28 (plan 88.6-54): 23 by the command in EmailAddressSection.tsx's
+ * RESERVED_ADDRESS_ERROR preamble, run from periodictabletopbackend_v2/Sonnet/ on
+ * 2026-09-28; "nineteen" never reproduced. The grep quoted just above is a different,
+ * narrower command: on the same date it printed 11 lines (8 once comment lines are
+ * dropped), not nineteen either. Read the preamble's command as the census, not this
+ * paragraph's number.
  *
  * WHY THIS FILE EXISTS NOW, AND WHY IT IS NOT GOLD-PLATING. That asymmetry was
  * harmless only while NO frontend surface rendered `Users.email` — every one of
@@ -53,6 +59,7 @@
  * "THREE CALL SITES, AND NO FOURTH" until the fourth was added; per CLAUDE.md a census
  * in a docblock is a BOOKKEEPING constraint, so it is amended here rather than used as
  * an argument against the fix):
+ * AMENDED 2026-09-28 (plan 88.6-54): SIX — the full list, by file and anchor, follows item 4.
  *   1. the profile header address line (`src/app/userProfile/page.js`, the
  *      `<p>` under the username heading),
  *   2. `EmailAddressSection.tsx`'s idle state,
@@ -65,6 +72,31 @@
  *      the predicate here gives the refusal an immediate, field-attached sentence. The
  *      DIVERGENCE NOTED ABOVE (this copy answers FALSE for null/empty) is irrelevant at
  *      that site: the value is non-empty before the call. Do not harmonise the two.
+ *      CORRECTED 2026-09-28 (plan 88.6-54): the "bare `validation` 400" sentence above is
+ *      stale since 88.8 round 6. The backend now answers a synthetic target with its own
+ *      code, `unsupported_address` @400 (registered in `utils/errors.js`; answered in
+ *      `routes/users.js` by `sendError(res, 'unsupported_address')`), and
+ *      EmailAddressSection's Save catch maps that code to its reserved-domain copy. The
+ *      pre-flight still earns its place: it answers before the request, on the field.
+ *
+ * AMENDED 2026-09-28 (plan 88.6-54): SIX, not four. The two this list omits shipped in the
+ * SAME 2026-09-07 fix set that wrote "four". Each consumer is named by FILE and ANCHOR —
+ * never by line number, which has drifted twice already:
+ *   1. `userProfile/page.js` — the header address line,
+ *      `addr && !isSyntheticAddress(addr) ? addr : NO_ADDRESS_ON_FILE`
+ *   2. `EmailAddressSection.tsx` — the idle display,
+ *      `const currentIsSynthetic = isSyntheticAddress(currentAddress)`
+ *   3. `FeedbackForm.js` — the `user_email` write,
+ *      `user_email: appAddress && !isSyntheticAddress(appAddress) ? appAddress : null`
+ *   4. `EmailAddressSection.tsx` — the Save pre-flight in `handleSave`,
+ *      `if (isSyntheticAddress(value))`
+ *   5. `EmailAddressSection.tsx` — the BLUR pre-check (round 6 #21), the input's
+ *      `onBlur` handler, `else if (v && isSyntheticAddress(v))`   [omitted from the list above]
+ *   6. `FeedbackForm.js` — the reply-to / prefill gate, `const replyToUnavailable`, whose
+ *      `!isSyntheticAddress(self.email)` arm marks a synthetic stored address as no
+ *      reply-to   [omitted from the list above]
+ * The same six are enumerated in EmailAddressSection.tsx's RESERVED_ADDRESS_ERROR preamble
+ * (plan 88.6-38); the two records must agree.
  *
  * DELIBERATELY EXCLUDED — the DISPLAY-NAME fallbacks in
  * `src/app/userProfile/page.js` that derive a name from the SESSION email's

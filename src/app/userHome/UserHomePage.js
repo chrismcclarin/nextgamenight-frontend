@@ -21,10 +21,12 @@ import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { eventsAPI } from '../../lib/api';
+import { logger, errCtx } from '../../lib/logger';
 // The ONE definition of "upcoming" (88.1-05, extended 88.5): the count the button
 // shows and the rows the sheet lists come from this selector, so they cannot disagree.
 import {
-    hasLiveStatus,
+    hasStartedRecently,
+    isStillRunning,
     selectNextUpcoming,
     selectUpcomingWithin7Days,
 } from '../../lib/upcomingEvents';
@@ -53,12 +55,17 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     const [refreshKey, setRefreshKey] = useState(0);
     const [upcomingEvents, setUpcomingEvents] = useState([]);
     const [upcomingLoading, setUpcomingLoading] = useState(false);
+    // The selfUuid whose upcoming-events fetch last SETTLED (resolved or rejected); see the M2 marker.
+    const [upcomingSettledFor, setUpcomingSettledFor] = useState(null);
     /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserEvents failure is tracked instead of
        being left in the `console.error` it used to stop at. The unhandled rejection left
        `upcomingEvents` at [], so UpcomingEventsCard rendered its empty state — telling someone
        their calendar was clear when the request had failed. This is NOT the same as
        `selfIdentityErrorState` a few lines up (ML-17), which covers the case where the fetch never
-       fires at all; both are needed and they are checked in that order at the render site. */
+       fires at all; both are needed and they are checked in that order at the render site.
+       Phase 88.6-27 (W17/A8) landed the TELEMETRY half this marker's first sentence refers to:
+       the `console.error` it describes is now `logger.info` + `errCtx`, while the user-facing
+       error state below — which is what THIS decision is about — is byte-unchanged. */
     const [upcomingError, setUpcomingError] = useState(null);
     const [upcomingRetryKey, setUpcomingRetryKey] = useState(0);
     // Req 11b: the phone calendar sheet's open state, owned here for the same
@@ -91,7 +98,33 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             // UpcomingEventsCard does its own filter+sort; pass the raw list.
             setUpcomingEvents(list);
         }).catch(err => {
-            console.error('[UserHomePage] The upcoming-events request did not complete:', err);
+            /* W17 / AC-2 (R1, A8), at the level the owner amended it to on 2026-09-13: the raw
+               `console.error` is REPLACED by the house logger at `logger.info`, not kept beside
+               it — `logger.ts`'s module contract is that call sites use `logger.*` instead of
+               raw `console.*`. The MESSAGE is verbatim; `errCtx(err)` carries the caught error's
+               name and message and NOTHING else (T-84-01), and the raw `Error` is never passed
+               (`logger.info(msg, ctx)`'s second parameter is a plain object, and `checkJs:
+               false` hides that mistake in a `.js` file).
+
+               STATE THE COST, because the obvious reading of "it now reaches Sentry" is too
+               strong: `logger.info` is `Sentry.addBreadcrumb` (`logger.ts:34-36`), so this
+               failure surfaces only ATTACHED TO some later event filed in the same session. It
+               does not become independently visible to an operator. Whether these paths deserve
+               a Sentry EVENT is routed to the owner in `.planning/deferred/phase-88.6.md`, not
+               decided here.
+
+               REJECTED, and it was this plan's own earlier specification: `logger.error`.
+               That is `Sentry.captureException`, an EVENT — and `logger.warn` is no cheaper,
+               being `captureMessage`. Owner ruling 2026-09-13 (D2).
+
+               EXECUTION SITE CONFIRMED before converting, per the phase-wide convert-on-touch
+               rule: this is a `.catch` on a promise, not a render body and not a per-item loop,
+               so it converts IN PLACE and needs no guarded-effect or latch form. The latch rule
+               survives the level amendment for a SECOND reason — Sentry's breadcrumb buffer is
+               finite (`DEFAULT_BREADCRUMBS = 100`, nothing sets `maxBreadcrumbs`), so an
+               unlatched render-body `logger.info` would evict every other breadcrumb in the
+               session. */
+            logger.info('[UserHomePage] The upcoming-events request did not complete:', errCtx(err));
             if (cancelled) return;
             // Keep the ERROR object: useFetchErrorState reads `ApiError.code` off
             // it to pick the right user-facing copy.
@@ -99,7 +132,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 err instanceof Error ? err : new Error("The upcoming-events request didn't complete.")
             );
         }).finally(() => {
-            if (!cancelled) setUpcomingLoading(false);
+            // quick-260928-sfo: both land in ONE callback, so one commit — see the M2 marker.
+            if (!cancelled) {
+                setUpcomingLoading(false);
+                setUpcomingSettledFor(selfUuid);
+            }
         });
         return () => { cancelled = true; };
     }, [user?.sub, refreshKey, selfUuid, upcomingRetryKey]);
@@ -137,8 +174,47 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
        ML-17's terminal branch below is deliberately checked FIRST and is unaffected: a resolved
        identity FAILURE degrades to the banner, an unresolved identity reads as loading. Passing
-       `upcomingLoading` back in is a decision to restore the lie, not a simplification. */
-    const upcomingPending = upcomingLoading || (!selfUuid && !selfIdentityErrorState.showError);
+       `upcomingLoading` back in is a decision to restore the lie, not a simplification.
+
+       AMENDED 2026-09-28 (quick-260928-sfo, WINDOWS 188 / NEW OWNER ITEM 10,
+       FLAKE-QUICK-TASK-RULING: approve) — every sentence above stands.
+       WHAT THE DERIVATION ABOVE MISSED: the ONE commit in which `selfUuid` first resolves. In that
+       commit the fetch effect has not run yet, so `upcomingLoading` is still its initial `false`,
+       both clauses read false, and the page committed a false `Calendar, 0 upcoming games this
+       week` on the phone Calendar button and the card's "Nothing on the calendar" for one effect.
+       That is real DOM, not a render React discarded: recorded by the quick-260928-sfo pins in
+       `UserHomePage.phone.test.tsx`, and read by the CI phone lane on 5 of 7 green runs (the
+       `phone-home-event-discovery.spec.ts` flake).
+       CHOSEN: the settled-for marker (`upcomingSettledFor`, set in the fetch's `finally` beside
+       `setUpcomingLoading(false)`) plus the third clause below — M2's own rule ("an unfetched
+       state reads as loading, never as a confident zero") applied to the frame it missed. This
+       EXTENDS M2, it does not override it. It also holds when the identity CHANGES: the new
+       identity pends until its own fetch settles. The third clause requires a DEFINED
+       `selfUuid`, so the identity-failure path is untouched and ML-17's banner is still checked
+       first; do not collapse clauses 2 and 3 into one `upcomingSettledFor !== selfUuid` — that
+       would make an identity FAILURE read as pending and remove M2's explicit carve-out. It is set
+       in `finally`, not only in `.then`, so a rejected fetch settles too and the error banner is
+       not held behind a pending state forever.
+       REJECTED: (1) initialising `upcomingLoading` to `true` — the raw in-flight flag would then
+       claim a request on the logged-out and identity-failure paths, where the effect early-returns
+       at `if (!selfUuid) return;` (:91) before any `finally` could clear it; (2) flipping the flag
+       in a `useLayoutEffect` — the false-zero commit still reaches the DOM and the accessibility
+       tree, only unpainted; (3) keeping the last RESOLVED count while a re-fetch is in flight
+       (plan 88.6-55's original direction) — aimed at a re-fetch hypothesis the diagnosis
+       rejected; on first load there is no earlier count; (4) initialising `upcomingEvents` to
+       `null` for "never fetched" — the five code read sites would mostly tolerate it (both
+       selectors take null, the classification set guards with `Array.isArray`, and
+       `CalendarListView` guards too), but `null` can only mean "never fetched for ANY identity":
+       the effect never resets the list before a re-fetch (see the hero gate's (c) note), so it
+       would not cover an identity CHANGE, and resetting it to `null` per fetch would blank the
+       list during every re-fetch. The settled-for marker says "not fetched for THIS identity"
+       without touching the list.
+       Removing the third clause restores a one-commit lie that only a recorder can see — a
+       decision, not a cleanup. */
+    const upcomingPending =
+        upcomingLoading ||
+        (!selfUuid && !selfIdentityErrorState.showError) ||
+        (Boolean(selfUuid) && upcomingSettledFor !== selfUuid);
 
     /* SPEC Req 2 (88.5-07): ONE clock, ONE selector call, ONE value per render.
        `now` is passed EXPLICITLY rather than leaning on the selector's `new Date()`
@@ -155,7 +231,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        code is in git history, the record is in `88.5-07-SUMMARY.md`): the window is
        measured at RENDER time and is not timer-refreshed, so an event crossing the
        7-day boundary between this render and the sheet opening can lag by one row. A
-       timer here would re-render the whole page on a clock nobody is watching. */
+       timer here would re-render the whole page on a clock nobody is watching.
+
+       EXTENDED Phase 88.6-27 (D47) — every sentence above stands; this adds the OTHER
+       boundary the lag now has. Until this plan the only render-time boundary was the 7-day
+       OPENING one, so the lag could only ever ADD a row late. The run window introduced below
+       adds a CLOSING boundary: a game that ended at 11 PM stays inside "Happening now" — and,
+       by `CalendarListView`'s removal rule, OUT of the sheet's Past list — until the next
+       render. That lag is BOUNDED in practice rather than indefinite, because opening the
+       sheet re-renders this page, and the sheet is the only surface that reads these sets. The
+       ticking timer is STILL REJECTED, for exactly the reason already recorded above. */
     const now = new Date();
     const upcomingWithin7Days = selectUpcomingWithin7Days(upcomingEvents, now);
 
@@ -195,17 +280,62 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        NOT MEMOIZED, and that is deliberate rather than an oversight: `now` is a fresh `Date` on
        every render (it has to be — see the ONE CLOCK note above), so any `useMemo` keyed on it
        would miss on every render and buy nothing but indirection. A user's upcoming-event list
-       is a handful of rows; two passes over it per render is not a cost worth obscuring. */
+       is a handful of rows; two passes over it per render is not a cost worth obscuring.
+
+       ═══ AMENDED Phase 88.6-27 (W58 + W59 / D47, owner ruling 2026-09-09 option a) ═══
+       Every sentence above stands. The NOT-MEMOIZED decision is unchanged and is not being
+       re-litigated. Four things are added or corrected, in the order they matter:
+
+       (1) THE RUN WINDOW. "Happening now" is no longer "live AND started"; it is
+       `isStillRunning`, which additionally requires the event to be INSIDE its run window —
+       the event's own `duration_minutes` when it carries a usable one, else the ruled default
+       of EIGHT HOURS (`upcomingEvents.ts`'s `DEFAULT_RUN_WINDOW_MINUTES`, 480). The bound is
+       unavoidable rather than a nicety: nothing in the FE or the BE ever writes `in_progress`
+       after creation (`routes/events.js:594` derives status once, `:934-946` only on
+       reschedule, no job sweeps `scheduled` -> `completed`), so every un-edited past event is
+       `scheduled` forever. The moment the sheet's `futureGroups` containment stops holding the
+       set — which is exactly what (2) below does — an unbounded "has started" set would lift
+       the whole of history into "Happening now".
+
+       (2) THE SECOND SET. `startedNotLiveIds` is new: rows that have STARTED and are NOT
+       running. It exists so a dead row that started earlier today leaves the sheet's "Later"
+       section for its Past list (W58), while a LIVE row that started before local midnight
+       leaves the Past list for "Happening now" (W59). Both are the same boundary seen from
+       two sides, and it is decided ONCE, in `upcomingEvents.ts`, never here and never in the
+       view. It is BOUNDED by that module's recency floor (`hasStartedRecently`) so it cannot
+       span all history by construction.
+
+       SCOPE: this governs the SHEET arm only. The desktop calendar arms pass no id sets
+       (`EventCalendar.js:233-239`) and keep their date-key split, so >= 768px is
+       pixel-unchanged.
+
+       (3) THE STATUS TEST MOVED. The sentence above reading "`hasLiveStatus` is the NAMED
+       import from the shared module and is the ONLY status test in this file" recorded a true
+       fact about the shipped code; it is superseded here rather than deleted. `hasLiveStatus`
+       is no longer imported: its job now happens INSIDE `isStillRunning`. The point it was
+       making survives intact and is if anything stronger — there is still no inline status
+       comparison anywhere in this file, and now there is no status test here at all.
+
+       (4) THE COST PREMISE WAS FALSE AND IS CORRECTED HERE. "A user's upcoming-event list is a
+       handful of rows" describes `upcomingWithin7Days`; it does NOT describe `upcomingEvents`,
+       which is the RAW `getUserEvents` payload (`:88`, and `:91`'s "pass the raw list"), i.e.
+       the user's whole event history with no date filter applied at the backend. This step
+       adds a THIRD pass over that unbounded list. The decision not to memoize is unchanged —
+       fresh `Date`, fresh Sets, a memo could not hit — but the reason is "a memo cannot help
+       here", not "it is only a handful of rows". */
     const nowMs = now.getTime();
     const thisWeekIds = new Set(upcomingWithin7Days.map((event) => event.id));
+    const allEventsForClassification = Array.isArray(upcomingEvents) ? upcomingEvents : [];
     const happeningNowIds = new Set(
-        (Array.isArray(upcomingEvents) ? upcomingEvents : [])
-            .filter((event) => {
-                if (!hasLiveStatus(event)) return false;
-                const startMs = new Date(event.start_date).getTime();
-                if (Number.isNaN(startMs)) return false;
-                return startMs <= nowMs;
-            })
+        allEventsForClassification
+            .filter((event) => isStillRunning(event, nowMs))
+            .map((event) => event.id)
+    );
+    /* DISJOINT from `happeningNowIds` by construction (the `!has` below), so the sheet's
+       three-way partition and its past list can never claim the same row twice. */
+    const startedNotLiveIds = new Set(
+        allEventsForClassification
+            .filter((event) => hasStartedRecently(event, nowMs) && !happeningNowIds.has(event.id))
             .map((event) => event.id)
     );
 
@@ -382,7 +512,28 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 {/* Hide calendar on mobile (smaller than md breakpoint).
                     Phase 71.1 GAMP-07: UpcomingEventsCard mounts below the
                     calendar in the right column with viewerDbUserId so
-                    game-only events render with a dashed border + Guest pill. */}
+                    game-only events render with a dashed border + Guest pill.
+
+                    DECISION Phase 88.6-27 (W72) — APPENDED; every sentence above stands and the
+                    gate on the next line is byte-identical.
+
+                    PHASE 88.6 MUST NOT RE-PLAN PHONE EVENT DISCOVERY. It already has an answer,
+                    shipped and owner-ruled: the Calendar button and its bottom sheet below
+                    (Req 11b), which is why this column is not shown on a phone. Treating the
+                    hidden column as a gap and building a second phone surface for the same job
+                    would re-open a decision, not fill a hole. Changing this is a decision, not a
+                    cleanup.
+
+                    SCOPED TO THE LAYOUT GATE, EXPLICITLY, or this note overclaims. `hidden
+                    md:flex` is CSS ONLY. `<EventCalendar />` on the line after it MOUNTS AT
+                    EVERY VIEWPORT, phone included, and therefore issues its own `getUserEvents`
+                    on a phone where none of it is rendered. What is deliberate and untouched is
+                    the LAYOUT decision — the column is not SHOWN below `md`. The MOUNT, and with
+                    it that second fetch, is unaffected by `hidden` and is NOT what this marker
+                    blesses: nobody has measured it, and whether it should fire on a phone at all
+                    is not this plan's to change. The marker's job is to stop the layout decision
+                    being re-litigated AND to stop "deliberate and untouched" being read as
+                    "measured". */}
                 <div className="hidden md:flex md:flex-col md:flex-1 md:min-w-0 md:gap-4">
                     <EventCalendar refreshKey={refreshKey} />
                     {/* ML-17: the upcoming-events fetch gates on selfUuid, so on
@@ -545,9 +696,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                             onEventClick={handleCalendarSheetEventClick}
                             loading={upcomingPending}
                             variant="sheet"
-                            /* The two id sets and the one count — see the OWNER RULING 2a
-                               marker above. The sheet partitions by membership only. */
+                            /* The id sets and the one count — see the OWNER RULING 2a marker
+                               above (AMENDED 88.6-27, which added the third set). The sheet
+                               partitions by membership only. */
                             happeningNowIds={happeningNowIds}
+                            startedNotLiveIds={startedNotLiveIds}
                             thisWeekIds={thisWeekIds}
                             upcomingCount={upcomingCount}
                         />

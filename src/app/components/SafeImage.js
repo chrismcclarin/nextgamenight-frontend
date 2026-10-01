@@ -29,7 +29,7 @@ const FALLBACK_COLORS = [
  * @returns {string} HSL color from the palette
  */
 function getColorFromText(text) {
-  if (!text) return 'var(--color-surface-card-hover)';
+  if (!text) return 'var(--color-surface-muted)';
 
   let hash = 0;
   for (let i = 0; i < text.length; i++) {

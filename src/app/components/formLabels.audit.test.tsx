@@ -20,10 +20,31 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(''),
 }));
 
+// The respondent list is not under audit; a passthrough keeps the RsvpSection render light
+// and avoids the popover's own context requirements.
+vi.mock('./ClickableMemberName', () => ({
+  default: ({ username }: { username?: string }) => <span>{username}</span>,
+}));
+
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
   return {
     ...actual,
+    rsvpAPI: {
+      ...actual.rsvpAPI,
+      getEventRsvps: vi.fn().mockResolvedValue({
+        rsvps: [
+          {
+            id: 'rsvp-own',
+            status: 'yes',
+            note: '',
+            User: { id: 'self-uuid', username: 'me' },
+          },
+        ],
+        summary: { yes: 1, maybe: 0, no: 0 },
+      }),
+      submitRsvp: vi.fn(),
+    },
     groupsAPI: {
       ...actual.groupsAPI,
       getGroupLibrary: vi.fn().mockResolvedValue({
@@ -45,6 +66,7 @@ import BrowseMoreModalJs from './BrowseMoreModal';
 import StartPollModalJs from './StartPollModal';
 import MemberSelector from './MemberSelector';
 import ParticipantRow from './ParticipantRow';
+import RsvpSectionJs from './RsvpSection';
 
 // JS components: inferred prop types mark every prop required / mis-shaped.
 // Cast so the harness passes only what the audit exercises (createGroup.test idiom).
@@ -52,34 +74,15 @@ type AnyComponent = React.ComponentType<Record<string, unknown>>;
 const GroupGamesList = GroupGamesListJs as unknown as AnyComponent;
 const BrowseMoreModal = BrowseMoreModalJs as unknown as AnyComponent;
 const StartPollModal = StartPollModalJs as unknown as AnyComponent;
+const RsvpSection = RsvpSectionJs as unknown as AnyComponent;
 
 afterEach(cleanup);
 
-/**
- * The fork-5 audit: every rendered, non-hidden form control must carry
- * (a) an `id`, (b) a `name`, and (c) an accessible-name source — a `label[for]`
- * pointing at it, a wrapping <label>, `aria-label`, or `aria-labelledby`.
- */
-function auditFormControls(root: HTMLElement) {
-  const controls = Array.from(
-    root.querySelectorAll<HTMLElement>('input, select, textarea')
-  ).filter((el) => (el as HTMLInputElement).type !== 'hidden');
-  expect(controls.length).toBeGreaterThan(0); // an empty audit proves nothing
-
-  const failures: string[] = [];
-  for (const el of controls) {
-    const describe = `${el.tagName.toLowerCase()}#${el.id || '?'}[name=${el.getAttribute('name') || '?'}]`;
-    if (!el.id) failures.push(`${describe}: missing id`);
-    if (!el.getAttribute('name')) failures.push(`${describe}: missing name attribute`);
-    const labelled =
-      el.getAttribute('aria-label') ||
-      el.getAttribute('aria-labelledby') ||
-      el.closest('label') ||
-      (el.id && root.querySelector(`label[for="${CSS.escape(el.id)}"]`));
-    if (!labelled) failures.push(`${describe}: no associated label`);
-  }
-  expect(failures).toEqual([]);
-}
+// The fork-5 control audit (id + name + an accessible-name source) MOVED to
+// `src/test-utils/formControlAudit.ts` in Phase 88.6-44 so the composed axe audits for the
+// heavier surfaces this docblock names (createEvent, and ScheduleForm alongside it) assert the
+// SAME rule from the SAME function — imported, never copied.
+import { auditFormControls } from '../../test-utils/formControlAudit';
 
 /** No label[for] may point at a NON-form element or a missing id (census class B). */
 function auditLabelTargets(root: HTMLElement) {
@@ -176,6 +179,31 @@ describe('fork-5 form-label audit (id + name + associated label)', () => {
     auditFormControls(container);
     auditLabelTargets(container);
     expect(getByRole('group', { name: 'Send to Members' })).toBeInTheDocument();
+  });
+
+  /* ADDED Phase 88.6-29 (W43). WHY THIS SURFACE WAS NOT ALREADY CAUGHT, on the record: this
+     suite is a RENDER audit of an ENUMERATED roster of surfaces (its own docblock: "renders the
+     census surfaces that mount cheaply"), seeded from the owner's 2026-08-10 DevTools census
+     under 88-33 fork 5. `RsvpSection` was never on that roster, so its placeholder-only textarea
+     was outside the suite's scope rather than missed by it — the auditor itself is sound and its
+     planted-violation probe above proves it. The scope is what was short, so the scope is what is
+     extended: the surface joins the roster in the same commit that gives the field its label, and
+     a regression now reds HERE as well as in `RsvpSection.statusOnly.test.tsx`.
+
+     The textarea renders only once the viewer's own RSVP resolves (`selectedStatus` gates it), so
+     this case settles on a BRANCH-SPECIFIC element — the textarea itself — never on the card
+     chrome, which renders above every branch. */
+  it('RsvpSection — the note textarea carries id + name + an associated label (88.6-29 W43)', async () => {
+    const { container, findByLabelText } = render(
+      <RsvpSection
+        eventId="evt-1"
+        self={{ id: 'self-uuid' }}
+        eventDate="2099-01-01T00:00:00Z"
+      />
+    );
+    await findByLabelText('Add a note (optional)'); // the branch under audit has landed
+    auditFormControls(container);
+    auditLabelTargets(container);
   });
 
   it('ParticipantRow — member rows carry NO label[for] at a nonexistent control (census class B)', () => {

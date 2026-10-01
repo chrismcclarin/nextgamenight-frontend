@@ -94,7 +94,7 @@ const RENDER_SITES: { file: string; nullBranch: string[] }[] = [
   // AMENDED plan 88.3-16: a per-file SET, not a single string, because this file
   // has TWO tint-forked tiles whose null branches legitimately DIFFER. The full
   // tile's is empty (its shipped D-28 null semantics, above); the COMPACT tile's
-  // is its shipped `bg-surface-card-hover` — changing that would be a visual
+  // is its shipped `bg-surface-muted` — changing that would be a visual
   // change on a surface the owner has not been asked about. The second entry
   // carries its `hover:` class VERBATIM because plan 16 forks hover INSIDE the
   // ternary (`.hover\:bg-surface-elevated:hover` at (0,2,0) would otherwise beat
@@ -105,7 +105,7 @@ const RENDER_SITES: { file: string; nullBranch: string[] }[] = [
   // needed loosening. A gate weakened to admit a shape is worse than the shape.
   {
     file: 'app/components/CalendarMonthView.js',
-    nullBranch: ['', 'bg-surface-card-hover hover:bg-surface-elevated'],
+    nullBranch: ['', 'bg-surface-muted hover:bg-surface-elevated'],
   },
   { file: 'app/components/CalendarListView.js', nullBranch: ['bg-surface-card'] },
   { file: 'app/components/EventDayModal.js', nullBranch: ['bg-surface-card'] },
@@ -246,8 +246,10 @@ function functionBody(src: string, name: string): string {
  * uses, so a `>` inside `onClick={() => f(a > b)}` or inside a string does not end the
  * tag early.
  */
-function openTags(src: string): { line: number; tag: string; attrs: string }[] {
-  const out: { line: number; tag: string; attrs: string }[] = [];
+function openTags(src: string): { line: number; offset: number; tag: string; attrs: string }[] {
+  // `offset` added by plan 88.6-21: test 22's `asChild` slot check has to look BACKWARDS from a
+  // slotted child to the `<Button>` that supplies its ring, and a line number cannot do that.
+  const out: { line: number; offset: number; tag: string; attrs: string }[] = [];
   for (const m of src.matchAll(/<([A-Za-z][A-Za-z0-9_.]*)/g)) {
     const from = m.index ?? 0;
     let i = from + m[0].length;
@@ -270,7 +272,7 @@ function openTags(src: string): { line: number; tag: string; attrs: string }[] {
       i += 1;
     }
     if (end < 0) continue;
-    out.push({ line: lineAt(src, from), tag: m[1], attrs: src.slice(attrStart, end) });
+    out.push({ line: lineAt(src, from), offset: from, tag: m[1], attrs: src.slice(attrStart, end) });
   }
   return out;
 }
@@ -295,6 +297,26 @@ const RING_SCAN_FILES: { file: string; floor: number }[] = [
   { file: 'app/components/CalendarMonthView.js', floor: 5 },
   { file: 'app/components/CalendarListView.js', floor: 2 },
   { file: 'app/components/GroupGamesList.js', floor: 8 },
+  /* ADDED by plan 88.6-20 task 3 (wave 7, 2026-09-16), D-20 (iv). `GroupSettings.js` was
+     MISSING from this list, so CR-14's selection/focus split — the decision that a SELECTED
+     swatch and a FOCUSED swatch must read as two different affordances — had no source pin
+     anywhere. Recorded in `.planning/deferred/phase-88.6.md`.
+
+     It is a group-page surface by the same test as the other five: the group page mounts it
+     from the kebab, and its eight swatches are the colour-only controls this suite exists for.
+
+     FLOOR 10, COUNTED on the shipped tree at this commit: eight `<Button>`s (the two "Use"
+     controls, the transfer route, Leave Group, the leave-confirm Cancel/Confirm pair, Transfer
+     ownership instead, Delete Group — all counted toward the floor and then exempted on the
+     primitive's own base class, per the deal above), plus two raw `<button>`s (the eight
+     default-picture tiles rendered from one JSX site, and the eight swatches from another).
+
+     WHAT ARMING IT FOUND, recorded because a gate that finds nothing is a gate nobody can
+     trust: NINE offenders on first run. Eight were the `.btn` sites this same commit migrates
+     to `<Button>`; the ninth was the default-picture tile, which never wore `.btn` and had no
+     ring from any source. It was fixed in this commit rather than rostered — see the DECISION
+     marker at that button. */
+  { file: 'app/components/GroupSettings.js', floor: 10 },
 ];
 
 /**
@@ -308,6 +330,24 @@ const RING_SCAN_FILES: { file: string; floor: number }[] = [
  * assertion against that primitive's base class.
  */
 const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu']);
+
+/**
+ * The three groupHomePage header controls — Manage Members, Plan Game Session, Add New Game Event.
+ *
+ * RE-POINTED by plan 88.6-21 (wave 7, 2026-09-16). Tests 15, 16 and 19 located them with
+ * `attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text))`, which stopped matching the
+ * moment they became `<Button>`s: the `.btn` class now comes from the primitive's cva base and no
+ * longer appears as a literal at the call site. That is the migration succeeding, not a
+ * regression, so the LOCATOR moved rather than the property.
+ *
+ * Returned in source order with the className expression each carries, so the label-narrowing in
+ * test 19 still works unchanged.
+ */
+function headerControls(src: string): { offset: number; attrs: string; end: number }[] {
+  return openTags(src)
+    .filter((t) => t.tag === 'Button')
+    .map((t) => ({ offset: t.offset, attrs: t.attrs, end: t.offset + t.attrs.length }));
+}
 
 /** Where each exempted primitive's own ring lives, so the exemption is PAID FOR. */
 const PRIMITIVE_RING_SOURCE: Record<string, string> = {
@@ -1086,8 +1126,17 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       'style={getSubtitleStyle(',
     );
 
-    const title = attrExprs(src, 'className').find((e) => e.text.includes('text-3xl'));
-    expect(title, 'the h1 was not found by its text-3xl Display size').toBeTruthy();
+    // RE-POINTED by plan 88.6-21: this found the title by `text-3xl`, which left the call site
+    // when the h1 became `<Heading level={1} size="display">` — the Display rung IS `text-3xl`,
+    // emitted by the primitive. The fork tokens below are what this test is actually about and
+    // they all survive, so one of them is the anchor now. The rung is asserted separately, so the
+    // re-point loses nothing: it gains the guarantee that the heading really is on Display and is
+    // not merely un-sized.
+    expect(src, 'the page title is no longer on the Display rung').toContain('size="display"');
+    const title = attrExprs(src, 'className').find((e) =>
+      e.text.includes('[text-shadow:var(--t-shadow-l)]'),
+    );
+    expect(title, 'the h1 was not found by its light-arm text-shadow fork').toBeTruthy();
     for (const util of [
       '[color:var(--t-color-l)]',
       'dark:[color:var(--t-color)]',
@@ -1120,8 +1169,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         'dim costs ~11.5 L* on the t = 0.70 tint and would fail Req 9\'s own rendered-pixel L* >= 75',
     ).toBeTruthy();
     expect(overlay!.text, 'the dim is not guarded on the PARSED tint').toContain('tinted');
+    // RE-POINTED plan 88.6-41 (W49): the exclusion is the VALIDATED flag, not the raw
+    // `!Group?.background_image_url`. Same three cases; an invalid URL now lands in case
+    // (2) rather than case (1), which is the intended swap recorded at the site. Asserting
+    // the raw spelling here would pin the file to the defect FSEC-03 exists to prevent.
     expect(overlay!.text, 'the dim is not excluded on the image case').toContain(
-      '!Group?.background_image_url',
+      '!hasHeaderImage',
     );
     expect(overlay!.text).toContain('dark:bg-[rgb(0_0_0/0.15)]');
 
@@ -1156,7 +1209,19 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(src, 'the amber fill regressed to amber-600 (white 3.19:1)').not.toContain(
       'var(--amber-600)',
     );
-    expect((src.match(/var\(--amber-700\)/g) ?? []).length).toBe(1);
+    // RE-POINTED by plan 88.6-21 (D-09). The fill used to be an INLINE `var(--amber-700)` at this
+    // call site and this line counted it. The migration onto `<Button variant="accent">` deletes
+    // that inline pair deliberately — it was the SECOND expression of one decision, which is the
+    // routed duplication `globals.css`'s 88.3-18 marker exists to prevent — so a count of 1 here
+    // now asserts the duplication is BACK. The property is unchanged: the CTA's fill is amber-700,
+    // not amber-600. It is now read where it lives.
+    expect(src, 'the Create-Event CTA is no longer on the accent variant').toContain(
+      'variant="accent"',
+    );
+    expect(
+      (src.match(/var\(--amber-700\)/g) ?? []).length,
+      'an inline amber literal is back at this call site — that is the routed duplication again',
+    ).toBe(0);
     // …and the ratio itself, read out of globals.css rather than restated, so a
     // future palette edit reds here instead of drifting past a copied number.
     // This is the OI-6 half of Gate A's ledger, which plan 05 deliberately left
@@ -1173,11 +1238,21 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // UI-SPEC §4 obligation 1. `typeScaleTouchedSurfaces.test.ts` CANNOT see
     // these — its population is `<h1..h6>` only (RESEARCH C-10) — so the three
     // controls' type scale has no other guard.
-    const controls = attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text));
-    expect(controls.length, 'the three .btn controls were not found').toBe(3);
+    // RE-POINTED AND INVERTED by plan 88.6-21, and the inversion is the point rather than a
+    // weakening. These three used to carry `text-sm md:text-base`, and this line pinned them
+    // because `typeScaleTouchedSurfaces.test.ts`'s population is `<h1..h6>` only and nothing else
+    // watched them. On a `<Button>` a text-size utility is DEAD — `.btn` declares `font-size`
+    // unlayered (`globals.css:2201`) and an `@layer utilities` class cannot beat it — so keeping
+    // the old assertion would have required three dead classes to stay. They are deleted, and
+    // `btnCensus.test.tsx`'s "no text-size utility on a `<Button>`" rule is the guard that
+    // replaces this one tree-wide. What is asserted here is that this file honours it.
+    const controls = headerControls(src);
+    expect(controls.length, 'the three header controls were not found').toBe(3);
     for (const c of controls) {
-      expect(c.text, 'a header control lost text-sm').toContain('text-sm');
-      expect(c.text, 'a header control lost md:text-base').toContain('md:text-base');
+      expect(
+        /\btext-(?:xs|sm|base|lg|xl|2xl|3xl|\[)/.test(c.attrs),
+        'a header control carries a text-size utility, which is DEAD under unlayered `.btn`',
+      ).toBe(false);
     }
 
     // The Manage Members blur moved to the dark arm — it only ever did visible
@@ -1216,12 +1291,24 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // is DEAD under the unlayered `.btn { border: none }` — so this ring is the
     // only asserted keyboard-visible affordance these three elements have. The
     // border/ring model itself is Phase 88.6's `Button` migration.
-    const controls = attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text));
+    // RE-POINTED AND INVERTED by plan 88.6-21 (A-2 ARM A, owner ruling 2026-09-15). When these
+    // three were bare `.btn` elements their per-site ring was their ONLY keyboard affordance and
+    // this line pinned it present. They are `<Button>`s now, and the ring's ONE home is the cva
+    // base (`Button.tsx`) — a second copy at the call site is what ARM A forbids, because a CSS
+    // `outline` and a Tailwind `ring-*` box-shadow are different properties and neither
+    // suppresses the other. So the assertion flips: no per-site ring, and the base really carries
+    // one. `cascadeOrder.test.ts` owns the XOR itself; this is the per-file half.
+    const controls = headerControls(src);
     expect(controls.length).toBe(3);
+    expect(
+      code('components/ui/Button.tsx'),
+      'the cva base these three now depend on carries no ring',
+    ).toContain('focus-visible:ring-focus-ring');
     for (const c of controls) {
-      expect(c.text, 'a header control has no author focus ring').toContain(
-        'focus-visible:ring-focus-ring',
-      );
+      expect(
+        c.attrs,
+        'a header control carries its OWN focus ring beside the primitive base\'s — two rings',
+      ).not.toContain('focus-visible:ring-focus-ring');
     }
 
     // and no `useTheme` — the theme half rides the cascade, as it does at plan
@@ -1242,7 +1329,18 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(marker, 'the 87.8 D-13/D-14 + 88-28 D-36 min-h-11 marker was edited away').toMatch(
       /this per-CTA `min-h-11` is NOT made redundant/,
     );
-    expect(code(HEADER), 'min-h-11 itself is gone from the CTA').toContain('min-h-11');
+    // INVERTED by plan 88.6-21 (D-09). The marker above stays and its EXPLANATION is still what
+    // this line protects — but the marker's own CONSEQUENCE clause says the per-CTA class becomes
+    // redundant "ONLY once this element is a `<Button>`", and it now is. So the class is gone from
+    // the call site and the floor must be shown to have moved, not merely to have vanished.
+    expect(
+      code(HEADER),
+      'the per-CTA min-h-11 is back at the call site — the primitive already supplies it',
+    ).not.toContain('min-h-11');
+    expect(
+      code('components/ui/Button.tsx'),
+      'the 44px floor is in NEITHER place — the CTA renders ~37px on desktop',
+    ).toContain('min-h-11');
 
     // The inline-boxShadow marker records, in its own words, that dropping the
     // white ring "would still pass 88-29's zero-`rgba(0,0,0` gate while looking
@@ -1286,8 +1384,11 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // header controls (the `'btn '` filter), then narrowed by the label text
     // that follows the className expression — never by a line number.
     const header = code(HEADER);
-    const controls = attrExprs(header, 'className').filter((e) => /'btn[ ']/.test(e.text));
-    expect(controls.length, 'the three .btn header controls were not found').toBe(3);
+    // RE-POINTED by plan 88.6-21 — see `headerControls`. The label-narrowing is unchanged, and so
+    // is every utility asserted below: the 88.3-16 wash, ring and dark arm SURVIVE the migration
+    // onto `<Button variant="ghost">` by owner ruling, riding `cn`'s tailwind-merge last-wins.
+    const controls = headerControls(header);
+    expect(controls.length, 'the three header controls were not found').toBe(3);
     const manage = controls.find((e) => header.slice(e.end, e.end + 400).includes('Manage Members'));
     expect(manage, 'the Manage Members control was not found by its label').toBeDefined();
 
@@ -1302,7 +1403,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       // dark stays byte-equivalent to what shipped: no resting ring there
       'dark:ring-0',
     ]) {
-      expect(manage!.text, `Manage Members lost its ${util} — Req 12 test 7 reopens`).toContain(
+      expect(manage!.attrs, `Manage Members lost its ${util} — Req 12 test 7 reopens`).toContain(
         util,
       );
     }
@@ -1332,7 +1433,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // neutral-border band is 1.20-1.57 and warm-500 is 2.3x its top). It must not
     // creep back in as a "strengthening" edit.
     for (const [name, expr] of [
-      ['Manage Members', manage!.text],
+      ['Manage Members', manage!.attrs],
       ['the cog', cog!.text],
     ] as const) {
       expect(expr, `${name} was pointed at the rejected >= 3:1 border token`).not.toMatch(
@@ -1361,7 +1462,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // tile can, because its null branch is empty (D-28) — would silently
     // recolour the UNCOLOURED tile's title. That is a visual change on a surface
     // the owner has not been asked about.
-    const compact = forked.find((e) => e.text.includes('bg-surface-card-hover'));
+    const compact = forked.find((e) => e.text.includes('bg-surface-muted'));
     expect(compact, `${file}: the compact tile's ground fork was not found`).toBeDefined();
     const nullArm = compact!.text.match(/\?\s*'\[color:var\(--t-color-l\)\][^']*'\s*:\s*'([^']*)'/);
     expect(
@@ -1417,7 +1518,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * the attribute must now be on THIS tag rather than merely nearby.
      */
     const compactOpen = openTags(src).find(
-      (t) => t.attrs.includes('bg-surface-card-hover') && t.attrs.includes(LIGHT_GROUND),
+      (t) => t.attrs.includes('bg-surface-muted') && t.attrs.includes(LIGHT_GROUND),
     );
     expect(compactOpen, `${file}: the compact tile's opening tag was not found`).toBeDefined();
     expect(
@@ -1493,7 +1594,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
 
   it('21. the compact tile\'s RSVP text clears 4.5:1 on every pinned tint once tinted', () => {
     // T-88.3-79. These three colours are hard-coded in `RsvpCount.js` and pass
-    // 4.5:1 only against the compact tile's SHIPPED `bg-surface-card-hover`
+    // 4.5:1 only against the compact tile's SHIPPED `bg-surface-muted`
     // ground. Once the tile takes `--group-ground-light` they fail on the
     // majority of preset/status pairings, so plan 16 forks them onto the tile's
     // own tint pole via a defaulted `inheritColor` prop. This pins BOTH halves:
@@ -1605,7 +1706,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     for (const { file, floor } of RING_SCAN_FILES) {
       const src = code(file);
       let found = 0;
-      for (const { line, tag, attrs } of openTags(src)) {
+      for (const { line, offset, tag, attrs } of openTags(src)) {
         const isAnchor = tag === 'a' && /\bhref\s*=/.test(attrs);
         const isFocusable =
           tag === 'button' ||
@@ -1616,6 +1717,22 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         if (!isFocusable) continue;
         found += 1;
         if (RING_BEARING_PRIMITIVES.has(tag)) continue;
+        // THE `asChild` SLOT, added by plan 88.6-21. `<Button asChild><Link …/></Button>` renders
+        // the CHILD and gives it the slot's className, so the ring is on the `<Button>` and never
+        // on the `<Link>` — UI-SPEC §3.2 requires exactly that placement, because Radix `Slot`
+        // concatenates the child's className onto the slot's WITHOUT tailwind-merge, so a utility
+        // left on the child cannot win a conflict. Counted (it is a real focusable) and then
+        // exempted, on the strength of the enclosing `<Button>`, which is looked up rather than
+        // assumed: the nearest preceding `<Button` open tag must itself carry `asChild`.
+        if (tag === 'Link' || isAnchor) {
+          const before = src.slice(0, offset);
+          const btnAt = before.lastIndexOf('<Button');
+          const slotted =
+            btnAt > -1 &&
+            offset - btnAt < 1500 &&
+            /\basChild\b/.test(src.slice(btnAt, offset));
+          if (slotted) continue;
+        }
         if (!attrs.includes('focus-visible:ring-')) {
           offenders.push(`${file}:${line} <${tag}> has no focus-visible:ring-* class`);
         }
@@ -1634,28 +1751,129 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // Total anti-vacuity floor: 23 focusables across the five files, counted 2026-08-27
     // (page.js 7, EventCalendar 1, CalendarMonthView 5, CalendarListView 2,
     // GroupGamesList 8 — primitives included).
-    expect(scanned, 'the five-file scan must see a real population').toBeGreaterThanOrEqual(23);
+    //
+    // RE-MEASURED 23 -> 34 by plan 88.6-20 task 3 (wave 7, 2026-09-16), when
+    // `GroupSettings.js` joined the list. TEN of the eleven are that file (see its floor
+    // above). THE ELEVENTH IS NOT, AND IS RECORDED RATHER THAN ABSORBED: the ORIGINAL FIVE now
+    // total 24, not the 23 counted in 2026-08-27, so one focusable was added to them by some
+    // plan between then and now without this floor moving. It could not have red — the floor
+    // is `>=`, which is the same silently-green trap `EXPECTED_MIN_PRIMITIVES` carries — so
+    // this is a re-measurement, not a regression, and the +1 is stated here so the next reader
+    // does not have to re-derive why 23 + 10 != 34.
+    expect(scanned, 'the six-file scan must see a real population').toBeGreaterThanOrEqual(34);
   });
 
-  it('23. no clickable bare <div> in the month view is unfocusable, except the day cell owner ruling B accepted', () => {
+  it('22b. Gate B — the group-colour SWATCH carries the project focus ring, and its selection cue is in a different slot', () => {
+    /*
+     * NEW Phase 88.6-20 (D-20 (iv)). `RING_SCAN_FILES` omitted `GroupSettings.js` entirely, so
+     * CR-14's selection/focus split — the decision that a SELECTED swatch and a FOCUSED swatch
+     * must read as two different affordances — had NO source pin anywhere in this repo. Recorded
+     * in `.planning/deferred/phase-88.6.md` (item 4 of the D-20 block).
+     *
+     * ANCHORED ON `handleSelectDefaultColor`, the one handler only the eight swatches call, so
+     * this survives the file's line numbers moving (this phase rewrites most of them).
+     *
+     * IT ASSERTS THE SPLIT, not just the presence of a ring — which is the whole point of the
+     * finding. Before plan 88.6-20 both cues wrote the SINGLE `--tw-ring-shadow` property on the
+     * SAME element, so a focused selected swatch showed only the focus ring and CR-14's flush
+     * frame was repainted away. The two must now live on different elements AND in different
+     * CSS slots.
+     */
+    const src = code('app/components/GroupSettings.js');
+
+    // The focusable control, located by its handler — via this file's own `openTags`, so the
+    // whole opening tag is read rather than a character window (the 88.6-21 lesson).
+    const tags = openTags(src);
+    const controlTag = tags.find(
+      (t) => t.tag === 'button' && t.attrs.includes('handleSelectDefaultColor(preset.name)'),
+    );
+    expect(
+      controlTag,
+      'no <button> calls handleSelectDefaultColor — the swatch moved or stopped being a button',
+    ).toBeDefined();
+    const control = (controlTag as { attrs: string }).attrs;
+
+    // FOCUS: the project string, byte-identical to the group-page header CTAs and both
+    // calendar tiles.
+    expect(control, 'the swatch lost the project focus ring').toContain('focus-visible:ring-focus-ring');
+    expect(control).toContain('focus-visible:ring-2');
+    expect(control).toContain('focus-visible:ring-offset-2');
+    // …and the accessible name and toggle state stay on this element, not on the chip.
+    expect(control).toContain('aria-label={preset.label}');
+    expect(control).toContain('aria-pressed={isSelected}');
+
+    // SELECTION: not on this element at all — it rides the inner chip, in the inset slot.
+    expect(
+      control,
+      'the selected cue is back on the focusable itself, in the slot the focus ring writes',
+    ).not.toContain('isSelected ?');
+    // The CHIP: the element that actually carries the border-2 ternary. Located by
+    // `aspect-square`, which only the swatch chip states (the profile-picture buttons carry
+    // `border-2 rounded-lg` too, so that pair is NOT a safe anchor — measured, not assumed).
+    const chip = tags.find((t) => t.attrs.includes('aspect-square'));
+    expect(chip, 'no element states `aspect-square` — the chip moved').toBeDefined();
+    const chipTag = (chip as { attrs: string }).attrs;
+    expect(chipTag, 'the chip does not carry the selected/resting ternary').toContain('isSelected');
+    expect(chipTag, 'the selected cue is not in the inset slot').toContain('inset-ring-content-primary');
+    expect(
+      chipTag.split(/[\s'`]+/).some((c) => /^ring-\d/.test(c)),
+      'the chip carries a bare `ring-*` utility — that is the slot the focus ring repaints',
+    ).toBe(false);
+    // The hover treatment survived the W76 move as a `group-hover:` rule on this same chip.
+    expect(chipTag, 'the hover border treatment was lost in the W76 move').toContain(
+      'group-hover:border-content-primary',
+    );
+  });
+
+  it('23. the month view\'s clickable divs are focusable, and the day cell\'s keyboard target is INSIDE it', () => {
+    /*
+     * 88.3 RULING B IS **SUPERSEDED** BY SPEC 88.6 R5 / AC-5 (plan 88.6-40).
+     *
+     * WHAT THIS TEST USED TO SAY, kept here as history because the supersession is the
+     * point: the day CELL was allow-listed as a pointer-only `<div onClick>` under owner
+     * ruling B (2026-08-27, "accept as is" for Phase 88.3, DEF-88.3-R1-01, receiving entry
+     * `.planning/deferred/phase-88.6.md`, "[a11y] Calendar day CELL has no keyboard path").
+     * That exception was DISCLOSURE, and it named Phase 88.6 as the owner. Phase 88.6 has
+     * now done the work, so the exception is discharged rather than carried.
+     *
+     * THE CELL IS STILL NOT PROMOTED, AND THAT IS NOT THE OLD RULING SURVIVING — IT IS A
+     * DIFFERENT AND STRONGER REASON. The cell WRAPS two `role="button" tabIndex={0}` event
+     * tiles. Putting role/tabIndex/onKeyDown on the wrapper is axe `nested-interactive`
+     * (WCAG 4.1.2) and flattens the tiles out of the accessibility tree under
+     * children-presentational — the verbatim 88.3 run-3 H1 regression test 8 above pins
+     * against on `EventDayModal.js`. So the cell keeps its pointer `onClick` and the
+     * keyboard target is the INNER day-number element: `KEYBOARD_TARGET_INSIDE`, the shape
+     * test 8 already models, and the same EventDayModal H1 remedy plan 88.6-21 applied to
+     * the group card's title block.
+     *
+     * THE `allowListed === 1` COUNT IS GONE, deliberately. It asserted only that a
+     * pointer-only cell still existed — vacuous once the fix landed, and it would have gone
+     * green on a cell with NO keyboard path anywhere near it. What replaces it is a POSITIVE
+     * pin on the inner target.
+     *
+     * A NESTING CHECK IS NOT POSSIBLE HERE: `openTags` is a FLAT walker with no parent
+     * links. Nesting is asserted by render and by axe, in
+     * `keyboardOperability.test.tsx`'s DC-11 / DC-11b.
+     */
     const src = code('app/components/CalendarMonthView.js');
     const offenders: string[] = [];
-    let allowListed = 0;
+    let dayCells = 0;
     for (const { line, tag, attrs } of openTags(src)) {
       if (tag !== 'div') continue;
       if (!/\bonClick\s*=/.test(attrs)) continue;
-      // ALLOW-LISTED BY NAME: the day CELL, identified by the one handler only it calls.
-      // Owner ruling B, 2026-08-27: "accept as is" for Phase 88.3 — after plans 16/17 a
-      // keyboard user can open an EVENT tile from the month grid but never the DAY modal
-      // (which hosts the Share-game-QR button) nor create an event from an empty day.
-      // Recorded as accepted-for-now and OWNED BY PHASE 88.6 (DEF-88.3-R1-01, receiving
-      // entry `.planning/deferred/phase-88.6.md`, "[a11y] Calendar day CELL has no
-      // keyboard path"). Plan 88.3-16 adding no keyboard path to it is deliberate, not a
-      // miss. An allow-listed exception with the ruling cited beside it is DISCLOSED; an
-      // un-scanned element is a hole. Removing the ruling without removing this entry
-      // would leave the gate lying — the entry is the disclosure.
+      // The day CELL, identified by the one handler only it calls.
       if (attrs.includes('onDayClick(date, dayEvents)')) {
-        allowListed += 1;
+        dayCells += 1;
+        expect(
+          /\brole\s*=/.test(attrs),
+          `CalendarMonthView.js:${line}: the day CELL must NOT carry a role — it wraps ` +
+            'interactive tiles, and promoting it is axe nested-interactive (the 88.3 run-3 H1 shape)',
+        ).toBe(false);
+        expect(
+          /\bonKeyDown\s*=/.test(attrs),
+          `CalendarMonthView.js:${line}: the day CELL must NOT carry onKeyDown — the keyboard ` +
+            'path belongs to the inner day-number target',
+        ).toBe(false);
         continue;
       }
       if (!/\brole\s*=/.test(attrs) || !/\btabIndex\s*=/.test(attrs)) {
@@ -1663,13 +1881,41 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       }
     }
     expect(offenders).toEqual([]);
-    // Vacuity: the allow-listed cell must still BE there. If the day cell is ever given a
-    // keyboard path (88.6's job), this reds and the exception gets deleted with its
-    // deferred entry — which is the point.
+    expect(dayCells, 'the day cell moved — re-anchor this test on its onDayClick handler').toBe(1);
+
+    // THE POSITIVE HALF: the inner keyboard target, mirroring test 8's KEYBOARD_TARGET_INSIDE
+    // branch. Anchored on the conditional spread that carries the whole set, not on a line.
+    const at = src.indexOf('dayTargetActive');
+    expect(at, 'the day cell has no inner keyboard target — `dayTargetActive` is gone').toBeGreaterThan(-1);
+    const spreadAt = src.indexOf('{...(dayTargetActive');
+    expect(spreadAt, 'the inner target no longer spreads its interactive props conditionally').toBeGreaterThan(-1);
+    const targetTag = src.slice(spreadAt, src.indexOf('{date.getDate()}', spreadAt));
+    for (const need of ["role: 'button'", 'tabIndex: 0', "'aria-label'", 'onKeyDown']) {
+      expect(targetTag, `the INNER day keyboard target lost ${need}`).toContain(need);
+    }
+    // EXEMPT from test 8's EventDayModal-specific no-`aria-label` rule, and the reason is
+    // EventDayModal-specific: that remedy computes its name from a subtree carrying the start
+    // time. This subtree is ONE DIGIT, so it needs the explicit label.
+    expect(targetTag, 'the inner target must fire on Enter AND Space').toMatch(/'Enter'[\s\S]*' '/);
     expect(
-      allowListed,
-      'the owner-ruling-B day cell must still be present and still be the pointer-only shape this exception describes',
-    ).toBe(1);
+      targetTag,
+      'the inner handler must stopPropagation so the cell onClick does not double-fire',
+    ).toContain('stopPropagation');
+    // The ring is INSET here, like both tiles in this file — not EventDayModal's ring-offset-2.
+    const ringWindow = src.slice(spreadAt, src.indexOf('{date.getDate()}', spreadAt));
+    expect(ringWindow, 'the inner target lost its visible focus ring').toContain(
+      'focus-visible:ring-focus-ring',
+    );
+    expect(ringWindow, 'the inner target\'s ring must be INSET, as both tiles in this file are').toContain(
+      'focus-visible:ring-inset',
+    );
+    // THE NARROWING, pinned in source: a `cellClickable`-only gate would put a second stop on a
+    // 1-event day for the action its tile already owns.
+    expect(
+      src,
+      'the keyboard target is no longer narrowed by `dayEvents.length !== 1` — a 1-event day ' +
+        'would gain a duplicate tab stop naming a day modal the user never reaches',
+    ).toContain('cellClickable && dayEvents.length !== 1');
   });
 
   it('24. the day-modal row\'s Duration line forks its ink on the tint (88.3 UI-REVIEW fix 1)', () => {
@@ -2197,11 +2443,36 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         /TINTED_INK\s*=\s*\n?\s*'\[color:var\(--group-ink-l,var\(--t-color-l\)\)\] dark:\[color:var\(--group-ink,var\(--t-color\)\)\]'/,
       );
     expect(src, 'the untinted chip lost the card-hover fill').toMatch(
-      /NEUTRAL_FILL\s*=\s*'bg-surface-card-hover'/,
+      /NEUTRAL_FILL\s*=\s*'bg-surface-muted'/,
     );
+    /*
+     * AMENDED Phase 88.6-28 (D-15/D-16): this pinned the ISOVERFLOW TERNARY —
+     * `isOverflow ? 'text-content-muted' : 'text-content-secondary'` — and the ternary is gone.
+     * `text-content-muted` on `bg-surface-muted` measures 4.3725:1, BELOW AA for this 12px ink,
+     * so the `+N` overflow chip took `text-content-secondary` (6.9620) and the two arms
+     * collapsed onto one token. The two chip kinds are distinguished by their CONTENT (`+2`
+     * versus initials), never by ink — re-deriving the distinction from ink is what put the
+     * site under AA.
+     *
+     * The pin is RE-POINTED rather than deleted, and the shape is deliberately kept STRICT: the
+     * property this test owns is that the untinted arm carries a real project ink token which
+     * the tint fork can swap away from, and a loosened `toContain('text-content')` would go
+     * green on a `tinted ?` fork that had eaten the neutral arm. The ANTI-REGRESSION half is
+     * added beside it — `text-content-muted` must not come back onto this constant — because a
+     * future reader restoring the ternary "for visual distinction" is exactly the edit that
+     * re-opens the AA failure, and `groundInk.test.ts` cannot catch it (both halves are
+     * module-level constants referenced through `cn(...)`, which is limitation 2 of its walk).
+     */
     expect(src, 'the untinted chip lost its secondary ink').toMatch(
-      /neutralInk\s*=\s*isOverflow\s*\?\s*'text-content-muted'\s*:\s*'text-content-secondary'/,
+      /neutralInk\s*=\s*'text-content-secondary'/,
     );
+    expect(
+      src,
+      'the untinted chip ink reverted to text-content-muted, which is 4.3725:1 on ' +
+        'bg-surface-muted — below AA at 12px. This is the D-16 re-inking plan 88.6-28 landed; ' +
+        'restoring the isOverflow ternary re-opens it, and no ground/ink walk can see this ' +
+        'pairing because both halves are module-level constants',
+    ).not.toMatch(/neutralInk[\s\S]{0,80}text-content-muted/);
 
     // (b) ONE fork, and it keys on the TINT ALONE. A `tinted && separated ?` — the shape that
     //     applies the arm to the collapsed stack only — fails here, which is the anti-vacuity
@@ -2251,5 +2522,144 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         'resolves its ink to WHITE through --t-color-l, painting white initials on a white ' +
         'chip. See the DECISION Phase 88.5 marker above this call site.',
     ).toMatch(/tinted=\{[^}]*!hasBgImage/);
+  });
+
+  /*
+   * Phase 88.6-41 (W49 / FSEC-03 / D-20 (i)) — the five-site `hasBackgroundImage`
+   * convergence, machine-checked.
+   *
+   * WHY A COUNT AND NOT "the identifier may appear only in the `safeBgImageStyle(`
+   * call". That rule is UNSATISFIABLE: `const groupBgImage = event.Group?.…` is
+   * itself an appearance. So this counts CODE appearances (comments blanked by
+   * `withoutComments` — every file here legitimately DISCUSSES the identifier in
+   * prose) and pins each one to a permitted POSITION.
+   *
+   * THE PERMITTED SHAPE, per file: the `const` that binds it, and the
+   * `safeBgImageStyle(` argument. Nothing else. There is deliberately NO
+   * `variant === 'compact'` exemption — plan 41 renamed `tileTextTreatment`'s
+   * parameter and moved the compact fork onto the boolean precisely so the file
+   * with the most raw-URL sinks does not keep a permanent spare slot.
+   *
+   * `grouplist.js` is the CONTROL: it was already correct before this phase and is
+   * unconverted, so it passes this rule TODAY, unchanged. That is what proves the
+   * scan is reading a real rule rather than an empty one.
+   *
+   * DEMONSTRATED RED, plan 88.6-41: `{groupBgImage && (` was temporarily restored
+   * at `CalendarMonthView.js`'s overlay gate; this test named the file and the third
+   * appearance, then went green on revert. A count gate nobody has watched fail is
+   * not known to be a gate.
+   */
+  it('31. the raw background-image URL reaches ONLY `safeBgImageStyle` — per-file COUNT over all five sites', () => {
+    const RAW_PROP = 'background_image_url';
+    /**
+     * `local` is the name each file binds the raw URL to, or `null` when the file
+     * binds none and passes the property expression straight to the validator.
+     */
+    const SITES: { file: string; local: string | null; expected: number; control?: true }[] = [
+      { file: 'app/components/CalendarMonthView.js', local: 'groupBgImage', expected: 2 },
+      { file: 'app/components/CalendarListView.js', local: 'groupBgImage', expected: 2 },
+      { file: 'app/components/EventDayModal.js', local: 'groupBgImage', expected: 2 },
+      { file: HEADER, local: null, expected: 1 },
+      { file: 'app/components/grouplist.js', local: 'bgImage', expected: 2, control: true },
+    ];
+
+    for (const { file, local, expected, control } of SITES) {
+      const src = code(file);
+      const token = local ?? RAW_PROP;
+      const hits = [...src.matchAll(new RegExp(`\\b${token}\\b`, 'g'))];
+
+      expect(
+        hits.length,
+        `${file}: expected ${expected} CODE appearance(s) of \`${token}\`, found ${hits.length}` +
+          (control
+            ? ' — this is the UNCONVERTED CONTROL and must pass unchanged; a failure here means ' +
+              'the scan itself broke, not that the file regressed'
+            : ' — the permitted set is the `const` that binds it plus the `safeBgImageStyle(` ' +
+              'argument, and nothing else (FSEC-03: a text treatment, wash, scrim or JSX gate ' +
+              'computed from the RAW url is computed against a background the renderer refused)'),
+      ).toBe(expected);
+
+      // …and each appearance sits in a permitted POSITION, which is what makes the
+      // count a rule rather than a budget a future edit could spend elsewhere.
+      for (const m of hits) {
+        const at = m.index ?? 0;
+        const before = src.slice(Math.max(0, at - 40), at);
+        const ok = /\bconst\s+$/.test(before) || /safeBgImageStyle\(\s*[\w?.]*$/.test(before);
+        expect(
+          ok,
+          `${file}:${lineAt(src, at)} — \`${token}\` appears outside its permitted positions ` +
+            '(its own `const`, or the `safeBgImageStyle(` argument). Derive from the VALIDATED ' +
+            'style instead: `const flag = !!bgImageStyle`.',
+        ).toBe(true);
+      }
+
+      // A file that binds a local must read the property EXACTLY ONCE — otherwise a
+      // second `event.Group?.background_image_url` read would evade the local count.
+      if (local) {
+        expect(
+          [...src.matchAll(new RegExp(`\\b${RAW_PROP}\\b`, 'g'))].length,
+          `${file}: the raw property is read more than once — the single read belongs on the ` +
+            `\`${local}\` declaration`,
+        ).toBe(1);
+      }
+
+      // The negative shape, asserted directly rather than left as a corollary of the
+      // count: no treatment, wash/scrim or JSX gate may name the raw identifier.
+      const SINKS = /textShadow|WebkitTextStroke|backgroundColor|color\s*:|&&\s*\(/;
+      for (const line of src.split('\n')) {
+        if (!new RegExp(`\\b${token}\\b`).test(line)) continue;
+        expect(
+          SINKS.test(line),
+          `${file}: a text treatment / wash / JSX gate reads \`${token}\` — line: ${line.trim()}`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  /**
+   * DECISION Phase 88.6-47 (row 4 of the 2026-09-17 CI e2e red, run 35581508198) — the Gate C
+   * handle, pinned so it cannot drift again.
+   *
+   * WHAT DRIFTED. `e2e/contrast.spec.ts`'s `fixtureCard` used to reach the card by walking the
+   * group-name heading UP to the nearest ancestor div carrying a button role. FE `f696732`
+   * (plan 88.6-21, W42/W62b) moved `role`/`tabIndex`/`onKeyDown` off the card onto the TITLE
+   * BLOCK, so from that commit the helper resolved the title block — which wears no shadow
+   * utility, so `none` is its CORRECT computed value — and Gate C's resting-shadow pin spent
+   * `25 plans accusing `--shadow-sm` of a revert that never happened.
+   *
+   * WHY A SCAN AND NOT A GREP: the same three reasons the rest of this file gives. In particular
+   * the `DECISION Phase 88.6-47` marker above the card QUOTES this handle, so a line-based grep
+   * would find it in a comment and pass on a tree where the attribute had been deleted from the
+   * markup. `code()` blanks comments first.
+   *
+   * EXACT IN BOTH DIRECTIONS, and both directions are real failures: ZERO means someone deleted
+   * the handle and Gate C is back to guessing; TWO means a second element took it and the e2e
+   * `filter({ has: … })` goes ambiguous, which Playwright reports as a strict-mode violation
+   * rather than as the drift it is.
+   */
+  it('32. the home card carries the `group-card` handle EXACTLY once, on the tag wearing `shadow-theme-sm`', () => {
+    const file = 'app/components/grouplist.js';
+    const src = code(file);
+    const HANDLE = 'data-testid="group-card"';
+
+    const carriers = openTags(src).filter((t) => t.attrs.includes(HANDLE));
+    expect(
+      carriers.length,
+      file + ': expected EXACTLY one `' + HANDLE + '` in the markup, found ' + carriers.length +
+        '. This handle is what `e2e/contrast.spec.ts` Gate C (the home-card resting-shadow, ' +
+        'border and muted-text surfaces, LIGHT and DARK) uses to find the card. Deleting it ' +
+        'sends Gate C back to a structural walk, which is exactly the defect Phase 88.6-47 fixed; ' +
+        'adding a SECOND one makes the spec-side `filter({ has: … })` ambiguous. Before you change ' +
+        'it, read the DECISION Phase 88.6-47 marker above the card div.',
+    ).toBe(1);
+
+    expect(
+      carriers[0].attrs,
+      file + ': the `' + HANDLE + '` handle is not on the tag that carries `shadow-theme-sm`. ' +
+        'Gate C measures the RESTING SHADOW through this handle, so a handle parked on any other ' +
+        'element makes that pin measure something that legitimately paints no shadow — and its ' +
+        'failure message then accuses the `--shadow-sm` token. That is the exact 2026-09-17 ' +
+        'red (rows 4a/4b) this pin exists to prevent recurring.',
+    ).toContain('shadow-theme-sm');
   });
 });

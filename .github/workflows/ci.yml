@@ -32,8 +32,15 @@ on:
 # describes is wrong the next time anything above it is edited. The complete set of actions
 # is `actions/checkout@v4` x4 (quality's "Checkout (full history ...)", drift-gate-registry's
 # "Checkout", and e2e's "Checkout frontend" + "Checkout backend"), `actions/setup-node@v4` x2
-# ("Setup Node 20" in quality and in e2e) and one `actions/upload-artifact@v4` ("Upload
-# Playwright failure evidence"). There is no `gh`, no `github-script`, no `api.github.com`
+# ("Setup Node 20" in quality and in e2e) and two `actions/upload-artifact@v4` ("Upload
+# Playwright failure evidence" and "Upload desktop month-tile screenshots (always — PNG only,
+# never .auth/ — T-82-12)"). AMENDED 2026-09-28 (Phase 88.6 plan 55, gap-lap ML-17): this
+# census said "one" until the second upload landed in the same commit; neither reaches
+# `.auth/` (the failure step uploads `playwright-report/` + `test-results/`, the new one only
+# `test-results/**/month-tile-desktop-*.png`), both authenticate with ACTIONS_RUNTIME_TOKEN,
+# AMENDED 2026-09-29 (Phase 88.6 CR-01): the failure step now EXCLUDES `**/*.zip` under both
+# directories, so no Playwright trace archive is uploaded; the scope and token are unchanged,
+# and neither adds a scope. There is no `gh`, no `github-script`, no `api.github.com`
 # call, and no step that WRITES to GitHub — no PR comment, no commit status, no release, no
 # package push. "Checkout backend" reads chrismcclarin/nextgamenight-backend, which is PUBLIC,
 # so `contents: read` on the default token covers it (see that step's own GITHUB_TOKEN note).
@@ -295,6 +302,33 @@ jobs:
         # coverage of the eight-state machine, of the four outcome literals that must not
         # collapse into one another, and of the DR-C no-native-`disabled` sweep.
         #
+        # AMENDMENT — Phase 88.6 plan 55 (owner-ruled 2026-09-28, NEW OWNER ITEM 4). Five rows
+        # added — the source-scan gates Phase 88.6 itself minted, none of which was registered:
+        #   src/app/groundInk.test.ts                  plan 09 — ground-aware ink (D-16)       floor 8
+        #   src/app/errorEnvelopeReads.test.ts         plan 14 — default-deny envelope reads   floor 16
+        #   src/app/components/btnCensus.test.tsx      plan 10 — the .btn element census       floor 21
+        #   src/app/shadowTier.test.ts                 plan 12 — off-tier shadow families       floor 8
+        #   src/app/interpolatedClassCensus.test.ts    plan 47 — interpolated Tailwind classes  floor 4
+        # Each floor is MEASURED, not quoted: `grep -cE '^[[:space:]]*(it|test)\(' <file>` (the
+        # same regex this loop uses) on FE e882822, 2026-09-28. Unregistered, each was deletable
+        # with a green build — the exact hole this step exists to close, reopened by the phase
+        # that was converging on it. Ledger rows R103 / R104 / H08 in 88.6-46-SUMMARY.md.
+        #
+        # AMENDMENT — Phase 88.6 close (2026-09-29, gsd-verifier finding on plans 58/60). Two rows
+        # added — the guards the review fix-now set minted, unregistered exactly as plan 55's five were:
+        #   src/components/ui/Button.e2eReplica.test.ts               plan 58 — E10 replica lockstep (H1)          floor 5
+        #   src/app/components/CalendarListView.emptyStates.test.tsx  plan 60 — desktop 'No events' + loading arms  floor 1
+        # Floors MEASURED with this loop's regex on FE d69e681, 2026-09-29. Button.e2eReplica is H1's ONLY
+        # durable guard: unregistered, deleting it would have re-opened the stale-replica hole with a green build.
+        #
+        # AMENDMENT — Phase 88.6 gap plan 61 (review round 2 #18 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING).
+        # Two rows added — the guards on the magic-link Sentry egress fixes:
+        #   src/lib/sentryClientReplayGate.test.ts   R-7 (cb5c403) + plan 61 H-1 — replay gate + tracing wiring  floor 9
+        #   src/lib/sentry.scrub.test.ts             Phase 84 T-84-01 + plan 61 H-1 — the scrub functions         floor 39
+        # Floors MEASURED with this loop's regex after plan 61's edits (FE branch over 1eb23fd), 2026-09-29.
+        # They are R-7's and H-1's ONLY durable guards: unregistered, either file was deletable with a green
+        # build, exactly as the two rows `85b0263` registered were.
+        #
         # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
         # file list out of this workflow, located by the step name above, and asserts every
         # listed file exists and really carries at least the stated number of assertions.
@@ -326,6 +360,15 @@ jobs:
             "src/lib/groupColourPresets.test.ts:12" \
             "src/lib/syntheticAddress.test.ts:8" \
             "src/app/components/EmailAddressSection.test.tsx:50" \
+            "src/app/groundInk.test.ts:8" \
+            "src/app/errorEnvelopeReads.test.ts:16" \
+            "src/app/components/btnCensus.test.tsx:21" \
+            "src/app/shadowTier.test.ts:8" \
+            "src/app/interpolatedClassCensus.test.ts:4" \
+            "src/components/ui/Button.e2eReplica.test.ts:5" \
+            "src/app/components/CalendarListView.emptyStates.test.tsx:1" \
+            "src/lib/sentryClientReplayGate.test.ts:9" \
+            "src/lib/sentry.scrub.test.ts:39" \
             "src/test-utils/sourceScan.ts:0" \
           ; do
             f="${entry%:*}"; min="${entry##*:}"
@@ -644,12 +687,41 @@ jobs:
       # negative control 30844455459 (red on exactly the five planted padding assertions).
       # Removing `--project=phone` from the run line DISARMS the phone-forward gate (MOB-03) —
       # that is a decision, not a cleanup.
+      #
+      # DECISION Phase 88.6-61 (review round 2 H-5, owner ruling R2-H5-RULING "source-level",
+      # 2026-09-29). The e2e step below runs TWO invocations, setup first, and the login project
+      # takes no page capture of any kind (playwright.config.ts). WHY: on any failed test
+      # Playwright 1.60 writes `error-context.md` with an aria snapshot that serialises typed
+      # input values, so a login failing after the password fill wrote E2E_AUTH0_PASS into
+      # test-results/ — which the failure upload below publishes from a PUBLIC repo.
+      # - PLAYWRIGHT_NO_COPY_PROMPT=1 sits on the setup COMMAND only, chosen OVER the step's
+      #   `env:` (process-wide — journeys/phone would lose their failure snapshot too). It is an
+      #   undocumented internal whose only reader is `@playwright/test` 1.60
+      #   playwright/lib/index.js:624, so it is NOT the structural arm: the `error-context.md`
+      #   exclusion on the upload is.
+      # - `--no-deps` on the journeys+phone invocation is LOAD-BEARING: without it Playwright
+      #   re-runs `setup` as a dependency of both projects, WITHOUT the env var, and logs in twice.
+      #   The storageState the first invocation wrote under .auth/ carries over on disk.
+      # - The setup invocation writes NO json report: a CLI `--reporter=github` REPLACES the
+      #   config's reporter list (`@playwright/test` 1.60 playwright/lib/common/index.js:576), so
+      #   the Gate C and D10 floors below read the journeys+phone report only. Chosen OVER
+      #   `PLAYWRIGHT_JSON_OUTPUT_NAME` (ignored while the config sets `outputFile`,
+      #   playwright/lib/runner/index.js:1483-1495) and OVER merging the two reports (no step
+      #   reads setup results).
+      # - The second invocation clears test-results/ at start (playwright/lib/runner/index.js:
+      #   5919-5938). Harmless: bash -e stops the step after a failed setup, so a setup failure's
+      #   evidence is never cleared — the same stop the single invocation's dependency skip gave.
+      # Folding the two invocations back into one, or moving the env var into `env:`, is a
+      # decision, not a cleanup. Lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts
+      # ("88.6 R2-H5").
       - name: Run Playwright journeys (setup logs in once; all specs in the journeys project reuse storageState)
         env:
           # Auth credentials cross into the runner ONLY via env — never echoed (T-82-11).
           E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
-        run: npx playwright test --project=setup --project=journeys --project=phone
+        run: |
+          PLAYWRIGHT_NO_COPY_PROMPT=1 npx playwright test --project=setup --reporter=github
+          npx playwright test --project=journeys --project=phone --no-deps
 
       # Phase 88.3-cr, CR-09: the pinned `--project=phone` above is what makes Gate C
       # RUN, and the lockstep test in `src/lib/ci-grep-gate.fixture.test.ts` is what
@@ -667,16 +739,60 @@ jobs:
       - name: Gate C executed-count floor — contrast.spec.ts must actually run in the phone project
         run: node scripts/gate-c-executed-floor.mjs playwright-results.json
 
+      # Phase 88.6 plan 55 (owner-ruled 2026-09-28, NEW OWNER ITEM 4): the SAME hole as Gate C,
+      # mirrored. touch-targets.spec.ts's D10 arm (gated hover, focus ring, hover pin) sits behind
+      # `test.skip(({ isMobile }) => isMobile)` so it runs ONLY in the desktop `journeys` project;
+      # removing the project from the run line, flipping `isMobile` on it, or inverting that skip
+      # zeroes the arm while this job stays green. Same script, generalised by flags, not copied.
+      # The floor is the `--list` count (`npx playwright test --list --project=journeys
+      # e2e/touch-targets.spec.ts -g "D10"` = 3 on 2026-09-28), never above it. Closes WINDOWS 20
+      # and ledger row R104 (88.6-46-SUMMARY.md). No `if:`, for the reason the step above gives.
+      - name: D10 executed-count floor — touch-targets.spec.ts's D10 arm must actually run in the journeys project
+        run: node scripts/gate-c-executed-floor.mjs playwright-results.json --spec e2e/touch-targets.spec.ts --project journeys --title-prefix D10 --floor 3
+
       - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           # The CI reporter is 'github' (no playwright-report/ dir) — failure
-          # evidence (screenshots, traces, error-context.md) lands in
-          # test-results/. NOT .auth/ — never upload the appSession storageState.
+          # evidence (screenshots, error-context.md) lands in test-results/.
+          # NOT .auth/ — never upload the appSession storageState.
+          # 88.6 CR-01: NO zip archives either. A Playwright trace.zip records
+          # every action's parameters in plain text, and a retried login journey
+          # would carry the typed E2E_AUTH0_PASS. The setup project now records
+          # no trace (playwright.config.ts) — this exclusion is the independent
+          # second arm for the TRACE channel.
+          # 88.6-61 (review round 2 H-5): NO error-context.md either. Its aria
+          # snapshot serialises typed input values (the password included), and
+          # trace settings never reached it — CR-01's "cannot leave a PUBLIC repo"
+          # was false for that channel until this exclusion. With BOTH exclusions,
+          # neither a trace nor a page snapshot can leave a PUBLIC repo. The
+          # journeys/phone error-context.md is excluded too (the error text stays in
+          # the CI log), chosen OVER a setup-directory-only glob: Playwright derives
+          # that directory name from the test title, so a rename silently stops a
+          # per-directory glob matching. No comment lines inside the path block —
+          # there a `#` line would be read as a glob. Lockstep-pinned by
+          # src/lib/ci-grep-gate.fixture.test.ts ("88.6 CR-01", "88.6 R2-H5").
           path: |
             playwright-report/
+            !playwright-report/**/*.zip
+            !playwright-report/**/error-context.md
             test-results/
+            !test-results/**/*.zip
+            !test-results/**/error-context.md
           retention-days: 7
           if-no-files-found: ignore
+
+      # Phase 88.6 plan 55 (NEW OWNER ITEM 4, ledger R140): `always()` because the month-tile
+      # screenshots are review evidence on a GREEN run, which `failure()` above never uploads; the
+      # glob is PNG-only under test-results/, so it cannot reach `.auth/user.json` (repo root) or
+      # playwright-results.json (repo root) — pinned in src/lib/ci-grep-gate.fixture.test.ts.
+      - name: Upload desktop month-tile screenshots (always — PNG only, never .auth/ — T-82-12)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: month-tile-desktop-screenshots
+          path: test-results/**/month-tile-desktop-*.png
+          retention-days: 7
+          if-no-files-found: warn

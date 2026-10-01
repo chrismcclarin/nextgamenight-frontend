@@ -37,5 +37,27 @@ test('user can RSVP to an event', async ({ page }, testInfo) => {
 
   // The s=yes link auto-responds on load — the confirmation card renders
   // "You're in!" (run 27317492586 screenshot; "you're going" was wrong copy).
-  await expect(page.getByText(/you're (in|going)/i)).toBeVisible({ timeout: 15_000 });
+  /* DECISION Phase 88.6-47 (row 3 of the 2026-09-17 CI e2e red, run 35581508198).
+     THE RECORD'S HYPOTHESIS WAS WRONG AND IS RETIRED HERE. `88.6-CI-E2E-RED-2026-09-17.md` guessed
+     "stale spec string" / "the D5 latch changing when the text appears". The CI log for run
+     35581508198 shows `getByText(/you're (in|going)/i) resolved to 2 elements` — the identical
+     STRICT-MODE collision as row 1, on the twin design. The copy is correct and unchanged.
+
+     Both nodes are required and both are now asserted: the visible `<h1>` renders
+     `STATUS_CONFIG.yes.heading` (`rsvp/[token]/page.js:50`, rendered at `:293`), and the
+     always-mounted polite region composes the same headline into its announcement (`:242`),
+     addressed through the shipped `data-testid` at `:416`. Narrowing to the heading is not a
+     weakening because the region arm below is new coverage, not a replacement.
+     REJECTED — `.first()`: green on a tree with no region at all.
+     REJECTED — de-duplicating the page: that duplication is the AC-19 announcement design.
+     The ratified regex is untouched on both arms; re-widening to a bare text query re-breaks this. */
+  await expect(
+    page.getByRole('heading', { level: 1, name: /you're (in|going)/i })
+  ).toBeVisible({ timeout: 15_000 });
+
+  /* `toContainText`, NEVER `toBeVisible`: the region is `className="sr-only"`
+     (`rsvp/[token]/page.js:415`) and `sr-only` leaves a 1x1 box Playwright calls visible. */
+  await expect(page.getByTestId('rsvp-page-status')).toContainText(/you're (in|going)/i, {
+    timeout: 15_000,
+  });
 });

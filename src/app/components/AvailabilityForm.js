@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { nextMonday, format, parseISO } from 'date-fns';
@@ -9,10 +9,13 @@ import AvailabilityGrid from './AvailabilityGrid';
 // vite-tsconfig-paths only maps `@/` for files in the TS project (tsconfig
 // `include` is .ts/.tsx only), so `@/` aliases don't resolve from `.js`
 // importers in tests. Matches the sibling ScheduleForm's import style.
-import { availabilityFormAPI } from '../../lib/api';
+import { ApiError, availabilityFormAPI } from '../../lib/api';
 import { useAppForm } from '../../lib/useAppForm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { Button } from '../../components/ui/Button';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { logger, errCtx } from '@/lib/logger';
 
 /**
  * Zod schema with cross-field validation
@@ -54,8 +57,41 @@ export default function AvailabilityForm({
 }) {
   const [submitError, setSubmitError] = useState(null);
 
+  /* DECISION Phase 88.6-25: the submit path carries a synchronous in-flight LATCH, and the
+     submit CTA deliberately KEEPS its native `disabled` attribute. Both halves are choices.
+
+     WHY THE LATCH EXISTS EVEN THOUGH THE BUTTON IS DISABLED: `disabled` stops a second CLICK on
+     the button and nothing else. Pressing Enter inside any field still fires the form's submit,
+     and `react-hook-form`'s `handleSubmit` does not refuse a concurrent run — so without this
+     ref a fast double-Enter posts the availability twice. It is a ref and not state on purpose:
+     `isSubmitting` is not readable synchronously at the top of the handler, which is where the
+     refusal has to happen. Released in `finally`, so a thrown submit does not wedge the form.
+
+     WHY `aria-disabled` WAS NOT TAKEN BY PLAN 25, and what changed. AMENDED Phase 88.6-42
+     (owner-authorized 2026-09-16): the conversion IS TAKEN now, and the CTA below carries
+     `aria-disabled` + this latch. Plan 25's reasoning was correct and is KEPT verbatim below
+     because it is the record of WHY it waited: the blocker was a shipped gate's subject, not
+     the design. Plan 42 cleared the blocker first — the spinner arcs are SVG `opacity`
+     presentation attributes now, so test 53(b2)'s window contains no bare opacity utility —
+     and only then converted. Reverting the CTA to native `disabled` is a decision, not a
+     cleanup. The original record follows.
+
+     Plans
+     88.6-17 through -24 converged in-flight gates onto `aria-disabled` + a latch, because a
+     natively-disabled button leaves the tab order the instant it disables and drops a keyboard
+     user to <body> mid-submit. That reasoning applies to this control too, and it was
+     IMPLEMENTED and then REVERTED on a measurement: `tokenContrast.test.ts`'s 88.8 HIGH-A gate
+     (test 53(b2), owner-ruled) flags any bare `opacity-<n>` utility within 400 characters after
+     an `aria-disabled=` attribute, and the submitting spinner's two SVG arcs below carry
+     `opacity-25` / `opacity-75` — the ONLY bare opacity utilities left in `src/`. The gate's
+     own comment calls that window a heuristic that should red loudly, so the choice was between
+     re-spelling a shipped gate's subject and leaving the conversion for a plan that owns it.
+     ROUTED, not dropped: `.planning/deferred/phase-88.6.md` carries the entry, with the
+     spinner-arc collision named as the thing to solve first. Changing this is a decision. */
+  const submitInFlightRef = useRef(false);
+
   // Phase 81 Plan 02 — shared pre-fill state (Plan 03 reuses both):
-  //   prefillStatus: { source: 'gcal' | 'saved', count, error? } | null
+  //   prefillStatus: { source: 'gcal' | 'saved', count, failed? } | null
   //   isPrefilling: in-flight flag — disables both buttons during fetch
   const [prefillStatus, setPrefillStatus] = useState(null);
   const [isPrefilling, setIsPrefilling] = useState(false);
@@ -101,6 +137,8 @@ export default function AvailabilityForm({
   }, [isUnavailable, setValue]);
 
   const onSubmit = async (data) => {
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setSubmitError(null);
 
     try {
@@ -127,8 +165,34 @@ export default function AvailabilityForm({
         is_unavailable: data.is_unavailable,
       });
 
-      if (response.error) {
-        throw new Error(response.error);
+      /* DECISION Phase 88.6-62 (review round 2 #11 / 88.6.1 W003; D-35 amended): success is
+         decided by the backend's POSITIVE flag — `success: true`, the POST's only 2xx body
+         (Sonnet/routes/availabilityResponse.js:190) — chosen OVER the absence of `error` that
+         stood here, and OVER an `res.ok` check in `submitResponse`.
+         The absence of `error` read an infra JSON body without `error` as SAVED, and removing
+         the backend alias (Phase 93) would have flipped every failure to "Availability
+         Submitted!" — the ordering hazard errorEnvelopeReads' AvailabilityForm row named; this
+         guard closes it by construction. The `res.ok` arm is D62 branch A, REJECTED (owner,
+         2026-09-09): this stays FE-only and body-based, with no res.ok throw and no change to
+         the resolved body shape — D62 branch B's CONSEQUENCE constraint is fully kept.
+         PRIOR DECISIONS OVERRIDDEN, named: plan 88.6-58 kept this guard "byte-unchanged (the D62
+         branch-B discriminant and the roster's guard read)", and the comment that stood here
+         said the `.error` read "stays on ONE line so the errorEnvelopeReads roster count stays
+         2". On the merits the success flag is the right discriminant; that record is a
+         BOOKKEEPING constraint (a count), not a consequence one — the roster moves 2 -> 1 and
+         says why. Body-less, infra and coded bodies all throw; only the positive success
+         resolves. The throw is unchanged in kind (plan 58's coded ApiError, optional-chained so
+         a nullish body cannot TypeError), and `response?.error` is still read ONLY as the 5th
+         `upstreamMessage` argument (Sentry, never the DOM), on ONE line. Going back to
+         `if (response.error)` is a decision, not a cleanup. */
+      if (response?.success !== true) {
+        throw new ApiError(
+          typeof response?.message === 'string' ? response.message : 'availability submit rejected',
+          typeof response?.code === 'string' ? response.code : 'unknown',
+          400,
+          response,
+          typeof response?.error === 'string' ? response.error : undefined
+        );
       }
 
       onSuccess?.({
@@ -139,8 +203,60 @@ export default function AvailabilityForm({
     } catch (error) {
       // Set inline submit-error UI, then RE-THROW so handleAppSubmit's catch
       // logs it to logger.error -> Sentry (the reachable Sentry path, PRIM-06).
-      setSubmitError(error.message || 'Failed to submit availability. Please try again.');
+      //
+      /* DECISION Phase 88.6-25 (R1 / D-31 / T-88-25-01): the ratified register answers this,
+         with NO `fallback` passed — chosen OVER the hand-written
+         'Failed to submit availability. Please try again.' literal that used to sit here, and
+         over interpolating `error.message`. §6.2's W16 precedent is the model: passing no
+         fallback yields the register's own generic line, so no copy is authored (P1).
+
+         WHY THE GENERIC LINE IS WHAT LANDS, and it is a RECORDED RESIDUAL rather than an
+         oversight: `submitResponse` has no `res.ok` check (`lib/api.ts:1086-1091`), so the
+         value arriving here is the plain `Error` thrown two lines below `response.error` — no
+         `ApiError`, no `code` — and `getFetchErrorMessage` therefore resolves `unknown`. Under
+         the owner's D62 BRANCH-B ruling of 2026-09-09 the frontend does NOT learn a `code` for
+         this path in Phase 88.6; `:130-132` and `lib/api.ts` stay byte-untouched (plan 88.6-42
+         owns them, Phase 93 owns the backend `code`). CONSEQUENCE, stated so nobody reports it
+         as a bug: on this anonymous magic-link page an EXPIRED link and a validation refusal
+         render the SAME sentence until Phase 93 lands. Branch A — teaching this path a `code`
+         in 88.6 — was considered and REJECTED on blast radius, not on the merits.
+
+         AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review H2, owner ruling
+         `H2-RULING: coded-throw-amend-D35`, 88.6-CODE-REVIEW-work/RULINGS.md; D-35 amended in
+         88.6-CONTEXT.md): the "WHY THE GENERIC LINE IS WHAT LANDS" paragraph above is FALSE
+         for four of the arms. `prompt_closed` (Sonnet/routes/availabilityResponse.js:99, :103),
+         `prompt_deadline_expired` (:109) and the magic-token limiter's `rate_limited` 429
+         (middleware/rateLimiter.js:10, :101) ALREADY carry an envelope `code` today, and
+         `submitResponse` (lib/api.ts `submitResponse: async`, `timedPublicFetch` + `guardedJson`) returns the
+         parsed body WHATEVER the status, so those codes reach the guard above. The guard now
+         throws a coded `ApiError` built from the body's own `code` — FE-only, no backend deploy
+         — so `getFetchErrorMessage` resolves the ratified register lines
+         (useFetchErrorState.ts `rate_limited` / `prompt_closed` / `prompt_deadline_expired`).
+         The `status` argument is a nominal 400: `submitResponse` hands back the body, not the
+         Response, and nothing downstream derives copy from it (`deriveCode` reads `.code` only).
+         WHAT STILL RESOLVES `unknown` (the true D-35 residual, pinned by a confirm-only case in
+         AvailabilityForm.test.tsx): the raw code-less `{ error, action }` token/validation arms
+         (availabilityResponse.js:38-77, :119) and the raw 500 (:197), until Phase 93 gives
+         them a `code`. Branch A (the BE PR) STAYS REJECTED; this is the FE-only read D-35 never
+         weighed. REJECTED here: routing the throw through `mapErrorToCode(response, 400)` — a
+         code-less 400 resolves `validation`, which would tell someone holding an expired link
+         "Something looks off with that request". `'unknown'` is the deliberate fallback.
+         Changing this is a decision, not a cleanup.
+         [AMENDED IN PLACE 2026-09-29 — DECISION Phase 88.6-62 (review round 2 #11 / #12, owner
+         ruling `R2-FIXNOW-SET-RULING: yes`; D-35 bracketed in 88.6-CONTEXT.md): the guard is no
+         longer "the guard above ... `response.error`". It reads the backend's POSITIVE
+         `success: true` (see the DECISION Phase 88.6-62 marker at the guard), so a body with
+         NEITHER `error` NOR `success` — an infra JSON body — now throws (`unknown` line) instead
+         of reporting a submit that saved nothing. Everything this paragraph says about the coded
+         arms and the D-35 residual still holds. And the transport rejection the 88.6-25
+         paragraph calls a "plain `Error`" is now an `ApiError('network')` from `submitResponse`
+         (lib/api.ts `timedPublicFetch`, plan 88.6-62 task 1), so a dropped connection renders
+         the register's `network` line — never "Refresh the page…", which would wipe the grid
+         the person just painted.] */
+      setSubmitError(getFetchErrorMessage(error));
       throw error;
+    } finally {
+      submitInFlightRef.current = false;
     }
   };
 
@@ -170,8 +286,8 @@ export default function AvailabilityForm({
       setPrefillStatus({ source: 'gcal', count });
       setTimeout(() => setPrefillStatus(null), 2500);
     } catch (err) {
-      console.error('[AvailabilityForm] GCal prefill failed:', err);
-      setPrefillStatus({ source: 'gcal', count: 0, error: err.message });
+      logger.info('[AvailabilityForm] GCal prefill failed:', errCtx(err));
+      setPrefillStatus({ source: 'gcal', count: 0, failed: true });
       setTimeout(() => setPrefillStatus(null), 4000);
     } finally {
       setIsPrefilling(false);
@@ -199,8 +315,8 @@ export default function AvailabilityForm({
       setPrefillStatus({ source: 'saved', count });
       setTimeout(() => setPrefillStatus(null), 2500);
     } catch (err) {
-      console.error('[AvailabilityForm] Saved prefill failed:', err);
-      setPrefillStatus({ source: 'saved', count: 0, error: err.message });
+      logger.info('[AvailabilityForm] Saved prefill failed:', errCtx(err));
+      setPrefillStatus({ source: 'saved', count: 0, failed: true });
       setTimeout(() => setPrefillStatus(null), 4000);
     } finally {
       setIsPrefilling(false);
@@ -265,11 +381,11 @@ export default function AvailabilityForm({
       {/* Header Section */}
       <div className="border-b border-line pb-4">
         <div className="flex items-center gap-2 text-sm text-content-secondary">
-          <span className="font-medium">Submitting as:</span>
-          <span className="text-content-primary font-semibold">{userName}</span>
+          <span>Submitting as:</span>
+          <span className="text-content-primary font-bold">{userName}</span>
         </div>
         {isUpdate && (
-          <p className="mt-2 text-sm text-content-link">
+          <p className="mt-2 text-base text-content-link">
             You previously submitted availability for this week. Your response has been pre-filled below.
           </p>
         )}
@@ -282,14 +398,14 @@ export default function AvailabilityForm({
             overlapping this week (a hidden button read as a bug — it should
             instead advertise that saving a schedule unlocks the shortcut). */}
       <div className="bg-surface-elevated border border-line rounded-card p-4 space-y-2">
-        <p className="text-sm font-medium text-content-primary">Start with:</p>
+        <p className="text-sm font-bold text-content-primary">Start with:</p>
         <div className="flex flex-col sm:flex-row gap-2">
           {gcalConnected && (
             <button
               type="button"
               onClick={handleImportGcal}
               disabled={isPrefilling || isUnavailable}
-              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
               {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
             </button>
@@ -299,7 +415,7 @@ export default function AvailabilityForm({
             onClick={handleUseSaved}
             disabled={!hasSavedAvailability || isPrefilling || isUnavailable}
             title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
-            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
             {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
           </button>
@@ -309,12 +425,34 @@ export default function AvailabilityForm({
             No saved availability for these dates — add a weekly schedule in your profile settings to use this shortcut.
           </p>
         )}
+        {/* DECISION Phase 88.6-25 (R1 / D-31 / T-88.6-66): the upstream string is GONE from this
+            sentence, chosen OVER interpolating `prefillStatus.error` (which was `err.message`)
+            after the colon. That message is RAW BACKEND TEXT — `lib/api.ts:1126` and `:1159` both
+            do `const err = await res.json(); throw new Error(err.error || …)` — and this component
+            renders on `app/availability-form/[token]/page.js`, the ANONYMOUS magic-link page, so
+            the old form showed upstream text to a visitor with no session. Restoring "the detail"
+            as a helpfulness improvement would reopen that disclosure. The `api.ts` side — throwing
+            a real `ApiError` through `mapErrorToCode` so the register could name the actual
+            outcome — is strictly better copy AND closes it at source, but `api.ts` is plan
+            88.6-42's (wave 8) and Phase 93's; it is a NAMED follow-up, not a substitute.
+
+            AND THE SECOND HALF, which is the one a tidy-up will take: `failed: true` is
+            LOAD-BEARING. It is the only thing telling a FAILED prefill apart from a SUCCESSFUL one
+            that found nothing, and the success path never sets it. `count: 0` CANNOT serve as the
+            signal — the backend filters `source:'default'`, so a user with zero saved patterns
+            legitimately resolves with zero (see the comment on `performSavedPrefill` above). A
+            catch that wrote only `{ source, count: 0 }` would be byte-identical to an empty
+            success and would tell an anonymous visitor "No saved availability matches this week"
+            when the app does not know — the same empty-vs-failed defect registered as T-88.6-79 on
+            `EventCalendar.js`. Deleting this flag, or re-keying the branch on the presence of a
+            message, is a decision, not a cleanup. Both states are pinned for both arms in
+            `AvailabilityForm.test.tsx`. */}
         {prefillStatus && (
           <p className="text-sm text-content-secondary transition-opacity">
-            {prefillStatus.error
+            {prefillStatus.failed
               ? (prefillStatus.source === 'saved'
-                  ? `Couldn't use saved availability: ${prefillStatus.error}`
-                  : `Couldn't import from Google Calendar: ${prefillStatus.error}`)
+                  ? "Couldn't use saved availability."
+                  : "Couldn't import from Google Calendar.")
               : prefillStatus.source === 'gcal'
                 ? (prefillStatus.count > 0
                     ? `Filled ${prefillStatus.count} slots from Google Calendar.`
@@ -328,11 +466,22 @@ export default function AvailabilityForm({
 
       {/* Unavailable Toggle Section */}
       <div className="bg-surface-elevated border border-line rounded-card p-4">
+        {/* DECISION Phase 88.6-59 (review MEDLOW-26, WCAG 4.1.2): `role="checkbox"` +
+            `aria-checked` on the toggle, chosen OVER `aria-pressed` — the same idiom and the same
+            reasoning as the Bring-a-game rows (DECISION Phase 88.6-44, `BringGamePicker.js`
+            `role="checkbox"`): the visual IS a checkbox and the on/off state lived ONLY in the class
+            ternary and the glyph, so a screen reader heard the same "button" on or off.
+            `aria-pressed` ("toggle button, pressed") is the house idiom for ARMING a two-tap
+            action, a different interaction. The native <button> stays underneath for Enter/Space
+            and focus; the NAME is still the visible text. Going back to a bare button is a
+            decision, not a cleanup. */}
         <button
           type="button"
+          role="checkbox"
+          aria-checked={isUnavailable}
           onClick={handleUnavailableToggle}
           className={`
-            w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn font-medium
+            w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn
             active:opacity-75 transition-colors duration-200
             focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
             ${isUnavailable
@@ -345,7 +494,7 @@ export default function AvailabilityForm({
             isUnavailable ? 'bg-status-error border-status-error' : 'border-line-strong'
           }`}>
             {isUnavailable && (
-              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
             )}
@@ -396,24 +545,49 @@ export default function AvailabilityForm({
 
       {/* Submit Button */}
       <div className="pt-4 border-t border-line">
-        {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the availability-grid surface's primary CTA (~37px today: the `py-3` here is DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `w-full`.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */}
-        <button
+        {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the availability-grid surface's primary CTA (~37px today: the `py-3` here is DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `w-full`.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
+        {/* DECISION Phase 88.6-42 (D-8, owner-authorized 2026-09-16): this CTA now carries
+            `aria-disabled` + the synchronous latch above, converging on the shape plans
+            88.6-17 through -24 shipped — chosen OVER the native `disabled` attribute it
+            carried through plan 25. A natively-disabled button leaves the tab order the
+            INSTANT it disables, dropping a keyboard user to <body> mid-submit; `aria-disabled`
+            keeps focus where the person put it and announces the state.
+
+            THE BLOCKER PLAN 25 ROUTED IS CLEARED FIRST, and that ordering is the whole point:
+            `tokenContrast.test.ts` test 53(b2) flags any bare `opacity-<n>` UTILITY within 400
+            characters after an `aria-disabled=` attribute, and this button's spinner arcs were
+            the only bare opacity utilities left in `src/`. They are now SVG `opacity`
+            PRESENTATION ATTRIBUTES (see the svg below), which is the correct spelling for an
+            SVG arc anyway — so the gate's subject is gone rather than its rule bent. Plan 25
+            was right to keep native `disabled` rather than work around the gate; this plan is
+            what owns the re-spell.
+
+            The REFUSAL is the latch, not the attribute: `aria-disabled` is advisory, so a
+            second click still enters `onSubmit`, where `submitInFlightRef` returns on the
+            first line and releases in `finally`. Removing either half is a decision. */}
+        <Button
           type="submit"
-          disabled={isSubmitting}
-          className={`btn btn-primary w-full py-3 min-h-11 ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
+          aria-disabled={isSubmitting}
+          className="w-full"
         >
           {isSubmitting ? (
             <span className="flex items-center justify-center gap-2">
               <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                {/* `opacity` as an SVG PRESENTATION ATTRIBUTE, not the Tailwind utility. Two
+                    reasons and the second is the load-bearing one: it is the correct spelling
+                    for an SVG arc, and it takes the last bare `opacity-<n>` utilities in
+                    `src/` out of `tokenContrast` test 53(b2)'s 400-character window after the
+                    `aria-disabled=` above. Re-introducing the utility spelling here would red
+                    that gate and silently re-block the conversion. */}
+                <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               Submitting...
             </span>
           ) : (
             isUpdate ? 'Update Availability' : 'Submit Availability'
           )}
-        </button>
+        </Button>
       </div>
     </form>
     {/* Deliberately a SIBLING of the <form>, not a child. A portalled dialog

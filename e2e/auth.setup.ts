@@ -61,7 +61,18 @@ setup('login + cache session', async ({ page, baseURL }) => {
 
   // Back on the app after the Auth0 callback completes.
   const appOrigin = new URL(baseURL ?? 'http://localhost:3000').origin;
-  await expect(page).toHaveURL(new RegExp(appOrigin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  // DECISION Phase 88.6-61 (review round 2 H-5, owner ruling R2-H5-RULING): `page.waitForURL`,
+  // chosen OVER the page-level URL matcher this line used to be. A FAILING page matcher attaches
+  // its own whole-body aria snapshot as the error's context, and that snapshot serialises the
+  // typed password — outside the reach of PLAYWRIGHT_NO_COPY_PROMPT (`@playwright/test` 1.60:
+  // playwright/lib/index.js:665-670, playwright/lib/errorContext.js:66; measured by plan 61's
+  // throwaway probe). Same predicate, the same 5 s the matcher's default expect timeout gave,
+  // and `waitUntil: 'commit'` mirrors the matcher's no-load-wait semantics. Do not add any
+  // page- or locator-level matcher after the password fill; that is a decision, not a cleanup.
+  await page.waitForURL(new RegExp(appOrigin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), {
+    timeout: 5_000,
+    waitUntil: 'commit',
+  });
 
   // Persist the appSession cookie for the journey specs. `.auth/` is git-ignored.
   await page.context().storageState({ path: AUTH_FILE });

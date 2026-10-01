@@ -15,7 +15,9 @@
 //   owner ruling that fixed the threshold could be revised; these pins must survive that, and
 //   must never be the reason someone "fixes" the value back to the pre-88.1 one.
 
-import { renderHook } from '@testing-library/react';
+import fs from 'node:fs';
+import path from 'node:path';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LONG_PRESS_MS,
@@ -24,6 +26,14 @@ import {
   type GesturePointerEvent,
   type PaintGestureArgs,
 } from './usePaintGesture';
+import {
+  __resetPaintGestureActiveStore,
+  isPaintGestureActive,
+  setPaintGestureActive,
+  subscribePaintGestureActive,
+  usePaintGestureHold,
+} from './paintGestureActiveStore';
+import { withoutComments } from '../../../test-utils/sourceScan';
 
 /** A fixed, INJECTED bounds rect — never read from the DOM (P7). */
 const BOUNDS = { top: 0, left: 0, bottom: 1000, right: 1000 };
@@ -320,5 +330,279 @@ describe('usePaintGesture — 7. non-primary mouse buttons are ignored (WR-01)',
 
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onCommit).toHaveBeenCalledWith(anchor, end);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLAN 88.6-39 ADDITIONS (W52 / D-18) — `onActiveChange`.
+//
+// THE IMPLEMENTATION IS ONE GUARDED EMIT; THE COVERAGE IS FOUR PATHS. `teardown()` is the hook's
+// single shared exit and it is reached from four call sites — `finish()` (which both the commit
+// route and the `pointercancel` route funnel through), the stale-gesture safety in
+// `onPointerDown`, the slop-cancel in `onPointerMove`, and the unmount cleanup. One "it fires
+// false eventually" test cannot tell WHICH of those is wired, so each gets its own case.
+//
+// TWO OF THE FOUR MUST NOT FIRE, and that is not a gap in the coverage — it is the point. The
+// slop-cancel path is every scroll that begins over the grid; it never engaged, so an emit there
+// would be a `false` with no preceding `true`. The same is true of the TAP arm, which sets
+// `state.active` inline immediately before tearing down without ever passing through `engage()` —
+// which is why the guard is a flag set beside the `true` emit and NOT a bare `active` read.
+// ---------------------------------------------------------------------------
+describe('usePaintGesture — 8. onActiveChange: the four teardown paths through ONE emit', () => {
+  it('(:409, commit route) a held drag reports true once on engage and false once on release', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    expect(onActiveChange).not.toHaveBeenCalled(); // pending is not active
+
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+
+    result.current.handlers.onPointerMove(evt(MID.x + 20, MID.y + 20));
+    result.current.handlers.onPointerUp(evt(MID.x + 20, MID.y + 20));
+
+    // Exactly ONCE — not once from `finish` and again from `teardown`.
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('(:409, pointercancel route) an ACTIVE gesture taken by the browser still reports false', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    result.current.handlers.onPointerCancel(evt(MID.x, MID.y));
+
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('(:432, stale-gesture safety) a second pointerdown settles the first gesture with a false', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+
+    // A NEW press while the first gesture is still live. `onPointerDown` tears the stale one
+    // down before building its own state, so the pair closes before the next one opens.
+    result.current.handlers.onPointerDown(evt(MID.x + 5, MID.y + 5, 'touch', 2));
+
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('(:470, slop-cancel — THE SCROLL PATH) a pan that never engaged reports NOTHING', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    // Past the slop distance while still UNDER the long-press threshold: the browser takes the
+    // pan. This is the single most frequent way a pointer sequence over this grid ends, and an
+    // unguarded emit here would fire an unpaired `false` on every scroll.
+    result.current.handlers.onPointerMove(evt(MID.x, MID.y + SLOP_PX + 10));
+
+    expect(onActiveChange).not.toHaveBeenCalled();
+  });
+
+  it('(:537, unmount) unmounting mid-drag reports false so no consumer is left frozen', () => {
+    const onActiveChange = vi.fn();
+    const { result, unmount } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    onActiveChange.mockClear();
+
+    unmount();
+
+    expect(onActiveChange.mock.calls).toEqual([[false]]);
+  });
+});
+
+describe('usePaintGesture — 9. onActiveChange: the cases that must NOT fire', () => {
+  it('a sub-threshold TAP emits no unpaired false, even though it sets `active` inline', () => {
+    const onActiveChange = vi.fn();
+    const { result, onCommit } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS - 1); // still BEFORE the threshold
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y));
+
+    // The tap DID commit — this is the real tap path, not a no-op fixture.
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    // …and it reported nothing: a bare `state.active` guard would have fired `[false]` here,
+    // because `finish()`'s tap arm sets `active = true` immediately before tearing down.
+    expect(onActiveChange).not.toHaveBeenCalled();
+  });
+
+  it('a settle with NO gesture in flight fires ZERO times', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    // The hook installs `pointerup`/`pointercancel` on `document` for the whole mount, so this
+    // arrives routinely with nothing down.
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y));
+    result.current.handlers.onPointerCancel(evt(MID.x, MID.y));
+
+    expect(onActiveChange).not.toHaveBeenCalled();
+  });
+
+  it('true fires exactly ONCE per engage, however many moves the drag makes', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    for (let i = 1; i <= 6; i++) {
+      result.current.handlers.onPointerMove(evt(MID.x + i * 4, MID.y + i * 4));
+    }
+
+    expect(onActiveChange.mock.calls.filter(([v]) => v === true)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLAN 88.6-39 (W52 / D-18) — the LEAF-MODULE store and the finger-up hold.
+//
+// The store is a leaf: it imports nothing from the component tree, which is what makes it
+// import-safe for `TimezoneNudgeBanner`'s two NON-scheduler mounts (`EventDayModal.js`,
+// `gameDetail/page.js`) and what keeps a `createEvent`-resident store — a module cycle with a
+// TDZ read, since `createEvent.js` imports both consumers — off the table.
+//
+// THE PROPERTY THAT MATTERS IS A NON-EVENT: nothing re-renders on the TRUE edge. That is why
+// the read seam is imperative rather than `useSyncExternalStore`, which re-renders every
+// subscriber on exactly that edge.
+// ---------------------------------------------------------------------------
+describe('paintGestureActiveStore — the flag itself', () => {
+  beforeEach(() => __resetPaintGestureActiveStore());
+
+  it('defaults to INACTIVE, so a surface with no scheduler in the tree is unaffected', () => {
+    expect(isPaintGestureActive()).toBe(false);
+  });
+
+  it('the setter is IDEMPOTENT — a redundant value notifies nobody', () => {
+    const listener = vi.fn();
+    subscribePaintGestureActive(listener);
+
+    setPaintGestureActive(false); // already false: the document-level settle case
+    expect(listener).not.toHaveBeenCalled();
+
+    setPaintGestureActive(true);
+    setPaintGestureActive(true);
+    expect(listener.mock.calls).toEqual([[true]]);
+
+    setPaintGestureActive(false);
+    setPaintGestureActive(false);
+    expect(listener.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('unsubscribing stops delivery, and a listener may unsubscribe itself mid-notify', () => {
+    const other = vi.fn();
+    const unsubOther = subscribePaintGestureActive(other);
+    const selfRemoving = vi.fn(() => unsubSelf());
+    const unsubSelf = subscribePaintGestureActive(selfRemoving);
+
+    setPaintGestureActive(true);
+    // The self-removing listener must not have starved its sibling.
+    expect(selfRemoving).toHaveBeenCalledTimes(1);
+    expect(other).toHaveBeenCalledTimes(1);
+
+    setPaintGestureActive(false);
+    expect(selfRemoving).toHaveBeenCalledTimes(1);
+    expect(other).toHaveBeenCalledTimes(2);
+    unsubOther();
+  });
+});
+
+describe('usePaintGestureHold — holds a change under the finger, applies it on finger-up', () => {
+  beforeEach(() => __resetPaintGestureActiveStore());
+
+  /** Render-counting harness: the count is the whole assertion in the engage case. */
+  function renderHold(initial: string) {
+    const renders: string[] = [];
+    const view = renderHook(
+      ({ value }: { value: string }) => {
+        const held = usePaintGestureHold(value);
+        renders.push(held);
+        return held;
+      },
+      { initialProps: { value: initial } }
+    );
+    return { ...view, renders };
+  }
+
+  it('passes the value straight through while no gesture is running', () => {
+    const { result, rerender } = renderHold('a');
+    expect(result.current).toBe('a');
+    act(() => rerender({ value: 'b' }));
+    expect(result.current).toBe('b');
+  });
+
+  it('re-renders ZERO times on the TRUE edge — the frame the hold exists to protect', () => {
+    const { renders } = renderHold('a');
+    const before = renders.length;
+
+    act(() => setPaintGestureActive(true));
+
+    expect(renders.length).toBe(before);
+  });
+
+  it('holds a change that lands mid-gesture and applies it on the FALSE edge', () => {
+    const { result, rerender } = renderHold('a');
+    act(() => setPaintGestureActive(true));
+
+    act(() => rerender({ value: 'b' }));
+    expect(result.current).toBe('a'); // held: the grid must not move under the finger
+
+    act(() => setPaintGestureActive(false));
+    expect(result.current).toBe('b'); // applied on finger-up
+  });
+
+  it('the FALSE edge with NO held change is a React bail-out, not a re-render', () => {
+    const { renders } = renderHold('a');
+    act(() => setPaintGestureActive(true));
+    const before = renders.length;
+
+    act(() => setPaintGestureActive(false));
+
+    expect(renders.length).toBe(before);
+  });
+
+  it('unmounting removes the listener, so a later edge reaches nothing', () => {
+    const { unmount } = renderHold('a');
+    unmount();
+    // No act() wrapper and no warning: with the listener gone this sets no state anywhere.
+    expect(() => setPaintGestureActive(true)).not.toThrow();
+  });
+
+  // Plan 88.6-63 (review round 2 #14). A MECHANISM pin, NOT a behaviour pin — labelled so nobody
+  // reads its green as proof of the painted frame. The defect is one stale PAINTED frame after a
+  // value change with no finger down (the passive `[value]` sync ran after paint). jsdom cannot
+  // observe paint: MEASURED 2026-09-29 (throwaway probe, deleted) — with React 18.2, a microtask
+  // queued from the first commit after a change reads the NEW value under BOTH the passive effect
+  // and a layout-effect variant, because the scheduler runs the passive effect in the same task.
+  // So this pins the mechanism that closes it: the sync runs in an isomorphic LAYOUT effect.
+  it('MECHANISM pin (not behaviour): the [value] sync runs in an isomorphic layout effect (review round 2 #14)', () => {
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'paintGestureActiveStore.ts'), 'utf8')
+    );
+    // (a) the module-level isomorphic alias — layout effect in the browser, plain effect on the
+    // server (where `useLayoutEffect` warns and TimezoneNudgeBanner's pages render).
+    expect(src).toMatch(
+      /const useIsomorphicLayoutEffect\s*=\s*typeof window !== 'undefined'\s*\?\s*useLayoutEffect\s*:\s*useEffect\s*;/
+    );
+    // (b) the hook's `[value]` sync is called THROUGH it: the alias call is the nearest effect
+    // call before the commit-time read.
+    const body = src.slice(src.indexOf('export function usePaintGestureHold'));
+    const read = body.indexOf('if (isPaintGestureActive()) return;');
+    expect(read).toBeGreaterThan(-1);
+    const before = body.slice(0, read);
+    expect(before.lastIndexOf('useIsomorphicLayoutEffect(')).toBeGreaterThan(-1);
+    expect(before.lastIndexOf('useIsomorphicLayoutEffect(')).toBeGreaterThan(
+      before.lastIndexOf('useEffect(')
+    );
+    // The store's own rule (DECISION 88.6-39): the ONE `isPaintGestureActive()` read in the hook
+    // stays inside an effect — no render-time read was added to close the frame.
+    expect(body.match(/isPaintGestureActive\(\)/g)).toHaveLength(1);
   });
 });

@@ -21,6 +21,7 @@ import * as React from 'react';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 
 const SELF_UUID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const FRIEND_UUID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -272,6 +273,269 @@ describe('FriendInvitePanel — Req 9 migration proof', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 88.6 plan 22 task 1 — the a11y arms.
+//
+// These are BEHAVIORAL, not markup checks, and the shape is deliberate. Every
+// announcement arm captures the live region BEFORE the outcome fires and asserts
+// on THAT SAME NODE afterwards (`expect(after).toBe(before)`) — the idiom
+// StatusRegion.test.tsx:20-29 already uses. Presence alone is satisfied by a
+// CONDITIONALLY-mounted region, which is precisely the bug: a screen reader
+// announces a CHANGE to a live region, never the conditional mount of a new one.
+//
+// The description arm RESOLVES the description from the email <Input> — a
+// focusable element — and reads the text back. An `aria-describedby` attribute
+// string asserted anywhere on the tree would pass while producing zero
+// AT-observable effect.
+//
+// axe has NO rule for an unassociated error message, so task 3's composed audit
+// is not the catch for any of this.
+// ---------------------------------------------------------------------------
+describe('FriendInvitePanel — error and success are announced (88.6-22)', () => {
+  const emailField = () => screen.getByRole('textbox', { name: 'Invite by Email' });
+  const sendButton = () => screen.getByRole('button', { name: 'Send' });
+  const errorRegion = () => document.getElementById('invite-email-error');
+  const statusRegion = () => document.getElementById('invite-email-status');
+
+  it('mounts both live regions EMPTY before anything happens, with no margin', async () => {
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    const err = errorRegion();
+    const ok = statusRegion();
+    expect(err).not.toBeNull();
+    expect(ok).not.toBeNull();
+    expect(err).toHaveAttribute('role', 'alert');
+    expect(err).toHaveAttribute('aria-live', 'assertive');
+    expect(err).toHaveAttribute('aria-atomic', 'true');
+    expect(ok).toHaveAttribute('role', 'status');
+    expect(ok).toHaveAttribute('aria-live', 'polite');
+    expect(err).toHaveTextContent('');
+    expect(ok).toHaveTextContent('');
+    // The always-mounted EMPTY region must add no visible space: `mt-2` applies
+    // only when filled (the shipped `<p>` carried it unconditionally).
+    expect(err).not.toHaveClass('mt-2');
+    expect(ok).not.toHaveClass('mt-2');
+  });
+
+  it('injects the failure into the SAME assertive node, and the email field resolves it', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(new Error('nope'));
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    const before = errorRegion();
+    expect(before).toHaveTextContent('');
+    // The field carries NO description while there is no error (FormField's contract).
+    expect(emailField()).not.toHaveAttribute('aria-describedby');
+    expect(emailField()).not.toHaveAttribute('aria-invalid');
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() => expect(errorRegion()).not.toHaveTextContent(''));
+    const after = errorRegion();
+    expect(after).toBe(before); // node identity — the region was never remounted
+    expect(after).toHaveClass('mt-2');
+    expect(after).toHaveClass('text-content-status-error');
+    // The register's `unknown` line, not an authored 'Failed to …' string.
+    expect(after).toHaveTextContent('Something went wrong. Refresh the page to try again.');
+
+    // RESOLVE the description from the FOCUSABLE control, then read it back.
+    const field = emailField();
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    const describedBy = field.getAttribute('aria-describedby');
+    expect(describedBy).toBe('invite-email-error');
+    const described = describedBy!
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(' ');
+    expect(described).toContain('Something went wrong. Refresh the page to try again.');
+  });
+
+  // ADDED by plan 88.6-58 task 2 (2026-09-28, /code-adversarial-review 88.6 H3, owner rulings
+  // `H3-RULING` + `H3-COPY-RULING`). `noValidate` (88.6-22) sends a malformed address to the
+  // server, whose `isEmail` verdict is a raw `{ errors }` 400 (Sonnet/routes/invites.js:206,
+  // :216) — `apiFetch` maps it to `validation`, whose register line says "Refresh the page",
+  // which cannot fix a typo. RED on FE d03f728, GREEN after the local byCode override.
+  it('a malformed address (the server isEmail 400 → `validation`) renders the ratified field message on the SAME node', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(
+      new ApiError('HTTP error! status: 400', 'validation', 400, {
+        errors: [{ msg: 'Valid email is required', path: 'email' }],
+      })
+    );
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    const before = errorRegion();
+
+    fireEvent.change(emailField(), { target: { value: 'bob@gmail' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() => expect(errorRegion()).not.toHaveTextContent(''));
+    const after = errorRegion();
+    expect(after).toBe(before); // node identity kept
+    expect(after).toHaveTextContent(
+      "That doesn't look like a valid email address. Check it and try again."
+    );
+    expect(after?.textContent).not.toMatch(/refresh the page/i);
+    expect(after?.textContent).not.toMatch(/valid email is required/i); // no upstream text
+    const field = emailField();
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAttribute('aria-describedby', 'invite-email-error');
+  });
+
+  it('NEGATIVE: the `validation` override does not disturb the `already_member` code arm', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(
+      new ApiError('Already a member', 'already_member', 409)
+    );
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(emailField(), { target: { value: 'member@example.test' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() =>
+      expect(errorRegion()).toHaveTextContent('This person is already a member of the group')
+    );
+  });
+
+  it('announces the SUCCESS on the same node — the outcome that was silent before', async () => {
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    const before = statusRegion();
+    expect(before).toHaveTextContent('');
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() =>
+      expect(statusRegion()).toHaveTextContent('Invite sent to newcomer@example.test')
+    );
+    expect(statusRegion()).toBe(before);
+    expect(errorRegion()).toHaveTextContent('');
+  });
+
+  it('announces the clipboard copy, keeping the visible label swap', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    renderPanel();
+    const copy = await screen.findByRole('button', { name: 'Copy Invite Link' });
+    // Captured BEFORE the copy: the sr-only region is already mounted and empty.
+    const regions = Array.from(document.querySelectorAll('[role="status"].sr-only'));
+    expect(regions).toHaveLength(1);
+    const before = regions[0];
+    expect(before).toHaveTextContent('');
+
+    await user.click(copy);
+
+    await waitFor(() => expect(before).toHaveTextContent('Invite link copied to the clipboard.'));
+    // The visible label swap is PRESERVED, not replaced by the announcement.
+    expect(screen.getByRole('button', { name: 'Copied!' })).toBeInTheDocument();
+    expect(document.querySelectorAll('[role="status"].sr-only')[0]).toBe(before);
+  });
+});
+
+describe('FriendInvitePanel — gated controls stay in the focus order (88.6-22)', () => {
+  const emailField = () => screen.getByRole('textbox', { name: 'Invite by Email' });
+
+  it('reports a fixed app-authored error when Send is pressed with an empty field', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    const send = screen.getByRole('button', { name: 'Send' });
+    // The gate is ARIA, not the native attribute — so the press arrives at all.
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    expect(send).not.toHaveAttribute('disabled');
+
+    await user.click(send);
+
+    expect(document.getElementById('invite-email-error')).toHaveTextContent(
+      'Enter an email address to send an invite.'
+    );
+    expect(invitesAPI.sendInvite).not.toHaveBeenCalled();
+    // Not the browser's `required` bubble: the form opts out of native validation.
+    expect(emailField().closest('form')).toHaveAttribute('novalidate');
+  });
+
+  it('refuses a second Send while the first is in flight, and keeps focus on the control', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    let release: (value: unknown) => void = () => {};
+    (invitesAPI.sendInvite as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    const send = screen.getByRole('button', { name: 'Send' });
+    await user.click(send);
+
+    // In flight: the pressed control is STILL in the document and STILL focused —
+    // the whole point of `aria-disabled` over the native attribute (DR-C).
+    const inFlight = screen.getByRole('button', { name: 'Sending...' });
+    expect(inFlight).toBeInTheDocument();
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight).not.toHaveAttribute('disabled');
+    expect(document.activeElement).toBe(inFlight);
+
+    // A second activation while the request is open must be refused by the HANDLER.
+    fireEvent.click(inFlight);
+    fireEvent.click(inFlight);
+    expect(invitesAPI.sendInvite).toHaveBeenCalledTimes(1);
+
+    release({});
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument());
+  });
+
+  it('refuses a second Add Friend press while the first is in flight', async () => {
+    const { friendshipsAPI: api } = await import('@/lib/api');
+    let release: (value: unknown) => void = () => {};
+    (api.searchUserByEmail as Mock).mockResolvedValue({
+      id: FRIEND_UUID,
+      username: 'Dana',
+      email: 'dana@example.test',
+    });
+    (api.sendRequest as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+    const user = userEvent.setup();
+    renderPanel({ friends: [] });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Invite by Email' }),
+      { target: { value: 'dana@example.test' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const add = await screen.findByRole('button', { name: 'Add Friend' });
+    await user.click(add);
+
+    const inFlight = screen.getByRole('button', { name: 'Sending...' });
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight).not.toHaveAttribute('disabled');
+    expect(document.activeElement).toBe(inFlight);
+
+    fireEvent.click(inFlight);
+    fireEvent.click(inFlight);
+    expect(api.sendRequest).toHaveBeenCalledTimes(1);
+
+    release({});
+    await waitFor(() =>
+      expect(document.getElementById('invite-friend-request-status') ?? document.body)
+        .toHaveTextContent('Friend request sent!')
+    );
+  });
+});
+
 describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
   // The create path is the auto-open straight after group creation
   // (createGroup.js). Without the context copy the generic header reads as an
@@ -290,6 +554,25 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     expect(screen.queryByRole('heading', { name: 'Invite Members' })).not.toBeInTheDocument();
   });
 
+
+  it("the post-creation header wraps a long unbroken group name instead of running under the close button (UAT3-D2, 2026-09-30)", async () => {
+    // Owner device check 2026-09-30: a 40-character name with no spaces overflowed the dialog and
+    // painted under the ×. jsdom has no layout, so the pin is the wrap class on the header's shared
+    // text column (overflow-wrap inherits into the title AND the lead-in); the geometry half is the
+    // owner's re-check on preview after CI.
+    renderPanel({ openedFrom: 'create', group: { ...GROUP, name: 'M'.repeat(40) } });
+    const heading = await screen.findByRole('heading', { name: `${'M'.repeat(40)} is live — who's in?` });
+    expect(heading.closest('div')?.className.split(/\s+/)).toContain('wrap-break-word');
+  });
+
+  it("the default-path header's 'to <group>' lead-in wraps a long unbroken group name too (code review round 6 HIGH, 2026-09-30)", async () => {
+    // Round 6 caught the half the device check missed: opened from Manage Members / the home page
+    // (no openedFrom), the user-supplied name is in the LEAD-IN, a sibling of the title, which
+    // inherits nothing from a class on the title. Pinned on the shared column for the same reason.
+    renderPanel({ group: { ...GROUP, name: 'M'.repeat(40) } });
+    const leadIn = await screen.findByText(`to ${'M'.repeat(40)}`);
+    expect(leadIn.closest('div')?.className.split(/\s+/)).toContain('wrap-break-word');
+  });
   it('leaves every other entry point on the generic header', async () => {
     renderPanel();
     expect(await screen.findByRole('heading', { name: 'Invite Members' })).toBeInTheDocument();
@@ -309,5 +592,131 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     });
     expect(heading.querySelector('img')).toBeNull();
     expect(dialog.container.ownerDocument.querySelector('img')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6 plan 22 task 3 — R7 composed axe audit, surface #4 of the nine.
+//
+// ORDERING (UI-SPEC §7.5): this audit runs AFTER this surface's LAST migration
+// commit — i.e. after tasks 1 and 2 of plan 88.6-22. That is the difference
+// between auditing the migrated surface and auditing a half-migrated one, and it
+// is stated here rather than left to commit order.
+//
+// WHAT THIS AUDIT DOES NOT COVER, said plainly so a zero-violation result is not
+// over-read:
+//   - axe has NO rule for an unassociated error message. A clean run here is NOT
+//     evidence that task 1's `:477` association or task 2's three BallotSection
+//     associations landed; those are proven by their own behavioural arms above
+//     and in `BallotSection.test.tsx`.
+//   - It is not the catch for the `id` on the "Invite by Email" heading either.
+//     Task 1 owns that contract outright; a WCAG 4.1.2 violation surfacing here
+//     would mean task 1 had already shipped a regression this plan knew about.
+//
+// VIEWPORT (D65): jsdom performs no layout and has no viewport, so "run it at
+// phone width and at desktop" is not a thing this audit can do — claiming it would
+// be a vacuous assertion. The substitute §7.5 asks for is to audit each
+// MEDIA-QUERY FORK of the audited tree by stubbing `matchMedia`. Measured
+// 2026-09-16: `grep -rn matchMedia` over the whole audited tree —
+// `FriendInvitePanel.js`, `Modal.tsx`, `ui/dialog.tsx`, `ui/UserChip.tsx`,
+// `ui/Input.tsx`, `ui/Button.tsx`, `ui/Heading.tsx`, `ui/StatusRegion.tsx` —
+// returns ZERO hits. This surface has no media-query fork; its only responsive
+// behaviour is Tailwind `md:` classes, which jsdom neither applies nor branches
+// on. So ONE composed pass per rendered branch is the whole of what is
+// measurable here, and that is recorded rather than dressed up as a width run.
+// ---------------------------------------------------------------------------
+
+// WCAG 4.1.2 is a TAG; `heading-order` is a RULE carrying no wcag412 tag, so both
+// are needed. `as const` is applied to `type` ONLY — axe-core's `RunOnly.values`
+// is a mutable `string[]` and a fully-readonly literal fails `tsc --noEmit`.
+// (Same two constants as `PromptScheduleManager.test.tsx:129-130`, the phase's
+// first composed audit; deliberately not extracted into a shared helper, which
+// would be a third file for two object literals.)
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4)', () => {
+  it('1. the POPULATED surface passes WCAG 4.1.2 and heading-order', async () => {
+    renderPanel();
+    // Settle on a BRANCH-SPECIFIC element, never on the header. The header renders
+    // above every branch, so awaiting it returns while the friends section still
+    // says "Loading your friends..." and the audit would score a nearly-empty tree
+    // (the trap plan 15 recorded after hitting it).
+    await screen.findByText('Dana');
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('2. the ADMIN surface — the extra reset control — passes both rules', async () => {
+    renderPanel({ isAdmin: true });
+    await screen.findByRole('button', { name: 'Reset invite link' });
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('3. the EMPTY-friends and NO-GROUP branches are audited too', async () => {
+    // An audit of one branch is an audit of one branch. The empty branch swaps the
+    // list for a link, and the no-group branch drops the whole QR section — both
+    // change the named-control population, which is what 4.1.2 is about.
+    renderPanel({ friends: [] });
+    await screen.findByText('No friends yet.');
+    let dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+    cleanup();
+
+    renderPanel({ group: null });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('4. the ERRORED surface — the branch this plan added markup to — passes both rules', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(new Error('nope'));
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invite by Email' }), {
+      target: { value: 'newcomer@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() =>
+      expect(document.getElementById('invite-email-error')).not.toHaveTextContent('')
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('5. the ADD-FRIEND prompt branch passes both rules, and UserChip still gets no avatar', async () => {
+    // D-22 companion (plan 37): `FriendInvitePanel.js` is `UserChip`'s only importer
+    // and passes `user={{ name }}` with NO `avatarUrl` and NO `picture`, so
+    // UserChip's `<img>` branch never renders from this surface and plan 37's
+    // `referrerPolicy="no-referrer"` addition is unobservable here. Confirmed by
+    // asserting the absence of an `<img>` in the rendered prompt rather than by
+    // reading the call site.
+    const { friendshipsAPI: api, invitesAPI } = await import('@/lib/api');
+    (api.searchUserByEmail as Mock).mockResolvedValue({
+      id: FRIEND_UUID,
+      username: 'Dana',
+      email: 'dana@example.test',
+    });
+    (invitesAPI.sendInvite as Mock).mockResolvedValue({});
+    renderPanel({ friends: [] });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invite by Email' }), {
+      target: { value: 'dana@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const add = await screen.findByRole('button', { name: 'Add Friend' });
+    expect(add).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.querySelector('img')).toBeNull();
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 });

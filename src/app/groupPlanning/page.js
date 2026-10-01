@@ -11,6 +11,7 @@ import PromptScheduleSection from '../components/PromptScheduleSection';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Heading } from '../../components/ui/Heading';
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -247,28 +248,65 @@ export default function GroupPlanningPage() {
     return (
         <div className="p-4 md:p-6 max-w-7xl mx-auto">
             {/* Breadcrumbs */}
-            <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
-                <span className="text-content-muted mx-2">{'>'}</span>
+            {/* DECISION Phase 88.6-21 (#175, owner ruling 2026-09-14, option 2 — label all five
+                breadcrumb navs). THIS ATTRIBUTE IS THE ONLY EDIT PLAN 21 MAKES TO THIS FILE. The
+                file is not swept, not migrated, and its `no-console` allowlist entry
+                (`.eslintrc.json:59`) is deliberately untouched: AC-2's convert-on-touch rule is
+                scoped to plans that convert LOGGING, and an `aria-label` converts none — so plan
+                43's census is undisturbed. The ruling is assigned ONCE per nav; the other four
+                belong to plans 17 and 18 and are already done.
+                AMENDED Phase 88.6-53 (2026-09-28): the "not swept, not migrated" half is STALE —
+                plan 88.6-53 swept this file (headings onto Heading, off-scale weights, body text,
+                aria-current on the current crumb). What still stands is the no-console allowlist
+                entry (now at .eslintrc.json:30; the :59 above has drifted): its four console
+                calls are untouched by 53 too, and the entry belongs to the ROADMAP :28
+                milestone-close sweep (ledger P08), not to a type sweep. */}
+            {/* DECISION Phase 88.6-53 (D-03 / UI-SPEC §4.5; R2 #171): the two links are 400 (the
+                emphasis is carried by the link colour token) and the current crumb is 700 with
+                aria-current="page" — chosen to MATCH this page's parent, the groupHomePage
+                breadcrumb, OVER userProfile's 400 current crumb (DECISION Phase 88.6-17). The five
+                breadcrumbs disagree on that weight (userProfile 400, the other four 700); settling
+                it is a look call routed to Phase 88.9 — plan 88.6-56 writes the pointer.
+                The links also carry the project focus ring, DECISION Phase 88.3-17 (DEF-88.3-13-04,
+                owner ruling A: the browser default outline is unreadable on some surfaces) — they
+                are the page's FIRST tab stops. The separators are aria-hidden so a screen reader
+                does not read "greater than" between crumbs. Still open elsewhere, for the same
+                88.9 pointer: 3 of the 5 breadcrumbs lack the ring (userProfile's Home link and
+                both gameDetail breadcrumbs' Home links) and 6 separator spans are not hidden. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {group && (
                     <>
-                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium max-w-[200px] truncate inline-block align-bottom">
+                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 max-w-[200px] truncate inline-block align-bottom">
                             {group.name}
                         </Link>
-                        <span className="text-content-muted mx-2">{'>'}</span>
+                        <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     </>
                 )}
-                <span className="text-content-primary font-semibold">Plan Game Session</span>
+                <span aria-current="page" className="text-content-primary font-bold">Plan Game Session</span>
             </nav>
 
             {/* Header */}
             <div className="card p-3 md:p-6 mb-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div className="min-w-0">
-                        <h1 className="text-2xl md:text-3xl font-bold text-content-primary truncate">
+                        {/* DECISION Phase 88.6-53 (D-04 §4.4 row 1; A1): the page title is Display 30
+                            at EVERY width, chosen OVER keeping the breakpoint-grown 24 -> 30 pair (a
+                            heading that changes size at a breakpoint is a second type scale), and it
+                            WRAPS, chosen OVER keeping the old ellipsis clip — A1, the tracer's ruling
+                            (88.6-15-PLAN.md:122-131, applied at GroupGamesList.js): clipping is kept
+                            only where it is load-bearing, and here it would hide the group NAME, the
+                            one thing this title exists to show. Nothing needs the clip: the parent is
+                            min-w-0 and the card has no fixed height. Disclosed phone delta (V-5): at
+                            375px the title moves 24 -> 30 and wraps instead of ellipsising; the
+                            primitive's wrap-anywhere base breaks an unbroken name, guarded at 375px
+                            by e2e/padding-budget.spec.ts. Re-adding the clip is a decision, not a
+                            cleanup. */}
+                        <Heading level={1} size="display" className="text-content-primary">
                             {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
-                        </h1>
-                        <p className="text-sm text-content-secondary mt-1">
+                        </Heading>
+                        <p className="text-base text-content-secondary mt-1">
                             Send availability polls and manage responses
                         </p>
                     </div>
@@ -294,7 +332,7 @@ export default function GroupPlanningPage() {
 
             {/* Availability Polls + Response Dashboard in one card */}
             <div className="card p-3 md:p-6 mb-6">
-                <h2 className="text-xl font-bold text-content-primary mb-4">Availability Polls</h2>
+                <Heading level={2} size="heading" className="text-content-primary mb-4">Availability Polls</Heading>
                 <div className="bg-surface-page rounded-lg surface-flat-phone md:p-4">
                     <PromptScheduleSection
                         groupId={groupId}
@@ -325,7 +363,7 @@ export default function GroupPlanningPage() {
                             </div>
                         ) : heatmapPrompt ? (
                             <>
-                                <h3 className="text-lg font-semibold text-content-primary mb-3">Poll Responses</h3>
+                                <Heading level={3} size="heading" className="text-content-primary mb-3">Poll Responses</Heading>
                                 <ResponseDashboard
                                     promptId={heatmapPrompt.id}
                                     isAdmin={isAdmin}

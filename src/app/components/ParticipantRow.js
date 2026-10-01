@@ -80,10 +80,20 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           // pill rides after the LAST WORD of the name like text, so a long name
           // wraps in full (never truncated) and the pill never strands alone on
           // its own line. `break-words` covers a 50-char unbroken name.
-          <div className="p-2 border border-line rounded-sm bg-surface-elevated text-content-primary text-sm break-words">
+          /* R2 / UI-SPEC §4.3: the participant's NAME is this row's ONE primary string and takes
+             Body 16. It also CONVERGES the two branches: the editable twin below is the `Input`
+             primitive, which authors no size utility and therefore already renders at body size —
+             so the read-only branch was the odd one out at 14, and a member row and a custom row
+             printed the same name at two different sizes. Everything else in this row is §4.3's
+             metadata/label case and does NOT move. */
+          <div className="p-2 border border-line rounded-sm bg-surface-elevated text-content-primary text-base break-words">
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
-              <span className="ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 align-middle">
+              /* §4.5's pill/chip-ink row: 600/500 -> 700, with 400 REJECTED because a FILLED
+                 chip's fill/ink pairing needs the weight to hold its shape. 12px stays — badge
+                 labels are an enumerated Caption role. Same call as `ScheduleList`'s status chips
+                 (plan 32) and `PromptScheduleSection`'s header chips (plan 15). */
+              <span className="ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 align-middle">
                 Guest
               </span>
             )}
@@ -128,7 +138,9 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               maxLength={50}
             />
             {participant.is_guest && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 shrink-0">
+              /* The custom-row twin of the Guest chip above; same §4.5 pill/chip outcome, applied
+                 in the same pass so the two branches cannot diverge. */
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 shrink-0">
                 Guest
               </span>
             )}

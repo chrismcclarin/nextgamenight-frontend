@@ -27,6 +27,9 @@ import GroupSettings from '../components/GroupSettings';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+import { logger, errCtx } from '../../lib/logger';
 
 // A groups home page
 function GroupHomePage(){
@@ -88,6 +91,14 @@ function GroupHomePage(){
     const isRemovedFromGroupError = (error) => {
         const status = error?.status || error?.response?.status;
         if (status === 403 || status === 404) return true;
+        // CONTROL FLOW, not a user-facing read, and rostered as such in
+        // `fetchErrorTreatment.test.ts`'s `CONTROL_FLOW_ALLOWED` (`:314-318`), whose `why` reads:
+        // "isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed."
+        // This line is DELIBERATELY byte-unchanged. A later R1 sweep that "completes" the work by
+        // routing it through `getFetchErrorMessage` would turn a deliberate control-flow read into
+        // a false offender and break the removed-member redirect. Comment sits ABOVE the line
+        // because both that allow-list check and the suite's anti-vacuity companion match with
+        // `includes` on the stripped line.
         const msg = (error?.message || '').toLowerCase();
         return (
             msg.includes('not a member') ||
@@ -115,7 +126,7 @@ function GroupHomePage(){
                 redirectToHomeAsRemoved();
                 return;
             }
-            console.error('Error fetching group:', error);
+            logger.info('Error fetching group:', errCtx(error));
         }
     };
 
@@ -132,7 +143,18 @@ function GroupHomePage(){
 
             // Ensure data is an array before processing
             if (!Array.isArray(data)) {
-                console.warn('Group members data is not an array:', data);
+                /* DECISION Phase 88.6-21 (AC-2 / T-84-01): this call is RESHAPED, not merely
+                   re-channelled. It used to log the rejected member-list payload itself — the
+                   response body T-84-01 excludes by name, carrying member PII — and the house
+                   logger egresses its ctx to Sentry, so re-channelling it unchanged would have
+                   sent that payload out of the browser. A SHAPE DESCRIPTOR goes instead; the
+                   payload never does. `logger.warn` is NOT the matching level: it is
+                   `Sentry.captureMessage` (`logger.ts:31-32`), an EVENT, and AC-2's amended level
+                   (owner 2026-09-13) is `info` — a breadcrumb. Restoring `data` here is one
+                   keystroke and is exactly what T-84-01 forbids. */
+                logger.info('Group members data is not an array:', {
+                    received: data === null ? 'null' : typeof data,
+                });
                 setUserList([]);
                 return;
             }
@@ -158,7 +180,7 @@ function GroupHomePage(){
                 redirectToHomeAsRemoved();
                 return;
             }
-            console.error('Error fetching group members:', error);
+            logger.info('Error fetching group members:', errCtx(error));
             setUserList([]);
         }
     };
@@ -169,7 +191,7 @@ function GroupHomePage(){
             const data = await eventsAPI.getGroupEvents(Router, { includeRsvpSummary: true });
             setGroupEvents(data || []);
         } catch (error) {
-            console.error('Error fetching group events:', error);
+            logger.info('Error fetching group events:', errCtx(error));
             setGroupEvents([]);
         }
     };
@@ -197,7 +219,7 @@ function GroupHomePage(){
                 redirectToHomeAsRemoved();
                 return;
             }
-            console.error('Error fetching games:', error);
+            logger.info('Error fetching games:', errCtx(error));
             /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): a failed games request is
                TRACKED as a failure here and handed to GroupGamesList as an `errorState` prop —
                chosen OVER the `setGamesList([])` this shipped with. GroupGamesList takes `games`
@@ -381,28 +403,34 @@ function GroupHomePage(){
      */
     const ground = headerGroundPair?.dark ?? null;
     const tinted = headerGroundPair?.light ?? null;
-    const hasHeaderImage = !!Group?.background_image_url;
     /*
-     * DECISION Phase 88.3.1 (plan 09, AMENDMENT AC — the two-flag shape plan 08
-     * shipped at `CalendarListView.js` and `EventDayModal.js`): a SECOND image
-     * flag, derived from the VALIDATED `safeBgImageStyle` result, read ONLY by
-     * `groupInkVars`.
+     * DECISION Phase 88.6-41 (W49 / FSEC-03): ONE image flag, derived from the
+     * VALIDATED `safeBgImageStyle` output. This replaces the 88.3.1 plan-09
+     * two-flag marker, whose REJECTED arm ("converging `hasHeaderImage` onto the
+     * validated style here … converge all of them in one pass with a rendered
+     * check") this plan discharged. History, because it records why the
+     * divergence shipped: `safeBgImageStyle` drops relative/invalid URLs, so a
+     * truthy-but-rejected URL paints NO image — that header IS a plain coloured
+     * card and must get its ink. 88.3.1 fixed the INK half with a second flag and
+     * left the TITLE treatment raw, because converging it changes what an
+     * invalid-URL header paints.
      *
-     * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs (FSEC-03), so a
-     * truthy-but-rejected URL paints NO image: that header IS a plain coloured
-     * card and must get its ink. Feeding `groupInkVars` the raw `hasHeaderImage`
-     * would withhold the ink from exactly those headers.
-     * REJECTED: converging `hasHeaderImage` onto the validated style here. It is
-     * the right end state and is the wave-12 ruling already applied at
-     * `grouplist.js`, but it CHANGES WHAT AN INVALID-URL HEADER PAINTS (the
-     * white-on-image title treatment gives way to plain contrast maths) on a
-     * surface this plan was not scoped to re-look at, and the same divergence is
-     * live at three sibling files. Registered as one 4-site family in
-     * `.planning/deferred/phase-88.6.md`; converge all of them in one pass with a
-     * rendered check. Deleting either flag here is a decision, not a cleanup.
+     * THE DECLARATION MOVED, and that is load-bearing, not tidying.
+     * `hasHeaderImage` used to sit TWENTY LINES ABOVE the `safeBgImageStyle`
+     * call; swapping its right-hand side in place would have been a TDZ
+     * "Cannot access 'headerBgImageStyle' before initialization" on EVERY
+     * group-home render. It is declared AT the validated style now.
+     *
+     * Its PAIRED raw-URL gates converged in the SAME commit — the `dark:` 0.15
+     * dim's class gate and the inline 0.4 photo dim below. That pair is a SWAP,
+     * not a removal: an invalid-URL group WITH a stored colour moves out of the
+     * dim marker's case (1) (image -> 0.4, INLINE, both themes) into its case (2)
+     * (stored colour, no image -> transparent in light, 0.15 in dark, via the
+     * class). The half that ARRIVES is `dark:`-only, which is why the rendered
+     * check for it has to observe dark mode. A decision, not a cleanup.
      */
     const headerBgImageStyle = safeBgImageStyle(Group?.background_image_url);
-    const hasValidHeaderImage = !!headerBgImageStyle;
+    const hasHeaderImage = !!headerBgImageStyle;
 
     /*
      * `darkArm` — the ground-brightness half of the three header controls' fork.
@@ -417,6 +445,12 @@ function GroupHomePage(){
      * controls' half of the same rule.
      */
     const darkArm = !ground || isDarkBackground(ground);
+
+    // 88.6-21 (D-31, owner ruling 2026-08-27): the group-settings entry gate. Spelled as the
+    // SAME expression `grouplist.js` already ships for the same decision, rather than a second
+    // formulation of it. PRESENTATION ONLY — the backend 403 (`routes/groups.js:1521`) is the
+    // authorization control; see the marker on the kebab below.
+    const canEditGroup = userRole === 'owner' || userRole === 'admin';
 
     /*
      * The title/subtitle treatment is computed TWICE — once against the stored
@@ -495,10 +529,38 @@ function GroupHomePage(){
                 default outline paints on. Chosen OVER a global `a:focus-visible`
                 rule in `globals.css`: that would repaint every link in the app from
                 inside a phase that has no rendered gate on most of them. */}
-            <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+            {/* DECISION Phase 88.6-21 (#175, owner ruling 2026-09-14, option 2 — label all five
+                breadcrumb navs). Without a name, every `<nav>` in the app is announced as the same
+                anonymous "navigation" landmark, so a screen-reader user's landmark list cannot
+                tell the breadcrumb from the site nav. The other four are plans 17 and 18's; this
+                one and `groupPlanning/page.js`'s are this plan's, and the ruling is assigned ONCE
+                per nav, so plans 07/41/43 must not re-add it here.
+
+                R2 #171 on the two spans below, each resolving differently:
+                  - the HOME LINK's `font-medium` is DELETED. It is §4.5's emphasis case and the
+                    emphasis is already carried by `text-content-link` plus the underline-on-hover,
+                    so 400 + a colour token is exactly what it becomes, with no delta to look at.
+                  - the CURRENT PAGE span KEEPS its weight (600 -> 700 under D-03) AND GAINS
+                    `aria-current="page"` (T-88.6-138), matching plans 17 and 18's three
+                    breadcrumbs so the five behave alike. Without the attribute, "you are here" is
+                    carried by WEIGHT alone — nothing a screen reader exposes — and R2 #171 is the
+                    rule that a weight may not be the sole carrier of information. The weight stays
+                    because it is also the sighted cue; the attribute is an addition, not a swap. */}
+            {/* DECISION Phase 88.6 close-out (UAT3-D1, owner device check 2026-09-30): `inline-block
+                max-w-full` OVER `block` — the pill keeps hugging its text, but is now capped at the
+                container, which is the only way `overflow-wrap` can ever break a 40-character name
+                (an uncapped inline-block grows to fit the word, so the crumb's `wrap-break-word`
+                below was inert — the owner's name ran off a 375px screen). `wrap-break-word` sits on
+                the nav because overflow-wrap inherits (groupPlanning's group link additionally
+                carries `max-w-[200px] truncate`, so it truncates rather than wraps — by design).
+                `min-w-0` is deliberately NOT added: no breadcrumb nav is a flex item (every parent is
+                a block div), so it would be inert; add it if one ever becomes one. Pinned on all five
+                navs by `breadcrumbNavOverflow.test.ts`; "tidying" to `block` or dropping `max-w-full`
+                is a decision, not a cleanup. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
-                <span className="text-content-primary font-semibold wrap-break-word">{Group?.name || 'Group'}</span>
+                <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || 'Group'}</span>
             </nav>
 
             {/* Header — Phase 69-04 layout: ALWAYS stack title row above
@@ -556,8 +618,11 @@ function GroupHomePage(){
                      * and is the VALIDATED flag: this is a `.js` file, so an omitted
                      * option degrades silently to `false` — the UNSAFE direction, a
                      * preset's tinted ink painted over a user's photograph.
-                     * REJECTED: the raw `hasHeaderImage` — see the two-flag marker
-                     * above.
+                     * AMENDED Phase 88.6-41 (W49): the "REJECTED: the raw
+                     * `hasHeaderImage`" note that sat here is retired with its
+                     * parent two-flag marker. There is no raw flag left to reject
+                     * — `hasHeaderImage` IS `!!headerBgImageStyle` now; see the
+                     * marker at its declaration, and tests 29/31.
                      *
                      * KNOWN RESIDUAL, recorded so it is not read as an oversight: the
                      * h1 and its subtitle below still fork on `--t-color*` from
@@ -576,7 +641,7 @@ function GroupHomePage(){
                      */
                     ...groupInkVars(headerGroundPair, {
                         surface: 'card',
-                        hasBackgroundImage: hasValidHeaderImage,
+                        hasBackgroundImage: hasHeaderImage,
                     }),
                     ...headerBgImageStyle,
                     backgroundSize: 'cover',
@@ -617,8 +682,20 @@ function GroupHomePage(){
                     // and silently delete the dark dim. The guard is `tinted`,
                     // not raw `headerBgColor`, so a legacy non-hex colour is
                     // "no colour" here too — same rule as the ground above.
+                    //
+                    // AMENDED Phase 88.6-41 (W49): both cases now gate on the
+                    // VALIDATED `hasHeaderImage`, never the raw URL. The three
+                    // cases are UNCHANGED as cases; what changed is which case an
+                    // invalid URL lands in. An invalid-URL group WITH a stored
+                    // colour was in case (1) (inline 0.4, both themes) and is now
+                    // in case (2) (transparent light / `dark:` 0.15). That is a
+                    // SWAP, and the arriving half is `dark:`-only — a light-mode
+                    // "no 0.4 dim" assertion can never observe it, which is why
+                    // the rendered check reads the class in dark mode too.
+                    // The class-vs-inline split is PRESERVED exactly: the 0.15
+                    // stays a `dark:` class and is never an inline value.
                     className={
-                        tinted && !Group?.background_image_url
+                        tinted && !hasHeaderImage
                             ? 'dark:bg-[rgb(0_0_0/0.15)]'
                             : undefined
                     }
@@ -630,7 +707,7 @@ function GroupHomePage(){
                         bottom: 0,
                         zIndex: 0,
                         borderRadius: 'inherit',
-                        ...(Group?.background_image_url && {
+                        ...(hasHeaderImage && {
                             backgroundColor: 'rgba(0, 0, 0, 0.4)',
                         }),
                     }}
@@ -664,12 +741,23 @@ function GroupHomePage(){
                             (:1268) and gameDetail (:1036) both already render their h1 at 30px
                             unconditionally, so this surface was the last outlier. `wrap-break-word`
                             is what keeps a long group name safe at 375px and must stay. */}
-                        <h1
-                            className="text-3xl font-bold wrap-break-word [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                        <Heading
+                            level={1}
+                            size="display"
+                            /* `size="display"` IS `text-3xl` + 700 — no rung movement, so no
+                               visible delta. The two ARBITRARY `[font-weight:var(--t-weight*)]`
+                               declarations STAY and are load-bearing: they are the ground-derived
+                               weight `getTextStyle` computes for a title over a photograph, and
+                               tailwind-merge does not treat an arbitrary PROPERTY as conflicting
+                               with `font-bold`, so both emit exactly as they do today and the
+                               later one wins. `wrap-break-word` is dropped for the primitive's
+                               own `wrap-anywhere`, the same trade plans 17-19 made on every
+                               migrated heading. */
+                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
                             style={headerTitleVars}
                         >
                             {Group?.name || 'Group'}
-                        </h1>
+                        </Heading>
                         <p
                             className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
                             style={headerSubtitleVars}
@@ -682,14 +770,53 @@ function GroupHomePage(){
                     </div>
                     {/* Kebab lives in the title row at every breakpoint so it
                         sits beside the group name (CONTEXT D-LEAVE-01 entry to
-                        GroupSettings). Active members only. */}
-                    {userRole && userRole !== 'pending' && (
+                        GroupSettings). Active members only.
+
+                        ——— AMENDED Phase 88.6-21 (D-31), the line above KEPT AS HISTORY ———
+
+                        "Active members only" IS SUPERSEDED, not contradicted: the entry is now
+                        OWNER/ADMIN only. Owner ruling 2026-08-27, phone UAT test 6, option 1. The
+                        single item is "Group settings", whose SAVE the backend 403s for anyone
+                        else (`routes/groups.js:1507-1521`, the refusal at `:1521`), so an active
+                        member was being offered an action that could only end in a failure toast.
+                        The expression matches the one `grouplist.js` already ships for the same
+                        decision (`canEdit = userRole === 'owner' || userRole === 'admin'`).
+
+                        THIS GATE IS PRESENTATION ONLY. The BACKEND 403 remains the authorization
+                        control and must never be "simplified away" on the strength of this line —
+                        a UI gate mistaken for authorization is a real privilege defect
+                        (T-88.6-54). The 403's user-facing copy is `MESSAGE_BY_CODE.forbidden`
+                        (`useFetchErrorState.ts:50`, already ratified — no new string), routed and
+                        asserted by plan 88.6-20 at `GroupSettings.js`'s settings-save catch, not
+                        here. That path stays reachable: the role can change after the modal
+                        renders (SPEC Edge Coverage, `ordering / R1`).
+
+                        BOTH the wrapper AND the item are gated, deliberately. Plan 16's
+                        zero-items-renders-no-trigger rule still holds as a rule (UI-SPEC §9 / §7.3)
+                        but is NOT what is relied on here — in plan 18's own words, so this phase
+                        ships one posture on the question, "that rule is a TEST CONTRACT, not an
+                        authorization gate, and keeping the wrapper is cheaper than depending on
+                        it".
+
+                        IT STRANDS NOBODY. Leave Group lives in Manage Members
+                        (`ManageMembers.js:641-647`, rendered for `isCurrentUser && !isOwner`),
+                        whose opener sits under the same active-member gate in the CTA row below
+                        and is reachable by every active member.
+
+                        The TRIGGER stays swappable — Phase 88.9 owns replacing it with a gear
+                        glyph, and this phase changes only what plan 16's component change brings.
+                        Widening this gate back to any active member is a decision, not a cleanup. */}
+                    {canEditGroup && (
                         <div className="shrink-0 relative z-20">
                             <KebabMenu
                                 ariaLabel="Group actions"
-                                items={[
-                                    { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
-                                ]}
+                                items={
+                                    canEditGroup
+                                        ? [
+                                              { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
+                                          ]
+                                        : []
+                                }
                             />
                         </div>
                     )}
@@ -869,13 +996,65 @@ function GroupHomePage(){
                            Phase 88.6's `Button` migration still owns the real border/ring MODEL;
                            this is an interim per-site edge. Changing it is a decision, not a
                            cleanup. */
-                        <button
+                        /* ——— AMENDED Phase 88.6-21 (task 2, UI-SPEC §3.2 `:208`), everything
+                           above KEPT AS HISTORY ———
+
+                           THIS CONTROL IS NOW A `<Button variant="ghost">`, AND EVERY EDGE
+                           TREATMENT THE MARKER ABOVE DESCRIBES SURVIVES IT. `bg-white/80`,
+                           `ring-1 ring-line-control`, `dark:ring-0` and the whole dark arm move
+                           onto `<Button className>` unchanged and win through `cn`'s
+                           tailwind-merge last-wins, exactly as §3.2's `btn`-alone row says. Every
+                           ratio measured above is therefore still the shipped ratio.
+
+                           `variant="secondary"` was NOT available: the opaque `bg-btn-secondary`
+                           alternative is the RECORDED NEXT STEP priced at 1.1330 in the bullet
+                           above, i.e. a WEAKER cue than the ring, and taking it here would have
+                           been the rejected arm of ruling 2. `variant="primary"` is forbidden for
+                           a bare `.btn` outright (§3.2 `:214`).
+
+                           FOUR MECHANICAL CHANGES, each of which touches something this marker
+                           states, so each is recorded rather than left to be discovered:
+
+                             1. `hover:bg-surface-hover` is DELETED from the call site. It is not
+                                lost — `variant="ghost"` supplies the byte-equal
+                                `enabled-hover:bg-surface-hover` from the cva variant map. The
+                                spelling had to change: `enabled-hover` excludes `:disabled` and
+                                `[aria-disabled]`, and a bare `hover:` left beside it would not
+                                de-dupe under tailwind-merge, so both would survive.
+                             2. `dark:hover:bg-white/20` becomes `dark:enabled-hover:bg-white/20`,
+                                and this one is LOAD-BEARING rather than tidy. `enabled-hover`
+                                compiles to `&:not(:disabled):not([aria-disabled='true']):hover`
+                                — (0,4,0). The dark variant is `:where(.dark, *)`, which is
+                                zero-specificity, so the old `dark:hover:` form is (0,2,0) and
+                                would now LOSE to the ghost variant's hover in dark mode: the 10%
+                                -> 20% white wash would have silently become the light-theme
+                                surface token. Verified against the compiled stylesheet, not
+                                reasoned from the class names.
+                             3. The per-site focus ring is DELETED — `A-2 ARM A` (owner ruling
+                                2026-09-15) puts the `.btn` family's ring in `Button.tsx`'s cva
+                                base and forbids a second expression of it. `cascadeOrder.test.ts`
+                                keeps the half-migration (class string kept, ring dropped) red.
+                             4. `px-4 py-2 md:px-6 md:py-3`, `rounded-btn` and `transition-all`
+                                are DELETED as dead: `.btn` declares `padding`, `border-radius`
+                                and `transition` UNLAYERED (`globals.css:2194-2205`), so no
+                                `@layer utilities` class of any of the three ever painted here.
+                                `transition-all` in particular is worth naming: the hover fill
+                                DOES transition, from `.btn`'s own
+                                `transition: var(--theme-transition)` (`:1684` —
+                                background-color, color, border-color, box-shadow), never from
+                                this class.
+
+                           `shadow-theme-md` STAYS and gains NO hover pin: the base emits
+                           `enabled-hover:shadow-theme-md`, so hover resolves to the SAME tier it
+                           rests at. Measured-safe, and `shadowTier.test.ts` test 8 is the shipped
+                           negative control for exactly that. */
+                        <Button
+                            variant="ghost"
                             onClick={() => setMemberModal(true)}
                             className={
-                                'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
+                                'whitespace-nowrap ' +
                                 'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ' +
-                                'rounded-btn hover:bg-surface-hover transition-all shadow-theme-md ' +
-                                'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                                'shadow-theme-md' +
                                 // The 10% white wash moves from an inline `style` to
                                 // `dark:bg-white/10`, because an inline declaration cannot
                                 // be forked by a `dark:` class. On a light ground it was
@@ -883,16 +1062,45 @@ function GroupHomePage(){
                                 // `backdrop-blur-xs` comes with it: it only ever did
                                 // visible work over that translucent wash or an image.
                                 (darkArm
-                                    ? ' dark:text-white dark:bg-white/10 dark:hover:bg-white/20 dark:backdrop-blur-xs'
+                                    ? ' dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20 dark:backdrop-blur-xs'
                                     : '')
                             }
                         >
                             Manage Members
-                        </button>
+                        </Button>
                     )}
-                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */}
-                    <Link
-                        href={`/groupPlanning?group_id=${Router}`}
+                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
+                    {/* DECISION Phase 88.6-21 (task 2, UI-SPEC §3.2 asChild row / §13 correction 4):
+                        this is the PURPLE `btn btn-primary` CTA, not the amber one — the SPEC's
+                        own §13 correction 4 exists because an earlier reading swapped the two. It
+                        becomes `<Button asChild variant="primary">` wrapping the `<Link>`, and the
+                        surviving utilities go on `<Button className>`, NEVER on the slotted child:
+                        Radix `Slot` concatenates the child's className onto the slot's WITHOUT
+                        tailwind-merge, so a utility left on the child cannot win a conflict and can
+                        silently double up. `asChild` correctly omits `type` on a slotted anchor.
+
+                        `hover:shadow-xl` is GONE, for two independent reasons that happen to have
+                        one fix. It is OFF-TIER — `--shadow-xl` is not declared in `globals.css`, so
+                        it fell through to Tailwind's inlined black default rather than the
+                        re-tinted project scale (D-14b, `DECISION Phase 87.7`). And it is a BARE
+                        `hover:` pin, which re-lifts a gated control and does not de-dupe against
+                        the primitive's `enabled-hover:` base token, so both would have survived
+                        the merge. The replacement is `enabled-hover:shadow-theme-lg`, which also
+                        satisfies §3.4 rule 2: without a pin the base's `enabled-hover:shadow-theme-md`
+                        would SHRINK this control's `lg` resting elevation on hover.
+
+                        `min-h-11` DROPS HERE, in the same commit as the migration and never before
+                        it — the amended D-36 marker above says this class is the ONLY thing holding
+                        the CTA at 44px at `md`+, so dropping it first opens a window with no desktop
+                        floor. `Button`'s cva base now supplies that floor at every viewport (D-09).
+                        The MARKER stays; only the class goes.
+
+                        `px-4 py-2 md:px-6 md:py-3` are deleted as dead (unlayered `.btn` padding),
+                        and the per-site focus ring with them (A-2 ARM A — the ring's one home is
+                        the cva base). A decision, not a cleanup. */}
+                    <Button
+                        asChild
+                        variant="primary"
                         /* The inline boxShadow this replaces carried TWO halves: a
                            pure-black drop shadow AND a 2px white ring. Req 3 moves
                            the black half onto the warm `shadow-theme-lg` token —
@@ -902,38 +1110,68 @@ function GroupHomePage(){
                            2px. Dropping the ring would still pass 88-29's
                            zero-`rgba(0,0,0` gate while looking wrong. */
                         className={
-                            'btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl ' +
-                            'text-sm md:text-base whitespace-nowrap text-center min-h-11 ' +
-                            'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                            'shadow-theme-lg enabled-hover:shadow-theme-lg ' +
+                            'whitespace-nowrap text-center' +
                             (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                         }
                     >
-                        Plan Game Session
-                    </Link>
+                        <Link href={`/groupPlanning?group_id=${Router}`}>
+                            Plan Game Session
+                        </Link>
+                    </Button>
                     {userRole && userRole !== 'pending' && (
-                        <button
+                        /* DECISION Phase 88.6-21 (task 2, D-09 / UI-SPEC §3.2 accent row): the
+                           amber Create-Event CTA converges onto `<Button variant="accent">` and
+                           its inline `style` is DELETED. That inline pair was the SECOND
+                           expression of one design decision — the first is `.btn-accent`
+                           (`globals.css:2478-2481`) — which is exactly the routed duplication the
+                           `DECISION Phase 88.3-18` marker at `globals.css:2389` exists to prevent.
+                           The OI-6 reasoning the deleted comment carried is KEPT here rather than
+                           lost: the fill was `var(--amber-600)`, white on it 3.19:1, a pre-existing
+                           AA failure in both themes; `--amber-700` is 5.0216:1; `amber-800` (7.09)
+                           was offered and REJECTED by the owner as too dark.
+
+                           BYTE-EQUAL AT REST, MEASURED AT EXECUTION ACROSS ALL THREE TOKENS, not
+                           two: `--color-btn-accent-bg` is `var(--amber-700)` in both theme blocks
+                           (`globals.css:1390`, `:1827`), `--color-btn-accent-text` is `#ffffff` in
+                           both (`:1392`, `:1829`), and `--color-btn-accent-hover` is
+                           `var(--amber-800)` in both (`:1391`, `:1828`).
+
+                           THE HOVER STATE IS NOT BYTE-EQUAL, AND THAT IS DISCLOSED RATHER THAN
+                           SUPPRESSED. Today the amber is an INLINE declaration, which beats every
+                           class rule, so the fill is INVARIANT under hover — `.btn` declares no
+                           background of its own. After this migration
+                           `.btn-accent:hover:not(:disabled):not([aria-disabled='true'])`
+                           (`globals.css:2483-2484`) applies `--color-btn-accent-hover`, and
+                           `.btn`'s own unlayered `transition: var(--theme-transition)` (`:1684`)
+                           covers background-color — so the control now visibly DARKENS on hover
+                           where it previously did not move. It is an ADDED state, not a changed
+                           one, and the added state is STRONGER than the rest state it lifts from:
+                           white on amber-800 measures 7.0900 (`tokenContrast.test.ts:1257`) against
+                           the rest state's 5.0216. Recorded in `88.6-21-SUMMARY.md` for
+                           `/gsd-ui-review`. Re-adding an inline fill to suppress it is a decision,
+                           not a cleanup.
+
+                           `shadow-theme-lg enabled-hover:shadow-theme-lg` is UI-SPEC §3.4 rule 2
+                           and this control is its certain subject: it rests at `lg` with no hover
+                           rule today, so the base's `enabled-hover:shadow-theme-md` would have
+                           SHRUNK it. The spelling is plan 05's `enabled-hover` variant, never a
+                           bare `hover:` — plan 12's hover-pin gate rejects the bare form because it
+                           re-lifts the gated controls the variant exists to exclude. */
+                        <Button
+                            variant="accent"
                             onClick={toggleEventModal}
                             /* Same two-half shadow as the CTA above: black half ->
                                `shadow-theme-lg`, white ring half preserved as
                                `ring-2 ring-white/15`. */
                             className={
-                                'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
-                                'rounded-btn transition-all shadow-theme-lg ' +
-                                'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                                'whitespace-nowrap ' +
+                                'shadow-theme-lg enabled-hover:shadow-theme-lg' +
                                 (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                             }
-                            style={{
-                                // OI-6: was `var(--amber-600)`, white on it 3.19:1 — a
-                                // pre-existing failure in BOTH themes. `--amber-700` is
-                                // 5.02:1. The inline fill STAYS: `.btn` sets no background
-                                // of its own, and moving this to a class is a separate
-                                // decision (Phase 88.6's `Button`).
-                                backgroundColor: 'var(--amber-700)',
-                                color: 'white',
-                            }}
                         >
                             Add New Game Event
-                        </button>
+                        </Button>
                     )}
                 </div>
             </div>
@@ -941,10 +1179,34 @@ function GroupHomePage(){
             {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}
 
             {/* Tab bar */}
+            {/* DECISION Phase 88.6-21 (R2 #171 + a Rule-2 a11y add): these two tabs conveyed their
+                ACTIVE state to nobody. They are bare `<button>`s with no `role`, no
+                `aria-selected` and no `aria-current`; the active one differs by fill, ink and a
+                bottom border, none of which is exposed to assistive technology. They are this
+                page's only content switch. `aria-current` is one attribute with ZERO visual delta,
+                and it is the same fix plan 88.6-19 made on the friends tab strip, so the two
+                surfaces stay one idiom.
+
+                The `font-medium` DELETION is a separate correction and is NOT the fix above: the
+                weight sat on BOTH arms, so it never carried the active state at all — it is
+                simply §4.5's 500-is-not-a-rung case, and 400 is what a control label is.
+
+                REJECTED: `role="tab"` + `aria-selected` + a `tablist` parent. That is the full
+                ARIA tabs pattern and it brings obligations these buttons do not meet — arrow-key
+                roving focus, `aria-controls` onto a `role="tabpanel"`. Claiming the pattern
+                without the keyboard contract is worse than not claiming it (the same reasoning
+                `KebabMenu` records for refusing the menu pattern, 88.6-16 D-12). Adding the full
+                pattern is a decision for Phase 88.9, not a cleanup.
+
+                REJECTED: migrating these onto `Button`. They are tab chrome, not buttons — `.btn`
+                would impose its own padding, its 44px floor and the elevation pair on a flush tab
+                strip, which is a look change (P6). They wear no `.btn` today and no census counts
+                them. */}
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
-                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                    aria-current={activeTab === 'home' ? 'true' : undefined}
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                         activeTab === 'home'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'
@@ -954,7 +1216,8 @@ function GroupHomePage(){
                 </button>
                 <button
                     onClick={() => setActiveTab('library')}
-                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                    aria-current={activeTab === 'library' ? 'true' : undefined}
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                         activeTab === 'library'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'

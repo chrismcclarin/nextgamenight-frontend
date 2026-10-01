@@ -16,6 +16,9 @@ import { queryCacheOnError } from '../../lib/queryClient';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Input, SelectControl } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+import { logger, errCtx } from '../../lib/logger';
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
@@ -124,7 +127,7 @@ function FriendsPage() {
             const groups = await groupsAPI.getUserGroups(selfUuid);
             setRawGroups(Array.isArray(groups) ? groups : []);
         } catch (err) {
-            console.error('Error fetching user groups:', err);
+            logger.info('Error fetching user groups:', errCtx(err));
             queryCacheOnError(err, { queryKey: ['groups', 'user'] });
             // Keep the ERROR object (88-14 idiom): useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
@@ -169,7 +172,7 @@ function FriendsPage() {
             const data = await friendshipsAPI.getFriends();
             setFriends(Array.isArray(data) ? data : []);
         } catch (err) {
-            console.error('Error fetching friends:', err);
+            logger.info('Error fetching friends:', errCtx(err));
             queryCacheOnError(err, { queryKey: ['friendships', 'accepted'] });
             // Keep the ERROR, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
@@ -219,7 +222,7 @@ function FriendsPage() {
             const data = await friendshipsAPI.getSentRequests();
             setSentRequests(Array.isArray(data) ? data : []);
         } catch (err) {
-            console.error('Error fetching sent requests:', err);
+            logger.info('Error fetching sent requests:', errCtx(err));
             queryCacheOnError(err, { queryKey: ['friendships', 'sent'] });
             // Keep the ERROR object, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
@@ -259,16 +262,30 @@ function FriendsPage() {
             const result = await friendshipsAPI.searchUserByEmail(searchEmail.trim());
             setSearchResult(result);
         } catch (err) {
-            if (err.message && err.message.includes('404')) {
-                setSearchError('No user found with that email.');
-            } else if (err.message && err.message.includes('No user found')) {
+            if (err?.status === 404) {
                 setSearchError('No user found with that email.');
             } else {
                 /* DECISION Phase 88-25 (Req 14 / T-88-25-01): derived copy, chosen OVER
-                   `err.message || '…'`. The two branches above deliberately KEEP their prose
-                   match — "no user found" is a legitimate SEARCH OUTCOME the person can act on
-                   (check the address), not a failure, and there is no ApiError code that carries
-                   it. This branch is the genuine failure and no longer paints upstream text. */
+                   the `err.message || '…'` idiom. "No user found" is a legitimate SEARCH
+                   OUTCOME the person can act on (check the address), not a failure, and there
+                   is no ApiError code that carries it — so it keeps its own branch and its own
+                   string. This branch is the genuine failure and does not paint upstream text.
+
+                   AMENDED Phase 88.6-42 (2026-09-17): the two branches above USED to be a
+                   PROSE match on `ApiError.message` — `.includes('404')` and
+                   `.includes('No user found')` — and this block sanctioned them. That prose
+                   match is RETIRED, and it was retired BECAUSE Phase 88.6 dropped the
+                   `body.error` legacy alias from `extractErrorMessage` (api.ts), not tidied
+                   away as cleanup. The string the second arm matched came from
+                   Sonnet/routes/friendships.js:251, a RAW 404 with no `code` and no
+                   `message`, so after the drop `ApiError.message` is the bare
+                   "HTTP error! status: 404" template and that arm could never match again.
+                   The user-visible outcome survived only INCIDENTALLY, because the sibling
+                   arm tested `.includes('404')` and the fallback string happens to contain
+                   "404" — luck, not a design. The outcome is now STATUS-KEYED off
+                   `err.status`, which apiFetch sets on every ApiError it throws, and the
+                   visible string is byte-identical. Re-introducing a message-content match
+                   here is a decision, not a cleanup. Pinned in friends/page.test.tsx. */
                 setSearchError(
                     getFetchErrorMessage(err, {
                         fallback: "We couldn't run that search. Please try again.",
@@ -318,7 +335,7 @@ function FriendsPage() {
             await ctxAcceptRequest(friendshipId);
             fetchFriends();
         } catch (err) {
-            console.error('Error accepting request:', err);
+            logger.info('Error accepting request:', errCtx(err));
         } finally {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
         }
@@ -331,7 +348,7 @@ function FriendsPage() {
         try {
             await ctxDeclineRequest(friendshipId);
         } catch (err) {
-            console.error('Error declining request:', err);
+            logger.info('Error declining request:', errCtx(err));
         } finally {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
         }
@@ -364,7 +381,7 @@ function FriendsPage() {
             // pills on every other surface reflect the removal immediately.
             refreshFriendships?.();
         } catch (err) {
-            console.error('Error removing friend:', err);
+            logger.info('Error removing friend:', errCtx(err));
             setRemoveError(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't remove that friend. Please try again.",
@@ -528,14 +545,21 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold text-content-primary mb-4">Friends</h1>
+                    <Heading level={1} size="display" className="text-content-primary mb-4">Friends</Heading>
                     <p className="text-content-secondary mb-6">Please log in to view your friends.</p>
-                    <a
-                        href="/api/auth/login"
-                        className="btn btn-primary px-6 py-2 inline-block"
-                    >
-                        Log In
-                    </a>
+                    {/* DECISION Phase 88.6-19 (UI-SPEC §3.2 asChild row): the element stays an
+                        `<a>` and is NEVER rewritten to `<Link>`. Auth0's login handler needs a
+                        hard navigation; a client-router push to it is a behaviour change, not a
+                        cleanup, and the repo carries zero `<Link href="/api/auth…">`. Any
+                        surviving utility goes on `<Button className>` and not on the child,
+                        because Radix `Slot` concatenates the child's className WITHOUT
+                        tailwind-merge, so a utility left there cannot win a conflict. Here
+                        nothing survives: `px-6 py-2` and `inline-block` are all dead under
+                        unlayered `.btn` (padding at `globals.css:2202`, `display: inline-flex`
+                        at `:2195`). */}
+                    <Button asChild variant="primary" size="default">
+                        <a href="/api/auth/login">Log In</a>
+                    </Button>
                 </div>
             </div>
         );
@@ -550,7 +574,7 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page">
                 <div className="max-w-3xl mx-auto px-4 py-8">
-                    <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
+                    <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
                     <FetchErrorBanner
                         state={selfIdentityErrorState}
                         title="Couldn't load your friends"
@@ -583,7 +607,7 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page">
                 <div className="max-w-3xl mx-auto px-4 py-8">
-                    <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
+                    <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
                     <FetchErrorBanner
                         state={friendsErrorState.showError ? friendsErrorState : sentErrorState}
                         title="Couldn't load your friends"
@@ -614,7 +638,7 @@ function FriendsPage() {
     return (
         <div className="min-h-screen bg-surface-page">
             <div className="max-w-3xl mx-auto px-4 py-8">
-                <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
+                <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
 
                 {/* The remove-friend gate's live region. Mounted HERE — once, outside the
                     tab conditional and outside the row map — because a live region that
@@ -625,7 +649,7 @@ function FriendsPage() {
 
                 {/* Search Section */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-3">Add Friend</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-3">Add Friend</Heading>
                     <form onSubmit={handleSearch} className="flex gap-3">
                         {/* 88-33 Task 8 (fork 5): id/name + explicit name — the section
                             heading ("Add Friend") names the card, not the field. */}
@@ -640,13 +664,14 @@ function FriendsPage() {
                             className="flex-1"
                             required
                         />
-                        <button
+                        <Button
                             type="submit"
+                            variant="primary"
+                            size="default"
                             disabled={searching || !searchEmail.trim()}
-                            className="btn btn-primary px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {searching ? 'Searching...' : 'Search'}
-                        </button>
+                        </Button>
                     </form>
 
                     {/* Search Result */}
@@ -669,7 +694,7 @@ function FriendsPage() {
                     {searchResult && !searching && (
                         <div className="mt-4 p-4 border border-line rounded-lg flex items-center justify-between">
                             <div>
-                                <p className="font-semibold text-content-primary">
+                                <p className="font-bold text-content-primary">
                                     {searchResult.username || searchResult.email}
                                 </p>
                                 {searchResult.username && searchResult.email && (
@@ -702,7 +727,7 @@ function FriendsPage() {
                                             );
                                         case 'sent':
                                             return (
-                                                <span className="flex items-center gap-1 text-sm text-content-status-success font-medium">
+                                                <span className="flex items-center gap-1 text-sm text-content-status-success">
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                     </svg>
@@ -711,13 +736,14 @@ function FriendsPage() {
                                             );
                                         case 'send':
                                             return (
-                                                <button
+                                                <Button
+                                                    variant="primary"
+                                                    size="default"
                                                     onClick={() => handleSendRequest(searchResult.id)}
                                                     disabled={sendingRequest}
-                                                    className="btn btn-primary px-4 py-2 text-sm disabled:opacity-50"
                                                 >
                                                     {sendingRequest ? 'Sending...' : 'Send Request'}
-                                                </button>
+                                                </Button>
                                             );
                                         default:
                                             return null;
@@ -732,10 +758,30 @@ function FriendsPage() {
                 <div className="border-b border-line mb-6">
                     <div className="flex gap-8">
                         {tabs.map(({ key, label, count }) => (
+                            /* DECISION Phase 88.6-19, two calls at this one control.
+
+                               (1) D-16 RE-INK: the count pill's ACTIVE arm carried
+                               `text-content-link` on `bg-surface-muted` — measured 3.9909,
+                               below AA — and it takes `text-content-secondary` (6.9620), the
+                               same token its inactive twin already used. It is a COUNT inside a
+                               pill, not a link: zero of the 61 `text-content-link` sites on this
+                               ground is a link, so the TOKEN was wrong, not the ground. This is
+                               the site `tokenContrast.test.ts` test 49 names as its hand-verified
+                               example and `groundInk.test.ts` holds as its known-live positive
+                               fixture. Restoring the link token here is a decision.
+
+                               (2) `aria-current` GAINED. The active tab was announced
+                               identically to the inactive ones: its state lived only in an ink
+                               swap plus a bottom border, and neither is exposed to an assistive
+                               technology. The weight was NOT the differentiator — `font-medium`
+                               sat on both arms and carried nothing, which is why it simply drops
+                               to 400 rather than being traded for a cue. Removing the attribute
+                               is a silent a11y regression, not a tidy-up. */
                             <button
                                 key={key}
                                 onClick={() => setActiveTab(key)}
-                                className={`pb-3 text-sm font-medium transition-colors relative ${
+                                aria-current={activeTab === key ? 'true' : undefined}
+                                className={`pb-3 text-sm transition-colors relative ${
                                     activeTab === key
                                         ? 'border-b-2 border-btn-primary text-btn-primary'
                                         : 'text-content-secondary hover:text-content-primary'
@@ -743,11 +789,15 @@ function FriendsPage() {
                             >
                                 {label}
                                 {count > 0 && (
-                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-                                        activeTab === key
-                                            ? 'bg-surface-card-hover text-content-link'
-                                            : 'bg-surface-card-hover text-content-secondary'
-                                    }`}>
+                                    /* The active/inactive ternary that used to wrap this
+                                       className is COLLAPSED, not overlooked: after the re-ink
+                                       above both arms resolved to the same pair, and a ternary
+                                       whose branches are byte-identical reads as an unfinished
+                                       edit. The tab's own active state is unchanged and is
+                                       carried by `text-btn-primary` + the bottom border + the
+                                       `aria-current` above — the pill was a redundant second
+                                       cue, and it is the cue that was below AA. */
+                                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-content-secondary">
                                         {count}
                                     </span>
                                 )}
@@ -808,7 +858,7 @@ function FriendsPage() {
                                 {userGroups.length > 0 && (
                                     <div className="mb-4 p-3 md:p-6 card">
                                         <div className="flex flex-wrap items-center gap-3">
-                                            <label htmlFor="group-invite-select" className="text-sm font-medium text-content-secondary">
+                                            <label htmlFor="group-invite-select" className="text-sm text-content-secondary">
                                                 Invite to Group:
                                             </label>
                                             <SelectControl
@@ -825,11 +875,19 @@ function FriendsPage() {
                                                     </option>
                                                 ))}
                                             </SelectControl>
-                                            <button
+                                            {/* Every utility this control used to carry was DEAD under
+                                                unlayered `.btn` and is deleted rather than moved: `px-4 py-2`
+                                                (padding, `globals.css:2202`), `text-sm` (font-size, `:2201`),
+                                                `font-medium` (font-weight 600, `:2200`), `flex items-center
+                                                gap-2` (`display: inline-flex` / `align-items` / `gap`,
+                                                `:2195-2198`) and the `disabled:` pair (`.btn:disabled`,
+                                                `:2250-2253`). Re-adding any of them changes no pixel. */}
+                                            <Button
+                                                variant="primary"
+                                                size="default"
                                                 onClick={handleBulkInvite}
                                                 disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading}
                                                 aria-busy={bulkInviteLoading || undefined}
-                                                className="btn btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                             >
                                                 {bulkInviteLoading && (
                                                     <>
@@ -838,7 +896,7 @@ function FriendsPage() {
                                                     </>
                                                 )}
                                                 Invite to Group
-                                            </button>
+                                            </Button>
                                             {selectedFriends.size > 0 && (
                                                 <span className="text-sm text-content-muted">
                                                     {selectedFriends.size} selected
@@ -853,7 +911,7 @@ function FriendsPage() {
                                         )}
                                         {/* Bulk invite result feedback */}
                                         {bulkInviteResult && (
-                                            <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
+                                            <div className={`mt-3 p-3 rounded-lg text-sm ${
                                                 bulkInviteResult.failCount === 0
                                                     ? 'bg-status-success-subtle text-content-status-success border border-status-success'
                                                     : bulkInviteResult.successCount > 0
@@ -904,7 +962,7 @@ function FriendsPage() {
                                                     />
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2">
-                                                            <p className="font-semibold text-content-primary">
+                                                            <p className="font-bold text-content-primary">
                                                                 {friend.username}
                                                             </p>
                                                             {isInGroup && (
@@ -947,7 +1005,7 @@ function FriendsPage() {
                                                             className={`min-h-11 px-3 rounded-btn border text-sm transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
                                                                 armed
                                                                     ? 'border-status-error font-semibold'
-                                                                    : 'border-transparent font-medium'
+                                                                    : 'border-transparent'
                                                             }`}
                                                         >
                                                             {removing
@@ -999,7 +1057,7 @@ function FriendsPage() {
                                             className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
                                         >
                                             <div className="flex-1">
-                                                <p className="font-semibold text-content-primary">
+                                                <p className="font-bold text-content-primary">
                                                     {requester.username || requester.email}
                                                 </p>
                                                 {requester.email && requester.email !== requester.username && (
@@ -1007,20 +1065,22 @@ function FriendsPage() {
                                                 )}
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <button
+                                                <Button
+                                                    variant="primary"
+                                                    size="default"
                                                     onClick={() => handleAccept(request.id)}
                                                     disabled={!!actionLoading[request.id]}
-                                                    className="btn btn-primary px-4 py-2 text-sm disabled:opacity-50"
                                                 >
                                                     {actionLoading[request.id] === 'accept' ? 'Accepting...' : 'Accept'}
-                                                </button>
-                                                <button
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    size="default"
                                                     onClick={() => handleDecline(request.id)}
                                                     disabled={!!actionLoading[request.id]}
-                                                    className="btn btn-secondary px-4 py-2 text-sm disabled:opacity-50"
                                                 >
                                                     {actionLoading[request.id] === 'decline' ? 'Declining...' : 'Decline'}
-                                                </button>
+                                                </Button>
                                             </div>
                                         </div>
                                     );
@@ -1068,14 +1128,14 @@ function FriendsPage() {
                                             className="flex items-center justify-between p-4 border border-line rounded-card"
                                         >
                                             <div className="flex-1">
-                                                <p className="font-semibold text-content-primary">
+                                                <p className="font-bold text-content-primary">
                                                     {addressee.username || addressee.email}
                                                 </p>
                                                 {addressee.email && addressee.email !== addressee.username && (
                                                     <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
                                                 )}
                                             </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-status-warning-subtle text-content-status-warning border border-status-warning">
+                                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                                 Pending
                                             </span>
                                         </div>

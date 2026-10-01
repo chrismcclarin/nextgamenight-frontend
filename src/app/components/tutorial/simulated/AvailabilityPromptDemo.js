@@ -1,5 +1,7 @@
 'use client';
 
+import { Heading } from '../../../../components/ui/Heading';
+
 import TutorialGrid from './TutorialGrid';
 import { AVAILABILITY_DRAG_PATH } from '../mockData';
 
@@ -60,16 +62,20 @@ export default function AvailabilityPromptDemo({ stage }) {
           users recognize the surface they'll actually land on after tapping a
           check-in. */}
       <div className="bg-surface-card border border-line rounded-t-card px-4 py-3 inline-block">
-        <h3 className="text-sm font-bold text-content-primary mb-0.5">
+        {/* `size="label"` is passed EXPLICITLY and is not the primitive's derived value:
+            level 3 derives `heading` (20), which would be a silent +6px on a simulated
+            surface. §4.4's "h3 @ 14 stays" row is the rule, so 14 is where it already
+            renders and where it stays. */}
+        <Heading level={3} size="label" className="text-content-primary mb-0.5">
           When are you available this week?
-        </h3>
+        </Heading>
         <p className="text-xs text-content-muted">Group: Tabletop Crew</p>
       </div>
 
       {/* Toolbar row — paint mode toggle (matches real AvailabilityGrid) */}
       <div className="bg-surface-card border-x border-line px-3 py-1.5 inline-block">
         <div className="flex items-center justify-end">
-          <span className="px-2 py-0.5 bg-green-100 border border-green-400 text-green-800 rounded-sm text-[10px] font-medium">
+          <span className="px-2 py-0.5 bg-green-100 border border-green-400 text-green-800 rounded-sm text-xs font-bold">
             Adding: Preferred
           </span>
         </div>
@@ -79,13 +85,26 @@ export default function AvailabilityPromptDemo({ stage }) {
         <TutorialGrid renderCell={renderCell} />
       </div>
 
+      {/* DECISION Phase 88.6-35 (D49-b, owner ruling 2026-09-09 option i): the armed state's
+          `shadow-md` below becomes `shadow-theme-md`. `shadow-md` is Tailwind v4's own INLINED
+          black scale, not the project's re-tinted ladder — v4 inlines its built-in shadow values
+          into its built-in utilities, so `--shadow-theme-md` never reaches a `shadow-md`
+          (globals.css:1281-1295). THE SHADOW'S HUE CHANGES in both themes; that is the point of
+          the ruling and is disclosed for `/gsd-ui-review`.
+
+          NO HOVER PIN, deliberately: this is a SIMULATED chip surface inside an animation with
+          `disabled` on it and no hover state at all, and it is not a `.btn`, so UI-SPEC §3.4
+          rule 2 (which exists because `Button`'s cva base would shrink a declared `lg` on
+          hover) has nothing to act on here. Adding one would be inventing an interaction on a
+          control that cannot be interacted with. Separate item from `LandingPage.js`'s
+          `hover:shadow-xl`, which is the genuine off-tier fourth-rung case (D-14b). */}
       {/* Save button — highlighted when drag is complete */}
       <div className="mt-3 flex items-center justify-center gap-2">
         <button
           disabled
-          className={`px-4 py-1.5 text-xs font-medium rounded-btn transition-all duration-300 ${
+          className={`px-4 py-1.5 text-xs font-bold rounded-btn transition-all duration-300 ${
             allPainted
-              ? 'bg-btn-primary text-btn-primary-content shadow-md scale-105'
+              ? 'bg-btn-primary text-btn-primary-content shadow-theme-md scale-105'
               : 'bg-surface-elevated text-content-muted'
           }`}
         >

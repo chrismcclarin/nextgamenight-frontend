@@ -158,11 +158,61 @@ const CARD_LSTAR_FLOOR = 97; // distinguishes the white card (100) from the warm
  * unnamed first-card locator is not a stable anchor and would silently measure whichever
  * row Postgres returned first. `padding-budget.spec.ts:209-214` already anchors this same
  * fixture group by name — this reuses that idiom rather than inventing one.
+ *
+ * ---------------------------------------------------------------------------------------
+ * DECISION Phase 88.6-47 (row 4 of the 2026-09-17 CI e2e red, run 35581508198): this helper is
+ * anchored on a CONTRACT ATTRIBUTE, not on structure.
+ *
+ * WHAT IT USED TO DO AND WHY THAT BROKE. The second step used to walk the heading UP to the
+ * nearest ancestor div carrying a button role, on the understanding that the ancestor was the
+ * CARD. FE `f696732` ("fix(88.6-21): move the group card's keyboard target onto its title block
+ * (W42/W62b)") deleted `role`/`tabIndex`/`onKeyDown` from the card div and put them on the TITLE
+ * BLOCK (`grouplist.js:496`). From that commit on, the step resolved the title block — whose own
+ * className (`grouplist.js:513`) carries NO shadow utility, so `box-shadow: none` is its CORRECT
+ * computed value — while the card kept the shadow (`grouplist.js:408`). Gate C's resting-shadow
+ * pin then reported the bare keyword and its message accused `--shadow-sm` of a revert. The token
+ * was intact in BOTH themes throughout (`globals.css:1455` light, `:1861` dark) and the compiled
+ * `.shadow-theme-sm` rule is a valid composite. The LOCATOR was the defect; nothing about the
+ * focus ring was ever broken.
+ *
+ * REJECTED — an XPath scoped on the `rounded-card` CLASS. It has exactly the property that
+ * produced this failure: it survives only until someone renames or moves the class, and then it
+ * re-points silently onto a different element and blames a token again. The file's own selector
+ * policy (see `groupHeader` below) also avoids class and id selectors.
+ * REJECTED — keeping the structural ancestor step and merely re-spelling it. ANY structural step
+ * is re-pointed by the next restructure, which is the failure being fixed, not a variation of it.
+ * A `data-testid` is neither a class nor an id, and it is the one shape whose whole purpose is to
+ * be stable across restructures. The production side is pinned by
+ * `src/app/groupColourRendering.test.ts` test 32 (exactly once, on the tag carrying
+ * `shadow-theme-sm`), so the two cannot drift apart again in silence.
+ * The `filter({ has: … })` is not decoration: plan 02 mints a SECOND, tinted fixture group that
+ * also renders a `group-card`, so the heading filter is what still proves this is the FIXTURE
+ * group's card. Owner ruling 2026-09-21, decision (1): the `data-testid` arm stands.
  */
 function fixtureCard(page: Page): Locator {
   return page
-    .getByRole('heading', { name: E2E_INVITE_GROUP_NAME })
-    .locator('xpath=ancestor::div[@role="button"][1]');
+    .getByTestId('group-card')
+    .filter({ has: page.getByRole('heading', { name: E2E_INVITE_GROUP_NAME }) });
+}
+
+/**
+ * The fixture card's KEYBOARD TARGET — the title block, not the card.
+ *
+ * DECISION Phase 88.6-47: two different subjects live on this card and they are no longer the
+ * same element. Surfaces whose subject is the card's GROUND (delta-L*, border, muted text) take
+ * `fixtureCard`. The ONE surface whose subject is a CONTROL — Req 7's card-hosted focus ring —
+ * takes this helper, because `f696732` moved `role`/`tabIndex`/`onKeyDown` off the card and the
+ * card can no longer match `:focus-visible` at all. Handing the card to `focusRingMeasurement`
+ * does not fail softly: it focuses the anchor (`e2e/support/contrast.ts:645`) and then
+ * `requireColor`s `--tw-ring-color` (`:654`), which THROWS on an empty value (`:474`) — and the
+ * compiled stylesheet declares `@property --tw-ring-color` with `syntax: "*"` and NO
+ * `initial-value`, so an element that never matched returns the empty string. Re-basing
+ * `fixtureCard` without minting this second helper would have traded one red for another.
+ */
+function fixtureCardKeyboardTarget(page: Page): Locator {
+  return fixtureCard(page)
+    .getByRole('button')
+    .filter({ has: page.getByRole('heading', { name: E2E_INVITE_GROUP_NAME }) });
 }
 
 /**
@@ -226,6 +276,93 @@ function guardGround(label: string, m: Measurement): void {
       `vacuous. Fix the ANCHOR, do not touch the tokens.\n${vacuityGround(label, resolution)}`
   ).not.toMatch(/^(body|html)$/);
   expect(m.probe.opaqueAt, describeGround(label, resolution)).toBeGreaterThanOrEqual(0);
+}
+
+/**
+ * Split a computed `box-shadow` into its LAYERS on TOP-LEVEL commas only.
+ *
+ * Stated at plan altitude in `88.6-05-PLAN.md` because it is load-bearing: a naive
+ * `value.split(',')` shatters `rgba(0, 0, 0, 0)` into four fragments, and the per-layer loop
+ * below then either throws on the fragments or — worse — passes vacuously on them. Split at
+ * depth zero, outside parentheses.
+ */
+function shadowLayers(value: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of value) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      out.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim().length > 0) out.push(current.trim());
+  return out;
+}
+
+/**
+ * N1 (Phase 88.6-05) — the RENDERED `--shadow-sm` revert detector, asserted TWO-SIDEDLY.
+ *
+ * These two pins used to read `.toBe('none')`, and that held ONLY because of a defect: the bare
+ * `none` keyword is invalid-at-computed-value-time inside Tailwind's composite `box-shadow` list,
+ * so it poisoned the whole list — including the layer `focus-visible:ring-2` writes into, which is
+ * why every default `<Button>` shipped with no visible focus ring at rest (Chromium-verified
+ * 2026-09-09). `--shadow-sm` now holds `0 0 #0000`, so the composite is valid and computes an
+ * all-transparent layer list; the one-sided equality would red on a CORRECT implementation.
+ *
+ * RE-EXPRESSED, NOT WIDENED, AND STRICTLY TIGHTER THAN WHAT IT REPLACES. Each pin now reds on BOTH
+ * failure modes:
+ *   - the computed value IS the bare keyword `none` — the exact signature of a `--shadow-sm`
+ *     revert, which silently re-annihilates every default `<Button>`'s focus ring;
+ *   - any parsed layer actually PAINTS — Req 3, archetype A: nothing renders at rest.
+ * The obvious repair, "accept the keyword OR an all-transparent list", is explicitly NOT taken: it
+ * whitelists the exact broken state the pin exists to catch, and plan 12's proof 2 is the RING
+ * proof and carries no bare-keyword comparison — so these two pins are the tree's ONLY rendered
+ * guard against that revert. Loosening either half is a decision, not a cleanup.
+ */
+function expectRestingShadowIsInvisibleButValid(raw: string, label: string): void {
+  const value = raw.trim();
+
+  expect(
+    value,
+    `${label}: the computed \`box-shadow\` is the bare keyword \`none\`. That is the signature of ` +
+      'a `--shadow-sm` revert (globals.css declares it in light and in the `.dark` block), and ' +
+      "the keyword is INVALID inside Tailwind's composite `box-shadow` list — it annihilates every " +
+      "default `<Button>`'s focus-visible ring. Archetype A wants a shadow that PAINTS nothing, " +
+      'not the absence of a shadow property. Re-expressed under N1 (Chromium-verified 2026-09-09); ' +
+      'loosening this half is a decision, not a cleanup. ' +
+      'SECOND READING, added Phase 88.6-47 after row 4 of the 2026-09-17 CI red resolved to a ' +
+      'stale LOCATOR rather than a token: a resting-card element that never carried a shadow ' +
+      'utility at all ALSO computes exactly this value, so before suspecting `--shadow-sm`, ' +
+      'check that the locator still resolves the element carrying `shadow-theme-sm` ' +
+      '(`grouplist.js:408`, handle `data-testid="group-card"`). A structural ancestor step ' +
+      're-pointed itself onto a nested block once already, and this message accused the token ' +
+      'for ~25 plans.'
+  ).not.toBe('none');
+
+  for (const layer of shadowLayers(value)) {
+    const alpha = /rgba?\(([^)]*)\)/i.exec(layer);
+    const parts = alpha ? alpha[1].replace(/\//g, ' ').split(/[\s,]+/).filter(Boolean) : [];
+    const opacity = parts.length >= 4 ? Number(parts[3]) : 1;
+    expect(
+      opacity,
+      `${label}: the resting shadow layer \`${layer}\` is not transparent (alpha ${opacity}). ` +
+        'Req 3 / archetype A puts the depth in the PAGE tone; a resting card paints no shadow.'
+    ).toBe(0);
+
+    const lengths = layer.replace(/rgba?\([^)]*\)/gi, '').match(/-?\d*\.?\d+px/g) ?? [];
+    for (const length of lengths) {
+      expect(
+        parseFloat(length),
+        `${label}: the resting shadow layer \`${layer}\` has a non-zero length (${length}) — ` +
+          'offset, blur and spread must all be zero so nothing paints at rest (Req 3).'
+      ).toBe(0);
+    }
+  }
 }
 
 /** Assert one ratio against a floor, with the ground chain in the failure message. */
@@ -439,10 +576,10 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // `tailwind-v4-styles.spec.ts:37-40` policy. `hover:shadow-theme-md` is inert on this
       // project (see the hover note at the top), so what is measured here IS the rest state.
       const probe = await probeElement(card, ['box-shadow']);
-      expect(
-        probe.computed['box-shadow'].raw.trim(),
-        'home card (Req 3): archetype A puts the depth in the PAGE, so the resting shadow is gone. A shadow here means --shadow-sm stopped being `none`.'
-      ).toBe('none');
+      expectRestingShadowIsInvisibleButValid(
+        probe.computed['box-shadow'].raw,
+        'home card (Req 3, light)'
+      );
     });
 
     await test.step('surface 3 — Req 2: the card border is a hairline, not a wireframe', async () => {
@@ -542,7 +679,19 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // So the count of `role=link` inside a card at 375px is still zero, and this step
       // still measures the Button primitive plus the card ground. Nothing here needs to
       // change; deleting this note would lose the re-verification.
-      const cardRing = await focusRingMeasurement(page, card, 'card-hosted control focus ring (Req 7)');
+      //
+      // AMENDED Phase 88.6-47 (row 4): the cite `grouplist.js:303` above is stale, and so is the
+      // element it names. `f696732` moved `role="button"` / `tabIndex` / `onKeyDown` OFF the card
+      // onto the title block (`grouplist.js:496`), so the CARD is no longer a control and can never
+      // match `:focus-visible` — it wears no `ring-*` utility and no `tabIndex`, and
+      // `focusRingMeasurement` THROWS on an empty `--tw-ring-color` rather than failing softly.
+      // The conclusion above is UNCHANGED — the control is card-hosted and its ground IS the white
+      // card — only the node carrying the role moved, so this step measures the title block.
+      const cardRing = await focusRingMeasurement(
+        page,
+        fixtureCardKeyboardTarget(page),
+        'card-hosted control focus ring (Req 7)'
+      );
       expectRatio('card-hosted control focus ring (Req 7)', cardRing, NON_TEXT);
     });
   });
@@ -728,6 +877,10 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
 
     await test.step('surface 15 — 88.3-18 ruling 1c: a card-hover surface rendered ON the page ground', async () => {
       // ADDED Phase 88.3-18 (owner ruling 1c, 2026-08-28). THE ONE MOVED TOKEN WITH NO LIVE PIN.
+      // AMENDED Phase 88.6-02 (D-15): the surface this step and its assertion label call
+      // "card-hover" is now the `bg-surface-muted` / `--color-bg-muted` token, at byte-equal
+      // values. The step title and label keep the old shorthand because they are the 88.3-18
+      // record; NOTHING in this file selects on that class token, so there is no live use here.
       // Everything ledger E uses to justify MINTING `--warm-250` is a RENDER claim — that at
       // warm-200 today's month cell would be byte-identical to an empty one, and `GroupLibrary`'s
       // skeleton bars would vanish into their `bg-surface-page` parent. Until this step that claim
@@ -745,6 +898,18 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // tech rather than by tint alone" — so the month grid exposing today by TINT ONLY is a real
       // inconsistency with a shipped sibling. But it changes rendered component semantics, which is
       // outside ruling 1c's scope; it is persisted to `.planning/deferred/phase-88.6.md`.
+      //
+      // RESOLVED Phase 88.6-40 (W41), paragraph above KEPT AS HISTORY. The routing landed: the
+      // month grid now exposes today SEMANTICALLY, and the locator below is keyed on that
+      // attribute. ONE CORRECTION TO THE DEFERRED ENTRY'S WORDING, stated rather than buried:
+      // that entry says "the month CELL's today branch, mirroring the week strip", and those two
+      // halves contradict each other — the week strip puts the attribute on the NAMED CONTROL,
+      // not on a wrapper. The "cell" wording was written while the cell was pointer-only with
+      // nothing interactive inside it and the attribute's purpose here was a PROBE HOOK; plan
+      // 88.6-40's inner-target redesign changed that premise. So the attribute is on the DAY
+      // NUMBER (the element that actually takes focus), which honours the entry's stated intent.
+      // That wording is BOOKKEEPING and is amended in place. This gate's exactly-one-match guard,
+      // its measured ΔL*, and this file's SELECTOR POLICY are CONSEQUENCE and are unchanged.
       await page.keyboard.press('Escape');
 
       // The month view may be persisted OFF: `EventCalendar.js:39-41` defaults `viewMode` to
@@ -771,30 +936,50 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
           'list view). This is a LOCATOR failure, not a contrast failure.'
       ).not.toBeNull();
 
-      // Today's cell is `bg-surface-card-hover border-line-accent` (`CalendarMonthView.js:225`) and
-      // carries NO `aria-current` and NO `data-testid` (verified 2026-08-28) — hence the class
-      // handle. It is scoped INSIDE the cells grid on purpose: the bare `border-line-accent` token
-      // appears at 9 sites FE-wide (`PendingMemberBanner.js:22`, `ManageMembers.js:499`,
-      // `GroupGamesList.js:372`, `PromptScheduleManager.js:198`, `EventScheduler.tsx:1203`,
-      // `Header.js:249`, `Tabs.tsx:80` ...), several of which can render on this page. The
-      // clickable-cell class is `hover:border-line-accent`, a DIFFERENT class token, so it cannot
+      // Today's cell is still tinted `bg-surface-muted border-line-accent` (P6: plan 88.6-40
+      // changed no visual treatment here). WHAT CHANGED IS THE HANDLE.
+      //
+      // CORRECTED Phase 88.6-40: the old comment here said today's cell "carries NO
+      // `aria-current` and NO `data-testid` (verified 2026-08-28) — hence the class handle".
+      // That is now FALSE: `CalendarMonthView.js` puts `aria-current="date"` on today's DAY
+      // NUMBER, the element that takes focus. The locator is keyed on the attribute directly.
+      // That is not cosmetic — a class-keyed locator silently stops matching when the class
+      // changes, and this phase renames class tokens across the whole tree — and it is what this
+      // file's own SELECTOR POLICY (top of file, "Role, label, text and ARIA STATE only — never a
+      // Tailwind class") nominates BY NAME. Keeping the class handle was not an option.
+      //
+      // NO `:has()` WRAPPER, deliberately: there is zero `:has(` precedent in `e2e/`, and the
+      // premise that would motivate one (that the attribute might not match) is false.
+      //
+      // THE MEASUREMENT IS UNCHANGED, and that is the load-bearing claim: `probeElement` walks
+      // `parentElement` to the first opaque ancestor and `compositeGround` skips every alpha-0
+      // rung, while the day-number element carries no background of its own (one colour token
+      // plus type utilities) and is a DIRECT child of the cell (the `{date && (<>` wrapper is a
+      // fragment and emits no DOM node). So it composites to the cell's ground — byte-identical
+      // to probing the cell, and this gate reads GROUND only.
+      //
+      // Still scoped INSIDE the cells grid, and for a sharper reason than before: the phone week
+      // strip on other surfaces also uses `[aria-current="date"]`, so an unscoped locator could
       // collide. Exactly ONE match is required — 0 or >1 fails as a LOCATOR error, never as a
-      // contrast pass (the same idiom `todayStripCell`'s guard uses).
-      const todayMonthCell = (cellsGrid as Locator).locator('.border-line-accent');
+      // contrast pass (the same idiom `todayStripCell`'s guard uses). The invariant the component
+      // guarantees is per rendered GRID, not per month: an adjacent-month overflow cell holding
+      // today carries the attribute too, and the tint with it.
+      const todayMonthCell = (cellsGrid as Locator).locator('[aria-current="date"]');
       const matches = await todayMonthCell.count();
       expect(
         matches,
-        `ruling 1c: expected EXACTLY ONE \`.border-line-accent\` inside the month cells grid ` +
-          `(today's cell), found ${matches}. 0 means today is not in the rendered month or the ` +
-          `class moved; >1 means the locator caught a sibling surface. Either way this is a ` +
-          `LOCATOR failure, not a contrast failure — do not relax it into a contrast pass.`
+        `ruling 1c: expected EXACTLY ONE \`[aria-current="date"]\` inside the month cells grid ` +
+          `(today's day number), found ${matches}. 0 means today is not in the rendered 42-cell ` +
+          `window or the attribute moved; >1 means the locator caught a sibling surface. Either ` +
+          `way this is a LOCATOR failure, not a contrast failure — do not relax it into a ` +
+          `contrast pass.`
       ).toBe(1);
 
       const todayProbe = await probeElement(todayMonthCell, []);
       const todayGround = compositeGround(todayProbe);
       const bodyProbe = await probeElement(page.locator('body'), []);
       const pageGround = compositeGround(bodyProbe);
-      expect(todayGround, describeGround("month grid — today's cell", groundResolutionOf(todayProbe))).not.toBeNull();
+      expect(todayGround, describeGround("month grid — today's day number (composites to the today CELL's ground)", groundResolutionOf(todayProbe))).not.toBeNull();
       expect(pageGround, describeGround('groupHomePage page', groundResolutionOf(bodyProbe))).not.toBeNull();
 
       const delta = deltaLStar(todayGround, pageGround);
@@ -809,6 +994,93 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
           delta as number
         )
       ).toBeGreaterThanOrEqual(PAGE_CARD_DELTA);
+
+      // ADDED Phase 88.6-40 (W39 / T-88.6-116), and it lives HERE because this step has already
+      // paid for the month grid: the cells grid is located above and this route
+      // (`/groupHomePage?id=${E2E_GROUP_ID}`) is the one that passes `onEmptyDayClick`, which is
+      // what arms `showEmptyDayHint`. Adding a second navigation for one opacity read would cost
+      // a page load to assert something one line can assert here.
+      //
+      // WHY THIS CANNOT BE A jsdom ARM: `group-focus-within:opacity-40` is a CSS variant, and the
+      // unit suite applies no stylesheet — it can pin the class pair and the focus target and
+      // nothing more. WHY IT CAN GO RED ON `phone` WHERE A `hover:` PIN COULD NOT: v4 wraps every
+      // `hover:` utility in `@media (hover: hover)`, false on the iPhone SE preset, so a hover
+      // assertion here would be inert by construction. `focus-within` carries no such media
+      // wrapper.
+      await test.step('surface 15b — W39: the empty-day "+" hint follows FOCUS on a phone', async () => {
+        const addDay = (cellsGrid as Locator).getByRole('button', {
+          name: /Add an event on this day\.$/,
+        });
+        const hintTargets = await addDay.count();
+        expect(
+          hintTargets,
+          'W39: no empty-day keyboard target was found in the month cells grid. This route passes ' +
+            '`onEmptyDayClick`, which arms `showEmptyDayHint`, so at least one empty day should ' +
+            'expose one. This is a LOCATOR failure, not a reveal failure.'
+        ).toBeGreaterThan(0);
+
+        const target = addDay.first();
+        // The "+" hint is inside the SAME cell as the focused target. Located by its TEXT, per
+        // this file's selector policy — never by the `group-focus-within:` class it is under test
+        // for, which would make the assertion circular.
+        const cell = target.locator('xpath=..');
+        const plus = cell.getByText('+', { exact: true });
+        const hint = plus.locator('xpath=..');
+
+        /* DECISION Phase 88.6-47 (row 8 of the 2026-09-17 CI record, intermittent: red on
+           `ef40170` / run 35581508198, green on 35580008509 and on the 35202982040 run).
+           THE REVEAL IS NOT DEAD; THE READ DID NOT WAIT FOR IT.
+
+           MECHANISM, read out of the compiled stylesheet rather than assumed: the hint carries
+           `opacity-0 group-hover:opacity-40 group-focus-within:opacity-40 transition-opacity`
+           (`src/app/components/CalendarMonthView.js:1229`) and the cell hoists `group`
+           unconditionally (`:323`). The compiled output emits
+           `.group-focus-within\:opacity-40:is(:where(.group):focus-within *)` at specificity
+           (0,2,0), which beats `.opacity-0` at (0,1,0) — so the reveal is wired correctly.
+           `transition-opacity` resolves `transition-duration: var(--tw-duration,
+           var(--default-transition-duration))`, and the theme default is 150ms. The read below
+           used to be ONE-SHOT with nothing between `target.focus()` and the read, so on a fast
+           round trip it sampled t`0 of a 150ms fade and got the FROM-value — which is exactly the
+           reported "0 before and 0 after", and exactly why it was intermittent rather than
+           consistently red.
+
+           RETIRED HERE: the CI record's competing hypothesis at
+           `88.6-CI-E2E-RED-2026-09-17.md:56-57` ("which cell counts as 'empty' moves with the
+           calendar month"). It is dead on the file's own evidence — the `hintTargets > 0` guard
+           above would have failed FIRST, and the reported error carried computed opacities, which
+           an unresolved locator cannot produce. Two live hypotheses on one row is how a real cause
+           gets talked past.
+
+           STRICTLY TIGHTER, NOT LOOSER. The bound is the same `> 0`; polling only gives the
+           transition somewhere to have gone. A reveal that never happens still times out and reds.
+           REJECTED — a fixed sleep: it pins a duration this file does not own, so a theme-level
+           change to `--default-transition-duration` would silently make it vacuous or flaky.
+           REJECTED — dropping the bound to "not less than before": it passes on a DEAD reveal,
+           which is the entire defect W39 fixed.
+           `before` is RETAINED FOR THE FAILURE MESSAGE ONLY. It is not asserted today and this
+           plan does not start asserting it — minting an `expect(Number(before)).toBe(0)` here
+           would be a new assertion nobody sanctioned. Note that `expect.poll`'s `message` is a
+           string evaluated once, so the POLLED value is not interpolated into it; Playwright's own
+           "Received:" line carries the last sampled opacity, and the message names `before` and
+           says where to read the other half. */
+        const before = await hint.evaluate((el) => window.getComputedStyle(el).opacity);
+        await target.focus();
+        await expect
+          .poll(
+            async () => Number(await hint.evaluate((el) => window.getComputedStyle(el).opacity)),
+            {
+              timeout: 3_000,
+              message:
+                `W39: focusing the empty day's keyboard target must reveal the "+" hint. Computed ` +
+                `opacity was ${before} before focus, and did not rise above 0 within 3s of focus ` +
+                '(the last sampled value is on the "Received" line below). The hint fades over the ' +
+                'theme default 150ms, so this is no longer a race — a value still at 0 here means ' +
+                'the reveal itself is dead. A keyboard user who lands on an empty cell with the ' +
+                'hint at 0 sees a cell that looks like nothing.',
+            }
+          )
+          .toBeGreaterThan(0);
+      });
     });
   });
 
@@ -932,6 +1204,12 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     await assertTheme(page, 'light');
     await assertStatusTextLanded(page, 'light');
   });
+
+  test('accent variant: the label clears 4.5:1 on its own amber fill (88.6 W23)', async ({ page }) => {
+    await page.goto('/');
+    await assertTheme(page, 'light');
+    await assertAccentLabelRatio(page, 'light');
+  });
 });
 
 test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
@@ -947,10 +1225,20 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     const card = fixtureCard(page);
     await expect(card).toBeVisible({ timeout: 15_000 });
     const probe = await probeElement(card, ['box-shadow']);
-    expect(
-      probe.computed['box-shadow'].raw.trim(),
-      'home card (Req 3, dark): `--shadow-sm` is `none` in BOTH themes (globals.css:882 and :1146).'
-    ).toBe('none');
+    // ⚠ STALE CITATION CORRECTED, Phase 88.6-05: this message used to cite `globals.css:882 and
+    // :1146`. Re-derived 2026-09-15, the two `--shadow-sm` declarations are at `globals.css:1361`
+    // (light `:root`) and `:1765` (the `.dark` block). Both now hold `0 0 #0000` rather than the
+    // bare keyword — see the helper's docblock for why the shape of this pin changed.
+    // ⚠ CORRECTED AGAIN, Phase 88.6-47, in the same amend-in-place form the note above uses for
+    // its own predecessor: re-derived 2026-09-21 at `ef40170`, the two `--shadow-sm` declarations
+    // are at `globals.css:1455` (inside the light `:root` opened at `:822`) and `:1861` (inside
+    // `.dark`, opened at `:1784`). The `:1361`/`:1765` pair above had drifted exactly the way its
+    // own predecessor did. Both still hold `0 0 #0000` — verified while triaging row 4, whose cause
+    // turned out to be the LOCATOR (see `fixtureCard`) and not this token at all.
+    expectRestingShadowIsInvisibleButValid(
+      probe.computed['box-shadow'].raw,
+      'home card (Req 3, dark) — `--shadow-sm` paints nothing in BOTH themes (globals.css:1455 light, :1861 dark)'
+    );
   });
 
   test('create-event scheduler: the today number and the nested block hold in dark', async ({ page }) => {
@@ -1103,6 +1391,12 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     await assertTheme(page, 'dark');
     await assertStatusTextLanded(page, 'dark');
   });
+
+  test('accent variant: the label clears 4.5:1 on its own amber fill in dark too (88.6 W23)', async ({ page }) => {
+    await page.goto('/');
+    await assertTheme(page, 'dark');
+    await assertAccentLabelRatio(page, 'dark');
+  });
 });
 
 /**
@@ -1164,6 +1458,84 @@ async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Prom
       `text-content-status-success utility emitted no rule. The ratio passing here proves nothing — ` +
       `this is the assertion that catches the 134-site rename shipping a dead class.`
   ).not.toBe(bodyColor);
+}
+
+/**
+ * Req 7 / 88.6 W23 — the `accent` variant's LABEL-ON-FILL ratio, rendered, in both themes.
+ *
+ * WHY THIS STEP EXISTS. `.btn-accent` shipped in 88.3-18 and Gate A test 45 pins its DECLARED
+ * tokens, but nothing measured the compiled rule in a browser. Phase 88.6-06 then made it a
+ * first-class `Button` rung (`variant="accent"` -> `btn-accent`), so every migrating call site
+ * now reaches it through the primitive. Expected: `--color-btn-accent-text` (#ffffff) on
+ * `--color-btn-accent-bg` (amber-700) = **5.0216:1**, IDENTICAL in light and dark because both
+ * properties carry the same value in both theme blocks (globals.css:1390/:1392 light,
+ * :1827/:1829 dark — cited from the `Button.tsx` accent marker, re-derived there 2026-09-15).
+ *
+ * PLANTED, not driven at a shipped site — and this is the one place in this file that plants.
+ * The two shipped `.btn-accent` controls are `EventDayModal.js:452` (inside a day modal that has
+ * to be opened from the month grid) and `gameDetail/page.js:1620`, whose render is gated on
+ * `userScope === 'group-member'` (`:1596`). Neither is a steady-state element of a page this
+ * spec already visits, and the alternative — a new fixture plus a modal-opening journey inside a
+ * CONTRAST gate — buys nothing this measurement needs: the quantity under test is a compiled CSS
+ * rule, not a layout or a data path. The same reasoning is already on the record one file over,
+ * at `touch-targets.spec.ts`'s D-36 block ("MEASURED, not assumed: those steppers are UNREACHABLE
+ * in CI ... Driving them would need a new backend fixture").
+ *
+ * The probe is located BY ROLE AND ACCESSIBLE NAME like every other anchor here — never by its
+ * class — and every class it wears is one `src/` already emits (the two shipped sites' own
+ * string), because `e2e/` is outside the `@source` globs (globals.css:10, :86-88) and a class
+ * only this file wears would render unstyled and measure nothing.
+ *
+ * PHONE PROJECT ONLY, and that is not a gap: this whole spec is file-level skipped to phone at
+ * `:96-99` under D-07, so a "then at desktop" half would be satisfied by an empty run. Plan
+ * 88.6-12's desktop coverage is its `journeys` arm in `e2e/touch-targets.spec.ts`.
+ */
+const ACCENT_PROBE_NAME = 'E2E accent contrast probe';
+
+async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  await page.evaluate((name) => {
+    const el = document.createElement('button');
+    el.type = 'button';
+    // `EventDayModal.js:452`'s own class string, minus the layout-only `mt-2`. Every token is
+    // emitted because that shipped site wears it.
+    el.className =
+      'btn btn-accent font-semibold text-xs px-3 py-1.5 inline-flex items-center gap-1.5 ' +
+      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+    el.textContent = name;
+    el.setAttribute('data-e2e-accent-probe', '');
+    document.body.appendChild(el);
+  }, ACCENT_PROBE_NAME);
+
+  try {
+    const probe = page.getByRole('button', { name: ACCENT_PROBE_NAME });
+    await expect(
+      probe,
+      `W23 (${theme}): the planted \`.btn-accent\` probe is not visible. It is appended to <body> ` +
+        'directly, so a failure here is the plant itself, not a fixture or a route.'
+    ).toBeVisible({ timeout: 15_000 });
+
+    const m = await ratioAgainstGround(probe, `accent variant label on fill (W23, ${theme})`);
+
+    // The ground must be the BUTTON'S OWN amber fill, not something it inherited. `.btn-accent`
+    // paints its own background, so `compositeGround` terminates on the button itself — and if
+    // the rule ever stops emitting, the walk reaches the page instead and this catches it before
+    // the ratio does (white on the page ground would read as a pass in dark).
+    expect(
+      m.probe.opaqueAt,
+      `W23 (${theme}): the ground walk did not terminate on the button's OWN background ` +
+        `(opaqueAt ${m.probe.opaqueAt}) — \`.btn-accent\` is not painting a fill, so the ratio ` +
+        `below is measured against whatever ancestor happens to be opaque.\n${describeGround(
+          `accent probe (${theme})`,
+          m.resolution
+        )}`
+    ).toBe(0);
+
+    expectRatio(`accent variant label on fill (W23, ${theme})`, m, AA_TEXT);
+  } finally {
+    await page.evaluate(() => {
+      document.querySelectorAll('[data-e2e-accent-probe]').forEach((el) => el.remove());
+    });
+  }
 }
 
 /**

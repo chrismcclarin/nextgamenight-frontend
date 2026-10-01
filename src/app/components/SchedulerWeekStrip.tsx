@@ -186,14 +186,22 @@ function StripDayCell({
           global accent tint. If that ever happens, move the scope, do not hard-code a colour
           here (`rawColorValues.test.ts` forbids the literal anyway). */}
       <span className={today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}>
-        <span aria-hidden="true" className="text-xs font-medium text-content-muted block leading-tight">
+        {/* DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400 and over keeping 500.
+            This span is the byte-identical twin of EventHeatmapBackground.js's weekday letter — the
+            sibling this cell's header zone was copied from verbatim (see the comment above) — and it
+            takes the same settlement for the same reason: on a NON-today cell this letter and the
+            date number below it both resolve to text-content-muted, and this plan folds that number
+            up from 10px to the 12px floor, so weight is the only hierarchy left. Folding this to
+            400 to "match the scale" would leave the two spans identical in size, weight and ink.
+            500 has no rung on the phase's two-weight scale. */}
+        <span aria-hidden="true" className="text-xs font-bold text-content-muted block leading-tight">
           {format(date, 'EEEEE')}
         </span>
         <span
           aria-hidden="true"
           // Hooked for the T-88.1-39 pin, which asserts exactly ONE colour class per branch here.
           data-testid="strip-day-number"
-          className={`text-[10px] ${today ? 'text-content-accent' : 'text-content-muted'}`}
+          className={`text-xs ${today ? 'text-content-accent' : 'text-content-muted'}`}
         >
           {format(date, 'd')}
         </span>
@@ -203,9 +211,18 @@ function StripDayCell({
           and it is the same cue the grid cells below carry as their count badge. The ramp is
           `calendarWashColor`, the same one the day column uses, so strip and column read as one
           scale under one legend. */}
+      {/* DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400, because the fill/ink
+          pairing needs the weight. This aggregate is the mandatory NON-COLOUR cue over the inline
+          calendarWashColor fill (see the comment directly above): small ink on a coloured fill at
+          fixed geometry — 46.7px wide at 375px, with no room to grow — where 400 at 12px on a
+          tinted fill loses the legibility the weight is carrying, and the cue is a
+          colour-vision-deficiency requirement, not decoration. UI-SPEC 4.5's table has no family
+          for it, so a mechanical read would send it to 400. Settled at 700 alongside its two
+          siblings, the per-cell count (EventHeatmapBackground.js) and the scheduler badge
+          (EventScheduler.tsx). */}
       <span
         aria-hidden="true"
-        className="flex flex-1 items-center justify-center text-[10px] font-semibold text-content-secondary"
+        className="flex flex-1 items-center justify-center text-xs font-bold text-content-secondary"
         style={background ? { backgroundColor: background } : undefined}
       >
         {aggregate > 0 ? aggregate : ''}

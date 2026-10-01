@@ -202,6 +202,31 @@ export interface PaintGestureArgs<T> {
    * MUST pass a comparator or every frame will re-report the same cell.
    */
   isSameTarget?: (a: T, b: T) => boolean;
+  /**
+   * Reports whether a gesture is ENGAGED. `true` fires exactly once per engage, from `engage()`;
+   * `false` fires exactly once, from the single shared `teardown()`, and ONLY for a gesture that
+   * actually emitted `true`. Read through `argsRef` like every other callback here, so a caller
+   * may pass a changing closure without re-subscribing.
+   *
+   * DECISION Phase 88.6-39 (D-18): "active" is reported by the MACHINE and must NEVER be derived
+   * by a consumer from its own drag-rectangle state — chosen OVER letting `EventScheduler`'s
+   * `dragRect` stand in for it, which looks equivalent and is not. `dragRect` OUTLIVES a
+   * cancelled gesture (its only clear used to sit in `onCommit`, which `pointercancel` never
+   * reaches), so a consumer keyed on it would hold a height change frozen after the finger had
+   * already left the glass. Re-deriving this from `dragRect` is a decision to reintroduce that
+   * bug, not a simplification.
+   *
+   * WHY THE EMIT IS GUARDED ON HAVING ENGAGED rather than on `state.active`: `teardown()` is
+   * reached from four places, and two of them can run on a gesture that never engaged — the
+   * slop-cancel in `onPointerMove` (every scroll that starts over the grid) and the
+   * stale-gesture safety in `onPointerDown`. An unguarded emit would fire a `false` with no
+   * preceding `true` on every scroll. `state.active` alone does NOT express "engaged" either:
+   * the TAP arm inside `finish(true)` sets `active = true` INLINE, immediately before tearing
+   * down, without passing through `engage()` — so a bare `active` read turns every tap into an
+   * unpaired `false`. The flag set beside the `true` emit is the only reading that makes both
+   * true at once.
+   */
+  onActiveChange?: (active: boolean) => void;
   /** When true, pointerdown is ignored outright — no timer, no state, no callbacks. */
   disabled?: boolean;
   /** Edge auto-scroll wiring (RESEARCH C10). */
@@ -278,6 +303,12 @@ interface GestureState<T> {
   timer: ReturnType<typeof setTimeout> | null;
   /** True once the machine has ENGAGED (long-press fired, or a mouse pressed down). */
   active: boolean;
+  /**
+   * True once `onActiveChange(true)` has been emitted for THIS gesture. Set beside that emit in
+   * `engage()` and read in `teardown()` — see `onActiveChange`'s doc for why `active` alone is
+   * the wrong guard (the TAP arm sets `active` without ever engaging).
+   */
+  notifiedActive: boolean;
 }
 
 /**
@@ -313,8 +344,17 @@ export function usePaintGesture<T>(args: PaintGestureArgs<T>): PaintGestureResul
   const teardown = useCallback(() => {
     const st = stateRef.current;
     if (st?.timer) clearTimeout(st.timer);
+    // Plan 88.6-39 (D-18): THE SINGLE `onActiveChange(false)` EMIT. `teardown()` is the one
+    // shared exit — reached from `finish()` (both the commit route and the pointercancel
+    // route), the stale-gesture safety in `onPointerDown`, the slop-cancel in `onPointerMove`
+    // and the unmount cleanup — so one guarded emit here covers all four paths, and no call
+    // site grows an emit of its own. The read MUST happen before the null below: `teardown()`
+    // has no `if (!st) return` guard and clears `stateRef.current` unconditionally, so a
+    // post-null read is always `undefined` and the strip would stay frozen after every gesture.
+    const wasEngaged = st?.notifiedActive === true;
     stateRef.current = null;
     stopEdgeLoop();
+    if (wasEngaged) argsRef.current.onActiveChange?.(false);
   }, [stopEdgeLoop]);
 
   /**
@@ -380,6 +420,12 @@ export function usePaintGesture<T>(args: PaintGestureArgs<T>): PaintGestureResul
     if (!st) return;
     st.timer = null;
     st.active = true;
+    // Plan 88.6-39 (D-18): THE SINGLE `onActiveChange(true)` EMIT, paired with the flag
+    // `teardown()` reads. It sits HERE and not in the TAP arm of `finish()` on purpose — a tap
+    // never engages, so emitting there would turn one tap into a true/false pair inside a single
+    // frame for every consumer watching this signal.
+    st.notifiedActive = true;
+    argsRef.current.onActiveChange?.(true);
     // Haptic tick on the touch path only — a mouse press has no hold to acknowledge.
     if (st.pointerType === 'touch' && typeof navigator !== 'undefined') navigator.vibrate?.(10);
     applyTarget(st.downTarget);
@@ -443,6 +489,7 @@ export function usePaintGesture<T>(args: PaintGestureArgs<T>): PaintGestureResul
         lastY: event.clientY,
         timer: null,
         active: false,
+        notifiedActive: false,
       };
       if (pointerType === 'touch') {
         // Nothing commits yet: a tap commits on finger-UP, and movement past slop hands the
