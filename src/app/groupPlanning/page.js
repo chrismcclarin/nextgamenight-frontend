@@ -273,7 +273,7 @@ export default function GroupPlanningPage() {
                 does not read "greater than" between crumbs. Still open elsewhere, for the same
                 88.9 pointer: 3 of the 5 breadcrumbs lack the ring (userProfile's Home link and
                 both gameDetail breadcrumbs' Home links) and 6 separator spans are not hidden. */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {group && (

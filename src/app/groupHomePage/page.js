@@ -546,7 +546,15 @@ function GroupHomePage(){
                     carried by WEIGHT alone — nothing a screen reader exposes — and R2 #171 is the
                     rule that a weight may not be the sole carrier of information. The weight stays
                     because it is also the sighted cue; the attribute is an addition, not a swap. */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+            {/* DECISION Phase 88.6 close-out (UAT3-D1, owner device check 2026-09-30): `inline-block
+                max-w-full` OVER `block` — the pill keeps hugging its text, but is now capped at the
+                container, which is the only way `overflow-wrap` can ever break a 40-character name
+                (an uncapped inline-block grows to fit the word, so the crumb's `wrap-break-word`
+                below was inert — the owner's name ran off a 375px screen). `wrap-break-word` sits on
+                the nav because overflow-wrap inherits. Pinned on all five navs by
+                `breadcrumbNavOverflow.test.ts`; "tidying" to `block` or dropping `max-w-full` is a
+                decision, not a cleanup. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
                 <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || 'Group'}</span>

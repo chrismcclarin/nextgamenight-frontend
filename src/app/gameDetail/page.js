@@ -1595,7 +1595,7 @@ export default function GameDetailPage() {
                intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
                actually renders, so it is the one the padding-budget e2e loads. */
             <div className="p-3 md:p-6 max-w-6xl mx-auto">
-                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                     {effectiveGroupId && singleEvent?.Group?.name && (
                         /* Phase 71.1-02 Blocker 2 fix: only render the group
@@ -2382,7 +2382,7 @@ export default function GameDetailPage() {
            two branches), not a cleanup. */
         <div className="p-3 md:p-6 max-w-6xl mx-auto">
             {/* Breadcrumbs */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                 {group_id && (
                     <>

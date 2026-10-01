@@ -541,6 +541,15 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
   // (createGroup.js). Without the context copy the generic header reads as an
   // accidental click-through — the owner himself misread it that way.
 
+
+  it("the post-creation header wraps a long unbroken group name instead of running under the close button (UAT3-D1/D2, 2026-09-30)", async () => {
+    // Owner device check 2026-09-30: a 40-character name with no spaces overflowed the dialog and
+    // painted under the ×. jsdom has no layout, so the pin is the wrap class on the DialogTitle
+    // (overflow-wrap: break-word); the geometry half is the owner's post-merge device check.
+    renderPanel({ openedFrom: 'create', group: { ...GROUP, name: 'M'.repeat(40) } });
+    const heading = await screen.findByRole('heading', { name: `${'M'.repeat(40)} is live — who's in?` });
+    expect(heading.className.split(/\s+/)).toContain('wrap-break-word');
+  });
   it('names the freshly created group in the header and explains why it opened', async () => {
     renderPanel({ openedFrom: 'create' });
     expect(

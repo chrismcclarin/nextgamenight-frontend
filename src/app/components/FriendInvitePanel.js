@@ -886,7 +886,11 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                 auto-wiring `aria-labelledby`. */}
             <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-5">
                 <div className="min-w-0">
-                    <DialogTitle className="text-xl font-bold text-content-primary">
+                    {/* UAT3-D2 (owner device check 2026-09-30): the post-creation title interpolates the
+                        group name; a 40-character unbroken name overflowed the dialog and painted under
+                        the × beside it. `wrap-break-word` lets the word break inside the `min-w-0` column.
+                        Pinned in FriendInvitePanel.test.tsx. */}
+                    <DialogTitle className="text-xl font-bold text-content-primary wrap-break-word">
                         {headerTitle}
                     </DialogTitle>
                     {headerLeadIn && (

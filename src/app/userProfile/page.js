@@ -1539,7 +1539,7 @@ function Profile(){
                     tree carries an accessible NAME, so it does not announce as one more unnamed
                     navigation landmark beside the page's others. This plan owns one of the five;
                     plans 18 and 21 own the other four. */}
-                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                     <span className="text-content-muted mx-2">{'>'}</span>
                     {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
