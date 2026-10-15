@@ -19,13 +19,13 @@
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`, and the
 // config's `jsx-in-js` pre-transform handles the `.js` component under test.
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // `vi.hoisted` so the `vi.mock` factory below (hoisted to the top of the file)
 // can read it — a plain module-level const is not initialised in time. Same
-// idiom as FriendInvitePanel.test.tsx:34.
+// idiom as FriendInvitePanel.test.tsx's `const h = vi.hoisted(() => ({`.
 const CREATED_GROUP = vi.hoisted(() => ({
   id: '99999999-9999-4999-8999-999999999999',
   name: 'Tuesday Night Crew',
@@ -73,7 +73,8 @@ type Mock = ReturnType<typeof vi.fn>;
 // to, READ FROM THE MODULE rather than transcribed: a register edit must move this
 // test with it instead of leaving a stale literal that silently keeps passing. A plain
 // `Error` carries no `ApiError.code`, so `deriveCode` returns `unknown`
-// (`useFetchErrorState.ts:115-118`) and this is `MESSAGE_BY_CODE.unknown`.
+// (`useFetchErrorState.ts`, `function deriveCode(error: unknown): FetchErrorCode {`) and this
+// is `MESSAGE_BY_CODE.unknown`.
 const UNKNOWN_FAILURE_COPY = getFetchErrorMessage(new Error('anything at all'));
 
 afterEach(cleanup);
@@ -247,7 +248,7 @@ describe('createGroup create-path handoff (88-15 wiring survives the 88-16 shell
 //     NOT pass through `getFetchErrorMessage` — routing it would replace a specific
 //     instruction with the generic `unknown` line.
 //  3. Activating the migrated `<Button>` still SUBMITS the form. `Button` defaults
-//     `type` to `'button'` (`Button.tsx:267`), so a migration that forgot
+//     `type` to `'button'` (`Button.tsx:268`, `type = 'button'`), so a migration that forgot
 //     `type="submit"` would leave the control inert with no type error and no class
 //     census failure. An attribute-only check is NOT sufficient — it would pass a
 //     `<Button type="submit">` whose submit was broken some other way — so the arm
@@ -370,7 +371,12 @@ describe('createGroup in-flight guard (UAT row 447)', () => {
     };
   }
 
-  it('cannot double-submit: the button disables, swaps its label, and a forced re-submit is inert', async () => {
+  // Phase 88.6.1-15 (D-35, rule of POSITION): the submit is the control the person just
+  // pressed, so its in-flight gate is `aria-disabled`, never the native attribute (a natively
+  // disabled button leaves the focus order and strands a keyboard or switch user mid-create).
+  // The RED half is the ATTRIBUTES (C-11: jsdom never blurs a disabled element, so a focus
+  // assertion here cannot fail on the old code; the phone e2e arm proves focus in a browser).
+  it('G1 (D-35): the pressed submit is aria-disabled, never natively disabled, while in flight; a forced re-submit is inert', async () => {
     const user = userEvent.setup();
     const deferred = deferCreate();
     renderCreateGroup();
@@ -379,20 +385,84 @@ describe('createGroup in-flight guard (UAT row 447)', () => {
     const submit = screen.getByRole('button', { name: /create group/i });
     await user.click(submit);
 
-    // In-flight presentation: disabled + label swap, announced via a live region.
+    // In-flight presentation: gated + label swap, announced via a live region.
     const creating = screen.getByRole('button', { name: /creating/i });
-    expect(creating).toBeDisabled();
+    expect(creating).not.toHaveAttribute('disabled');
+    expect(creating).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('status')).toHaveTextContent('Creating group...');
+    // CONFIRM-ONLY in jsdom (C-11): focus stays on the pressed control.
+    expect(document.activeElement).toBe(creating);
 
-    // Belt-and-braces: even a submit EVENT that bypasses the disabled button
-    // (Enter re-dispatch, programmatic submit) must not fire a second request.
+    // Belt-and-braces: a submit EVENT that bypasses the button (Enter re-dispatch,
+    // programmatic submit) must not fire a second request.
     fireEvent.submit(creating.closest('form')!);
     expect(groupsAPI.createGroup as unknown as Mock).toHaveBeenCalledTimes(1);
 
+    // This harness's `modaltoggle` is a spy, so the dialog stays mounted after success.
     deferred.resolve();
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /create group/i })).toBeEnabled()
+    await waitFor(() => {
+      const idle = screen.getByRole('button', { name: /create group/i });
+      expect(idle).not.toHaveAttribute('aria-disabled');
+      expect(idle).not.toHaveAttribute('disabled');
+    });
+  });
+
+  // Edge R4 idempotency (AC-12 shape): two submits dispatched before React commits. The old
+  // guard read the `submitting` STATE, which is a stale `false` until the commit, so both
+  // passed it. A first-line REF latch refuses the second synchronously.
+  it('G2 (Edge R4): two submits dispatched before React commits send exactly ONE create', async () => {
+    const user = userEvent.setup();
+    deferCreate();
+    renderCreateGroup();
+
+    await user.type(screen.getByPlaceholderText('Group Name'), 'Tuesday Night Crew');
+    const form = screen.getByRole('button', { name: /create group/i }).closest('form')!;
+    act(() => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(groupsAPI.createGroup as unknown as Mock).toHaveBeenCalledTimes(1);
+  });
+
+  // AT-4 R4: nothing moves focus in the commit that inserts the error alert. An Enter submit
+  // from the field must leave the person IN the field the alert describes (the alert and a
+  // focus announcement would otherwise compete).
+  it('G3 (AT-4 R4): a failed create moves no focus in the alert commit — an Enter submit leaves focus in the field', async () => {
+    (groupsAPI.createGroup as unknown as Mock).mockRejectedValueOnce(
+      new Error('Group name already taken')
     );
+    const user = userEvent.setup();
+    renderCreateGroup();
+
+    const input = screen.getByPlaceholderText('Group Name');
+    await user.type(input, 'Dupe{Enter}');
+
+    // Positive settle signal first, then the focus assertion.
+    const region = await screen.findByRole('alert');
+    expect(region).toHaveTextContent(UNKNOWN_FAILURE_COPY);
+    expect(document.activeElement).toBe(input);
+  });
+
+  // Edge R8 idempotency backstop / AT-4 R3: the same failure twice is announced twice. An
+  // assertive alert speaks on INSERTION, so the second identical failure must insert a NEW
+  // node (same text, still one alert). Whether VoiceOver speaks the re-inserted alert on a
+  // device is not measured here.
+  it('G4 (Edge R8 / AT-4 R3): an identical second validation failure inserts a NEW alert node with the same text', async () => {
+    const user = userEvent.setup();
+    renderCreateGroup();
+
+    await user.type(screen.getByPlaceholderText('Group Name'), '   ');
+    const submit = screen.getByRole('button', { name: /create group/i });
+    await user.click(submit);
+    const first = await screen.findByRole('alert');
+    expect(first).toHaveTextContent('Please enter a group name');
+
+    await user.click(submit);
+    await waitFor(() => expect(screen.getByRole('alert')).not.toBe(first));
+    const second = screen.getByRole('alert');
+    expect(second).toHaveTextContent('Please enter a group name');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(groupsAPI.createGroup as unknown as Mock).not.toHaveBeenCalled();
   });
 
   it('Esc, the header ×, and the red Close are ALL inert mid-create; Esc closes again after an error settle', async () => {
