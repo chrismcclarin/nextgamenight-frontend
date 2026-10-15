@@ -11,9 +11,10 @@
 // Line comments only in this file: a block comment holding a backtick or a closing token makes
 // vitest collect ZERO tests here while reporting green (FE-TESTING-CONVENTIONS CF-9).
 import * as React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 
 import GameSuggestionCardJs from './GameSuggestionCard';
 
@@ -124,5 +125,115 @@ describe('GameSuggestionCard — keyboard operable, one name (Req 2 / AC-8, D-26
       (div) => div.closest('[aria-hidden="true"]') === null,
     );
     expect(exposedDivs).toHaveLength(0);
+  });
+});
+
+// D-38 (SPEC amendment row 32): the thumbnail is hidden from assistive tech by an aria-hidden
+// wrapper ONLY. SafeImage keeps alt={game.name} and its default dice fallback, so a missing or
+// failed thumbnail still LOOKS exactly as before (the dice on the name-derived colour); what
+// changes is that it is no longer heard. The metadata stays audible as the button's description.
+describe('GameSuggestionCard — the thumbnail adds nothing to the name (D-38), metadata described', () => {
+  const NO_THUMB: SuggestionGame = { ...CATAN, thumbnail_url: null };
+  const DICE = '\u{1F3B2}';
+
+  it('G. a missing thumbnail is silent: no img role, the dice fallback still drawn under a hidden wrapper', () => {
+    renderCard(NO_THUMB);
+    const button = screen.getByRole('button', { name: 'Catan' });
+    expect(screen.queryAllByRole('img')).toHaveLength(0);
+    const fallback = button.querySelector('[role="img"]');
+    expect(fallback, 'SafeImage fallback not rendered').not.toBeNull();
+    const wrapper = (fallback as HTMLElement).closest('[aria-hidden="true"]');
+    expect(wrapper, 'fallback has no aria-hidden ancestor').not.toBeNull();
+    expect((wrapper as HTMLElement).parentElement).toBe(button);
+    // alt is kept (D-38), so the fallback's colour and label are what they were; the dice is the
+    // default icon, so nothing visible changed.
+    expect(fallback).toHaveAttribute('aria-label', 'Catan');
+    expect(fallback?.textContent).toContain(DICE);
+  });
+
+  it('H. a failing thumbnail is silent before and after the error swaps in the fallback', () => {
+    renderCard();
+    const button = screen.getByRole('button', { name: 'Catan' });
+    const img = button.querySelector('img');
+    expect(img, 'thumbnail img not rendered').not.toBeNull();
+    expect(img).toHaveAttribute('alt', 'Catan');
+    expect(screen.queryAllByRole('img')).toHaveLength(0);
+    fireEvent.error(img as HTMLImageElement);
+    expect(button.querySelector('img')).toBeNull();
+    expect(button.querySelector('[role="img"]'), 'fallback not swapped in').not.toBeNull();
+    expect(screen.queryAllByRole('img')).toHaveLength(0);
+  });
+
+  it('I. the name is never doubled and "Image placeholder" is never announced, thumbnail missing or failed', () => {
+    const states: Array<[string, () => void]> = [
+      ['missing', () => renderCard(NO_THUMB)],
+      ['loaded', () => renderCard()],
+      [
+        'failed',
+        () => {
+          renderCard();
+          fireEvent.error(document.querySelector('img') as HTMLImageElement);
+        },
+      ],
+    ];
+    for (const [label, mount] of states) {
+      mount();
+      const button = screen.getByRole('button');
+      expect(button, `${label}: name`).not.toHaveAccessibleName(/Image placeholder/);
+      expect(button, `${label}: description`).not.toHaveAccessibleDescription(/Image placeholder/);
+      expect(button, `${label}: name`).toHaveAccessibleName('Catan');
+      cleanup();
+    }
+  });
+
+  it('J. the metadata stays audible as the description, and describedby names only rendered ids', () => {
+    renderCard();
+    const button = screen.getByRole('button', { name: 'Catan' });
+    for (const part of ['3-4 players', '60 min', 'Weight 2.3', 'Owned by Alice, Bob', '4.2']) {
+      expect(button).toHaveAccessibleDescription(expect.stringContaining(part));
+    }
+    cleanup();
+
+    renderCard({ ...CATAN, owners: [], avg_group_rating: null });
+    const bare = screen.getByRole('button', { name: 'Catan' });
+    const ids = (bare.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean);
+    expect(ids.length, 'aria-describedby missing or empty').toBeGreaterThan(0);
+    for (const id of ids) {
+      expect(document.getElementById(id), `aria-describedby names a missing id: ${id}`).not.toBeNull();
+    }
+    expect(bare).toHaveAccessibleDescription(expect.stringContaining('3-4 players'));
+    expect(bare).not.toHaveAccessibleDescription(/Owned by/);
+    expect(bare).not.toHaveAccessibleDescription(/4\.2/);
+  });
+
+  // Held-out encoding backstop (SPEC Edge R2): green on arrival by design; its teeth are shown by
+  // a temporary raw-HTML render of the title, recorded in the plan SUMMARY.
+  it('K. a name with quotes, an apostrophe, an emoji, markup and an ampersand is the exact name, as text', () => {
+    const name = 'Bob\'s "Big" Game \u{1F3B2} <b>x</b> & Co.';
+    const { container } = renderCard({ ...NO_THUMB, name });
+    const button = screen.getByRole('button', { name });
+    const labelId = button.getAttribute('aria-labelledby') as string;
+    expect(document.getElementById(labelId)?.textContent).toBe(name);
+    expect(container.querySelector('b')).toBeNull();
+  });
+
+  // Green on arrival by design (guards the useId ids); teeth recorded in the plan SUMMARY.
+  it('L. two cards side by side each carry their OWN name (the ids do not collide)', () => {
+    const onClick = vi.fn();
+    render(
+      <>
+        <GameSuggestionCard game={CATAN} onClick={onClick} />
+        <GameSuggestionCard game={{ ...CATAN, id: 'azul-id', name: 'Azul' }} onClick={onClick} />
+      </>,
+    );
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Catan' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Azul' })).toBeInTheDocument();
+  });
+
+  // Green on arrival by design; teeth recorded in the plan SUMMARY with the axe rule id that fired.
+  it('M. the card with a missing thumbnail passes an axe audit', async () => {
+    const { container } = renderCard(NO_THUMB);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });
