@@ -718,4 +718,43 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // ...so the zero below is a skip, not a blind spot.
     expect(scan(variant)).toHaveLength(0);
   });
+
+  it('9. every false-positive anchor names exactly ONE line, and its ground anchor is a muted ground the walk pairs with that ink', () => {
+    // Added by plan 88.6.1-02. Anchors replace line numbers, so AMBIGUITY is the new failure
+    // mode, and this test makes it loud. An ambiguous ink anchor would also HIDE a real
+    // offender: REAL excludes every row whose anchor is a key, so an anchor matching two lines
+    // would exclude both (T-88.6.1-41). A missing anchor (0 lines) is a stale entry by another
+    // name.
+    //
+    // D-29 floor note: this it takes the suite 8 -> 9. Plan 88.6.1-49 deletes test 5 (the
+    // SuggestionCard blind spot, one of D-29's four reddening suites) and returns it to 8, the
+    // drift-gate floor at periodictabletop/.github/workflows/ci.yml:363. Never merge this it
+    // into test 6: that would leave plan 49 at 7, below the floor (P-8).
+    for (const [key, entry] of Object.entries(FALSE_POSITIVES)) {
+      const inkLines = anchorLines(key);
+      expect(
+        inkLines.length,
+        `${key} matched ${inkLines.length} lines; an anchor must name exactly one line — make it unique, never loosen the match`,
+      ).toBe(1);
+      const groundLines = anchorLines(entry.owner.groundAnchor);
+      expect(
+        groundLines.length,
+        `${entry.owner.groundAnchor} matched ${groundLines.length} lines; an anchor must name exactly one line — make it unique, never loosen the match`,
+      ).toBe(1);
+      // Both halves of one exclusion live in the same file.
+      expect(entry.owner.groundAnchor.slice(0, entry.owner.groundAnchor.indexOf(ANCHOR_SEP))).toBe(
+        key.slice(0, key.indexOf(ANCHOR_SEP)),
+      );
+      // The walk reports this ink, on the anchor's own line...
+      const row = FORBIDDEN_ON_MUTED.find((r) => anchorOf(r) === key);
+      expect(row, `${key} is not reported by the walk`).toBeDefined();
+      expect(row!.line).toBe(inkLines[0]);
+      // ...and pairs it with a muted ground on the ground anchor's line. By MEMBERSHIP, never by
+      // index: the same rule test 3 states for candidate fan-out.
+      expect(
+        row!.grounds.some((g) => g.token === MUTED && g.frameLine === groundLines[0]),
+        `${key} has no ${MUTED} candidate on the ground anchor's line ${groundLines[0]}`,
+      ).toBe(true);
+    }
+  });
 });
