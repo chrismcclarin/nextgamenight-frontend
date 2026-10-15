@@ -30,6 +30,9 @@
 // `TODAY_TINT_SCOPE` below. The A/B's deletion token now greps to 0 across `src/` — this sentence
 // is worded to KEEP it at 0, the same discipline plan 88.1-12/13 used on `SchedulerWeekStrip`.
 // Re-introducing a runtime arm switch would re-open a closed decision.
+//
+// PLAN 88.6.1-09 MOVED the viewport read behind both forks (88.1-11's copy, 88.1-12's geometry)
+// into the shared `usePhoneViewport` hook; `isPhoneViewport` keeps its name and its false start.
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
@@ -491,8 +494,9 @@ export default function EventScheduler({
      nothing changes: the seven-column fit-to-width grid and its toggle are exactly plan 88.1-11's.
 
      THE FORK IS matchMedia STATE, NOT `md:hidden` CLASSES — the same choice, for the same reasons,
-     that plan 88.1-11 recorded on `isPhoneViewport` below, and it weighs far more here than it did
-     for a sentence of copy. A CSS fork puts BOTH renderings in the DOM: two grids (~196 cells plus
+     that plan 88.1-11 recorded as DECISION Phase 88.1-11, which lives with the shared hook in
+     `src/lib/hooks/usePhoneViewport.ts` (moved there by 88.6.1-09), and it weighs far more here
+     than it did for a sentence of copy. A CSS fork puts BOTH renderings in the DOM: two grids (~196 cells plus
      28), two `role="grid"`s, a `tablist` that is visually absent on desktop but still announced,
      and a week/day toggle that Req 7 says must not exist at phone yet would be present to every
      consumer reading the DOM rather than the cascade. It is also unassertable — jsdom applies no
@@ -1383,8 +1387,9 @@ export default function EventScheduler({
               string says "Click and drag" on a surface whose primary device is a phone at
               somebody's kitchen table; Req 5 ships long-press-to-paint there, and an instruction
               naming a mouse gesture on a touch device is a phone-forward failure, not a wording
-              nit. Both strings are kept — the desktop one is verbatim
-              (`EventScheduler.js:582`) and is what the plan-01 pin locates. */}
+              nit. Both strings are kept — the desktop one is verbatim from the pre-rebuild
+              component deleted in FE commit `3ff46e7` (88.1-09) and is what the plan-01 pin
+              locates. */}
           <p className="text-base text-content-secondary">
             {isPhoneViewport
               ? 'Tap and hold on a day to pick a time.'

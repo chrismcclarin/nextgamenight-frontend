@@ -919,7 +919,8 @@ describe('EventScheduler — the live selection rectangle (DECISION Phase 88-27,
 describe('EventScheduler — the prompt names the gesture the DEVICE can perform (Req 5, UI-SPEC)', () => {
   // Asserted on the RENDERED STRING, never on a viewport measurement (P7: jsdom has no layout).
   // The fork is a matchMedia state fork precisely so this is answerable at all — see the
-  // DECISION marker at `isPhoneViewport`.
+  // DECISION markers in `src/lib/hooks/usePhoneViewport.ts` (DECISION Phase 88.6.1-09 /
+  // DECISION Phase 88.1-11).
   const PHONE_COPY = 'Tap and hold on a day to pick a time.';
   const DESKTOP_COPY = 'Click and drag on the calendar to select a time slot for your event.';
 
