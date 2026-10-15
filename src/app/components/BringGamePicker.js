@@ -9,15 +9,25 @@ import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
+import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
 
 /* Phase 88.6-44 (T-88.6-142, WCAG 4.1.3): the sr-only announcement copy for the load path.
    AUTHORED, NOT RATIFIED — UI-SPEC §6.1 carries no entry for a loading announcement; both
    strings are recorded in `88.6-44-SUMMARY.md` as authored copy. Neither is VISIBLE (the regions
    below are `sr-only`), which is why authoring them here does not breach P1. The count in the
-   loaded string is the array length, never backend text. */
+   loaded string is the array length, never backend text.
+   AMENDED Phase 88.6.1-14 (D-32 R6, copy row E9): the zero-count announcement is now the ratified
+   E9 sentence, ONE constant (`EMPTY_COLLECTION_LINE`) shared with the visible empty line.
+   AMENDED Phase 88.6.1-14 (owner ruling 2026-10-05, wording batch 5 row Q): the owner ratified the
+   loading line (`LOADING_ANNOUNCEMENT`) and the non-zero count line (`loadedAnnouncement`'s
+   non-zero arm) AS SHIPPED on 2026-10-05, so the "not ratified" statement above is history, not
+   current state; both are byte-unchanged and pinned by the picker test (J2); changing either is an
+   owner wording decision (D-31), not a cleanup. */
 const LOADING_ANNOUNCEMENT = 'Loading your games...';
+const EMPTY_COLLECTION_LINE = "You haven't added any games to your collection yet.";
+const IDENTITY_FAILURE_LINE = "We couldn't load your games. Close this and try again.";
 const loadedAnnouncement = (count) =>
-  count === 0 ? 'No games in your collection.' : `${count} ${count === 1 ? 'game' : 'games'} loaded.`;
+  count === 0 ? EMPTY_COLLECTION_LINE : `${count} ${count === 1 ? 'game' : 'games'} loaded.`;
 
 /**
  * BringGamePicker - Modal overlay for selecting games to bring to an event
@@ -51,7 +61,29 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
      `loadError` is the VISIBLE half of the load failure — the copy the list slot paints instead
      of the empty-collection line — and it is a string rather than a flag so the visible branch
      and the assertive region render the SAME ratified sentence. It carries NO live role of its
-     own: one failure, one announcement (UI-SPEC §6.2). */
+     own: one failure, one announcement (UI-SPEC §6.2).
+     AMENDED Phase 88.6.1-14 (D-42): "a region that mounts already populated announces nothing"
+     holds for the POLITE region only. An alert-role region inserted together with its text IS
+     announced (ARIA 1.2's alert role; the TetraLogical 2024 matrix incl. VoiceOver iOS — AT-4).
+     The assertive region still starts empty for the clear-then-set reason `handleClose` records.
+     An identity failure (E10, below) reaches it by TWO real paths (scoped check H-07):
+     (1) REOPEN AFTER A FAILURE. The picker is always mounted (both hosts render it
+     unconditionally and flip `isOpen`), so its identity observer lives as long as the picker does
+     and nothing refetches on open; the query is still in its error state at the open commit, so
+     the open subtree MOUNTS the assertive region already carrying E10 (arm I6). That this mount is
+     announced is [ASSUMED]: AT-4 found an alert-role region inserted with its text announced on
+     every engine it read (ARIA 1.2's creation sentence, WebKit's live-region code, the
+     TetraLogical 2024 matrix, "All announced" for VoiceOver iOS), but whether shipping iOS Safari
+     runs the managed path is UNVERIFIED there, MDN dissents without data, and nobody measured an
+     alert mounting inside a dialog whose opening moves focus in the same commit. The check is
+     routed to plan 88.6.1-57's Not-staged-by-hand list (Event page — Games to Bring reopened),
+     which never records it as heard; it stays [ASSUMED] until a by-hand staging is found. Arm I6
+     pins the mounted TEXT, not the announcement. A clear-then-set on open (mount empty, then set
+     E10) would avoid the assumption, but it is a deliberate design change, not made here.
+     (2) OPEN WHILE IDENTITY IS RESOLVING, or a retry of the errored query from another consumer.
+     The region is already mounted and empty while the query is pending (a fetch of a data-less
+     query resets it to pending with no error — TanStack query-core's `fetchState`), and E10 is
+     SET into it when the fetch fails: a change, announced like any other (arms I2, I3). */
   const [politeAnnouncement, setPoliteAnnouncement] = useState('');
   const [assertiveAnnouncement, setAssertiveAnnouncement] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -61,6 +93,21 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
      would re-populate the assertive one PAST that clear, and the next open would mount it
      already populated — silent. The catch compares the generation it captured at start. */
   const dismissGenerationRef = useRef(0);
+  /* DECISION Phase 88.6.1-14 (D-09b, AC-30; copy row E10, D-33 row 23): the identity failure is
+     read from the SHARED identity query (the page's cached entry — no extra request while it
+     holds data), chosen OVER a new prop from both hosts (the fix would move into the game page,
+     which later plans of this phase own), OVER editing the fetch effect below (Phase 89's fence,
+     `.planning/deferred/phase-89.md`, the BringGamePicker performance entry), and OVER copying the
+     condition into the announcement state from an effect (a second copy of a fact the query
+     already holds, which can go stale across a retry). E10 is a FIXED line — no error object
+     exists for "identity unknown", and the query's error text is never shown. Only the query's
+     ERROR state counts: a query still resolving keeps the spinner, and an error with a cached
+     row (`self` present) is not a failure here. A new observer of an errored identity query makes
+     TanStack retry it once on mount (retryOnMount, query-core 5.101.1) — the same behaviour every
+     other `useSelfIdentity()` consumer already has; for this picker that mount is its host
+     page's mount (both hosts render it unconditionally), never an open. Changing this is a
+     decision, not a cleanup. */
+  const { query: selfIdentityQuery } = useSelfIdentity();
 
   useEffect(() => {
     // Phase 87.3-04: gate the fetch on identity resolution — `self` is undefined
@@ -164,6 +211,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
 
   if (!isOpen) return null;
 
+  // 88.6.1-14 (AC-30): see the DECISION at the identity read. `failureLine` is whichever failure
+  // the list area shows first — E10 for an identity failure, the load error otherwise.
+  const identityFailed = !self?.user_id && selfIdentityQuery.isError;
+  const failureLine = identityFailed ? IDENTITY_FAILURE_LINE : loadError;
+
   /* DECISION Phase 88.6-44 (T-88.6-142): a LOCAL `handleClose` that EVERY dismissal routes
      through — `Modal`'s `onClose` (where Radix funnels Esc, outside-click and the header close
      control into one call, the `createGroup.js` `DECISION Phase 88-33` precedent), the
@@ -200,7 +252,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
     // is a FULL REPLACE, and until the load lands `selectedGameIds` is the initial empty Set
     // (or a stale one from a previous open) — saving it wipes the person's brings. The refusal
     // lives HERE so it holds whatever the control's disabled idiom becomes.
-    if (loading || loadError) return;
+    if (loading || loadError || identityFailed) return;
     const generation = dismissGenerationRef.current;
     // Cleared at the START so a second identical failure is a real change (the
     // `NextGameNightCard` / `RsvpSection` clear-then-set idiom, UI-SPEC §6.3).
@@ -269,7 +321,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
             this Body has no `gap`/`space-y`, so two empty divs add nothing. First children on
             purpose, ahead of the search row. */}
         <StatusRegion className="sr-only" message={politeAnnouncement} />
-        <StatusRegion className="sr-only" politeness="assertive" message={assertiveAnnouncement} />
+        <StatusRegion
+          className="sr-only"
+          politeness="assertive"
+          message={identityFailed ? IDENTITY_FAILURE_LINE : assertiveAnnouncement}
+        />
         {/* Search */}
         <div className="shrink-0 p-4 pb-2">
           {/* DECISION Phase 88.6-44 (T-88.6-124, house rule `Input.tsx:11-19`): `id` + `name` +
@@ -295,11 +351,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
 
         {/* Game List */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
-            </div>
-          ) : loadError ? (
+          {failureLine ? (
             /* Phase 88.6-44 (T-88.6-142): the load-FAILURE branch, checked BEFORE the empty
                branch (UI-SPEC §6.2: an empty state must never render on a fetch failure). Until
                this branch existed a failed load fell through to "You haven't added any games…",
@@ -307,13 +359,23 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                `role` here — the assertive region above is this failure's single announcement.
                Not <FetchErrorBanner>: it composes its own live regions (`Banner` + a polite
                `StatusRegion`) and would double-announce one failure. Error ink, not the empty
-               state's muted ink, so the two branches are visibly distinct as well. */
+               state's muted ink, so the two branches are visibly distinct as well.
+               AMENDED Phase 88.6.1-14 (AC-30): this box is now checked FIRST, ahead of the spinner,
+               and shows whichever failure applies — E10 for an identity failure, the load error
+               otherwise; still no role of its own. Safe for the load error because the load path
+               never holds a failure and the in-flight flag together: a new run clears the error
+               before setting the flag in one synchronous block, a failed run sets the error and
+               clears the flag in one continuation, and a cancelled run sets neither. */
             <div className="text-center py-8">
-              <p className="text-content-status-error text-sm">{loadError}</p>
+              <p className="text-content-status-error text-sm">{failureLine}</p>
+            </div>
+          ) : loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
             </div>
           ) : ownedGames.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-content-muted text-sm">You haven&apos;t added any games to your collection yet</p>
+              <p className="text-content-muted text-sm">{EMPTY_COLLECTION_LINE}</p>
             </div>
           ) : filteredGames.length === 0 ? (
             <div className="text-center py-4">
@@ -472,7 +534,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
         <Button
           variant="primary"
           onClick={handleSave}
-          disabled={saving || loading || !!loadError}
+          disabled={saving || loading || !!loadError || identityFailed}
         >
           {saving ? 'Saving...' : 'Save'}
         </Button>
