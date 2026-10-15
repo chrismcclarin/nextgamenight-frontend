@@ -81,3 +81,41 @@ test.describe('Home — create group while the request is in flight (D-35)', () 
     expect(postCount).toBe(1);
   });
 });
+
+// (H3) The Home route's auth-loading line. `layout.js` mounts `UserProvider` with no server
+// user, so the client asks `/api/auth/me` and `useUser` reports `isLoading` until it answers.
+// Holding that request keeps Home on its own loading line, which must read the ratified words
+// (copy row H3, byte-equal to the `loading.tsx` RouteFallback label) and must be Home's own
+// plain line, not the RouteFallback status region.
+const HOME_LOADING_LABEL = 'Getting your groups...';
+
+test.describe('Home — the loading line names what is loading (copy row H3)', () => {
+  test('the loading line names what is loading while the session check is held', async ({ page }) => {
+    const held: Route[] = [];
+    let markSeen: () => void = () => {};
+    const sessionCheckSeen = new Promise<void>((resolve) => {
+      markSeen = resolve;
+    });
+    await page.route('**/api/auth/me', async (route) => {
+      held.push(route);
+      markSeen();
+    });
+
+    await page.goto('/');
+    // The client has hydrated and is checking the session.
+    await sessionCheckSeen;
+
+    const line = page.getByText(HOME_LOADING_LABEL, { exact: true });
+    await expect(line).toBeVisible();
+    const box = await line.boundingBox();
+    expect(box, 'the Home loading line has no layout box').not.toBeNull();
+    const viewport = page.viewportSize();
+    expect(viewport, 'no viewport size').not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+    // Home's own line, not the route boundary's RouteFallback (a named role="status").
+    await expect(page.getByRole('status', { name: HOME_LOADING_LABEL })).toHaveCount(0);
+
+    for (const route of held) await route.abort();
+  });
+});
