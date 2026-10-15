@@ -1139,6 +1139,32 @@ describe('KebabMenu outside pointer — the pointer half, extracted to useDismis
     fireEvent.mouseDown(screen.getByRole('button', { name: 'outside' }));
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
+
+  it('KM-24. an outside mousedown while ARMED emits the revert copy (the third close path)', () => {
+    // The close-resets marker in KebabMenu.js names outside-mousedown / Escape / focusout while
+    // armed as the paths that DO emit the revert. KM-17 pins Escape; this pins the pointer path.
+    // It reds if the dismissal callback ever also resets the armed index, because the close-resets
+    // effect would then see no armed item and emit nothing.
+    render(
+      <>
+        <KebabMenu
+          ariaLabel={KEBAB_LABEL}
+          items={[
+            { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+          ]}
+        />
+        <button type="button">outside</button>
+      </>,
+    );
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove');
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'outside' }));
+
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Confirmation cancelled.');
+  });
 });
 
 /* ============================================================================================

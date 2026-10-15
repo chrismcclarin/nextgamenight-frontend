@@ -8,21 +8,25 @@
 // only ever asks the host to dismiss. Its onDismiss calls the spy the test passes, then closes.
 import * as React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent } from '@testing-library/react';
 
 import { useDismissal } from './useDismissal';
 
+// The ancestor spy is the KM-6 discriminator: a React onKeyDown ABOVE the host's container. It sees
+// a key only when the hook did not claim it.
 function Harness({
   onDismiss,
   initialOpen = false,
+  onAncestorKeyDown,
 }: {
   onDismiss: () => void;
   initialOpen?: boolean;
+  onAncestorKeyDown?: (event: React.KeyboardEvent) => void;
 }) {
   const [open, setOpen] = React.useState(initialOpen);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
-  useDismissal({
+  const { containerProps } = useDismissal({
     open,
     onDismiss: () => {
       onDismiss();
@@ -32,8 +36,8 @@ function Harness({
     triggerRef,
   });
   return (
-    <>
-      <div ref={containerRef} data-testid="container">
+    <div onKeyDown={onAncestorKeyDown}>
+      <div ref={containerRef} data-testid="container" {...containerProps}>
         <button type="button" ref={triggerRef} onClick={() => setOpen((prev) => !prev)}>
           Trigger
         </button>
@@ -44,8 +48,17 @@ function Harness({
         ) : null}
       </div>
       <button type="button">Outside</button>
-    </>
+    </div>
   );
+}
+
+function openHarness() {
+  const trigger = screen.getByRole('button', { name: 'Trigger' });
+  fireEvent.click(trigger);
+  const inside = screen.getByRole('button', { name: 'Inside' });
+  inside.focus();
+  expect(inside, 'focus is established on the inside control first').toHaveFocus();
+  return { trigger, inside };
 }
 
 function mousedownCalls(spy: { mock: { calls: unknown[][] } }) {
@@ -139,5 +152,202 @@ describe('useDismissal outside pointer — registered only while the host is ope
     const removed = mousedownCalls(remove);
     expect(removed).toHaveLength(1);
     expect(removed[0][1]).toBe(added[1]);
+  });
+});
+
+// fireEvent returns the dispatchEvent result: false means the event was default-prevented.
+describe('useDismissal Escape — a React container handler that claims the key only when it acts (P-10)', () => {
+  it('E1. host OPEN: Escape dismisses once, is default-prevented, never reaches the ancestor, and focus returns to the trigger', () => {
+    const onDismiss = vi.fn();
+    const ancestor = vi.fn();
+    render(<Harness onDismiss={onDismiss} onAncestorKeyDown={ancestor} />);
+    const { trigger, inside } = openHarness();
+
+    const notPrevented = fireEvent.keyDown(inside, { key: 'Escape' });
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(notPrevented, 'the claimed Escape is default-prevented').toBe(false);
+    expect(ancestor).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('E2. ANTI-VACUITY, host CLOSED: Escape is not claimed, so the ancestor sees it un-prevented', () => {
+    const onDismiss = vi.fn();
+    const ancestor = vi.fn();
+    render(<Harness onDismiss={onDismiss} onAncestorKeyDown={ancestor} />);
+    const trigger = screen.getByRole('button', { name: 'Trigger' });
+    trigger.focus();
+
+    const notPrevented = fireEvent.keyDown(trigger, { key: 'Escape' });
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(ancestor).toHaveBeenCalledTimes(1);
+    expect(notPrevented).toBe(true);
+  });
+
+  it('E3. SPEC Edge R6 idempotency: Escape closes once, and a SECOND Escape is inert and reaches the ancestor', () => {
+    const onDismiss = vi.fn();
+    const ancestor = vi.fn();
+    render(<Harness onDismiss={onDismiss} onAncestorKeyDown={ancestor} />);
+    const { trigger, inside } = openHarness();
+
+    expect(fireEvent.keyDown(inside, { key: 'Escape' })).toBe(false);
+    expect(trigger).toHaveFocus();
+    expect(ancestor).not.toHaveBeenCalled();
+
+    // Delivered where focus really is, after the first press closed the host.
+    const second = fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(ancestor).toHaveBeenCalledTimes(1);
+    expect(second, 'the second press is not claimed').toBe(true);
+  });
+
+  it('E4. host OPEN, a non-Escape key: no dismissal, not prevented, and the ancestor sees it', () => {
+    const onDismiss = vi.fn();
+    const ancestor = vi.fn();
+    render(<Harness onDismiss={onDismiss} onAncestorKeyDown={ancestor} />);
+    const { inside } = openHarness();
+
+    const notPrevented = fireEvent.keyDown(inside, { key: 'Enter' });
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(notPrevented).toBe(true);
+    expect(ancestor).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('panel')).toBeInTheDocument();
+  });
+
+  // E5 models PRODUCTION. Next 14's app router hydrates React on the document itself (next 14.2.35,
+  // the package's dist/client/app-index.js sets its app element to document), so Header's document
+  // keydown listener sits on the SAME node as React's root listeners and is registered after them.
+  // In jsdom, Testing Library's root is its container div, so a listener put on the document here
+  // would be stopped by React's stopPropagation and would report the opposite of production. The
+  // production position is modelled instead: a native bubble listener on the React ROOT node,
+  // added after render, so it is the same node and later in registration order.
+  it('E5. a same-node listener registered after React STILL runs on a claimed Escape, and sees it default-prevented', () => {
+    const seen: boolean[] = [];
+    const sameNode = (event: Event) => {
+      if ((event as KeyboardEvent).key === 'Escape') seen.push(event.defaultPrevented);
+    };
+
+    const { container } = render(<Harness onDismiss={vi.fn()} />);
+    container.addEventListener('keydown', sameNode);
+    try {
+      const { inside } = openHarness();
+      fireEvent.keyDown(inside, { key: 'Escape' });
+      expect(seen, 'stopPropagation cannot stop a same-node listener; it reads defaultPrevented').toEqual([
+        true,
+      ]);
+    } finally {
+      container.removeEventListener('keydown', sameNode);
+    }
+  });
+
+  it('E5b. ANTI-VACUITY: with the host CLOSED the same-node listener runs and sees defaultPrevented false', () => {
+    const seen: boolean[] = [];
+    const sameNode = (event: Event) => {
+      if ((event as KeyboardEvent).key === 'Escape') seen.push(event.defaultPrevented);
+    };
+
+    const { container } = render(<Harness onDismiss={vi.fn()} />);
+    container.addEventListener('keydown', sameNode);
+    try {
+      const trigger = screen.getByRole('button', { name: 'Trigger' });
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: 'Escape' });
+      expect(seen).toEqual([false]);
+    } finally {
+      container.removeEventListener('keydown', sameNode);
+    }
+  });
+});
+
+describe('useDismissal focusout — only a non-null relatedTarget outside the container dismisses', () => {
+  it('F1. host OPEN, focus moves to an OUTSIDE control: dismiss once', () => {
+    const onDismiss = vi.fn();
+    render(<Harness onDismiss={onDismiss} />);
+    const { inside } = openHarness();
+
+    fireEvent.focusOut(inside, { relatedTarget: screen.getByRole('button', { name: 'Outside' }) });
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
+  });
+
+  it('F2. a NULL relatedTarget never dismisses', () => {
+    const onDismiss = vi.fn();
+    render(<Harness onDismiss={onDismiss} />);
+    const { inside } = openHarness();
+
+    fireEvent.focusOut(inside, { relatedTarget: null });
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByTestId('panel')).toBeInTheDocument();
+  });
+
+  it('F3. focus moving to the TRIGGER (inside the container) does not dismiss', () => {
+    const onDismiss = vi.fn();
+    render(<Harness onDismiss={onDismiss} />);
+    const { trigger, inside } = openHarness();
+
+    fireEvent.focusOut(inside, { relatedTarget: trigger });
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByTestId('panel')).toBeInTheDocument();
+  });
+
+  it('F4. host CLOSED: a focusout to an outside control calls nothing', () => {
+    const onDismiss = vi.fn();
+    render(<Harness onDismiss={onDismiss} />);
+    const trigger = screen.getByRole('button', { name: 'Trigger' });
+
+    fireEvent.focusOut(trigger, { relatedTarget: screen.getByRole('button', { name: 'Outside' }) });
+
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+});
+
+describe('useDismissal restoreFocusToTrigger — focuses the trigger only while it is connected', () => {
+  function hookWith(trigger: HTMLElement | null) {
+    return renderHook(() =>
+      useDismissal({
+        open: false,
+        onDismiss: vi.fn(),
+        containerRef: { current: null },
+        triggerRef: { current: trigger },
+      }),
+    );
+  }
+
+  it('R1. a CONNECTED trigger receives focus', () => {
+    const button = document.createElement('button');
+    button.textContent = 'Connected trigger';
+    document.body.appendChild(button);
+    try {
+      const { result } = hookWith(button);
+      result.current.restoreFocusToTrigger();
+      expect(document.activeElement).toBe(button);
+    } finally {
+      button.remove();
+    }
+  });
+
+  it('R2. a DETACHED trigger is never focused, and nothing throws', () => {
+    const button = document.createElement('button');
+    expect(button.isConnected).toBe(false);
+    // The spy is the discriminator: jsdom ignores focus on a detached node anyway, so the
+    // activeElement half alone could not tell a guarded restore from an unguarded one.
+    const focus = vi.spyOn(button, 'focus');
+    const { result } = hookWith(button);
+
+    expect(() => result.current.restoreFocusToTrigger()).not.toThrow();
+    expect(focus).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(button);
+  });
+
+  it('R3. a NULL trigger does not throw', () => {
+    const { result } = hookWith(null);
+    expect(() => result.current.restoreFocusToTrigger()).not.toThrow();
   });
 });
