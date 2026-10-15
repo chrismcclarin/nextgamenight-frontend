@@ -11,6 +11,8 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { Modal } from '@/app/components/Modal';
+
 import { useFocusRecovery } from './useFocusRecovery';
 
 afterEach(() => cleanup());
@@ -39,6 +41,10 @@ interface RowsHostProps {
   mutate: (name: string) => Promise<void>;
   // Runs after settle(), in the same continuation as the host's own work.
   afterSettle?: (name: string) => void;
+  // The section heading, held in the fallback ref. null renders no heading.
+  heading?: string | null;
+  // With no heading: pass a fallback ref that nothing attaches (an unset ref) instead of none.
+  unsetFallbackRef?: boolean;
 }
 
 // The KebabMenu shape (KebabMenu.js:237-239, item.onClick(); setOpen(false);
@@ -46,9 +52,17 @@ interface RowsHostProps {
 // trigger, the host awaits its mutation, and settles in finally. The End button stands in
 // for a menu item, so it is not in the page tab order (tabIndex -1), as a closed menu's
 // items are not.
-function RowsHost({ rows, mutate, afterSettle }: RowsHostProps) {
+function RowsHost({
+  rows,
+  mutate,
+  afterSettle,
+  heading = 'Check-ins',
+  unsetFallbackRef = false,
+}: RowsHostProps) {
   const headingRef = React.useRef<HTMLHeadingElement | null>(null);
-  const recovery = useFocusRecovery({ fallback: headingRef });
+  const recovery = useFocusRecovery(
+    heading !== null || unsetFallbackRef ? { fallback: headingRef } : {}
+  );
   const triggers = React.useRef(new Map<string, HTMLButtonElement>());
 
   const end = async (name: string) => {
@@ -64,7 +78,7 @@ function RowsHost({ rows, mutate, afterSettle }: RowsHostProps) {
 
   return (
     <section>
-      <h3 ref={headingRef}>Check-ins</h3>
+      {heading !== null ? <h3 ref={headingRef}>{heading}</h3> : null}
       <ul>
         {rows.map((name) => (
           <li key={name}>
@@ -170,5 +184,112 @@ describe('useFocusRecovery — the tracer path (task 1)', () => {
     await act(async () => {});
     expect(screen.queryByRole('button', { name: 'Menu for B' })).toBeNull();
     expect(document.activeElement).toBe(triggerA);
+  });
+});
+
+// The H1 shape (ManageMembers): a row list inside a REAL house Modal. Modal.Header renders a
+// Radix DialogTitle, and DialogContent's aria-labelledby points at it, so the floor can reach the
+// title without a ref into Modal.Header.
+function MembersModal(props: Omit<RowsHostProps, 'heading'> & { bodyHeading?: string | null }) {
+  const { bodyHeading = null, ...rest } = props;
+  return (
+    <Modal open onClose={() => {}}>
+      <Modal.Header>Members</Modal.Header>
+      <Modal.Body>
+        <RowsHost {...rest} heading={bodyHeading} />
+      </Modal.Body>
+    </Modal>
+  );
+}
+
+// End row A, resolve its mutation, then drop row A from the list.
+async function endAndRemoveRowA(
+  user: ReturnType<typeof userEvent.setup>,
+  resolveNext: () => void,
+  rerenderWithB: () => void
+) {
+  await user.click(screen.getByRole('button', { name: 'End A' }));
+  await act(async () => {
+    resolveNext();
+  });
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Menu for A' }));
+  act(() => {
+    rerenderWithB();
+  });
+}
+
+describe('useFocusRecovery — the page floor as the last resort (task 2)', () => {
+  it('D: inside a Modal with no fallback, a removed row hands focus to the dialog title, not the container', async () => {
+    const user = userEvent.setup();
+    const { mutate, resolveNext } = deferredMutation();
+    const { rerender } = render(<MembersModal rows={['A', 'B']} mutate={mutate} />);
+    const dialog = await screen.findByRole('dialog');
+
+    await endAndRemoveRowA(user, resolveNext, () =>
+      rerender(<MembersModal rows={['B']} mutate={mutate} />)
+    );
+
+    const title = screen.getByRole('heading', { name: 'Members' });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(document.activeElement).not.toBe(dialog);
+    expect(title.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('D-prime: Shift+Tab from the floored dialog title stays on the title, and the title keeps its added tabindex', async () => {
+    const user = userEvent.setup();
+    const { mutate, resolveNext } = deferredMutation();
+    const page = (rows: string[]) => (
+      <>
+        <button type="button">Before the dialog</button>
+        <MembersModal rows={rows} mutate={mutate} />
+      </>
+    );
+    const { rerender } = render(page(['A', 'B']));
+    await screen.findByRole('dialog');
+
+    await endAndRemoveRowA(user, resolveNext, () => rerender(page(['B'])));
+    const title = screen.getByRole('heading', { name: 'Members' });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+
+    // Radix wraps only from its FIRST tabbable (react-focus-scope index.mjs:118) and the title
+    // is tabindex -1, so Shift+Tab moves focus out and the trap pulls it straight back to the
+    // last focused node (index.mjs:43). The measured limit, not a working Shift+Tab: the title
+    // itself is asserted, which goes RED on a leak or a wrap.
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(title);
+    expect(title.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('E: inside a Modal, a fallback heading in the body wins over the dialog title', async () => {
+    const user = userEvent.setup();
+    const { mutate, resolveNext } = deferredMutation();
+    const { rerender } = render(
+      <MembersModal rows={['A', 'B']} mutate={mutate} bodyHeading="Current members" />
+    );
+    await screen.findByRole('dialog');
+
+    await endAndRemoveRowA(user, resolveNext, () =>
+      rerender(<MembersModal rows={['B']} mutate={mutate} bodyHeading="Current members" />)
+    );
+
+    const bodyHeading = screen.getByRole('heading', { name: 'Current members' });
+    await waitFor(() => expect(document.activeElement).toBe(bodyHeading));
+  });
+
+  it('F: outside any dialog with the fallback ref unset, the page main h1 takes focus', async () => {
+    const user = userEvent.setup();
+    const { mutate, resolveNext } = deferredMutation();
+    const page = (rows: string[]) => (
+      <main>
+        <h1>Game night</h1>
+        <RowsHost rows={rows} mutate={mutate} heading={null} unsetFallbackRef />
+      </main>
+    );
+    const { rerender } = render(page(['A', 'B']));
+
+    await endAndRemoveRowA(user, resolveNext, () => rerender(page(['B'])));
+
+    const h1 = screen.getByRole('heading', { name: 'Game night' });
+    await waitFor(() => expect(document.activeElement).toBe(h1));
   });
 });
