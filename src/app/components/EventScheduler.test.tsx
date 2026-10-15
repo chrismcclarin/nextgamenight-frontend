@@ -93,6 +93,24 @@ vi.mock('./heatmap/WeekGrid', async (importOriginal) => {
   return { ...mod, WeekGrid: Wrapped, default: Wrapped };
 });
 
+// Plan 88.6.1-09 (D-16): a PASS-THROUGH of the shared phone-viewport hook, so VW-1 / VW-2 can
+// force the hook's answer and prove EventScheduler reads its arm from the hook and nowhere else.
+// The wrapper ALWAYS calls the real hook first (stable hook order), then returns the hoisted
+// override only when one is set — so every other pin in this file still runs the real hook, and
+// each stubMatchMedia arm still exercises media stub -> hook -> component. `vi.hoisted` for the
+// same TDZ reason as `capture` above. The inner function's name starts with `use` because
+// rules-of-hooks reads the name.
+const viewportOverride = vi.hoisted(() => ({ value: undefined as boolean | undefined }));
+
+vi.mock('@/lib/hooks/usePhoneViewport', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('@/lib/hooks/usePhoneViewport');
+  function usePhoneViewportPassThrough(): boolean {
+    const real = mod.usePhoneViewport();
+    return viewportOverride.value === undefined ? real : viewportOverride.value;
+  }
+  return { ...mod, usePhoneViewport: usePhoneViewportPassThrough };
+});
+
 import type { ComponentType } from 'react';
 import EventSchedulerDefault from './EventScheduler';
 
@@ -946,6 +964,42 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
         restore();
         cleanup();
       }
+    }
+  });
+});
+
+describe('EventScheduler — the viewport fork reads the SHARED hook (88.6.1-09, D-16)', () => {
+  // Each arm sets the hook's answer AGAINST the media stub, so it can pass only if the hook is
+  // the component's sole viewport input: a component that read the media query itself would
+  // follow the stub and render the other arm. Same bytes as the prompt describe's constants.
+  const PHONE_COPY = 'Tap and hold on a day to pick a time.';
+  const DESKTOP_COPY = 'Click and drag on the calendar to select a time slot for your event.';
+
+  afterEach(() => {
+    viewportOverride.value = undefined;
+  });
+
+  it('VW-1. the hook answering true renders the phone arm while the media query answers false', () => {
+    // No stub installed: jsdom's global stub answers every media query false.
+    viewportOverride.value = true;
+    render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+    expect(screen.getByText(PHONE_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(DESKTOP_COPY)).not.toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: /choose a day/i })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /calendar view/i })).not.toBeInTheDocument();
+  });
+
+  it('VW-2. the hook answering false renders the desktop arm while the media query matches a phone', () => {
+    const restore = stubMatchMedia(PHONE);
+    try {
+      viewportOverride.value = false;
+      render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+      expect(screen.getByText(DESKTOP_COPY)).toBeInTheDocument();
+      expect(screen.queryByText(PHONE_COPY)).not.toBeInTheDocument();
+      expect(screen.getByRole('group', { name: /calendar view/i })).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    } finally {
+      restore();
     }
   });
 });

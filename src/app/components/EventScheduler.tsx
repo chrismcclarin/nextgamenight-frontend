@@ -45,6 +45,7 @@ import {
   startOfWeek,
 } from 'date-fns';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityColor';
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
 import { maxAvailabilityPerDay, peakHourForDay } from './heatmap/dayAggregate';
@@ -170,18 +171,6 @@ function parseCoord(coord: string): { row: number; col: number } | null {
   const [row, col] = coord.split(':').map(Number);
   return Number.isInteger(row) && Number.isInteger(col) ? { row, col } : null;
 }
-
-/**
- * The breakpoint the prompt copy (88.1-11) AND the geometry fork (88.1-12) branch on — Tailwind's
- * `md`, so "md and below" is `max-width: 767px`. Same query and same shape as
- * `gameDetail/page.js:2176`.
- *
- * A VIEWPORT breakpoint, not a container query, and deliberately so: `md` is this codebase's
- * phone/desktop line and every sibling on these surfaces switches on it (`UserHomePage.js`,
- * `FeedbackButton.js`, `CalendarListView.js`). A container query would be the repo's first and
- * would need its own decision, not a drive-by adoption inside a rebuild.
- */
-const PHONE_MEDIA_QUERY = '(max-width: 767px)';
 
 /** Compact gutter label — hours only, sized for the 24px gutter (87.8-13 F-2). */
 const SLOT_LABELS: string[] = Array.from({ length: SLOT_ROWS }, (_, row) => {
@@ -451,33 +440,12 @@ export default function EventScheduler({
     });
   }, [initialDateKey, announce]);
 
-  /* DECISION Phase 88.1-11: the prompt's breakpoint fork is a matchMedia STATE fork, chosen OVER
-     rendering both strings and hiding one with responsive utility classes.
-
-     WHY THE CSS FORK LOSES: it puts BOTH instructions in the DOM at once, and jsdom applies no
-     stylesheet — so no vitest pin could tell the two arms apart, and the plan's requirement to
-     assert the RENDERED STRING (P7 forbids reading layout) would be unsatisfiable. It also ships
-     two contradictory instructions to any consumer that reads the DOM rather than the cascade.
-
-     The shape is the repo's own: `useState(false)` + a mount effect, exactly as
-     `createEvent.js:47-55` detects `(hover: none)` (the second precedent,
-     `MergedHeatmapGrid.js:85-96`, was DELETED by plan 88.1-16 — the idiom stands, the
-     citation is archival). Starting
-     FALSE is deliberate — this is an SSR'd client component, so the initial render must match the
-     server's, and the desktop string is the safe pre-measurement state. */
-  const [isPhoneViewport, setIsPhoneViewport] = useState(false);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
-    const mq = window.matchMedia(PHONE_MEDIA_QUERY);
-    setIsPhoneViewport(mq.matches);
-    const handler = (event: MediaQueryListEvent) => setIsPhoneViewport(event.matches);
-    if (mq.addEventListener) {
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
-    }
-    mq.addListener(handler);
-    return () => mq.removeListener(handler);
-  }, []);
+  /* DECISION Phase 88.6.1-09 (D-16): this component's phone/desktop fork reads the shared hook,
+     chosen OVER keeping its own subscription while two more surfaces copy it. The fork's
+     DECISION Phase 88.1-11 (state fork over responsive classes; false first render for SSR
+     parity) lives with the hook in `src/lib/hooks/usePhoneViewport.ts` since 88.6.1-09.
+     Re-inlining is a decision, not a cleanup. */
+  const isPhoneViewport = usePhoneViewport();
 
   // Phase 72-02 UAT: identify the viewing user so we can render a self-conflict line in the
   // per-slot tooltip. 87.4 PR-2 (D-02): UUID-only compare against selfUuid.
