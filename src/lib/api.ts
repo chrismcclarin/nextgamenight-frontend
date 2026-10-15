@@ -134,7 +134,7 @@ export type ApiErrorCode =
   // queryClient.ts, and its own arm in classifyDeleteError.
   | 'not_provisioned'
   // Phase 88.8 post-merge (round 6 #11/#14/#15/#16/#17): registered BE-side in
-  // ERROR_REGISTRY as `unsupported_address` @400 (utils/errors.js:104), returned by
+  // ERROR_REGISTRY as `unsupported_address` @400 (utils/errors.js:104, `unsupported_address:`), returned by
   // POST /users/:user_id/email when the requested address matches the app's OWN
   // synthetic-account sentinel (the broad NIX-AUTH0 predicate). DELIBERATELY DISTINCT
   // from `validation`: that code is the shape/length/body-key verdict, and the Email
@@ -349,8 +349,9 @@ export function mapErrorToCode(body: any, status: number): ApiErrorCode {
   // Validation hint, CANONICAL SHAPE ONLY. Phase 88.6 plan 42 moved this arm off
   // the TOP-LEVEL `errors[]` legacy mirror onto the sanctioned Phase 85/86
   // `details.errors`. BEHAVIOUR-NEUTRAL for the unconverted producers measured
-  // 2026-09-17 — routes/invites.js:216, routes/friendships.js:278 and
-  // routes/availability.js:55-64 all emit their top-level `errors[]` on a 400,
+  // 2026-09-17 — routes/invites.js:216 and routes/friendships.js:278 (both
+  // `res.status(400).json({ errors: errors.array() })`) and routes/availability.js:55-64
+  // (`errors: errors.array().map`) all emit their top-level `errors[]` on a 400,
   // and statusToCode(400) already returns 'validation'. The Array.isArray guard
   // stays: a malformed `details.errors` must not produce 'validation' and must
   // not throw (AC-9).
@@ -374,7 +375,7 @@ function extractErrorMessage(body: any, status: number): string {
 // delete (arm B), which would have dropped that string from the event ENTIRELY
 // for the ~455 unconverted raw-`{ error }` routes until Phase 93, leaving only
 // "HTTP error! status: N" to read. GROUPING is unchanged either way: that capture
-// (queryClient.ts:162) carries tags and no Sentry fingerprint (measured 2026-09-17: the
+// (src/lib/queryClient.ts:179, `Sentry.captureException(error, upstreamMessage`) carries tags and no Sentry fingerprint (measured 2026-09-17: the
 // three grep hits for that word under src/ are all prose), and Sentry's default
 // grouping does not key on extra — so the field buys per-event READABILITY, not
 // issue separation. `ApiError.message` is the display contract and does NOT read
@@ -386,11 +387,12 @@ function extractErrorMessage(body: any, status: number): string {
 // this MOVES a string that already egresses today, it opens no channel. Before
 // this plan `extractErrorMessage` already returned `body.message ?? body.error`
 // (api.ts:308-309 pre-edit), that message was already thrown (api.ts:441
-// pre-edit) and queryClient.ts:162 already captured it. Arm A relocates it off
+// pre-edit) and `queryCacheOnError`'s capture (src/lib/queryClient.ts) already captured it. Arm A relocates it off
 // the display path onto a non-rendered field — same string, same destination,
-// narrower blast radius. The bound on it is sentry.scrub.js:171-172, which
+// narrower blast radius. The bound on it is sentry.scrub.js's `deepScrub`, which
 // deep-scrubs `event.extra`; the shape mirrored is the T-84-05 {path, code}
-// forward at queryClient.ts:150-158.
+// forward in `queryCacheOnError`'s ZodError branch (src/lib/queryClient.ts, anchor
+// `T-84-05: NEVER forward the raw ZodError`).
 //
 // This is the ONE sanctioned legacy-key read left in this module's apiFetch path
 // and the ONE by-name exemption in the R9 roster. It returns a STRING or
@@ -626,7 +628,7 @@ export async function apiFetch<T = unknown>(
     // Sentry.captureException -- chosen OVER an event here, and OVER deleting the log
     // entirely. An event at this catch fires for every expected 401/404/410 (it sees
     // every ApiError this module throws) and duplicates QueryCache.onError
-    // (queryClient.ts:167). AC-2's convert-on-touch level is logger.info phase-wide as
+    // (`queryCacheOnError`, src/lib/queryClient.ts:141; its capture at :179). AC-2's convert-on-touch level is logger.info phase-wide as
     // of the owner ruling of 2026-09-13, so this is the RULE rather than an exception to
     // it -- but it was independently the right call here and the reasoning is kept for
     // whoever revisits the fetch boundary. If an event is ever wanted here it must be
@@ -638,7 +640,7 @@ export async function apiFetch<T = unknown>(
     // throws that message is extractErrorMessage output -- which, after this same commit
     // reshaped the non-JSON bodies onto the message key, is the ENTIRE RAW RESPONSE TEXT
     // on a non-JSON error response. Forwarding it would put a whole response body into a
-    // Sentry BREADCRUMB: a T-84-01 violation (logger.ts:8-13). So this call carries the
+    // Sentry BREADCRUMB: a T-84-01 violation (logger.ts:8-13, `Info-Disclosure threat T-84-01`). So this call carries the
     // endpoint, the error NAME and -- when it is an ApiError -- its status and code, and
     // NOTHING derived from the response body. The full url is not carried either
     // (T-88.6-124, defence in depth complementing AC-1 beforeSend scrub, never a
@@ -661,7 +663,7 @@ export async function apiFetch<T = unknown>(
     //
     // NOT A PRECEDENT AGAINST THE AC-4 FIELD ABOVE: that field is a STRING forwarded to
     // Sentry extra on an EVENT that already egresses today and is deep-scrubbed at
-    // sentry.scrub.js:171-172. This site would carry the raw response TEXT into a
+    // sentry.scrub.js's `deepScrub`. This site would carry the raw response TEXT into a
     // breadcrumb that does not egress today. Different site, different payload, different
     // existing baseline -- both rules stand, and neither licenses the other. Restoring
     // errCtx here is a decision, not a consistency fix.
@@ -1074,9 +1076,11 @@ export const rsvpAPI = {
   //
   // DECISION Phase 88.5 (RESEARCH B-2): this was typed apiFetch-of-RsvpList — an
   // ARRAY — which was simply wrong. The route returns an OBJECT,
-  // `{ rsvps, summary }` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js:536).
-  // The wrong type survived because every consumer was `.js` (RsvpSection.js:33-35,
-  // gameDetail/page.js:588 and :832) so TS never checked it; all three already read
+  // `{ rsvps, summary }` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js:591,
+  // `return res.json({ rsvps: shapedRsvps, summary });`).
+  // The wrong type survived because every consumer was `.js` (src/app/components/RsvpSection.js:166-167,
+  // `setRsvps(data.rsvps || [])`; src/app/gameDetail/page.js:723 and :977, `rsvpAPI.getEventRsvps(`;
+  // lines read at 88.6.1-07) so TS never checked it; all three already read
   // `data.rsvps` / `data.summary`, i.e. they always treated it as the object. Do not
   // revert to RsvpList.
   getEventRsvps: (event_id: string) =>
@@ -1096,7 +1100,8 @@ export const rsvpPublicAPI = {
   // T-88.6-123 (#103, routed here from plan 24 by D41): `eventId` and `status` are now
   // percent-encoded like the `token` and `userId` arms beside them, which always were.
   // DEFENCE-IN-DEPTH, not a live hole — verified at source: Sonnet/routes/rsvp.js:212
-  // allow-lists the status and :217-220 recomputes the HMAC over (eventId, userId, status)
+  // (`['yes', 'maybe', 'no'].includes(status)`) allow-lists the status and :217-220
+  // (`generateRsvpToken(eventId, userId, status)`) recomputes the HMAC over (eventId, userId, status)
   // and 403s on mismatch. The asymmetry is closed because a reader would otherwise tidy it
   // the WRONG way, by dropping the two encodings that are there.
   respondViaToken: async (token: string, eventId: string, userId: string, status: string) => {

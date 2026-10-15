@@ -204,6 +204,30 @@ describe('getFetchErrorMessage — designed copy for action-path failures', () =
       "Your account isn't set up yet. Reload the page and try again."
     );
   });
+
+  // Phase 88.6.1-07 (D-30, copy row X1, 88.6.1-COPY-TABLE.html:161 column 5): the shared
+  // `unauthorized` line is asserted LITERALLY, as the 88.6-54 arms above are. That is allowed
+  // because COPY-RULING: A (88.6.1-SPEC.md:47-48) replaced 88.6's no-authored-copy rule: a
+  // ratified row may be pinned byte for byte. X1-c is the control: a surface's own override
+  // (the BGG search toast) still wins over the register.
+  it('X1-a: unauthorized (401) resolves to the ratified X1 sentence', () => {
+    expect(getFetchErrorMessage(new ApiError('', 'unauthorized', 401))).toBe(
+      'Your session may have expired. Sign in again to continue.'
+    );
+  });
+
+  it('X1-b: the hook surfaces the same X1 sentence for a 401', () => {
+    const { result } = renderHook(() =>
+      useFetchErrorState(queryStub({ isError: true, error: new ApiError('', 'unauthorized', 401) }))
+    );
+    expect(result.current.message).toBe('Your session may have expired. Sign in again to continue.');
+  });
+
+  it('X1-c: a surface override for unauthorized still wins over the register (control)', () => {
+    expect(
+      getFetchErrorMessage(new ApiError('', 'unauthorized', 401), { byCode: { unauthorized: 'x' } })
+    ).toBe('x');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -425,7 +449,7 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
 // strict key off `details` through api.ts's `isCsrfRejection` (an ApiError, status 403,
 // a non-null object, `csrf_rejected === true`), so these arms now pin "malformed `details`
 // never throws and never changes the answer". The sentences below describe the pre-07 tree.]
-// `getFetchErrorMessage` calls `deriveCode` (useFetchErrorState.ts:115-118) and
+// `getFetchErrorMessage` calls `deriveCode` (useFetchErrorState.ts, anchor `function deriveCode`) and
 // nothing else, and `deriveCode` reads `error.code` off an `ApiError`. It never
 // dereferences `details` at all, so no amount of mangling that shape can make
 // these arms fail. They WOULD red if someone later taught this function to
@@ -433,9 +457,10 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
 // forbids — and that is the whole of their value. They do NOT pin AC-9's
 // "never throws" claim, and nothing in plan 88.6-14 does.
 //
-// The real `details` consumer is `extractFieldErrors` in `lib/api.ts` (:315-318,
-// called at :431), where a `[{}]` element renders the literal `undefined: undefined`
-// into user-facing copy through the `.map` at :434. That surface belongs to plan
+// The real `details` consumer is `extractFieldErrors` in `lib/api.ts` (:411, anchor
+// `function extractFieldErrors`; called at :593, anchor `const fieldErrors = extractFieldErrors`),
+// where a `[{}]` element renders the literal `undefined: undefined` into user-facing copy
+// through the `.map` at :596 (anchor `.map(fieldErrorText)`; lines read at 88.6.1-07). That surface belongs to plan
 // 42's `api.test.ts` consumer matrix and is deliberately NOT reached from here.
 // ---------------------------------------------------------------------------
 
@@ -468,7 +493,7 @@ describe('getFetchErrorMessage — incomplete envelope (R9)', () => {
   it('an UNKNOWN code with no message returns the ratified `unknown` copy — never the code', () => {
     // A code the register has never heard of is exactly what a backend that ships
     // a new code before the FE does produces. `MESSAGE_BY_CODE[code] ?? unknown`
-    // (:155) is the arm under test. The expected string is read from the module
+    // (the register lookup in `getFetchErrorMessage`) is the arm under test. The expected string is read from the module
     // via the register's own answer for "no code at all", never transcribed.
     const ratifiedUnknown = getFetchErrorMessage(undefined);
     const bogus = 'teapot_overheated' as FetchErrorCode;
@@ -481,7 +506,7 @@ describe('getFetchErrorMessage — incomplete envelope (R9)', () => {
   });
 
   it('`fallback` applies ONLY when the resolved code is `unknown`', () => {
-    // useFetchErrorState.ts:154 — `if (code === 'unknown' && options.fallback)`.
+    // useFetchErrorState.ts, getFetchErrorMessage's gate — `if (code === 'unknown' && options.fallback)`.
     // This is the assertion the two rewritten docblocks in `useFetchErrorState.ts`
     // point at (plan 88.6-14 task 3), so it is what makes those docblocks checkable
     // rather than a second sentence that can drift from the first.
@@ -497,12 +522,13 @@ describe('getFetchErrorMessage — incomplete envelope (R9)', () => {
 
     // FINDING (plan 88.6-14 task 2, 2026-09-15) — an UNRECOGNISED code does NOT
     // take the fallback, even though the user SEES the `unknown` copy. `deriveCode`
-    // (:116) returns an ApiError's code VERBATIM, so the gate at :154 compares
-    // 'teapot_overheated' against 'unknown' and fails, while the register lookup at
-    // :155 falls through to `MESSAGE_BY_CODE.unknown`. The RESOLVED CODE and the
+    // (anchor `if (error instanceof ApiError) return error.code;`) returns an ApiError's code
+    // VERBATIM, so the `code === 'unknown' && options.fallback` gate compares
+    // 'teapot_overheated' against 'unknown' and fails, while the register lookup
+    // (`MESSAGE_BY_CODE[code] ?? MESSAGE_BY_CODE.unknown`) falls through to the unknown line. The RESOLVED CODE and the
     // RENDERED COPY diverge, and this is the one path where a caller who asked for a
     // surface-specific line gets the generic one instead. Reachable: `mapErrorToCode`
-    // casts `body.code as ApiErrorCode` unchecked (api.ts:296), so any backend code
+    // casts `body.code as ApiErrorCode` unchecked (api.ts:348, anchor `body.code as ApiErrorCode`), so any backend code
     // the FE union has not caught up with lands here.
     //
     // PINNED AS SHIPPED, NOT FIXED. This is a gate task; plan 88.6-14 forbids

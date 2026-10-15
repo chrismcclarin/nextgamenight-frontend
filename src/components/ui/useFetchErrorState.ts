@@ -50,7 +50,15 @@ export interface FetchErrorState {
 const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   network: "We couldn't reach the server. Check your connection and try again.",
   rate_limited: "You're going a little fast — give it a moment, then try again.",
-  unauthorized: 'Your session may have expired. Refresh the page to sign back in.',
+  // DECISION Phase 88.6.1-07 (D-30, copy row X1): the owner-ratified sentence
+  // (88.6.1-COPY-TABLE.html:161, row `'X1'`, column 5). The previous line told the person to reload the page,
+  // and that remedy is false for a session whose cookie exists but whose token cannot be
+  // acquired: the proxy degrades to a tokenless forward (`src/app/api/[...path]/route.ts:174-185`,
+  // anchor `let accessToken: string | null = null;`), and a reload re-runs that same acquisition
+  // (CONTEXT D-01). REJECTED: a sign-in link or button on the banner (D-33 row 24, not this
+  // phase; plan 88.6.1-58 writes its pointer). REJECTED: per-surface overrides (this register
+  // line is the one carrier). Reverting to reload advice is a decision, not a cleanup.
+  unauthorized: 'Your session may have expired. Sign in again to continue.',
   forbidden: "You don't have access to this. Refresh the page to try again.",
   not_found: "We couldn't find what you were looking for.",
   validation: 'Something looks off with that request. Refresh the page to try again.',
@@ -125,8 +133,8 @@ export interface FetchErrorMessageOptions {
   /**
    * Copy used when the failure carries no `ApiError.code` (i.e. `unknown`).
    *
-   * This applies ONLY when the resolved code is `unknown` — see `:171`, the
-   * `code === 'unknown' && options.fallback` gate. A `forbidden` or a
+   * This applies ONLY when the resolved code is `unknown` — see the
+   * `if (code === 'unknown' && options.fallback)` gate in `getFetchErrorMessage`. A `forbidden` or a
    * `conflict` error resolves through `MESSAGE_BY_CODE` and ignores `fallback` entirely —
    * which is deliberate: the register's strings are ratified copy and a caller-supplied
    * string must not be able to shadow them.
@@ -136,11 +144,12 @@ export interface FetchErrorMessageOptions {
    * `UseFetchErrorStateOptions.fallbackMessage` carries the same amendment.]
    *
    * DECISION Phase 88.6-14 (D-33): renaming this to `unknownFallbackMessage` was considered
-   * and REJECTED as churn across every call site (`OpenPollsList.js:103-119` and its
+   * and REJECTED as churn across every call site (`OpenPollsList.js:103-119`, anchor
+   * `toast.error(` around the end-check-in call, and its
    * siblings across the R1 sweeps) for no behaviour change — and it would put a rename
    * inside the same waves as a behaviour migration. The narrowing is documented here
    * instead, and pinned by `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown`
-   * assertion. The sibling spelling `UseFetchErrorStateOptions.fallbackMessage` (`:198`)
+   * assertion. The sibling spelling `UseFetchErrorStateOptions.fallbackMessage` (anchor `fallbackMessage?: string;`)
    * carries the same record so the two cannot drift. Changing this is a decision, not a
    * cleanup.
    */
@@ -193,7 +202,7 @@ export interface FetchErrorMessageOptions {
    REJECTED (b): per-site guards. Six would be guarded while dozens of generic sites still print
    the permission line, and the predicate would be copied per site (duplication tenet).
    REJECTED: "bypass `byCode.forbidden` only", the register's own fix text
-   (`.planning/deferred/phase-88.6.1.md:197`). It falls to `MESSAGE_BY_CODE.forbidden`, which is
+   (`.planning/deferred/phase-88.6.1.md:197`, anchor `review MEDLOW-9`). It falls to `MESSAGE_BY_CODE.forbidden`, which is
    still a permission claim (DF correction 4).
 
    The resulting line, stated plainly: a surface that passes a `fallback` prints its own
@@ -218,7 +227,8 @@ export interface UseFetchErrorStateOptions {
    * Copy used when the failure carries no `ApiError.code` (i.e. `unknown`).
    *
    * NOT a general override, despite the name. This applies ONLY when the resolved code is
-   * `unknown` (see `:171`, reached via `getFetchErrorMessage`'s `fallback`). A `forbidden`
+   * `unknown` (see the `if (code === 'unknown' && options.fallback)` gate, reached via
+   * `getFetchErrorMessage`'s `fallback`). A `forbidden`
    * or `conflict` error resolves through `MESSAGE_BY_CODE` and ignores `fallbackMessage`
    * entirely — which is deliberate: the register's strings are ratified copy and a
    * caller-supplied string must not be able to shadow them.
@@ -231,12 +241,14 @@ export interface UseFetchErrorStateOptions {
    * review IN-10): this docblock previously read "Override the derived copy (e.g. a
    * surface-specific message)", which describes a general override this option has never
    * been. Renaming it to `unknownFallbackMessage` was considered and REJECTED as churn
-   * across every call site (`OpenPollsList.js:103-119` and its siblings across the R1
+   * across every call site (`OpenPollsList.js:103-119`, anchor `toast.error(` around the
+   * end-check-in call, and its siblings across the R1
    * sweeps) for no behaviour change — and it would put a rename inside the same waves as a
    * behaviour migration. The narrowing is documented here instead, and pinned by
    * `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown` assertion. The sibling
-   * spelling `FetchErrorMessageOptions.fallback` (`:139`) carries the same record so the two
-   * cannot drift. The body comment at `:214-216` says the same thing, but a caller reading
+   * spelling `FetchErrorMessageOptions.fallback` (anchor `fallback?: string;`) carries the same record so the two
+   * cannot drift. The body comment in `useFetchErrorState` (anchor
+   * `// Single reader of MESSAGE_BY_CODE`) says the same thing, but a caller reading
    * this exported interface never sees it — it is not a substitute for this docblock.
    * Changing this is a decision, not a cleanup.
    */

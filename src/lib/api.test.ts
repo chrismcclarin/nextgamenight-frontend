@@ -255,7 +255,7 @@ describe('rsvpAPI.submitRsvp — undefined note is dropped from the wire body', 
 // request", killing R12 silently. These assertions are the only thing standing
 // there. The exact key-SET check (not a `toMatchObject`) is deliberate: an added
 // alias key must fail, and the backend refuses any body carrying a second key
-// (routes/users.js:1226-1229, :1760-1763).
+// (routes/users.js:1406 and :2103, `keys.length !== 1`; re-found at 88.6.1-07).
 //
 // NO `grep`-based key gate is added on api.ts. The body is written in ES6
 // shorthand, so there is no colon after the key and a colon-anchored grep fails
@@ -352,7 +352,7 @@ describe('usersAPI email-change calls — the serialised wire body, path and met
 
   it('percent-encodes the user_id path segment on every one of the five', async () => {
     // The id can be an Auth0 sub (`auth0|abc`) as well as a UUID — matchesSelf
-    // accepts either (middleware/objectAuth.js:59-84) — and a raw `|` in a path
+    // accepts either (middleware/objectAuth.js:59-84, `async function matchesSelf`) — and a raw `|` in a path
     // is not a legal URL character.
     const calls: Array<[string, () => Promise<unknown>]> = [
       ['email', () => usersAPI.requestEmailChange('auth0|a b', 'x@y.z')],
@@ -427,8 +427,9 @@ describe('88.6-42 — the FE reads code/message/details and nothing else', () =>
       // "regardless of status". It now maps off the status like any other body.
       expect(mapErrorToCode({ errors: [{ message: 'x' }] }, 500)).toBe('internal');
       // On a 400 the OUTCOME is unchanged, which is why the three unconverted backend
-      // producers measured 2026-09-17 (routes/invites.js:216, routes/friendships.js:278,
-      // routes/availability.js:55-64 — all top-level `errors[]` on a 400) are
+      // producers measured 2026-09-17 (routes/invites.js:216 and routes/friendships.js:278,
+      // `res.status(400).json({ errors: errors.array() })`; routes/availability.js:55-64,
+      // `errors: errors.array().map` — all top-level `errors[]` on a 400) are
       // behaviour-neutral across this change.
       expect(mapErrorToCode({ errors: [{ message: 'x' }] }, 400)).toBe('validation');
     });
@@ -714,7 +715,8 @@ describe('88.6-42 — transport hardening on the apiFetch-bypassing public helpe
 // ADDED by plan 88.6-58 task 4 (2026-09-28, /code-adversarial-review 88.6 MEDLOW-2). Plan 42's
 // census above named FIVE apiFetch-bypassing public helpers; there were SIX. The sixth,
 // `availabilityFormAPI.getExistingResponse`, is awaited by the magic-link page BEFORE it sets
-// READY (availability-form/[token]/page.js:131, :159), so a GET that never settles held the
+// READY (availability-form/[token]/page.js:147, `await availabilityFormAPI.getExistingResponse(`,
+// before :190, `setPageState(PAGE_STATES.READY)`; re-read at 88.6.1-07), so a GET that never settles held the
 // visitor on "Loading" forever — the same class plan 42 closed for the other five. Three cases
 // were RED on FE d03f728 (timeout, non-JSON 200, unencoded promptId); the 404 case is
 // confirm-only (the `object | null` contract is unchanged).
