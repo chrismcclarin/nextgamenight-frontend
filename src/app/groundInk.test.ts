@@ -129,10 +129,32 @@ interface Row {
   grounds: { token: string; chunk: number; frameLine: number; copresence: string }[];
 }
 
+// An ANCHOR is an ink (or ground) site's repo-relative file plus its TRIMMED physical source
+// line, joined by ANCHOR_SEP. It is used ONLY to look up the declared false positives below.
+// Every COUNT in this suite stays keyed by siteOf (file plus line number), because identical
+// lines can exist in one file and must stay two sites. See the DECISION Phase 88.6.1-02 marker
+// above FALSE_POSITIVES.
+//
+// Declared ABOVE FILES and ROWS on purpose: the ROWS pass below fills TRIMMED_LINES while the
+// module loads, so a const declared further down would still be in its temporal dead zone.
+// anchorKey is a function declaration (hoisted) for the same reason.
+const ANCHOR_SEP = '::';
+const TRIMMED_LINES = new Map<string, string[]>();
+function anchorKey(file: string, line: string): string {
+  return file + ANCHOR_SEP + line;
+}
+
 const FILES = sourceFiles(SRC);
 const ROWS: Row[] = FILES.flatMap((file) => {
   const rel = path.relative(SRC, file);
-  return inkGroundPairs(fs.readFileSync(file, 'utf8'), { ink: INK, ground: GROUND }).map((r) => ({
+  // ONE read per file (the 88.6-09 hoist above): the same text feeds the walk and the anchors.
+  const text = fs.readFileSync(file, 'utf8');
+  const found = inkGroundPairs(text, { ink: INK, ground: GROUND });
+  // Trimmed lines are kept only for a file that reports a row. Every anchor, ink and ground
+  // alike, lives in such a file; an anchor naming any other file resolves to zero lines and
+  // test 9 reds loudly rather than passing. This is a cost choice only.
+  if (found.length > 0) TRIMMED_LINES.set(rel, text.split('\n').map((l) => l.trim()));
+  return found.map((r) => ({
     file: rel,
     line: r.line,
     inkToken: r.inkToken,
@@ -144,6 +166,26 @@ const ROWS: Row[] = FILES.flatMap((file) => {
 /** A SITE is `file:line`, never a row: candidate fan-out must not inflate any count below. */
 const siteOf = (r: Row): string => `${r.file}:${r.line}`;
 const onMuted = (r: Row): boolean => r.grounds.some((g) => g.token === MUTED);
+
+// The ANCHOR of a row: its file plus the trimmed text of its own ink line. For the
+// false-positive lookup only; never for a count.
+const anchorOf = (r: Row): string => anchorKey(r.file, TRIMMED_LINES.get(r.file)?.[r.line - 1] ?? '');
+
+// Every 1-based line in the anchor's file whose trimmed text EQUALS the anchor text. Exact
+// equality on purpose, never a substring or a RegExp: a partial match could select a second
+// line silently. A file with no kept text (not scanned, or reported no row) gives no lines.
+function anchorLines(anchor: string): number[] {
+  const at = anchor.indexOf(ANCHOR_SEP);
+  if (at < 0) return [];
+  const lines = TRIMMED_LINES.get(anchor.slice(0, at));
+  if (!lines) return [];
+  const text = anchor.slice(at + ANCHOR_SEP.length);
+  const out: number[] = [];
+  lines.forEach((l, i) => {
+    if (l === text) out.push(i + 1);
+  });
+  return out;
+}
 
 /** Every forbidden RESTING ink site the walk resolved onto a muted ground, before exclusions. */
 const FORBIDDEN_ON_MUTED = ROWS.filter((r) => FORBIDDEN.has(r.inkToken) && onMuted(r));
@@ -295,15 +337,60 @@ const UNRESOLVABLE: ExemptionRoster = {
 type FalsePositive = Omit<Exemption, 'owner'> & {
   owner: {
     kind: 'false-positive';
-    inkLine: string;
-    groundLine: string;
+    // Both are ANCHORS (anchorKey: file plus trimmed source line), never line numbers.
+    inkAnchor: string;
+    groundAnchor: string;
     /** The two conditions that make the ink arm and the ground arm mutually exclusive. */
     conditions: [string, string];
   };
 };
 
-/** Keyed by `file:line` — the ink site, because one file can hold both real debt and a FP. */
+// The six false-positive ANCHORS. Each text is the TRIMMED source line, copied byte-for-byte
+// from the component, never retyped. Test 9 proves each one names exactly one line of its file.
+// Quoting: double quotes where the text holds single quotes or a template-literal opener (a
+// template literal here would interpolate), single quotes where it holds double quotes.
+const FP_CMV_ADJACENT_INK = anchorKey('app/components/CalendarMonthView.js', "isAdjacent ? 'text-content-muted' :");
+const FP_CMV_PAST_DATE_INK = anchorKey(
+  'app/components/CalendarMonthView.js',
+  "variant === 'full' && isPastDate ? 'text-content-muted' :",
+);
+const FP_CMV_TODAY_GROUND = anchorKey(
+  'app/components/CalendarMonthView.js',
+  "isCurrentDay ? 'bg-surface-muted border-line-accent' :",
+);
+const FP_FIP_USERNAME_INK = anchorKey(
+  'app/components/FriendInvitePanel.js',
+  "<p className={`truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>",
+);
+const FP_FIP_IN_GROUP_INK = anchorKey(
+  'app/components/FriendInvitePanel.js',
+  '<span className="text-xs text-content-muted italic shrink-0">',
+);
+const FP_FIP_SELECTED_GROUND = anchorKey(
+  'app/components/FriendInvitePanel.js',
+  "? 'border-accent bg-surface-muted cursor-pointer'",
+);
+
+// Keyed by the ink site's ANCHOR (anchorKey: file plus trimmed source line), because one file
+// can hold both real debt and a false positive. The owner names the ground the same way.
+//
+// DECISION Phase 88.6.1-02 (Req 14 prerequisite, SPEC Boundaries "re-keyed on a content
+// anchor"): the false-positive LOOKUP is keyed on EXACT trimmed-line anchors, and only the
+// lookup. REJECTED, each with its reason:
+//   - Re-pointing line keys by hand: five re-points in 88.6 (plans 22, 27, 40, 41, 58), and a
+//     stale key reds a correct tree (a declared false positive silently becomes a REAL offender).
+//   - Keying COUNTS on content: identical lines exist in one file (FriendInvitePanel.js:589 and
+//     :773 carry the same "or" label span), so content-keyed counting would merge two real
+//     sites. siteOf stays file plus line number for every count.
+//   - Substring or RegExp anchors: they can match two lines silently.
+//   - A marker comment planted in the product file: that puts test plumbing in shipped code,
+//     in files this plan does not own.
+//   - Comment-stripped text: that needs a second strip pass against 88.6-09's measured budget.
+//     A comment that copies an anchor line reds loudly in test 9, never silently.
+// Going back to line keys is a decision, not a cleanup.
 const FALSE_POSITIVES: Record<string, FalsePositive> = {
+  // RE-KEYED by plan 88.6.1-02 (2026-10): these two entries are keyed by content anchor now,
+  // so a line move cannot red them. The line numbers in the history below are HISTORY.
   // RE-POINTED AGAIN by plan 88.6-40 (wave 8, 2026-09-17): ink 280 -> 433 and 281 -> 434,
   // ground 263 -> 316. Re-derived BY CONTENT after that plan's LAST edit to the component, not
   // after its first — it moved this file in all three of its task commits, and an intermediate
@@ -320,29 +407,31 @@ const FALSE_POSITIVES: Record<string, FalsePositive> = {
   // plan added ABOVE these lines. The MECHANISM is untouched: the ink ternary still tests
   // isCurrentDay first and the muted ground candidate still requires isCurrentDay. Re-pointed,
   // NOT re-engineered — this roster is nobody's sweep to redesign.
-  'app/components/CalendarMonthView.js:444': {
+  [FP_CMV_ADJACENT_INK]: {
     sites: 1,
     why: 'The ink ternary tests isCurrentDay FIRST (-> text-content-accent), so the isAdjacent arm can only be reached when isCurrentDay is false — while the muted ground candidate requires isCurrentDay. Structurally impossible, not debt.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/CalendarMonthView.js:444',
-      groundLine: 'app/components/CalendarMonthView.js:327',
+      inkAnchor: FP_CMV_ADJACENT_INK,
+      groundAnchor: FP_CMV_TODAY_GROUND,
       conditions: ['ink requires !isCurrentDay && isAdjacent', 'ground requires isCurrentDay'],
     },
   },
-  'app/components/CalendarMonthView.js:445': {
+  [FP_CMV_PAST_DATE_INK]: {
     sites: 1,
     why: 'Same ink ternary: the "variant === full && isPastDate" arm is reached only when isCurrentDay and isAdjacent are both false, while the muted ground candidate requires isCurrentDay. Structurally impossible, not debt.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/CalendarMonthView.js:445',
-      groundLine: 'app/components/CalendarMonthView.js:327',
+      inkAnchor: FP_CMV_PAST_DATE_INK,
+      groundAnchor: FP_CMV_TODAY_GROUND,
       conditions: [
         'ink requires !isCurrentDay && !isAdjacent && variant === "full" && isPastDate',
         'ground requires isCurrentDay',
       ],
     },
   },
+  // RE-KEYED by plan 88.6.1-02 (2026-10): these two entries are keyed by content anchor now,
+  // so a line move cannot red them. The line numbers in the history below are HISTORY.
   // RE-POINTED by plan 88.6-22 task 1 (wave 7, 2026-09-16): 364 -> 484, 370 -> 490, ground
   // 350 -> 467. The MECHANISM is unchanged and still holds — only the line numbers moved, because
   // the sweep added a comment above the friend-name `<p>`. Two corrections to the old `why` while
@@ -356,36 +445,37 @@ const FALSE_POSITIVES: Record<string, FalsePositive> = {
   //       to this component must re-point all three. A content-anchored keying would be the
   //       durable fix; no 88.6 plan declares this file, so plan 22 re-points rather than
   //       re-engineers a gate it does not own, and routes the structural change instead.
+  //       That durable fix is now DONE: plan 88.6.1-02 re-keyed these entries on content anchors.
   // RE-POINTED AGAIN by plan 88.6-58 task 2 (2026-09-28, review H3): 484 -> 507, 490 -> 513,
   // ground 467 -> 490 (+23 each). The MECHANISM is unchanged — the three lines are byte-identical
   // to FE d03f728's :484/:490/:467; plan 58 added the INVALID_EMAIL_MESSAGE constant (+4) near the
   // top and amended the email-invite catch's DECISION marker (+19), both ABOVE these lines. Caught
   // by the full `npx vitest run`, not by the task's targeted suites — the same way plan 88.6-42's
   // PROVEN_LOCAL move was caught. The `why` line cites below are re-derived in place.
-  'app/components/FriendInvitePanel.js:507': {
+  [FP_FIP_USERNAME_INK]: {
     sites: 1,
-    why: 'The muted ground arm at :490 requires !isInGroup && selectedFriends.has(friend.id); the ink at :507 is the isInGroup arm of its own ternary. The two conditions are negations of each other, so the pairing cannot render. Plan 88.6-22 is this file\'s sweep owner and confirmed the mechanism at execution; it is a false positive, not debt that plan should have closed.',
+    why: 'The muted ground is the selectedFriends.has(friend.id) arm of the friend row\'s label className, reached only when !isInGroup; the ink is the isInGroup arm of the username paragraph\'s own ternary. The two conditions are negations of each other, so the pairing cannot render. Plan 88.6-22 is this file\'s sweep owner and confirmed the mechanism at execution; it is a false positive, not debt that plan should have closed.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/FriendInvitePanel.js:507',
-      groundLine: 'app/components/FriendInvitePanel.js:490',
+      inkAnchor: FP_FIP_USERNAME_INK,
+      groundAnchor: FP_FIP_SELECTED_GROUND,
       conditions: ['ink requires isInGroup', 'ground requires !isInGroup && selectedFriends.has(friend.id)'],
     },
   },
-  'app/components/FriendInvitePanel.js:513': {
+  [FP_FIP_IN_GROUP_INK]: {
     sites: 1,
-    why: 'Same ground arm at :490 (!isInGroup && selected); the "In group" label at :513 renders only inside an isInGroup guard. Mutually exclusive, so not debt. Same sweep-owner confirmation as :507.',
+    why: 'Same ground: the selectedFriends.has(friend.id) arm of the friend row\'s label className (!isInGroup && selected); the "In group" label renders only inside an isInGroup guard. Mutually exclusive, so not debt. Same sweep-owner confirmation (plan 88.6-22) as the username paragraph\'s entry.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/FriendInvitePanel.js:513',
-      groundLine: 'app/components/FriendInvitePanel.js:490',
+      inkAnchor: FP_FIP_IN_GROUP_INK,
+      groundAnchor: FP_FIP_SELECTED_GROUND,
       conditions: ['ink requires isInGroup', 'ground requires !isInGroup && selectedFriends.has(friend.id)'],
     },
   },
 };
 
 /** Real, structurally-possible offenders: everything the false-positive list does not name. */
-const REAL = FORBIDDEN_ON_MUTED.filter((r) => !(siteOf(r) in FALSE_POSITIVES));
+const REAL = FORBIDDEN_ON_MUTED.filter((r) => !(anchorOf(r) in FALSE_POSITIVES));
 
 /** DISTINCT INK SITES per file — the shape `assertExactCounts` compares against the roster. */
 const MEASURED: Record<string, number> = (() => {
@@ -548,27 +638,27 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   it('6. the false-positive list is exact, live, and disjoint from the offender roster', () => {
     // Three checks, because three different things can go wrong.
     // (a) EXACT LENGTH — a fifth entry cannot be added quietly.
-    expect(Object.keys(FALSE_POSITIVES).sort()).toEqual([
-      // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), 259/260 -> 280/281. This literal is the
-      // SECOND place the line pin is written; both must move together.
-      'app/components/CalendarMonthView.js:444',
-      'app/components/CalendarMonthView.js:445',
-      // RE-POINTED by plan 88.6-22 task 1 (2026-09-16), 364/370 -> 484/490. This literal is the
-      // SECOND place the line pin is written; both must move together. See the re-point note on
-      // the entries themselves. RE-POINTED AGAIN by plan 88.6-58 task 2 (2026-09-28),
-      // 484/490 -> 507/513 — same note on the entries.
-      'app/components/FriendInvitePanel.js:507',
-      'app/components/FriendInvitePanel.js:513',
-    ]);
+    // RE-KEYED by plan 88.6.1-02 (2026-10): the expected keys are the four ink ANCHOR constants,
+    // so a line move in either component no longer reds this check. The line numbers in the
+    // history below are HISTORY: before the re-key this list was the SECOND place each line
+    // pin was written, and both had to move together.
+    // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), 259/260 -> 280/281 (CalendarMonthView).
+    // RE-POINTED by plan 88.6-22 task 1 (2026-09-16), 364/370 -> 484/490 (FriendInvitePanel).
+    // RE-POINTED AGAIN by plan 88.6-58 task 2 (2026-09-28), 484/490 -> 507/513 — same note on
+    // the entries.
+    expect(Object.keys(FALSE_POSITIVES).sort()).toEqual(
+      [FP_CMV_ADJACENT_INK, FP_CMV_PAST_DATE_INK, FP_FIP_USERNAME_INK, FP_FIP_IN_GROUP_INK].sort(),
+    );
     // (b) NOT A FOSSIL — every entry must still be a pairing the walk actually reports. An
     //     entry whose site was deleted or re-inked would otherwise sit here forever.
-    const reported = new Set(FORBIDDEN_ON_MUTED.map(siteOf));
+    const reported = new Set(FORBIDDEN_ON_MUTED.map(anchorOf));
     const stale = Object.keys(FALSE_POSITIVES).filter((s) => !reported.has(s));
     expect(stale, 'these false-positive entries are no longer reported; delete them').toEqual([]);
-    // (c) DISJOINT by `file:line` from everything owned as real debt. This is what stops the
-    //     false-positive list becoming a place to hide debt: an entry cannot be both.
+    // (c) DISJOINT by anchor from everything owned as real debt (re-keyed by plan 88.6.1-02 from
+    //     the old file-plus-line form). This is what stops the false-positive list becoming a
+    //     place to hide debt: an entry cannot be both.
     const debt = new Set([
-      ...REAL.map(siteOf),
+      ...REAL.map(anchorOf),
       // The two `app/gameDetail/page.js` rows left this set with their fix (plan 88.6-18), and
       // `app/friends/page.js:748` left it with its fix (plan 88.6-19). A fixed site must LEAVE
       // this set: it is no longer debt, and the disjointness check below is about what IS.
@@ -595,8 +685,8 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     for (const [site, entry] of Object.entries(FALSE_POSITIVES)) {
       expect(entry.owner.kind, `${site} must never be spec-owned`).toBe('false-positive');
       expect(entry.owner.conditions).toHaveLength(2);
-      expect(entry.owner.inkLine).toBe(site);
-      expect(entry.owner.groundLine).not.toBe(site);
+      expect(entry.owner.inkAnchor).toBe(site);
+      expect(entry.owner.groundAnchor).not.toBe(site);
     }
   });
 
