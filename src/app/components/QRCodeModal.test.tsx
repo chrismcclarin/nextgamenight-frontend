@@ -293,3 +293,42 @@ describe('QRCodeModal — the copy outcome (88.6.1-12)', () => {
     expect(r.textContent).toBe('');
   });
 });
+
+// 88.6.1-12 (D-27, W037 / IN-304). The dialog's controls are exactly what its D48 marker counts:
+// the corner close, Copy Invite Link and the footer Close. The conditional destructive tertiary
+// control was deleted with its two gating props under D-27 (no host enabled it, no caller supplied
+// its handler), so a caller still passing them gets the same three controls.
+// JS component: its inferred prop type does not declare the retired props, so cast (the
+// formLabels.audit.test idiom).
+type AnyComponent = React.ComponentType<Record<string, unknown>>;
+const QRCodeModalAny = QRCodeModal as unknown as AnyComponent;
+
+describe('QRCodeModal — controls (88.6.1-12, D-27, W037)', () => {
+  it('G: the retired props render no extra control', () => {
+    render(
+      <QRCodeModalAny
+        isOpen
+        onClose={vi.fn()}
+        url={INVITE_URL}
+        title="Game Night Invite QR"
+        showReset
+        onReset={vi.fn()}
+      />
+    );
+    const names = Array.from(screen.getByRole('dialog').querySelectorAll('button')).map(
+      (b) => b.getAttribute('aria-label') ?? b.textContent?.trim()
+    );
+    expect(names).toEqual(['Close', 'Copy Invite Link', 'Close']);
+    expect(screen.queryByRole('button', { name: /reset/i })).toBeNull();
+  });
+
+  it('H: three controls, and only the corner close is off the house focus ring', () => {
+    render(dialogAt(true));
+    const buttons = Array.from(screen.getByRole('dialog').querySelectorAll('button'));
+    expect(buttons).toHaveLength(3);
+    const offRing = buttons.filter((b) => !b.classList.contains('focus-visible:ring-2'));
+    expect(offRing).toHaveLength(1);
+    expect(offRing[0]).toBe(buttons[0]);
+    expect(offRing[0]).toHaveAccessibleName('Close');
+  });
+});
