@@ -149,6 +149,7 @@ describe('getFetchErrorMessage — designed copy for action-path failures', () =
   // convention-pinned only. This is the MECHANISM pin; the SOURCE pin below it
   // holds the component's actual map (delta review 2026-08-06: this pin alone
   // duplicated the literal and could not see the component's map drift).
+  // A CSRF-flagged 403 never reaches this arm since 88.6.1-07 (D-24); real backend 403s still do.
   it("conflict (409) has designed generic copy and byCode maps keep sibling arms live", () => {
     expect(getFetchErrorMessage(new ApiError('Already friends', 'conflict', 409))).toMatch(
       /already be settled/i
@@ -420,6 +421,10 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
 //
 // HONEST SCOPE — the malformed-`details` arms below are VACUOUS BY CONSTRUCTION
 // today, and they are kept as regression guards rather than counted as coverage.
+// [AMENDED Phase 88.6.1-07 (D-24): no longer vacuous. `getFetchErrorMessage` now reads ONE
+// strict key off `details` through api.ts's `isCsrfRejection` (an ApiError, status 403,
+// a non-null object, `csrf_rejected === true`), so these arms now pin "malformed `details`
+// never throws and never changes the answer". The sentences below describe the pre-07 tree.]
 // `getFetchErrorMessage` calls `deriveCode` (useFetchErrorState.ts:115-118) and
 // nothing else, and `deriveCode` reads `error.code` off an `ApiError`. It never
 // dereferences `details` at all, so no amount of mangling that shape can make
@@ -531,8 +536,11 @@ describe('getFetchErrorMessage — incomplete envelope (R9)', () => {
     }
   });
 
-  it('malformed `details` shapes cannot change the answer (RETAINED regression guard, VACUOUS today)', () => {
+  it('malformed `details` shapes cannot change the answer (RETAINED regression guard)', () => {
     // READ THE BLOCK COMMENT ABOVE THIS DESCRIBE BEFORE TRUSTING THIS ARM.
+    // [AMENDED Phase 88.6.1-07 (D-24): `details` IS dereferenced now, for one strict key via
+    // `isCsrfRejection`, so this arm pins "malformed `details` never throws and never changes
+    // the answer". The next six lines describe the pre-07 tree.]
     // `getFetchErrorMessage` reaches only `deriveCode`, which reads `error.code`.
     // `details` is never dereferenced, so this arm CANNOT fail against the current
     // implementation however the shape is mangled. It is kept because it WOULD red

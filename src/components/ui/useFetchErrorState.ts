@@ -16,6 +16,10 @@
  *   - `code` is read from the `ApiError.code` seam ONLY (`err.code`). The Phase 85
  *     `{ code }` envelope is already resolved into `ApiError.code` by
  *     `mapErrorToCode` in api.ts — this hook NEVER re-parses a response body.
+ *     [AMENDED Phase 88.6.1-07 (D-24): still true — `code` is read from `err.code` only,
+ *     and this module still never parses a body. The one structural question the MESSAGE
+ *     asks (is this the proxy's CSRF refusal?) is answered by api.ts's `isCsrfRejection`,
+ *     so the body's shape stays known in one file.]
  *
  * Error-only refocus recovery (D-02): the global query client deliberately sets
  * `refetchOnWindowFocus: false` and governs EVERY query, so it must NOT be
@@ -27,7 +31,7 @@
  */
 import * as React from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { ApiError, type ApiErrorCode } from '@/lib/api';
+import { ApiError, isCsrfRejection, type ApiErrorCode } from '@/lib/api';
 
 export type FetchErrorCode = ApiErrorCode;
 
@@ -126,6 +130,10 @@ export interface FetchErrorMessageOptions {
    * `conflict` error resolves through `MESSAGE_BY_CODE` and ignores `fallback` entirely —
    * which is deliberate: the register's strings are ratified copy and a caller-supplied
    * string must not be able to shadow them.
+   * [AMENDED Phase 88.6.1-07 (D-24): one exception — a `forbidden` error that
+   * `isCsrfRejection` recognises (the proxy's own CSRF refusal, not a backend one) resolves
+   * its MESSAGE as `unknown`, so it DOES take the fallback. The sibling docblock on
+   * `UseFetchErrorStateOptions.fallbackMessage` carries the same amendment.]
    *
    * DECISION Phase 88.6-14 (D-33): renaming this to `unknownFallbackMessage` was considered
    * and REJECTED as churn across every call site (`OpenPollsList.js:103-119` and its
@@ -165,12 +173,40 @@ export interface FetchErrorMessageOptions {
    `byCode` exists so a surface that genuinely needs a sharper outcome (e.g. a 400 on a username
    change is "that name is taken", not the generic validation line) can say so in DESIGNED copy
    without reopening the interpolation. Passing an upstream string into `fallback` or `byCode`
-   re-opens the hole and is the one thing this function cannot stop — do not do it. */
+   re-opens the hole and is the one thing this function cannot stop — do not do it.
+
+   [AMENDED Phase 88.6.1-07 (D-24): copy is still derived from the code, never from the message.
+   The one read added here is a structural boolean at the seam (api.ts's `isCsrfRejection`,
+   which reads the body's `csrf_rejected` key off `ApiError.details`), not prose; it decides
+   only WHICH code's copy the message uses. See the DECISION Phase 88.6.1-07 block below.] */
+
+/* DECISION Phase 88.6.1-07 (D-24 (a2), MEDLOW-9; copy row X2): a proxy CSRF 403 resolves its
+   MESSAGE through the `unknown` arm — `byCode.unknown`, else the caller's `fallback`, else the
+   register's unknown line — while `err.code` stays the honest `'forbidden'`. The proxy refused
+   the request before the backend saw it, so a role sentence ("Only the poll creator...") or the
+   register's permission line states something the app does not know.
+
+   REJECTED (a1): `mapErrorToCode` returning `'unknown'` for the flagged body. It labels a real
+   HTTP response "we don't know", flips `shouldRetry` (`src/lib/queryClient.ts:121`, anchor
+   `export function shouldRetry`) to retryable-once for that error, and never reaches the restore
+   page's status-keyed 403 arm.
+   REJECTED (b): per-site guards. Six would be guarded while dozens of generic sites still print
+   the permission line, and the predicate would be copied per site (duplication tenet).
+   REJECTED: "bypass `byCode.forbidden` only", the register's own fix text
+   (`.planning/deferred/phase-88.6.1.md:197`). It falls to `MESSAGE_BY_CODE.forbidden`, which is
+   still a permission claim (DF correction 4).
+
+   The resulting line, stated plainly: a surface that passes a `fallback` prints its own
+   "We couldn't ... Please try again." line; a surface that passes none prints the register's
+   unknown line. Both are that screen's ordinary line for a cause it cannot name (copy row X2,
+   "No new sentence"; D-31). `deriveCode` and the hook's `code` field are untouched. Changing
+   this to a code remap or per-site checks is a decision, not a cleanup. */
 export function getFetchErrorMessage(
   error: unknown,
   options: FetchErrorMessageOptions = {}
 ): string {
-  const code = deriveCode(error);
+  // The code the MESSAGE resolves through; a proxy CSRF 403 reads as `unknown` here only.
+  const code: FetchErrorCode = isCsrfRejection(error) ? 'unknown' : deriveCode(error);
   const override = options.byCode?.[code];
   if (override) return override;
   if (code === 'unknown' && options.fallback) return options.fallback;
@@ -186,6 +222,10 @@ export interface UseFetchErrorStateOptions {
    * or `conflict` error resolves through `MESSAGE_BY_CODE` and ignores `fallbackMessage`
    * entirely — which is deliberate: the register's strings are ratified copy and a
    * caller-supplied string must not be able to shadow them.
+   * [AMENDED Phase 88.6.1-07 (D-24): one exception — a `forbidden` error that
+   * `isCsrfRejection` recognises (the proxy's own CSRF refusal, not a backend one) resolves
+   * its MESSAGE as `unknown`, so it DOES take the fallback. The sibling docblock on
+   * `FetchErrorMessageOptions.fallback` carries the same amendment.]
    *
    * DECISION Phase 88.6-14 (D-33, closing the 2026-07-09 todo from the phase 87.2 code
    * review IN-10): this docblock previously read "Override the derived copy (e.g. a

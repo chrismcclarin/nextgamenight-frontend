@@ -182,6 +182,39 @@ export class ApiError extends Error {
 }
 
 /**
+ * Is this the same-origin BFF proxy's own CSRF refusal (not a backend 403)?
+ *
+ * DECISION Phase 88.6.1-07 (D-24 / MEDLOW-9): ONE structural predicate at the seam. The proxy's
+ * CSRF gate (`src/app/api/[...path]/route.ts`, anchor `csrf_rejected: true`) answers an
+ * unsafe-method call with a code-less 403, so `mapErrorToCode` resolves it to `'forbidden'`
+ * exactly like a backend refusal. The body carries `csrf_rejected: true` as a TOP-LEVEL key, and
+ * `ApiError.details` is the WHOLE parsed body (apiFetch's throw site, anchor
+ * `The single throw site (D-07)`), so the key is read at `details.csrf_rejected`. Strict on the
+ * instance, on the status (403, the proxy's only status for this body) and on the boolean
+ * (`=== true`; a string `'true'` or a `1` is not the proxy's body).
+ *
+ * REJECTED (i): a type-predicate return (`err is ApiError`). The false branch would narrow every
+ * non-CSRF ApiError away in typed callers.
+ * REJECTED (ii): matching the prose `'Cross-origin request rejected'` (88.6-23's own "WHY NOT
+ * MATCH THE PROSE": the message is display text, and the body's error key is not read here).
+ * REJECTED (iii): reading through `getEnvelopeDetails`, which returns the ENVELOPE's nested
+ * `details`. This key is not there; it is top-level in the body.
+ * REJECTED (iv): a new `ApiErrorCode` member (88.6-23's "WHY NOT AN ENVELOPE `code`").
+ *
+ * Readers: `getFetchErrorMessage` (`useFetchErrorState.ts`, this plan) resolves a flagged 403's
+ * MESSAGE through the `unknown` arm while `err.code` stays `'forbidden'`; the restore page's
+ * direct 403 arm (plan 88.6.1-36); invite/accept's wrong-email check (plan 88.6.1-35).
+ * Loosening the strict checks, or remapping the code in mapErrorToCode instead, is a decision,
+ * not a cleanup.
+ */
+export function isCsrfRejection(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status !== 403) return false;
+  const details = err.details;
+  if (typeof details !== 'object' || details === null) return false;
+  return (details as { csrf_rejected?: unknown }).csrf_rejected === true;
+}
+
+/**
  * Typed accessor for the Phase 85 envelope's OWN `details` object.
  *
  * The single apiFetch throw site stores the WHOLE parsed error body as
