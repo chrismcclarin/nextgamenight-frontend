@@ -13,7 +13,7 @@ const LINK_COPIED_ANNOUNCEMENT = 'Invite link copied to the clipboard.';
 // How long the visible label reads Copied! after a successful copy.
 const COPIED_LABEL_MS = 2000;
 
-function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = false }) {
+function QRCodeModal({ isOpen, onClose, url, title }) {
   const [copied, setCopied] = useState(false);
   // Bumped once per successful copy; keys the announcement text so a repeat copy re-announces.
   const [copySeq, setCopySeq] = useState(0);
@@ -119,23 +119,39 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = 
               2. A variant-less `<Button>` inherits `defaultVariants: { variant: 'primary' }`
                  (Button.tsx:255) and would paint the purple fill UI-SPEC §3.2 forbids on a bare
                  control; UI-SPEC §3.2's bare-`<button>` row names THIS site as the
-                 left-bare arm.
+                 left-bare arm. AMENDED Phase 88.6.1-12 (W037): this reason bears only on a
+                 variant-less primitive, and the alternative rejected above names the ghost
+                 variant, so it does not decide the matter on its own; reasons 1 and 3 decide.
               3. `Modal.tsx`'s fleet-header `DialogClose` is bare and is migrated by NO plan in
                  this phase. Migrating this one alone would CREATE a fleet inconsistency rather
                  than close one.
             The glyph itself is ICON sizing (D-02) — it leaves the type scale and is never
             converged.
 
-            RESIDUAL THIS COMMIT CREATES, recorded rather than fixed: with the modal's four other
-            controls now on the house focus ring, this `×` is the only control here still on the
-            user agent's default outline — its className carries no focus utility. That is a
-            CONSISTENCY residual, NOT an AA violation (WCAG 2.4.7 is satisfied by the UA outline),
-            and it is a DIVERGENCE from the fleet close rather than something the fleet shares:
-            `Modal.tsx`'s `DialogClose` DOES carry `focus-visible:ring-2 focus-visible:ring-ring`.
+            RESIDUAL THIS COMMIT CREATES, recorded rather than fixed: with the modal's two other
+            controls (Copy Invite Link and the footer Close) on the house focus ring, this `×` is
+            the only control here still on the user agent's default outline — its className
+            carries no focus utility. That is a CONSISTENCY residual, NOT an AA violation (WCAG
+            2.4.7 is satisfied by the UA outline), and it is a DIVERGENCE from the fleet close
+            rather than something the fleet shares: `Modal.tsx`'s `DialogClose` DOES carry
+            `focus-visible:ring-2 focus-visible:ring-ring`.
             Same kind as the `BrowseMoreModal` stepper residual plan 05 routed under AC-10.
             Reaching for a focus utility here as a "small exception" would edit the very element
-            D48 resolves to leave byte-unchanged. Changing any of this is a decision, not a
-            cleanup. */}
+            D48 resolves to leave byte-unchanged.
+
+            AMENDED Phase 88.6.1-12 (W037 / IN-304, D-27): as first written, this paragraph
+            over-counted the modal's other controls and called the × the only one off the house
+            ring, while at that commit the conditional destructive tertiary text control was ALSO
+            on the UA outline. 88.6.1-12 deleted that control under D-27 (no host enabled it and
+            no caller supplied its handler, so it could never render), which makes the corrected
+            sentence above true. QRCodeModal.test.tsx now pins the inventory: three controls,
+            exactly one of them without the house ring. The residual's OWNER is Phase 88.9, in
+            .planning/deferred/phase-88.9.md under the heading
+            "QRCodeModal corner close is the one control on the UA default focus outline",
+            routed there because adopting a ring changes the visible focus indicator on a 44px
+            box anchored in the dialog corner, which is a look call. Reasons 1-3 above still
+            decide that the element stays a bare control. Changing any of this is a decision,
+            not a cleanup. */}
         <button
           onClick={onClose}
           className="absolute top-2 right-3 md:top-3 md:right-6 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary text-2xl leading-none"
@@ -188,24 +204,6 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = 
         <StatusRegion className="sr-only">
           <span key={copySeq}>{copied ? LINK_COPIED_ANNOUNCEMENT : ''}</span>
         </StatusRegion>
-
-        {/* Reset Token Button (owner/admin only).
-            DECISION Phase 88.6-33 (§4.5 EMPHASIS): `font-normal` over `font-bold` on this label.
-            This control is not a `.btn` and never was, so the weight was ALIVE — deleting it is a
-            real change, not a dead-class cleanup. 400 is correct because the distinction here is
-            already carried by COLOUR: it is the only red control in a modal whose two other
-            actions are a filled primary and a filled secondary. 700 was rejected because it would
-            give a destructive-adjacent tertiary action more visual weight than the primary CTA
-            above it. The stated-400 spelling (rather than simply dropping the utility) follows the
-            shipped `createEvent.js:1290` idiom this plan converges its other weight sites on. */}
-        {showReset && onReset && (
-          <button
-            onClick={onReset}
-            className="w-full min-h-11 px-4 py-2 text-content-status-error hover:text-content-status-error text-sm font-normal text-center transition-colors mb-3"
-          >
-            Reset Token
-          </button>
-        )}
 
         {/* Close Button.
             88.6-33 (§3.2/§3.3): `<Button variant="secondary" size="default">`. `w-full` survives
