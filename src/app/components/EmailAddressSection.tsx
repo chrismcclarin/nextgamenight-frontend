@@ -411,6 +411,72 @@ export function shouldAnnounceCancelledMidSave(
   return outcome === 'code_sent' && stateAtLanding === 'idle';
 }
 
+/**
+ * The slice of a refetched self row the two drift reconciles read (Phase 88.6.1-13, D-11).
+ * Read from the CACHE after the section's own refetch settles, never from the `self`
+ * closure, which is the pre-refetch row.
+ */
+export type SelfRowSnapshot = {
+  id?: string | null;
+  email?: string | null;
+  pending_email_change?: { address?: string | null } | null;
+};
+
+/**
+ * Two addresses are the same address under the SERVER's normaliser: trim, then lowercase —
+ * `periodictabletopbackend_v2/Sonnet/services/provisioningService.js:134-135` (`function
+ * normaliseEmail`), applied to the request at `routes/users.js:1409` and stored on the
+ * pending change, so a pending address and a post-verify `email` are the lowercased form
+ * while the address the user typed may not be. A strict `===` would miss every mixed-case
+ * address.
+ *
+ * NOTHING ON THE BACKEND SIDE POINTS BACK HERE (its docblock names only friend search as
+ * the rule's mirror), so the failure mode if that rule ever widens is stated now: the
+ * Verify reconcile is unaffected, because both sides of its compare are already in the
+ * server's form; the Save reconcile compares the TYPED value and would fall through to the
+ * unreadable-answer copy, which is honest and recoverable. Both sides must be non-empty.
+ */
+function sameAddress(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const left = a.trim().toLowerCase();
+  const right = b.trim().toLowerCase();
+  return left.length > 0 && left === right;
+}
+
+/**
+ * THE VERIFY DRIFT ARM'S SUCCESS TEST (Phase 88.6.1-13, D-11 R124 A). True only when the
+ * refetched row PROVES the change landed: its `email` is the target AND it carries no pending
+ * change. The case it must not get wrong: an EXPIRED pending row ALSO reads
+ * `pending_email_change: null` (the server's loader filters on `expires_at > now()`), so "no
+ * pending" alone is never success — the email has to have moved too. A still-pending row,
+ * no rows, an undefined row and a missing target are all false.
+ */
+export function driftedVerifyLanded(
+  rows: ReadonlyArray<SelfRowSnapshot | undefined>,
+  target: string | null | undefined
+): boolean {
+  if (typeof target !== 'string' || target.trim().length === 0) return false;
+  return rows.some((row) => Boolean(row) && !row?.pending_email_change && sameAddress(row?.email, target));
+}
+
+/**
+ * THE SUPPRESSION COUNTER'S ONE ARMING DECISION (Phase 88.6.1-13, D-26 W011). The Verify
+ * drift arm arms the counter only when the refetched rows carry NO pending change (the
+ * section's own refetch is about to render a null) AND the expiry effect could otherwise
+ * speak for it — a send this session and a live pending row seen. Any row with a pending
+ * change, or either flag false, means the effect would stay silent anyway, and arming then
+ * is exactly the leak W011 recorded: an armed count nobody spends swallows the next GENUINE
+ * expiry. No rows at all means no pending is known, so with both flags set it arms.
+ */
+export function shouldSuppressOwnNull(
+  rows: ReadonlyArray<SelfRowSnapshot | undefined>,
+  sentThisSession: boolean,
+  sawPending: boolean
+): boolean {
+  if (!sentThisSession || !sawPending) return false;
+  return !rows.some((row) => Boolean(row?.pending_email_change));
+}
+
 export function EmailAddressSection() {
   const { self, query: selfQuery } = useSelfIdentity();
   const queryClient = useQueryClient();
@@ -529,7 +595,15 @@ export function EmailAddressSection() {
      plan gives both schema-drift arms the same refetch, so "a null we caused" becomes a
      reachable class and the arm needs a way to recognise it. A COUNT and not a boolean
      because two locally-initiated refetches can overlap; ONE-SHOT on consume, so a later
-     GENUINE expiry is never suppressed by a ref nobody brings down. */
+     GENUINE expiry is never suppressed by a ref nobody brings down.
+
+     AMENDED Phase 88.6.1-13 (D-26 W011, as re-shaped by D-11). The paragraph above is kept
+     as the history of why the counter exists; its arming rule is not current. The counter
+     now has ONE arming site — the Verify drift arm, in its row-gone case — decided ONCE,
+     after that arm's awaited refetch settles, through `shouldSuppressOwnNull`. The refetch
+     helper no longer arms it, so the Save drift arm, the abandoned-success path and a
+     hydrated session's Verify drift cannot leak an armed count that would swallow a later
+     genuine expiry (W011). It stays a count and stays one-shot on consume. */
   const localNullSuppressRef = React.useRef(0);
   /* The state as of LANDING TIME, not as of the closure. A response resolves long after
      the render that started it, and the user may be in a different panel by then — see
@@ -680,7 +754,15 @@ export function EmailAddressSection() {
      refetches on the drift paths are suppressed BY CONSTRUCTION, because every one
      of them goes through `refetchSelfAfterLocalMutation` and arms the counter this
      effect consumes. Do NOT rewrite this as "this plan introduced the first
-     mounted-client refetch"; it did not. */
+     mounted-client refetch"; it did not.
+
+     AMENDED Phase 88.6.1-13 (D-11, D-26 W011). "Every one of them ... arms the
+     counter" is no longer true and is kept above as history. The locally-initiated
+     refetches no longer arm anything; only the Verify drift arm's row-gone case does,
+     once, after its awaited refetch settles (`shouldSuppressOwnNull`). Every other
+     drift outcome now renders its own state from the refetched row before this effect
+     sees it: a landed verify leaves awaiting-code for `verified`, and a still-pending
+     row never reaches the null branch. */
   React.useEffect(() => {
     if (!hydratedRef.current) return;
     if (self?.pending_email_change) {
@@ -722,7 +804,24 @@ export function EmailAddressSection() {
          `useSelfIdentity`, so the rule would look correct in tests and fail in production).
 
          Moving the consume, or moving the disarm into this branch, is a decision, not a
-         cleanup — and the colocated suite reds on both. */
+         cleanup — and the colocated suite reds on both.
+
+         AMENDED Phase 88.6.1-13 (D-11, D-26 W011). The "WHY NOT CLEARED HERE" premise —
+         an un-awaited refetch still in flight at the `'verifying'` -> `'awaiting-code'`
+         commit — no longer holds: the Verify drift arm now AWAITS the refetch before it
+         moves state, and that arm's own commit already renders the refetched row, because
+         `useQuery` computes its result from the query's CURRENT state at render
+         (`node_modules/@tanstack/react-query/build/modern/useBaseQuery.js:55`,
+         `observer.getOptimisticResult`). The settle-time disarm the paragraph points at is
+         retired with it: the arming decision moved INTO that arm, after the settle, where
+         the rows are read once. Both placements still stand, for a smaller reason: the
+         consume STAYS last and this branch STAYS clear-free, because the consume must be
+         spent only by the null branch (the one arming site arms exactly when its row is
+         gone, so its own commit reaches the consume), and a clear here would spend it on
+         any pending render in between. Moving either is still a decision, not a cleanup.
+         The expiry arm below now also clears the ACTION lane: the unreadable-answer copy
+         lives there since D-11a, so EXPIRED no longer overwrites it in a shared slot, and
+         a stale "couldn't read the answer" must not sit beside "That code has expired". */
       return;
     }
     if (state !== 'awaiting-code') return;
@@ -733,6 +832,7 @@ export function EmailAddressSection() {
       localNullSuppressRef.current -= 1;
       return;
     }
+    setActionError(null);
     setCodeError(EXPIRED_CODE_ERROR);
     setResendPromoted(true);
     setSentLine(null);
@@ -795,22 +895,24 @@ export function EmailAddressSection() {
    * cache and spends the clear before the null lands — see the DECISION marker at the
    * effect), and clearing on a user action (the drift copy names Resend as the way out
    * while keeping Verify re-pressable, so a press arrives mid-flight).
+   *
+   * AMENDED Phase 88.6.1-13 (D-11, D-26 W011). Everything above is kept as the history of
+   * the 88.6-38 design; three of its claims are no longer true. (1) This is STILL the one
+   * way the section refetches the self row, but it now RETURNS the settle promise — typed
+   * `Promise<void>`, never rejecting, so an awaiting arm can never be thrown into its own
+   * catch by a failed invalidation — and every caller awaits it inside its own closed lane.
+   * (2) It ARMS NOTHING: the "deliberately deferred `await`+reconcile design" is TAKEN
+   * (D-11), and the arming decision moved to the one arm that can see the refetched row —
+   * the Verify drift arm's row-gone case, through `shouldSuppressOwnNull`. (3) The
+   * settle-time disarm is RETIRED with it: an arm that decides after the settle has
+   * nothing left to take back. Its prefix read of the cache went with it; the drift arms
+   * read through `readSelfRows`, which keeps only the signed-in user's own row.
    */
-  const refetchSelfAfterLocalMutation = React.useCallback(() => {
-    localNullSuppressRef.current += 1;
-    const disarm = () => {
-      if (localNullSuppressRef.current > 0) localNullSuppressRef.current -= 1;
-    };
-    void invalidateSelfCache(queryClient).then(() => {
-      /* Read the CACHE, not `self`: see the docblock. `getQueriesData` prefix-matches the
-         sub-scoped live key exactly as `patchSelfCache` does. */
-      const stillPending = queryClient
-        .getQueriesData<{ pending_email_change?: unknown } | undefined>({
-          queryKey: SELF_IDENTITY_KEY,
-        })
-        .some(([, row]) => Boolean(row?.pending_email_change));
-      if (stillPending) disarm();
-    }, disarm /* the invalidation itself failed, so no refetched null is coming either */);
+  const refetchSelfAfterLocalMutation = React.useCallback((): Promise<void> => {
+    return invalidateSelfCache(queryClient).then(
+      () => undefined,
+      () => undefined
+    );
   }, [queryClient]);
 
   const applyToCache = React.useCallback(
@@ -830,6 +932,38 @@ export function EmailAddressSection() {
     // line, a toast or a URL either.
     setCodeInput('');
   }, []);
+
+  /* THE REFETCHED SELF ROW, READ ONCE BY A DRIFT ARM AFTER ITS AWAITED REFETCH (Phase
+     88.6.1-13, D-11). From the CACHE, never from `self` — the closure is the pre-refetch row.
+     SCOPED TO THE SIGNED-IN USER'S OWN ROW: `SELF_IDENTITY_KEY` is only the PREFIX and the
+     live key is per account (`useSelfIdentity.ts:28-31`, `:86`), so an unscoped prefix read
+     would let another account's cached entry decide this user's toast, verified state, code
+     panel and suppression. Filtered on the row's `id` against `selfId`, never on the sign-in
+     subject; no `selfId`, no rows. A handler-local read, not a reactive re-derivation, so
+     `DECISION Phase 88.8 (D-39)` one-shot hydration is honoured. */
+  const readSelfRows = (): SelfRowSnapshot[] => {
+    if (!selfId) return [];
+    return queryClient
+      .getQueriesData<SelfRowSnapshot | undefined>({ queryKey: SELF_IDENTITY_KEY })
+      .map(([, row]) => row)
+      .filter((row): row is SelfRowSnapshot => Boolean(row) && row?.id === selfId);
+  };
+
+  /* THE VERIFIED OUTCOME, shared by the server-answered `verified` branch and the Verify
+     drift arm's landed reconcile (Phase 88.6.1-13, D-11 R124 A, copy row 19 reuses
+     `CHANGED_RECEIPT` — no new words). The body is the verified branch exactly as it was,
+     so that path is byte-identical in behaviour. Its focus move to Change STAYS: the
+     verified state unmounts the awaiting block and the Verify button with it, so without
+     the move focus would drop to the page body. */
+  const enterVerified = () => {
+    sentThisSessionRef.current = false;
+    setState('verified');
+    setSentLine(null);
+    setResendPromoted(false);
+    setNotice(null);
+    toast.success(CHANGED_RECEIPT);
+    setFocusTarget('change');
+  };
 
   /* ── HANDLERS ─────────────────────────────────────────────────────────── */
 
@@ -960,7 +1094,7 @@ export function EmailAddressSection() {
            the abandoned one is precisely the case where the server may have acted and
            NOBODY downstream is left to refetch — a return before the invalidation would
            leave the one path with no other owner as the only path with no refresh. */
-        refetchSelfAfterLocalMutation();
+        void refetchSelfAfterLocalMutation();
         if (abandoned) return;
         /* RESIDUAL, STATED RATHER THAN HIDDEN (Phase 88.6-38, item 1g — routed to the owner
            in `88.6-38-SUMMARY.md`). The refetch above can come back carrying a NON-NULL
@@ -998,7 +1132,7 @@ export function EmailAddressSection() {
         /* Phase 88.6-38: routed through the shared helper so this site ARMS the suppression
            like the other three. It is the same invalidation it always was; what is new is
            that the defensive expiry arm can now tell this null apart from an expiry. */
-        refetchSelfAfterLocalMutation();
+        void refetchSelfAfterLocalMutation();
         /* AND THE NOTICE ONLY SPEAKS INTO THE SESSION IT IS ABOUT. `stateRef` is read
            rather than the closure's `state`, which is frozen at the render that started
            this request: by landing time the user may have opened a new edit or be sitting
@@ -1123,6 +1257,9 @@ export function EmailAddressSection() {
   };
 
   const handleVerify = async () => {
+    // The address this verify is about, captured before anything moves (88.6.1-13, D-11):
+    // the drift reconcile compares the refetched row against it.
+    const target = pendingAddress;
     // Round 3 #1/#35: Verify consults the shared lane. Before this it guarded on its
     // own state only, so Resend-then-Verify let the verify race the resend's revoke and
     // the user was told "That code isn't right" about a code that was right — the exact
@@ -1149,6 +1286,9 @@ export function EmailAddressSection() {
     }
 
     setCodeError(null);
+    // 88.6.1-13 (D-11a): the action lane is this press's too now, so a fresh press clears
+    // it — after the gates, so a refused press keeps its busy line.
+    setActionError(null);
     setState('verifying');
     try {
       const body = await usersAPI.verifyEmailChange(selfId, normaliseEmailChangeCode(codeInput));
@@ -1176,30 +1316,64 @@ export function EmailAddressSection() {
            now" and, through the remembered pending value, as "Not verified yet". Suppressing
            the false EXPIRED report is what this plan ships; telling the user the change
            SUCCEEDED requires awaiting the invalidation and reconciling, which is recorded as
-           a named follow-up for whichever phase next owns the email-verification contract. */
-        refetchSelfAfterLocalMutation();
+           a named follow-up for whichever phase next owns the email-verification contract.
+
+           AMENDED Phase 88.6.1-13: item 1e is CLOSED by this phase per D-11 — see the
+           marker below. The paragraph above is kept as the record of what was routed. */
+        /* DECISION Phase 88.6.1-13 (D-11, R124 A; D-26 W011): AWAIT the refetch inside
+           `verifying` and RECONCILE from the cache. Chosen: the refetch is awaited while the
+           section still reads `verifying`, so the shared lane stays closed until the self
+           row is fresh (`DECISION Phase 88.8 (code review HIGH-2)` honoured); the refetched
+           row is read ONCE from the cache, and ONLY the signed-in user's own row (`id`
+           equals `selfId` — the key is per account, `useSelfIdentity.ts:28-31`, and the
+           prefix read would otherwise match every account's entry); success is claimed
+           only when that row PROVES it — `email` equals the target under the server's
+           normaliser AND no pending change — and then the section shows the verified
+           outcome with `CHANGED_RECEIPT` (copy row 19, no new words). Anything else keeps
+           the unreadable-answer copy, now in the action lane (D-11a), with no focus move.
+           The suppression counter is armed HERE and nowhere else, by one, only when the
+           rows carry no pending change and the expiry effect could otherwise speak
+           (`shouldSuppressOwnNull`), in the same synchronous run as the state move — the
+           arm's own commit renders the refetched row, so that commit spends it.
+           Rejected: leaving the residual routed (88.6-38's choice; this is the phase it was
+           routed to); reconciling from `self` (the closure is the pre-refetch row);
+           IN-104's settle-time disarm reading `stateRef` (`stateRef` is written in a passive
+           effect, one commit behind this arm, and two decrement sites can spend an
+           overlapping suppression — research DF-1); reconciling the row-gone case straight
+           to the expired copy (this arm cannot tell an expiry from a discard in another
+           tab, and the unreadable copy asks for the re-press whose server answer is the
+           authority). KNOWN LIMIT, told to the owner with D-11: a hung refetch holds
+           `verifying` and the closed lane, because `apiFetch` has no request timeout
+           (`src/lib/api.ts`, the 88.6-42 transport note "NOTHING in this module had one,
+           apiFetch included" — an owned residual of Phase 93). Changing any of this is a
+           decision, not a cleanup. */
+        await refetchSelfAfterLocalMutation();
+        const rows = readSelfRows();
+        if (driftedVerifyLanded(rows, target)) {
+          clearCodeField();
+          enterVerified();
+          return;
+        }
+        if (shouldSuppressOwnNull(rows, sentThisSessionRef.current, sawPendingRef.current)) {
+          localNullSuppressRef.current += 1;
+        }
         setState('awaiting-code');
-        setCodeError(UNREADABLE_ANSWER_ERROR);
-        setFocusTarget('code');
+        setActionError(UNREADABLE_ANSWER_ERROR);
         return;
       }
       applyToCache(body);
       clearCodeField();
 
       if (body.outcome === 'verified') {
-        sentThisSessionRef.current = false;
-        setState('verified');
-        setSentLine(null);
-        setResendPromoted(false);
-        setNotice(null);
-        toast.success(CHANGED_RECEIPT);
-        setFocusTarget('change');
+        enterVerified();
         return;
       }
       setState('awaiting-code');
       if (body.outcome === 'expired') {
         setCodeError(EXPIRED_CODE_ERROR);
         setResendPromoted(true);
+        // A verdict on the code: FormField associates it, so the move lets it be spoken.
+        setFocusTarget('code');
       } else if (body.outcome === 'address_taken') {
         /* NAMED, never collapsed into `invalid` — telling this user their code "isn't
            right" would be false and would hide a real account conflict behind a retry
@@ -1214,12 +1388,18 @@ export function EmailAddressSection() {
            the field, so preserving them helps nobody. The server's 30-minute grace is a
            COURTESY that keeps a re-verify possible, not a UI contract this section is
            obliged to hold state for. Contrast the transport arms above, where the retry
-           is immediate and the code genuinely is the next keystroke. */
-        setCodeError(ADDRESS_TAKEN_ERROR);
+           is immediate and the code genuinely is the next keystroke.
+
+           AMENDED Phase 88.6.1-13 (D-11a): the ruling above is about the CODE and stands —
+           it is still cleared. Only the LANE changed: a conflict about the ADDRESS is not a
+           verdict on the code, so it is written to the action lane, and it moves no focus
+           (see the marker at the catch below). */
+        setActionError(ADDRESS_TAKEN_ERROR);
       } else {
         setCodeError(INVALID_CODE_ERROR);
+        // A verdict on the code: FormField associates it, so the move lets it be spoken.
+        setFocusTarget('code');
       }
-      setFocusTarget('code');
     } catch (error) {
       /* Round 5 #1: THE SAME RULE AS THE BRANCH ABOVE, which round 4 applied to the
          unparseable-body arm and left contradicted here. This is the branch that
@@ -1229,10 +1409,29 @@ export function EmailAddressSection() {
          code is KEPT and Verify can be pressed again; `messageFor(error)` names what
          actually failed and never claims the code is still valid. Resend stays mounted
          beside it for the residual case where the request did land. */
+      /* DECISION Phase 88.6.1-13 (D-11a, Verify): the code field's lane carries ONLY the
+         code's own verdicts — incomplete, out-of-alphabet, invalid, expired. The unreadable
+         answer, every thrown failure here and `address_taken` go to the ACTION lane that
+         Verify already points at (round 6 #32, Verify's `aria-describedby`). `validation`
+         counts as an action fact on this route: the server's malformed-code 400 is pre-gated
+         by `checkCode`, which mirrors its alphabet and decode, and `messageFor` maps
+         `validation` to the stale-action sentence. Rejected: leaving them on the code field
+         (an `aria-invalid` input the user did not get wrong — the rule this file already
+         states for Resend, Discard and Revert at the `actionError` lane); clearing the
+         action lane on a code keystroke (it would erase a failed Resend's message).
+         FOCUS (AT-4 R4, plan review r1 A2): chosen — the action-lane arms move NO focus, so
+         the control that was pressed keeps it, and it already references the lane (the
+         idiom Resend's and Discard's catches use); `invalid` and `expired` keep their move to
+         the code input, because FormField associates the code's own verdict and the target
+         speaks it; the drift-landed reconcile keeps its move to Change because its block
+         unmounts. Rejected: moving focus to the code input (it does not reference the lane,
+         and a move in the same commit as the alert's insertion competes with it); adding
+         the lane's id to the input's description (the message is spoken twice, and it
+         re-blames the field D-11a just cleared). Changing any of this is a decision, not a
+         cleanup. */
       setState('awaiting-code');
-      setCodeError(messageFor(error));
+      setActionError(messageFor(error));
       if (isRateLimited(error)) startCooldown();
-      setFocusTarget('code');
     }
   };
 
