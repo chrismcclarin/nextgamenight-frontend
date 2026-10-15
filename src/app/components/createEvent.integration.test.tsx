@@ -22,7 +22,7 @@
 // are on the API SPY, which is implementation-independent by construction. Plan 88.1-09
 // swaps react-big-calendar for WeekGrid underneath this file; it must stay green unedited.
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addDays, addMinutes, addWeeks, format, parseISO, startOfWeek, subDays } from 'date-fns';
 
@@ -910,5 +910,51 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // NAMED identity, never "not body".
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-15 (copy row C2, D-30) — the two required SECTION titles (Date & Time,
+// Participants) hide their star glyph and speak the ratified words "(required)" through an
+// sr-only span beside it. VoiceOver reads an exposed star as "star", never "required". The
+// two manual-entry labels already hide their stars and their inputs carry `required`, so they
+// gain no "(required)" — a second one there would double it.
+// ---------------------------------------------------------------------------
+describe('createEvent — required section titles are announced as required (88.6.1-15, copy row C2)', () => {
+  it('C2-A: the participants group is named exactly "Participants (required)"', async () => {
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('group', { name: 'Participants (required)' })).toBeInTheDocument();
+  });
+
+  it('C2-B: default visual branch — both section stars are hidden, look the same, and each is followed by an sr-only "(required)"', async () => {
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    const stars = within(dialog).getAllByText('*');
+    expect(stars).toHaveLength(2);
+    for (const star of stars) {
+      expect(star).toHaveAttribute('aria-hidden', 'true');
+      expect(star).toHaveClass('text-content-status-error');
+      const spoken = star.nextElementSibling;
+      expect(spoken).not.toBeNull();
+      expect(spoken).toHaveClass('sr-only');
+      expect(spoken?.textContent).toBe('(required)');
+    }
+    expect(within(dialog).getAllByText('(required)')).toHaveLength(2);
+  });
+
+  it('C2-C: manual branch — four stars, all hidden; "(required)" only on the two section titles; the start date is required', async () => {
+    const user = userEvent.setup();
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Switch to Manual Entry' }));
+    const startDate = await within(dialog).findByLabelText(/start date & time/i);
+    const stars = within(dialog).getAllByText('*');
+    expect(stars).toHaveLength(4);
+    for (const star of stars) {
+      expect(star).toHaveAttribute('aria-hidden', 'true');
+    }
+    expect(within(dialog).getAllByText('(required)')).toHaveLength(2);
+    expect(startDate).toBeRequired();
   });
 });
