@@ -12,6 +12,12 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { logger, errCtx } from '../../lib/logger';
+
+// The role read's resolved outcome: the shape plan 88.6.1-21's banner reads from a retry's own
+// result to tell a failed Retry (copy row B1). `undefined` means unknown (skipped or superseded).
+const LOAD_OK = Object.freeze({ isError: false });
+const LOAD_FAILED = Object.freeze({ isError: true });
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -49,7 +55,15 @@ export default function GroupPlanningPage() {
     const [heatmapPrompt, setHeatmapPrompt] = useState(null);
     const [heatmapLoading, setHeatmapLoading] = useState(true);
     const [heatmapError, setHeatmapError] = useState(null);
-    const [userRole, setUserRole] = useState(null);
+    // The caller's role, stamped with the group it was read for. `userRole` / `roleError` are
+    // DERIVED at render and read null for any other group, so the render in which `groupId`
+    // changes already passes null to the gated controls (DECISION Phase 88.6.1-16 at the compact
+    // notice below).
+    const [roleRecord, setRoleRecord] = useState({ groupId: null, role: null, error: null });
+    const userRole = roleRecord.groupId === groupId ? roleRecord.role : null;
+    const roleError = roleRecord.groupId === groupId ? roleRecord.error : null;
+    const groupIdRef = useRef(groupId);
+    const roleRunRef = useRef(0);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -158,15 +172,31 @@ export default function GroupPlanningPage() {
         // Gate on identity resolution — the self-role find keys on the nested
         // member.id vs selfUuid, so we wait until selfUuid resolves rather than
         // storing a wrong "no role". Re-runs when selfUuid lands (in effect deps).
-        if (!groupId || !user?.sub || !selfUuid) return;
+        // A gated call asked nothing, so it resolves undefined (unknown, never announced).
+        // Every read that settles stores what it learned: the found role, null when the
+        // caller is absent, null plus the error when the read failed — never a stale role.
+        if (!groupId || !user?.sub || !selfUuid) return undefined;
+        const run = ++roleRunRef.current;
+        const forGroup = groupId;
+        // Superseded: a newer role read started, or the page moved to another group.
+        const superseded = () => run !== roleRunRef.current || groupIdRef.current !== forGroup;
         try {
-            const members = await groupsAPI.getGroupMembers(groupId);
+            const members = await groupsAPI.getGroupMembers(forGroup);
+            if (superseded()) return undefined;
             const me = (members || []).find(m => m.id === selfUuid);
-            if (me?.UserGroup?.role) {
-                setUserRole(me.UserGroup.role);
-            }
+            setRoleRecord({ groupId: forGroup, role: me?.UserGroup?.role ?? null, error: null });
+            return LOAD_OK;
         } catch (err) {
-            console.error('Error fetching user role:', err);
+            // LOG FIRST, then the superseded return: an overtaken read that really failed is
+            // still a failed request (the house order, plan 88.6.1-71's members/events catches).
+            logger.info('Error fetching user role:', errCtx(err));
+            if (superseded()) return undefined;
+            setRoleRecord({
+                groupId: forGroup,
+                role: null,
+                error: err instanceof Error ? err : new Error("The role request didn't complete."),
+            });
+            return LOAD_FAILED;
         }
     };
 
@@ -175,16 +205,22 @@ export default function GroupPlanningPage() {
        `isError`/`error`/`refetch` (useFetchErrorState.ts). `refetch` must be STABLE — the hook
        puts it in a useCallback dep AND in its refocus-recovery effect deps, so handing it a fresh
        function each render would re-subscribe that listener on every render while erroring.
-       These two fetches are re-declared per render (they close over groupId/promptId), hence the
-       ref hop rather than a useCallback on the fetch itself. */
+       These three fetches are re-declared per render (they close over groupId/promptId/selfUuid),
+       hence the ref hop rather than a useCallback on the fetch itself. Each retry RETURNS the
+       fetch's promise, so the hook's retry resolves whatever the fetch resolves (the role read's
+       LOAD_OK / LOAD_FAILED outcome above). */
     const fetchGroupRef = useRef(null);
     const fetchHeatmapRef = useRef(null);
+    const fetchUserRoleRef = useRef(null);
     useEffect(() => {
         fetchGroupRef.current = fetchGroup;
         fetchHeatmapRef.current = fetchHeatmapData;
+        fetchUserRoleRef.current = fetchUserRole;
+        groupIdRef.current = groupId;
     });
     const retryGroup = useCallback(() => fetchGroupRef.current?.(), []);
     const retryHeatmap = useCallback(() => fetchHeatmapRef.current?.(), []);
+    const retryRole = useCallback(() => fetchUserRoleRef.current?.(), []);
 
     const groupErrorState = useFetchErrorState({
         isError: Boolean(groupError),
@@ -196,6 +232,16 @@ export default function GroupPlanningPage() {
         error: heatmapError,
         refetch: retryHeatmap,
     });
+    const roleErrorState = useFetchErrorState({
+        isError: Boolean(roleError),
+        error: roleError,
+        refetch: retryRole,
+    });
+    // ONE compact notice for the caller's personal controls: identity first (see the marker at
+    // the mount below).
+    const personalControlsErrorState = selfIdentityErrorState.showError
+        ? selfIdentityErrorState
+        : roleErrorState;
 
     // Phase 71.2 / Plan 03 hotfix — clear the email-CTA query params (prompt_id,
     // prefillDate, etc.) when the modal closes for any reason. Without this, a
@@ -316,7 +362,39 @@ export default function GroupPlanningPage() {
             {/* D-08: identity-resolution failure hides the self-role affordances
                 (admin poll controls gated on userRole) — surface a compact,
                 non-blocking degrade notice rather than fail silently (D-11). */}
-            <FetchErrorBanner state={selfIdentityErrorState} compact />
+            {/* DECISION Phase 88.6.1-16 (D-25, copy row G6; W060(i)): this compact notice now also
+                tells a failed ROLE read, with the existing sentence (the shipped COMPACT_NOTICE, no
+                new string). Before this, a failed members read was swallowed and every admin
+                control simply vanished with no word to the user.
+                ONE mount serves both causes, identity first: identity is the upstream failure and
+                its Retry is the one that can restore both. Chosen OVER a second compact mount, which
+                would add a second polite region and print the same sentence twice when both fail —
+                and both can, because a failed identity refetch keeps its cached row, so the role
+                read still runs.
+                The role error is cleared only when a read SETTLES, chosen OVER the clear-at-start
+                shape the group load uses, so the pressed Retry stays mounted with its in-flight
+                label and the error state stays true through a failed retry.
+                An unknown role is null — fail closed: the admin-gated controls hide while this
+                notice says why. The role and its error are stamped with the group they were read
+                for and DERIVED at render, chosen OVER resetting them in an effect or after the next
+                read settles — both leave renders in which another group's role reaches the
+                admin-gated controls.
+                Newest wins: a read that settles after the page moved to another group, or after a
+                newer role read started, writes nothing (no role, no error), chosen OVER dropping only
+                on a group change — the hook's error-only refocus refetch can start a second read of
+                the SAME group while a Retry is in flight, and the older answer landing last would
+                put a stale failure (or a stale role) over a newer result. A superseded failure is
+                still LOGGED before it is dropped (the house log-first order), chosen OVER dropping
+                it silently, which would make an outage look smaller than it was.
+                Every read RESOLVES its outcome — LOAD_OK, LOAD_FAILED, or nothing when it was
+                skipped or superseded — because plan 88.6.1-21's banner tells a failed Retry (copy
+                row B1, owner 2026-10-05) only from the retry's own result. Chosen OVER resolving
+                nothing (what the read did first), which would leave this page re-speaking the
+                first-failure sentence after every failed Retry and never saying "still"; a
+                superseded read resolves nothing rather than a failure, so a stale answer is never
+                reported as the outcome of the press.
+                Changing this is a decision, not a cleanup. */}
+            <FetchErrorBanner state={personalControlsErrorState} compact />
 
             {/* A failed GROUP load — the page keeps its generic "Plan Game Session" title and the
                 poll tooling below still works, so this is a banner rather than a dead-end page. */}
