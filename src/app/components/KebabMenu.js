@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { useDismissal } from '@/components/ui/useDismissal';
 
 /**
  * KebabMenu — reusable ⋮ trigger + dropdown overlay.
@@ -106,24 +107,11 @@ export default function KebabMenu({
     setPortalTarget(document.body);
   }, []);
 
-  // Outside-click closes the dropdown (mousedown so it fires before click
-  // bubbles, same idiom as NotificationBell).
-  //
-  // KEEP BOTH CLOSE PATHS. This mousedown handler is not wrong, it is
-  // INCOMPLETE: it owns POINTER dismissal only. The `focusout` handler on the
-  // container below is the KEYBOARD half beside it, and it deliberately does
-  // not guess about pointers. Deleting either one leaves a dismissal hole —
-  // that is a decision, not a cleanup.
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
+  // A dismissal changes ONLY `open`. The armed index is deliberately NOT reset
+  // here: the close-resets effect below reads the PRE-transition armed index to
+  // decide whether to emit the revert copy, and KM-24 pins that.
+  const closeMenu = () => setOpen(false);
+  useDismissal({ open, onDismiss: closeMenu, containerRef, triggerRef });
 
   // When the menu closes, reset any armed twoTap so reopening starts fresh.
   //
