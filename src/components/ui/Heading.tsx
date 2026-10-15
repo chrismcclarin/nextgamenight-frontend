@@ -24,16 +24,16 @@
  * - **No ellipsis and no clipping.** The base carries `wrap-anywhere` and none of
  *   `truncate` / `line-clamp-*` / `text-ellipsis` / `whitespace-nowrap`. A caller
  *   that wants `truncate` is making a per-site decision and leaves a `DECISION`
- *   marker at that site (owners: plans 15 and 17 for `GroupGamesList.js:39` and
- *   `userProfile/page.js:1481`; `groupPlanning/page.js:268` has no owning plan
- *   today — a heading-census gap this plan does not close).
+ *   marker at that site. The three former truncating headings all chose WRAP under
+ *   A1: `GroupGamesList.js` (its A1 note, plan 88.6-15), `userProfile/page.js`
+ *   (`DECISION Phase 88.6-17 (A-1)`) and `groupPlanning/page.js`'s h1 (`DECISION Phase 88.6-53`).
  * - **It is NOT a safe `aria-labelledby` / `aria-describedby` idref target**
  *   unless the caller guarantees non-empty content. Because empty children render
  *   NO element (AC-3), a `Heading` carrying an `id` takes that `id` with it when
  *   the content is empty, and the reference goes dangling at runtime with no
- *   error and no failing build. The concrete case is `Modal.tsx:197-198`, where
- *   the title is *"rendered as the DialogTitle (drives `aria-labelledby`)"* while
- *   `Modal.tsx:159` sets `aria-describedby={undefined}` — making that title the
+ *   error and no failing build. The concrete case is `Modal.tsx`'s `ModalHeaderProps`,
+ *   whose title is *"rendered as the DialogTitle (drives `aria-labelledby`)"* while
+ *   the dialog content sets `aria-describedby={undefined}` — making that title the
  *   dialog's ONLY accessible name. Pinned behaviourally in `Heading.test.tsx`,
  *   not only stated here.
  */
@@ -47,15 +47,15 @@ import { cn } from '@/lib/cn';
    obvious shape and the one a future reader is most likely to "simplify" this into. Level and
    size are different facts: the level answers "where does this sit in the document outline",
    the size answers "how loud is it". Coupling them would let a caller silently demote a page
-   title's type by asking for the right outline, and would make the shipped
-   `ErrorFallback.tsx:78-92` case — an `<h1>` rendered at 20px — inexpressible. The precedent is
-   `EmptyState.tsx:82-89`, which already made this exact call for one surface; this primitive is
-   the third writing of it and therefore the place it stops being duplicated. Splitting size back
-   out of this prop, or folding it back in, is a decision, not a cleanup.
+   title's type by asking for the right outline, and would make the shipped `ErrorFallback.tsx`
+   title (an h1 at the 20px rung, recorded in its `DECISION Phase 88.6-36 (D-05)` note)
+   inexpressible. The precedent is `EmptyState.tsx:83-90`, which already made this exact call for
+   one surface; this primitive is the third writing of it and therefore the place it stops being
+   duplicated. Splitting size back out of this prop, or folding it back in, is a decision, not a cleanup.
 
-   `level` reaches 6 — not 1-4 — because `CalendarListView.js:834-845`'s
+   `level` reaches 6 — not 1-4 — because `CalendarListView.js:1020-1027`'s
    `DECISION Phase 88.5 (DR2-7b)` marker deliberately renders h5/h6 through the
-   `headingLevel` / `rowHeadingLevel` seam (`:631-632`, `:656-657`, `:849-850`, `:889`) so that
+   `headingLevel` / `rowHeadingLevel` seam (`:767-768`, `:792-793`, `:1044-1045`, `:1064`) so that
    no two structurally-nested headings share a level. A 1-4 primitive would bulldoze that. */
 const headingVariants = cva('font-bold wrap-anywhere', {
   variants: {
@@ -86,8 +86,8 @@ type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 /* `Tag` resolves through this ALLOW-LIST, never by bare interpolation of `level`.
    `` `h${level}` `` turns the tag-string form into `hh5`, and `document.createElement` accepts
    that happily. The tag-string form is not hypothetical: it is the vocabulary the shipped seams
-   actually pass (`headingLevel="h5"` / `rowHeadingLevel="h6"` at `CalendarListView.js:631-632`,
-   `:656-657`, `:849-850`, `:889`; `EmptyState.tsx:61`'s public type is `'h1' | 'h2' | 'h3'`), and
+   actually pass (`headingLevel="h5"` / `rowHeadingLevel="h6"` at `CalendarListView.js:767-768`,
+   `:792-793`; `EmptyState.tsx:62`'s public type is `'h1' | 'h2' | 'h3'`), and
    plan 36 migrates 43 UNTYPED `.js` files onto this primitive, where TypeScript cannot enforce
    the declared union at all. The union on `HeadingProps.level` and this allow-list are two halves
    of ONE mitigation; neither alone is the contract.
@@ -154,7 +154,7 @@ function isEmptyChildren(c: React.ReactNode): boolean {
 
 const Heading = React.forwardRef<HTMLHeadingElement, HeadingProps>((allProps, ref) => {
   /* T-88.6-05, both halves. `HeadingProps` Omits `dangerouslySetInnerHTML` out of the extended
-     `HTMLAttributes` (the TYPE half, copying the narrowing idiom at `EmptyState.tsx:47` and
+     `HTMLAttributes` (the TYPE half, copying the narrowing idiom at `EmptyState.tsx:48` and
      `RouteFallback.tsx:30`), and the destructure below drops it before `{...rest}` reaches the
      element (the RUNTIME half). The type half alone is not the mitigation: `Omit` is erased at
      runtime and the spread would carry the sink straight through from an untyped `.js` caller —
@@ -181,7 +181,25 @@ const Heading = React.forwardRef<HTMLHeadingElement, HeadingProps>((allProps, re
   // guard is still the rejected shape.
   if (isEmptyChildren(children)) return null;
 
-  const Tag = LEVEL_TAGS[String(level)] ?? FALLBACK_TAG;
+  /* DECISION Phase 88.6.1-10 (W074, Req 11): the tag lookup reads OWN keys of LEVEL_TAGS only,
+     an own-property check at the one read, chosen OVER three alternatives.
+     REJECTED 1 — the bare index with a nullish fallback. LEVEL_TAGS is a plain object literal,
+     so an inherited key from an untyped caller reaches the prototype and the fallback never
+     fires. Measured on the bare index (Phase 88.6.1-10 RED run): "constructor" resolved to the
+     Object function, which React called as a component, and the render threw "Objects are not
+     valid as a React child"; "hasOwnProperty" and "valueOf" threw "Cannot convert undefined or
+     null to object"; "__proto__" threw "Element type is invalid"; "toString" rendered the text
+     "[object Undefined]" with no heading at all.
+     REJECTED 2 — a null-prototype map. Equally correct, but it moves the guard into how the map
+     is BUILT, where tidying the map back into a plain literal silently reopens the hole; the
+     check sits where the hazard is read.
+     REJECTED 3 — Object.hasOwn. No use of it anywhere in src, and on Safari before 15.4 it
+     exists only through Next's polyfill module; the hasOwnProperty.call form needs nothing.
+     Dropping the check is a decision, not a cleanup. */
+  const levelKey = String(level);
+  const Tag = Object.prototype.hasOwnProperty.call(LEVEL_TAGS, levelKey)
+    ? LEVEL_TAGS[levelKey]
+    : FALLBACK_TAG;
   const resolvedSize = size ?? SIZE_FOR_TAG[Tag];
 
   return (
