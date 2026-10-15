@@ -42,14 +42,14 @@
  *
  * All fixed user-facing copy lives in module-level constants and is NEVER
  * interpolated from a server string (DECISION Phase 88-25, at
- * `useFetchErrorState.ts:120-139`).
+ * `useFetchErrorState.ts:161`, the block opening `user-facing failure copy is DERIVED`).
  *
  * DESIGN CONTRACTS INHERITED BY CITATION (D-34). No visual contract document was
  * produced for this phase, on the owner's ruling, because this section is 100%
  * shipped primitives and introduces no new visual element. It inherits
- * `88-UI-SPEC.md` 8.1 (button), 8.2 (input), 6.2 `:349-351` (receipt wording as
- * object plus past-tense verb), `:336` (toast lifetime), `:512` (visible
- * labels), and `DESIGN-SYSTEM-REFERENCE-2026.md` `:330` (reflow) / `:334-349`
+ * `88-UI-SPEC.md` 8.1 (button), 8.2 (input), 6.2 `:405-407` (receipt wording as
+ * object plus past-tense verb), `:392` (toast lifetime), `:571` (visible
+ * labels), and `DESIGN-SYSTEM-REFERENCE-2026.md` `:374` (reflow) / `:378-391`
  * (flatten). If a NEW visual element turns out to be wanted — a status pill, say
  * — stop and raise it rather than inventing one.
  *
@@ -111,7 +111,7 @@ const MALFORMED_EMAIL_ERROR = "That doesn't look like an email address";
 const INCOMPLETE_CODE_ERROR = 'Enter all 8 characters from the email';
 /* The Crockford alphabet omits I, L, O and U. Plan 09's verify handler DECODES
    the first three before validating (`CROCKFORD_CONFUSABLES = { O: '0', I: '1',
-   L: '1' }`, routes/users.js:1750), and this section decodes them identically —
+   L: '1' }`, routes/users.js:2091), and this section decodes them identically —
    so a hand-transcribed I, L or O is ACCEPTED, not rejected, and naming those
    three here would send a user hunting for characters the server takes happily.
    `U` has no decode on either side, and neither does stray punctuation. */
@@ -155,12 +155,12 @@ const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
       integer in a comment rots silently and this is the second time this one has:
         - frontend: SIX call sites, ENUMERATED rather than counted by a grep, because a
           grep for the helper's own name matches this comment and would count itself:
-            * `EmailAddressSection.tsx:498`  — the idle display (`currentIsSynthetic`)
-            * `EmailAddressSection.tsx:772`  — the Save pre-flight
-            * `EmailAddressSection.tsx:1440` — the BLUR pre-check (round 6 #21)
-            * `FeedbackForm.js:64`           — the prefill gate
-            * `FeedbackForm.js:204`          — the `user_email` write
-            * `userProfile/page.js:1705`     — the profile header address line
+            * `EmailAddressSection.tsx:689`  — the idle display (`currentIsSynthetic`)
+            * `EmailAddressSection.tsx:1142` — the Save pre-flight
+            * `EmailAddressSection.tsx:2040` — the BLUR pre-check (round 6 #21)
+            * `FeedbackForm.js:66`           — the prefill gate
+            * `FeedbackForm.js:274`          — the `user_email` write
+            * `userProfile/page.js:1711`     — the profile header address line
           NOT four. The two the old count missed are this file's blur pre-check and
           `FeedbackForm.js`'s prefill gate — both shipped in the SAME 2026-09-07 fix set
           that wrote "four", which is how a census goes stale inside its own commit.
@@ -196,7 +196,7 @@ const CANCELLED_MID_SAVE_COPY =
 /* THE SAME CASE, WITH THE MAIL REFUSED (round 6 #12 as re-worded 2026-09-07). The first
    version of this arm reused MAIL_REFUSED_COPY, which ends "use Resend code to try
    again" — and Resend lives in the awaiting-code panel, which this arm does not land in.
-   VERIFIED rather than assumed: hydration is one-shot and ref-guarded (`:513`), so the
+   VERIFIED rather than assumed: hydration is one-shot and ref-guarded (`:743`), so the
    `invalidateSelfCache` refetch above brings back a row carrying `pending_email_change`
    and the section STAYS IDLE; only a reload re-runs the hydration that reads it. So the
    copy names a reload, which is the one action that actually reaches the code from here.
@@ -229,8 +229,8 @@ const LABEL_DISCARD = 'Discard change';
 const LABEL_REVERT = 'Use my sign-in address';
 
 /* ── CODE NORMALISATION ─────────────────────────────────────────────────────
-   Mirrors routes/users.js `normaliseEmailChangeCode` (:910-912) plus its
-   confusable decode (:1750) and its alphabet (:1751), so this client is never
+   Mirrors routes/users.js `normaliseEmailChangeCode` (:1037-1039) plus its
+   confusable decode (:2091) and its alphabet (:2092), so this client is never
    STRICTER than the contract. A client-side gate that rejected a code the server
    would accept is a defect, not a safety margin. */
 const CROCKFORD_CONFUSABLES: Record<string, string> = { O: '0', I: '1', L: '1' };
@@ -310,7 +310,7 @@ const STALE_ACTION_ERROR = 'That action is no longer available — reload the pa
  * section-wide default says. The Save route does NOT: every other `validation` it can
  * return is pre-gated client-side by the four checks in `handleSave` — and the shape and
  * length gates are the SAME regex and the SAME cap the backend applies
- * (`routes/users.js:960`, EMAIL_MAX_LENGTH 255), verified rather than assumed — so the
+ * (`routes/users.js:962`, EMAIL_MAX_LENGTH 255), verified rather than assumed — so the
  * only refusal that can survive them is the synthetic-address gate.
  */
 function messageFor(error: unknown, overrides: FetchErrorMessageOptions['byCode'] = {}): string {
@@ -333,7 +333,7 @@ function isUsableMutationBody(body: EmailChangeResponse | undefined | null): boo
      `lib/schemas/users.ts` says a `switch` here that misses an outcome literal is
      "a TYPE error rather than a runtime fall-through" — but that only holds if the
      value actually IS the declared type, and nothing checked. `apiFetch<T>` is a
-     generic CAST, not a parse (`lib/api.ts:848`), and `EmailChangeResponseSchema`
+     generic CAST, not a parse (`lib/api.ts:621`), and `EmailChangeResponseSchema`
      had zero call sites in the repo. So the stated safety net did not exist: a
      ninth outcome literal, or a body missing `verification_sent`, reached the UI
      unchallenged — exactly the silent fall-through the comment claims is
@@ -711,7 +711,7 @@ export function EmailAddressSection() {
 
   /* ── HYDRATION, ONE SHOT ──────────────────────────────────────────────────
      The idiom is already shipped in this component's host page at
-     `src/app/userProfile/page.js:798-839`, and the reason is stated there in
+     `src/app/userProfile/page.js:875-949`, and the reason is stated there in
      the repo's own words: the self cache is `staleTime: Infinity` and mutation
      handlers own their own local-state updates and cache writes, "so a reactive
      re-init on every `self` change would risk clobbering an in-progress edit".
@@ -732,7 +732,7 @@ export function EmailAddressSection() {
        (a) deriving the state reactively from `self` on every render — it
            clobbers an in-progress change on the section's OWN cache patch;
        (b) a mount-only `useEffect` with an empty dependency array — at mount
-           `self` is `undefined` (`useSelfIdentity.ts:117` returns `query.data`
+           `self` is `undefined` (`useSelfIdentity.ts:118` returns `query.data`
            on an `enabled`-gated, `staleTime: Infinity` query), so a user with a
            pending change would NEVER reach awaiting-code. That is the PRIMARY
            flow: "request the change, leave to read the mail on your phone, come
@@ -764,7 +764,7 @@ export function EmailAddressSection() {
        Change, which mints a fresh code. "That code has expired" lives on the
        VERIFY round trip (`outcome: 'expired'`), the only path that knows the
        difference, and plan 09's resend predicate carries NO `expires_at` clause
-       (routes/users.js:1326-1346) so the Resend that outcome promotes can
+       (routes/users.js:1550-1575) so the Resend that outcome promotes can
        actually serve the row.
 
        NEVER key hydration on `verification_sent`. That is a
@@ -774,7 +774,7 @@ export function EmailAddressSection() {
        primary flow dies with no code input on screen.
 
        And do NOT copy the phone block's hydration mapping at
-       `userProfile/page.js:824-839`: it maps a stored-but-unverified value to
+       `userProfile/page.js:937-944`: it maps a stored-but-unverified value to
        `'idle'` and never re-enters the pending state from the self row. Its
        STATE MACHINE is worth mirroring; that mapping would make the mailed code
        unusable after any reload inside its 30-minute life (SPEC A9), with
@@ -944,7 +944,7 @@ export function EmailAddressSection() {
    * that a refetch which comes back STILL PENDING brings the ref down deterministically —
    * otherwise one armed suppression outlives its cause and swallows the next genuine
    * expiry. The signal is the invalidation PROMISE settling
-   * (`selfIdentityCache.ts:48-50` returns `queryClient.invalidateQueries`, which resolves
+   * (`selfIdentityCache.ts:49-50` returns `queryClient.invalidateQueries`, which resolves
    * after the refetch), read against the CACHE rather than against a rendered value:
    * at settle time React may not have re-rendered yet, so anything derived from `self`
    * would still be the pre-refetch row. Attaching a settle handler is NOT the same as
@@ -1773,7 +1773,7 @@ export function EmailAddressSection() {
             each region's accessible name — the one hazard `Heading.tsx`'s own docblock names
             ("It is NOT a safe `aria-labelledby` idref target unless the caller guarantees
             non-empty content"). That guarantee HOLDS here and is why the idref is safe: the child
-            is the module constant `SECTION_TITLE` (`:95`), never a prop, never interpolated, never
+            is the module constant `SECTION_TITLE` (`:96`), never a prop, never interpolated, never
             empty — so `Heading`'s AC-3 empty-children early return is unreachable at these three
             sites. Chosen OVER leaving them raw `<h2>`s (the file would be the phase's only
             un-migrated heading surface) and OVER giving the `<section>` an `aria-label` instead
@@ -1784,7 +1784,7 @@ export function EmailAddressSection() {
           {SECTION_TITLE}
         </Heading>
         {/* NO fallback to the Auth0 session address here. The profile page's own
-            terminal arm does exactly that at page.js:809-821 — for the USERNAME,
+            terminal arm does exactly that at page.js:883-891 — for the USERNAME,
             where a wrong display name is cosmetic. For the ADDRESS it is the
             stale value this whole correction removes, and offering Change
             against an address we cannot read invites a change to the value the
@@ -1801,7 +1801,7 @@ export function EmailAddressSection() {
             region that mounts WITH its content announces nothing, and this arm can be the
             section's FIRST render when the self query is already settled-errored. */}
         {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): the authored `text-sm` was DEAD and is deleted —
-            `StatusRegion`'s own base already supplies it (`StatusRegion.tsx:44`, `cn('text-sm',
+            `StatusRegion`'s own base already supplies it (`StatusRegion.tsx:103`, `cn('text-sm',
             className)`), so this was the size utility restating what the primitive gives, the
             §4.3 "dead size utility → delete it" shape. Zero look delta by construction. The ink
             token STAYS: that is a real choice, not a restatement. */}
@@ -1837,7 +1837,7 @@ export function EmailAddressSection() {
      DR-C's SECOND half only (a fixed error naming what is missing) and not its first, so
      a screen-reader or switch user was told the control was available, pressed it, and
      got an error instead of an action. DR-C's contract is both halves together
-     (`:123-127`), and the five controls already carry the shape for `mutating` and the
+     (`:135-139`), and the five controls already carry the shape for `mutating` and the
      cooldown — this is the same shape applied to the one condition that was missing it,
      not a new rule. Still `aria-disabled`, never native `disabled`. */
   const selfRowMissing = !selfId;
@@ -1878,7 +1878,7 @@ export function EmailAddressSection() {
             address are FIELD LABELS in everything but the tag — the code review that added the
             second one says so ("LABELLED, not a bare paragraph… naming what it IS"). §4.3 puts a
             label on Label 14, §4.2's caption role list is closed and does NOT contain "field
-            label", and this file's REAL labels (`FormField`'s, `FormField.tsx:97`) already render
+            label", and this file's REAL labels (`FormField`'s, its default label class) already render
             at 14 — so 12 here was the file disagreeing with itself. */}
         <p className="text-sm text-content-muted">{CURRENT_ADDRESS_LABEL}</p>
         <p className="text-base text-content-primary break-words">
@@ -1886,7 +1886,7 @@ export function EmailAddressSection() {
               stores `<sub>@auth0.local` in `Users.email` as a SENTINEL, not a
               contact handle, and guards it in 19 places; this frontend guarded
               it in zero until this plan. Cite: DECISION Phase 88.2 NIX-AUTH0
-              (services/groupOwnershipOfferService.js:97-114) — the BROAD
+              (services/groupOwnershipOfferService.js:97-115) — the BROAD
               `@auth0` substring is deliberate and re-narrowing it to
               `@auth0.local` is a decision, not a cleanup. A falsy address takes
               the same branch: "no address" and "a sentinel" read identically to
@@ -1965,6 +1965,19 @@ export function EmailAddressSection() {
       {(state === 'idle' || state === 'verified') && revertAvailable && (
         <p className="text-xs text-content-muted mt-1">{REVERT_HELPER}</p>
       )}
+      {/* THE IDLE BLOCK'S LANE (revert and Change's busy gate). DECISION Phase 88.6.1-13 (D-42):
+          this alert stays CONDITIONALLY MOUNTED WITH ITS TEXT, chosen OVER an always-mounted
+          empty assertive region, because an alert inserted with its text is announced reliably
+          (ARIA 1.2; research AT-4, CONTEXT D-42) — and converting the three lanes would put up
+          to three empty assertive regions in one section. Its AT-4 record, measured on the tree
+          88.6.1-13 Task 2 left: R1 PASS — a plain paragraph child of the section card, which is
+          a direct child of the profile page's container, with no hidden or display-contents
+          ancestor. R2 PASS — no dialog; the card is top-level on the profile page. R3 PASS by
+          this plan's fix — every non-null write of the lane bumps its sequence and only this
+          paragraph is keyed on it, so an identical gate refusal re-inserts (test "R3-revert").
+          R4 PASS — the revert failure arms move focus to the revert control, which describes
+          this lane; Change's busy gate moves no focus and Change describes the same lane.
+          R5 PASS — the lane starts null, so nothing is present at first render. */}
       {revertError && (
         <p key={revertErrorSeq} id={`${reactId}-revert-error`} role="alert" className="text-content-status-error text-xs mt-1">
           {revertError}
@@ -1989,9 +2002,9 @@ export function EmailAddressSection() {
               value={emailInput}
               /* Validation runs on Save (and on blur), NEVER on change:
                  `FormField`'s error slot is unconditionally `role="alert"`
-                 (FormField.tsx:104-108), and an alert on every keystroke talks
+                 (FormField's error paragraph, rendered when `error` is set), and an alert on every keystroke talks
                  over the person mid-entry. The phone block above records
-                 exactly this reason at page.js:1524-1533. */
+                 exactly this reason at page.js:1802-1808. */
               onChange={(e) => {
                 setEmailInput(e.target.value);
                 // Round 3 #36: resuming entry clears the stale error (and its
@@ -2053,7 +2066,20 @@ export function EmailAddressSection() {
               `role="alert"`, and pointed at by BOTH controls' `aria-describedby` so a
               user who returns to a gated Save or Cancel hears WHY rather than meeting a
               dimmed control with no reason (WCAG 4.1.2, and the consistency the three
-              siblings already have). */}
+              siblings already have).
+              DECISION Phase 88.6.1-13 (D-42): kept CONDITIONALLY MOUNTED WITH ITS TEXT, chosen
+              OVER an always-mounted empty assertive region — an alert inserted with its text is
+              announced reliably (ARIA 1.2; research AT-4, CONTEXT D-42), and converting would put
+              up to three empty assertive regions in one section. AT-4 record, measured on the
+              tree Task 2 left: R1 PASS — a plain paragraph in the editing block, no hidden or
+              display-contents ancestor. R2 PASS — no dialog. R3 PASS by this plan's fix — the
+              lane's per-write sequence keys only this paragraph, so an identical refusal
+              re-inserts (test "R3-edit"). R4 PASS because of this plan's focus edits — both
+              Save drift exits and the catch's non-address codes move no focus, so the pressed
+              Save (or Cancel) keeps it and already describes this lane; the two moves kept are
+              the address verdict (to the email input, which FormField describes) and the
+              code-panel reconcile (to the code input, because this block unmounts). R5 PASS —
+              the lane starts null. */}
           {editActionError && (
             <p key={editActionErrorSeq} id={`${reactId}-edit-error`} role="alert" className="text-content-status-error text-xs mt-2">
               {editActionError}
@@ -2106,8 +2132,8 @@ export function EmailAddressSection() {
             }
           >
             {/* THE FORMAT INSTRUCTION IS ASSOCIATED, NOT MERELY ADJACENT. BOTH
-                halves are required: `FormField` renders `hint` at :103 but never
-                puts it into `aria-describedby` (:79-83), so `hint` alone is
+                halves are required: `FormField` renders `hint` after the control but never
+                puts it into `aria-describedby` (its `describedBy` merge), so `hint` alone is
                 decorative to assistive technology; and `FormField` MERGES the
                 child's own `aria-describedby` into the computed value rather
                 than overwriting it, so setting it here keeps the hint associated
@@ -2170,7 +2196,7 @@ export function EmailAddressSection() {
                  with the re-press blocked in the handler (DR-C). NO ticking
                  countdown text lives inside any Banner or StatusRegion —
                  `Banner` wraps its children in an assertive `aria-atomic`
-                 region (Banner.tsx:87, :103-109), so a per-second label change
+                 region (Banner.tsx:87, :103-106), so a per-second label change
                  would re-announce the whole banner. */
               variant={resendPromoted ? 'secondary' : 'ghost'}
               onClick={handleResend}
@@ -2195,7 +2221,21 @@ export function EmailAddressSection() {
               belongs beside the buttons — not in the code field's error slot,
               where `FormField` would set `aria-invalid="true"` on an input the
               user has not mistyped and may not have touched. Mirrors the shape of
-              the revert error below. */}
+              the revert error below.
+              DECISION Phase 88.6.1-13 (D-42): kept CONDITIONALLY MOUNTED WITH ITS TEXT, chosen
+              OVER an always-mounted empty assertive region — an alert inserted with its text is
+              announced reliably (ARIA 1.2; research AT-4, CONTEXT D-42), and converting would put
+              up to three empty assertive regions in one section. AT-4 record, measured on the
+              tree Task 2 left: R1 PASS — a plain paragraph in the awaiting block, no hidden or
+              display-contents ancestor. R2 PASS — no dialog. R3 PASS by this plan's fix — the
+              lane's per-write sequence keys only this paragraph, so an identical refusal
+              re-inserts (test "R3-action"). R4 PASS because of this plan's focus edits — the
+              unreadable answer, the Verify catch and the address conflict move no focus, so the
+              pressed Verify keeps it and Verify, Resend and Discard all describe this lane, as
+              the Resend and Discard catches already did; the moves kept are the code's own
+              verdicts (invalid, expired: to the code input, which FormField describes) and the
+              landed reconcile (to Change, because this block unmounts). R5 PASS — the lane
+              starts null. */}
           {actionError && (
             <p key={actionErrorSeq} id={`${reactId}-action-error`} role="alert" className="text-content-status-error text-xs mt-2">
               {actionError}
@@ -2210,7 +2250,7 @@ export function EmailAddressSection() {
 /* DECISION Phase 88.8 D-30: this section is built from the HOUSE primitives —
    `FormField`, `Input`, `Button`, `Banner`, `StatusRegion`, `Icon` — chosen OVER
    matching the phone-verification block that sits directly above it on the same
-   page (`userProfile/page.js:1480-1680`). Copying the neighbour for local
+   page (`userProfile/page.js:1740-1994`). Copying the neighbour for local
    visual consistency is the obvious move and it LOSES here: that block's buttons
    are hand-rolled markup carrying neither the shared `.btn` class nor any height
    floor, so mirroring it would ship a phone-forward regression on a brand-new
@@ -2236,7 +2276,7 @@ export function EmailAddressSection() {
    second instance of the class.
 
    THE PRECEDENT IS HONOURED, NOT OVERTURNED. `DECISION Phase 88.5` at
-   `NextGameNightCard.tsx:379-390` splits it as: the control being ACTED ON gets
+   `NextGameNightCard.tsx:479-487` splits it as: the control being ACTED ON gets
    `aria-disabled`; a control nobody is standing on may be natively disabled.
    There, the natively-disabled buttons are the OTHER RSVP options while one is
    submitting. This section simply has no control of that second kind.

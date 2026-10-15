@@ -9,7 +9,7 @@
 // — that plan 09's resend route actually serves a token whose `expires_at` has
 // passed — is proved on the BACKEND side, by the behaviour row and test
 // `88.8-09-PLAN.md` Task 1 carries for exactly that row state (the predicate is
-// `status === 'active'` with NO `expires_at` clause, routes/users.js:1326-1346).
+// `status === 'active'` with NO `expires_at` clause, routes/users.js:1550-1575).
 // Neither repo's CI can see the other.
 //
 // The wire KEY is not pinned here either, for the same structural reason: the
@@ -544,7 +544,7 @@ describe('EmailAddressSection — the code field', () => {
   it('normalises case, dashes and spaces, and DECODES the three Crockford confusables like the backend', () => {
     expect(normaliseEmailChangeCode('ab12-cd34')).toBe('AB12CD34');
     expect(normaliseEmailChangeCode(' ab 12 cd 34 ')).toBe('AB12CD34');
-    // O -> 0, I -> 1, L -> 1 (routes/users.js:1750). A client stricter than the
+    // O -> 0, I -> 1, L -> 1 (routes/users.js:2091). A client stricter than the
     // contract would reject codes the server accepts.
     expect(normaliseEmailChangeCode('ilo-o1234')).toBe('11001234');
     expect(checkCode('ilo-o1234')).toBe('ok');
@@ -1790,7 +1790,7 @@ describe('EmailAddressSection — composition and accessibility', () => {
 
 describe('EmailAddressSection — 88.6-38: headings on the primitive, with the idref intact', () => {
   // THE POINT OF THESE THREE: they RESOLVE the `aria-labelledby` reference rather than
-  // walking up from the heading the way the shipped test at :211 does. A walk-up
+  // walking up from the heading the way the shipped test at :218 does. A walk-up
   // (`getByRole('heading').closest('section')`) passes with the `id` DELETED, because the
   // heading is still inside the section either way — so it cannot see the one regression
   // the migration can cause. `getByRole('region', { name })` is the resolving form: a
