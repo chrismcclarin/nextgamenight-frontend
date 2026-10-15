@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { groupsAPI } from '../../lib/api';
 import FriendInvitePanel from './FriendInvitePanel';
 import { Modal } from './Modal';
@@ -20,18 +20,15 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
     const [createdGroup, setCreatedGroup] = useState(null)
     const [submitting, setSubmitting] = useState(false)
     const nameInputRef = useRef(null)
-    // Wave-12 review MED #20: the real `disabled` during the pending window
-    // drops keyboard focus to body; on a FAILED settle the dialog stays open,
-    // so return focus to the re-enabled submit. On success the modal closes
-    // and the ref is gone — the focus call no-ops.
-    const submitButtonRef = useRef(null)
-    const wasSubmitting = useRef(false)
-    useEffect(() => {
-        if (wasSubmitting.current && !submitting) {
-            submitButtonRef.current?.focus();
-        }
-        wasSubmitting.current = submitting;
-    }, [submitting])
+    // The in-flight latch read on onSubmit's first line — see the D-35 marker there.
+    const createInFlightRef = useRef(false)
+    // Keys the error alert below: bumped on EVERY failure, so an identical second failure
+    // inserts a fresh alert node (AT-4 R3; see the AMENDED 88-29 marker at the alert).
+    const [errorSeq, setErrorSeq] = useState(0)
+    const showError = (message) => {
+        setErrorMessage(message)
+        setErrorSeq((n) => n + 1)
+    }
 
     /* DECISION Phase 88-33 Task 4 (UAT row 447): while a create request is IN FLIGHT the
        dialog is genuinely non-dismissible — Esc, the header ×, and outside-click are ALL
@@ -60,9 +57,27 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
     const onSubmit = async (e) => {
         e.preventDefault();
-        // Double-submit guard: Enter + a fast second click during the same
-        // in-flight request must not create two groups (UAT row 447).
-        if (submitting) return;
+        /* DECISION Phase 88.6.1-15 (D-35, rule of POSITION), the rule `DECISION Phase 88.6-22`
+           records in FriendInvitePanel.js: the submit is the control the person just pressed, so its
+           in-flight gate is `aria-disabled` on the Button plus THIS synchronous first-line REF
+           latch, released in the `finally` below. Double-submit (UAT row 447): Enter plus a fast
+           second click during the same request must not create two groups.
+           REJECTED: the native `disabled` attribute (a natively disabled element leaves the
+           focus order, so a keyboard or switch user is stranded mid-create), and the
+           `submitting` state flag this line replaces (it is a stale closure until React
+           commits, so a second synchronous submit passed it — two groups from one double
+           press). The latch is set only AFTER the client validation, so a validation failure
+           never latches. The header × is the sibling, not the pressed control, and keeps its own
+           `closeDisabled` gate (already `aria-disabled` in Modal.tsx).
+
+           OVERRIDDEN HERE, named rather than silently dropped: the "Wave-12 review MED #20"
+           failed-settle effect that returned focus to the submit. It existed ONLY because the
+           native attribute dropped focus to <body>. With the button focusable it had become a
+           defect: it moved focus in the SAME commit that inserts the error alert (the alert and
+           the focus announcement compete — AT-4 R4), and on an Enter submit it pulled the person
+           out of the very field the error describes. Restoring the native attribute, the state
+           guard, or that refocus effect is a decision, not a cleanup. */
+        if (createInFlightRef.current) return;
         if (!newGroup.name.trim()) {
             // DECISION Phase 88-29 (Req 11 / DEF-88-16-01): this validation failure reports
             // through the component's OWN inline error slot, chosen OVER the browser
@@ -76,11 +91,12 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
             // in this file that skipped the `errorMessage` slot rendered 100 lines below —
             // a self-inconsistency inside one component. Restoring a native dialog here is
             // a decision, not a cleanup.
-            setErrorMessage('Please enter a group name');
+            showError('Please enter a group name');
             return;
         }
         try {
             setErrorMessage(''); // Clear any previous errors
+            createInFlightRef.current = true;
             setSubmitting(true);
             const data = await createNewGroup(newGroup);
             setNewGroup(groupForm);
@@ -93,7 +109,10 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                Sentry capture. `logger.error(msg, err)` IS the capture AC-16 (a)
                (owner 2026-09-09, wording amended 2026-09-13 D7 arm A) asked for: it routes
                through Sentry's captureException with the error object and the verbatim message
-               in `extra.msg` — see `src/lib/logger.ts:28-30` for the exact call, which is
+               in `extra.msg` — see `src/lib/logger.ts:45-47`
+               (`Sentry.captureException(err ?? new Error(msg), {`) for the exact call, which since
+               `DECISION Phase 88.6-58` (`logger.ts:36`) also carries `extra.upstreamMessage`
+               beside `extra.msg` when the error has one, which is
                deliberately NOT reproduced here so a call-shaped grep over this file cannot read
                prose as a second capture. Adding a real second capture beside it is a decision,
                not a cleanup.
@@ -107,7 +126,8 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                no request-body field, no member list, no invite URL or token. It does NOT bound
                the error's own `name`/`message`/stack, which `exceptionFromError` serialises
                into `exception.values[0]`; on this path the backend echoes its own text
-               (`Sonnet/routes/groups.js:297`, `:332`). That residual is owner-accepted
+               (`Sonnet/routes/groups.js:332`, `res.status(500).json({ error: error.message });`,
+               BE `cc497d1`). That residual is owner-accepted
                (2026-09-13). */
             logger.error('Error creating group:', error);
             /* DECISION Phase 88.6-33 (R1 / DEF-88-25-01): the ratified register string over the
@@ -117,17 +137,19 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                register's own `unknown` line answers and no copy is authored (P1).
 
                A VALUE change ONLY — this is UI-SPEC §14 A-30's NAMED §6.2 EXCEPTION, scoped to
-               this file alone. The modal-submit toast arm (§6.2 `:552`) is declined here because
-               §6.2's own announcement clause (`:555-557`) forbids a second live region, and this
+               this file alone. The modal-submit toast arm (§6.2, `88.6-UI-SPEC.md:594`, the mutation / modal-submit row)
+               is declined here because §6.2's own announcement clause
+               (`88.6-UI-SPEC.md:596-598`, "Announcement: exactly one live region per failure") forbids a second live region, and this
                surface already owns one WITH field association (`aria-invalid` / `aria-describedby`
                on the name input, over the `role="alert"` node below under the
                `DECISION Phase 88-29` marker). A toast would cost that association. Plans 31 and 32
                classify sites against §6.2 too and MUST NOT inherit this. */
             const errorMsg = getFetchErrorMessage(error);
-            setErrorMessage(errorMsg);
+            showError(errorMsg);
         } finally {
             // Re-enable close on EVERY settle: success closes via modaltoggle above;
             // failure must not leave the person stuck in an undismissable dialog.
+            createInFlightRef.current = false;
             setSubmitting(false);
         }
     }
@@ -277,9 +299,26 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 `userProfile`'s phone error and used polite only for the
                                 types-as-you-go format hint. Without a role this node is silent to
                                 a screen reader, which would make replacing the native `alert()`
-                                above an a11y REGRESSION — an alert dialog is announced. */}
+                                above an a11y REGRESSION — an alert dialog is announced.
+
+                                ——— AMENDED Phase 88.6.1-15 (D-42 / D-23), original reasoning
+                                above KEPT AS HISTORY: the CONDITIONAL mount is KEPT. An alert
+                                inserted with its text is announced reliably (ARIA 1.2 `alert`;
+                                the TetraLogical 2024 matrix incl. VoiceOver iOS; AT-4 in the
+                                88.6.1 `research/APPENDIX-AT.md`), so D-23's always-mounted
+                                assertive region was NOT adopted — its premise does not hold for
+                                `role="alert"`. This site's AT-4 record: R1 (a plain <p>, no
+                                hidden ancestor), R2 (renders inside the open dialog) and R5
+                                (absent at first render) pass as built; R3 passes because every
+                                failure goes through `showError`, which bumps `errorSeq`, and
+                                this paragraph is keyed on it, so an identical second failure
+                                inserts a fresh node (unkeyed, the same node with the same text
+                                announced nothing); R4 passes because nothing moves focus in the
+                                failure commit (the refocus effect is gone — the D-35 marker in
+                                `onSubmit`). Converting this to an always-mounted region, or
+                                dropping the key, is a decision, not a cleanup. */}
                             {errorMessage && (
-                                <p id="create-group-error" role="alert" className="mt-2 text-sm text-content-status-error">{errorMessage}</p>
+                                <p key={errorSeq} id="create-group-error" role="alert" className="mt-2 text-sm text-content-status-error">{errorMessage}</p>
                             )}
                         </div>
                         {/* Owner report 2026-08-04: button sat off-center under the input.
@@ -319,12 +358,13 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 a pin would have INVERTED its hover. `enabled-hover:` and never a
                                 bare `hover:` (D10) — a bare one does not dedupe against the base
                                 token, so both would paint, and it would re-lift this control
-                                while it is `disabled`.
+                                while it is `disabled` or `aria-disabled` (the `enabled-hover`
+                                variant excludes both).
 
                                 DELETED AS DEAD, not as unwanted — `.btn` is unlayered
-                                (globals.css:2194-2205) and declares font-weight (`font-bold`),
+                                (globals.css, the `.btn {` rule) and declares font-weight (`font-bold`),
                                 font-size (`text-sm`) and padding (`px-6 py-3`); `.btn:disabled`
-                                declares `opacity: 0.5` (`:2250-2253`), which is byte-identical to
+                                declares `opacity: 0.5` (globals.css, the `.btn:disabled {` rule), which is byte-identical to
                                 the `disabled:opacity-50` that rode here. `uppercase` SURVIVES:
                                 `.btn` declares no `text-transform`, so it was never dead.
                                 `min-h-11` is dropped as REDUNDANT against plan 06's cva base
@@ -333,18 +373,26 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
                                 THE THREE CARRIED-ACROSS PROPS ARE NOT DECORATION. `Button`
                                 destructures `type` with a default of `'button'`
-                                (Button.tsx:267), so dropping `type="submit"` would silently turn
+                                (Button.tsx:268, `type = 'button'`), so dropping `type="submit"` would silently turn
                                 the form's submit control inert and the modal would stop creating
                                 groups — a regression no type checker and no class census can see.
                                 `ref` feeds the failed-settle focus return (the wave-12 MED #20
                                 marker above) and `disabled` feeds the UAT row 447 double-submit
-                                guard. All three are pinned behaviourally in createGroup.test.tsx. */}
+                                guard. All three are pinned behaviourally in createGroup.test.tsx.
+
+                                ——— AMENDED Phase 88.6.1-15 (D-35), original paragraph above KEPT
+                                AS HISTORY: `ref` is RETIRED, with the failed-settle effect it fed
+                                (see the D-35 marker in `onSubmit`). The in-flight gate is now
+                                `aria-disabled` here plus the `createInFlightRef` latch in
+                                `onSubmit` — not the native attribute. `type="submit"` still
+                                carries the load-bearing reason recorded above. The gate and the
+                                submit are pinned in createGroup.test.tsx (arms G1, G2 and the
+                                "still SUBMITS" arm). */}
                             <Button
-                                ref={submitButtonRef}
                                 variant="primary"
                                 className="uppercase shadow-theme-sm enabled-hover:shadow-theme-lg"
                                 type="submit"
-                                disabled={submitting}
+                                aria-disabled={submitting || undefined}
                             >
                                 {submitting ? 'Creating...' : 'Create Group'}
                             </Button>
