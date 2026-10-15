@@ -19,13 +19,13 @@
  * registration order and cannot be claimed, so Header's earlier-registered listener would run
  * first (research P-10), and an ancestor React handler would also see the key (KM-6).
  * REJECTED (c): `@floating-ui/react`'s `useDismiss`. Measured, it ALSO binds its Escape on the
- * document (`src/app/components/ClickableMemberName.js:552-557`, "registers the same callback on
- * the DOCUMENT"). It also needs a floating context that neither consumer has, and its name sits one
- * letter from this hook's: they are different engines.
+ * document (`src/app/components/ClickableMemberName.js:552-557`, "`useDismiss` ALSO registers the
+ * same callback on the DOCUMENT"). It also needs a floating context that neither consumer has,
+ * and its name sits one letter from this hook's: they are different engines.
  * REJECTED (d): the hook owning `open`. KebabMenu's close-resets effect
- * (`src/app/components/KebabMenu.js:149-160`) and KM-17 depend on a dismissal changing ONLY the
- * host's `open`, and the bell's `isOpen` drives both of its triggers' `aria-expanded`. A host-owned
- * state keeps both hosts' state shapes unchanged.
+ * (`src/app/components/KebabMenu.js:203-214`, `}, [open, armedIndex]);`) and KM-17 depend on a
+ * dismissal changing ONLY the host's `open`, and the bell's `isOpen` drives both of its
+ * triggers' `aria-expanded`. A host-owned state keeps both hosts' state shapes unchanged.
  * Changing the event to a document listener, or the event type to pointerdown, is a decision, not
  * a cleanup.
  */

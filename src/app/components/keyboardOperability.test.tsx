@@ -555,9 +555,11 @@ describe('KebabMenu Escape — the STANDALONE composition (four of the six rende
     // class this phase fixes elsewhere (W44, W45).
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
-    // The handler CLAIMED the key: an ancestor listener does not also see it. That claim is what
-    // stops one Escape from both closing this menu and collapsing gameDetail's expanded
-    // description (`gameDetail/page.js:384-402`, which bails only on `event.defaultPrevented`).
+    // The handler CLAIMED the key: an ancestor listener does not also see it. Its preventDefault
+    // half is what stops one Escape from both closing this menu and collapsing gameDetail's
+    // expanded description (`src/app/gameDetail/page.js:519-537`, `if (!descExpanded) return;`),
+    // which bails on `event.defaultPrevented` at `:522`; in production that document listener
+    // still runs, so the bail, not the stopPropagation, is what protects it (useDismissal.ts).
     expect(ancestorKeyDown).not.toHaveBeenCalled();
   });
 
@@ -578,13 +580,13 @@ describe('KebabMenu Escape — the STANDALONE composition (four of the six rende
 });
 
 describe('KebabMenu Escape INSIDE the shipped Modal — the two ManageMembers sites, MEASURED', () => {
-  /* 2 of the 6 render sites are the `ManageMembers` menus inside a dialog (`:571`, `:595` under
-     the `Modal` at `:378`), and that is the destructive row-action path D-40 makes the sole phone
-     entry point. The standalone arm above cannot see this composition, so it is measured here
+  /* 2 of the 6 render sites are the `ManageMembers` menus inside a dialog (`:650` and `:698`,
+     each `<KebabMenu`, under the `Modal` at `:449`, `<Modal open={modal}`), and that is the
+     destructive row-action path D-40 makes the sole phone entry point. The standalone arm above cannot see this composition, so it is measured here
      rather than assumed.
 
      MEASURED 2026-09-15, and it CORRECTS the plan text and the first draft of the code marker:
-     Radix's capture-phase document Escape (`Modal.tsx:149-150` ->
+     Radix's capture-phase document Escape (`Modal.tsx:227-228`, `<Dialog open={open}` ->
      `@radix-ui/react-use-escape-keydown`) does run FIRST and dismisses the dialog — but it does
      NOT stop propagation, so the event still reaches this component's container handler in the
      bubble phase and that handler DOES run. What is true is the OUTCOME the user gets: the whole
@@ -684,7 +686,8 @@ describe('KebabMenu focusout — the keyboard half beside the shipped mousedown 
   it('KM-8 (iii). and an ARMED twoTap item is still armed after that null focusout', () => {
     // The case the null rule exists for: a pointer press over the list's own non-focusable
     // chrome, or over a disabled item, produces a null relatedTarget. Closing on it would
-    // silently disarm a live two-tap gate (`ManageMembers.js:620`, `OpenPollsList.js:282`).
+    // silently disarm a live two-tap gate (`ManageMembers.js:723` and `OpenPollsList.js:288`,
+    // each `twoTap: true`).
     render(<KebabMenu ariaLabel={KEBAB_LABEL} items={TWO_TAP_ITEMS()} />);
     const { list } = openKebab();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
@@ -751,7 +754,8 @@ describe('KebabMenu aria-pressed — present only while armed (legal only once t
           // a twoTap item, unarmed
           { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
           // a NON-toggle action: `aria-pressed="false"` here would announce a plain action as an
-          // unpressed toggle, which is the inverse of the house idiom (`gameDetail/page.js:1274`).
+          // unpressed toggle, which is the inverse of the house idiom (`gameDetail/page.js:1430`,
+          // `twoTap: false`).
           { label: 'Delete', danger: true, twoTap: false, onClick: vi.fn() },
         ]}
       />,
@@ -791,8 +795,8 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
   });
 
   it('KM-13. the PROP-TIME gate: an instance that can never announce carries no region', () => {
-    // The shipped example is the desktop owner-only transfer kebab (`ManageMembers.js:571`),
-    // whose single item has no twoTap (`:573-583`).
+    // The shipped example is the desktop owner-only transfer kebab (`ManageMembers.js:650`,
+    // `<KebabMenu`), whose single item has no twoTap (`:654`, `label: 'Transfer ownership to this member'`).
     //
     // LABELLED, because it matters when reading the red-then-green record: this arm is one of the
     // three in this section that ALSO pass against the pre-88.6-16 component — trivially, because
@@ -809,7 +813,7 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
 
   it('KM-14. the per-surface region COUNT is the gate\'s measured yield, asserted not summarised', () => {
     // Shaped like the surface the gate was argued from: N member-row kebabs that each carry a
-    // twoTap item (`ManageMembers.js:595`) plus one that carries none (`:571`). The predicate is
+    // twoTap item (`ManageMembers.js:698`, `<KebabMenu`) plus one that carries none (`:650`). The predicate is
     // TRUE for every row, so the region IS per row — that is the accepted design, and it is
     // exactly what makes the item-label announcement below sound.
     const N = 3;
