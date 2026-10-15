@@ -86,6 +86,53 @@ describe('duplicate-name hint (triage A1)', () => {
     // message announces nothing.
     expect(screen.getByRole('status')).toHaveTextContent('');
     expect(screen.getByLabelText('Participant Name')).not.toHaveAttribute('aria-describedby');
+    // D-22 (Phase 88.6.1-06): the empty hint is sr-only, so its mt-1 (the spacing
+    // WHEN SHOWN) reserves no 4px under the name line of every custom row.
+    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    expect(screen.getByRole('status')).toHaveClass('mt-1');
+  });
+
+  it('D-22: the hint is shown and hidden on the SAME node, and stays the input description while shown', () => {
+    const props = {
+      index: 2,
+      groupMembers: MEMBERS,
+      onParticipantChange: vi.fn(),
+      onToggleParticipant: vi.fn(),
+    };
+    const { rerender } = render(
+      <ParticipantRow
+        {...props}
+        participant={{ user_id: '', username: 'Gary', isFromGroup: false }}
+        duplicateOfName={null}
+      />
+    );
+    const hint = screen.getByRole('status');
+    expect(hint).toHaveClass('sr-only');
+    expect(hint).toHaveTextContent('');
+
+    rerender(
+      <ParticipantRow
+        {...props}
+        participant={{ user_id: '', username: 'Gary', isFromGroup: false }}
+        duplicateOfName="Gary"
+      />
+    );
+    expect(screen.getByRole('status')).toBe(hint);
+    expect(hint).not.toHaveClass('sr-only');
+    expect(hint).toHaveClass('mt-1');
+    expect(hint).toHaveTextContent("Heads up: there's already a participant named Gary.");
+    expect(screen.getByLabelText('Participant Name')).toHaveAttribute('aria-describedby', hint.id);
+
+    rerender(
+      <ParticipantRow
+        {...props}
+        participant={{ user_id: '', username: 'Gary', isFromGroup: false }}
+        duplicateOfName={null}
+      />
+    );
+    expect(screen.getByRole('status')).toBe(hint);
+    expect(hint).toHaveClass('sr-only');
+    expect(hint).toHaveTextContent('');
   });
 });
 
