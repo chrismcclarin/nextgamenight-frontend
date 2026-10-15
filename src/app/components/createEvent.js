@@ -25,6 +25,7 @@ import { Button } from '../../components/ui/Button';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
 
+const REQUIRED_SR_LABEL = '(required)';
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
   // GameComboInput userId props below), not the Auth0 sub (87.5 BINT-02). searchAll
@@ -827,7 +828,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
          legacy read-grid at its :518 -> its parent) refetch or unmount; none
          navigates. NOTE: that fifth consumer was deleted by plan 88-31's dead-code
          gate, so the live count is now four — the claim is unaffected, but do not
-         re-verify it expecting five. */
+         re-verify it expecting five. RE-VERIFIED Phase 88.6.1-15 (2026-10-15): the
+         line numbers above are history; the mounts are found by
+         `grep -rn 'onEventCreated=' src --include='*.js'` (five JSX mounts in
+         `groupPlanning/page.js`, `gameDetail/page.js` x3, `groupHomePage/page.js`),
+         and every handler they name refetches, toggles or bumps a refresh key —
+         none navigates. */
       toast.success(editingEvent ? 'Event updated' : 'Event created');
       modaltoggle();
       // Reset form. Phase 66-01: derivedSelectedSlot resets automatically
@@ -865,7 +871,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     //
     /* DECISION Phase 88.1-20 (CR-01, seed half): when the fetched week is the week CONTAINING
        TODAY, hand the scheduler TODAY rather than that week's Monday. `heatmapWeekStart` is a
-       WEEK anchor (`:359`, snapped to Monday at `:352`) and this fallthrough was handing it over
+       WEEK anchor (the group-path `setHeatmapWeekAnchor({`, snapped to Monday by the fetch
+       effect's `startOfWeek(localToday, { weekStartsOn: 1 })`) and this fallthrough was handing it over
        as a DAY anchor. Below `md` the scheduler renders a single-day column, so that opened the
        modal on Monday for a user sitting on any other weekday — CR-01.
        Chosen OVER fixing it in the scheduler (rejected: at mount a Monday from this fetch and a
@@ -874,8 +881,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
        won). Chosen OVER stabilising this memo's identity (rejected: identity churn is the
        re-sync half, closed in `EventScheduler.tsx`; it leaves the VALUE wrong, and the value is
        what seeds `currentDate` when the scheduler mounts after the fetch has landed).
-       BOTH halves are needed and neither subsumes the other: `:902` gates the form on the
-       group-members fetch while the heatmap effect at `:325` runs independently, so seeding vs
+       BOTH halves are needed and neither subsumes the other: the render's `{loading ? (` gates the
+       form on the group-members fetch while the heatmap fetch `useEffect` runs independently, so seeding vs
        re-syncing is a race between two network calls, and a navigated-away week still needs the
        scheduler-side guard. Week view is unaffected — Monday and today render the same week.
        Reverting this to a bare `return heatmapWeekStart` re-opens CR-01; it is a decision, not
@@ -909,7 +916,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
        REJECTED: widening the SCHEDULER-side guard from "the displayed week's Monday" to a bare
        `isSameWeek`. Plan 20 already tried precisely that and it turned plan 18's two Req-13 pins
        red ("starts at the TOP on a day with no availability" and "RE-DERIVES the landing when the
-       displayed day changes") — the guard's own marker at `EventScheduler.tsx:305-311` records
+       displayed day changes") — the guard's own marker in `EventScheduler.tsx` (paragraph "WHY THAT SHAPE AND NOT PLAIN
+       `isSameWeek`") records
        that attempt in its own words. A same-week different-day hand-over is a real day intent
        there; the discrimination this defect needs is not available in the child.
        Pinned: `createEvent.integration.test.tsx` "H1: Next past Sunday then Back lands on
@@ -1057,7 +1065,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   title (88-21). */}
               {/* DECISION Phase 88.6-25 (R2): this required-field asterisk stays EXPOSED to a
                   screen reader — chosen OVER the `aria-hidden="true"` the shipped house idiom
-                  puts on it (`app/components/form/FormField.tsx:99`,
+                  puts on it (`app/components/form/FormField.tsx:110`,
                   `{required && <span aria-hidden="true"> *</span>}`) and OVER the treatment this
                   same commit gave the Start-Date and Duration asterisks below.
 
@@ -1079,9 +1087,25 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   token in this same commit at all four sites.
 
                   The twin of this decision is the "Participants" section title further down.
-                  Adding `aria-hidden` here is a decision, not a cleanup. */}
+                  Adding `aria-hidden` here is a decision, not a cleanup.
+
+                  ——— AMENDED Phase 88.6.1-15 (copy row C2, D-30), original reasoning above KEPT AS
+                  HISTORY: the glyph is now `aria-hidden="true"` and the requiredness is SPOKEN by
+                  the sr-only span right after it, whose text is the module constant
+                  `REQUIRED_SR_LABEL` ("(required)"). That is the "better answer" the ALSO REJECTED
+                  paragraph above named and declined ONLY under P1 (no new copy); the owner's copy
+                  ratification (D-30, 2026-10-04, copy row C2) lifted P1 for exactly this string, so
+                  it is taken now. The paragraph on WHY this title differs from the two manual
+                  labels still holds and still decides the split: those two labels hide their glyph
+                  and gain NO "(required)", because their `<Input required>` already speaks it — a
+                  second one there would double it. REJECTED: `aria-required` on a wrapper or on
+                  the Participants `role="group"` (not a supported attribute for that role, so it
+                  would announce nothing), and leaving the star exposed (VoiceOver reads the glyph
+                  as "star", never "required"). The star's colour token and position are untouched,
+                  so it looks the same. Removing the sr-only span, or re-exposing the star, is a
+                  decision, not a cleanup. */}
               <span className="block text-sm font-normal text-content-primary">
-                Date & Time <span className="text-content-status-error">*</span>
+                Date & Time <span aria-hidden="true" className="text-content-status-error">*</span><span className="sr-only">{REQUIRED_SR_LABEL}</span>
               </span>
               {!hideVisualCalendar && (
                 <button
@@ -1320,8 +1344,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   asterisk stays EXPOSED, chosen OVER `aria-hidden="true"`. This `<span>` names a
                   role="group" of participant ROWS, each carrying three controls of its own and
                   none of them `required` — so there is nothing under it to carry the
-                  requiredness once the glyph is hidden. Same rejected alternatives as above. */}
-              Participants <span className="text-content-status-error">*</span>
+                  requiredness once the glyph is hidden. Same rejected alternatives as above.
+
+                  ——— AMENDED Phase 88.6.1-15 (copy row C2, D-30), original reasoning above KEPT AS
+                  HISTORY: the glyph is now hidden and the sr-only `REQUIRED_SR_LABEL` right after
+                  it speaks "(required)", so the group below is named "Participants (required)".
+                  Same reasoning as the amended "Date & Time" marker above: the sr-only words were
+                  the better answer, declined only under P1, which the owner's D-30 ratification
+                  (2026-10-04) lifted. REJECTED: `aria-required` on the `role="group"` (not a
+                  supported attribute for that role, so it would announce nothing) and leaving the
+                  star exposed ("star", never "required"). Removing the sr-only span or re-exposing
+                  the star is a decision, not a cleanup. */}
+              Participants <span aria-hidden="true" className="text-content-status-error">*</span><span className="sr-only">{REQUIRED_SR_LABEL}</span>
             </span>
             <div
               role="group"
@@ -1417,7 +1451,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <Button variant="secondary" onClick={modaltoggle}>
               Cancel
             </Button>
-            {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
+            {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css`, the `.btn` floor inside `@media (width < 48rem)`, with its reasoning in the comment directly above it), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
             <Button type="submit" data-testid="create-event-submit">
               {editingEvent ? 'Update Event' : 'Create Event'}
             </Button>

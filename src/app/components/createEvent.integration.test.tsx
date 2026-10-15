@@ -1,12 +1,14 @@
 // Phase 88.1-07 (D-08 Layer 3) — parent-integration pins for the create-event scheduler.
 //
 // THIS FILE MOUNTS THE REAL `EventScheduler` ON PURPOSE. Every other create-event suite
-// stubs it (`createEvent.participants.test.tsx:39` — "EventScheduler/heatmap pull in
-// react-big-calendar"); this one exists precisely because a stub cannot prove the wiring.
+// stubs it (`createEvent.participants.test.tsx:42`, `vi.mock('@/app/components/EventScheduler'`;
+// its reason, at `:9-11`: "EventScheduler/heatmap are expensive to mount (a 28-row x
+// 7-column grid plus its gesture machine)"); this one exists precisely because a stub cannot
+// prove the wiring.
 //
 // THE BUG THIS EXISTS TO CATCH: navigating the visual scheduler to another week left the
 // heatmap FETCH on the old week. `currentWeekStart` is what the fetch effect
-// (`createEvent.js:310-353`) reads, and it is only ever written from the `onWeekChange`
+// (`createEvent.js`, the heatmap fetch `useEffect`) reads, and it is only ever written from the `onWeekChange`
 // prop body. If that write stops happening — a dropped prop during the WeekGrid rebuild, a
 // `resolveWeekNav` result that is computed and discarded, a nav handler that updates the
 // grid's own internal date and nothing else — the calendar moves, no fetch re-fires,
@@ -43,7 +45,7 @@ const fixtures = vi.hoisted(() => ({
   ],
 }));
 
-// TZ-01. The profile timezone must be the one that reaches the fetch — `createEvent.js:335`
+// TZ-01. The profile timezone must be the one that reaches the fetch — `createEvent.js`'s `availabilityAPI.getGroupHeatmap(group_id` call
 // resolves "today" through `effectiveTz` and passes it as the third argument. Picking a
 // profile TZ that is deliberately NOT the runner's browser TZ is what makes the assertion
 // bite: a regression to `Intl.resolvedOptions().timeZone` (or to `browserTimezone`) sends a
@@ -85,7 +87,8 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // mode's surface, not the scheduler's, so it stays mocked.
 vi.mock('@/app/components/EventHeatmapBackground', () => ({ default: () => null }));
 // Phase 88.6-44: a FAITHFUL stand-in, not a bare div — it renders what the real component
-// forwards to its text input (`GameComboInput.js:215-235`: `id`, `name`, `aria-label` from the
+// forwards to its text input (`GameComboInput.js:215-267`, the `<Combobox` block: `id={id}` at
+// `:220`, `name={name}` at `:221`; `id`, `name`, `aria-label` from the
 // placeholder, the external `inputRef`), so the composed audit at the end of this file sees what
 // createEvent PASSES. The real combobox's ARIA is pinned by `Combobox.test.tsx`; the reasons it
 // stays stubbed here (floating-ui, debounce, ~25 render-count tests) are unchanged.
@@ -301,7 +304,7 @@ describe('CreateEvent + real EventScheduler — week nav re-fires the heatmap fe
 describe('CreateEvent + real EventScheduler — the poll-CTA week anchor (Phase 71.2)', () => {
   // The `promptId` journey: arriving from a closed-poll notification, the heatmap is the
   // POLL's responses and carries its own `weekStart`, which reaches the scheduler through
-  // `calendarInitialDate` (createEvent.js:815-817) only AFTER the fetch resolves. So
+  // `calendarInitialDate` (createEvent.js, `const calendarInitialDate = useMemo(`) only AFTER the fetch resolves. So
   // `initialDate` is a HYBRID contract — mount seed AND post-mount re-sync. A rebuilt
   // scheduler that treats it as a mount-only seed opens on the CURRENT week, shows no poll
   // slots, and passes every other pin in this harness. The component-level half of the same
@@ -346,7 +349,7 @@ describe('CreateEvent + real EventScheduler — the poll-CTA week anchor (Phase 
    So the GESTURE half (drag/tap -> `onTimeSelected`) belongs to the Playwright spec in plan
    88.1-14, and the STATE half is pinned here. What these tests actually exercise is the
    whole Phase 66-01 mechanism: the parent owns `start_date` + `duration_minutes`,
-   `derivedSelectedSlot` (createEvent.js:64-74) is a pure projection of them, and the
+   `derivedSelectedSlot` (createEvent.js, `const derivedSelectedSlot = useMemo(`) is a pure projection of them, and the
    scheduler is CONTROLLED through the `selectedSlot` prop. Both modes read and write the
    same two fields, so entering from manual traverses exactly the same wire as entering from
    a drag would. Do not "complete" this by mocking geometry — that is a decision, not a
@@ -427,7 +430,7 @@ describe('CreateEvent + real EventScheduler — the Phase 66-01 controlled round
 });
 
 // DELIBERATE COPY, not an accident: `stubMatchMedia` duplicates the shape at
-// `EventScheduler.test.tsx:490-513`. That helper is file-local and NOT exported; exporting it
+// `EventScheduler.test.tsx`'s `function stubMatchMedia(`. That helper is file-local and NOT exported; exporting it
 // from a `.test.tsx` to import here would make one suite's harness load-bearing for another's.
 // If the media-query fork ever changes, both copies change. (Hoisted to file scope by 88.6-44:
 // the CR-01 describe below and the composed audit at the end of the file share this ONE copy.)
@@ -457,8 +460,8 @@ function stubMatchMedia() {
 
 describe('CreateEvent + real EventScheduler — the displayed day survives the heatmap fetch (CR-01)', () => {
   // CR-01 (88.1-REVIEW.md). `createEvent.js` re-emits the FETCHED WEEK'S MONDAY as a fresh `Date`
-  // after every group-heatmap fetch (`:359` setHeatmapWeekStart(effectiveMonday) -> `:840`
-  // calendarInitialDate's fallthrough), and the scheduler's `initialDate` re-sync effect used to
+  // after every group-heatmap fetch (its `setHeatmapWeekAnchor({` -> `calendarInitialDate`'s
+  // fallthrough), and the scheduler's `initialDate` re-sync effect used to
   // take it unconditionally. In the DAY arm — the only arm below `md` — that moved the displayed
   // day to Monday on every non-Monday. Only this harness can catch it: the churn originates in the
   // PARENT's memo, so a component-level rerender pin cannot reproduce the source.
@@ -554,7 +557,7 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
     // scheduler's guard — which suppresses only the displayed week's MONDAY — lets it through.
     //
     // Wednesday 2026-09-16 at local noon. Its Monday is 2026-09-14, its Sunday 2026-09-20.
-    // Guarded, exactly as the `:417` fixture is: slid onto a Monday or a Sunday this case
+    // Guarded, exactly as this file's `THURSDAY.getDay()).toBe(4)` fixture is: slid onto a Monday or a Sunday this case
     // would go vacuous, so it must fail LOUDLY instead.
     const WEDNESDAY = new Date(2026, 8, 16, 12, 0, 0);
     expect(WEDNESDAY.getDay()).toBe(3);
@@ -570,7 +573,8 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
     expect(columnHeaders()[0]).toBe(format(WEDNESDAY, 'dd EEE'));
 
     // Step Next until the header crosses into next week — i.e. until it reads a Monday.
-    // Bounded at seven with an explicit throw naming the last header (the `:458` idiom).
+    // Bounded at seven with an explicit throw naming the last header (this file's
+    // `if (steps >= 7) {` idiom).
     let steps = 0;
     while (!/Mon$/.test(columnHeaders()[0] ?? '')) {
       if (steps >= 7) {
@@ -755,7 +759,8 @@ describe('createEvent — the paint-gesture flag is WRITTEN here and subscribed 
   it('a plain SCROLL (slop-cancel) touches neither the flag nor any subscriber', async () => {
     const before = await openVisualScheduler();
 
-    // A TOUCH press that breaks slop before the hold threshold — the `:470` teardown, and the
+    // A TOUCH press that breaks slop before the hold threshold — the teardown at
+    // `heatmap/usePaintGesture.ts:344` (`const teardown = useCallback(`), and the
     // single most frequent way a pointer sequence over this grid ends. It never engaged, so
     // there is no `true` and therefore no `false` either.
     fireEvent.pointerDown(gridEl(), { pointerId: 2, pointerType: 'touch', clientX: 2, clientY: 4 });
@@ -793,14 +798,15 @@ describe('createEvent — the paint-gesture flag is WRITTEN here and subscribed 
 // touched only `groundInk.test.ts`. So the tree audited here is the final migrated one.
 //
 // TWO media-query forks exist on this audited tree and BOTH are audited by stub, not by
-// resize: `createEvent.js:65` reads `matchMedia('(hover: none)')` (swipe gating), and the real
+// resize: `createEvent.js` reads `matchMedia('(hover: none)')` (swipe gating), and the real
 // `EventScheduler` forks its layout on `max-width` (the DAY arm below `md`). The desktop arm is
 // the setup-file stub (`matches: false` for every query); the phone arm is `stubMatchMedia`
 // above (375px + coarse pointer). jsdom has no layout and neither rule is viewport-dependent,
 // so a resize would measure nothing.
 //
 // The house rule is asserted HERE because `formLabels.audit.test.tsx`'s fixed roster never
-// included createEvent — its own docblock (`:10-12`) names this suite as the backstop.
+// included createEvent — its own docblock (`formLabels.audit.test.tsx:10-12`, "The heavier
+// surfaces (createEvent, ...") names this suite as the backstop.
 // `GameComboInput` is the faithful stand-in declared at the top of this file; `MemberSelector`
 // is REAL here (its checkboxes are audited in the composed tree).
 // ---------------------------------------------------------------------------
@@ -853,7 +859,7 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
     await auditThisFork();
   });
 
-  it('2. PHONE fork (375px + hover:none — createEvent.js:65 and the EventScheduler DAY arm) passes the same three', async () => {
+  it('2. PHONE fork (375px + hover:none — createEvent.js swipe gating and the EventScheduler DAY arm) passes the same three', async () => {
     restoreMatchMedia = stubMatchMedia();
     await auditThisFork();
   });
