@@ -54,10 +54,13 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
   /* DECISION Phase 88.6-44 (T-88.6-142, WCAG 4.1.3 Status Messages): TWO announcement states
      feeding TWO always-mounted `sr-only` <StatusRegion>s below — one FIXED `polite`, one FIXED
      `assertive` — chosen OVER one region with a `politeness` derived from the outcome. A derived
-     politeness mutates `role` / `aria-live` on a live node (`StatusRegion.tsx:34,40-41`), which
-     assistive tech does not reliably re-read; two fixed-politeness regions is the shipped shape
-     (`userProfile/page.js:2209-2210`). Both start EMPTY: the primitive's contract is empty-first
-     (`StatusRegion.tsx:9-12`), and a region that mounts already populated announces nothing.
+     politeness mutates `role` / `aria-live` on a live node (the primitive's `role`/`aria-live` pair
+     derived from `politeness` in `StatusRegion.tsx`), which assistive tech does not reliably
+     re-read; two fixed-politeness regions is the shipped shape (the profile page's two
+     notification `StatusRegion`s, `politeSaveAnnouncement` / `assertiveSaveAnnouncement` in
+     `userProfile/page.js`). Both start EMPTY: the primitive's contract is empty-first (its
+     EMPTY-FIRST docblock bullet in `StatusRegion.tsx`), and a region that mounts already
+     populated announces nothing.
      `loadError` is the VISIBLE half of the load failure — the copy the list slot paints instead
      of the empty-collection line — and it is a string rather than a flag so the visible branch
      and the assertive region render the SAME ratified sentence. It carries NO live role of its
@@ -171,11 +174,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
            2026-09-13): `logger.info` — a Sentry BREADCRUMB — over `logger.error`, AC-2's
            original uniform arm, which was rejected because it buys Session Replay volume the
            `no-console` milestone gate never asked for. `logger.warn` is not a cheaper arm
-           (`Sentry.captureMessage`, `src/lib/logger.ts:31-32`, is also an event). Egress delta
+           (`Sentry.captureMessage`, `src/lib/logger.ts:50`, is also an event). Egress delta
            versus today: NIL — with no `captureConsoleIntegration` in `sentry.client.config.js`
            this was already a breadcrumb and stays one.
            `errCtx(err)` and never the raw `Error`: `info`'s second parameter is
-           `ctx?: Record<string, unknown>` (`src/lib/logger.ts:24`) and `checkJs: false` hides
+           `ctx?: Record<string, unknown>` (`src/lib/logger.ts:31`, `info(msg: string, ctx?: ...)`) and `checkJs: false` hides
            that mistake at a `.js` call site. Converted IN PLACE — a catch inside an async
            effect, not a render body, so no latch is required.
            RECORDED, NOT FIXED (this commit's scope is the channel and the sweep): this path
@@ -223,7 +226,8 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
      the Skip button alone. Esc is the dominant dismissal on a phone-primary surface; a
      Skip-only clear would leave the assertive region populated across a close, so the NEXT
      identical failure sets identical text — a React bail-out, no DOM change, no announcement
-     (`userProfile/page.js:303-311` records the same mechanism). The visible failure copy is
+     (the profile page records the same mechanism in its note "a React state bail-out — announced
+     once, silent forever after", `userProfile/page.js`). The visible failure copy is
      cleared here too so a reopened picker never paints last time's failure over a fresh fetch.
      Re-pointing any of the three sites straight at the `onClose` prop is a decision, not a
      cleanup. */
@@ -299,12 +303,13 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
        backdrop + `handleBackdropClick` target-compare are gone rather than ported
        (Radix owns outside-dismiss, Esc and the focus trap).
 
-       The overlay's `p-4` is DELETED, not relocated: it was ALWAYS dead. The
-       unlayered `.modal-overlay` block in globals.css (:1075) declares
-       `padding: 1rem` and an unlayered author rule beats every `@layer utilities`
-       rule — the 87.8 DEC-3 marker at globals.css:1086 cites THIS call site by
-       name as its live proof. So removing it is not a spacing change and must not
-       be read as one.
+       The overlay's `p-4` is DELETED, not relocated: it was ALWAYS dead when it was
+       removed — the unlayered legacy overlay rule in globals.css then declared
+       `padding: 1rem`, and an unlayered author rule beats every `@layer utilities`
+       rule. That legacy rule was itself DELETED later, by Phase 88-31; the amended
+       `DECISION Phase 87.8 DEC-3` marker in `globals.css` records the deletion
+       (re-pointed 88.6.1-14). So removing the `p-4` was not a spacing change and
+       must not be read as one.
 
        The search row stays PINNED above the scrolling list (Modal.Body is `p-0` +
        flex column, the list owns the scroll with `min-h-0`). Collapsing it into a
@@ -315,7 +320,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
       <Modal.Body className="flex flex-col p-0 md:p-0">
         {/* Phase 88.6-44 (T-88.6-142): the two always-mounted announcement regions — see the
             DECISION at the state declarations. `sr-only` is LOAD-BEARING: `StatusRegion` is
-            visible by default (`text-sm`, `StatusRegion.tsx:43`), and without it the loading
+            visible by default (`text-sm`, the `cn('text-sm', className)` call in `StatusRegion.tsx`), and without it the loading
             copy would render beside the spinner and the loaded count above the list — a visible
             delta on a UI-SPEC-gated phase. Layout-safe: `sr-only` is absolutely positioned and
             this Body has no `gap`/`space-y`, so two empty divs add nothing. First children on
@@ -435,7 +440,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                         name is the visible label alone. Do NOT copy `alt=""` to a `SafeImage`
                         site without this guard. (`getColorFromText('')` resolves to the muted
                         well colour — the same ground as the `?` glyph branch below — so the
-                        broken-URL fallback loses nothing visible; `QuickSuggestions.js:148`
+                        broken-URL fallback loses nothing visible; `QuickSuggestions.js:154` (`getColorFromText`)
                         records the same routing.) */}
                     <div aria-hidden="true" className="w-8 h-8 rounded-sm shrink-0 overflow-hidden bg-surface-muted">
                       {thumbnail ? (
@@ -520,7 +525,8 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
           Skip for now
         </button>
         {/* 88.6-33 (§3.2/§3.3): `<Button variant="primary" size="default">`. `text-sm` was DEAD
-            under unlayered `.btn`'s `font-size` (globals.css:2201) and is deleted rather than
+            under unlayered `.btn`'s `font-size` (the unlayered `.btn {` rule's `font-size: 0.875rem` in
+            `globals.css`) and is deleted rather than
             moved onto the className. The control KEEPS its NATIVE `disabled={saving}` — the
             plans 17-24 `aria-disabled` conversion is not this plan's work.
             AMENDED Phase 88.6-57 (CR-101, 88.6-REVIEW.md, 2026-09-28): still NATIVE `disabled`.
