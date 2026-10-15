@@ -52,8 +52,9 @@
 //  * ALPHA IS INVISIBLE. The walk resolves TOKENS. An `opacity-*` utility, or a `text-*`/`bg-*`
 //    alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites the
 //    rendered colour — so a PASS here is NOT a WCAG 1.4.3 pass. Live specimen:
-//    `CalendarMonthView.js:246` (`isAdjacent ? 'opacity-60 ' : ''`) over the ink at `:259`
+//    `CalendarMonthView.js:324` (`isAdjacent ? 'opacity-60 ' : ''`) over the ink at `:444`
 //    (`isAdjacent ? 'text-content-muted' :`), the SAME condition, so genuinely co-live.
+//    (Cites corrected in place by plan 88.6.1-02; they predated plan 88.6-27's moves.)
 //  * RAW-PALETTE INK IS INVISIBLE. Ink written `text-<hue>-<n>` (87 non-test occurrences) is
 //    not a semantic token and is `rawColorValues.test.ts`'s and plan 10's territory.
 //  * VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.
@@ -110,11 +111,15 @@ const FORBIDDEN = FORBIDDEN_INK_CLASSES;
 // DECISION Phase 88.6-09 (AC-11, owner ruling 2026-09-09): the tree is enumerated, read and
 // comment-stripped exactly ONCE, here at module scope, and EVERY assertion below consumes this
 // constant. This deliberately diverges from the shipped un-hoisted idiom
-// (`surfaceHoverSweep.test.ts:133`, `controlSizeFloor.test.tsx:145`, which re-read the tree
+// (`surfaceHoverSweep.test.ts:137`, `function sitesOf`, which re-reads the tree at `:140`
 // inside a per-assertion helper). REJECTED arm, recorded on the same date: match the shipped
 // idiom for consistency — rejected because one full pass measures ~353 ms over the real tree
 // (194 non-test files, 2.46 MB; the read+strip component of that is 204 ms) and this file
-// carries eight assertions, paid again on every `npm test`.
+// carries several assertions, each of which would pay that pass again on every `npm test`.
+// (amended 88.6.1-02: the suite goes 8 -> 9 here and back to 8 in plan 88.6.1-49, so no
+// count is written here. Cites amended too: the old surfaceHoverSweep cite had drifted, and
+// `controlSizeFloor.test.tsx` is no longer an example of the un-hoisted idiom — it has since
+// hoisted its own module-scope pass, `const SOURCES` at `controlSizeFloor.test.tsx:148`.)
 // The divergence is confined to this NEW file; no shipped suite was touched.
 //
 // THE HOIST IS INTRA-FILE ONLY. `vitest.config.mts` sets `environment: 'jsdom'` at `:56` and
@@ -563,6 +568,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // one of FIVE arms in the template ternary, and asserting on grounds[0] / first / last is
     // exactly how the arbitrary single-ground pick this contract removes gets reinstated.
     //
+    // RE-KEYED by plan 88.6.1-02: the subject and its ground are now read from the false-positive
+    // entry (its ink anchor and its ground anchor), so a line move in the component cannot red
+    // this test. The line numbers in the history below are HISTORY.
+    //
     // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), NOT deleted: the subject moves from the
     // now-fixed "+N more" row (:788) to the file's SURVIVING rostered site, the empty-day "+"
     // hint (:858), whose ground is the SAME five-arm ternary at the SAME muted arm (:263, was
@@ -582,15 +591,21 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // candidate, which is a property of the WALK, not of whether the site is debt. Deleting the
     // block with the fixed site would quietly retire the only thing proving the walk fans out at
     // all, and the by-name set above is empty now, so nothing else here would notice.
-    const cell = FORBIDDEN_ON_MUTED.find((r) => siteOf(r) === 'app/components/CalendarMonthView.js:444');
+    const cell = FORBIDDEN_ON_MUTED.find((r) => anchorOf(r) === FP_CMV_ADJACENT_INK);
     expect(cell, 'the day cell\'s reported ink site must still be visible to the walk').toBeDefined();
     expect(
       cell!.grounds.length,
       'the five-arm ternary must produce candidate fan-out, otherwise the membership assertion below is trivially satisfied',
     ).toBeGreaterThan(1);
+    // The muted ground's line is RESOLVED from the false-positive entry's ground anchor, so this
+    // test stands on its own: exactly one line, or it says so here rather than in test 9 only.
+    const groundLines = anchorLines(FALSE_POSITIVES[FP_CMV_ADJACENT_INK].owner.groundAnchor);
+    expect(groundLines, 'the day cell\'s ground anchor must name exactly one line').toHaveLength(1);
     expect(
-      cell!.grounds.some((g) => g.token === MUTED && g.frameLine === 327),
-      `:444 must CONTAIN a ${MUTED} candidate whose frame line is 327; got ${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
+      cell!.grounds.some((g) => g.token === MUTED && g.frameLine === groundLines[0]),
+      `${FP_CMV_ADJACENT_INK} must CONTAIN a ${MUTED} candidate on the line of its ground anchor ` +
+        `${FALSE_POSITIVES[FP_CMV_ADJACENT_INK].owner.groundAnchor}; got ` +
+        `${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
     ).toBe(true);
   });
 
