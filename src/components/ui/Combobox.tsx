@@ -166,6 +166,7 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
       className,
       inputClassName,
       listClassName,
+      onKeyDown: consumerOnKeyDown,
       ...inputProps
     },
     forwardedRef
@@ -271,10 +272,38 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
       if (event.key === 'Escape') {
         setActiveIndex(null);
         if (open) {
-          onOpenChange(false);
           inputRef.current?.focus();
         }
       }
+    };
+
+    /* DECISION Phase 88.6.1-10 (W073, Req 11): the field's key handler CHAINS. The consumer's
+       handler runs first, then this primitive's runs, always. And the Escape close belongs to
+       floating-ui's useDismiss ALONE: its reference handler closes the list from the field,
+       its document listener closes it from a sibling inside the combobox root. The Escape arm
+       above only resets the active option and refocuses the field.
+
+       REJECTED 1 — letting the primitive's handler overwrite the consumer's inside the
+       getReferenceProps call. That was the W073 defect: a consumer handler never ran.
+       REJECTED 2 — a veto, skipping the primitive when the consumer's handler (or anything
+       before it) set defaultPrevented. Inside a Modal, Escape arrives ALREADY
+       default-prevented by preventComboboxEscape in Radix's document capture listener, so
+       that gate would skip this primitive in every dialog.
+       REJECTED 3 — telling useDismiss to ignore Escape and keeping the close in the handler
+       above (the research pick). The deciding reason: Escape from a trailing control inside
+       the root (GameComboInput's Clear button) would then close NOTHING, while the Modal
+       guard keeps the dialog open because the list is expanded (CR-502 relies on useDismiss
+       to close the list). A second reason holds ONLY when this renders inside a portal (a
+       Modal, where React also listens on the portal container): the field's Escape would
+       lose useDismiss's stopPropagation and reach document listeners such as the header's
+       mobile-menu listener. That stopPropagation does NOT shield a page-level mount: there
+       React's root listener is on the document itself (the App Router hydrates the
+       document), so a page-level field's Escape reaches that listener with or without the
+       option. Calling the close here as well is the double call W073 removed.
+       Changing any of this is a decision, not a cleanup. */
+    const handleFieldKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+      consumerOnKeyDown?.(event);
+      handleKeyDown(event);
     };
 
     const groups = React.useMemo<RenderGroup[]>(() => {
@@ -392,7 +421,7 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
             className={cn(trailing && 'pr-11', inputClassName)}
             {...getReferenceProps({
               ...inputProps,
-              onKeyDown: handleKeyDown,
+              onKeyDown: handleFieldKeyDown,
             })}
           />
           {trailing}
