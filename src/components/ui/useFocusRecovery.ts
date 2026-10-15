@@ -8,14 +8,18 @@
  * The host arms it synchronously at the action and settles it when its own work ends. It acts
  * only AFTER the removal is in the DOM (a MutationObserver on the document, live only while
  * armed) and only when focus is LOST (`isFocusLost`). Target order: the host's `preferred`
- * resolver, then its `fallback`.
+ * resolver, then its `fallback`, then `focusPageFloor` (the open dialog's title, `main h1`, `main`).
  */
 import * as React from 'react';
 
-import { DIALOG_ROLE_SELECTOR, focusElement, isFocusLost } from './focusPageFloor';
+import { DIALOG_ROLE_SELECTOR, focusElement, focusPageFloor, isFocusLost } from './focusPageFloor';
 
 export interface FocusRecoveryOptions {
-  /** The host's section heading (or expand control when the section has no heading). */
+  /**
+   * The host's section heading, or its expand control when the section has no heading (D-05).
+   * Required for a host outside a dialog (D-05); a host inside a Modal may omit it — the floor
+   * resolves to that dialog's own title.
+   */
   fallback?: React.RefObject<HTMLElement | null>;
 }
 
@@ -70,10 +74,14 @@ export function useFocusRecovery(options: FocusRecoveryOptions = {}): FocusRecov
     if (!armed || !isFocusLost()) return;
     const { watched, preferred } = armed;
     if (!watched || watched.isConnected) return;
+    // Captured BEFORE disarming: inside a Modal this is the container Radix focused, so the floor
+    // lands on THAT dialog's title.
+    const origin = document.activeElement;
     // Disarm FIRST, so the hook's own focus move is never observed.
     disarm();
     if (focusElement(preferred?.())) return;
-    focusElement(fallbackRef.current?.current);
+    if (focusElement(fallbackRef.current?.current)) return;
+    focusPageFloor(origin);
   }, [disarm]);
 
   const arm = React.useCallback(
