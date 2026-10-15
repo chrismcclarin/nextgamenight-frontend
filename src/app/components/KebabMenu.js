@@ -111,7 +111,53 @@ export default function KebabMenu({
   // here: the close-resets effect below reads the PRE-transition armed index to
   // decide whether to emit the revert copy, and KM-24 pins that.
   const closeMenu = () => setOpen(false);
-  useDismissal({ open, onDismiss: closeMenu, containerRef, triggerRef });
+  const { containerProps, restoreFocusToTrigger } = useDismissal({
+    open,
+    onDismiss: closeMenu,
+    containerRef,
+    triggerRef,
+  });
+
+  // The Escape / focusout / outside-pointer contract and its DECISION Phase 88.6-16 markers live in src/components/ui/useDismissal.ts since 88.6.1-05.
+
+  /* DECISION Phase 88.6-16 (D-12), the KEBAB-ONLY half of the Escape contract
+     (the shared half moved to `src/components/ui/useDismissal.ts` by 88.6.1-05).
+     `Header.js:31-42`'s `mobileMenuOpen` Escape is NOT a live collision — opening
+     the hamburger mousedown-closes this menu first (the effect above) — noted so
+     nobody "fixes" it.
+
+     THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD, and the plan text for it
+     was WRONG — corrected here from a live measurement (2026-09-15,
+     `keyboardOperability.test.tsx` KM-7), not from the plan. At two of the six
+     render sites — `ManageMembers.js:571` and `:595`, which render inside the
+     shipped `Modal` at `ManageMembers.js:378` — Radix's `Dialog`
+     (`Modal.tsx:149-150`) binds Escape on `document` in the CAPTURE phase
+     (`@radix-ui/react-use-escape-keydown`), which runs BEFORE any container handler
+     and dismisses the dialog.
+     What the plan said: "this component's Escape never runs there." MEASURED: it
+     DOES run. Radix `preventDefault`s but does not `stopPropagation`, so the event
+     still reaches the React tree in the bubble phase and this handler claims it —
+     proved by an in-dialog ancestor `onKeyDown` spy that never fires.
+     What is ACTUALLY true, and is the thing to carry forward: the OUTCOME. The whole
+     dialog closes and takes the menu with it, and this handler's focus restore is a
+     NO-OP because the trigger unmounts with the dialog — so where focus lands is the
+     dialog's own close-focus behaviour, not this component's.
+     ACCEPTED, not fixed — the alternative is threading `onEscapeKeyDown` into
+     `DialogContent` while a descendant kebab is open, i.e. editing a shared dialog
+     primitive and its call sites, which is a bigger decision than this component.
+     Do NOT restate this as "the innermost open layer claims the press": at those two
+     sites the OUTER layer dismisses, whichever handler ran. */
+
+  /* The trigger restore (the hook's `restoreFocusToTrigger`) is GUARDED on the
+     trigger still being in the document, because a committing Remove can unmount
+     its own row and take the trigger with it.
+
+     SAID PLAINLY: on that path this guard is exactly equivalent to NO restore —
+     it prevents a crash, not a lost focus position. This component does not close
+     that, and the reason is not difficulty: a caller-supplied fallback target
+     would be a new prop on a six-site shared component with no consumer. The
+     residual is registered in `.planning/deferred/phase-88.6.md`, paired with the
+     sibling host-target residual plan 28 registers for `MemberChipStack`. */
 
   // When the menu closes, reset any armed twoTap so reopening starts fresh.
   //
@@ -156,23 +202,6 @@ export default function KebabMenu({
       }
     };
   }, []);
-
-  /* Focus returns to the trigger after a close that unmounted the focused item.
-     GUARDED on the trigger still being in the document, because a committing
-     Remove can unmount its own row and take the trigger with it
-     (`ManageMembers.js:193-211`: `removeUserFromGroup` at `:196` then
-     `await fetchMembers()` at `:197`).
-
-     SAID PLAINLY: on that path this guard is exactly equivalent to NO restore —
-     it prevents a crash, not a lost focus position. This component does not close
-     that, and the reason is not difficulty: a caller-supplied fallback target
-     would be a new prop on a six-site shared component with no consumer. The
-     residual is registered in `.planning/deferred/phase-88.6.md`, paired with the
-     sibling host-target residual plan 28 registers for `MemberChipStack`. */
-  const restoreFocusToTrigger = () => {
-    const trigger = triggerRef.current;
-    if (trigger && trigger.isConnected) trigger.focus();
-  };
 
   const handleItemClick = (item, index) => {
     if (item.disabled) return;
@@ -257,75 +286,6 @@ export default function KebabMenu({
     restoreFocusToTrigger();
   };
 
-  /* DECISION Phase 88.6-16 (D-12): Escape is bound on the CONTAINER and claims the
-     key with preventDefault() + stopPropagation() when it ACTS — chosen OVER a
-     `document` listener.
-     WHY: a document listener cannot scope Escape to the innermost open layer. Two
-     document bubble listeners fire in registration order and `preventDefault`
-     cannot un-run the one that already ran. The live ancestor this claim protects
-     is `gameDetail/page.js:384-402`, the `descExpanded` collapse, which bails only
-     on `event.defaultPrevented` at `:387`. Both states can be live at once (expand
-     the description, then open the kebab), so without the claim one Escape would
-     close the menu AND collapse the description.
-     `Header.js:31-42`'s `mobileMenuOpen` Escape is NOT a live collision — opening
-     the hamburger mousedown-closes this menu first (the effect above) — noted so
-     nobody "fixes" it. `FeedbackButton.js:39-43` records the house preference for
-     not stacking document-level Escape listeners.
-
-     THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD, and the plan text for it
-     was WRONG — corrected here from a live measurement (2026-09-15,
-     `keyboardOperability.test.tsx` KM-7), not from the plan. At two of the six
-     render sites — `ManageMembers.js:571` and `:595`, which render inside the
-     shipped `Modal` at `ManageMembers.js:378` — Radix's `Dialog`
-     (`Modal.tsx:149-150`) binds Escape on `document` in the CAPTURE phase
-     (`@radix-ui/react-use-escape-keydown`), which runs BEFORE any container handler
-     and dismisses the dialog.
-     What the plan said: "this component's Escape never runs there." MEASURED: it
-     DOES run. Radix `preventDefault`s but does not `stopPropagation`, so the event
-     still reaches the React tree in the bubble phase and this handler claims it —
-     proved by an in-dialog ancestor `onKeyDown` spy that never fires.
-     What is ACTUALLY true, and is the thing to carry forward: the OUTCOME. The whole
-     dialog closes and takes the menu with it, and this handler's focus restore is a
-     NO-OP because the trigger unmounts with the dialog — so where focus lands is the
-     dialog's own close-focus behaviour, not this component's.
-     ACCEPTED, not fixed — the alternative is threading `onEscapeKeyDown` into
-     `DialogContent` while a descendant kebab is open, i.e. editing a shared dialog
-     primitive and its call sites, which is a bigger decision than this component.
-     Do NOT restate this as "the innermost open layer claims the press": at those two
-     sites the OUTER layer dismisses, whichever handler ran. */
-  const handleKeyDown = (event) => {
-    if (event.key !== 'Escape' || !open) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setOpen(false);
-    restoreFocusToTrigger();
-  };
-
-  /* DECISION Phase 88.6-16 (D-12): a focusout closes the menu ONLY when
-     `relatedTarget` is non-null AND outside the container. A NULL relatedTarget
-     NEVER closes.
-     WHY: null is ambiguous, not "left the document". It is also what a pointer
-     press over non-focusable inside chrome (the `py-1` band on the list) or over a
-     disabled item produces — so closing on null dismisses the menu on an INSIDE
-     tap and silently disarms a live two-tap gate (`ManageMembers.js:620`,
-     `OpenPollsList.js:282`). Pointer dismissal is already owned by the mousedown
-     handler above; this half exists for the keyboard and does not need to guess
-     about pointers.
-     REJECTED, kept not deleted: (a) a deferred `document.activeElement` /
-     `document.hasFocus()` check — it fails the same inside-tap case and is
-     untestable in jsdom (measured: no focusout fires on a disabled item);
-     (b) treating a null relatedTarget as "left the document".
-     Bound through React's onBlur, which is implemented on `focusout` and bubbles
-     (React has no `onFocusOut` prop) — so there is no listener to remove and no
-     per-row leak. */
-  const handleFocusOut = (event) => {
-    if (!open) return;
-    const next = event.relatedTarget;
-    if (!next) return;
-    if (containerRef.current && containerRef.current.contains(next)) return;
-    setOpen(false);
-  };
-
   /* DECISION Phase 88.6-16 (D-12): with NO items the component renders no trigger
      at all — chosen OVER today's unconditional trigger against a default
      `items = []`, which ships a 44x44 control that opens nothing. A deliberate
@@ -337,8 +297,7 @@ export default function KebabMenu({
     <div
       className="relative shrink-0"
       ref={containerRef}
-      onKeyDown={handleKeyDown}
-      onBlur={handleFocusOut}
+      {...containerProps}
     >
       {/* DECISION Phase 88.6-16 (D-12): an sr-only StatusRegion, mounted at PROP
           time on `items.some(i => i.twoTap)` — mounted for the whole life of every
