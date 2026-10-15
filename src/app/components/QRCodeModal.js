@@ -1,19 +1,70 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '@/lib/logger';
+
+// Copy row G3 (88.6.1-COPY-TABLE.html, ratified 2026-10-04; D-30 placement rule: a hoisted
+// constant at the site). Byte-equal to the table; it holds no apostrophe and no ellipsis.
+const LINK_COPIED_ANNOUNCEMENT = 'Invite link copied to the clipboard.';
+// How long the visible label reads Copied! after a successful copy.
+const COPIED_LABEL_MS = 2000;
 
 function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = false }) {
   const [copied, setCopied] = useState(false);
+  // Bumped once per successful copy; keys the announcement text so a repeat copy re-announces.
+  const [copySeq, setCopySeq] = useState(0);
+
+  // DECISION Phase 88.6.1-12 (Req 11, copy-confirmation timer): the label timer's handle is
+  // HELD IN A REF and cleared before every re-arm, when the dialog closes and on unmount (the
+  // FeedbackButton idiom), chosen OVER unmount-only cleanup. Both hosts (EventDayModal and the
+  // game detail page) keep this dialog mounted while it is closed, so closing is the common
+  // exit: an unmount-only clear would still show a stale Copied! label on a reopen and let the
+  // old timer cut a fresh confirmation short.
+  // A clipboard write that settles AFTER the dialog closed sets NOTHING (no label, no
+  // announcement, no timer): a copy's outcome belongs to the open session in which Copy was
+  // pressed. The handler captures the open generation before the await, and the close effect
+  // bumps it. REJECTED: letting the late write set the label (the link WAS copied, but a reopen
+  // inside 2 s would then show a stale Copied! with the announcement already in the region's
+  // first commit, and the late timer would flip the label while the user watches, which breaks
+  // the reopen-is-fresh rule and SPEC Edge R11); REJECTED: mirroring the open flag into a ref
+  // instead of a generation counter (a write that spans a close AND a reopen would read the ref
+  // as open again and land in the new session). Changing any of this is a decision, not a
+  // cleanup.
+  const copiedTimerRef = useRef(null);
+  const openGenerationRef = useRef(0);
+
+  useEffect(() => {
+    if (isOpen) return;
+    openGenerationRef.current += 1;
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = null;
+    setCopied(false);
+  }, [isOpen]);
+
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    },
+    []
+  );
 
   const handleCopyLink = async () => {
+    if (!url) return;
+    const generation = openGenerationRef.current;
     try {
       await navigator.clipboard.writeText(url);
+      if (openGenerationRef.current !== generation) return;
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopySeq((n) => n + 1);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => {
+        copiedTimerRef.current = null;
+        setCopied(false);
+      }, COPIED_LABEL_MS);
     } catch (err) {
       /* DECISION Phase 88.6-33 (AC-2 WIDENED 2026-09-09, level AMENDED by the D2 ruling
          2026-09-13): `logger.info` — a Sentry BREADCRUMB — chosen OVER `logger.error`, which
@@ -120,6 +171,23 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = 
         >
           {copied ? 'Copied!' : 'Copy Invite Link'}
         </Button>
+
+        {/* DECISION Phase 88.6.1-12 (copy row G3, D-30; Req 8): the copy outcome on this
+            game-night share QR is ANNOUNCED, and the visible Copied! swap on the copy button is
+            KEPT, following the FriendInvitePanel twin (DECISION Phase 88.6-22): a label change on
+            the focused element is not announced. The polite status region is sr-only for its
+            whole life, chosen OVER D-22's sr-only-while-empty prop, which makes the message
+            VISIBLE once set and would print the same fact under a button that already says it
+            (88.6-22's rejected arm). The text sits in a span keyed on a per-copy sequence, so a
+            repeat copy is a new text node and re-announces (SPEC R8 idempotency, the
+            EventScheduler idiom), chosen OVER clearing the state at the start of the handler
+            (the NextGameNightCard idiom), which would flash the focused button's visible label
+            back to Copy Invite Link during the clipboard write. It is announced only after the
+            write resolves and only when there is a link, so it never states a copy that did not
+            happen. Changing any of this is a decision, not a cleanup. */}
+        <StatusRegion className="sr-only">
+          <span key={copySeq}>{copied ? LINK_COPIED_ANNOUNCEMENT : ''}</span>
+        </StatusRegion>
 
         {/* Reset Token Button (owner/admin only).
             DECISION Phase 88.6-33 (§4.5 EMPHASIS): `font-normal` over `font-bold` on this label.
