@@ -1116,6 +1116,31 @@ describe('KebabMenu edge coverage — SPEC E6 empty / zero-one-many (R5)', () =>
   });
 });
 
+// Phase 88.6.1-05 (D-18): the POINTER half of the kebab's dismissal now runs through the shared
+// hook in src/components/ui/useDismissal.ts. Before this describe, no test fired a mousedown at the
+// kebab at all (research ST-4), so the outside close was pinned by nothing.
+describe('KebabMenu outside pointer — the pointer half, extracted to useDismissal (88.6.1-05)', () => {
+  it('KM-23. an outside mousedown closes the open menu; a mousedown on an item or on the trigger does not', () => {
+    render(
+      <>
+        <KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />
+        <button type="button">outside</button>
+      </>,
+    );
+    const { trigger, list } = openKebab();
+
+    // The two INSIDE presses: the list is still there after each.
+    fireEvent.mouseDown(within(list).getAllByRole('button')[0]);
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    fireEvent.mouseDown(trigger);
+    expect(screen.getByRole('list')).toBeInTheDocument();
+
+    // The OUTSIDE press closes it.
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'outside' }));
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+});
+
 /* ============================================================================================
  * Phase 88.6-21 (W42/W62b) — the group CARD itself, not just its descendants.
  *
