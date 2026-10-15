@@ -33,9 +33,11 @@ import {
   EmailAddressSection,
   NO_ADDRESS_ON_FILE,
   checkCode,
+  driftedVerifyLanded,
   normaliseEmailChangeCode,
   shouldAnnounceCancelledMidSave,
   shouldApplySaveRun,
+  shouldSuppressOwnNull,
 } from './EmailAddressSection';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -83,7 +85,9 @@ vi.mock('@/lib/hooks/selfIdentityCache', async () => {
 });
 
 import * as Sentry from '@sentry/nextjs';
+import { toast } from 'sonner';
 
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { usersAPI } from '@/lib/api';
 import { invalidateSelfCache, patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
@@ -2067,5 +2071,357 @@ describe('EmailAddressSection — 88.6-38: the two extracted rules (the `queryCl
   it('SUPPRESSES it for an outcome that minted no change, even in idle', () => {
     expect(shouldAnnounceCancelledMidSave('unchanged', 'idle')).toBe(false);
     expect(shouldAnnounceCancelledMidSave('verified', 'idle')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-13 — the drift arms await the refetch and reconcile from the
+// cache (D-11), the suppression counter's one arming site (D-26 / W011), and the
+// non-field failures that leave the field lanes (D-11a, AT-4 R4).
+// ---------------------------------------------------------------------------
+
+// The self row the section's own refetch brings back. The suite module-mocks
+// useSelfIdentity, so the component's QueryClient is EMPTY unless a test seeds it:
+// this replaces the next invalidation with one that writes the row under the
+// per-account live key (prefix plus a sub) and resolves, the way the real
+// invalidateQueries resolves after the refetch. Every test that seeds asserts the
+// invalidation ran, so no once-implementation is left queued for the next test
+// (clearAllMocks in the beforeEach does not reset once-implementations).
+function seedRefetch(row: Record<string, unknown>) {
+  cache.invalidate.mockImplementationOnce(async (client: QueryClient) => {
+    client.setQueryData(['users', 'self', 'auth0|u1'], row);
+  });
+}
+
+const DRIFT = { outcome: 'nope-not-a-real-shape' };
+const actionAlert = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[id$="-action-error"]');
+
+describe('EmailAddressSection — 88.6.1-13: the drift arms await the refetch and reconcile (D-11, W011)', () => {
+  it('A: a Verify drift whose refetched row shows the change LANDED reports it changed — toast once, code field gone, focus on Change', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    seedRefetch(ROW({ email: NEW, pending_email_change: null, email_changed_at: '2026-10-04T12:00:00.000Z' }));
+    api.verifyEmailChange.mockResolvedValue(DRIFT);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    // Positive settle: the verified state's focus target.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Change' }))
+    );
+    expect(vi.mocked(toast.success)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Email address changed');
+    expect(screen.queryByText(/couldn't read the answer/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/code from the email/i)).not.toBeInTheDocument();
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('A-expired (guard): a refetched row with the OLD email and no pending — the shape an expired row also has — is NOT a success', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    seedRefetch(ROW({ email: REAL, pending_email_change: null }));
+    api.verifyEmailChange.mockResolvedValue(DRIFT);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/code from the email/i)).toHaveValue('ABCD2345');
+  });
+
+  it('A-pending (guard): a refetched row whose pending address is still the target keeps the unreadable copy, no toast', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    seedRefetch(ROW({ pending_email_change: { address: NEW, expires_at: 'z' } }));
+    api.verifyEmailChange.mockResolvedValue(DRIFT);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument();
+  });
+
+  it("A-other (guard): ANOTHER account's cached row that reads as landed never decides this user's outcome", async () => {
+    // Green before the fix only because the old arm never reconciled; its teeth are
+    // the own-row filter (SUMMARY records the planted mutation).
+    const user = userEvent.setup();
+    renderAwaiting();
+    cache.invalidate.mockImplementationOnce(async (client: QueryClient) => {
+      client.setQueryData(
+        ['users', 'self', 'auth0|u1'],
+        ROW({ pending_email_change: { address: NEW, expires_at: 'z' } })
+      );
+      client.setQueryData(['users', 'self', 'auth0|other'], {
+        id: 'u-uuid-OTHER',
+        email: NEW,
+        pending_email_change: null,
+      });
+    });
+    api.verifyEmailChange.mockResolvedValue(DRIFT);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument();
+  });
+
+  it('W011-a: after a SAVE drift, a later genuine expiry IS reported', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    const { rerender } = renderSection();
+    api.requestEmailChange.mockResolvedValueOnce(DRIFT).mockResolvedValueOnce(body());
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText(getFetchErrorMessage(null))).toBeInTheDocument());
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+
+    mockSelf.mockReturnValue(selfState(ROW({ pending_email_change: { address: NEW, expires_at: 'z' } })));
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <EmailAddressSection />
+      </QueryClientProvider>
+    );
+    await waitFor(() => expect(screen.getAllByText(NEW).length).toBeGreaterThan(0));
+    pushNullPendingRow(rerender);
+
+    await waitFor(() => expect(screen.getByText('That code has expired')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Resend code' }).className).toContain('btn-secondary');
+  });
+
+  it('W011-b: after a VERIFY drift in a HYDRATED session (no send yet), a later genuine expiry IS reported', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(DRIFT);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+
+    await armTheExpiryArm(user);
+    pushNullPendingRow(rerender);
+
+    await waitFor(() => expect(screen.getByText('That code has expired')).toBeInTheDocument());
+  });
+
+  it('W011-c: after a CANCELLED successful Save, a later genuine expiry IS reported', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    const { rerender } = renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValueOnce(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    release(body());
+
+    // Twice by design: the info Banner and the section's region that announces it.
+    await waitFor(() => expect(screen.getAllByText(/request had already reached us/i).length).toBe(2));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Change' })).not.toHaveAttribute('aria-disabled', 'true')
+    );
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+
+    api.requestEmailChange.mockResolvedValueOnce(body());
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+
+    mockSelf.mockReturnValue(selfState(ROW({ pending_email_change: { address: NEW, expires_at: 'z' } })));
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <EmailAddressSection />
+      </QueryClientProvider>
+    );
+    await waitFor(() => expect(screen.getAllByText(NEW).length).toBeGreaterThan(0));
+    pushNullPendingRow(rerender);
+
+    await waitFor(() => expect(screen.getByText('That code has expired')).toBeInTheDocument());
+  });
+
+  it("W011-d (guard): the ONE arming site, both flags set — the arm's own null is silent, and nothing leaks to a later genuine expiry", async () => {
+    // The only pin on the same-commit consume: W011-a and W011-c are Save paths that no
+    // longer arm, W011-b drifts with no send this session, V4 seeds a still-pending row.
+    // The refetch seed also points the mocked self at the null row, standing in for
+    // the live cache the module mock hides, so the arm's own commit renders it.
+    const user = userEvent.setup();
+    const { rerender } = renderAwaiting();
+    await armTheExpiryArm(user);
+    cache.invalidate.mockImplementationOnce(async (client: QueryClient) => {
+      mockSelf.mockReturnValue(selfState(ROW({ pending_email_change: null })));
+      client.setQueryData(['users', 'self', 'auth0|u1'], ROW({ pending_email_change: null }));
+    });
+    api.verifyEmailChange.mockResolvedValue(DRIFT);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('That code has expired')).not.toBeInTheDocument();
+
+    mockSelf.mockReturnValue(selfState(ROW({ pending_email_change: { address: NEW, expires_at: 'z' } })));
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <EmailAddressSection />
+      </QueryClientProvider>
+    );
+    await waitFor(() => expect(screen.getAllByText(NEW).length).toBeGreaterThan(0));
+    pushNullPendingRow(rerender);
+
+    await waitFor(() => expect(screen.getByText('That code has expired')).toBeInTheDocument());
+  });
+});
+
+describe("EmailAddressSection — 88.6.1-13: the Verify path's non-field failures use the action lane (D-11a)", () => {
+  it('V1: an UNREADABLE verify answer lands in the action lane, not on the code field, and focus stays on Verify', async () => {
+    const user = userEvent.setup();
+    const { container } = renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(DRIFT);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+
+    const verify = screen.getByRole('button', { name: 'Verify' });
+    const field = screen.getByLabelText(/code from the email/i);
+    // Soft, so a RED run reports the lane AND the focus half.
+    expect.soft(actionAlert(container)?.textContent ?? '').toMatch(/couldn't read the answer/i);
+    expect.soft(field).not.toHaveAttribute('aria-invalid', 'true');
+    expect.soft(verify.getAttribute('aria-describedby') ?? '').toBe(actionAlert(container)?.id ?? 'no lane');
+    expect.soft(document.activeElement).toBe(verify);
+    expect(field).toHaveValue('ABCD2345');
+  });
+
+  it('V2: a thrown verify failure lands in the action lane with focus on Verify; a fresh press clears the lane and a code verdict stays on the field', async () => {
+    const user = userEvent.setup();
+    const { container } = renderAwaiting();
+    api.verifyEmailChange.mockRejectedValueOnce(new ApiError('offline', 'network', 0, {}));
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByText(/couldn't reach the server/i)).toBeInTheDocument());
+
+    const verify = screen.getByRole('button', { name: 'Verify' });
+    const field = screen.getByLabelText(/code from the email/i);
+    expect.soft(actionAlert(container)?.textContent ?? '').toMatch(/couldn't reach the server/i);
+    expect.soft(field).not.toHaveAttribute('aria-invalid', 'true');
+    expect.soft(document.activeElement).toBe(verify);
+    expect(field).toHaveValue('AB12CD34');
+
+    api.verifyEmailChange.mockResolvedValueOnce(body({ outcome: 'invalid' }));
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() =>
+      expect(screen.getByText("That code isn't right — check the email and try again")).toBeInTheDocument()
+    );
+    expect(actionAlert(container)).toBeNull();
+    expect(screen.getByLabelText(/code from the email/i)).toHaveAttribute('aria-invalid', 'true');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText(/code from the email/i))
+    );
+  });
+
+  it('V4 (guard): a genuine expiry after an unreadable answer REPLACES it — the expired copy on the field, no action-lane alert beside it', async () => {
+    const user = userEvent.setup();
+    const { rerender, container } = renderAwaiting();
+    await armTheExpiryArm(user);
+    seedRefetch(ROW({ pending_email_change: { address: NEW, expires_at: 'z' } }));
+    api.verifyEmailChange.mockResolvedValue(DRIFT);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+
+    pushNullPendingRow(rerender);
+
+    await waitFor(() => expect(screen.getByText('That code has expired')).toBeInTheDocument());
+    expect(screen.getByLabelText(/code from the email/i)).toHaveAttribute('aria-invalid', 'true');
+    expect(actionAlert(container)).toBeNull();
+  });
+
+  it('V5: `address_taken` lands in the action lane, the code is still cleared, and focus stays on the now-gated Verify', async () => {
+    const user = userEvent.setup();
+    const { container } = renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(body({ outcome: 'address_taken' }));
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByText(/another account already uses that address/i)).toBeInTheDocument());
+
+    const verify = screen.getByRole('button', { name: 'Verify' });
+    const field = screen.getByLabelText(/code from the email/i);
+    expect.soft(actionAlert(container)?.textContent ?? '').toMatch(/another account already uses that address/i);
+    expect.soft(field).not.toHaveAttribute('aria-invalid', 'true');
+    expect.soft(document.activeElement).toBe(verify);
+    expect.soft(verify.getAttribute('aria-describedby') ?? '').toBe(actionAlert(container)?.id ?? 'no lane');
+    // The 2026-09-07 owner ruling that clears the code is kept; the emptied code gates Verify.
+    expect(field).toHaveValue('');
+    expect(verify).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('V6 (guard, Enter path): a verify submitted with Enter keeps focus in the code input on a thrown failure', async () => {
+    // Green with or without the fix (focus is already on the field); pins that the fix
+    // adds no focus move of its own that would pull an Enter user out of the field.
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockRejectedValue(new ApiError('offline', 'network', 0, {}));
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34{Enter}');
+    await waitFor(() => expect(screen.getByText(/couldn't reach the server/i)).toBeInTheDocument());
+    expect(document.activeElement).toBe(screen.getByLabelText(/code from the email/i));
+  });
+});
+
+describe('EmailAddressSection — 88.6.1-13: the reconcile predicates', () => {
+  it('P1: driftedVerifyLanded is true when the row has the target email and nothing pending, incl. a case and space variant', () => {
+    expect(driftedVerifyLanded([{ id: 'u', email: NEW, pending_email_change: null }], NEW)).toBe(true);
+    expect(
+      driftedVerifyLanded([{ id: 'u', email: '  Alice.New@Example.COM ', pending_email_change: null }], NEW)
+    ).toBe(true);
+  });
+
+  it('P1: driftedVerifyLanded is FALSE for the expired-row shape (old email, nothing pending)', () => {
+    expect(driftedVerifyLanded([{ id: 'u', email: REAL, pending_email_change: null }], NEW)).toBe(false);
+  });
+
+  it('P1: driftedVerifyLanded is false for a still-pending row, for no rows, for an undefined row and for a null target', () => {
+    expect(
+      driftedVerifyLanded([{ id: 'u', email: NEW, pending_email_change: { address: NEW } }], NEW)
+    ).toBe(false);
+    expect(driftedVerifyLanded([], NEW)).toBe(false);
+    expect(driftedVerifyLanded([undefined], NEW)).toBe(false);
+    expect(driftedVerifyLanded([{ id: 'u', email: NEW, pending_email_change: null }], null)).toBe(false);
+  });
+
+  it('P2: shouldSuppressOwnNull is true only with no pending row and BOTH flags set (no rows means no pending is known)', () => {
+    expect(shouldSuppressOwnNull([{ id: 'u', email: REAL, pending_email_change: null }], true, true)).toBe(true);
+    expect(shouldSuppressOwnNull([], true, true)).toBe(true);
+  });
+
+  it('P2: shouldSuppressOwnNull is false when a row carries a pending change or either flag is false', () => {
+    const pending = [{ id: 'u', email: REAL, pending_email_change: { address: NEW } }];
+    const none = [{ id: 'u', email: REAL, pending_email_change: null }];
+    expect(shouldSuppressOwnNull(pending, true, true)).toBe(false);
+    expect(shouldSuppressOwnNull(none, false, true)).toBe(false);
+    expect(shouldSuppressOwnNull(none, true, false)).toBe(false);
   });
 });
