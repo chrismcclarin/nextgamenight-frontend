@@ -23,12 +23,17 @@ type InitOptions = {
   beforeSendTransaction?: (event: Record<string, unknown>) => Record<string, unknown> | null;
   beforeSendSpan?: (span: Record<string, unknown>) => Record<string, unknown>;
   tracesSampleRate?: number;
+  // Phase 88.6.1-08 (Prohibition 5): the error-event egress the logger breadcrumbs ride on.
+  beforeSend?: (event: Record<string, unknown>) => Record<string, unknown> | null;
 };
 
 const init = vi.fn<(o: InitOptions) => void>();
 const replayIntegration = vi.fn((opts: Record<string, unknown>) => ({ name: 'Replay', opts }));
+// Phase 88.6.1-08: `src/lib/logger.ts` calls `Sentry.addBreadcrumb`, and vitest throws on a
+// mock export that is missing, so the factory carries it too.
+const addBreadcrumb = vi.fn<(crumb: Record<string, unknown>) => void>();
 
-vi.mock('@sentry/nextjs', () => ({ init, replayIntegration }));
+vi.mock('@sentry/nextjs', () => ({ init, replayIntegration, addBreadcrumb }));
 
 async function loadConfigAt(pathname: string): Promise<InitOptions> {
   vi.resetModules();
@@ -172,5 +177,50 @@ describe('sentry.client.config.js — tracing egress is gated and scrubbed (R2 H
       data: {},
     });
     expect(String(span.description)).not.toContain('example.com');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-08 (SPEC Prohibition 5, AC-34; threat T-88.6.1-167). A diagnostic added
+// through the house logger must reach Sentry ONLY through the scrubber.
+//
+// WHY THE WIRING IS PINNED HERE AND NOT ONLY THE PURE FUNCTION. `logger.info(msg, ctx)` is
+// `Sentry.addBreadcrumb({ message, level: 'info', data: ctx })` (`src/lib/logger.ts:53`) and it
+// sets NO `category`. Session Replay forwards a breadcrumb only when it has one
+// (`@sentry-internal/replay` 8.55.2 `build/npm/esm/index.js:6175`, `isBreadcrumbWithCategory`
+// at `:6263-6264`, `return !!breadcrumb.category;`), so replay never carries these. Their ONLY
+// egress is attached to the next error event, through the `beforeSend` that
+// `sentry.client.config.js` hands to `Sentry.init`. Without this case, dropping `beforeSend`
+// from the init call would leave every unit test in `sentry.scrub.test.ts` green while the
+// breadcrumb left unscrubbed.
+// ---------------------------------------------------------------------------
+describe('sentry.client.config.js — logger breadcrumbs leave only through the wired beforeSend (88.6.1-08, Prohibition 5)', () => {
+  it('a logger.info breadcrumb carrying id_token / refresh_token pairs and an email is redacted by the beforeSend Sentry.init is handed', async () => {
+    // The config FIRST: `loadConfigAt` resets the module registry, so the logger imported
+    // below binds to the same mocked `@sentry/nextjs` factory functions.
+    const opts = await loadConfigAt('/dashboard');
+    expect(typeof opts.beforeSend).toBe('function');
+    addBreadcrumb.mockClear();
+    // DYNAMIC import, never a top-level static one: a static import evaluates
+    // `@sentry/nextjs` before this file's `const addBreadcrumb = vi.fn` line runs, and the
+    // mock factory would read it in the temporal dead zone.
+    const { logger, errCtx } = await import('./logger');
+    logger.info(
+      'Failed to refresh the session',
+      errCtx(new Error('refresh failed: id_token=eyJabc refresh_token=r3fr35h for alice@example.com'))
+    );
+    expect(addBreadcrumb).toHaveBeenCalledTimes(1);
+    const crumb = addBreadcrumb.mock.calls.at(-1)![0];
+
+    const out = opts.beforeSend!({ breadcrumbs: [crumb] }) as {
+      breadcrumbs: Array<{ message: string; data: { name: string; message: string } }>;
+    };
+    const serialised = JSON.stringify(out);
+    expect(serialised).not.toContain('eyJabc');
+    expect(serialised).not.toContain('r3fr35h');
+    expect(serialised).not.toContain('alice@example.com');
+    expect(out.breadcrumbs[0].message).toBe('Failed to refresh the session');
+    expect(out.breadcrumbs[0].data.name).toBe('Error');
+    expect(out.breadcrumbs[0].data.message).toBe('refresh failed: [REDACTED] [REDACTED] for [REDACTED]');
   });
 });

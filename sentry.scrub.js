@@ -45,9 +45,40 @@ const EMAIL = /[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // JWT: three base64url segments separated by dots, starting with the `eyJ` header.
 const JWT = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const BEARER = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
-// secret/auth/password key=value (or key: value) pairs in free text/query strings.
+// DECISION Phase 88.6.1-08 (W007, AC-34): secret/auth/password key=value (or key: value) pairs
+// in free text and query strings. The key group is CHOSEN as a bounded word prefix plus a
+// camelCase run in front of `token` / `secret` / `password`: up to three `word_` / `word-`
+// prefixes, then any run of letters and digits running straight into the keyword. That catches
+// `access_token`, `id_token`, `refresh_token`, `client_secret`, `x-auth-token`, `accessToken`
+// and `idToken` (`magic_token` is now one of them, so its separate alternative is gone). One
+// optional quote on each side of the separator catches a quoted pair (`"refresh_token":"v1"`,
+// `refresh_token: "v1"`); `scrubString` re-emits the quote whose partner sat outside the
+// match, so the quotes stay balanced. The `\b` after the key keeps `token_count`, `tokens`,
+// `password_reset`, `passwordless` and `mytokens` out (pinned by the W007 NEGATIVE case in
+// `src/lib/sentry.scrub.test.ts`). REJECTED, each for a reason:
+//  - listing the three OAuth keys: a key list is what the module header says this layer is
+//    NOT, and it misses `client_secret` / `csrf_token`;
+//  - an unbounded `*` repeat on the word-prefix group: `scrubString` is the replay leaf
+//    (marker (v) below) and the `{0,3}` bound keeps it linear. ACCEPTED COST: a snake key of
+//    four or more words before the keyword (`a_b_c_d_token=`) is out of scope;
+//  - the review's leading-delimiter capture: it consumes the delimiter unless re-emitted, and
+//    `\b` already supplies the boundary;
+//  - separator-only matching, as first planned: a quoted key or value (JSON, `key: "value"`)
+//    passed whole, and opaque refresh tokens are not caught by the JWT rule;
+//  - narrowing the value side so prose survives (owner ruling #10, 2026-10-13, accepted cost,
+//    kept fail-safe): the rule eats ONE word after a `<word>-token:` (or `_token:`, camelCase)
+//    colon followed by prose, so `Invalid refresh-token: expired session` reads
+//    `Invalid [REDACTED] session` (pinned). Our own three messages that end in `token:`
+//    (`src/app/components/ManageMembers.js:358`, `src/app/components/FriendInvitePanel.js:397`,
+//    `src/app/gameDetail/page.js:854`; anchor `invite token:', errCtx(err)` at all three) pass
+//    the error as structured context through `errCtx` (`src/lib/logger.ts:89`, anchor
+//    `export function errCtx`; name and message only), never concatenated, so the message ends
+//    at the colon and this rule matches nothing there. Any narrowing that spared the prose word
+//    (a minimum value length, requiring a digit or a non-letter) would also spare short or
+//    all-letter real tokens (`x-auth-token: abc`), so the fail-safe direction is kept.
+// Widening or unbounding the prefix is a decision, not a cleanup.
 const SECRET_KV =
-  /\b(token|magic_token|secret|password|authorization|api[_-]?key)\b\s*[=:]\s*[^&\s"']+/gi;
+  /\b((?:[a-z0-9]+[_-]){0,3}[a-z0-9]*(?:token|secret|password)|authorization|api[_-]?key)\b(["'])?\s*[=:]\s*(["'])?[^&\s"']+/gi;
 // long digit runs (phone numbers, etc.).
 const PHONE = /(?<![\w.])\+?\d[\d\s().-]{7,}\d(?![\w.])/g;
 // DECISION Phase 88.6-59 (review MEDLOW-11, dated 2026-09-29): Auth0 subs —
@@ -240,7 +271,12 @@ function scrubString(str, opts) {
   let out = str
     .replace(JWT, REDACTED)
     .replace(BEARER, REDACTED)
-    .replace(SECRET_KV, REDACTED)
+    // The whole pair goes; a quote whose partner sat OUTSIDE the match is re-emitted, so the
+    // quotes stay balanced (`{"k":"v"}` -> `{"[REDACTED]"}`, `k: "v"` -> `"[REDACTED]"`). See
+    // the W007 marker on SECRET_KV.
+    .replace(SECRET_KV, (_m, _key, keyQuote, valueQuote) =>
+      (valueQuote && !keyQuote ? valueQuote : '') + REDACTED + (keyQuote && !valueQuote ? keyQuote : '')
+    )
     .replace(EMAIL, REDACTED);
   // Auth0 subs — BEFORE PHONE, and only when a separator is present (see the AUTH0_SUB marker).
   // `%7` covers both `%7C` and `%7c`; the pattern itself still requires the full separator.
@@ -448,6 +484,14 @@ function scrubRecordingEvent(replayEvent) {
  * objects through `beforeAddRecordingEvent`. That is reasoned from the SDK's documented
  * behaviour. If replay does not carry breadcrumb `data`, the phase-widening argument above
  * weakens — the code asymmetry and the fix stand either way.
+ * [VERIFIED 2026-10, 88.6.1-08: read in the installed @sentry-internal/replay 8.55.2,
+ * build/npm/esm/index.js. Replay forwards a breadcrumb only when it has a category
+ * (beforeAddBreadcrumb at :6175, isBreadcrumbWithCategory at :6263-6264), and it drops the
+ * ui.*, fetch and xhr ones (normalizeBreadcrumb, :6186-6201). logger.info sets no category
+ * (src/lib/logger.ts:53), so its data never reaches this walker; it leaves only on an error
+ * event, through scrubEvent (pinned end to end through the wired beforeSend by the 88.6.1-08
+ * tracer in src/lib/sentryClientReplayGate.test.ts). Console breadcrumbs DO carry a category
+ * and reach replay, so the key-hint fix stands.]
  */
 function deepScrubRecording(value, keyHint) {
   if (typeof value === 'string') {

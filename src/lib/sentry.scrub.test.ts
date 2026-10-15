@@ -134,6 +134,75 @@ describe('scrubString — Auth0 subs (88.6-59, review MEDLOW-11)', () => {
   });
 });
 
+// Phase 88.6.1-08 (W007, AC-34 clause 1; DF-7 probe inputs). Before this plan the SECRET_KV key
+// group was a bare word list behind a `\b`, so `access_token=` / `id_token=` / `refresh_token=`
+// (the `_` is a word character, so no boundary sits before `token`), camelCase keys and quoted
+// pairs all came back unchanged. `toBe` everywhere: every output here is fully determined.
+describe('W007 — OAuth-shaped key=value pairs and the logger breadcrumb (88.6.1-08, AC-34, Prohibition 5)', () => {
+  it('W007: access_token / id_token / refresh_token / client_secret / x-auth-token values are redacted, camelCase and quoted pairs included (DF-7 probe inputs)', () => {
+    expect(scrubString('callback?access_token=abc123&x=1')).toBe(`callback?${R}&x=1`);
+    expect(scrubString('id_token=eyJabc refresh_token=r3fr35h')).toBe(`${R} ${R}`);
+    expect(scrubString('client_secret=s3cr3tval&x=1')).toBe(`${R}&x=1`);
+    expect(scrubString('x-auth-token: abcdef')).toBe(R);
+    // camelCase keys (review r2 #103): letters run straight into the keyword.
+    expect(scrubString('accessToken=abc')).toBe(R);
+    expect(scrubString('idToken: abc')).toBe(R);
+    // Quoted pairs (review r2 #102). The whole pair goes, and the quote whose partner sat
+    // outside the match is re-emitted, so the quotes stay balanced: a JSON pair reads as one
+    // quoted string, and a quoted value keeps its pair of quotes.
+    expect(scrubString('{"refresh_token":"v1.x"}')).toBe(`{"${R}"}`);
+    expect(scrubString('refresh_token: "v1.x"')).toBe(`"${R}"`);
+    // Owner ruling #10 (2026-10-13, `88.6.1-PLAN-REVIEW-work/RULINGS.md`), the cost line of the
+    // W007 marker in `sentry.scrub.js`: the ONE word after a `<word>-token:` prose colon is
+    // eaten, by design (fail-safe). Before this plan only the bare `token` after the hyphen
+    // matched, leaving `refresh-` in front of the placeholder.
+    expect(scrubString('Invalid refresh-token: expired session')).toBe(`Invalid ${R} session`);
+  });
+
+  it('W007 NEGATIVE: a token-ish word that is not a key=value secret is untouched', () => {
+    // The `\b` after the key keeps these out; `passwordless` and `mytokens` are what an
+    // unanchored keyword match (the camelCase clause done wrong) would catch.
+    for (const s of [
+      'token_count=5',
+      'tokens=5',
+      'password_reset=true',
+      'passwordless=1',
+      'mytokens=3',
+      'trace_id=4bf92f3577b34da6a3ce929d0e0e4736',
+      ALPHA,
+    ]) {
+      expect(scrubString(s), s).toBe(s);
+    }
+  });
+
+  it('Prohibition 5: the exact object logger.info(msg, errCtx(err)) hands to addBreadcrumb comes back redacted from scrubEvent', () => {
+    // The crumb is built LITERALLY (no logger import here, which keeps `@sentry/nextjs` out of
+    // this suite). Its shape is `logger.info` at `src/lib/logger.ts:53`
+    // (`Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx })`) with `ctx` from
+    // `errCtx` at `src/lib/logger.ts:89-98` (name and message only). The WIRING proof, the real
+    // logger through the `beforeSend` that `sentry.client.config.js` hands to `Sentry.init`, is
+    // the 88.6.1-08 tracer in `src/lib/sentryClientReplayGate.test.ts`.
+    const crumb = {
+      message: 'Failed to refresh the session',
+      level: 'info',
+      data: {
+        name: 'Error',
+        message: 'refresh failed: id_token=eyJabc refresh_token=r3fr35h for alice@example.com',
+      },
+    };
+    const out = scrubEvent({ breadcrumbs: [crumb] }) as {
+      breadcrumbs: Array<{ message: string; data: { name: string; message: string } }>;
+    };
+    const serialised = JSON.stringify(out);
+    expect(serialised).not.toContain('eyJabc');
+    expect(serialised).not.toContain('r3fr35h');
+    expect(serialised).not.toContain('alice@example.com');
+    expect(out.breadcrumbs[0].message).toBe('Failed to refresh the session');
+    expect(out.breadcrumbs[0].data.name).toBe('Error');
+    expect(out.breadcrumbs[0].data.message).toBe(`refresh failed: ${R} ${R} for ${R}`);
+  });
+});
+
 describe('AC-1 — every LIVE token-in-path family is redacted, by its own pattern', () => {
   // The NINE live families, each against its real route prefix. The payload is the
   // mutation-guard ALPHA everywhere EXCEPT where a real token shape is the point, so a
