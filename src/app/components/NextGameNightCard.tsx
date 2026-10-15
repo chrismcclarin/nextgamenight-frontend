@@ -547,82 +547,102 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
               );
             })}
           </div>
+        </div>
 
+        {/*
+          DECISION Phase 88.6.1-06 (D-22): THE OUTCOME PAIR sits AFTER the `mt-3 space-y-2`
+          stack, as the Card's next child, and each region carries `mt-2` plus
+          `srOnlyWhenEmpty`. The cause: Tailwind 4.3.3 `space-y-2` sets margin-block-end on
+          every child that is NOT the last (`:where(& > :not(:last-child))`), not v3's
+          adjacent-sibling margin-top. With this wrapper as the stack's last child, the RSVP
+          group kept an 8px bottom margin with nothing in it: about 8px of idle space under the
+          buttons (ST-2). Now the group is the stack's last child and gets no margin. An empty
+          region is `sr-only`, out of flow, so its `mt-2` costs nothing and the idle card ends
+          at the buttons plus its own padding; a region holding text is visible, and its `mt-2`
+          puts the outcome 8px under the buttons, the same 8px as before.
+          CHOSEN OVER: (a) keeping the gap as an accepted cost with a corrected comment — the
+          comment this replaces recorded that V-20 sanctions the line that APPEARS, not a
+          permanent gap, and fixed idle spacing on the phone's most prominent card is a mobile
+          bug; (b) both regions as direct children of the stack — the group would still not be
+          the last child and would keep its 8px; (c) `flex flex-col gap-2` on the stack — it
+          works, because out-of-flow children are not flex items, but it changes the stack's
+          layout model for a result this move gets without it; (d) moving the pair above the
+          buttons — that moves where the outcome line appears, a look change. Do not move this
+          wrapper back inside the spaced stack.
+        */}
+        <div>
           {/*
-            THE OUTCOME PAIR. Both regions live inside THIS un-spaced wrapper rather than as
-            two direct children of the `space-y-2` stack above, and that is a requirement,
-            not tidiness: `space-y-2` is `> * + *`, so a SECOND direct child would take an
-            8px top margin even while it is empty and zero-height — an idle layout delta on
-            the phone's most prominent card, which V-20 does not sanction (V-20 sanctions the
-            line that APPEARS, not a permanent gap). One child in, no gap out. Do not hoist
-            either region back out of this wrapper.
+            ALWAYS MOUNTED, EMPTY-FIRST. Corrected Phase 88.6.1 (D-42): an inserted
+            `role="alert"` that arrives with its text IS announced (ARIA 1.2 `alert`; the
+            corrected bullet at `StatusRegion.tsx:9`), so the old claim here, that wrapping
+            this region in `{error && …}` would make the failure silent, was wrong for this
+            assertive region. The always-mounted shape stays for two other reasons: the tests
+            capture the node once (identity), and the clear-at-start in `handleRsvp` makes an
+            identical repeat failure re-announce. `display:none` / `empty:hidden` stay
+            rejected: they drop the node from the accessibility tree. `sr-only` while empty
+            (the D-22 prop) does not drop the node.
           */}
-          <div>
-            {/*
-              EMPTY-FIRST, ALWAYS MOUNTED — `StatusRegion`'s documented contract
-              (`StatusRegion.tsx:9-12`): a screen reader announces CHANGES to a live region,
-              not the conditional mount of a new one. Wrapping this in `{error && …}` would
-              make the failure silent for exactly the users who need it most. Only its text
-              content changes. Do not add `empty:hidden` either — a region that is
-              `display:none` until it has something to say has the same defect.
-            */}
-            <StatusRegion
-              politeness="assertive"
-              className="text-content-status-error"
-              message={errorMessage}
-            />
-            {/*
-              DECISION Phase 88.6-28 (W45(a)), owner ruling 2026-09-16 (ARM A): the RSVP
-              SUCCESS is announced through a SECOND, ALWAYS-MOUNTED `politeness="polite"`
-              region carrying the newly ratified string "Response saved" — visible when set,
-              per the 2026-09-14 ruling (#32 + #166, arm 2) that made this phase's three new
-              polite regions visible rather than `sr-only`. It is NOT a mirror of the
-              assertive region beside it: that one is `role="alert"` in error ink, and
-              routing a confirmation through it would fire a success at the user as an
-              interruption, painted red.
+          <StatusRegion
+            politeness="assertive"
+            srOnlyWhenEmpty
+            className="mt-2 text-content-status-error"
+            message={errorMessage}
+          />
+          {/*
+            DECISION Phase 88.6-28 (W45(a)), owner ruling 2026-09-16 (ARM A): the RSVP
+            SUCCESS is announced through a SECOND, ALWAYS-MOUNTED `politeness="polite"`
+            region carrying the newly ratified string "Response saved" — visible when set,
+            per the 2026-09-14 ruling (#32 + #166, arm 2) that made this phase's three new
+            polite regions visible rather than `sr-only`. It is NOT a mirror of the
+            assertive region beside it: that one is `role="alert"` in error ink, and
+            routing a confirmation through it would fire a success at the user as an
+            interruption, painted red.
 
-              REJECTED, all four arms, with their costs on the record:
-                B — reuse `statusConfig[key].label` ("You're going!"), authoring no copy.
-                    It is the string the status sentence ten pixels above ALREADY renders
-                    (see the `min-h-5` row), so the card would print it twice; suppressing
-                    the sentence while the region is set is more moving parts than the
-                    announcement is worth.
-                C — make THIS region `sr-only`. Rejected because it reverses the owner's
-                    2026-09-14 visibility ruling for one site and buys a deliberate
-                    sighted/AT asymmetry.
-                D — promote the existing status sentence to a live region. Zero new copy and
-                    zero visible delta, but it also fires when the on-open read resolves,
-                    announcing "You're going!" to someone who just opened the sheet and did
-                    nothing. Announcing on load is a worse defect than the silence being fixed.
-                (and the shape this file must never take) a region mounted BY the event it
-                    announces — `{successMessage && <StatusRegion …>}`. It announces nothing.
+            REJECTED, all four arms, with their costs on the record:
+              B — reuse `statusConfig[key].label` ("You're going!"), authoring no copy.
+                  It is the string the status sentence ten pixels above ALREADY renders
+                  (see the `min-h-5` row), so the card would print it twice; suppressing
+                  the sentence while the region is set is more moving parts than the
+                  announcement is worth.
+              C — make THIS region `sr-only`. Rejected because it reverses the owner's
+                  2026-09-14 visibility ruling for one site and buys a deliberate
+                  sighted/AT asymmetry.
+              D — promote the existing status sentence to a live region. Zero new copy and
+                  zero visible delta, but it also fires when the on-open read resolves,
+                  announcing "You're going!" to someone who just opened the sheet and did
+                  nothing. Announcing on load is a worse defect than the silence being fixed.
+              (and the shape this file must never take) a region mounted BY the event it
+                  announces — `{successMessage && <StatusRegion …>}`. It announces nothing.
 
-              INK: `text-content-secondary`, the ink this same card already renders at the
-              who-line — measured 10.4753 on light `--color-bg-card` (#4a3d32 on #ffffff) and
-              8.6804 on dark (#d6cbc0 on #232d3e), both far past AA. Chosen OVER a success
-              GREEN, which would be a new colour on this surface with no V-row for a colour
-              delta and no Gate A pin behind it; V-20 sanctions a line appearing, not a new
-              hue. SIZE: none authored — `StatusRegion` is `cn('text-sm', className)` and
-              14px is the rung this card's secondary text already sits on.
+            INK: `text-content-secondary`, the ink this same card already renders at the
+            who-line — measured 10.4753 on light `--color-bg-card` (#4a3d32 on #ffffff) and
+            8.6804 on dark (#d6cbc0 on #232d3e), both far past AA. Chosen OVER a success
+            GREEN, which would be a new colour on this surface with no V-row for a colour
+            delta and no Gate A pin behind it; V-20 sanctions a line appearing, not a new
+            hue. SIZE: none authored — `StatusRegion` is `cn('text-sm', className)` and
+            14px is the rung this card's secondary text already sits on.
 
-              This is ONE of THREE arms of a single ruling (plans 28, 30, 31) and a precedent
-              for a 28-SITE idiom. RE-MEASURED 2026-09-16, and the plan's own figure of 20 does
-              NOT hold: `grep -rn "<StatusRegion" src | wc -l` returns 37 raw, but that
-              instrument counts prose — this very marker contributes two of them — so the honest
-              number is COMMENT-STRIPPED: 28 JSX sites across 16 non-test files (the two
-              directly above included), plus 5 more inside `StatusRegion.test.tsx`. Whichever
-              way it is counted it is larger than 20, never smaller.
-              THE CLEAR-AT-START IN `handleRsvp` IS PART OF THAT PRECEDENT, not
-              an incidental detail of this call site: a fixed string re-set into an unchanged
-              region is a React bail-out and announces nothing. Spelling any of the three
-              differently is the duplication this phase exists to remove.
-            */}
-            <StatusRegion
-              politeness="polite"
-              className="text-content-secondary"
-              message={successMessage}
-            />
-          </div>
+            This is ONE of THREE arms of a single ruling (plans 28, 30, 31) and a precedent
+            for a 28-SITE idiom. RE-MEASURED 2026-09-16, and the plan's own figure of 20 does
+            NOT hold: `grep -rn "<StatusRegion" src | wc -l` returns 37 raw, but that
+            instrument counts prose — this very marker contributes two of them — so the honest
+            number is COMMENT-STRIPPED: 28 JSX sites across 16 non-test files (the two
+            directly above included), plus 5 more inside `StatusRegion.test.tsx`. Whichever
+            way it is counted it is larger than 20, never smaller.
+            THE CLEAR-AT-START IN `handleRsvp` IS PART OF THAT PRECEDENT, not
+            an incidental detail of this call site: a fixed string re-set into an unchanged
+            region is a React bail-out and announces nothing. Spelling any of the three
+            differently is the duplication this phase exists to remove.
+            AMENDED Phase 88.6.1-06 (D-22), 2026-10-15: the region takes `srOnlyWhenEmpty`. It is
+            hidden only while it has nothing to say and visible whenever set, so the 2026-09-14
+            visibility ruling and arm C's rejection both stand.
+          */}
+          <StatusRegion
+            politeness="polite"
+            srOnlyWhenEmpty
+            className="mt-2 text-content-secondary"
+            message={successMessage}
+          />
         </div>
       </Card>
     );
