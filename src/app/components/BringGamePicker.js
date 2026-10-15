@@ -96,6 +96,10 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
      would re-populate the assertive one PAST that clear, and the next open would mount it
      already populated — silent. The catch compares the generation it captured at start. */
   const dismissGenerationRef = useRef(0);
+  // 88.6.1-14 (D-35): the Save press latch — see the AMENDED (D-35) note at the Save control.
+  // A REF, not the `saving` state: a state write does not land before a second synchronous
+  // press dispatches.
+  const saveInFlightRef = useRef(false);
   /* DECISION Phase 88.6.1-14 (D-09b, AC-30; copy row E10, D-33 row 23): the identity failure is
      read from the SHARED identity query (the page's cached entry — no extra request while it
      holds data), chosen OVER a new prop from both hosts (the fix would move into the game page,
@@ -252,11 +256,14 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
   };
 
   const handleSave = async () => {
+    // 88.6.1-14 (D-35): the first-line press latch; released in `finally`.
+    if (saveInFlightRef.current) return;
     // Phase 88.6-57 (CR-101): refuse unless the selection came from a SUCCESSFUL load. The PUT
     // is a FULL REPLACE, and until the load lands `selectedGameIds` is the initial empty Set
     // (or a stale one from a previous open) — saving it wipes the person's brings. The refusal
     // lives HERE so it holds whatever the control's disabled idiom becomes.
     if (loading || loadError || identityFailed) return;
+    saveInFlightRef.current = true;
     const generation = dismissGenerationRef.current;
     // Cleared at the START so a second identical failure is a real change (the
     // `NextGameNightCard` / `RsvpSection` clear-then-set idiom, UI-SPEC §6.3).
@@ -287,6 +294,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
       if (generation !== dismissGenerationRef.current) return;
       setAssertiveAnnouncement(getFetchErrorMessage(err));
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   };
@@ -536,11 +544,25 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
             Save is now ALSO refused while `loading` and after `loadError` (here and in
             `handleSave`'s first line), because the PUT is a FULL REPLACE and the initial empty
             Set would wipe the person's brings. Re-enabling it on those states is a decision, not
-            a cleanup. */}
+            a cleanup.
+            AMENDED Phase 88.6.1-14 (D-35): D-35 (owner, 2026-10-04) classified this gate. The
+            in-flight half is the control the user just pressed, so it moves to `aria-disabled`
+            plus a synchronous first-line ref latch (`saveInFlightRef`) released in `finally` —
+            the rule of POSITION, `DECISION Phase 88.6-22` in `FriendInvitePanel.js` — chosen OVER
+            leaving it native (a keyboard or switch user is dropped out of the focus order
+            mid-save). The loading, failed-load and identity-failure terms stay NATIVE: nobody
+            pressed Save to cause any of them (the rule of KIND), and CR-101's refusal in
+            `handleSave` still holds for all three. The research note that called this gate
+            "leave, 88.9 / 89" was superseded because neither register owns the in-flight focus
+            drop. Visible delta, disclosed: while saving, the button takes the shipped gated
+            colour pair (`.btn-primary[aria-disabled='true']` in `globals.css`) instead of the
+            `.btn:disabled` 50% wash. Dropping either half, or restoring the native attribute for
+            the in-flight case, is a decision, not a cleanup. */}
         <Button
           variant="primary"
           onClick={handleSave}
-          disabled={saving || loading || !!loadError || identityFailed}
+          disabled={loading || !!loadError || identityFailed}
+          aria-disabled={saving ? 'true' : undefined}
         >
           {saving ? 'Saving...' : 'Save'}
         </Button>
