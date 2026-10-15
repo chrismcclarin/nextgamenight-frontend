@@ -380,7 +380,8 @@ const BTN_EXEMPT: ExemptionRoster = {
   // carried `sites: 2` and the count was EXACT — the "Copy Invite Link" CTA
   // (`w-full btn btn-primary py-2.5 text-center mb-3`) and the full-width "Close"
   // (`w-full btn btn-secondary`). Both are `<Button>`s now. `py-2.5` was DEAD under unlayered
-  // `.btn`'s `padding` (globals.css:2202) and is deleted rather than moved; `w-full`,
+  // `.btn`'s `padding` (`src/app/globals.css:2298`, `padding: 0.5rem 1rem;` inside the `.btn {`
+  // rule) and is deleted rather than moved; `w-full`,
   // `text-center` and `mb-3` all SURVIVE — `.btn` declares no width, no `text-align` and no
   // margin, so none of the three was ever dead and deleting them would have been a look change.
   //
@@ -391,11 +392,16 @@ const BTN_EXEMPT: ExemptionRoster = {
   //     UAT-row-333 fleet-header edge; a variant-less `<Button>` would paint the purple fill
   //     §3.2 forbids on a bare control; and `Modal.tsx`'s fleet close is bare and migrated by no
   //     plan, so migrating this one alone would CREATE an inconsistency. Its DECISION marker
-  //     records all three, plus the focus-ring CONSISTENCY residual this commit creates (the ×
-  //     is now the only control here on the UA default outline — not an AA violation, and a
-  //     DIVERGENCE from the fleet close rather than something the fleet shares).
+  //     records all three, plus the focus-ring CONSISTENCY residual this commit creates. At this
+  //     commit the × was one of TWO controls on the UA default outline — the tertiary bullet
+  //     below was the other, which the D48 marker's first wording missed (W037 / IN-304). Not an
+  //     AA violation, and a DIVERGENCE from the fleet close rather than something the fleet
+  //     shares.
   //   - the "Reset Token" tertiary — a bare text button; its `font-medium` was ALIVE and took
   //     §4.5's EMPHASIS outcome in the same commit (see the `typeScaleTouchedSurfaces` note).
+  //     DELETED by plan 88.6.1-12 under D-27 (no host enabled it and no caller supplied its
+  //     handler, so it could never render). That leaves the × the only control on the UA
+  //     outline, a residual owned by Phase 88.9 (`.planning/deferred/phase-88.9.md`).
   // Entry DELETED rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleForm.js`
   // carried `sites: 2` — the modal footer's Cancel (`btn btn-secondary`) and the submit
@@ -791,7 +797,8 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'inconsistency rather than close one. All four box numbers are ARITHMETIC, NOT MEASURED: ' +
       'the icon variant is emitted inside `Header.js:128`\'s `hidden md:flex` list, so it is ' +
       '`display:none` at 375px and the repo\'s only geometry harness is phone-only by design ' +
-      '(`e2e/touch-targets.spec.ts:10-15`). Same shape and same outcome as `QRCodeModal.js:38-43`. ' +
+      '(`e2e/touch-targets.spec.ts:10-15`). Same shape and same outcome as the corner close in ' +
+      '`QRCodeModal.js` under `DECISION Phase 88.6-33 (D48)`. ' +
       'COLOUR FINDING (PATH 2 — no shipped token reproduces it, so none is named): composited ' +
       "with the same arithmetic `tokenContrast.test.ts`'s `resolveOver` applies, `bg-white/10` " +
       'over `--color-bg-header` gives #423b36 in light (ground warm-800 #2d2520) and #312d2c in ' +

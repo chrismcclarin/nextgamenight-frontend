@@ -72,20 +72,22 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
          (denied permission, insecure context); an event here would flush the Session Replay
          buffer under `replaysOnErrorSampleRate` and buy replay volume the `no-console` milestone
          gate never asked for. `logger.warn` is NOT a cheaper arm — it is `Sentry.captureMessage`
-         (`src/lib/logger.ts:31-32`), also an event.
+         (`src/lib/logger.ts:50`, `Sentry.captureMessage`), also an event.
 
          THIS RETIRES the clipboard-noise question rather than answering it: there is no
          `captureConsoleIntegration` in `sentry.client.config.js`, so this call is a breadcrumb
          today and stays one. NO new event, NO new replay egress — the egress delta versus today
          is NIL. What the conversion buys is retiring the raw `console.*` for the ROADMAP `:28`
-         gate. `FriendInvitePanel.js:353` is the shipped twin of this exact shape.
+         gate. `FriendInvitePanel.js:376` (`'Failed to copy link:'`) is the shipped twin of
+         this exact shape.
 
          `errCtx(err)` and never the raw `Error`: `logger.info(msg, ctx)`'s second parameter is
-         `ctx?: Record<string, unknown>` (`src/lib/logger.ts:24`), which `checkJs: false` cannot
-         catch at a `.js` call site. `errCtx` is the house helper (its own `DECISION Phase
-         88.6-13` marker records that a hand-written `{ name, message }` literal at the call site
-         reds `fetchErrorTreatment`'s R1 gate it never touched). Converted IN PLACE: this is a
-         catch inside an event handler, not a render body, so no latch is needed. */
+         `ctx?: Record<string, unknown>` (`src/lib/logger.ts:31`, `info(msg: string`), which
+         `checkJs: false` cannot catch at a `.js` call site. `errCtx` is the house helper (its
+         own `DECISION Phase 88.6-13` marker records that a hand-written `{ name, message }`
+         literal at the call site reds `fetchErrorTreatment`'s R1 gate it never touched).
+         Converted IN PLACE: this is a catch inside an event handler, not a render body, so no
+         latch is needed. */
       logger.info('Failed to copy link:', errCtx(err));
     }
   };
@@ -112,7 +114,8 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
             DECISION Phase 88.6-33 (D48): this `×` STAYS BARE — left byte-unchanged while the
             modal's two other controls migrated to `<Button>` in the same commit. Chosen OVER
             `<Button size="icon" variant="ghost">`, for three independently sufficient reasons:
-              1. `.btn`'s UNLAYERED `padding: 0.5rem 1rem` (globals.css:2202) widens this tuned
+              1. `.btn`'s UNLAYERED `padding: 0.5rem 1rem` (`src/app/globals.css:2298`,
+                 `padding: 0.5rem 1rem;` inside the `.btn {` rule) widens this tuned
                  44px box to roughly 56px and shifts the glyph centre OFF the fleet-header edge
                  the 88-33 Task 3 correction above deliberately set. A layered utility cannot
                  win that back.
@@ -177,7 +180,8 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
 
         {/* Copy Invite Link Button.
             88.6-33 (§3.2/§3.3): `<Button variant="primary" size="default">`. `py-2.5` was DEAD
-            under unlayered `.btn`'s `padding` (globals.css:2202) and is deleted rather than
+            under unlayered `.btn`'s `padding` (`src/app/globals.css:2298`,
+            `padding: 0.5rem 1rem;`) and is deleted rather than
             moved; `w-full`, `text-center` and `mb-3` all SURVIVE — `.btn` declares no width, no
             `text-align` and no margin, so none of the three was ever dead. */}
         <Button
