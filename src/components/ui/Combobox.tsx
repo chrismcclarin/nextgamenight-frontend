@@ -144,6 +144,11 @@ interface RenderGroup {
  * says nothing when there ARE results). Named in `88.6-37-SUMMARY.md` so a copy review can
  * rule on it. Module scope, not inline in the destructure, so the default is one stable
  * function identity rather than a fresh closure on every render.
+ *
+ * RATIFIED UNCHANGED (D-30, Phase 88.6.1): the 88.6.1 copy table kept this wording as it
+ * is. The owner ratified the table on 2026-10-04, and its "Not changing" list says the
+ * search dropdown keeps "{n} results available". Rewording it is a copy decision for the
+ * owner, not a cleanup.
  */
 const defaultCountLabel = (count: number): string =>
   `${count} result${count === 1 ? '' : 's'} available`;
@@ -351,6 +356,17 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
        count. Derived INLINE in the render body on purpose — no `useState`, no `useEffect`;
        a state-write here would keep the node and double the render on every text change,
        which the node-identity pin in `Combobox.test.tsx` cannot catch by construction. */
+    /* DECISION Phase 88.6.1-10 (announce gap, LATENT-AND-DEAD-RULING item 2): a caller that
+       mounts this primitive ALREADY OPEN with results puts the count into the region's FIRST
+       commit, and a polite region that mounts with its text announces nothing
+       (`StatusRegion.tsx:9-12`). Both shipped callers mount closed (`GameComboInput.js:34`;
+       the timezone picker's `tzPickerOpen` state in `userProfile/page.js`), so nothing
+       produces the gap today. The owner ACCEPTED it on 2026-10-03, chosen OVER a first-render
+       latch: an extra state write and an effect in a shared primitive, for a state no caller
+       produces, and the source-shape pin in `Combobox.test.tsx` forbids both.
+       TO THE FIRST CALLER THAT MOUNTS THIS OPEN: mount it closed and open it after the first
+       commit, or bring the latch back as a decision. Never ship an open mount silently.
+       Adding the latch is a decision, not a cleanup. */
     const announcement = !open
       ? ''
       : loading
@@ -378,8 +394,8 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
             REJECTED ALTERNATIVE 1 — hoisting the VISIBLE row out of `{open && (` and making
             it always-mounted. That row is padded, visible copy: an always-mounted version
             renders "No results found" under every CLOSED combobox on all five render paths
-            (`GameComboInput` at `createEvent.js:1025`, `ScheduleForm.js:357`,
-            `BallotOptionsEditor.js:23`; `userProfile/page.js:2175`). It also cannot move
+            (`GameComboInput` in `createEvent.js` and `ScheduleForm.js`,
+            `BallotOptionsEditor.js:23`; the timezone picker in `userProfile/page.js`). It also cannot move
             INSIDE the listbox node — a `listbox` may own only `option`/`group`, which the
             comment at that node records.
 
@@ -389,7 +405,8 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
             throws on more than one). The visible row therefore LOSES its role and becomes
             plain text. It is deliberately NOT `aria-hidden`: hiding it would remove it from
             browse mode, a regression for the sighted screen-reader user who can see it. The
-            house precedent for this exact split is `EmailAddressSection.tsx:1437-1446` — one
+            house precedent for this exact split is the block headed
+            "THE SECTION'S ONE LIVE REGION" in `EmailAddressSection.tsx` — one visually hidden
             region fed a derived string, with the visible text not itself a region.
 
             HOW OFTEN THIS SPEAKS, stated rather than assumed. The `loading` arm PRECEDES the

@@ -383,25 +383,27 @@ describe('Combobox — W38: exactly one always-mounted sr-only status region', (
 
   it('mounts the region EMPTY on first render (EMPTY-FIRST, StatusRegion.tsx:9-12)', () => {
     // FIRST RENDER IS THE CLOSED STATE FOR EVERY SHIPPED CONSUMER, measured not assumed:
-    // `GameComboInput.js:34` is `useState(false)` and `userProfile/page.js:378` is
-    // `useState(false)`, so both mount closed and the region's first commit is empty. That
-    // is what makes the first real announcement a CHANGE to a mounted region rather than the
-    // mount of a new one.
+    // `GameComboInput.js:34` is `useState(false)` and the timezone picker's `tzPickerOpen`
+    // state in `userProfile/page.js` is `useState(false)`, so both mount closed and the
+    // region's first commit is empty. That is what makes the first real announcement a
+    // CHANGE to a mounted region rather than the mount of a new one.
     //
     // THE RESIDUAL, stated rather than hidden by picking a friendly fixture: a caller that
     // mounts ALREADY OPEN with results would find the count in the region's initial DOM, and
     // that initial value does not announce. No shipped caller does this, and closing it would
     // need a first-render latch — i.e. exactly the `useState`/`useEffect` the source-shape
-    // pin below forbids, to fix a state nothing produces.
+    // pin below forbids, to fix a state nothing produces. The owner ACCEPTED this residual
+    // (LATENT-AND-DEAD-RULING item 2, 2026-10-03); the site marker is
+    // `DECISION Phase 88.6.1-10 (announce gap, …)` in `Combobox.tsx`.
     render(<Controlled open={false} />);
     expect(region()).toBeInTheDocument();
     expect(region()).toBeEmptyDOMElement();
   });
 
   it('is present and EMPTY while CLOSED, and renders no visible status text (DECISION 88-10 F-359)', () => {
-    // The `open` gate is MANDATORY, not defensive: `userProfile/page.js:451` returns `[]`
-    // when the picker is closed, so an `open`-ungated derivation would speak the empty
-    // label every single time a user closes the picker.
+    // The `open` gate is MANDATORY, not defensive: `userProfile/page.js`'s `timezoneItems`
+    // memo returns an empty list while the picker is closed, so an `open`-ungated derivation
+    // would speak the empty label every single time a user closes the picker.
     render(<Controlled open={false} items={[]} />);
     expect(region()).toBeInTheDocument();
     expect(region()).toBeEmptyDOMElement();
