@@ -41,7 +41,19 @@ const REDACTED = '[REDACTED]';
 // `URIError` on a malformed `%` sequence and would crash `beforeSend`, dropping the whole
 // event). Only the separator widened — the local-part and dotted-domain shape still bound it
 // (pinned by the over-redaction negatives in `src/lib/sentry.scrub.test.ts`).
-const EMAIL = /[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// AMENDED Phase 88.6.1-08 (EMAIL start, scoped check M-39): the local part is now bounded to 64
+// characters (RFC 5321's local-part limit), because without a bound a long run with no address
+// in it was re-scanned from every position (about 3.8 s for 50,000 letters, 9.9 s for 40,000
+// a- pairs, on the main thread, in every scrub sink; 6.3 s for the 50,000 letters on the
+// executor's machine, 2026-10-15). CHOSEN over (a) leaving it, which keeps a main-thread stall
+// reachable from any replay string naming invite, and (b) a run-start lookbehind in front of the
+// local part, which is also linear but leaks a second address glued onto the end of a first by
+// a local-part character (a@b.com_c@d.com came out as [REDACTED]_c@d.com). ACCEPTED COST: a
+// local part longer than 64 characters, which no deliverable mailbox has, is redacted only from
+// its 64th-from-last character, so its head stays in clear. The over-redaction negatives (a bare
+// %40 alone, /games?q=50%40off) and every email positive in the suite are unchanged.
+// Widening or removing the 64-character bound is a decision, not a cleanup.
+const EMAIL = /[A-Za-z0-9._%+-]{1,64}(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // JWT: three base64url segments separated by dots, starting with the `eyJ` header.
 const JWT = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const BEARER = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
@@ -101,6 +113,34 @@ const AUTH0_SUB =
 
 // key names whose VALUES should be redacted wholesale (regex, not exact-match).
 const SECRET_KEY_RE = /token|email|phone|secret|password|authorization|api[_-]?key/i;
+
+// DECISION Phase 88.6.1-08 (P-10, token segment end): ONE definition of where a token segment
+// ends. CHOSEN: this constant is what the nine families' token classes, the rsvp sibling
+// terminator and the long-hex terminator are all built from (with `new RegExp`). The rsvp
+// nested-path lookbehind is the one exception, on purpose: its parent segment is a
+// path-character ALLOWLIST (see the W012 marker on the rsvp entry), because a parent segment
+// built from this set lets a query value pose as a parent and leaks the whole token.
+// WHY THESE CHARACTERS: slash, query, hash, whitespace, both quote marks, the backtick, all three
+// bracket pairs, both angle brackets, comma and semicolon. Each is punctuation that closes or
+// separates text around a path, and the backend mints only hex
+// (`routes/groups.js:601`, `routes/events.js:1274`, `routes/invites.js:404`,
+// `services/groupRecoveryService.js:175`, each `randomBytes(32).toString('hex')`), base64url
+// (`routes/rsvp.js:100`, `.digest('base64url')`) and a JWT
+// (`services/magicTokenService.js:38`, `jwt.sign(`), all in periodictabletopbackend_v2/Sonnet,
+// none of which contains any of them, so ending there cannot cut a token short.
+// REJECTED (a): editing the class in eleven places; copying one class into nine literals is how
+// one swallowing class shipped in every family at once (plan 58 ledger row P-10).
+// REJECTED (b): narrowing the class to the token alphabet (letters, digits, dot, underscore,
+// hyphen). A future token format with one more character would leave its tail behind, and a
+// credential control must fail safe.
+// REJECTED (c): adding the full stop. It is in the JWT alphabet. ACCEPTED COST: a sentence-final
+// full stop right after a token is still swallowed into the placeholder.
+// Colon and exclamation mark stay out: they are legal path characters and were not in the
+// recorded LOW. It is raw text for `new RegExp`, so the whitespace class, the backtick escape
+// and the escaped closing square bracket reach the regex engine unchanged.
+// Removing a character from this set, or giving one family its own class again, is a decision,
+// not a cleanup.
+const TOKEN_SEGMENT_END = String.raw`/?#\s"'\x60()[\]{}<>,;`;
 
 /* DECISION Phase 88.6-13 (D3 / review accept-candidate AC-1, RULINGS.md).
    THE AC's NAMESPACE, spelled out because this phase uses `AC-n` in two senses: this is the
@@ -209,27 +249,66 @@ const TOKEN_PATH_PATTERNS_FE_ROUTES = [
   // back as `POST /invites/info/[REDACTED]`, silently destroying the diagnostic prose this
   // module's own docblock promises to preserve. A token never contains whitespace, so the
   // exclusion costs nothing. Found by this plan's own (c2) arm, not by reading.
-  /(availability-form\/)[^/?#\s]+/gi,
-  /(restore\/group\/)[^/?#\s]+/gi,
-  /(invite\/group\/)[^/?#\s]+/gi,
-  /(invite\/game\/)[^/?#\s]+/gi,
+  // [AMENDED 2026-10, 88.6.1-08, P-10: the segment now ends at TOKEN_SEGMENT_END, which also
+  // covers both quote marks, the backtick, all three bracket pairs, both angle brackets, comma
+  // and semicolon, because a quoted or bracketed path lost its closing character into the
+  // placeholder (plan 58 ledger row P-10). No minted token contains any of them (the backend
+  // generator cites are in the P-10 marker on TOKEN_SEGMENT_END). Each entry below is a
+  // `new RegExp` over that one constant, with its capture group still FIRST in the source.]
+  new RegExp(String.raw`(availability-form\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
+  new RegExp(String.raw`(restore\/group\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
+  new RegExp(String.raw`(invite\/group\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
+  new RegExp(String.raw`(invite\/game\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
   // `rsvp` is the ONE GREEDY FAMILY and carries a tokenless-sibling exclusion.
   // `src/app/rsvp/` contains only `[token]`, so the full route prefix is the bare `rsvp/` —
-  // and bare `rsvp/` eats two LIVE authenticated siblings, `/rsvp/event/<id>` (api.ts:722)
-  // and `/rsvp/respond?...` (api.ts:734), producing `/rsvp/[REDACTED]/<id>`. That is the
+  // and bare `rsvp/` eats two LIVE authenticated siblings, `/rsvp/event/<id>` (api.ts:1087,
+  // `/rsvp/event/${event_id}`) and `/rsvp/respond?...` (api.ts:1109, `/rsvp/respond?token=`),
+  // producing `/rsvp/[REDACTED]/<id>`. That is the
   // same route-identity destruction the flat `invite/` entry caused, through a different
   // door. The exclusion is written NARROWLY — it matches only when the next segment is
   // EXACTLY `event` or `respond` — because a redaction control gets widened into
   // uselessness one convenience at a time. The 43-char base64url positive control in the
   // test file is what holds it narrow, and it STAYS.
-  /(rsvp\/)(?!(?:event|respond)(?:[/?#]|$))[^/?#\s]+/gi,
+  //
+  // DECISION Phase 88.6.1-08 (W012): CHOSEN, two narrowings that stay fail-safe.
+  //  - The sibling lookahead ends at TOKEN_SEGMENT_END, so a sibling word followed by prose
+  //    (`rsvp/event is broken`) or by closing punctuation (a quoted `"/rsvp/event"`) survives.
+  //  - A NESTED `<char>/<seg>/rsvp/` is not the token route: the lookbehind AFTER the capture
+  //    group rejects a match whose `rsvp/` follows a path character, a slash and a segment made
+  //    ONLY of path characters (letters, digits, dot, underscore, tilde, percent, hyphen). That
+  //    parent segment is a POSITIVE allowlist, so any other character (a quote, comma, `&`,
+  //    `=`, `|`, `:`, `+`, `@`, a bracket, whitespace, a non-ASCII letter) breaks the exclusion
+  //    and the token is redacted.
+  // WHY IT IS SAFE: the FE route `src/app/rsvp/[token]` is a ROOT route (it is the only rsvp
+  // directory under `src/app`, with no route group or parallel segment above it), and no
+  // `api.ts` path carries an rsvp token in its PATH (respond carries it in the query,
+  // api.ts:1109). The positive battery in `src/lib/sentry.scrub.test.ts` (W012 "narrows nothing
+  // it must catch") covers every first-segment shape, and the standing `[token]`-directory arm
+  // would red a future NESTED token route.
+  // REJECTED: (a) leaving nested paths over-redacted, which loses diagnostic text, is named by
+  // the SPEC edge row R13 and is fixable safely; (b) a leading lookbehind before the capture
+  // group, which breaks the set-equality arm's parser (it reads the text between the source's
+  // first open and close paren); (c) two other parent-segment definitions, each of which leaked
+  // the whole token: "any non-slash, non-space run", which let a JSON-listed previous path pose
+  // as a parent segment (P-10 case D1), and the negated end-set, which let a query value (`&`,
+  // `=`) or a parent holding `|`, `:` or a non-ASCII letter pose as one (plan review r1 D14,
+  // W012 battery). A negated set turns every unforeseen separator into a leak; an allowlist
+  // turns it into a redaction. Brackets and the colon are legal path characters but stay out
+  // of the allowlist: brackets reopen `/a/[b]/rsvp/<t>` and the colon reopens
+  // `https://x.app/a/b:/rsvp/<t>` (both pinned).
+  // Moving the lookbehind before the capture group, widening its parent-segment allowlist
+  // beyond path characters, or widening the sibling list, is a decision, not a cleanup.
+  new RegExp(
+    String.raw`(rsvp\/)(?<![A-Za-z0-9._~%-]\/[A-Za-z0-9._~%-]+\/rsvp\/)(?!(?:event|respond)(?:[${TOKEN_SEGMENT_END}]|$))[^${TOKEN_SEGMENT_END}]+`,
+    'gi'
+  ),
 ];
 
 const TOKEN_PATH_PATTERNS_API_PATHS = [
-  /(groups\/invite-preview\/)[^/?#\s]+/gi,
-  /(groups\/restore-preview\/)[^/?#\s]+/gi,
-  /(events\/invite-preview\/)[^/?#\s]+/gi,
-  /(invites\/info\/)[^/?#\s]+/gi,
+  new RegExp(String.raw`(groups\/invite-preview\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
+  new RegExp(String.raw`(groups\/restore-preview\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
+  new RegExp(String.raw`(events\/invite-preview\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
+  new RegExp(String.raw`(invites\/info\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
 ];
 
 // token-bearing URL path segments (magic-link / invite tokens), all live families.
@@ -259,8 +338,50 @@ const TOKEN_PATH_PATTERNS = [
    (`services/magicTokenService.js:37-52`, already caught by the JWT rule above) — NEITHER
    IS HEX. The AC-1 ruling assumed a 32+-hex floor would cover the routes it named; it does
    not. This rule buys only `restore/group` plus the four API paths, all of which the prefix
-   entries already cover. */
-const LONG_HEX_PATH_SEGMENT = /(\/)[0-9a-f]{32,}(?=$|[/?#])/g;
+   entries already cover.
+
+   [AMENDED 2026-10, 88.6.1-08, P-10: the terminator is now the shared TOKEN_SEGMENT_END set, so
+   a hex segment followed by whitespace, a quote or a bracket is caught; the slash requirement
+   is unchanged, and the trace_id control still holds.] */
+const LONG_HEX_PATH_SEGMENT = new RegExp(String.raw`(\/)[0-9a-f]{32,}(?=$|[${TOKEN_SEGMENT_END}])`, 'g');
+
+// DECISION Phase 88.6.1-08 (W007 fragments): CHOSEN, a URL-anchored fragment strip, applied in
+// `scrubUrl` only. A `#` starts a fragment only inside a run that begins with `scheme://`, or
+// with a dotted host followed by a slash (`www.nextgamenight.app/`), or with a slash at the
+// string start or after whitespace, `(`, a quote, `=`, `,` or `:`. The run and the fragment both
+// end at whitespace, a double quote, `<`, `>` or a backtick: exactly the WHATWG "fragment
+// percent-encode set" (C0 controls, space, double quote, `<`, `>`, backtick;
+// https://url.spec.whatwg.org/, read 2026-10-05), so a real fragment never holds them raw and a
+// quoted URL keeps its closing quote. It deliberately does NOT end at a single quote,
+// parentheses, comma or semicolon: a real fragment can hold those, and stopping there would
+// leave a fragment credential's tail behind. That is why it has its own set and not
+// TOKEN_SEGMENT_END: a fragment's content is not app-minted (it carries third-party OAuth
+// text), so only the encoding rule is safe evidence. REJECTED:
+//  - stripping every `#…`: an INP span description (`body > div#__next > …`) and every click
+//    selector carrying an id would read `#[REDACTED]`, because `scrubSpanJson` sends
+//    `span.description` through `scrubUrl` and `isUrlLike` sends any string naming invite there
+//    (pinned by the W007 NEGATIVE fragment case);
+//  - placing it in `scrubString`: that over-redacts prose anchors, and query stripping is
+//    likewise `scrubUrl`-only;
+//  - ending the fragment at any whitespace only, as first planned: a double-quoted URL lost its
+//    closing quote;
+//  - unanchored starts, as first planned: the scheme alternative was re-tried from every letter
+//    of a run, quadratic on the replay leaf (seconds on the main thread for an 80,000-letter
+//    string). Each of the three starts carries a start-anchor lookbehind, so a match is
+//    attempted only where a scheme, host or path run BEGINS, and `scrubUrl` skips the replace
+//    when the string holds no `#`; the fragment rule is linear on its own (the long-input
+//    case times this constant). `scrubUrl` as a whole is linear on these runs only because the
+//    EMAIL local part is ALSO bounded, by a different mechanism: the `{1,64}` cap (the 88.6.1-08
+//    amendment on the EMAIL marker), not a start anchor;
+//  - a scheme or a slash start only: a scheme-less host (`www.nextgamenight.app/cb#…`) and a
+//    path after `,` or `:` kept their fragment whole.
+// ACCEPTED COSTS: navigation breadcrumbs lose in-page anchors such as `#vote`, and a dotted
+// non-host run before a slash (`a.b/c#d`, `v1.2/x#y`) is over-redacted, failing safe
+// (diagnostic only; threat T-88.6.1-171).
+// Removing a start anchor or the # guard, or dropping a start alternative, is a decision, not a
+// cleanup.
+const URL_FRAGMENT =
+  /((?:(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/|(?<![a-z0-9.-])[a-z0-9-]+(?:\.[a-z0-9-]+)+\/|(?:^|(?<=[\s("'=,:]))\/)[^\s#"<>\x60]*)#[^\s"<>\x60]*/gi;
 
 /**
  * Redact PII patterns within a free-text string. Surrounding non-PII text is
@@ -317,6 +438,12 @@ function scrubUrl(url) {
   const qIndex = out.indexOf('?');
   if (qIndex !== -1) {
     out = `${out.slice(0, qIndex)}?${REDACTED}`;
+  }
+  // 88.6.1-08 (W007 fragments): AFTER the query strip, so a `?…#…` URL keeps `?[REDACTED]`,
+  // and BEFORE the hex backstop. The `#` guard keeps a string with no fragment from ever
+  // running the regex (see the URL_FRAGMENT marker; removing it is a decision).
+  if (out.indexOf('#') !== -1) {
+    out = out.replace(URL_FRAGMENT, `$1#${REDACTED}`);
   }
   // The generic long-hex backstop lives HERE ONLY, never in `scrubString` — Sentry's own
   // `trace_id` is a bare 32-hex string. See the constant's own note.
@@ -579,6 +706,9 @@ export {
   scrubSpanJson,
   scrubTransaction,
   REDACTED,
+  // Exported for the 88.6.1-08 long-input timing pin only, as REDACTED is; no runtime config
+  // imports it.
+  URL_FRAGMENT,
   // Exported SEPARATELY from the API-path entries so the set-equality arm in
   // `src/lib/sentry.scrub.test.ts` has an FE-ROUTE subject to compare against
   // `TOKEN_ROUTE_PREFIXES`. The cross-module import lives in the TEST, never here — this

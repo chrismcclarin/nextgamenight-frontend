@@ -14,6 +14,7 @@ import {
   scrubTransaction,
   TOKEN_PATH_PATTERNS_FE_ROUTES,
   TOKEN_PATH_PATTERNS_API_PATHS,
+  URL_FRAGMENT,
 } from '../../sentry.scrub.js';
 // The cross-module import lives HERE, never inside `sentry.scrub.js` — that module's
 // docblock promises pure functions safe to unit-test in isolation, and it must not import
@@ -58,6 +59,11 @@ const HEX64 = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90'
 const TRACE_ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
 
 const R = '[REDACTED]';
+
+// Phase 88.6.1-08 (P-10, case D1): the ONE family list, declared inside the AC-1 describe below,
+// is pushed here at collection time so the P-10 describe can loop over the SAME nine
+// [prefix, token] pairs without a second copy that could drift (D1 asserts the length).
+const SHARED_FAMILIES: Array<[string, string]> = [];
 
 describe('scrubString / scrubUrl — the shipped value rules', () => {
   it('scrubString redacts emails and JWT-looking tokens', () => {
@@ -226,6 +232,8 @@ describe('AC-1 — every LIVE token-in-path family is redacted, by its own patte
     ['events/invite-preview/', ALPHA],
     ['invites/info/', ALPHA],
   ];
+  // Phase 88.6.1-08: shared with the P-10 describe (see SHARED_FAMILIES at the top).
+  SHARED_FAMILIES.push(...FAMILIES);
 
   it('redacts exactly the token segment and keeps the route identity (absolute URL)', () => {
     for (const [prefix, token] of FAMILIES) {
@@ -279,13 +287,61 @@ describe('AC-1 — the `rsvp` greedy family is held narrow from BOTH sides', () 
   });
 
   it('NEGATIVE: the tokenless `/rsvp/` siblings come through with route identity intact', () => {
-    // `api.ts:722` — an authenticated event lookup by UUID.
+    // `api.ts:1087` (`/rsvp/event/${event_id}`) — an authenticated event lookup by UUID.
     expect(scrubString('/rsvp/event/f47ac10b-58cc-4372-a567-0e02b2c3d479')).toBe(
       '/rsvp/event/f47ac10b-58cc-4372-a567-0e02b2c3d479'
     );
-    // `api.ts:734` — the public respond endpoint. Its QUERY carries the token and `scrubUrl`
+    // `api.ts:1109` (`/rsvp/respond?token=`) — the public respond endpoint. Its QUERY carries the token and `scrubUrl`
     // strips the whole query string, but the PATH must survive readable.
     expect(scrubUrl('https://x/rsvp/respond?token=abc&e=1')).toBe(`https://x/rsvp/respond?${R}`);
+  });
+
+  // Phase 88.6.1-08 (W012, AC-34 clause 2; SPEC Edge Coverage R13 'nested paths'). Before this
+  // plan the sibling lookahead ended only at `/`, `?`, `#` or the end, so prose after a
+  // sibling word was eaten, and any `rsvp/` segment anywhere in a path was read as the token
+  // route although the FE route `src/app/rsvp/[token]` is a ROOT route.
+  it('W012: an rsvp sibling word followed by prose is not a token (88.6.1-08)', () => {
+    expect(scrubString('rsvp/event is broken')).toBe('rsvp/event is broken');
+    expect(scrubString('rsvp/respond timed out')).toBe('rsvp/respond timed out');
+  });
+
+  it('W012: a NESTED rsvp/ segment is not the token route (88.6.1-08)', () => {
+    expect(scrubString('GET /api/events/5/rsvp/summary failed')).toBe(
+      'GET /api/events/5/rsvp/summary failed'
+    );
+    expect(scrubString('/_next/static/chunks/app/rsvp/[token]/page-abc123.js')).toBe(
+      '/_next/static/chunks/app/rsvp/[token]/page-abc123.js'
+    );
+  });
+
+  it('W012: the fix narrows nothing it must catch — every first-segment shape still redacts (88.6.1-08)', () => {
+    // CONFIRM-ONLY: green before and after. The regression arm for the nested-path exclusion.
+    const t = RSVP_TOKEN;
+    for (const [input, expected] of [
+      [`https://www.nextgamenight.app/rsvp/${t}`, `https://www.nextgamenight.app/rsvp/${R}`],
+      [`www.nextgamenight.app/rsvp/${t}`, `www.nextgamenight.app/rsvp/${R}`],
+      [`http://localhost:3000/rsvp/${t}`, `http://localhost:3000/rsvp/${R}`],
+      [`/rsvp/${t}`, `/rsvp/${R}`],
+      [`rsvp/${t}`, `rsvp/${R}`],
+      [`returnTo=/rsvp/${t}`, `returnTo=/rsvp/${R}`],
+      [`/api/auth/login?returnTo=/rsvp/${t}`, `/api/auth/login?returnTo=/rsvp/${R}`],
+      [`failed at /rsvp/${t}`, `failed at /rsvp/${R}`],
+      [`/rsvp/${t} failed`, `/rsvp/${R} failed`],
+      // AC-34's literal case: the segment after the token is kept.
+      [`/rsvp/${t}/next`, `/rsvp/${R}/next`],
+      // Plan review r1 D14 (2026-10-06): six parent-segment shapes. A lookbehind segment built
+      // from the end-set leaked the whole token for the first five (a query value or a `=`,
+      // `|`, `:` or non-ASCII letter posed as a parent segment); an allowlist widened with
+      // brackets leaked the sixth; one widened with `:` leaked the fourth.
+      [`?from=/groups/x&to=/rsvp/${t}`, `?from=/groups/x&to=/rsvp/${R}`],
+      [`nav /a/b=/rsvp/${t}`, `nav /a/b=/rsvp/${R}`],
+      [`/a/b|/rsvp/${t}`, `/a/b|/rsvp/${R}`],
+      [`https://x.app/a/b:/rsvp/${t}`, `https://x.app/a/b:/rsvp/${R}`],
+      [`/a/bé/rsvp/${t}`, `/a/bé/rsvp/${R}`],
+      [`/a/[b]/rsvp/${t}`, `/a/[b]/rsvp/${R}`],
+    ]) {
+      expect(scrubString(input), input).toBe(expected);
+    }
   });
 });
 
@@ -338,6 +394,122 @@ describe('AC-1 — the long-hex backstop lives in scrubUrl ONLY', () => {
     expect(out.contexts.trace.trace_id).toBe(TRACE_ID);
     // …and the bare value is untouched by the string scrubber directly, too.
     expect(scrubString(TRACE_ID)).toBe(TRACE_ID);
+  });
+});
+
+// Phase 88.6.1-08 (W007 fragments, AC-34 clause 1; threat T-88.6.1-162). Before this plan no
+// layer touched a URL fragment, so an OAuth implicit-flow `#access_token=…` or any opaque
+// fragment token left whole. The `access_token=` inputs below are ALSO caught by Task 1's
+// prefixed SECRET_KV in `scrubString`; the OPAQUE-fragment inputs (`#abc123`, `#tok`) are the
+// ones only the fragment rule can redact, so they are what make each shape discriminating.
+describe('W007 — scrubUrl strips URL fragments (88.6.1-08)', () => {
+  it('W007: scrubUrl strips a URL fragment to #[REDACTED] (DF-7 probe; absolute, relative, fetch span, quoted, scheme-less; replay-leaf long input — the fragment rule, the EMAIL start, end to end)', () => {
+    // Absolute.
+    expect(scrubUrl('https://www.nextgamenight.app/cb#access_token=abc123')).toBe(
+      `https://www.nextgamenight.app/cb#${R}`
+    );
+    expect(scrubUrl('https://www.nextgamenight.app/cb#abc123')).toBe(`https://www.nextgamenight.app/cb#${R}`);
+    // Relative.
+    expect(scrubUrl('/cb#access_token=abc123')).toBe(`/cb#${R}`);
+    expect(scrubUrl('/cb#abc123')).toBe(`/cb#${R}`);
+    // A fetch span description (`scrubSpanJson` sends it through `scrubUrl`).
+    expect(
+      scrubSpanJson({ description: 'GET https://api.x.app/cb#access_token=abc123', data: {} }).description
+    ).toBe(`GET https://api.x.app/cb#${R}`);
+    expect(scrubSpanJson({ description: 'GET https://api.x.app/cb#abc123', data: {} }).description).toBe(
+      `GET https://api.x.app/cb#${R}`
+    );
+    // A double-quoted URL keeps its closing quote: the fragment ends at the quote.
+    expect(scrubUrl('see "https://x/cb#access_token=abc123" here')).toBe(`see "https://x/cb#${R}" here`);
+    expect(scrubUrl('see "https://x/cb#abc123" here')).toBe(`see "https://x/cb#${R}" here`);
+    // CONFIRM-ONLY: the query strip runs first, so a `?…#…` URL keeps today's shape.
+    expect(scrubUrl('https://www.nextgamenight.app/cb?x=1#frag')).toBe(`https://www.nextgamenight.app/cb?${R}`);
+    // Scheme-less host, and a path after `,` or `:` (review r2 #104).
+    expect(scrubUrl('www.nextgamenight.app/cb#access_token=abc123')).toBe(`www.nextgamenight.app/cb#${R}`);
+    expect(scrubUrl('x,/cb#tok')).toBe(`x,/cb#${R}`);
+    expect(scrubUrl('to:/cb#abc')).toBe(`to:/cb#${R}`);
+
+    // Long input (review r2 #135; scoped check H-10 / M-39). The input MUST hold a `#`: without
+    // one the `#` guard in `scrubUrl` short-circuits the fragment pass and this pin would go
+    // green against a quadratic regex. The 500 ms ceiling sits several times below every
+    // measured RED and several times above the slowest measured GREEN.
+    const L = `invite ${'a'.repeat(50000)}#`;
+    // (i) the fragment RULE alone, timed on the exported constant: `scrubUrl` ends in
+    // `scrubString`, so timing it would also pay for EMAIL.
+    let t0 = performance.now();
+    expect(L.replace(URL_FRAGMENT, `$1#${R}`)).toBe(L);
+    expect(performance.now() - t0, '(i) URL_FRAGMENT on a long letter run').toBeLessThan(500);
+    // (ii) the EMAIL start: a long run of local-part characters with no address in it.
+    const A = 'a'.repeat(50000);
+    t0 = performance.now();
+    expect(scrubString(A)).toBe(A);
+    expect(performance.now() - t0, '(ii) scrubString on a long letter run').toBeLessThan(500);
+    // A second address glued onto the end of a first by a local-part character is still
+    // redacted (a run-start lookbehind on EMAIL would leak it as `[REDACTED]_c@d.com`).
+    expect(scrubString('a@b.com_c@d.com')).toBe(`${R}${R}`);
+    // (iii) end to end: the reachable replay path (`isUrlLike` routes any string naming
+    // `invite` to `scrubUrl`).
+    t0 = performance.now();
+    expect(scrubUrl(L)).toBe(L);
+    expect(performance.now() - t0, '(iii) scrubUrl end to end on a long letter run').toBeLessThan(500);
+  });
+
+  it('W007 NEGATIVE: a # that is not part of a URL is untouched (INP selector, click selector)', () => {
+    // CONFIRM-ONLY: green before and after. An INP span description is an HTML selector, and
+    // `isUrlLike` routes a replay click selector naming `invite` to `scrubUrl`.
+    expect(scrubSpanJson({ description: 'body > div#__next > main > button.btn', data: {} }).description).toBe(
+      'body > div#__next > main > button.btn'
+    );
+    const click = {
+      type: 5,
+      data: { tag: 'breadcrumb', payload: { category: 'ui.click', message: 'div#invite-panel > button.btn' } },
+    };
+    const out = scrubRecordingEvent(click) as typeof click;
+    expect(out.data.payload.message).toBe('div#invite-panel > button.btn');
+  });
+});
+
+// Phase 88.6.1-08 (P-10, plan 58 ledger row; threats T-88.6.1-172 / -174). Before this plan
+// every family's token class ended only at `/`, `?`, `#` or whitespace, so the quote, bracket
+// or comma closing a quoted or bracketed path was swallowed into `[REDACTED]`, and the
+// long-hex backstop's lookahead accepted only the end, `/`, `?` or `#`, so a hex token
+// followed by a quote, a bracket or a space survived WHOLE.
+describe('P-10 — a token segment ends at quotes, brackets and separators (88.6.1-08)', () => {
+  it('P-10: every family keeps the punctuation after its token; JSON-shaped paths and quoted siblings survive', () => {
+    // Anti-vacuity: the shared list is the AC-1 describe's nine families.
+    expect(SHARED_FAMILIES).toHaveLength(9);
+    const CLOSERS = ['"', "'", '\x60', ')', ']', '}', '>', ',', ';'];
+    for (const [prefix, token] of SHARED_FAMILIES) {
+      for (const ch of CLOSERS) {
+        expect(scrubString(`x /${prefix}${token}${ch} y`), `family ${prefix} closer ${ch}`).toBe(
+          `x /${prefix}${R}${ch} y`
+        );
+      }
+    }
+    // JSON-shaped strings keep their structure and still redact. The list is the shape the
+    // FIRST-planned rsvp lookbehind leaked whole.
+    expect(scrubString(`["/a/b","/rsvp/${RSVP_TOKEN}"]`)).toBe(`["/a/b","/rsvp/${R}"]`);
+    expect(scrubString(`{"from":"/a/b","to":"/invite/group/${HEX64}"}`)).toBe(
+      `{"from":"/a/b","to":"/invite/group/${R}"}`
+    );
+    expect(scrubString(`("/rsvp/${RSVP_TOKEN}")`)).toBe(`("/rsvp/${R}")`);
+    // Quoted tokenless siblings stay byte-identical.
+    expect(scrubString('"/rsvp/event"')).toBe('"/rsvp/event"');
+    expect(scrubString("see '/rsvp/respond', then")).toBe("see '/rsvp/respond', then");
+  });
+
+  it('P-10: the long-hex backstop ends at whitespace and closing punctuation; a .js chunk is untouched', () => {
+    expect(scrubUrl(`see "https://x/unknown-future-route/${HEX64}"`)).toBe(
+      `see "https://x/unknown-future-route/${R}"`
+    );
+    expect(scrubUrl(`https://x/unknown-future-route/${HEX64})`)).toBe(`https://x/unknown-future-route/${R})`);
+    expect(scrubUrl(`https://x/unknown-future-route/${HEX64} failed`)).toBe(
+      `https://x/unknown-future-route/${R} failed`
+    );
+    // CONFIRM-ONLY: the full stop is not in the set, so a 32-hex chunk name is untouched.
+    expect(scrubUrl(`https://x/_next/static/chunks/${TRACE_ID}.js`)).toBe(
+      `https://x/_next/static/chunks/${TRACE_ID}.js`
+    );
   });
 });
 
