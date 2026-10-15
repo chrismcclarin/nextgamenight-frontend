@@ -93,43 +93,31 @@ describe('duplicate-name hint (triage A1)', () => {
   });
 
   it('D-22: the hint is shown and hidden on the SAME node, and stays the input description while shown', () => {
-    const props = {
-      index: 2,
-      groupMembers: MEMBERS,
-      onParticipantChange: vi.fn(),
-      onToggleParticipant: vi.fn(),
-    };
-    const { rerender } = render(
+    // duplicateOfName rides a Record spread, as in renderRow: the JS component's
+    // inferred prop type pins it to its null default.
+    const row = (dup: string | null) => (
       <ParticipantRow
-        {...props}
         participant={{ user_id: '', username: 'Gary', isFromGroup: false }}
-        duplicateOfName={null}
+        index={2}
+        groupMembers={MEMBERS}
+        onParticipantChange={vi.fn()}
+        onToggleParticipant={vi.fn()}
+        {...({ duplicateOfName: dup } as Record<string, unknown>)}
       />
     );
+    const { rerender } = render(row(null));
     const hint = screen.getByRole('status');
     expect(hint).toHaveClass('sr-only');
     expect(hint).toHaveTextContent('');
 
-    rerender(
-      <ParticipantRow
-        {...props}
-        participant={{ user_id: '', username: 'Gary', isFromGroup: false }}
-        duplicateOfName="Gary"
-      />
-    );
+    rerender(row('Gary'));
     expect(screen.getByRole('status')).toBe(hint);
     expect(hint).not.toHaveClass('sr-only');
     expect(hint).toHaveClass('mt-1');
     expect(hint).toHaveTextContent("Heads up: there's already a participant named Gary.");
     expect(screen.getByLabelText('Participant Name')).toHaveAttribute('aria-describedby', hint.id);
 
-    rerender(
-      <ParticipantRow
-        {...props}
-        participant={{ user_id: '', username: 'Gary', isFromGroup: false }}
-        duplicateOfName={null}
-      />
-    );
+    rerender(row(null));
     expect(screen.getByRole('status')).toBe(hint);
     expect(hint).toHaveClass('sr-only');
     expect(hint).toHaveTextContent('');

@@ -148,11 +148,16 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         )}
         {/* Duplicate-name hint (88-33 Task 2 step 3b / triage A1). Empty-first live region so a
             newly-typed duplicate is announced as a CHANGE rather than a fresh mount. Non-blocking
-            by design — fork 3 allows duplicates. */}
+            by design — fork 3 allows duplicates.
+            DECISION Phase 88.6.1-06 (D-22): the `mt-1` is the hint's spacing WHEN SHOWN. While the
+            hint is empty, srOnlyWhenEmpty takes it out of flow, so no custom row reserves 4px under
+            its name line; removing the prop brings back a 4px gap under every custom row. A
+            conditional `mt-1` ternary was rejected as the per-site duplication D-22 retires. */}
         {!participant.isFromGroup && (
           <StatusRegion
             id={hintId}
             politeness="polite"
+            srOnlyWhenEmpty
             className="mt-1 text-xs text-content-muted"
           >
             {duplicateOfName
