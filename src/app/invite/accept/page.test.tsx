@@ -137,9 +137,14 @@ describe('invite/accept — error branches keyed on `err.code` (D-46)', () => {
       'the proxy rejected the request before it reached the backend — it knows nothing about ' +
         "this visitor's email address"
     ).toBeNull();
+    // D-24 (88.6.1-07): a proxy CSRF rejection is not a permission refusal; getFetchErrorMessage
+    // resolves it through the unknown arm, and this page passes no fallback.
     expect(
-      screen.getByText("You don't have access to this. Refresh the page to try again.")
+      screen.getByText('Something went wrong. Refresh the page to try again.')
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("You don't have access to this. Refresh the page to try again.")
+    ).toBeNull();
     // And the proxy's own upstream string never reaches the person either (R1).
     expect(screen.queryByText(/cross-origin request rejected/i)).toBeNull();
   });

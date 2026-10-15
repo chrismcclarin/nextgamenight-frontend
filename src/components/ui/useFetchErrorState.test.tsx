@@ -27,6 +27,16 @@ function queryStub(over: Record<string, unknown>): UseQueryResult {
   return { isError: false, error: null, refetch: vi.fn(), ...over } as unknown as UseQueryResult;
 }
 
+// The proxy's CSRF rejection, built the way apiFetch builds it: code-less 403, so the code is the
+// status-derived 'forbidden', and `details` is the WHOLE body. Producer: the CSRF gate in
+// src/app/api/[...path]/route.ts (`csrf_rejected: true`). Plan 88.6.1-07 (D-24).
+function csrfRejection(): ApiError {
+  return new ApiError('Cross-origin request rejected', 'forbidden', 403, {
+    error: 'Cross-origin request rejected',
+    csrf_rejected: true,
+  });
+}
+
 describe('useFetchErrorState — error-only refocus recovery', () => {
   it('refetches on window refocus WHILE erroring', () => {
     const refetch = vi.fn();
@@ -548,6 +558,78 @@ describe('getFetchErrorMessage — incomplete envelope (R9)', () => {
       expect(out, `details ${JSON.stringify(details)}`).toBe(expected);
       expect(out).not.toBe('');
       expect(out).not.toBe('undefined');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-07 (D-24 (a2), MEDLOW-9 = R2 #8; copy row X2).
+//
+// The BFF proxy's CSRF gate is a SECOND source of a code-less 403 on every unsafe-method call,
+// and mapErrorToCode resolves it to 'forbidden' exactly like a backend refusal. Before this plan
+// the message function therefore printed a ROLE refusal ("Only the poll creator...") or the
+// register's permission line for a request the backend never saw. The fix routes the MESSAGE of
+// a proxy-flagged 403 through the `unknown` arm (byCode.unknown, else the caller's fallback, else
+// the register's unknown line) while the CODE stays the honest 'forbidden' (a2 over a1).
+//
+// The role sentence and the fallback below are existing shipped copy (OpenPollsList's end-check-in
+// call, and StartPollModal's start call), not new strings. C4 is the anti-vacuity control: a real
+// backend 403 still prints the role sentence, so the change is keyed on the flag, not on 403.
+// ---------------------------------------------------------------------------
+describe('getFetchErrorMessage — a proxy CSRF 403 never prints a role refusal (88.6.1-07, D-24)', () => {
+  const ROLE = 'Only the poll creator and group admins can end a check-in.';
+  const FALLBACK = "We couldn't end that check-in. Please try again.";
+
+  it('C1: a CSRF 403 with a fallback and a forbidden override prints the fallback', () => {
+    expect(getFetchErrorMessage(csrfRejection(), { fallback: FALLBACK, byCode: { forbidden: ROLE } })).toBe(
+      FALLBACK
+    );
+  });
+
+  it('C2: a CSRF 403 with no options prints the register unknown line, not the forbidden line', () => {
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+    const out = getFetchErrorMessage(csrfRejection());
+    expect(out).toBe(ratifiedUnknown);
+    expect(out).not.toBe(getFetchErrorMessage(new ApiError('', 'forbidden', 403)));
+  });
+
+  it('C3: the StartPollModal shape (override, no fallback) prints the register unknown line', () => {
+    const out = getFetchErrorMessage(csrfRejection(), {
+      byCode: { forbidden: 'You must be an active group member to start a poll.' },
+    });
+    expect(out).toBe(getFetchErrorMessage(undefined));
+  });
+
+  it('C4: a backend 403 WITHOUT the flag still prints the role sentence (control)', () => {
+    const backend = new ApiError('x', 'forbidden', 403, { error: 'Access denied' });
+    expect(getFetchErrorMessage(backend, { fallback: FALLBACK, byCode: { forbidden: ROLE } })).toBe(ROLE);
+  });
+
+  it('C5: the hook keeps the honest code (forbidden) while its message is the unknown line', () => {
+    const { result } = renderHook(() =>
+      useFetchErrorState(queryStub({ isError: true, error: csrfRejection() }))
+    );
+    expect(result.current.code).toBe('forbidden');
+    expect(result.current.message).toBe(getFetchErrorMessage(undefined));
+  });
+
+  it('C6: a malformed flag on a real 403 keeps the forbidden line and never throws', () => {
+    const forbiddenLine = getFetchErrorMessage(new ApiError('', 'forbidden', 403));
+    const malformed: unknown[] = [
+      { csrf_rejected: 'true' },
+      { csrf_rejected: 1 },
+      { csrf_rejected: false },
+      [],
+      'csrf_rejected',
+      null,
+      undefined,
+    ];
+    for (const details of malformed) {
+      let out = '';
+      expect(() => {
+        out = getFetchErrorMessage(new ApiError('', 'forbidden', 403, details));
+      }, `details ${JSON.stringify(details)} must not throw`).not.toThrow();
+      expect(out, `details ${JSON.stringify(details)}`).toBe(forbiddenLine);
     }
   });
 });

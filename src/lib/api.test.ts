@@ -6,10 +6,14 @@
 // classification block, which stubs global fetch to pin the WR-04 contract.
 import { afterEach, vi } from 'vitest';
 
+import fs from 'node:fs';
+import path from 'node:path';
+
 import {
   ApiError,
   apiFetch,
   availabilityFormAPI,
+  isCsrfRejection,
   magicAuthAPI,
   mapErrorToCode,
   publicFetch,
@@ -19,6 +23,7 @@ import {
 } from './api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { errCtx, logger } from '@/lib/logger';
+import { withoutComments } from '../test-utils/sourceScan';
 
 describe('ApiError — shape', () => {
   it('is both an Error and an ApiError, carrying code + status + details', () => {
@@ -522,6 +527,80 @@ describe('88.6-42 — the FE reads code/message/details and nothing else', () =>
       );
       expect(err.message).toBe('Name is required');
       expect(err.upstreamMessage).toBe('legacy too');
+    });
+  });
+
+  // Plan 88.6.1-07 (D-24 (a2), MEDLOW-9). The BFF proxy's CSRF gate answers an unsafe-method
+  // call with a code-less 403 whose body carries the structural key `csrf_rejected: true`.
+  // `ApiError.details` is the WHOLE body, so the key is TOP-LEVEL there. `isCsrfRejection` is
+  // the one seam predicate that recognises it; `getFetchErrorMessage` reads it so that request
+  // never prints a role refusal. These arms drive the real apiFetch throw site (the parent's
+  // `rejection` helper), so the tracer is the whole path: body -> apiFetch -> details ->
+  // predicate -> message.
+  describe('88.6.1-07 / D-24 — the proxy CSRF 403 is recognised by one structural key', () => {
+    const PROXY_CSRF_BODY = { error: 'Cross-origin request rejected', csrf_rejected: true } as const;
+    const ROLE = 'Only the poll creator and group admins can end a check-in.';
+    const FALLBACK = "We couldn't end that check-in. Please try again.";
+
+    it('A1: is true for the proxy body on an ApiError with status 403', () => {
+      expect(isCsrfRejection(new ApiError('x', 'forbidden', 403, { ...PROXY_CSRF_BODY }))).toBe(true);
+    });
+
+    it('A2: is false, and never throws, for every malformed, mis-statused or non-ApiError shape', () => {
+      const cases: Array<[string, unknown]> = [
+        ['flag as the string "true"', new ApiError('x', 'forbidden', 403, { csrf_rejected: 'true' })],
+        ['flag as 1', new ApiError('x', 'forbidden', 403, { csrf_rejected: 1 })],
+        ['flag false', new ApiError('x', 'forbidden', 403, { csrf_rejected: false })],
+        ['flag missing', new ApiError('x', 'forbidden', 403, { error: 'Cross-origin request rejected' })],
+        ['details null', new ApiError('x', 'forbidden', 403, null)],
+        ['details undefined', new ApiError('x', 'forbidden', 403, undefined)],
+        ['details an array', new ApiError('x', 'forbidden', 403, [])],
+        ['details a string', new ApiError('x', 'forbidden', 403, 'csrf_rejected')],
+        ['details a number', new ApiError('x', 'forbidden', 403, 403)],
+        ['the same body on a 401', new ApiError('x', 'unauthorized', 401, { ...PROXY_CSRF_BODY })],
+        ['the same body on a 400', new ApiError('x', 'validation', 400, { ...PROXY_CSRF_BODY })],
+        ['the same body on a 500', new ApiError('x', 'internal', 500, { ...PROXY_CSRF_BODY })],
+        [
+          'a duck-typed plain object',
+          { code: 'forbidden', status: 403, details: { csrf_rejected: true } },
+        ],
+        ['a plain Error', new Error('x')],
+        ['null', null],
+        ['undefined', undefined],
+      ];
+      for (const [label, input] of cases) {
+        let out: unknown;
+        expect(() => {
+          out = isCsrfRejection(input);
+        }, `${label}: must not throw`).not.toThrow();
+        expect(out, label).toBe(false);
+      }
+    });
+
+    it('A3: mapErrorToCode still resolves the flagged body to forbidden (a2 over a1, confirm-only)', () => {
+      expect(mapErrorToCode({ ...PROXY_CSRF_BODY }, 403)).toBe('forbidden');
+    });
+
+    it('A4: end to end, apiFetch fed the proxy body prints the caller fallback, never the role sentence', async () => {
+      const err = await rejection(403, JSON.stringify(PROXY_CSRF_BODY));
+      expect(getFetchErrorMessage(err, { fallback: FALLBACK, byCode: { forbidden: ROLE } })).toBe(FALLBACK);
+      expect(err.code).toBe('forbidden');
+      expect(isCsrfRejection(err)).toBe(true);
+    });
+
+    it('A5: end to end control, a backend 403 without the flag still prints the role sentence', async () => {
+      const err = await rejection(403, '{"error":"Access denied"}');
+      expect(getFetchErrorMessage(err, { fallback: FALLBACK, byCode: { forbidden: ROLE } })).toBe(ROLE);
+    });
+
+    it('A6: the proxy source still emits the exact body literal these arms feed (producer contract)', () => {
+      // A contract guard, not a fix pin: renaming the producer's key would otherwise disable the
+      // predicate silently while every arm above stayed green on its own copy of the body.
+      const src = withoutComments(
+        fs.readFileSync(path.resolve(__dirname, '../app/api/[...path]/route.ts'), 'utf8')
+      );
+      expect(src).toContain("{ error: 'Cross-origin request rejected', csrf_rejected: true }");
+      expect(src).toContain('{ status: 403 }');
     });
   });
 });
