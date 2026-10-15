@@ -10,27 +10,51 @@
 // suite's shape — would re-run the four fetches after every state update, an endless loop.
 // The same reasoning keeps the search params and the identity query constant.
 //
+// Two mocks added by plan 88.6.1-16: a logger spy (the page's failure paths are Sentry
+// BREADCRUMBS at info, and the ctx each one passes is asserted exactly), and a PASS-THROUGH
+// FetchErrorBanner that renders the REAL component and records the state handed to the compact
+// mount, so a test can read what a retry RESOLVES (the contract plan 88.6.1-21's banner reads).
+//
 // Synthetic identity only (T-88.1-02).
 import * as React from 'react';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const SELF_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const h = vi.hoisted(() => {
+  const USER = { sub: 'auth0|self' };
+  const SELF_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const DEFAULT_QUERY = { isError: false, error: null as unknown, refetch: (() => undefined) as () => unknown };
+  return {
+    USER,
+    SELF_UUID,
+    DEFAULT_QUERY,
+    AUTH: { user: USER as unknown, isLoading: false },
+    SELF: { uuid: SELF_UUID as string | null },
+    PARAMS: new URLSearchParams('group_id=G1'),
+    ROUTER: { replace: () => undefined, push: () => undefined },
+    QUERY: DEFAULT_QUERY,
+    // The last props the PromptScheduleSection and CreateEvent stubs received, and EVERY
+    // userRole the PromptScheduleSection stub has received, in order (arm R3 reads the history,
+    // so a one-render flash of another group's role cannot pass).
+    pss: null as null | Record<string, unknown>,
+    ce: null as null | Record<string, unknown>,
+    pssRoles: [] as unknown[],
+    logInfo: vi.fn(),
+    // The `state` prop most recently given to a FetchErrorBanner rendered with `compact`.
+    compactState: null as null | { showError: boolean; retry: () => Promise<unknown> },
+  };
+});
 
-const h = vi.hoisted(() => ({
-  USER: { sub: 'auth0|self' },
-  PARAMS: new URLSearchParams('group_id=G1'),
-  ROUTER: { replace: () => undefined, push: () => undefined },
-  QUERY: { isError: false, error: null, refetch: () => undefined },
-}));
+const SELF_UUID = h.SELF_UUID;
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
   useSelfIdentity: () => ({
-    selfUuid: SELF_UUID,
-    self: { id: SELF_UUID, user_id: 'auth0|self' },
+    selfUuid: h.SELF.uuid ?? undefined,
+    self: h.SELF.uuid ? { id: h.SELF.uuid, user_id: 'auth0|self' } : undefined,
     query: h.QUERY,
-    isPending: false,
+    isPending: !h.SELF.uuid,
   }),
 }));
 
@@ -41,13 +65,44 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: h.USER, isLoading: false }),
+  useUser: () => h.AUTH,
 }));
 
-// Stub the heavy children — this suite pins the page's own chrome, not theirs.
-vi.mock('@/app/components/createEvent', () => ({ default: () => null }));
+// Stub the heavy children — this suite pins the page's own chrome, not theirs. The
+// PromptScheduleSection and CreateEvent stubs record the props they receive.
+vi.mock('@/app/components/createEvent', () => ({
+  default: (props: Record<string, unknown>) => {
+    h.ce = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/ResponseDashboard', () => ({ default: () => null }));
-vi.mock('@/app/components/PromptScheduleSection', () => ({ default: () => null }));
+vi.mock('@/app/components/PromptScheduleSection', () => ({
+  default: (props: Record<string, unknown>) => {
+    h.pss = props;
+    h.pssRoles.push(props.userRole);
+    return null;
+  },
+}));
+
+// The house logger idiom (EventDayModal.test.tsx): the real module, `logger.info` replaced by a
+// spy, `errCtx` REAL so the asserted ctx is what the call site passes.
+vi.mock('@/lib/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/logger')>();
+  return { ...actual, logger: { ...actual.logger, info: h.logInfo } };
+});
+
+// PASS-THROUGH: renders the REAL FetchErrorBanner (the arms assert its real region, line and
+// button) and records the compact mount's `state`.
+vi.mock('@/components/ui/FetchErrorBanner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/ui/FetchErrorBanner')>();
+  const Real = actual.FetchErrorBanner;
+  function PassThroughFetchErrorBanner(props: React.ComponentProps<typeof Real>) {
+    if (props.compact) h.compactState = props.state as unknown as typeof h.compactState;
+    return <Real {...props} />;
+  }
+  return { ...actual, FetchErrorBanner: PassThroughFetchErrorBanner };
+});
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
@@ -60,20 +115,29 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import GroupPlanningPage from './page';
-import { eventsAPI, groupsAPI, promptAPI } from '@/lib/api';
+import { ApiError, eventsAPI, groupsAPI, promptAPI } from '@/lib/api';
 
 type Mock = ReturnType<typeof vi.fn>;
 
+const OWNER_ROW = { id: SELF_UUID, user_id: 'auth0|self', username: 'Me', UserGroup: { role: 'owner' } };
+const NOTICE = 'Some personal controls are unavailable.';
+
 beforeEach(() => {
   vi.clearAllMocks();
+  h.AUTH = { user: h.USER, isLoading: false };
+  h.SELF.uuid = SELF_UUID;
+  h.QUERY = h.DEFAULT_QUERY;
+  h.PARAMS = new URLSearchParams('group_id=G1');
+  h.pss = null;
+  h.ce = null;
+  h.pssRoles = [];
+  h.compactState = null;
   // NO `Users` on the group: production's GET /groups/:group_id returns a bare Group.findByPk
   // with no include (periodictabletopbackend_v2/Sonnet/routes/groups.js, the group GET), so the
   // page ALWAYS takes its getGroupMembers fallback. A `Users` array here would pin a path
   // production never takes.
   (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'G1', name: 'Weekend Warriors' });
-  (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
-    { id: SELF_UUID, user_id: 'auth0|self', username: 'Me', UserGroup: { role: 'owner' } },
-  ]);
+  (groupsAPI.getGroupMembers as Mock).mockResolvedValue([OWNER_ROW]);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
   // 'active' is a real AvailabilityPrompt.status value ('pending' | 'active' | 'closed' | 'converted').
   (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: { id: 'P1', status: 'active' } });
@@ -81,13 +145,14 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-/** Settle on the branch-specific heading: it only renders once the poll fetch has landed. */
+// Settle on the branch-specific heading: it only renders once the poll fetch has landed.
 async function renderSettled() {
-  render(<GroupPlanningPage />);
+  const result = render(<GroupPlanningPage />);
   await screen.findByRole('heading', { level: 3, name: 'Poll Responses' });
   // The page title carries the group name only after the group GET lands; the fallback
   // "Plan Game Session" renders first, so settle on the name-bearing title explicitly.
   await screen.findByRole('heading', { level: 1, name: 'Plan Game Session - Weekend Warriors' });
+  return result;
 }
 
 describe('groupPlanning page — heading outline (P4 levels, P1 wording)', () => {
@@ -152,5 +217,217 @@ describe('groupPlanning page — breadcrumb exposes "you are here" (plan 88.6-53
       expect(link.className).toContain('focus-visible:ring-2');
       expect(link.className).toContain('focus-visible:ring-focus-ring');
     }
+  });
+});
+
+// A promise whose settle functions the test holds.
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const lastRole = () => (h.pss as { userRole?: unknown } | null)?.userRole;
+
+describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 / G6)", () => {
+  it('R1: a failed role read shows the compact notice from the region that was mounted empty, and the role is null', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('members request failed', 'internal', 500));
+    const { container } = render(<GroupPlanningPage />);
+    // Synchronously, before any read settles: ONE polite region, sr-only and empty.
+    const regions = container.querySelectorAll('[role="status"]');
+    expect(regions).toHaveLength(1);
+    const region = regions[0];
+    expect(region).toHaveClass('sr-only');
+    expect(region.textContent).toBe('');
+
+    await screen.findByRole('button', { name: 'Retry' });
+    // The notice arrives as a TEXT CHANGE of that same node (C-6), never a new mount.
+    expect(container.querySelector('[role="status"]')).toBe(region);
+    expect(region.textContent).toBe(NOTICE);
+    expect(screen.getAllByText(NOTICE)).toHaveLength(2);
+    expect(h.logInfo).toHaveBeenCalledWith('Error fetching user role:', {
+      name: 'ApiError',
+      message: 'members request failed',
+    });
+    expect(lastRole()).toBeNull();
+  });
+
+  it('R2: Retry re-runs ONLY the role read; on success the notice leaves and the role comes back', async () => {
+    const user = userEvent.setup();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('members request failed', 'internal', 500));
+    const { container } = render(<GroupPlanningPage />);
+    const region = container.querySelector('[role="status"]');
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    const before = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([OWNER_ROW]);
+    await user.click(retry);
+    await waitFor(() => expect(lastRole()).toBe('owner'));
+
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(region?.textContent).toBe('');
+    // The role only — the group load did not re-run.
+    expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(before + 1);
+  });
+
+  it("R3: the previous group's role never reaches a gated control, not even while the new read is open", async () => {
+    const { rerender } = await renderSettled();
+    await waitFor(() => expect(lastRole()).toBe('owner'));
+
+    const g2 = deferred<unknown[]>();
+    (groupsAPI.getGroupMembers as Mock).mockImplementation((id: string) =>
+      id === 'G2' ? g2.promise : Promise.resolve([OWNER_ROW]),
+    );
+    h.pssRoles = [];
+    h.PARAMS = new URLSearchParams('group_id=G2');
+    rerender(<GroupPlanningPage />);
+
+    // Synchronously after the switch — the FIRST render after it included.
+    expect(h.pssRoles.length).toBeGreaterThan(0);
+    expect(h.pssRoles.every((r) => r === null)).toBe(true);
+
+    // Positive: the new group's read is open. The hold: still nothing but null.
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith('G2'));
+    expect(h.pssRoles.every((r) => r === null)).toBe(true);
+
+    await act(async () => {
+      g2.resolve([{ ...OWNER_ROW, UserGroup: { role: 'admin' } }]);
+    });
+    await waitFor(() => expect(lastRole()).toBe('admin'));
+  });
+
+  it('R4: identity AND role failing at once print ONE notice with ONE Retry, which retries identity', async () => {
+    // Guard arm, green on arrival by design; its teeth (a second compact mount reds it) are
+    // recorded in the plan SUMMARY.
+    const user = userEvent.setup();
+    const identityRefetch = vi.fn().mockResolvedValue(undefined);
+    h.QUERY = { isError: true, error: new ApiError('identity failed', 'internal', 500), refetch: identityRefetch };
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('members request failed', 'internal', 500));
+    render(<GroupPlanningPage />);
+
+    await waitFor(() =>
+      expect(h.logInfo).toHaveBeenCalledWith('Error fetching user role:', {
+        name: 'ApiError',
+        message: 'members request failed',
+      }),
+    );
+    const retries = screen.getAllByRole('button', { name: 'Retry' });
+    expect(retries).toHaveLength(1);
+    expect(screen.getAllByText(NOTICE)).toHaveLength(2);
+
+    const before = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    await user.click(retries[0]);
+    expect(identityRefetch).toHaveBeenCalledTimes(1);
+    expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(before);
+  });
+
+  it('R5: the role Retry resolves its outcome — failed, failed again, succeeded; a skipped read resolves nothing', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('members request failed', 'internal', 500));
+    const { rerender } = render(<GroupPlanningPage />);
+    await screen.findByRole('button', { name: 'Retry' });
+
+    let r1: unknown;
+    await act(async () => {
+      r1 = await h.compactState!.retry();
+    });
+    expect(r1).toEqual({ isError: true });
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getAllByText(NOTICE)).toHaveLength(2);
+
+    // Idempotency R8 (consumer half): every failed NEWEST read says so, again.
+    let r2: unknown;
+    await act(async () => {
+      r2 = await h.compactState!.retry();
+    });
+    expect(r2).toEqual({ isError: true });
+
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([OWNER_ROW]);
+    let r3: unknown;
+    await act(async () => {
+      r3 = await h.compactState!.retry();
+    });
+    expect(r3).toEqual({ isError: false });
+    await waitFor(() => expect(lastRole()).toBe('owner'));
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+
+    // Skipped: identity gone, so the gate asks nothing. An ungated read issues its request
+    // synchronously, so the count is read around the call in one synchronous block.
+    h.SELF.uuid = null;
+    rerender(<GroupPlanningPage />);
+    const countBefore = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    const p = h.compactState!.retry();
+    const countAfter = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    expect(countAfter).toBe(countBefore);
+    let r: unknown = 'unset';
+    await act(async () => {
+      r = await p;
+    });
+    expect(r).toBeUndefined();
+  });
+
+  it('R6: newest wins — a superseded read writes nothing and resolves nothing (same group, then a group change)', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('members request failed', 'internal', 500));
+    const { rerender } = render(<GroupPlanningPage />);
+    await screen.findByRole('button', { name: 'Retry' });
+    // Positive: the group fallback and the role read have both asked, so no settle-time request
+    // can consume the deferreds below.
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledTimes(2));
+
+    const dA = deferred<unknown[]>();
+    const dB = deferred<unknown[]>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(dA.promise).mockReturnValueOnce(dB.promise);
+
+    let pA!: Promise<unknown>;
+    let pB!: Promise<unknown>;
+    // Two reads for the SAME group; the second models the hook's error-only refocus refetch,
+    // which bypasses the Retry button's latch.
+    act(() => {
+      pA = h.compactState!.retry();
+      pB = h.compactState!.retry();
+    });
+
+    dB.resolve([OWNER_ROW]);
+    let rB: unknown;
+    await act(async () => {
+      rB = await pB;
+    });
+    expect(rB).toEqual({ isError: false });
+    await waitFor(() => expect(lastRole()).toBe('owner'));
+
+    dA.reject(new ApiError('stale', 'internal', 500));
+    let rA: unknown = 'unset';
+    await act(async () => {
+      rA = await pA;
+    });
+    expect(rA).toBeUndefined();
+    expect(lastRole()).toBe('owner');
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryAllByText(NOTICE)).toHaveLength(0);
+
+    // Group half: a G1 read is overtaken by a switch to G2.
+    const dC = deferred<unknown[]>();
+    (groupsAPI.getGroupMembers as Mock).mockImplementation((id: string) =>
+      id === 'G2' ? Promise.resolve([{ ...OWNER_ROW, UserGroup: { role: 'admin' } }]) : dC.promise,
+    );
+    let pC!: Promise<unknown>;
+    act(() => {
+      pC = h.compactState!.retry();
+    });
+    h.PARAMS = new URLSearchParams('group_id=G2');
+    rerender(<GroupPlanningPage />);
+    await waitFor(() => expect(lastRole()).toBe('admin'));
+
+    dC.reject(new ApiError('stale group', 'internal', 500));
+    let rC: unknown = 'unset';
+    await act(async () => {
+      rC = await pC;
+    });
+    expect(rC).toBeUndefined();
+    expect(lastRole()).toBe('admin');
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });
