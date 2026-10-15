@@ -34,7 +34,7 @@
 // `useSelfIdentity()`'s query to tell an identity FAILURE (E10) from an identity still resolving
 // (the spinner), so the hook is mocked with a per-test error switch.
 import * as React from 'react';
-import { render, screen, cleanup, act, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -432,8 +432,10 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     expect(onClose).not.toHaveBeenCalled();
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog').textContent).not.toContain(SENTINEL);
-    // The button is usable again (native disabled cleared in `finally`).
+    // The button is usable again: the in-flight `aria-disabled` and the press latch are both
+    // released in `finally` (D-35, 88.6.1-14 — the in-flight gate is no longer native).
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save' })).not.toHaveAttribute('aria-disabled');
     expect(loggerSpies.info).toHaveBeenCalledWith('BringGamePicker: failed to save', {
       name: 'Error',
       message: SENTINEL,
@@ -581,6 +583,64 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     render(<Host initiallyOpen />);
     await settleOnRows();
     expect(politeRegion().textContent).toBe('2 games loaded.');
+  });
+
+  // D-35 (owner, 2026-10-04; 88.6.1-14 Task 3): the Save the person just pressed stays in the
+  // focus order while it saves — `aria-disabled` plus a synchronous first-line latch (the rule of
+  // POSITION, `DECISION Phase 88.6-22` in FriendInvitePanel.js). The RED half is the attributes
+  // and the request count (C-11): jsdom never blurs a disabled element
+  // (`ScheduleForm.test.tsx`, its CONFIRM-ONLY note), so the focus claim is confirm-only here.
+  it('S1. while a save is IN FLIGHT the pressed Save is aria-disabled, NOT natively disabled, and reads Saving... (D-35)', async () => {
+    api.updateMyBrings.mockReturnValue(new Promise(() => {}));
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    const save = screen.getByRole('button', { name: 'Save' });
+    save.focus();
+
+    fireEvent.click(save);
+    expect(save).toHaveTextContent('Saving...');
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toHaveAttribute('disabled');
+    // CONFIRM-ONLY in jsdom (see above): focus is still on the pressed control.
+    expect(document.activeElement).toBe(save);
+  });
+
+  it('S2. two synchronous presses while the first PUT is pending send exactly ONE PUT (Edge R4 idempotency)', async () => {
+    api.updateMyBrings.mockReturnValue(new Promise(() => {}));
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    const save = screen.getByRole('button', { name: 'Save' });
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(api.updateMyBrings).toHaveBeenCalledTimes(1);
+    expect(save).toHaveTextContent('Saving...');
+  });
+
+  it('S3. once the pending PUT REJECTS the gate lifts, and a fresh press sends a second PUT (Edge R4 concurrency)', async () => {
+    let rejectSave: (err: unknown) => void = () => {};
+    api.updateMyBrings.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSave = reject;
+        })
+    );
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    const save = screen.getByRole('button', { name: 'Save' });
+
+    fireEvent.click(save);
+    expect(api.updateMyBrings).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      rejectSave(new Error(SENTINEL));
+    });
+    await waitFor(() => expect(assertiveRegion()).toHaveTextContent(RATIFIED_UNKNOWN_COPY));
+    expect(save).not.toHaveAttribute('disabled');
+    expect(save).not.toHaveAttribute('aria-disabled');
+    expect(save.textContent).toBe('Save');
+
+    fireEvent.click(save);
+    expect(api.updateMyBrings).toHaveBeenCalledTimes(2);
   });
 });
 
