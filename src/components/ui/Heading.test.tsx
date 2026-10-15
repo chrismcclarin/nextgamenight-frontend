@@ -10,8 +10,9 @@
 //   3. empty children render NO element at all (SPEC AC-3) — and the element that
 //      vanishes takes its `id` with it, which is a live a11y hazard, pinned below
 //   4. the base WRAPS and never clips — `wrap-anywhere` at every rung
-//   5. the two untyped-caller hazards plan 36 makes reachable are closed: an
-//      out-of-range `level`, and a forced `dangerouslySetInnerHTML` (T-88.6-05)
+//   5. the three untyped-caller hazards plan 36 makes reachable are closed: an
+//      out-of-range `level`, a forced `dangerouslySetInnerHTML` (T-88.6-05), and a
+//      `level` naming an Object.prototype key such as "constructor" (W074)
 //
 // Deliberately NOT here: a `heading-order` axe assertion. `heading-order` is a
 // DOCUMENT-level rule and belongs to the composed audits in plans 45-46, not to a
@@ -303,6 +304,23 @@ describe('Heading — the untyped-caller hazards plan 36 makes reachable', () =>
     // that would mint a second page title out of a caller's mistake.
     expect(el?.tagName).toBe('H2');
   });
+
+  // HAZARD 3 (W074, Phase 88.6.1 Req 11, AC-32): a `level` naming an Object.prototype key.
+  // The tag map is a plain object literal, so an INHERITED key resolves to a function or an
+  // object instead of missing; the fallback never fires, and React tries to render that
+  // value as the element type. It throws, or renders text with no heading at all. The
+  // documented safe default for any unrecognised level is h2, so every one of these must
+  // render exactly one h2 carrying its children.
+  it.each(['constructor', 'toString', 'hasOwnProperty', 'valueOf', '__proto__'])(
+    'resolves level="%s" (an Object.prototype key) to the h2 fallback (W074)',
+    (key) => {
+      const { container } = render(<UntypedHeading level={key}>Prototype key</UntypedHeading>);
+      const el = container.firstElementChild;
+      expect(el?.tagName).toBe('H2');
+      expect(el?.textContent).toBe('Prototype key');
+      expect(container.childNodes).toHaveLength(1);
+    }
+  );
 
   // HAZARD 2: T-88.6-05. `HeadingProps` Omits `dangerouslySetInnerHTML` out of the
   // extended HTMLAttributes, but `Omit` is erased at runtime and `{...props}`
