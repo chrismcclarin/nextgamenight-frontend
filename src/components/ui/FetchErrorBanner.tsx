@@ -23,16 +23,28 @@
  * `initialSubject`, and an `initialDescription` carrying the error `code`/message
  * (no token/PII — T-86-10). The message is rendered as auto-escaped React
  * children (T-86-09): no `dangerouslySetInnerHTML`.
+ *
+ * Corrected in place, Phase 88.6.1-70: the module now exports `FetchErrorBanner` (full and
+ * compact, with an optional host `focusTarget`), `RefreshFailedNotice` (copy row RF1 over content
+ * a failed refresh kept on screen; its CONSUMER CONTRACT C1-C12 is the docblock above it),
+ * `SectionLoadFailedNotice` (a section whose read failed and never loaded, owner ruling D8-r2),
+ * `useRetainedContent` and `isAccessOrGoneError` (C10: an access or gone answer is never a
+ * refresh failure) and `RetainedContentFocusGuard` (C12 a: focus when withdrawn content leaves).
+ * The three components share ONE retry mechanism (`useRetryEpisode`) and the small notices ONE
+ * row (`NoticeRow`); every retry control watches its own focus (C12 b), so a refresh nobody
+ * pressed never drops a focused control to the page body.
  */
 import * as React from 'react';
+import { QueryClientContext, type QueryKey } from '@tanstack/react-query';
 
 import { Banner } from './Banner';
 import { Icon } from './Icon';
 import { StatusRegion } from './StatusRegion';
 import FeedbackForm from '@/app/components/FeedbackForm';
 import { logger, errCtx } from '@/lib/logger';
-import type { FetchErrorState } from './useFetchErrorState';
+import type { FetchErrorCode, FetchErrorState } from './useFetchErrorState';
 import { useFocusRecovery } from './useFocusRecovery';
+import { DIALOG_ROLE_SELECTOR, focusElement, focusPageFloor, isFocusLost, isOpenDialog } from './focusPageFloor';
 
 export interface FetchErrorBannerProps {
   /** Derived state from {@link useFetchErrorState}. */
@@ -52,6 +64,21 @@ export interface FetchErrorBannerProps {
    * value (Security: PII-in-notice mitigation, T-873-02-01).
    */
   compact?: boolean;
+  /* DECISION Phase 88.6.1-70 (Req 5, focusTarget): an OPTIONAL host target, wired to plan 04's
+     `fallback` slot (the section-heading role D-05 gives it), on both branches and on
+     `RefreshFailedNotice`, through the one `useRetryEpisode` call. REJECTED: (a) the floor alone
+     for the RF1 notices — they sit mid-page, and on a phone `main h1` is a screen or more above
+     the section the user was reading; (b) a required prop — the existing mounts and the
+     dialog-hosted notices need none; (c) inline focus code in this file (D-04). It also serves the
+     bell's banner mount (`planning-briefs/revision-lap-3-manifest.md` row 44, the owner's options
+     R2 and R3). Changing this is a decision, not a cleanup. */
+  /**
+   * The heading of the section this banner belongs to: where focus goes after a successful retry
+   * removes the control (D-05). Omit it inside a `Modal` (the floor finds the dialog's title) or
+   * when the page's `main h1` IS that heading; absent, the floor is unchanged (plan 21's
+   * behaviour).
+   */
+  focusTarget?: React.RefObject<HTMLElement | null>;
 }
 
 /**
@@ -221,6 +248,10 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
      (d) a caller-supplied focus-target prop (33 mounts, none edited here; the floor already
          reaches the dialog title or the page heading; plan 88.6.1-70 is scheduled to amend this
          item in place with an OPTIONAL `focusTarget` tried before the floor);
+         AMENDED Phase 88.6.1-70 (Req 5, focusTarget): that OPTIONAL `focusTarget` now exists on
+         `FetchErrorBanner` and `RefreshFailedNotice`, passed to this hook as its `fallback`.
+         (d)'s reasoning still holds for every existing mount, none of which passes it; it was
+         added for the RF1 consumers, which sit mid-page, and for the bell's banner mount.
      (e) inline focus code in this file (D-04: one shared hook, never per-host copies).
 
      DISCLOSED DELTA: while retrying, the link ink turns muted instead of the former half-opacity
@@ -381,6 +412,7 @@ export function FetchErrorBanner({
   reportSubject,
   reportContext,
   compact = false,
+  focusTarget,
 }: FetchErrorBannerProps) {
   const [showReport, setShowReport] = React.useState(false);
   const {
@@ -391,7 +423,13 @@ export function FetchErrorBanner({
     handleRetry,
     assertiveChangedRef,
     watchFocus,
-  } = useRetryEpisode({ state, failureShown: state.showError, dwellOnPress: compact, quietOnMount: false });
+  } = useRetryEpisode({
+    state,
+    failureShown: state.showError,
+    dwellOnPress: compact,
+    quietOnMount: false,
+    focusTarget,
+  });
 
   /* DECISION Phase 88.6-36 (T-88.6-102, W38 class): the compact branch's announcement is a
      SHIPPED `StatusRegion`, mounted ABOVE the `showError` guard and GATED ON `compact`, chosen
@@ -647,6 +685,144 @@ export function FetchErrorBanner({
   );
 }
 
+/* DECISION Phase 88.6.1-70 (C10, access or gone), orchestrator decision F1 (2026-10-05): an answer
+   that says the user may no longer see the content, or that it is gone, is NEVER a refresh
+   failure: the content is withdrawn and the site's full banner tells the truth.
+   CHOSEN: ONE exhaustive code map and ONE predicate, read by `useRetainedContent` and by
+   `RefreshFailedNotice` itself. The ten codes, and why each is in:
+   - `unauthorized` (401) and `forbidden` (403): this user may no longer see it;
+   - `not_found` and `not_provisioned` (404): on a list refetch, a 404 means the list's PARENT
+     (the group, the event, the account) is gone or hidden from this user, so keeping its rows
+     under "showing what loaded earlier" would present a vanished thing as merely stale;
+   - `gone` (a code-less 410), `account_deleted`, `invalid_token`, `already_used`,
+     `window_expired` (each 410): gone;
+   - `token_invalid`: IN by meaning ("this link no longer grants access"), although its wire
+     status is 400 — the backend registry records that 400 as legacy (`utils/errors.js`, anchor
+     `magic-token reject is 400 today`); no RF1 site reads a token today.
+   Statuses read from the backend registry (`periodictabletopbackend_v2/Sonnet/utils/errors.js`,
+   `ERROR_REGISTRY`) and the FE status map (`api.ts`, anchor `function statusToCode(`). The
+   other fifteen codes are refresh failures. `csrf_rejected` is not a code: the proxy's CSRF gate
+   answers unsafe methods only (`src/app/api/[...path]/route.ts`, anchor
+   `UNSAFE_METHODS.has(method)`), so a refetch (a GET) never carries it; a stray one keeps the
+   code `forbidden` (plan 88.6.1-07, D-24) and lands on the full banner, whose message plan 07
+   routes to the `unknown` line — no role claim, no stale content. The set is a superset of plan
+   88.6.1-25's terminal rule (`unauthorized`, `forbidden`, `not_found`, `account_deleted`).
+   FAIL CLOSED (finding #122): the map is exhaustive at compile time only — `mapErrorToCode` passes
+   an envelope code through verbatim (`api.ts`, anchor
+   `if (body && typeof body.code === 'string') return body.code as ApiErrorCode;`) — so a runtime
+   code this map does not hold withdraws the content rather than keeping it under RF1. A state
+   with NO code (the wholesale `useFetchErrorState` mocks) stays false.
+   STATED LIMIT: a 401 / 403 / 404 / 410 whose unregistered code the backend's global handler
+   rewrites to `internal` while keeping the status (`utils/errors.js`, anchor
+   `ERROR_REGISTRY[codeOrErr.code]) ? codeOrErr.code : 'internal';`) reads as a refresh failure,
+   because this reads `code` only; measured unreachable today, the producer-side fix is routed
+   to Phase 93 (`.planning/deferred/phase-93.md`, anchor
+   `Global error handler keeps a 4xx status but rewrites an unregistered code`).
+   THE MEMORY: `useRetainedContent` remembers an access or gone answer until the next success
+   (`state.showError` false). The orchestrator's bare formula, `hasData && !predicate(state)`,
+   was considered: after a 403 the full banner's Try again can fail with a 500, the predicate is
+   false again, and the pre-403 rows would come back under RF1 — content the screen had already
+   withdrawn. For a TanStack source the memory is kept with the cached query entry (finding #309),
+   because the cached error and data survive an unmount for `gcTime` and a remount would
+   otherwise re-show them; REJECTED there: comparing `dataUpdatedAt` with `errorUpdatedAt` (the
+   finding's own remedy) — after a 403 then a 500 the cache holds only the 500, so it cannot tell
+   "403 then 500" from "500 alone".
+   REJECTED: (a) a per-site list of codes (thirteen consumer plans, thirteen lists that drift);
+   (b) keying on the HTTP status (the house reads `code` only, `DECISION Phase 88-25`); (c) the
+   notice rendering nothing for such an answer — a consumer that forgot the hook would then show
+   stale rows with no failure state at all, the AC-29 defect; (d) a wrapper component that owns
+   the whole content slot — the consumer layouts differ and are already planned.
+   Changing any of these is a decision, not a cleanup. */
+const ACCESS_OR_GONE_BY_CODE: Record<FetchErrorCode, boolean> = {
+  unauthorized: true,
+  forbidden: true,
+  not_found: true,
+  not_provisioned: true,
+  gone: true,
+  account_deleted: true,
+  invalid_token: true,
+  already_used: true,
+  window_expired: true,
+  token_invalid: true,
+  unknown: false,
+  validation: false,
+  rate_limited: false,
+  prompt_closed: false,
+  prompt_deadline_expired: false,
+  reminder_cooldown: false,
+  owner_of_active_groups: false,
+  already_restored: false,
+  conflict: false,
+  already_member: false,
+  invite_pending: false,
+  unsupported_address: false,
+  internal: false,
+  network: false,
+  config: false,
+};
+
+/**
+ * C10: true while `state` shows an error whose code says the user may no longer see the content
+ * (401 / 403) or that it is gone (404 / 410), or a code the map does not hold at all (fail
+ * closed, #122). A state with no code is false. The ONE place an access or gone answer is
+ * classified; a load function that must classify a thrown `ApiError` itself calls
+ * `isAccessOrGoneError({ showError: true, code: err.code })`.
+ */
+export function isAccessOrGoneError(state: Pick<FetchErrorState, 'showError' | 'code'>): boolean {
+  if (state.showError !== true) return false;
+  const code: unknown = state.code;
+  if (typeof code !== 'string') return false;
+  if (!Object.prototype.hasOwnProperty.call(ACCESS_OR_GONE_BY_CODE, code)) return true;
+  return ACCESS_OR_GONE_BY_CODE[code as FetchErrorCode];
+}
+
+/** C10's optional third argument: the TanStack query whose cache entry keeps the memory. */
+export interface RetainedContentSource {
+  /** The query's key. `undefined` counts as NO source: the instance memory serves (AG-14). */
+  queryKey: QueryKey | undefined;
+}
+
+/** A TanStack source's access memory, kept with its cached `Query` and dying with it (#309). */
+const accessEndedByQuery = new WeakMap<object, boolean>();
+
+/**
+ * C10: the consumer's `retained` — `hasData && !isAccessOrGoneError(state)`, AND false after an
+ * access or gone answer until the next success. Call it at the top level, before any early
+ * return. `hasData` is C3's has-loaded flag for the CURRENT key (never a row count). A TanStack
+ * consumer passes `{ queryKey }` so the memory lives with the cached query and survives a
+ * remount; a consumer whose data lives in its own state passes nothing (instance memory).
+ */
+export function useRetainedContent(
+  hasData: boolean,
+  state: Pick<FetchErrorState, 'showError' | 'code'>,
+  source?: RetainedContentSource
+): boolean {
+  // Read through the context, never the throwing client hook: a call without `source` must work
+  // with no provider mounted (the hand-rolled consumers mount none).
+  const client = React.useContext(QueryClientContext);
+  const [instanceEnded, setInstanceEnded] = React.useState(false);
+  const accessNow = isAccessOrGoneError(state);
+  // Adjust-state-while-rendering, each arm guarded by a comparison, so it never loops.
+  if (accessNow && !instanceEnded) setInstanceEnded(true);
+  else if (!state.showError && instanceEnded) setInstanceEnded(false);
+
+  let ended = accessNow || (state.showError && instanceEnded);
+  const queryKey = source?.queryKey;
+  // An undefined key is never looked up: query-core skips the key test for it, so the lookup
+  // would answer with the first cached query, an unrelated entry (AG-14).
+  const query =
+    client && queryKey !== undefined
+      ? client.getQueryCache().find({ queryKey, exact: true })
+      : undefined;
+  if (query) {
+    // Idempotent writes: a StrictMode double render or a discarded render leaves the same memory.
+    if (accessNow) accessEndedByQuery.set(query, true);
+    else if (!state.showError) accessEndedByQuery.delete(query);
+    ended = accessNow || (state.showError && accessEndedByQuery.get(query) === true);
+  }
+  return hasData && !ended;
+}
+
 /** Props of {@link RefreshFailedNotice} (plan 88.6.1-70; the contract is in its docblock). */
 export interface RefreshFailedNoticeProps {
   /** From `useFetchErrorState(...)`: the SAME state the site's first-load banner reads. */
@@ -694,8 +870,178 @@ export interface RefreshFailedNoticeProps {
        consumer's `className`, rendered only while shown (a healthy page gains no box at 375px);
    (f) naming the list in the spoken sentence — new words (D-31; Routed finding 2).
    Changing any of these is a decision, not a cleanup. */
+/**
+ * RefreshFailedNotice — the shared "failed refresh over retained content" notice (copy row RF1,
+ * owner ruling 2026-10-05, D-47 / D-51): when a REFRESH fails, the site keeps what it was showing
+ * and this notice says so, visibly and to a screen reader, with a `Retry` that behaves like the
+ * house recovery controls. Its sentence is `REFRESH_FAILED_NOTICE`; a consumer never writes it.
+ *
+ * What a consumer renders, by situation: healthy — the content plus this notice (its empty
+ * `sr-only` region only, no box, no margin); a FIRST load failed, nothing loaded for this key
+ * yet — the full `FetchErrorBanner` with the site's ratified `title`, in the content's place,
+ * checked before the empty state; a refresh failed with a transient answer (5xx, `network`, 429,
+ * a code-less side read), content retained — the content with this notice above it; a refresh
+ * failed with an ACCESS or GONE answer (`isAccessOrGoneError` true — 401 / 403 / 404 / 410 and
+ * their coded forms), and every failure after it until the next success — the full banner in the
+ * content's place, the content NOT rendered; a refresh failed with nothing retained (the key
+ * changed, the data was dropped) — the full banner, as for a first load.
+ *
+ * Healthy, or with `retained` false, it renders ONE element: an empty `sr-only` polite region.
+ * A failure arrives as text in that SAME node; a failed Retry empties it from the press for at
+ * least `REGION_EMPTY_DWELL_MS` and until the outcome commits, then refills it with the same
+ * sentence; a notice mounted while a failure already shows fills it after the dwell. A successful
+ * Retry removes the notice and focus goes to `focusTarget`, else the open dialog's title, else
+ * `main h1`, else `main` — never `<body>`.
+ *
+ * CONSUMER CONTRACT (a site plan cites these items as 88.6.1-70 contract C1-C12):
+ *
+ * C1 — keep the retained data. A failed load NEVER writes the data: no empty-array write, no
+ * reset. The error is set beside it.
+ *
+ * C2 — keep the error until the NEWEST run succeeds. Never clear it at the start of a run:
+ * clearing it hides the notice at the press, so focus leaves `Retry` and the in-flight state is
+ * never seen.
+ *
+ * C3 — know whether THIS key has loaded (`hasData`, C10's input). Hand-rolled: a state set on
+ * success to the key that was requested (`loadedFor === key`, D-09a's has-loaded flag), never a
+ * row count — a list that loaded EMPTY is retained content (D-50): this notice sits above the
+ * empty-state sentence. TanStack: `query.data !== undefined` (TanStack keeps data through a
+ * failed refetch, `isRefetchError: isError && hasData`); a query that ever uses
+ * `placeholderData` also requires `!query.isPlaceholderData`.
+ *
+ * C4 — `refetch` resolves `{ isError: boolean }` for the retry it ran: `true` failed, `false`
+ * succeeded; a call superseded by a newer one resolves the newest run's outcome or `undefined`.
+ * It never rejects, and it never resolves BEFORE its fetch settles — a key bump that returns
+ * `Promise.resolve()` at once (as `EventCalendar.js`'s `retryFetch` did at `2f3d4c4`) is
+ * forbidden here: the notice would re-speak the failure a moment before a success lands.
+ * TanStack's `query.refetch` already satisfies C4.
+ *
+ * C5 — the adapter. Hand-rolled: a STABLE `refetch` — the ref-held shape of `DECISION Phase
+ * 88-14` (`friends/page.js`, anchor `const retryFriends = useCallback(`) — then
+ * `useFetchErrorState({ isError: Boolean(error), error, refetch: retry })`. TanStack:
+ * `useFetchErrorState(query)`. The hook's tab-return re-attempt (its `visibilitychange` listener)
+ * calls the same `refetch`, so C1-C4 hold for it too. The hook's parameter is typed as a query
+ * result: a `.ts` / `.tsx` consumer passing a hand-rolled object casts it; `.js` is unaffected.
+ *
+ * C6 — placement. Mount the notice UNCONDITIONALLY inside the branch that renders the retained
+ * content, ABOVE that content — never inside a `showError` guard, never as the last child of a
+ * `space-y-*` stack (Tailwind v4 puts the gap on every non-last child). Render the full banner
+ * only while `!retained` — never both for one state. Remounting the branch mid-failure is safe:
+ * the notice announces after its dwell.
+ *
+ * C7 — words. The consumer writes no RF1 literal (the notice owns `REFRESH_FAILED_NOTICE`, D-30)
+ * and passes no `title` and no `reportContext`. A consumer TEST writes the sentence once,
+ * commented as copy row RF1 / D-47, and expects it TWICE while the notice shows and its region is
+ * not quiet (visible line plus region): query with `getAllByText`, or scope to the
+ * `role="status"` node.
+ *
+ * C8 — the tests every consumer carries: (a) a failed refresh keeps the retained content, shows
+ * RF1, and the full banner's title is absent; (b) the RF1 region is one of the `role="status"`
+ * nodes present BEFORE the failure (`toBe`); (c) `Retry` recovers; (d) a phone e2e at 375px —
+ * `Retry` inside the viewport and at least 44x44, no sideways scroll, the notice beside the
+ * content it qualifies; a failed layout assertion is a STOP for the owner's mockup, never an
+ * ad-hoc restyle; (e) a 401 and a 403 refresh over kept content: no RF1, the content not
+ * rendered, the full banner's register line shown (read through `getFetchErrorMessage`, never
+ * typed), and a 500 and a `network` failure: RF1 over the kept content; (f) C12, focus never
+ * falls to `<body>`: (f1) a control INSIDE the retained content holds focus while RF1 shows and a
+ * refresh nobody pressed (define `document.visibilityState` as `'visible'`, then dispatch
+ * `visibilitychange`) answers 401 or 403 — the content is withdrawn and focus lands on the
+ * `focusTarget` the site hands its `RetainedContentFocusGuard` (or, with none, the floor), with a
+ * plant that deletes the guard element ending on `<body>`; (f2) RF1's `Retry` holds focus and a
+ * refresh nobody pressed SUCCEEDS — the notice leaves and focus lands on its `focusTarget` (or the
+ * floor). Wait for a POSITIVE `document.activeElement`.
+ *
+ * C9 — wholesale mocks. A suite that replaces this module with `vi.mock` keeps the real module
+ * and overrides only what it stubs — `vi.mock(<this module>, async (importOriginal) => ({
+ * ...(await importOriginal()), FetchErrorBanner: …, RefreshFailedNotice: … }))` — so
+ * `useRetainedContent`, `isAccessOrGoneError` and `RetainedContentFocusGuard` stay real (a
+ * stubbed predicate changes which branch the suite renders). A factory missing an export throws,
+ * by design. `useRetainedContent` reads TanStack's `QueryClientContext`, so a suite that mocks
+ * `@tanstack/react-query` wholesale keeps that export too (spread `importOriginal`) once the
+ * component under test calls the hook.
+ *
+ * C10 — an access or gone answer is never a refresh failure. Compute
+ * `const retained = useRetainedContent(hasData, errorState);` (`hasData` per C3) — a hook, so
+ * at the top level, before any early return. A TanStack site also passes its query's key —
+ * `useRetainedContent(query.data !== undefined, errorState, { queryKey })` — so the memory below
+ * is kept with the cached query and a remount over a cached error cannot bring withdrawn rows
+ * back; a site whose data lives in its own state passes nothing; a `queryKey` that is
+ * `undefined` counts as no source. Every site goes through this one hook and the one predicate
+ * inside it, `isAccessOrGoneError`; no site writes a list of codes. The predicate is true while
+ * the state shows an error whose code is `unauthorized`, `forbidden`, `not_found`,
+ * `not_provisioned`, `gone`, `account_deleted`, `invalid_token`, `already_used`,
+ * `window_expired` or `token_invalid`, or a code it does not know at all (fail closed). While it
+ * is true — and until the next success, so a later transient failure cannot bring back content
+ * the screen had already withdrawn — `retained` is false: the site renders the FULL banner in
+ * the content's place and does NOT render the content. A site's own removal redirect or sign-in
+ * hold still runs FIRST. Store the thrown `ApiError` itself as the error: wrapping it in a new
+ * `Error` turns a 401 / 403 into `unknown`, which reads as a transient failure (the one
+ * sanctioned exception is a SIDE read, C11). A load function that must classify a thrown error
+ * itself calls `isAccessOrGoneError({ showError: true, code: err.code })`. Handed `retained`
+ * true over such an answer anyway, this notice renders the house full banner in its own place
+ * instead of RF1 — never silence — but the stale content stays, which is why C8 (e) is mandatory.
+ *
+ * C11 — side reads never decide access. A site that folds SECONDARY reads (a roster, an RSVP
+ * list, brings, reviews, sessions) into the SAME error state as its primary read stores a
+ * side-read failure as a code-less `Error` with a fixed message, never the thrown `ApiError`, so
+ * its code is `unknown`: a side read's 403 / 404 / 410 never produces the no-access screen and
+ * never withdraws the primary content, and it shows RF1 over that content like any other side
+ * failure. Only the PRIMARY read's thrown `ApiError` reaches `useRetainedContent`. A side-read
+ * failure on a FIRST load is the site's own record (RF1's "earlier" would be false there).
+ * Scoped exception — a view whose primary read does NOT gate the side reads' content (the game
+ * page: its catalog read is group-agnostic, so the group-scoped side reads ARE the access gate
+ * for that group's content): there a group-scoped side read's 403 / 404 / 410 answer, classified
+ * on the thrown `ApiError` with `isAccessOrGoneError` before any refresh-failure rule, withdraws
+ * that group content and nothing else — the catalog game stays, never RF1 and never the full
+ * banner (D-51) — and the withdrawal renders one more `RetainedContentFocusGuard` for that
+ * content. Carve-out: its 401 is NOT withdrawn that way; it takes the primary-401 path (the full
+ * banner with the register line for `unauthorized`, the game cleared), because a 401 says the
+ * session ended, not that this user may not see the group. On the event page the roster's OWN
+ * 403 / 404 / 410 answer resets the roster-derived member state only and keeps the event, with no
+ * error stored and no RF1; a roster 401 is an ordinary code-less side failure (RF1 over the event,
+ * an error kept so the tab-return re-attempt arms).
+ *
+ * C12 — focus never falls to `<body>` when the notice or the content leaves. ONE target rule:
+ * the site's `focusTarget` (the section heading, rendered OUTSIDE the arm a withdrawal unmounts),
+ * else plan 04's page floor (the open dialog's title, `main h1`, `main`). (b) The NOTICE owns its
+ * own controls: its `Retry` (and the banner's `Try again` and `Report this`) arms the one
+ * recovery hook on FOCUS and settles at once (`watchFocus`), so a refresh nobody pressed that
+ * succeeds while the control holds focus lands it on `focusTarget` or the floor, and a user who
+ * moved on to another control is never moved; consumers write nothing for (b). (a) The CONSUMER
+ * owns its content: render `<RetainedContentFocusGuard retained={retained} focusTarget={headingRef} />`
+ * once per `retained` value, in the component that computes it, OUTSIDE the `retained ? … : …`
+ * arm (it renders nothing; pass the notice's `focusTarget` ref, or none inside a `Modal`). When a
+ * commit flips `retained` from true to false and removed the element that held focus, the guard
+ * moves focus to `focusTarget`, else the floor; it never moves a user whose focus was elsewhere
+ * or on `<body>`, and never acts for a dialog that closed in that commit. A site's own press arm
+ * may stay; it targets the same heading. No site writes focus code of its own (D-04). Position
+ * rule: the guard must be ONE instance across the commit that flips `retained`, because React
+ * runs `getSnapshotBeforeUpdate` and `componentDidUpdate` only on an instance it UPDATES
+ * (`react-dom`, anchor `var snapshot = instance.getSnapshotBeforeUpdate(`), and keeps an
+ * instance only where the render before and after put the same element type at the same
+ * position: the same chain of parent element types, the same child index (each conditional or
+ * ternary is ONE slot whether it renders or not, and unkeyed children match by index, anchor
+ * `var key = oldFiber !== null ? oldFiber.key : null;`), and the same `key`. So: (1) never inside
+ * the arm or any conditional the withdrawal removes; (2) where a withdrawal switches the component
+ * between RETURN statements, EVERY such return renders the guard at the same position — the
+ * FIRST child of a root element of the SAME type in each (unkeyed); or the SECOND child of a
+ * top-level fragment in each (React reconciles a top-level unkeyed fragment as its children,
+ * anchor `var isUnkeyedTopLevelFragment`, so the root before it may change type); or the LAST
+ * child of a root of the SAME type in each under ONE stable `key` identical in every return — the
+ * keyed form, required where the guard's `focusTarget` is a later sibling that mounts in the
+ * flip's own commit, because layout effects run sibling after sibling and a guard ahead of the
+ * new target reads its ref while still null; never a different root type, a key on an unkeyed
+ * form, a key that differs or is missing in one return, or one return a fragment and another a
+ * single element, and a return of `null` the flip can reach unmounts the guard; (3) one guard
+ * element per `retained` value — a component-local constant rendered in every return is one
+ * instance.
+ *
+ * A site plan cites these items as 88.6.1-70 contract C1-C12.
+ */
 export function RefreshFailedNotice({ state, retained, focusTarget, className }: RefreshFailedNoticeProps) {
-  const shown = state.showError && retained;
+  // C10, enforced here and never silently: an access or gone answer is not a refresh failure.
+  const blocked = isAccessOrGoneError(state);
+  const shown = state.showError && retained && !blocked;
   const { retrying, regionQuiet, handleRetry, watchFocus } = useRetryEpisode({
     state,
     failureShown: shown,
@@ -703,6 +1049,12 @@ export function RefreshFailedNotice({ state, retained, focusTarget, className }:
     quietOnMount: true,
     focusTarget,
   });
+  // Handed `retained` over such an answer anyway (a consumer that skipped `useRetainedContent`):
+  // the house full banner INSTEAD of the fragment — its shipped default title and the register's
+  // line for the code — never RF1 over stale rows, and never an empty, silent notice.
+  if (state.showError && retained && blocked) {
+    return <FetchErrorBanner state={state} focusTarget={focusTarget} />;
+  }
   return (
     <>
       <StatusRegion politeness="polite" className="sr-only">
@@ -765,4 +1117,71 @@ export function SectionLoadFailedNotice({ state, className }: SectionLoadFailedN
       ) : null}
     </>
   );
+}
+
+/** Props of {@link RetainedContentFocusGuard} (contract C12 a). */
+export interface RetainedContentFocusGuardProps {
+  /** The consumer's `retained` (from `useRetainedContent`); the guard acts when it flips true to false. */
+  retained: boolean;
+  /** The heading the withdrawal keeps (the same ref the site's notice gets); omit it inside a `Modal`. */
+  focusTarget?: React.RefObject<HTMLElement | null>;
+}
+
+/* DECISION Phase 88.6.1-70 (C12, focus when content leaves): ONE shared guard reads the focused
+   element in `getSnapshotBeforeUpdate` — React's only read taken BEFORE a commit changes the DOM;
+   it has no hook equivalent, which is why this is the module's one class component, and converting
+   it to a hook cannot express it — and, after the commit that withdrew the content, hands focus to
+   the site's `focusTarget`, else plan 04's page floor (the open dialog's title, else `main h1`,
+   else `main`), through plan 04's exported primitives. It acts only at the commit that withdrew
+   the content, only when that commit removed the element that held focus and focus is lost, and
+   never for a dialog that closed in that commit (the dialog's own restore owns that moment).
+   REJECTED: (i) arming plan 04's hook on focus inside the content — two armed instances run their
+   observers in creation order, so a content watch would beat a row host's own press arm and land
+   on the heading instead of the next row (Edge R5 adjacency), and ONE shared instance would let
+   KebabMenu's synchronous restore re-arm over a pending press; (ii) arming at each load's catch —
+   a TanStack site's shared queryFn is out of reach, and every site would carry a copy (D-04);
+   (iii) reading the focused element during render (an impure render); (iv) a passive mode added
+   to plan 04 (a contract change in a wave-3 plan, still per-site); (v) recovering on MOUNT (a
+   fresh guard, born `false`, moving focus off the page body) — by then the DOM has changed, and a
+   mount cannot tell a withdrawal from a page load, so it would move people who lost nothing; the
+   Position rule below (one instance across the flip) is the fix instead.
+   THE RECORD: D-04 reads "one shared hook" for Requirement 5. The guard does not use the hook; it
+   calls plan 04's exported primitives with the hook's own target chain, as plan 88.6.1-20's dialog
+   floor does — one shared primitive, written once, so D-04's purpose (no per-host inline copies)
+   holds. Changing this is a decision, not a cleanup. */
+/**
+ * RetainedContentFocusGuard — contract C12 (a). Renders nothing. When a commit flips `retained`
+ * from true to false (an access or gone answer to an automatic refetch or to a Retry, or a key
+ * change) and that commit removed the element that held focus, it moves focus to `focusTarget`,
+ * else to the page floor. A user whose focus was elsewhere, or already on `<body>`, is never moved.
+ *
+ * Position rule: render it at ONE tree position in every render of the component that computes
+ * `retained` — outside the `retained ? … : …` arm and any conditional the withdrawal removes; and,
+ * across returns a withdrawal can switch between, the FIRST child of a root element of the same
+ * type in each (unkeyed), the SECOND child of a top-level fragment in each, or the LAST child of
+ * a root of the same type in each under ONE stable key identical in every return. React calls
+ * `getSnapshotBeforeUpdate` only on an instance it UPDATES; a guard React remounts in that commit
+ * is born with `retained` false, takes no snapshot, and focus falls to the page body (AG-11).
+ */
+export class RetainedContentFocusGuard extends React.Component<RetainedContentFocusGuardProps> {
+  getSnapshotBeforeUpdate(prevProps: RetainedContentFocusGuardProps): Element | null {
+    return prevProps.retained && !this.props.retained ? document.activeElement : null;
+  }
+
+  componentDidUpdate(
+    prevProps: RetainedContentFocusGuardProps,
+    prevState: unknown,
+    snapshot: Element | null
+  ): void {
+    if (!(snapshot instanceof Element) || snapshot.isConnected || !isFocusLost()) return;
+    const dialog = snapshot.closest(DIALOG_ROLE_SELECTOR);
+    if (dialog && !isOpenDialog(dialog)) return;
+    const origin = document.activeElement;
+    if (focusElement(this.props.focusTarget?.current)) return;
+    focusPageFloor(origin);
+  }
+
+  render() {
+    return null;
+  }
 }
