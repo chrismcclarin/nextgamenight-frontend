@@ -633,8 +633,8 @@ describe('T-88.6-87 — the pre-flight failure has a diagnostic channel and an h
     const [message, ctx] = mockLoggerInfo.mock.calls[0];
     expect(message).toBe('deletion pre-flight failed');
     // T-84-01: the payload is bounded to the caught error's NAME and MESSAGE —
-    // never the blockers list, never the raw Error as ctx (logger.ts:24 types ctx
-    // as a plain record).
+    // never the blockers list, never the raw Error as ctx (logger.ts:31, the info
+    // signature, types ctx as a plain record).
     expect(Object.keys(ctx as object).sort()).toEqual(['message', 'name']);
     expect(ctx).not.toBeInstanceOf(Error);
     expect(JSON.stringify(ctx)).not.toContain('do-not-forward');
