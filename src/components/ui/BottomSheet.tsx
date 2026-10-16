@@ -11,7 +11,9 @@
  *
  * Focus RESTORE is the one exception: Radix restores to a `DialogTrigger`, and
  * these sheets open from a plain bottom-bar button, so the sheet records its own
- * invoker and puts focus back — see the FOCUS-RESTORE DECISION below.
+ * invoker and puts focus back — see the FOCUS-RESTORE DECISION below. Since
+ * Phase 88.6.1-20 that restore is the one `Modal` shares (`restoreDialogFocus`
+ * in `dialog.tsx`), and it floors to the page heading when the invoker is gone.
  *
  * Zero new dependencies: D-05 rejects `vaul` (stale since 2024-12, a second
  * overlay engine, and a new dep in the phase that deletes one). Everything used
@@ -54,6 +56,8 @@ import {
   DialogOverlay,
   DialogPortal,
   DialogTitle,
+  handleDialogCloseAutoFocus,
+  recordDialogOpener,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/cn';
 
@@ -109,12 +113,13 @@ export interface BottomSheetProps {
   /** Height preset — see {@link HEIGHT_CLASS}. @default 'content' */
   height?: BottomSheetHeight;
   /**
-   * Radix close-autofocus override, matching `Modal.tsx`'s prop of the same
-   * name: a caller that wants focus somewhere OTHER than the element that
+   * Radix close-autofocus pass-through, matching `Modal.tsx`'s prop of the
+   * same name: a caller that wants focus somewhere OTHER than the element that
    * opened the sheet must place it HERE, because Radix moves focus AFTER the
-   * sheet unmounts. Supplying this REPLACES the invoker restore documented at
-   * {@link BottomSheet} — call `event.preventDefault()` inside it, or Radix's
-   * own default (which focuses nothing here) runs instead.
+   * sheet unmounts. Since Phase 88.6.1-20 the handler runs FIRST and is
+   * COMPOSED with the restore, not substituted for it: call
+   * `event.preventDefault()` inside it to place focus yourself; otherwise the
+   * invoker restore and the page floor run after it.
    */
   onCloseAutoFocus?: (event: Event) => void;
   /** Extra classes merged onto the sheet surface. */
@@ -177,29 +182,25 @@ const BottomSheet = React.forwardRef<
      `document.activeElement` is captured in the OPEN handler because that fires before
      FocusScope moves focus (`react-focus-scope/dist/index.mjs:74-79`); reading it from an
      effect would return the Close button instead. Deleting this restores the bug silently —
-     `Modal.tsx`'s `onCloseAutoFocus` doc records the same Radix behaviour from 87.8. */
+     `Modal.tsx`'s `onCloseAutoFocus` doc records the same Radix behaviour from 87.8.
+
+     AMENDED IN PLACE Phase 88.6.1-20 (D-07, N6): the record and the restore are now the SHARED
+     `recordDialogOpener` / `restoreDialogFocus` in `components/ui/dialog.tsx` (reached through
+     `handleDialogCloseAutoFocus`), the same code `Modal` runs — CHOSEN OVER keeping this twin
+     copy, which had drifted from `Modal`'s (it handed the whole close to any consumer handler,
+     so a handler that did not prevent default left the user on `<body>`). The restore is
+     outcome-checked, acts only when focus is lost, and floors (the still-open dialog's title,
+     `main h1`, `main`) when the invoker is gone, disabled or was a sheet that handed off. A
+     consumer handler now COMPOSES: it runs first, and only a handler that prevents default
+     keeps control. The invoker is still recorded in the open handler, for the reason above. */
   const invokerRef = React.useRef<HTMLElement | null>(null);
 
   const handleOpenAutoFocus = React.useCallback(() => {
-    const active = document.activeElement;
-    invokerRef.current =
-      active instanceof HTMLElement && active !== document.body ? active : null;
+    recordDialogOpener(invokerRef);
   }, []);
 
   const handleCloseAutoFocus = React.useCallback(
-    (event: Event) => {
-      if (onCloseAutoFocus) {
-        onCloseAutoFocus(event);
-        return;
-      }
-      const invoker = invokerRef.current;
-      invokerRef.current = null;
-      // Nothing to restore to (or it has since unmounted): leave Radix's own
-      // handler to run rather than fighting it.
-      if (!invoker || !invoker.isConnected) return;
-      event.preventDefault();
-      invoker.focus();
-    },
+    (event: Event) => handleDialogCloseAutoFocus(event, invokerRef, onCloseAutoFocus),
     [onCloseAutoFocus]
   );
 
