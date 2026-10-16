@@ -41,7 +41,7 @@ export default function ResponseDashboard({
   const { timezone } = useTimezone();
 
   /* The phase's ONE staleness idiom, ported from the shipped
-     `NextGameNightCard.tsx:192`/`:197`/`:202`/`:209-211` cancelled-generation guard (the same
+     `NextGameNightCard.tsx:231`/`:236`/`:241`/`:248-250` cancelled-generation guard (the same
      one plan 88.6-29's W61 ports). It is COMPONENT-scope, not per-invocation, because
      `fetchRespondents` is called from TWO places that know nothing about each other — the
      `promptId` effect below and `useFetchErrorState`'s refocus recovery — so a per-invocation
@@ -58,6 +58,8 @@ export default function ResponseDashboard({
      short-circuit; new generation => always proceeds. */
   const generationRef = useRef(0);
   const inFlightGenerationRef = useRef(null);
+  // W031 (Phase 88.6.1-11): the respondents capture's per-episode latch; see the catch below.
+  const lastReportedKeyRef = useRef(null);
 
   // 87.4 PR-2 (D-02): the sub arm is dropped. groupPlanning now passes the
   // caller's resolved Users.id UUID as `currentUserId` (was user?.sub), and the
@@ -83,7 +85,7 @@ export default function ResponseDashboard({
       setRespondents(data);
       /* DECISION Phase 88.6-32 (R1): the error clears HERE, on SUCCESS — and in the `promptId`
          effect below — chosen OVER the house clear-at-fetch-start idiom
-         (`grouplist.js:85-86`, `groupPlanning/page.js:134`), which is REJECTED at this call
+         (`grouplist.js:87-88`, `groupPlanning/page.js:157`), which is REJECTED at this call
          site and only at this one.
 
          WHY. This component adopts `useFetchErrorState`, whose refocus recovery re-issues the
@@ -97,6 +99,8 @@ export default function ResponseDashboard({
 
          Restoring the fetch-start clear is a decision, not a cleanup. */
       setError(null);
+      // W031: a current-generation success ends the failure episode (the catch's latch).
+      lastReportedKeyRef.current = null;
     } catch (err) {
       // AC-2 WIDENED x the D2 AC-16 carve-out: this stays `logger.error` (a Sentry EVENT), not
       // `logger.info`, because AC-16 (a) requires a Sentry capture on this path. Logged BEFORE
@@ -106,10 +110,26 @@ export default function ResponseDashboard({
       // Re-confirmed 2026-09-29 (plan 88.6-63, review round 2 #6, R2-6-RECONFIRM: keep) — the swap to
       // guard-first was ruled on a misread of RsvpSection.js's marker and is void; this log-first
       // order is pinned by ResponseDashboard.test.tsx ("a superseded failure is still REPORTED").
-      logger.error('Failed to fetch respondents:', err);
+      //
+      // DECISION Phase 88.6.1-11 (W031) [D-26, Req 11]: ONE Sentry event per failure EPISODE,
+      // still log-first. The capture is latched on `lastReportedKeyRef`, keyed on this closure's
+      // prompt id plus the error's code, and the latch resets exactly where the banner is cleared:
+      // a current-generation success and a new `promptId` (the two `setError(null)` sites).
+      // Without it the hook's error-only refocus refetch (`useFetchErrorState.ts:285`) filed one
+      // event per return to the tab for one outage. Same idiom as `QuickSuggestions.js`'s
+      // `lastReportedKeyRef`. REJECTED: (a) once per mount (a later real failure would be
+      // invisible); (b) `logger.info` (AC-16 (a) needs an event, and `logger.info` is a
+      // breadcrumb, `logger.ts:52-53`); (c) dedup inside `useFetchErrorState` (the hook-dedup
+      // note at the adapter below). The latched call stays BEFORE the generation guard; moving
+      // either is a decision, not a cleanup.
+      const reportKey = `${promptId}:${err?.code ?? 'none'}`;
+      if (lastReportedKeyRef.current !== reportKey) {
+        logger.error('Failed to fetch respondents:', err);
+        lastReportedKeyRef.current = reportKey;
+      }
       if (generation !== generationRef.current) return;
       // Store the ERROR OBJECT, never a flattened string: `useFetchErrorState` derives the
-      // user-facing copy from `ApiError.code` (`useFetchErrorState.ts:116`), so a string here
+      // user-facing copy from `ApiError.code` (`useFetchErrorState.ts:128`), so a string here
       // would make every failure resolve to `unknown` and render one generic line for a 403, a
       // 404 and a 500 alike — WHILE the roster scan reported green, because the `err.message`
       // read would be gone. `getFetchErrorMessage` is deliberately NOT applied here.
@@ -127,6 +147,8 @@ export default function ResponseDashboard({
     // A NEW prompt never inherits the previous prompt's banner. A REFETCH of the same prompt
     // does keep it — that is the whole point of the clear-on-success rule above.
     setError(null);
+    // W031: a new prompt starts a new failure episode (the catch's latch).
+    lastReportedKeyRef.current = null;
     fetchRespondents();
     // The cleanup this effect did not have. It bumps the generation on unmount AND on a
     // `promptId` change, so no in-flight response can write state after teardown or after the
@@ -137,7 +159,7 @@ export default function ResponseDashboard({
   }, [promptId, fetchRespondents]);
 
   /* The synthetic adapter onto the shared fetch-error pair, matching the shipped shape at
-     `groupPlanning/page.js:172-196` and `grouplist.js:91-96`. Both of that idiom's recorded
+     `groupPlanning/page.js:220-247` and `grouplist.js:121-125`. Both of that idiom's recorded
      constraints are honoured: the ERROR OBJECT is what is stored (above), and `refetch` is
      STABLE — `fetchRespondents` is already a `useCallback([promptId])`, so no ref hop is
      needed here (an unstable `refetch` would re-subscribe the hook's refocus listener on
@@ -175,7 +197,12 @@ export default function ResponseDashboard({
       // rather than demoted to `logger.info`, because AC-16 (a) requires a capture on this
       // path. The error OBJECT is the only second argument (T-84-01) — no respondent list, no
       // member email, no user record, and no code value is added to the call.
-      logger.error('Failed to send reminder:', err);
+      // AMENDED by DECISION Phase 88.6.1-11 (W031) [D-26, Req 11]: the capture is kept on EVERY
+      // non-cooldown failure (AC-16 (a)), and now lives in the `else` arm below. A
+      // `reminder_cooldown` answer is an expected outcome the user is already told about by the
+      // toast, so it files nothing. REJECTED: a `logger.info` breadcrumb in the cooldown arm (a
+      // new diagnostic for an expected answer; SPEC Prohibition 5 asks this phase to add none it
+      // does not need). Moving the capture back above the branch is a decision, not a cleanup.
 
       /* DECISION Phase 88.6-32 (R1 / UI-SPEC §6.2's mutation row): BOTH branches of this catch
          now render through `toast.error`, and the inline `{reminderError && …}` block plus its
@@ -214,6 +241,8 @@ export default function ResponseDashboard({
           toast.error('You reminded this user recently. Please wait before reminding them again.');
         }
       } else {
+        // W031: the AC-16 (a) capture, on the non-cooldown failure only (marker above).
+        logger.error('Failed to send reminder:', err);
         // The register derives the copy from `ApiError.code`; no fallback is passed, because
         // UI-SPEC §6.3 holds no ratified string for this site and the register's own `unknown`
         // line is already ratified copy (P1).
@@ -242,9 +271,9 @@ export default function ResponseDashboard({
      ALONE: with the fetch-start clear still present the `if (loading)` guard wins under either
      branch order, which is why re-ordering on its own is inert.
 
-     NOT authority-by-`groupPlanning`: `groupPlanning/page.js:309-311` renders LOADING FIRST
+     NOT authority-by-`groupPlanning`: `groupPlanning/page.js:451-453` renders LOADING FIRST
      (`heatmapLoading ? … : heatmapErrorState.showError ? … : heatmapPrompt ? …`). What that
-     file's `DECISION Phase 88-25` at `:312-318` establishes is error-before-CONTENT — a failed
+     file's `DECISION Phase 88-25` at `:454-460` establishes is error-before-CONTENT — a failed
      request also leaves `heatmapPrompt` null, so flipping those two would tell someone whose
      request merely failed that their group has no poll running. It is NOT precedent for
      error-before-loading and must not be cited as such.
@@ -254,15 +283,15 @@ export default function ResponseDashboard({
      found.") paint over a FAILED refetch, which is the exact class of defect that same
      `DECISION Phase 88-25` comment exists to prevent.
 
-     THIS BANNER DOES NOT ANNOUNCE, and nothing here claims it does. `Banner.tsx:103`-`:109`
-     renders the message INSIDE its `StatusRegion`, so the region is a CHILD of
-     `FetchErrorBanner`: mounting the banner inside `if (…showError)` mounts the region already
-     carrying its text — the exact shape `StatusRegion.tsx:8-12`'s EMPTY-FIRST contract
-     codifies as non-announcing. The FULL branch is visible chrome, not an `sr-only` region, so
-     plan 36's compact-branch hoist is not portable here; the conditional mount STAYS, as a
-     deliberate divergence, and the residual is routed in
-     `.planning/deferred/phase-88.6.md` (proposed owner: Phase 92). Today's raw
-     `<span>{error}</span>` has no region at all, so the swap is an improvement either way.
+     THE BANNER IS ANNOUNCED. AMENDED Phase 88.6.1-11 (D-42, outline shared rule 8): this
+     paragraph used to claim the conditionally mounted banner never announces; that premise was
+     wrong and is replaced here. `FetchErrorBanner` is warning-toned, so its `StatusRegion` is
+     `role="alert"` (`Banner.tsx:87`, `:103-104`), and an inserted alert that arrives carrying its
+     text IS announced (D-42: ARIA 1.2 `alert`; TetraLogical 2024 matrix incl. VoiceOver iOS).
+     The non-announcing claim the old text leaned on holds for polite / status regions only
+     (`StatusRegion.tsx:9`, the EMPTY-FIRST contract). The conditional mount STAYS. The Phase 92
+     residual this paragraph routed is void. Today's raw `<span>{error}</span>` has no region at
+     all, so the swap is an improvement either way.
 
      THE `title` PROP, and why it exists now. AMENDED Phase 88.6-42 (owner ratification
      2026-09-16): this block previously read "NO `title` PROP: UI-SPEC §6.3's register holds no

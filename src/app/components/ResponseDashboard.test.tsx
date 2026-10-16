@@ -6,14 +6,15 @@
 // artifact is a sentence, not a gate.
 //
 // MOCK IDIOM — `importOriginal` + spread, matching `friends/page.backendDown.test.tsx` and
-// explicitly NOT `ScheduleForm.test.tsx:11-16`'s full-replacement factory. A full replacement
-// DELETES `ApiError` from `@/lib/api`, and `useFetchErrorState.ts:116` derives the error code
+// explicitly NOT the full-replacement factory `ScheduleForm.test.tsx` used before plan 88.6-32
+// (that file now spreads `importOriginal` too). A full replacement
+// DELETES `ApiError` from `@/lib/api`, and `useFetchErrorState.ts:128` derives the error code
 // through `error instanceof ApiError` — so under a full replacement every failure would resolve
 // to `unknown`, the generic line would render, and this suite would go GREEN on the exact defect
 // it exists to catch.
 //
 // `MESSAGE_BY_CODE` is NOT imported, and must not be exported to make it importable: it is
-// module-private by design (`useFetchErrorState.ts:46`, whose own docblock records that it has
+// module-private by design (`useFetchErrorState.ts:50`, whose own docblock records that it has
 // exactly one reader). The ratified copy is asserted as a literal string instead.
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
