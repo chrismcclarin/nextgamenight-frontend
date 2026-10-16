@@ -16,7 +16,9 @@
  * `state.showError` is false — so the failure arrives as text injected into a mounted
  * assertive region (Phase 88.6.1-21, AC-11). The `compact` branch renders its `sr-only`
  * polite live region EMPTY and nothing else, so the notice arrives as a CHANGE to a mounted
- * region (plan 88.6-36 — see the DECISION marker at that branch). The "Report this" CTA
+ * region (plan 88.6-36 — see the DECISION marker at that branch); after a retry KNOWN to have
+ * failed, the notice reads copy row B1 (`COMPACT_NOTICE_AFTER_FAILED_RETRY`; Phase 88.6.1-21,
+ * D-47). The "Report this" CTA
  * opens the existing `FeedbackForm` prefilled with `initialType='bug'`, a derived
  * `initialSubject`, and an `initialDescription` carrying the error `code`/message
  * (no token/PII — T-86-10). The message is rendered as auto-escaped React
@@ -56,8 +58,24 @@ export interface FetchErrorBannerProps {
  * The compact degrade notice, declared ONCE so the visible line and the live region carry the
  * byte-identical string. P1: this is the shipped copy hoisted into a constant, not new copy —
  * no character of it changed in plan 88.6-36.
+ *
+ * Extended in place, Phase 88.6.1-21: there are now TWO constants, each carried byte-identically
+ * by the visible line AND the live region. `COMPACT_NOTICE` is the shipped copy above;
+ * `COMPACT_NOTICE_AFTER_FAILED_RETRY` is NEW copy, ratified by the owner on 2026-10-05 (D-47,
+ * copy row B1), shown once a retry is KNOWN to have failed.
  */
 const COMPACT_NOTICE = 'Some personal controls are unavailable.';
+const COMPACT_NOTICE_AFTER_FAILED_RETRY = 'Some personal controls are still unavailable.';
+
+/**
+ * How long the compact region stays EMPTY after a press before it may refill. AT-4
+ * (`research/APPENDIX-AT.md:316-326`, failure condition 4, "The same message twice"): WebKit's
+ * live-region manager re-announces text identical to the last announcement only after the region
+ * has stayed empty for `emptyRegionSettleDelay { 100_ms }`, and a synchronous clear-then-set is
+ * dropped. The value is the engine's constant, not a guess. `RETRY_OUTCOME_WINDOW_MS` (1000) is
+ * at least this value, so an outcome never expires inside the dwell.
+ */
+export const REGION_EMPTY_DWELL_MS = 100;
 
 /**
  * How long a retry's outcome may wait for the COMMITTED state to agree with it before it is
@@ -98,9 +116,12 @@ export function FetchErrorBanner({
   // committed state agreed).
   const [retryFailedAgain, setRetryFailedAgain] = React.useState(false);
   const [retryOutcome, setRetryOutcome] = React.useState<RetryOutcome>('none');
+  // False from a compact press until REGION_EMPTY_DWELL_MS has passed (the B1 marker).
+  const [regionDwellDone, setRegionDwellDone] = React.useState(true);
 
   const retryInFlightRef = React.useRef(false);
   const outcomeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dwellTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = React.useRef(true);
   // `state.showError` went false during this flight, so the assertive region empties and
   // refills — and that refill already speaks the title (round-2 review #176).
@@ -131,11 +152,14 @@ export function FetchErrorBanner({
   React.useEffect(() => {
     const mounted = mountedRef;
     const outcomeTimer = outcomeTimerRef;
+    const dwellTimer = dwellTimerRef;
     mounted.current = true;
     return () => {
       mounted.current = false;
       if (outcomeTimer.current !== null) clearTimeout(outcomeTimer.current);
       outcomeTimer.current = null;
+      if (dwellTimer.current !== null) clearTimeout(dwellTimer.current);
+      dwellTimer.current = null;
     };
   }, []);
 
@@ -173,6 +197,14 @@ export function FetchErrorBanner({
       outcomeTimerRef.current = null;
     }
     assertiveChangedRef.current = false;
+    if (compact) {
+      if (dwellTimerRef.current !== null) clearTimeout(dwellTimerRef.current);
+      setRegionDwellDone(false);
+      dwellTimerRef.current = setTimeout(() => {
+        dwellTimerRef.current = null;
+        setRegionDwellDone(true);
+      }, REGION_EMPTY_DWELL_MS);
+    }
     setRetrying(true);
     setRetryOutcome('none');
     let outcome: 'failed' | 'succeeded' | 'unknown' = 'unknown';
@@ -260,19 +292,76 @@ export function FetchErrorBanner({
      now carries that carve-out). So ASSERTIVE would close the six caller-gated compact sites. It
      is still NOT taken: a non-blocking degrade notice should not interrupt speech, and the six are
      owned by Phase 92 (`.planning/deferred/phase-88.6.md:1811`, routed at `:1821`;
-     `.planning/deferred/phase-92.md:84`). The paragraph above is kept as history. */
+     `.planning/deferred/phase-92.md:84`). The paragraph above is kept as history.
+
+     AMENDED Phase 88.6.1-21 (B1): this region now carries one of TWO ratified sentences — the
+     first-failure notice, or copy row B1 after a retry known to have failed — still through this
+     ONE region (the "two polite regions" rejection above holds). See
+     `DECISION Phase 88.6.1-21 (B1 / D-47)` below; the honesty clause above still bounds what it
+     reaches. */
+  /* DECISION Phase 88.6.1-21 (B1 / D-47): after a retry KNOWN to have failed (its own result says
+     `isError: true` AND the committed state agrees), the compact notice becomes copy row B1,
+     `COMPACT_NOTICE_AFTER_FAILED_RETRY` — the SAME constant in the visible line and in the ONE
+     polite region. The region is EMPTIED from the press until the outcome has committed, and for
+     at least `REGION_EMPTY_DWELL_MS` (100) after the press, then refilled: every failed retry is a
+     fresh addition after a long-enough empty spell, the second and third identical ones included.
+     The owner's principle (2026-10-05): "If a sighted person can tell, we should make something
+     for the non sighted to tell too."
+
+     REJECTED:
+     (a) a second polite region (the 88.6-36 marker's "two polite regions in one branch");
+     (b) reading `state.showError` at settle — stale by one macrotask (`@tanstack/query-core`
+         `notifyManager.js:3`), and a never-loaded query reports `pending` through the retry
+         (`query.js:416-419`), so it would call a success a failure;
+     (c) a keyed remount — identical text is not announced under WebKit's atomic rule (AT-4);
+     (d) a synchronous clear-then-set — dropped by WebKit (AT-4);
+     (e) speaking `Retrying…` in this region during the flight: a text-to-text update is a
+         `nodeValue` write in React (`react-dom.development.js:2472-2483`,
+         `var setTextContent = function (node, text) {`), not the node addition AT-4 measured as
+         WebKit's announce path; and in the never-loaded case the visible row is gone, so it would
+         speak a word the screen does not show;
+     (f) new words for the in-flight state (D-31): the button's `Retrying…` is the cue.
+
+     UNKNOWN outcomes (a retry resolving no boolean `isError`, or rejecting — caught and reported
+     at `handleRetry`) refill the region with the sentence already on screen, never B1. A retry
+     that resolves BEFORE its own state updates must resolve `{ isError }`, or its banner speaks
+     the old sentence a moment early.
+
+     STATED EDGES, both halves of an outcome the state contradicts (round-2 review #23; the expiry
+     is `RETRY_OUTCOME_WINDOW_MS`):
+     - A retry that SUCCEEDED while the state keeps showing a different failure (plan 88.6.1-16's
+       identity-first state, when identity recovers and the role read has failed) leaves the region
+       empty until the window expires, the next press or the state clears, whichever comes first;
+       on expiry it refills with the sentence already on screen. The screen does not change either
+       (same sentence, button back to `Retry`).
+     - A retry whose result says it FAILED while the state goes healthy expires without B1. If the
+       failure shows again with no press, the region and the line read the first-failure sentence:
+       a confirm that arrives after the window loses B1, which is benign and never a false `still`.
+     MEASURED LIMIT (round-2 review #306): a BACKGROUND refetch of a never-loaded query also reads
+     as healthy at this seam (`pending`, so `showError` is false), so it ends the episode and
+     resets B1; the next failure re-speaks the first-failure sentence — never a false `still`.
+     Routed to Phase 92 (`.planning/deferred/phase-92.md:116`).
+
+     HONESTY: the six caller-gated compact sites — `UserHomePage.js:543`, `:647`,
+     `userProfile/page.js:2094`, `:3065`, `friends/page.js:827`, `grouplist.js:160` (re-measured
+     2026-10-15, anchor `<FetchErrorBanner state={…} compact />`; `grouplist.js:160` sits inside the
+     early return at `:141`) — destroy this component at the press for a never-loaded identity query
+     (friends: its retry clears the error first) and re-create it on failure, so they get neither
+     B1 nor an announcement. Owned by Phase 92 (`.planning/deferred/phase-92.md:84`). */
   if (compact) {
     // D-08: compact degrade notice — one generic line (no identity value) + the
     // retry affordance. The VISIBLE half still renders only on permanent failure;
     // only the announcing node pre-exists it.
+    const noticeText = retryFailedAgain ? COMPACT_NOTICE_AFTER_FAILED_RETRY : COMPACT_NOTICE;
+    const regionQuiet = retrying || retryOutcome !== 'none' || !regionDwellDone;
     return (
       <>
         <StatusRegion politeness="polite" className="sr-only">
-          {state.showError ? COMPACT_NOTICE : ''}
+          {regionQuiet ? '' : state.showError ? noticeText : ''}
         </StatusRegion>
         {state.showError ? (
           <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
-            <span>{COMPACT_NOTICE}</span>
+            <span>{noticeText}</span>
             <button
               type="button"
               onClick={handleRetry}
