@@ -7,9 +7,14 @@
  * are driven by semantic `status-*` tokens layered onto the `cn()` + `forwardRef`
  * + `displayName` idiom, so Phase 88 can re-theme without touching the API.
  *
- * Backed by a live region: the message renders inside a {@link StatusRegion} so
- * adopters (e.g. FetchErrorBanner, Plan 03) get an announcement for free —
- * error/warning tones announce assertively, info/success politely.
+ * Backed by a live region: the title and message render inside a {@link StatusRegion} —
+ * error/warning tones assertive (`role="alert"`), info/success polite (`role="status"`). An
+ * INSERTED error/warning Banner that arrives with its text is announced (`role="alert"`,
+ * Phase 88.6.1 D-42); an inserted info/success one is not, and a text CHANGE to a mounted
+ * region is announced at either politeness. Controls belong in `actions`, never in
+ * `children`: `children` sit inside the aria-atomic region, so a label change there re-reads
+ * the whole region. `FetchErrorBanner` keeps its Banner mounted (visually hidden while
+ * healthy), so its failure text arrives as a change to a mounted assertive region.
  *
  * Presentational only (T-86-08): children/message render as auto-escaped React
  * nodes; no `dangerouslySetInnerHTML`. Reach for Radix only if the Banner later
@@ -79,13 +84,44 @@ export interface BannerProps
   title?: string;
   /** Override the tone's default lucide icon, or `false` to omit it. */
   icon?: IconName | false;
+  /* DECISION Phase 88.6.1-21 (AC-11 / D-42): an additive, default-off `actions` slot, chosen so
+     FetchErrorBanner's buttons leave its atomic alert with ONE copy of the text in the DOM.
+     REJECTED: (a) a non-live Banner option plus a separate sr-only copy of the title and message
+     — it duplicates the text, and 29 text queries in 13 consumer suites would find two matches;
+     (b) moving the buttons below the box — a look change; (c) making Banner non-live for
+     everyone — its other two mounts (EmailAddressSection, AutoPromptBehaviorBanner) rely on its
+     region. Omitting the prop renders the original markup, so those two are unchanged. */
+  /**
+   * Controls rendered inside the box, below the message, OUTSIDE the live region — a control
+   * inside an `aria-atomic` region re-announces the whole region when its label changes.
+   * Passing the prop, even as `null`, selects the column layout; omitting it keeps the
+   * original markup byte-for-byte.
+   */
+  actions?: React.ReactNode;
 }
 
 const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
-  ({ tone = 'info', title, icon, className, children, ...props }, ref) => {
+  ({ tone = 'info', title, icon, actions, className, children, ...props }, ref) => {
     const resolvedTone: BannerTone = tone ?? 'info';
     const assertive = resolvedTone === 'error' || resolvedTone === 'warning';
     const glyph = icon === false ? null : (icon ?? toneIcon[resolvedTone]);
+    const politeness = assertive ? 'assertive' : 'polite';
+
+    // The title span and its marker are written ONCE; both layouts render this same node.
+    const body = (
+      <>
+        {/* DECISION Phase 88.6-36 (D-03 / UI-SPEC §4.5): the title is 700, chosen OVER the
+            shipped 600 and OVER §4.5's other outcome (400 plus a colour token). This is the
+            HIERARCHY case and not the emphasis one: the title is the only thing distinguishing
+            itself from the message directly beneath it — same ink, same rung, same box — so
+            dropping to 400 would erase the distinction rather than re-carry it. 600 is a
+            prohibition outside `Button` (§4.2), and this is the last 600 in this primitive.
+            The banner BODY stays at `text-sm` (the cva base above): that rung is a ruled
+            question for the whole banner family, not this sweep's to answer. */}
+        {title && <span className="block font-bold">{title}</span>}
+        {children}
+      </>
+    );
 
     return (
       <div
@@ -100,21 +136,16 @@ const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
             className={cn('mt-0.5 shrink-0', toneIconColor[resolvedTone])}
           />
         )}
-        <StatusRegion
-          politeness={assertive ? 'assertive' : 'polite'}
-          className="flex-1"
-        >
-          {/* DECISION Phase 88.6-36 (D-03 / UI-SPEC §4.5): the title is 700, chosen OVER the
-              shipped 600 and OVER §4.5's other outcome (400 plus a colour token). This is the
-              HIERARCHY case and not the emphasis one: the title is the only thing distinguishing
-              itself from the message directly beneath it — same ink, same rung, same box — so
-              dropping to 400 would erase the distinction rather than re-carry it. 600 is a
-              prohibition outside `Button` (§4.2), and this is the last 600 in this primitive.
-              The banner BODY stays at `text-sm` (the cva base above): that rung is a ruled
-              question for the whole banner family, not this sweep's to answer. */}
-          {title && <span className="block font-bold">{title}</span>}
-          {children}
-        </StatusRegion>
+        {actions === undefined ? (
+          <StatusRegion politeness={politeness} className="flex-1">
+            {body}
+          </StatusRegion>
+        ) : (
+          <div className="flex-1">
+            <StatusRegion politeness={politeness}>{body}</StatusRegion>
+            {actions}
+          </div>
+        )}
       </div>
     );
   }
