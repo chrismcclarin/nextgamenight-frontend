@@ -725,3 +725,158 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     expect(box()).toHaveTextContent(/couldn't reach the server/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PHASE 88.6.1-34, TASK 2 — the screenshot field's real name (MEDLOW-32, AC-22), the silent
+// required stars (AC-33 clause 2, W024, register N-1), and the D-22 house empty-region shape on
+// the remaining three regions (screenshot error, submit error, gate line), plus Edge R8 adjacency.
+// Every arm was run against the tree as task 1 left it; the adjacency case is labelled
+// PRESERVATION because it was already true and pins what must not move.
+// ---------------------------------------------------------------------------
+
+describe('FeedbackForm — Phase 88.6.1-34 task 2 (MEDLOW-32, AC-33 stars, D-22 regions, R8 adjacency)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement;
+  const overSizeFile = (name: string) =>
+    new File([new Uint8Array(2 * 1024 * 1024 + 1)], name, { type: 'image/png' });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = undefined;
+    h.query = {};
+    fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  it('MEDLOW-32 — the file input is named "Screenshot (optional)" first, and still contains the drop zone words (WCAG 2.5.3 label-in-name)', () => {
+    render(<FeedbackForm onClose={() => {}} />);
+    const input = fileInput();
+    expect(input).toHaveAccessibleName(/^Screenshot \(optional\)/);
+    expect(input).toHaveAccessibleName(/Click to attach a screenshot/);
+  });
+
+  it('MEDLOW-32 — aria-labelledby lists exactly the section label then the drop zone; the drop zone keeps its for, the section label gains none', () => {
+    render(<FeedbackForm onClose={() => {}} />);
+    const input = fileInput();
+    const ids = (input.getAttribute('aria-labelledby') ?? '').split(' ').filter(Boolean);
+    expect(ids).toHaveLength(2);
+    // getElementById, never a CSS id selector: useId ids contain colons.
+    const section = document.getElementById(ids[0]);
+    const dropzone = document.getElementById(ids[1]);
+    expect(section?.tagName).toBe('LABEL');
+    expect(dropzone?.tagName).toBe('LABEL');
+    expect(section!.textContent).toMatch(/^Screenshot \(optional\)$/);
+    expect(dropzone!.textContent).toMatch(/Click to attach a screenshot/);
+    expect(ids[0]).toMatch(/-screenshot-label$/);
+    expect(ids[1]).toMatch(/-screenshot-dropzone$/);
+    // Neither label gains or loses a for: the drop zone still opens the picker, the heading never does.
+    expect(dropzone).toHaveAttribute('for', input.id);
+    expect(section).not.toHaveAttribute('for');
+  });
+
+  it('AC-33 / W024 — the two required stars are aria-hidden, keep their colour, and the inputs are named without them and stay required', () => {
+    render(<FeedbackForm onClose={() => {}} />);
+    const stars = Array.from(document.querySelectorAll('label span.text-red-500'));
+    expect(stars).toHaveLength(2);
+    stars.forEach((star) => {
+      expect(star).toHaveAttribute('aria-hidden', 'true');
+      expect(star.textContent).toBe('*');
+    });
+    const subject = screen.getByPlaceholderText(/Brief description/i);
+    const description = screen.getByPlaceholderText(/provide as much detail/i);
+    expect(subject).toHaveAccessibleName('Subject');
+    expect(description).toHaveAccessibleName('Description');
+    expect(subject).toBeRequired();
+    expect(description).toBeRequired();
+  });
+
+  it('D-22 — the screenshot-error region (assertive) is sr-only while empty, and the SAME node is visible with its classes when a file is rejected', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    const before = regionByIdSuffix('-screenshot-error');
+    expect(before.textContent).toBe('');
+    expect(before).toHaveClass('sr-only');
+
+    await user.upload(fileInput(), overSizeFile('huge.png'));
+
+    await waitFor(() => expect(regionByIdSuffix('-screenshot-error')).toHaveTextContent(/too large/i));
+    const after = regionByIdSuffix('-screenshot-error');
+    expect(after).toBe(before);
+    expect(after).not.toHaveClass('sr-only');
+    expect(after).toHaveClass('text-xs');
+    expect(after).toHaveClass('text-content-status-error');
+    expect(after).toHaveClass('mt-1');
+  });
+
+  it('D-22 — the submit-error region (assertive) is sr-only while empty, and the SAME node is the visible error box after a failed send', async () => {
+    fetchMock.mockImplementation(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    const before = regionByIdSuffix('-submit-error');
+    expect(before.textContent).toBe('');
+    expect(before).toHaveClass('sr-only');
+
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description.');
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+
+    await waitFor(() => expect((regionByIdSuffix('-submit-error').textContent ?? '').length).toBeGreaterThan(0));
+    const after = regionByIdSuffix('-submit-error');
+    expect(after).toBe(before);
+    expect(after).not.toHaveClass('sr-only');
+    expect(after).toHaveClass('bg-status-error-subtle');
+    expect(after).toHaveClass('border-status-error');
+    expect(after).toHaveClass('text-content-status-error');
+  });
+
+  it('D-22 — the gate line (polite) is sr-only while empty with no reserved min-height, and the SAME node is visible when the reply-to line is set', () => {
+    const { rerender } = render(<FeedbackForm onClose={() => {}} />);
+    const before = gateStatusRegion();
+    expect(before.textContent).toBe('');
+    expect(before).toHaveClass('sr-only');
+    expect(before.className).not.toMatch(/\bmin-h-/);
+
+    h.self = { id: 'u1', email: SYNTHETIC };
+    rerender(<FeedbackForm onClose={() => {}} />);
+
+    const after = gateStatusRegion();
+    expect(after).toBe(before);
+    expect(after).toHaveTextContent(/couldn't load your email address/i);
+    expect(after).not.toHaveClass('sr-only');
+    expect(after.className).not.toMatch(/\bmin-h-/);
+  });
+
+  it('PRESERVATION, Edge R8 adjacency — exactly two alert regions (the two errors) and two status regions (attach, gate); no region nests in another', () => {
+    render(<FeedbackForm onClose={() => {}} />);
+    const regions = {
+      screenshotError: regionByIdSuffix('-screenshot-error'),
+      submitError: regionByIdSuffix('-submit-error'),
+      attach: regionByIdSuffix('-screenshot-attached'),
+      gate: regionByIdSuffix('-submit-status'),
+    };
+    expect(regions.screenshotError).toHaveAttribute('role', 'alert');
+    expect(regions.submitError).toHaveAttribute('role', 'alert');
+    expect(regions.attach).toHaveAttribute('role', 'status');
+    expect(regions.gate).toHaveAttribute('role', 'status');
+    const form = regions.gate.closest('form')!;
+    expect(form.querySelectorAll('[role="alert"]')).toHaveLength(2);
+    expect(form.querySelectorAll('[role="status"]')).toHaveLength(2);
+    const all = Object.values(regions);
+    all.forEach((outer) => {
+      all.forEach((inner) => {
+        if (outer !== inner) expect(outer.contains(inner)).toBe(false);
+      });
+    });
+  });
+});
