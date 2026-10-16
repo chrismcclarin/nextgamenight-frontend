@@ -2689,4 +2689,24 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     await flushMacrotask();
     expect(screen.getByRole('button', { name: 'Catan' })).toBeInTheDocument();
   });
+
+  it('S5: suggestions already on screen for one event are cleared when the page moves to a DIFFERENT event (the other half of S4)', async () => {
+    // S4 narrowed the clean-slate clear to an event id change; this pins that the narrowed clear
+    // still fires for a new event. Event A's suggestions render; event B's stay in flight, so
+    // anything still showing on B can only be A's.
+    (suggestionsAPI.getEventSuggestions as Mock)
+      .mockResolvedValueOnce([{ id: 'g-azul', name: 'Azul' }])
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const { rerender } = renderEventDetail();
+    expect(await screen.findByRole('button', { name: 'Azul' })).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockResolvedValue(
+      eventFixture({ id: SECOND_EVENT_ID, title: 'Second Night' })
+    );
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    await waitFor(() => expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('button', { name: 'Azul' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Recommended Games' })).toBeNull();
+  });
 });

@@ -677,6 +677,9 @@ export default function GameDetailPage() {
     // sign-in redirect acts only on the newest run's answer.
     const eventFetchGenRef = useRef(0);
     const eventErrorGenRef = useRef(0);
+    // The event id the clean-slate reset last cleared Recommended Games for (see the DECISION at
+    // the reset in fetchEventOnly).
+    const suggestionsClearedForEventRef = useRef(null);
 
     useEffect(() => {
         // 88.6.1-25 (AC-6): a rejected event or game id makes no request at all. Without this,
@@ -795,8 +798,20 @@ export default function GameDetailPage() {
             setRsvpByUserId({});
             setEventRsvpStatuses({});
             setBringersSet(new Set());
-            setEventSuggestions([]);
-            setSuggestionsPlayerCount(null);
+            // DECISION Phase 88.6.1-25 (retention rule, amended by the wave 4 CI gate, run 38878098281):
+            // Recommended Games is cleared only when the EVENT ID changes, NOT on every run that reaches
+            // this reset. The reset also runs for the SAME event whenever identity resolves before the
+            // first load has stamped the entity key (the newest run is the only one that stamps), and the
+            // suggestions effect keys on the event, not identity, so it never asks again: clearing here
+            // on every run hid the section for real users whenever suggestions landed before identity.
+            // A superseded event's late answer is still dropped by the suggestions effect's own cleanup
+            // flag, which is what keeps the different-event half of the rule. Moving this clear back to
+            // every run is a regression, not a tidy-up.
+            if (suggestionsClearedForEventRef.current !== event_id) {
+                suggestionsClearedForEventRef.current = event_id;
+                setEventSuggestions([]);
+                setSuggestionsPlayerCount(null);
+            }
             setEffectiveGroupId(group_id || null);
         }
         try {
