@@ -198,7 +198,14 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await code.fill(FAKE_CODE);
 
     // Scoped to the code row: the SMS rows carry a second button named "Verify".
-    const verify = code.locator('xpath=..').getByRole('button', { name: 'Verify', exact: true });
+    // The name matches BOTH labels of this one control, idle "Verify" and in-flight "Verifying..."
+    // (userProfile/page.js, VERIFY_CODE_IN_FLIGHT_LABEL, no aria-label), so the locator follows the
+    // same button through its label flip. An exact "Verify" locator stopped matching once the label
+    // flipped, and every in-flight assertion failed with "element(s) not found" (CI run 38878098281,
+    // both projects). The idle name is asserted before the press, so nothing the old locator
+    // implied is lost.
+    const verify = code.locator('xpath=..').getByRole('button', { name: /^Verif(y|ying\.\.\.)$/ });
+    await expect(verify).toHaveText('Verify');
     await verify.focus();
     await page.keyboard.press('Enter');
     await mocks.verify.arrived;
