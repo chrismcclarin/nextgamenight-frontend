@@ -131,7 +131,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import FriendsPage from './page';
 // ApiError survives the partial mock above (the `importOriginal` spread), so the
 // error pins exercise the REAL code-to-copy derivation in useFetchErrorState.
-import { ApiError, friendshipsAPI } from '@/lib/api';
+import { ApiError, friendshipsAPI, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { queryCacheOnError } from '@/lib/queryClient';
 
@@ -190,6 +190,13 @@ beforeEach(() => {
   providerCtx.receivedRequests = [];
   providerCtx.acceptRequest.mockResolvedValue({});
   providerCtx.declineRequest.mockResolvedValue({});
+  // 88.6.1-40: the API mocks too (reset first, so an unconsumed one-shot cannot leak), because one arm's admin group used to leak into every later render.
+  (groupsAPI.getUserGroups as Mock).mockReset().mockResolvedValue([]);
+  (groupsAPI.getGroupMembers as Mock).mockReset().mockResolvedValue([]);
+  (invitesAPI.sendFriendInvite as Mock).mockReset().mockResolvedValue({});
+  (friendshipsAPI.sendRequest as Mock).mockReset().mockResolvedValue({});
+  (friendshipsAPI.removeFriend as Mock).mockReset().mockResolvedValue({});
+  (friendshipsAPI.searchUserByEmail as Mock).mockReset().mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -682,5 +689,274 @@ describe('friends #127 / R8 §2 — the email search 404 is STATUS-keyed, not pr
       await screen.findByText("We couldn't run that search. Please try again.")
     ).toBeInTheDocument();
     expect(screen.queryByText('No user found with that email.')).toBeNull();
+  });
+});
+
+// Phase 88.6.1-40 Task 1 (Req 7, Req 4 / D-35, Req 8 / D-22, Req 11). Shared helpers for the
+// three 88.6.1-40 describes below. `//` comments only in this file (FE-TESTING-CONVENTIONS CF-9).
+function deferred<T = unknown>() {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+// One macrotask inside act: every promise continuation queued before it has run.
+const flushMacrotask = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
+
+// A group the caller administers (the invite bar lists only owner/admin groups).
+const adminGroup = (id: string, name: string) => ({
+  id,
+  name,
+  Users: [{ id: SELF_UUID, UserGroup: { role: 'owner' } }],
+});
+
+const statusRegion = () => document.getElementById('friends-batch-status');
+const errorRegion = () => document.getElementById('friends-batch-error');
+const inviteButton = () => screen.getByRole('button', { name: /Invite to Group$/ });
+
+// Renders with the given admin groups, selects `select`, and returns once that group's member
+// load has settled: the members call was made (positive), one macrotask has flushed, and the
+// members loader is gone (asserted, not waited on).
+async function renderWithGroups(
+  groups: Array<Record<string, unknown>>,
+  select: string,
+  options: RenderFriendsOptions = {}
+) {
+  (groupsAPI.getUserGroups as Mock).mockResolvedValue(groups);
+  const utils = renderFriends(options);
+  fireEvent.change(await screen.findByLabelText('Invite to group'), {
+    target: { value: select },
+  });
+  await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledWith(select));
+  await flushMacrotask();
+  expect(screen.queryByRole('status', { name: 'Loading group members' })).toBeNull();
+  return utils;
+}
+
+describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-40)', () => {
+  it('T: each tab button carries the house OUTSET ring, never the inset form (Req 7, AC-23)', async () => {
+    renderFriends();
+    await screen.findByText('Dana');
+    for (const name of [/^Friends/, /^Requests/, /^Sent/]) {
+      const tab = screen.getByRole('button', { name });
+      for (const token of [
+        'focus:outline-hidden',
+        'focus-visible:ring-2',
+        'focus-visible:ring-focus-ring',
+        'focus-visible:ring-offset-2',
+      ]) {
+        expect(tab.className.split(/\s+/)).toContain(token);
+      }
+      expect(tab.className).not.toContain('focus-visible:ring-inset');
+    }
+  });
+
+  it('B-gate: Invite to Group is aria-disabled (never native), refuses a gated press, and sends once for two presses (D-35)', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
+    const invite = inviteButton();
+    // At rest with nothing checked: gated, focusable, and a press sends nothing.
+    expect(invite).not.toHaveAttribute('disabled');
+    expect(invite).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(invite);
+    expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(0);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    expect(invite).not.toHaveAttribute('aria-disabled');
+
+    const send = deferred();
+    (invitesAPI.sendFriendInvite as Mock).mockReturnValueOnce(send.promise);
+    fireEvent.click(invite);
+    expect(invite).toHaveAttribute('aria-disabled', 'true');
+    expect(invite).toHaveAttribute('aria-busy', 'true');
+    expect(invite).not.toHaveAttribute('disabled');
+    fireEvent.click(invite);
+    expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      send.resolve({});
+    });
+    // Positive signal: the outcome landed.
+    await waitFor(() => expect(statusRegion()?.textContent).toBe('Invited 1 friend(s) to Test Group!'));
+    // The selection cleared, so the pressed button is gated again, still focusable.
+    expect(invite).not.toHaveAttribute('disabled');
+    expect(invite).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('B2: both batch regions are mounted empty and sr-only before any batch; a success is heard from the SAME polite node (Req 8, D-22)', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
+    const status = statusRegion();
+    const error = errorRegion();
+    expect(status).not.toBeNull();
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status?.textContent).toBe('');
+    expect(status?.className.split(/\s+/)).toContain('sr-only');
+    expect(error).not.toBeNull();
+    expect(error).toHaveAttribute('role', 'alert');
+    expect(error?.textContent).toBe('');
+    expect(error?.className.split(/\s+/)).toContain('sr-only');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(inviteButton());
+    await waitFor(() => expect(statusRegion()?.textContent).toBe('Invited 1 friend(s) to Test Group!'));
+    // Node identity: the region that was there before the outcome is the one that speaks it.
+    expect(statusRegion()).toBe(status);
+    const classes = status?.className.split(/\s+/) ?? [];
+    expect(classes).not.toContain('sr-only');
+    for (const token of ['mt-3', 'p-3', 'rounded-lg', 'bg-status-success-subtle', 'text-content-status-success', 'border-status-success']) {
+      expect(classes).toContain(token);
+    }
+    expect(errorRegion()).toBe(error);
+    expect(error?.textContent).toBe('');
+  });
+
+  it('B3: a partial batch is heard from the polite region with the warning tint', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1', {
+      friends: [FRIENDSHIP, FRIENDSHIP_2],
+    });
+    (invitesAPI.sendFriendInvite as Mock)
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('x'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Sam' }));
+    fireEvent.click(inviteButton());
+
+    await waitFor(() => expect(statusRegion()?.textContent).toBe('Invited 1 friend(s), 1 failed'));
+    expect(statusRegion()?.className.split(/\s+/)).toContain('bg-status-warning-subtle');
+    expect(errorRegion()?.textContent).toBe('');
+  });
+
+  it('B4: an all-failed batch is heard from the alert region as R2, byte-equal (D-32)', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
+    (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(new Error('x'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(inviteButton());
+
+    await waitFor(() =>
+      expect(errorRegion()?.textContent).toBe("We couldn't send those invites. Please try again.")
+    );
+    const classes = errorRegion()?.className.split(/\s+/) ?? [];
+    expect(classes).toContain('bg-status-error-subtle');
+    expect(classes).not.toContain('sr-only');
+    expect(statusRegion()?.textContent).toBe('');
+  });
+
+  it('B5: the success line names the group the batch was SENT to, not one chosen afterwards (Req 11)', async () => {
+    await renderWithGroups(
+      [adminGroup('g1', 'Test Group'), adminGroup('g2', 'Other Group')],
+      'g1'
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(inviteButton());
+    await waitFor(() => expect(statusRegion()?.textContent).toBe('Invited 1 friend(s) to Test Group!'));
+
+    fireEvent.change(screen.getByLabelText('Invite to group'), { target: { value: 'g2' } });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledWith('g2'));
+    await flushMacrotask();
+    expect(statusRegion()?.textContent).toBe('Invited 1 friend(s) to Test Group!');
+    expect(statusRegion()?.textContent).not.toContain('Other Group');
+  });
+
+  it('B6 (R8 backstop): the same outcome twice in a row is a DOM mutation on the same node both times', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(inviteButton());
+    await waitFor(() => expect(statusRegion()?.textContent).toBe('Invited 1 friend(s) to Test Group!'));
+    const status = statusRegion() as HTMLElement;
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => records.push(...list));
+    observer.observe(status, { childList: true, characterData: true, subtree: true });
+    try {
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+      fireEvent.click(inviteButton());
+      await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(statusRegion()?.textContent).toBe('Invited 1 friend(s) to Test Group!'));
+      expect(records.length).toBeGreaterThan(0);
+      expect(statusRegion()).toBe(status);
+    } finally {
+      observer.disconnect();
+    }
+  });
+
+  it('B-stay: the outcome stays past 5 s; it clears only when the next batch starts (Req 11, review r2 #203)', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
+    const status = statusRegion();
+    expect(status).not.toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    // Fake timers only after the page settled (they would stall the mount fetches otherwise).
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(inviteButton());
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(statusRegion()?.textContent).toBe('Invited 1 friend(s) to Test Group!');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(statusRegion()).toBe(status);
+    expect(statusRegion()?.textContent).toBe('Invited 1 friend(s) to Test Group!');
+    vi.useRealTimers();
+  });
+
+  it('B-reload: a selection made during a member reload cannot outlive it into Invited 0 (Req 11, review r2 #49)', async () => {
+    await renderWithGroups(
+      [adminGroup('g1', 'Test Group'), adminGroup('g2', 'Other Group')],
+      'g1'
+    );
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    fireEvent.change(screen.getByLabelText('Invite to group'), { target: { value: 'g2' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    // Refused while the new group's members load.
+    expect(inviteButton()).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      held.resolve([{ id: FRIEND_UUID }]);
+    });
+    // Positive signal: the new group's members landed (Dana is shown as already in it).
+    await screen.findByText('(already in group)');
+    expect(screen.queryByText('1 selected')).toBeNull();
+    fireEvent.click(inviteButton());
+    await flushMacrotask();
+    expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(0);
+    expect(statusRegion()?.textContent ?? '').not.toContain('Invited 0');
+    expect(errorRegion()?.textContent ?? '').not.toContain('Invited 0');
+    expect(screen.queryByText(/Invited 0/)).toBeNull();
+  });
+
+  it('B-stale: an older group\'s late members answer neither prunes the selection nor ends the load (newest wins, review r3 L-05)', async () => {
+    await renderWithGroups(
+      [adminGroup('g1', 'Test Group'), adminGroup('g2', 'Other Group'), adminGroup('g3', 'Third Group')],
+      'g1'
+    );
+    const dg2 = deferred<unknown>();
+    const dg3 = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock)
+      .mockReturnValueOnce(dg2.promise)
+      .mockReturnValueOnce(dg3.promise);
+    fireEvent.change(screen.getByLabelText('Invite to group'), { target: { value: 'g2' } });
+    fireEvent.change(screen.getByLabelText('Invite to group'), { target: { value: 'g3' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    // The OLDER answer (g2's) lands, naming Dana a member.
+    await act(async () => {
+      dg2.resolve([{ id: FRIEND_UUID }]);
+      await new Promise<void>((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    expect(inviteButton()).toHaveAttribute('aria-disabled', 'true');
+
+    // The CURRENT answer (g3's) lands: positive signal, the button is no longer gated.
+    await act(async () => {
+      dg3.resolve([]);
+    });
+    await waitFor(() => expect(inviteButton()).not.toHaveAttribute('aria-disabled'));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
   });
 });
