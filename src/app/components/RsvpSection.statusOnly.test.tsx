@@ -254,9 +254,14 @@ describe('RsvpSection status tap is status-only (owner ruling a, 2026-09-01)', (
 //     SOURCE half only: jsdom performs no layout, so the rendered box is measured by the phone
 //     lane arm in `e2e/touch-targets.spec.ts`. Neither substitutes for the other.
 //
-//  9. A CONDITIONALLY MOUNTED FAILURE. A screen reader announces CHANGES to a live region, not
-//     the mount of a new one. PRESENCE-IN-THE-INITIAL-RENDER is asserted SEPARATELY from the
-//     text landing in it — one combined assertion cannot tell the two implementations apart.
+//  9. A CONDITIONALLY MOUNTED FAILURE. CORRECTED Phase 88.6.1-38 (D-42): a conditional mount is
+//     unreliable for a POLITE / status region, whose changes are announced and whose mount is
+//     not; an inserted role="alert" that arrives with its text IS announced. The failure region
+//     is still pinned ALWAYS MOUNTED, for two other reasons: node identity (the text lands in the
+//     node that was already there), and the clear-at-start that makes an identical repeated
+//     failure re-announce. The paragraph it replaced was silent because it had no live role at
+//     all. PRESENCE-IN-THE-INITIAL-RENDER is asserted SEPARATELY from the text landing in it —
+//     one combined assertion cannot tell the two implementations apart.
 //
 // 10. A SILENT SUCCESS, AND ONLY-THE-FIRST-SUCCESS. Same pair the hero's W45(a) arms pin
 //     (`NextGameNightCard.test.tsx`): node identity across two consecutive saves, plus the
@@ -499,6 +504,8 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(region.textContent?.trim()).toBe(NOTE_SAVED_COPY));
     expect(screen.getByRole('status')).toBe(region);
+    // D-22: a set region is visible.
+    expect(region).not.toHaveClass('sr-only');
 
     // SECOND save, deferred so the in-flight window is observable: the region must be EMPTY
     // while the second request is still in flight, which is what proves the clear happened at
@@ -508,6 +515,9 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     expect(region.textContent?.trim()).toBe('');
 
+    // D-22 (plan 88.6.1-38): the empty in-flight window is visually hidden...
+    expect(region).toHaveClass('sr-only');
+
     await act(async () => {
       write.resolve({ id: 'rsvp-own', status: 'yes', note: null });
       await write.promise;
@@ -515,6 +525,8 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
 
     await waitFor(() => expect(region.textContent?.trim()).toBe(NOTE_SAVED_COPY));
     expect(screen.getByRole('status')).toBe(region);
+    // ...and the region holding text never is (visible-when-set, owner ruling 2026-09-14).
+    expect(region).not.toHaveClass('sr-only');
   });
 
   it('success and failure CLEAR EACH OTHER — the two regions cannot contradict', async () => {
@@ -533,11 +545,81 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(failure.textContent?.trim()).not.toBe(''));
     expect(success.textContent?.trim()).toBe('');
+    // D-22: whichever region is empty is visually hidden; whichever holds text is not.
+    expect(success).toHaveClass('sr-only');
+    expect(failure).not.toHaveClass('sr-only');
 
     submitRsvp.mockResolvedValue({ id: 'rsvp-own', status: 'yes', note: null });
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(success.textContent?.trim()).toBe(NOTE_SAVED_COPY));
     expect(failure.textContent?.trim()).toBe('');
+    expect(failure).toHaveClass('sr-only');
+    expect(success).not.toHaveClass('sr-only');
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Phase 88.6.1-38 — D-22 / W029.
+//
+// 14. A VISIBLE OUTCOME FLUSH ON THE COUNT BANNER (W029, WR-301). The two outcome regions sat in
+//     a display-contents wrapper whose comment reasoned from Tailwind v3's adjacent-sibling
+//     selector. Under v4.3.3 the stack rule sets margin-block-end on every child but the last,
+//     so a visible "Could not save..." or "Note saved" line got 16px above and 0px below. The
+//     fix makes both regions DIRECT children of the stack on the D-22 prop (srOnlyWhenEmpty)
+//     with no margin utility. jsdom performs no layout, so these pins are the STRUCTURE half;
+//     the 375px geometry is e2e/rsvp-section-outcome-spacing.spec.ts in the phone project.
+const MARGIN_UTILITY = /(^|\s)m[tbylrx]?-\d/;
+
+describe('RsvpSection D-22 / W029 — the outcome regions sit directly in the spaced stack', () => {
+  it('both regions are direct children of the stack, no contents wrapper, and neither is its last child', async () => {
+    renderSection();
+    const group = await screen.findByRole('group', { name: /^RSVP for / });
+
+    const stack = group.parentElement as HTMLElement;
+    const failure = screen.getByRole('alert');
+    const success = screen.getByRole('status');
+    expect(failure.parentElement).toBe(stack);
+    expect(success.parentElement).toBe(stack);
+    expect(stack.querySelector('.contents')).toBeNull();
+    // The stack rule gives every child BUT the last its 16px bottom margin; a region as the last
+    // child would hand the visible last child that margin instead.
+    const last = stack.lastElementChild as HTMLElement;
+    expect(last.getAttribute('role')).not.toBe('status');
+    expect(last.getAttribute('role')).not.toBe('alert');
+  });
+
+  it('idle: both regions are empty, visually hidden, and carry no margin utility', async () => {
+    renderSection();
+    // POSITIVE settle signal first (the loaded trio), then the empty-state assertions.
+    await screen.findByRole('button', { name: statusConfig.no.buttonText });
+
+    const failure = screen.getByRole('alert');
+    const success = screen.getByRole('status');
+    for (const region of [failure, success]) {
+      expect(region.textContent).toBe('');
+      expect(region).toHaveClass('sr-only');
+      expect(region.className).not.toMatch(MARGIN_UTILITY);
+    }
+  });
+
+  it('failure arm: the failure line lands visible in the SAME node, with no margin utility', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const no = await screen.findByRole('button', { name: statusConfig.no.buttonText });
+
+    const failure = screen.getByRole('alert');
+    const success = screen.getByRole('status');
+    submitRsvp.mockRejectedValue(new Error('network down'));
+    await user.click(no);
+
+    await waitFor(() =>
+      expect(failure.textContent).toBe('Could not save your response. Please try again.')
+    );
+    expect(screen.getByRole('alert')).toBe(failure);
+    expect(failure).not.toHaveClass('sr-only');
+    expect(failure.className).not.toMatch(MARGIN_UTILITY);
+    expect(success.textContent).toBe('');
+    expect(success).toHaveClass('sr-only');
   });
 });
 
