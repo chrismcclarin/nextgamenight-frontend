@@ -1669,6 +1669,93 @@ function deferred(mock: Mock) {
   return { settle: (v?: unknown) => settle(v), fail: (r?: unknown) => fail(r) };
 }
 
+// 88.6.1-47 (D-35, AC-12, copy row E6): the event page's Share Game QR is a PRESSED control.
+// While its invite-token request is in flight it keeps focus (aria-disabled, never the native
+// attribute), reads the E6 label, and a synchronous ref latch refuses a second press, so two
+// presses send ONE request. The label literal below is byte-equal to the copy table's row E6.
+//
+// The jsdom focus claim here is NODE IDENTITY only: jsdom never blurs a natively disabled
+// element (FE-TESTING-CONVENTIONS C-11), so `document.activeElement` staying on the button
+// would pass on the unfixed tree too. The RED halves are the attributes, the label and the
+// request count. The real-browser focus proof (and the QR dialog handing focus back) is the
+// phone e2e, e2e/share-game-qr-pending.spec.ts, run in CI.
+describe('gameDetail Share Game QR in flight (88.6.1-47, D-35)', () => {
+  const LOADING = 'Loading QR code...';
+
+  it('Q1: two presses with no render flush between them send ONE request, and the pressed node stays focusable', async () => {
+    deferred(eventsAPI.getEventInviteToken as Mock);
+    renderEventDetail({ role: 'member' });
+    const share = await screen.findByRole('button', { name: 'Share Game QR' });
+    share.focus();
+
+    // The no-flush shape (the GuestInvite gate's): both presses inside ONE act, so the second
+    // press reads the previous render's state. Only a synchronous latch can refuse it.
+    await act(async () => {
+      share.click();
+      share.click();
+    });
+
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledWith(EVENT_ID);
+    const loading = screen.getByRole('button', { name: LOADING });
+    expect(loading).toBe(share);
+    expect(loading).toHaveAttribute('aria-disabled', 'true');
+    expect(loading.hasAttribute('disabled')).toBe(false);
+    // Confirm-only in jsdom (see the describe comment).
+    expect(document.activeElement).toBe(share);
+  });
+
+  it('Q2: the in-flight state persists through a second press and ends only when the FIRST request settles', async () => {
+    const token = deferred(eventsAPI.getEventInviteToken as Mock);
+    renderEventDetail({ role: 'member' });
+    const share = await screen.findByRole('button', { name: 'Share Game QR' });
+
+    await act(async () => {
+      share.click();
+    });
+    await act(async () => {
+      share.click();
+    });
+
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
+    const loading = screen.getByRole('button', { name: LOADING });
+    expect(loading).toBe(share);
+    expect(loading).toHaveAttribute('aria-disabled', 'true');
+    expect(loading.hasAttribute('disabled')).toBe(false);
+
+    await act(async () => {
+      token.settle({ invite_url: 'https://example.test/i/q2' });
+    });
+
+    const idle = await screen.findByRole('button', { name: 'Share Game QR' });
+    expect(idle).toBe(share);
+    expect(idle).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('Q3 (control): a failed request releases the latch, so the next press sends a second request', async () => {
+    const token = deferred(eventsAPI.getEventInviteToken as Mock);
+    renderEventDetail({ role: 'member' });
+    const share = await screen.findByRole('button', { name: 'Share Game QR' });
+
+    await act(async () => {
+      share.click();
+    });
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      token.fail(new Error('boom'));
+    });
+
+    const idle = await screen.findByRole('button', { name: 'Share Game QR' });
+    expect(idle).not.toHaveAttribute('aria-disabled');
+
+    await act(async () => {
+      idle.click();
+    });
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('gameDetail event-actions kebab: the three authorization gates (D56)', () => {
   it.each(['owner', 'admin'] as const)(
     'gives a group %s the Cancel item and NOT the Leave item',
