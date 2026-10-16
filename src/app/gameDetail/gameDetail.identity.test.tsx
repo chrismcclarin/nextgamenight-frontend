@@ -29,8 +29,12 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   }),
 }));
 
+// Both URL ids are UUIDs: the page guards every URL id with isUuid (88.6.1-25, D-03 / CSPT).
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams('game_id=GAME1&group_id=GROUP1'),
+  useSearchParams: () =>
+    new URLSearchParams(
+      'game_id=77777777-7777-4777-8777-777777777777&group_id=44444444-4444-4444-8444-444444444444'
+    ),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
@@ -86,7 +90,7 @@ import { gamesAPI, eventsAPI, gameReviewsAPI, groupsAPI } from '@/lib/api';
 type Mock = ReturnType<typeof vi.fn>;
 
 const GAME = {
-  id: 'GAME1',
+  id: '77777777-7777-4777-8777-777777777777',
   name: 'Wingspan',
   description: 'A bird game',
   image_url: '',

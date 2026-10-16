@@ -40,8 +40,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
-const GAME_ID = 'GAME1';
-const GROUP_ID = 'GROUP1';
+// The page guards all three URL ids (game_id, event_id, group_id) with isUuid at the
+// one URL read (88.6.1-25, D-03 / CSPT), so every id the harness puts in the URL must be
+// UUID-shaped, and each fixture id is distinct from every other one.
+const GAME_ID = '77777777-7777-4777-8777-777777777777';
+const GROUP_ID = '44444444-4444-4444-8444-444444444444';
+// A valid UUID that is NOT the event's group (88.6.1-25 task 3, D-41 precedence).
+const URL_ONLY_GROUP_ID = '66666666-6666-4666-8666-666666666666';
 
 /**
  * Group role of the CALLER, as it will appear on their roster row.
@@ -49,7 +54,7 @@ const GROUP_ID = 'GROUP1';
  */
 export type CallerRole = 'owner' | 'admin' | 'member' | 'pending' | 'game-only';
 
-const EVENT_ID = 'EVT1';
+const EVENT_ID = '55555555-5555-4555-8555-555555555555';
 
 // `search` is hoisted state, not a literal, because gameDetail renders a WHOLLY
 // DIFFERENT tree for `?event_id=` (the single-event view: participant strip,
@@ -62,6 +67,20 @@ const h = vi.hoisted(() => ({
   // same way `selfUuid` models the identity half. Defaults to the shipped literal,
   // so every pre-existing test is byte-equivalent.
   userSub: 'auth0|self-sub' as string | undefined,
+  // 88.6.1-25: `useUser().isLoading`, so a test can hold the session unsettled (the SPEC
+  // backstop `concurrency / R1`). False by default, so every older test is unchanged.
+  authLoading: false as boolean,
+  // 88.6.1-25: ONE router push spy and ONE identity refetch spy for the whole file, so a
+  // test can assert a navigation (AC-7) or the D-02 identity recheck. Both used to be a
+  // fresh vi.fn() per render, which nothing could observe.
+  push: vi.fn(),
+  selfRefetch: vi.fn(),
+}));
+
+// 88.6.1-25 S2: the RsvpSection stub records its latest props so a test can fire
+// onRsvpChange; it still renders the same testid marker, so nothing that queries it moves.
+const rsvpProps = vi.hoisted(() => ({
+  current: null as null | { onRsvpChange?: (status: string) => void },
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -69,18 +88,18 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({
     selfUuid: h.selfUuid,
     self: h.selfUuid ? { id: h.selfUuid, user_id: 'auth0|self-sub' } : undefined,
-    query: { isError: false, error: null, isPending: !h.selfUuid, refetch: vi.fn() },
+    query: { isError: false, error: null, isPending: !h.selfUuid, refetch: h.selfRefetch },
     isPending: !h.selfUuid,
   }),
 }));
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(h.search),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: h.push, replace: vi.fn() }),
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: h.userSub ? { sub: h.userSub } : undefined, isLoading: false }),
+  useUser: () => ({ user: h.userSub ? { sub: h.userSub } : undefined, isLoading: h.authLoading }),
 }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -97,7 +116,10 @@ vi.mock('@/app/components/FriendshipStatusProvider', () => ({
 // Testid markers, not bare nulls (88-33 Task 7): the fork G split asserts WHERE
 // these mount (Upcoming cards yes, history cards no), which a null stub can't pin.
 vi.mock('@/app/components/RsvpSection', () => ({
-  default: () => <div data-testid="rsvp-section" />,
+  default: (props: { onRsvpChange?: (status: string) => void }) => {
+    rsvpProps.current = props;
+    return <div data-testid="rsvp-section" />;
+  },
 }));
 vi.mock('@/app/components/BallotSection', () => ({
   default: () => <div data-testid="ballot-section" />,
@@ -217,7 +239,12 @@ export interface RenderGameDetailOptions {
    * reached — the page picks its branch from this payload, and D-38's CTA sits
    * after BOTH branches, so both need covering.
    */
-  game?: Record<string, unknown>;
+  game?: Record<string, unknown> | null;
+  /**
+   * The URL query (88.6.1-25). Default `game_id=GAME_ID&group_id=GROUP_ID`; a test of the
+   * URL guard passes its own (a rejected or missing id).
+   */
+  search?: string;
 }
 
 /**
@@ -226,9 +253,15 @@ export interface RenderGameDetailOptions {
  * @example renderGameDetail({ role: 'member' })
  */
 export function renderGameDetail(options: RenderGameDetailOptions = {}) {
-  const { role = 'member', events = [SESSION], reviews = [], game = GAME } = options;
+  const {
+    role = 'member',
+    events = [SESSION],
+    reviews = [],
+    game = GAME,
+    search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`,
+  } = options;
   h.selfUuid = SELF_UUID;
-  h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+  h.search = search;
   (gamesAPI.getGame as Mock).mockResolvedValue(game);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue(events);
   (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue(reviews);
@@ -263,6 +296,35 @@ export function participantRow(
 export interface RenderEventDetailOptions {
   role?: CallerRole;
   participants?: Array<Record<string, unknown>>;
+  /**
+   * The URL `group_id` (88.6.1-25). Default GROUP_ID (the event's own group); `null` drops
+   * the param, as the event-created notification link does.
+   */
+  urlGroupId?: string | null;
+  /** When set, `getEvent` rejects with this value instead of resolving the fixture. */
+  getEventRejectsWith?: unknown;
+  /** Merged over the event fixture (e.g. a location a test asserts is NOT on screen). */
+  eventOverrides?: Record<string, unknown>;
+}
+
+/**
+ * The event `getEvent` resolves for EVENT_ID, in its flattened backend shape. Exported so a
+ * test can queue it with `mockResolvedValueOnce(eventFixture())` before a retry.
+ */
+export function eventFixture(
+  overrides: Record<string, unknown> = {},
+  participants: Array<Record<string, unknown>> = [participantRow()]
+) {
+  return {
+    id: EVENT_ID,
+    title: 'Game Night',
+    start_date: '2026-03-01T18:00:00Z',
+    duration_minutes: 120,
+    group_id: GROUP_ID,
+    Group: { id: GROUP_ID, name: 'The Group' },
+    EventParticipations: participants,
+    ...overrides,
+  };
 }
 
 /**
@@ -272,18 +334,21 @@ export interface RenderEventDetailOptions {
  * @example renderEventDetail({ role: 'owner', participants: [participantRow()] })
  */
 export function renderEventDetail(options: RenderEventDetailOptions = {}) {
-  const { role = 'owner', participants = [participantRow()] } = options;
+  const {
+    role = 'owner',
+    participants = [participantRow()],
+    urlGroupId = GROUP_ID,
+    getEventRejectsWith,
+    eventOverrides = {},
+  } = options;
   h.selfUuid = SELF_UUID;
-  h.search = `event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
-  (eventsAPI.getEvent as Mock).mockResolvedValue({
-    id: EVENT_ID,
-    title: 'Game Night',
-    start_date: '2026-03-01T18:00:00Z',
-    duration_minutes: 120,
-    group_id: GROUP_ID,
-    Group: { id: GROUP_ID, name: 'The Group' },
-    EventParticipations: participants,
-  });
+  h.search =
+    urlGroupId === null ? `event_id=${EVENT_ID}` : `event_id=${EVENT_ID}&group_id=${urlGroupId}`;
+  if (getEventRejectsWith !== undefined) {
+    (eventsAPI.getEvent as Mock).mockRejectedValue(getEventRejectsWith);
+  } else {
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture(eventOverrides, participants));
+  }
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor(role));
   (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
   (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
@@ -335,6 +400,13 @@ beforeEach(() => {
   h.selfUuid = undefined;
   h.search = '';
   h.userSub = 'auth0|self-sub';
+  // 88.6.1-25: the session settles by default, the two shared spies forget any queued
+  // behaviour, and the sign-in latch never leaks between cases (jsdom sessionStorage is real).
+  h.authLoading = false;
+  h.push.mockReset();
+  h.selfRefetch.mockReset();
+  rsvpProps.current = null;
+  window.sessionStorage.clear();
 });
 
 afterEach(cleanup);
@@ -1898,5 +1970,341 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
     // focus when the dialog opened is the kebab TRIGGER (`KebabMenu.js` restores to it on close,
     // before the dialog's FocusScope reads `activeElement`). NAMED identity, never "not body".
     await waitFor(() => expect(document.activeElement).toBe(kebab));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1-25 — Requirement 1: an event link shows the screen that matches WHY the event did
+// not load (D-01, D-02, D-03, D-41; AC-1..AC-7). Before this plan every failure, signed out
+// included, said "Event not found". Comments here are line comments only (CF-9), and every
+// absence is asserted after a POSITIVE settle signal (CF-26).
+// ---------------------------------------------------------------------------
+
+const REAL_LOCATION = window.location;
+const SECOND_EVENT_ID = '88888888-8888-4888-8888-888888888888';
+const SIGN_IN_LATCH = `ngevent:signinRedirect:${EVENT_ID}`;
+const UNAUTHORIZED = () => new ApiError('Unauthorized', 'unauthorized', 401);
+
+// C-4: jsdom cannot navigate, so window.location becomes a spy-able stub. Returns the
+// replace spy. The origin fields keep next/link's URL helpers on solid ground.
+function stubLocation({ search, hash = '' }: { search: string; hash?: string }) {
+  const replace = vi.fn();
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: {
+      origin: 'http://localhost',
+      protocol: 'http:',
+      host: 'localhost',
+      hostname: 'localhost',
+      port: '',
+      pathname: '/gameDetail',
+      search,
+      hash,
+      href: `http://localhost/gameDetail${search}${hash}`,
+      replace,
+      assign: vi.fn(),
+    },
+  });
+  return replace;
+}
+
+// One macrotask inside act, so every settled promise and the commit after it have landed.
+async function flushMacrotask() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+// Every request the page builds from a URL id (the first must_have's eight). The
+// self-identity fetch is page chrome and is mocked as a hook, so it is not in this list.
+function urlBuiltFetches(): Array<[string, unknown]> {
+  return [
+    ['getEvent', eventsAPI.getEvent],
+    ['getEventSuggestions', suggestionsAPI.getEventSuggestions],
+    ['getGroupMembers', groupsAPI.getGroupMembers],
+    ['getEventRsvps', rsvpAPI.getEventRsvps],
+    ['getEventBrings', eventBringsAPI.getEventBrings],
+    ['getGame', gamesAPI.getGame],
+    ['getGroupEvents', eventsAPI.getGroupEvents],
+    ['getGameReviews', gameReviewsAPI.getGameReviews],
+  ];
+}
+
+// Every fetch the page could make resolves to a harmless value, so a call shows up as a
+// COUNT rather than as a crash that happens to look like zero requests.
+function armAllFetches() {
+  (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture());
+  (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
+  (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('owner'));
+  (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
+  (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
+  (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+  (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+  (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+}
+
+function renderAt(search: string) {
+  armAllFetches();
+  h.selfUuid = SELF_UUID;
+  h.search = search;
+  return render(<GameDetailPage />);
+}
+
+async function findTextOrFail(text: string, context: string) {
+  try {
+    return await screen.findByText(text);
+  } catch {
+    throw new Error(`${context}: "${text}" never rendered`);
+  }
+}
+
+// G5: a rejected game_id is "Game not found" with ZERO URL-built requests, whatever else
+// the URL carries.
+async function expectGameNotFoundWithZeroRequests(search: string) {
+  renderAt(search);
+  expect(await findTextOrFail('Game not found', search)).toBeInTheDocument();
+  expect(screen.queryByText('No game selected')).toBeNull();
+  expect(screen.queryByText('Event not found')).toBeNull();
+  expect(screen.queryByText('Loading game night...')).toBeNull();
+  expect(screen.queryByText('Loading game details...')).toBeNull();
+  // Zero requests leave userScope at 'none', so the scope-aware link is the Home one.
+  expect(screen.getByRole('link', { name: '← Back to Home' })).toHaveAttribute('href', '/');
+  await flushMacrotask();
+  for (const [name, fn] of urlBuiltFetches()) {
+    expect(fn, `${search}: ${name} must not be called`).not.toHaveBeenCalled();
+  }
+}
+
+describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: REAL_LOCATION,
+    });
+  });
+
+  it('G1: a present-but-invalid event_id is "Event not found" with zero URL-built requests (AC-6)', async () => {
+    // URLSearchParams decodes the second to ../users/me (the CSPT shape); the third is an
+    // empty value, which counts as present; the fourth is a 35-character near-miss.
+    const inputs = ['not-a-uuid', '..%2Fusers%2Fme', '', EVENT_ID.slice(0, -1)];
+    for (const raw of inputs) {
+      const context = `event_id=${raw}`;
+      const replace = stubLocation({ search: `?event_id=${raw}&group_id=${GROUP_ID}` });
+      renderAt(`event_id=${raw}&group_id=${GROUP_ID}`);
+      expect(await findTextOrFail('Event not found', context)).toBeInTheDocument();
+      expect(
+        screen.getByText('This event no longer exists or has been cancelled.'),
+        context
+      ).toBeInTheDocument();
+      await flushMacrotask();
+      for (const [name, fn] of urlBuiltFetches().slice(0, 5)) {
+        expect(fn, `${context}: ${name} must not be called`).not.toHaveBeenCalled();
+      }
+      expect(replace, `${context}: no sign-in redirect`).not.toHaveBeenCalled();
+      cleanup();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('G2 (control): a valid event_id fetches the event exactly once, with that id', async () => {
+    renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(eventsAPI.getEvent).toHaveBeenCalledTimes(1);
+    expect(eventsAPI.getEvent).toHaveBeenCalledWith(EVENT_ID);
+  });
+
+  it('G3: a traversal group_id on the event view is dropped; the roster comes from the event group (CSPT)', async () => {
+    renderEventDetail({ urlGroupId: '..%2Fusers%2Fme' });
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(GROUP_ID));
+    expect(groupsAPI.getGroupMembers).not.toHaveBeenCalledWith('../users/me');
+  });
+
+  it('G4: a traversal group_id on the game view is dropped; no group-scoped fetch runs (CSPT)', async () => {
+    renderGameDetail({ search: `game_id=${GAME_ID}&group_id=..%2Fx` });
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    await flushMacrotask();
+    expect(eventsAPI.getGroupEvents).not.toHaveBeenCalled();
+    expect(gameReviewsAPI.getGameReviews).not.toHaveBeenCalled();
+    expect(groupsAPI.getGroupMembers).not.toHaveBeenCalled();
+  });
+
+  it('G5a: a traversal game_id is "Game not found" with zero requests (CSPT)', async () => {
+    await expectGameNotFoundWithZeroRequests(`game_id=..%2Fusers%2Fme&group_id=${GROUP_ID}`);
+  });
+
+  it('G5b: a non-UUID game_id is "Game not found" with zero requests', async () => {
+    await expectGameNotFoundWithZeroRequests('game_id=not-a-uuid');
+  });
+
+  it('G5c: a rejected game_id beside a VALID event id and group id is still "Game not found", never the event view', async () => {
+    await expectGameNotFoundWithZeroRequests(
+      `game_id=..%2Fusers%2Fme&event_id=${EVENT_ID}&group_id=${GROUP_ID}`
+    );
+  });
+
+  it('F1: every back link on the message screens carries the phone 44px floor and the house focus ring', async () => {
+    const scenarios: Array<{ label: string; linkName: string; setup: () => void }> = [
+      {
+        label: 'Event not found (a real 404)',
+        linkName: '← Back to Home',
+        setup: () => {
+          renderEventDetail({ getEventRejectsWith: new ApiError('Not found', 'not_found', 404) });
+        },
+      },
+      {
+        label: 'No game selected',
+        linkName: '← Back to Home',
+        setup: () => {
+          renderAt('');
+        },
+      },
+      {
+        label: 'Game not found, group member',
+        linkName: '← Back to Group',
+        setup: () => {
+          renderGameDetail({ role: 'member', game: null });
+        },
+      },
+      {
+        label: 'Game not found, game-only caller with a group id',
+        linkName: '← Back to Home',
+        setup: () => {
+          renderGameDetail({ role: 'game-only', game: null });
+        },
+      },
+      {
+        label: 'Game not found, no group id',
+        linkName: '← Back to Home',
+        setup: () => {
+          renderGameDetail({ game: null, search: `game_id=${GAME_ID}` });
+        },
+      },
+    ];
+    for (const s of scenarios) {
+      s.setup();
+      const link = await screen.findByRole('link', { name: s.linkName });
+      // An UNPREFIXED token: a breakpoint-gated min-h does not count (plan 21's rule).
+      const tokens = link.className.split(/\s+/);
+      expect(tokens, `${s.label}: the unprefixed min-h-11 floor`).toContain('min-h-11');
+      expect(tokens, `${s.label}: the house focus ring`).toContain('focus-visible:ring-2');
+      cleanup();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('R1: a signed-out 401 replaces the page with sign-in once, returning to the same event and its #vote (AC-1)', async () => {
+    h.userSub = undefined;
+    const search = `?event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search, hash: '#vote' });
+    renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}#vote`)
+    );
+    expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBe('1');
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    // Prohibition 1: the redirect path paints no event detail.
+    expect(document.body.textContent).not.toContain('The Group');
+    const returnTo = new URL(replace.mock.calls[0][0] as string, 'http://localhost').searchParams.get(
+      'returnTo'
+    ) as string;
+    expect(returnTo.startsWith('/')).toBe(true);
+    expect(returnTo.startsWith('//')).toBe(false);
+  });
+
+  it('R2: a 401 with a session the app still sees (stale) redirects too (D-01: any 401)', async () => {
+    const search = `?event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search });
+    renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}`)
+    );
+  });
+
+  it('R3: a re-run of the event fetch while redirecting never replaces a second time (idempotency)', async () => {
+    h.userSub = undefined;
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    const { rerender } = renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    h.selfUuid = '33333333-3333-4333-8333-333333333333';
+    rerender(<GameDetailPage />);
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(2));
+    await flushMacrotask();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('B1 (backstop, concurrency / R1): no redirect while the session is still loading; exactly one once it settles', async () => {
+    h.userSub = undefined;
+    h.authLoading = true;
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    const { rerender } = renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(1));
+    await flushMacrotask();
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    h.authLoading = false;
+    rerender(<GameDetailPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    await flushMacrotask();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('L1: the shared loader reads copy row E4 and is a labelled status', async () => {
+    renderGameDetail();
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Loading game details...')).toBeNull();
+    expect(screen.getByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    // Settle, so the game's resolution does not land after cleanup.
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  it('S1: a superseded event run never paints its bring indicators onto the next event (review r2 #29)', async () => {
+    let settleA: (value: unknown) => void = () => {};
+    // Event A's brings stay in flight; event B's resolve empty.
+    (eventBringsAPI.getEventBrings as Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            settleA = resolve;
+          })
+      )
+      .mockResolvedValueOnce([]);
+    const { rerender } = renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledTimes(1));
+    (eventsAPI.getEvent as Mock).mockResolvedValue(
+      eventFixture({ id: SECOND_EVENT_ID, title: 'Second Night' })
+    );
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledTimes(2));
+    await flushMacrotask();
+    // A's held answer lands LAST and names B's participant.
+    await act(async () => {
+      settleA([{ User: { id: OTHER_UUID } }]);
+    });
+    await flushMacrotask();
+    expect(screen.getByText('Someone Else')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Bringing a game')).toBeNull();
+  });
+
+  it('S2: a user-triggered bring refresh still paints the indicator (review r3 M-15)', async () => {
+    renderEventDetail();
+    expect(await screen.findByText('Someone Else')).toBeInTheDocument();
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledTimes(1));
+    await flushMacrotask();
+    expect(screen.queryByLabelText('Bringing a game')).toBeNull();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([{ User: { id: OTHER_UUID } }]);
+    await act(async () => {
+      rsvpProps.current?.onRsvpChange?.('yes');
+    });
+    expect(await screen.findByLabelText('Bringing a game')).toBeInTheDocument();
   });
 });
