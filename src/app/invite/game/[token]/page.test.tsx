@@ -195,3 +195,76 @@ describe('invite/game/[token] — the migrated anchors keep their element kind a
     expect(screen.getByRole('link', { name: /go home/i })).toHaveAttribute('href', '/');
   });
 });
+
+// Plan 88.6.1-19 task 2 — W048 / AC-32 (register WR-410): the classifier decides on the HTTP
+// status alone, so wording in a backend message can never turn a dead link into a Retry. Plus
+// copy row L1 (D-30) and the silent decorative glyphs (R8).
+describe('invite/game/[token] — W048, L1 and glyphs (plan 88.6.1-19)', () => {
+  it('W1: a preview 404 whose message mentions fetching is permanent — no Retry', async () => {
+    preview().mockRejectedValue(new ApiError('Could not fetch this invite', 'not_found', 404));
+
+    render(<GameInvitePage />);
+
+    expect(
+      await screen.findByRole('heading', { name: /this invite is no longer valid/i }),
+      'a 404 is permanent whatever its message says'
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('W2: a join 404 whose message mentions the network is permanent — no Retry', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue({ game_name: 'Wingspan', event_date: '2030-01-15T12:00:00Z' });
+    join().mockRejectedValue(
+      new ApiError('network lookup failed for this invite', 'not_found', 404)
+    );
+
+    render(<GameInvitePage />);
+
+    expect(
+      await screen.findByRole('heading', { name: /this invite is no longer valid/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('W3 (regression pin): a raw TypeError with no status stays transient, with Retry', async () => {
+    // The Safari transport error that publicFetch rethrows raw (its TypeError arm only wraps a
+    // message containing "fetch").
+    preview().mockRejectedValue(new TypeError('Load failed'));
+
+    render(<GameInvitePage />);
+
+    expect(
+      await screen.findByRole('heading', { name: /couldn't join game night/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('L1: the loading line names what is loading', async () => {
+    preview().mockReturnValue(new Promise(() => {}));
+
+    render(<GameInvitePage />);
+
+    expect(await screen.findByText('Loading your game night invite...')).toBeInTheDocument();
+    expect(screen.queryByText('Loading...')).toBeNull();
+  });
+
+  it('G: the expired, transient and permanent glyphs are hidden from assistive technology', async () => {
+    const arms: Array<[unknown, RegExp]> = [
+      [postAliasDropError(410, 'gone'), /game night has passed/i],
+      [new ApiError('Network error: Could not connect to the server.', 'network', 0), /couldn't join game night/i],
+      [postAliasDropError(404, 'not_found'), /this invite is no longer valid/i],
+    ];
+    for (const [err, heading] of arms) {
+      preview().mockReset();
+      preview().mockRejectedValue(err);
+      const { container } = render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: heading });
+      expect(
+        container.querySelectorAll('svg:not([aria-hidden="true"])'),
+        `an exposed glyph on the branch headed ${heading}`
+      ).toHaveLength(0);
+      cleanup();
+    }
+  });
+});
