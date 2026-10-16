@@ -111,7 +111,7 @@ function redirectDocumentKeydownTo(container: HTMLElement) {
         listener: EventListenerOrEventListenerObject | null,
         options?: boolean | AddEventListenerOptions,
       ) => {
-        if (type === 'keydown') {
+        if (type === 'keydown' && listener) {
           added.push(listener);
           container.addEventListener(type, listener, options);
           return;
@@ -127,7 +127,7 @@ function redirectDocumentKeydownTo(container: HTMLElement) {
         listener: EventListenerOrEventListenerObject | null,
         options?: boolean | EventListenerOptions,
       ) => {
-        if (type === 'keydown') {
+        if (type === 'keydown' && listener) {
           removed.push(listener);
           container.removeEventListener(type, listener, options);
           return;
@@ -236,5 +236,47 @@ describe('Header — one Escape, one layer (D-08a, Phase 88.6.1-45)', () => {
       container.removeEventListener('keydown', claim, { capture: true });
       harness.restore();
     }
+  });
+});
+
+describe('Header — one Main navigation landmark (AC-18, copy row H5)', () => {
+  // The label is asserted as the literal 'Main' (copy row H5), never by importing the constant,
+  // so a changed constant fails here.
+  it('HD-4. signed in: exactly one nav, named Main, holds all 9 header links, the Toggle menu button and the inert closed panel', () => {
+    render(<Header />);
+    const navs = document.querySelectorAll('nav');
+    expect(navs).toHaveLength(1);
+    const nav = navs[0];
+    expect(nav.getAttribute('aria-label')).toBe('Main');
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBe(nav);
+
+    // The brand link plus Home, Friends, Profile and Logout in each of the two lists.
+    const links = Array.from(document.querySelectorAll('a'));
+    expect(links).toHaveLength(9);
+    expect(links.filter((a) => !nav.contains(a))).toEqual([]);
+
+    expect(nav.contains(toggle())).toBe(true);
+
+    // The phone panel stays a div with its inert-while-closed attribute (owner ruling R3-D).
+    const inertNodes = Array.from(document.querySelectorAll('[inert]'));
+    expect(inertNodes).toHaveLength(1);
+    expect(inertNodes[0].tagName).toBe('DIV');
+    expect(nav.contains(inertNodes[0])).toBe(true);
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('HD-5. signed out: exactly one nav, named Main, holds all 3 header links', () => {
+    auth.user = undefined;
+    render(<Header />);
+    const navs = document.querySelectorAll('nav');
+    expect(navs).toHaveLength(1);
+    const nav = navs[0];
+    expect(nav.getAttribute('aria-label')).toBe('Main');
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBe(nav);
+
+    // The brand link plus Login in each of the two lists.
+    const links = Array.from(document.querySelectorAll('a'));
+    expect(links).toHaveLength(3);
+    expect(links.filter((a) => !nav.contains(a))).toEqual([]);
   });
 });

@@ -8,6 +8,10 @@ import ThemeToggle from './components/ThemeToggle';
 import { useUnreadNotificationCount } from './components/UnreadNotificationProvider';
 import FeedbackButton from './components/FeedbackButton';
 
+// Copy row H5 ("Name of the top navigation bar"), owner-ratified 2026-10-04 (D-30): the name of
+// the one primary-navigation landmark. breadcrumbNavOverflow.test.ts resolves the nav by this name.
+const MAIN_NAV_LABEL = 'Main';
+
 function Header(){
     const { user, error, isLoading } = useUser();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -145,7 +149,31 @@ function Header(){
 
                 Changing either of these is a decision, not a cleanup. */}
             <div className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)]">
-                <div className="w-full max-w-7xl mx-auto px-4 h-full">
+                {/* DECISION Phase 88.6.1-45 (AC-18, HEADER-NAV-LANDMARK-RULING, copy row H5):
+                    CHOSEN — this inner container is the ONE nav landmark, named by
+                    MAIN_NAV_LABEL. It is the nearest element that holds BOTH lists — the desktop
+                    list and the phone panel sit in different subtrees below it — so one landmark
+                    serves both widths, with the brand link and the "Toggle menu" button inside
+                    it. A nav is display block like the div it replaced: nothing visible changes.
+                    REJECTED (a): one nav per list, both named "Main" — "exactly one" fails and a
+                    screen reader lists two identical landmarks.
+                    REJECTED (b): a nav around the desktop list only — the phone, the primary
+                    surface, would have none.
+                    REJECTED (c): making the phone panel the nav — the panel is inert while closed
+                    (owner ruling R3-D, below), so at phone width the landmark would leave the
+                    accessibility tree with the menu closed, and the desktop list would still need
+                    its own.
+                    The panel below stays a div (darkChromeLegibility.test.ts test 6 finds it as
+                    one) and keeps its inert attribute; the amber ring override stays on the outer
+                    container and the panel. breadcrumbNavOverflow.test.ts lists this nav by file
+                    and name (NAMED_NAVS).
+                    The brand link and the desktop list's links carry no focus utility on purpose
+                    for now — they paint the browser's default outline (an indicator is present),
+                    and adopting the house ring is a look call routed to Phase 88.9
+                    (.planning/deferred/phase-88.9.md, the entry headed "Header brand link and
+                    desktop nav links ride the browser's default focus outline").
+                    Splitting, moving or renaming this landmark is a decision, not a cleanup. */}
+                <nav aria-label={MAIN_NAV_LABEL} className="w-full max-w-7xl mx-auto px-4 h-full">
                     <div className="flex justify-between items-center h-full">
                         {/* Brand */}
                         <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity">
@@ -368,7 +396,7 @@ function Header(){
                             </div>
                         )}
                     </div>
-                </div>
+                </nav>
             </div>
         </>
     );
