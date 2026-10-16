@@ -6,7 +6,7 @@
 // painted grid with no undo, and their gate moved off `window.confirm` onto the
 // shared dialog tier. The gate was previously untested at this level.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 
@@ -693,5 +693,166 @@ describe('AvailabilityForm "unavailable this week" toggle — exposes its state 
     expect(glyph).not.toBeNull();
     expect(glyph).toHaveAttribute('aria-hidden', 'true');
     expect(glyph).toHaveAttribute('focusable', 'false');
+  });
+});
+
+// Plan 88.6.1-26 (D-35 rule of POSITION, copy row A5, Requirement 8). The pre-fill button the
+// person pressed stays in the focus order (`aria-disabled` + a first-line ref latch) and names
+// what it is loading; the OTHER button keeps native `disabled`. Before this plan both buttons were
+// natively disabled during either pre-fill (a pressed button dropped a keyboard user to <body>)
+// and BOTH switched to their loading words, because their labels read `prefillStatus`, which is
+// null until the fetch settles. The outcome sentence is now also spoken through an always-mounted
+// sr-only polite region, and one ref-held timer clears it (two timers used to collide).
+describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its timer (D-35, A5)', () => {
+  // Copy row A5, byte-equal to 88.6.1-COPY-TABLE.html (the ellipsis is U+2026).
+  const A5 = 'Loading your availability…';
+  const SAVED = 'Use my saved availability';
+  const GCAL = 'Import from Google Calendar';
+
+  beforeEach(() => vi.clearAllMocks());
+
+  function hold<T>(api: 'prefillFromSaved' | 'prefillFromGcal') {
+    let release: (v: T) => void = () => {};
+    (availabilityFormAPI[api] as Mock).mockImplementationOnce(
+      () =>
+        new Promise<T>((resolve) => {
+          release = resolve;
+        })
+    );
+    return (v: T) => release(v);
+  }
+
+  it('P1: Saved pressed — it reads A5, stays aria-disabled (never disabled) at 44px; GCal is natively disabled; one call', async () => {
+    const release = hold<{ slot_ids: string[]; count: number }>('prefillFromSaved');
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability gcalConnected />);
+    const saved = screen.getByRole('button', { name: SAVED });
+    const gcal = screen.getByRole('button', { name: GCAL });
+
+    fireEvent.click(saved);
+    await waitFor(() => expect(saved).toHaveAccessibleName(A5));
+    expect(saved).toHaveAttribute('aria-disabled', 'true');
+    expect(saved).not.toHaveAttribute('disabled');
+    expect(saved).toHaveClass('min-h-11');
+    expect(gcal).toHaveAccessibleName(GCAL);
+    expect(gcal).toBeDisabled();
+
+    fireEvent.click(saved);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(availabilityFormAPI.prefillFromSaved).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    release({ slot_ids: [], count: 0 });
+    await waitFor(() => expect(saved).toHaveAccessibleName(SAVED));
+    expect(saved).not.toHaveAttribute('aria-disabled');
+    expect(gcal).toBeEnabled();
+  });
+
+  it('P2: GCal pressed — it reads Importing… and stays aria-disabled; Saved keeps its name and is natively disabled', async () => {
+    const release = hold<{ slot_ids: string[]; count: number }>('prefillFromGcal');
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability gcalConnected />);
+    const saved = screen.getByRole('button', { name: SAVED });
+    const gcal = screen.getByRole('button', { name: GCAL });
+
+    fireEvent.click(gcal);
+    await waitFor(() => expect(gcal).toHaveAccessibleName('Importing…'));
+    expect(gcal).toHaveAttribute('aria-disabled', 'true');
+    expect(gcal).not.toHaveAttribute('disabled');
+    expect(gcal).toHaveClass('min-h-11');
+    expect(saved).toHaveAccessibleName(SAVED);
+    expect(saved).toBeDisabled();
+
+    fireEvent.click(gcal);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(availabilityFormAPI.prefillFromGcal).toHaveBeenCalledTimes(1);
+
+    release({ slot_ids: [], count: 0 });
+    await waitFor(() => expect(gcal).toHaveAccessibleName(GCAL));
+    expect(gcal).not.toHaveAttribute('aria-disabled');
+    expect(saved).toBeEnabled();
+  });
+
+  describe('one timer (fake timers, this arm only)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('P4: a second pre-fill inside the first one’s 2500 ms keeps its own outcome for its full 4000 ms, in the line AND the region', async () => {
+      vi.useFakeTimers();
+      const EMPTY = 'No saved availability matches this week — paint manually below.';
+      const FAILED = "Couldn't use saved availability.";
+      (availabilityFormAPI.prefillFromSaved as Mock)
+        .mockResolvedValueOnce({ slot_ids: [], count: 0 })
+        .mockRejectedValueOnce(new Error('boom'));
+      render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability />);
+      const saved = screen.getByRole('button', { name: SAVED });
+      const flush = async (ms: number) => {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+      };
+
+      fireEvent.click(saved);
+      await flush(0);
+      expect(screen.getByText(EMPTY)).toBeTruthy();
+
+      await flush(2000);
+      fireEvent.click(saved);
+      await flush(0);
+      const region = screen.getByTestId('prefill-status');
+      expect(region).toHaveTextContent(FAILED);
+      expect(screen.getAllByText(FAILED)).toHaveLength(2);
+
+      // Past the FIRST pre-fill's 2500 ms: its timer must not wipe the second outcome.
+      await flush(600);
+      expect(region).toHaveTextContent(FAILED);
+      expect(screen.getAllByText(FAILED)).toHaveLength(2);
+
+      await flush(4000);
+      expect(region).toHaveTextContent('');
+      expect(screen.queryByText(FAILED)).toBeNull();
+    });
+  });
+
+  it('P5: the outcome region is mounted, EMPTY and sr-only at first render, and the SAME node speaks the sentence (Edge R8 empty)', async () => {
+    (availabilityFormAPI.prefillFromSaved as Mock).mockResolvedValueOnce({
+      slot_ids: ['2026-08-10T18:00:00.000Z', '2026-08-10T18:30:00.000Z', '2026-08-10T19:00:00.000Z'],
+      count: 3,
+    });
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability />);
+    const before = screen.getByTestId('prefill-status');
+    expect(before).toHaveAttribute('role', 'status');
+    expect(before).toHaveClass('sr-only');
+    expect(before.textContent).toBe('');
+
+    fireEvent.click(screen.getByRole('button', { name: SAVED }));
+    const SENTENCE = 'Filled 3 slots from your saved availability.';
+    await waitFor(() => expect(screen.getByTestId('prefill-status')).toHaveTextContent(SENTENCE));
+    // Node identity (C-6): a screen reader announces a CHANGE to a live region, not a new mount.
+    expect(screen.getByTestId('prefill-status')).toBe(before);
+    expect(screen.getAllByText(SENTENCE)).toHaveLength(2);
+  });
+});
+
+// Plan 88.6.1-26 (D-42, Edge R8 idempotency backstop). The time-slot validation box had no role,
+// so the one validation failure on this page was announced by nothing. It is now a conditional
+// `role="alert"` keyed on react-hook-form's `submitCount`, so an identical second failure inserts
+// a NEW node. Whether VoiceOver speaks an identical re-inserted alert is not measured here.
+describe('88.6.1-26 — the time-slot validation error is an alert (D-42)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('V1: each failed submit inserts a fresh alert carrying the time-slot message', async () => {
+    const MESSAGE = 'Please select at least one time slot, or mark yourself as unavailable';
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    const cta = screen.getByRole('button', { name: /submit availability/i });
+
+    fireEvent.click(cta);
+    const first = await screen.findByRole('alert');
+    expect(first).toHaveTextContent(MESSAGE);
+
+    fireEvent.click(cta);
+    await waitFor(() => expect(screen.getByRole('alert')).not.toBe(first));
+    expect(screen.getByRole('alert')).toHaveTextContent(MESSAGE);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(availabilityFormAPI.submitResponse).not.toHaveBeenCalled();
   });
 });
