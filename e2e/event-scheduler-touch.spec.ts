@@ -30,7 +30,7 @@ declare global {
  *
  * WHY THIS FILE EXISTS. SPEC Req 3's stated acceptance is "the Playwright
  * create-event journey is green", but that journey deliberately clicks PAST the
- * scheduler: `e2e/create-event.spec.ts:31-36` switches to manual entry and fills
+ * scheduler: `e2e/create-event.spec.ts:31-37` switches to manual entry and fills
  * the datetime-local input. It would stay green with the scheduler completely
  * broken, or absent. Every test below stays in VISUAL-CALENDAR mode; that single
  * difference is the point of the file.
@@ -66,15 +66,15 @@ declare global {
  * correction plan 88.1-07 made to its `rbc-` gate.)
  *
  * PROJECT GUARD: `journeys` and `phone` share `testMatch: /.*\.spec\.ts/`, so the
- * touch describe skips the DESKTOP project the way touch-targets.spec.ts:138
- * does. The mouse describe at the bottom inverts that guard — mouse range-select
- * is the phase's only analog-free mechanism and nothing else drives it end to end.
+ * touch describe skips the DESKTOP project the way touch-targets.spec.ts:589
+ * does (its R4/R6 phone-only skip). The mouse describe at the bottom inverts that guard — mouse
+ * range-select is the phase's only analog-free mechanism and nothing else drives it end to end.
  *
  * SELECTOR NOTE: every interactive control is located by ROLE / LABEL / TEXT
  * ("Add New Game Event", "Switch to Manual Entry", `role=tab`, `role=columnheader`,
  * the verbatim "Selected Time:" panel). `[data-coord]` appears ONLY in the
  * geometry/painted-state probes — it is WeekGrid's own paint-resolution attribute
- * (`WeekGrid.tsx:474`, the same test-plumbing class as WriteCell's data-slot-id),
+ * (`WeekGrid.tsx:507`, the same test-plumbing class as WriteCell's data-slot-id),
  * and `usePaintGesture` resolves targets through it, so a probe that used
  * anything else would not be measuring the mechanism under test.
  *
@@ -83,9 +83,9 @@ declare global {
  * asserted relative to them, before/after).
  *
  * FIXTURES: `E2E_GROUP_ID` only — the same seeded id create-event.spec.ts:17 and
- * touch-targets.spec.ts:52 read. No new secret is minted and no credential is
- * written here. e2e is CI-only by design (playwright.config.ts:19-21): author
- * locally, verify in the `phone` lane.
+ * touch-targets.spec.ts:71 read (each a const from process.env.E2E_GROUP_ID). No new secret is
+ * minted and no credential is written here. e2e is CI-only by design (playwright.config.ts:22-24,
+ * intentionally absent locally): author locally, verify in the `phone` lane.
  */
 
 /* DECISION Phase 88.1-21 (88.1-CODE-REVIEW.md): NO `?? '1'` fallback here, chosen OVER keeping
@@ -121,7 +121,7 @@ const SLOT_MINUTES = 30;
 // --- Vacuity guard -----------------------------------------------------------
 
 /** A zero-count locator makes every assertion after it vacuous — fail loudly AT
- *  THE LOCATOR instead. Same contract as touch-targets.spec.ts:63. */
+ *  THE LOCATOR instead. Same contract as touch-targets.spec.ts:79-82 (its guardResolved). */
 async function guardResolved(locator: Locator, what: string, atLeast = 1): Promise<void> {
   await expect(
     locator.first(),
@@ -153,7 +153,7 @@ const selectedTimeValue = (page: Page) =>
  * Open the create-event modal and STAY in visual-calendar mode.
  *
  * The "Add New Game Event" button lives on the GROUP HOME page, not on
- * /groupPlanning — create-event.spec.ts:19-24 records why.
+ * /groupPlanning — create-event.spec.ts:19-24 (Group home hosts the button) records why.
  */
 async function openVisualScheduler(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
@@ -235,9 +235,10 @@ interface GridGeometry {
 
 /**
  * Resolve the scroll container STRUCTURALLY, never by class: it is the parent of
- * the `role="grid"` body (`WeekGrid.tsx:419-442`). Everything is scoped to the
- * open dialog because `EventHeatmapBackground` mounts a second WeekGrid on the
- * page BEHIND the modal, and an unscoped `[data-coord]` query would find it.
+ * the `role="grid"` body (`WeekGrid.tsx:449-472`, ref={scrollContainerRef}). Everything is
+ * scoped to the open dialog so nothing outside the modal can be measured. CORRECTED by 88.6.1-24:
+ * this used to say EventHeatmapBackground mounts a second WeekGrid on the page BEHIND the
+ * modal; it renders ReadCells directly (no WeekGrid), INSIDE the modal, in manual mode only.
  */
 async function gridGeometry(page: Page): Promise<GridGeometry | null> {
   return page.evaluate(() => {
@@ -923,7 +924,8 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
        y=661.352 when the modal's reachable box ended at 632.648 — 28.704px outside it. What was
        actually under the finger there was `div.fixed inset-0 z-50 bg-black/80`, the Radix dialog
        BACKDROP, and `elementFromPoint` resolved to null. With no document-level `pointermove`
-       (`usePaintGesture.ts:503-504`) `st.lastY` could never reach an edge position, so the rAF
+       (`usePaintGesture.ts:511-512`, set only by the element-level onPointerMove; the document
+       listeners are pointerup and pointercancel only) `st.lastY` could never reach an edge position, so the rAF
        edge loop never engaged and the column moved 0px. The IMPLEMENTATION was exonerated by the
        same measurement (B2 refuted): the finger simply never landed on the grid.
 
@@ -1104,8 +1106,8 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     // The parent owns start_date + duration_minutes; the scheduler is controlled
     // and holds no selection state of its own (Phase 66-01). The two mode
     // controls are one button whose copy flips — "Switch to Manual Entry" /
-    // "Switch to Visual Calendar" (createEvent.js:961) — located here by
-    // case-insensitive accessible name, the idiom create-event.spec.ts:33 uses.
+    // "Switch to Visual Calendar" (createEvent.js, anchor 'Switch to Manual Entry') — located
+    // here by case-insensitive accessible name, the idiom create-event.spec.ts:34 uses.
     await dialog(page).getByRole('button', { name: /switch to manual entry/i }).click();
     const startInput = dialog(page).getByLabel(/start date & time/i);
     await guardResolved(startInput, 'the manual start date/time input');
@@ -1330,7 +1332,8 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     // The strip cell is `overflow-hidden`, so a label that no longer fits is
     // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
     // The stacked single-letter-over-date shape (copied verbatim from
-    // EventHeatmapBackground.js:216-226) is the M-03 fix; this is its gate.
+    // EventHeatmapBackground.js:287-301, `role="columnheader" className="text-center"`) is the
+    // M-03 fix; this is its gate.
     const clipping = await page.evaluate(() => {
       const root = document.querySelector('[role="dialog"]');
       const measure = (el: Element, what: string) => ({
@@ -1368,7 +1371,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
   test('the day column scrolls INTERNALLY rather than growing the modal', async ({ page }) => {
     await openVisualScheduler(page);
 
-    // The modal stays inside its own `max-h-[90vh]` budget (Modal.tsx:186).
+    // The modal stays inside its own `max-h-[90dvh]` budget (Modal.tsx:345).
     const modalBox = await dialog(page).boundingBox();
     expect(modalBox, 'the create-event dialog has no boundingBox').not.toBeNull();
     const viewportHeight = await page.evaluate(() => window.innerHeight);
@@ -1404,8 +1407,8 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
        version of this case would be green forever against any fixture.
 
        A NULL PEAK IS A FIXTURE FAILURE, NOT A PASS: `peakScrollTime` is null
-       whenever the group has no availability (createEvent.js:81-85, :109), so a
-       silent skip here would mean the fixture stopped seeding and nobody found
+       whenever the group has no availability (createEvent.js, anchor: const peakScrollTime,
+       its first two return-null guards), so a silent skip here would mean the fixture stopped seeding and nobody found
        out. `scripts/e2e-fixtures.js` owns that invariant — see the block it
        added for this case.
 

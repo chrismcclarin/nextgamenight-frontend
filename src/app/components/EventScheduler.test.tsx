@@ -125,8 +125,9 @@ import EventSchedulerDefault from './EventScheduler';
 
 // EventScheduler is still a `.js` component (the FE is mid JS->TS migration, WS-12), so its
 // INFERRED prop type marks every prop required and narrows the defaulted ones to `null`.
-// Cast to an explicit type, per the repo idiom (ScheduleForm.test.tsx:40,
-// AvailabilityForm.test.tsx:32). Doing this in the test rather than annotating the component
+// Cast to an explicit type, per the repo idiom (ScheduleForm.test.tsx:77,
+// AvailabilityForm.test.tsx:56 - each `as unknown as ComponentType<`). Doing this in the test
+// rather than annotating the component
 // is deliberate: the component is being REPLACED this phase, so a JSDoc/TS signature written
 // onto the RBC version would be thrown away in plan 88.1-09. This shape doubles as the prop
 // contract the rebuild has to honour — it is what the pins below actually exercise.
@@ -467,7 +468,8 @@ const cellAt = (row: number, col: number, cols: number) => gridcells()[row * col
 const button = (name: RegExp) => screen.getByRole('button', { name });
 
 describe('EventScheduler — roving keyboard navigation moves REAL DOM focus (Req 6)', () => {
-  // The `WeekGrid.test.tsx:78-100` idiom, on the composed scheduler: focus a gridcell, fire a
+  // The `WeekGrid.test.tsx:79` idiom (anchor `arrow keys move REAL DOM focus`), on the composed
+  // scheduler: focus a gridcell, fire a
   // nav key, assert `document.activeElement` actually MOVED. A tabIndex shuffle is not the
   // guarantee — the guarantee is that a keyboard user's focus ring is on the cell they navigated
   // to. The handler under test is `useHeatmapCell`'s; this proves the rebuild WIRED it, which is
@@ -801,7 +803,8 @@ describe('EventScheduler — the committed selection is a FILLED block ON the gr
  * COLUMN index and `clientY` is the ROW index, by construction.
  *
  * This is deliberately NOT the trap `DECISION Phase 88.1-07 Task 2` warns about in
- * `createEvent.integration.test.tsx:254-269`. That warning is about stubbing geometry and then
+ * `createEvent.integration.test.tsx` (anchor: DECISION Phase 88.1-07 Task 2). That warning is
+ * about stubbing geometry and then
  * letting a slot be DERIVED from it — the library divided by the height of a zero-height rect,
  * so the pin would have "passed" on a slot no user could have clicked. Nothing here reads
  * layout: `pointResolver` walks `closest('[data-coord]')` and reads an attribute this repo
@@ -1321,8 +1324,9 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
   });
 
   it('desktop: the tint and the plain surface are never emitted in the SAME class string', () => {
-    // The collapse the exemplar's in-file warning describes (was `MergedHeatmapGrid.js:130-138`,
-    // deleted by plan 88.1-16 — the warning now lives on the exemplar at `EventScheduler.tsx`):
+    // The collapse the exemplar's in-file warning describes (was in `MergedHeatmapGrid.js`,
+    // deleted by plan 88.1-16 in FE commit `a31fd40` — the warning now lives on the exemplar at
+    // `EventScheduler.tsx`):
     // a static `bg-surface-card` with the tint appended renders NOTHING, because
     // `.bg-surface-accent-subtle` is emitted BEFORE `.bg-surface-card` in a real build. It looks
     // identical to a working treatment in every role/text assertion, so it is pinned here.
@@ -1413,7 +1417,7 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
 /** Synthetic per-row offset. No relation to real layout — see the block comment above. */
 const ROW_PX = 20;
 
-/** Build a UTC wire slot from a LOCAL (date, hour) target — the `WIRE_SLOT` idiom at :127-131. */
+/** Build a UTC wire slot from a LOCAL (date, hour) target — the `WIRE_SLOT` idiom at :182-186 (const WIRE_SLOT). */
 const wireSlotAt = (localDay: Date, localHour: number, availableCount: number) => {
   const local = new Date(
     localDay.getFullYear(),
@@ -1463,10 +1467,13 @@ const req13Heatmap = {
   gcalConflicts: [],
 };
 
-/** Exactly what `createEvent.js:84-126` produces for this fixture: the week peak, 19:00. */
+/** Exactly what `createEvent.js` produces for this fixture (anchor: const peakScrollTime): the week peak, 19:00. */
 const REQ13_WEEK_SCROLL_TO_TIME = new Date(2026, 6, 24, 19, 0, 0);
 
-/** The scroll container is the DIRECT PARENT of the `role="grid"` body (`WeekGrid.tsx:419-434`). */
+/**
+ * The scroll container is the DIRECT PARENT of the `role="grid"` body (`WeekGrid.tsx:451`,
+ * anchor: ref={scrollContainerRef}).
+ */
 const scroller = () => screen.getByRole('grid').parentElement as HTMLElement;
 
 describe('EventScheduler — day view lands on the DAY peak, not the week peak (Req 13)', () => {
@@ -1610,9 +1617,10 @@ describe('EventScheduler — assistive-tech affordances on the grid (88.1-21, 88
   it('gives gridcells the project focus-visible ring instead of the UA default outline', () => {
     render(<EventScheduler initialDate={WEEK_N} />);
 
-    // The four tokens copied verbatim from AvailabilityGrid.js:628 — the closest shipped
-    // precedent, itself a heatmap grid cell. `focus:outline-hidden` is DELIBERATE and allowed
-    // (focusAndMotionTreatment.test.ts:20-24); do not "fix" it to outline-none.
+    // The four tokens copied verbatim from AvailabilityGrid.js as it stood at 88-28 — the closest
+    // shipped precedent, itself a heatmap grid cell (the string left that file with the 88.6
+    // convergence, FE commit `ef216d1`). `focus:outline-hidden` is DELIBERATE and allowed
+    // (focusAndMotionTreatment.test.ts:21-24, `DELIBERATELY still allowed`); do not "fix" it to outline-none.
     const cell = screen.getAllByRole('gridcell')[0];
     expect(cell.className).toContain('focus:outline-hidden');
     expect(cell.className).toContain('focus-visible:ring-2');
@@ -1624,8 +1632,8 @@ describe('EventScheduler — assistive-tech affordances on the grid (88.1-21, 88
 describe('EventScheduler — the per-slot conflict tooltip tells self from other (Req 3)', () => {
   // The conflict rides the SAME backwards-constructed wire slot as `heatmapFixture`, so the
   // annotated cell lands inside the visible 10:00-23:59 window on any runner timezone. A
-  // hard-coded UTC hour renders off-grid for some offsets — documented at :117-124, not
-  // hypothetical.
+  // hard-coded UTC hour renders off-grid for some offsets — documented at :174-181 (the
+  // `--- Heatmap fixture` comment), not hypothetical.
   const OTHER_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const SELF_LINE = /You have a Google Calendar conflict at this time/;
   const OTHER_LINE = /Bea: said yes, calendar shows busy/;
@@ -1635,8 +1643,8 @@ describe('EventScheduler — the per-slot conflict tooltip tells self from other
   ) => ({ ...heatmapFixture, gcalConflicts });
 
   const openTooltip = async () => {
-    // HeatmapTooltip attaches useClick to the reference (HeatmapTooltip.js:223) as well as
-    // useFocus (:227); click is the primary path.
+    // HeatmapTooltip attaches useClick to the reference (HeatmapTooltip.js:223, `useClick(context`)
+    // as well as useFocus (:227, `useFocus(context)`); click is the primary path.
     // The name is unique since 88.6.1-24 (each half-hour has its own), so one getByRole.
     const cell = screen.getByRole('gridcell', { name: EXPECTED_CELL_LABEL });
     fireEvent.click(cell);

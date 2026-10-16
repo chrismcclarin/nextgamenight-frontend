@@ -73,7 +73,7 @@ const GRID_MAX_HEIGHT = '600px'; // parity with the outgoing h-[600px] container
 
 /**
  * The phone day column's height budget (UI-SPEC "Measured geometry budget", read from source):
- * 600px of modal (`Modal.tsx:186` `max-h-[90vh]` at 667px tall) − ~61px header − 24px
+ * 600px of modal (`Modal.tsx:345` `max-h-[90dvh]` at 667px tall) − ~61px header − 24px
  * `Modal.Body p-3` − ~150px of mode toggle, legend and selected-time panel ≈ 365px for the strip
  * plus the column; the strip takes 56px (`h-14`) and 4px of separation, leaving ~305px.
  *
@@ -120,9 +120,10 @@ export interface EventSchedulerHeatmapData {
  * `maxTime`, `step` and `events` are GONE, chosen OVER carrying four accepted-but-never-passed
  * props through the rebuild.
  *
- * VERIFIED, not assumed: the only live call site (`createEvent.js:966-1002`) passes exactly
- * `onWeekChange`, `onTimeSelected`, `initialDate`, `selectedSlot`, `heatmapData`, `defaultView`
- * and `scrollToTime`. `grep -rn "<EventScheduler"` finds no other producer.
+ * VERIFIED, not assumed: the only live call site (`createEvent.js`, anchor `<EventScheduler`)
+ * passes exactly `onWeekChange`, `onTimeSelected`, `initialDate`, `selectedSlot`, `heatmapData`,
+ * `defaultView` and `scrollToTime` - plus `onActiveChange`, added by plan 88.6-39 (re-verified
+ * 2026-10-15 by 88.6.1-24). `grep -rn "<EventScheduler"` finds no other producer.
  *
  * The `events` removal is a PREMISE CORRECTION TO SPEC Req 3, which lists a "busy-event overlay"
  * as a parity surface. Research found that surface has no producer: `events` defaulted to `[]`
@@ -167,9 +168,9 @@ function slotStartFor(day: Date, row: number): Date {
 
 /**
  * WeekGrid identifies a cell by the `data-coord="row:col"` attribute on its cell wrapper
- * (`WeekGrid.tsx:474`). The gesture machine resolves targets to that raw string and hands it
- * straight back, so this is the ONE place the format is decoded. A malformed value resolves to
- * null and every caller treats that as "not a cell" — never a throw.
+ * (`WeekGrid.tsx:507`, `data-coord={coordKey(row, col)}`). The gesture machine resolves targets
+ * to that raw string and hands it straight back, so this is the ONE place the format is decoded.
+ * A malformed value resolves to null and every caller treats that as "not a cell" — never a throw.
  */
 function parseCoord(coord: string): { row: number; col: number } | null {
   const [row, col] = coord.split(':').map(Number);
@@ -252,7 +253,7 @@ const NAV_BUTTON_CLASS =
    THE OVERRIDDEN PROPERTY IS `--color-bg-accent-subtle`, AND OVERRIDING THE `surface-*` NAME
    INSTEAD IS INERT. Carried from plan 88.1-13's MEASUREMENT of a real `next build` of this app, not
    from reading `globals.css`: the source declares the `@theme` key as
-   `--color-surface-accent-subtle: var(--color-bg-accent-subtle)` (`globals.css:324`), which reads
+   `--color-surface-accent-subtle: var(--color-bg-accent-subtle)` (`globals.css:405`), which reads
    as though either name would work — but Tailwind v4 RESOLVES that one-level alias when it emits
    the utility, and the shipped rule is literally
        .bg-surface-accent-subtle{background-color:var(--color-bg-accent-subtle)}
@@ -260,7 +261,8 @@ const NAV_BUTTON_CLASS =
    this at the `surface-*` name would silently un-ship the owner's pick with nothing going red.
 
    THE SCOPE IS THE WHOLE SCHEDULER SUBTREE, WHICH IS A TRADE, NOT AN ACCIDENT: it is what lets the
-   desktop day header (`renderDayHeader`) and the phone strip cell (`SchedulerWeekStrip.tsx:178`)
+   desktop day header (`renderDayHeader`) and the phone strip cell (`SchedulerWeekStrip.tsx:188`,
+   `today ? 'bg-surface-accent-subtle'`)
    share one declaration, and both are today sites. The cost is that ANY FUTURE
    `bg-surface-accent-subtle` ADDED INSIDE THIS COMPONENT WOULD ALSO GET THE STRONGER TINT — today
    there are exactly two, both today sites (censused 2026-08-24). If a non-today accent-subtle
@@ -276,7 +278,8 @@ const NAV_BUTTON_CLASS =
    CLOSED. This site is RESOLVED, not inherited — the paragraph above shipped true and is now
    false, so it is amended rather than deleted.
    TAKEN: the day number moves from `text-accent` to `text-content-accent`, whose LIGHT value is
-   amber-800 `#92400e` (`globals.css:761`, minted by plan 88.3-04). Measured 2026-08-26 against
+   amber-800 `#92400e` (`globals.css:773`, `--amber-800: #92400e`, minted by plan 88.3-04).
+   Measured 2026-08-26 against
    `src/lib/wcag.ts`: **5.69:1 on this amber-200 arm-B tint** — over the 4.5:1 AA floor — plus
    6.26 on the warm-100 page and 7.09 on the white card. The DARK arm is amber-500 on `#513902`
    at **5.05:1**, BYTE-IDENTICAL to what shipped, because dark `--color-accent-text` is declared
@@ -284,7 +287,7 @@ const NAV_BUTTON_CLASS =
    UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint is NOT
    touched, and the `DECISION Phase 88-27 D-32` paired-ternary SHAPE is not touched either — only
    the class token inside the TRUE ARM moves. `accentSweep.test.ts` test 6 and
-   `tintTreatment.test.ts:269` both pin that shape at this site.
+   `tintTreatment.test.ts:299` (`expect(scheduler).toMatch(`) both pin that shape at this site.
    STILL REJECTED, and both are recorded because the SPEC listed this as an open fork and neither
    was needed: (a) LIGHTENING the owner-picked arm-B tint to buy the old amber a passing ratio —
    the owner judged that tint at 375px and a contrast fix must not silently re-open his pick;
@@ -305,7 +308,8 @@ export default function EventScheduler({
   heatmapData = null,
   // CAL-05: initial visual view ('week' | 'day'). Day-tap entry passes 'day' so the picker opens
   // focused on the tapped day. Honoured as a PROP contract, not for one caller — there are two
-  // producers (`groupHomePage/page.js:551` and `gameDetail/page.js:2903`, the latter guarded by
+  // producers (`groupHomePage/page.js:1279`, `initialVisualView={calendarEntryMode}`, and
+  // `gameDetail/page.js`, anchor `initialVisualView={dateParam ? 'day' : undefined}`, the latter guarded by
   // DECISION Phase 65-03 EVT-05). Default 'week' keeps the header-button entry path unchanged.
   defaultView = 'week',
   // Phase 66-01: controlled selected slot. Parent (createEvent.js) owns the canonical date/time
@@ -324,7 +328,8 @@ export default function EventScheduler({
   //
   //   (a) NAV writes it immediately BEFORE bubbling `onWeekChange`. The prefill / edit-event
   //       paths pin the parent's `initialDate` to the prefill date and never follow navigation
-  //       (`createEvent.js:806-825`), so a FULLY CONTROLLED reading of `initialDate` would freeze
+  //       (`createEvent.js`, anchor `const calendarInitialDate`, its `prefillDate` and
+  //       `editingEvent` arms), so a FULLY CONTROLLED reading of `initialDate` would freeze
   //       week and day nav dead on those paths.
   //   (b) A post-mount effect re-syncs whenever `initialDate` CHANGES — now ACROSS WEEKS ONLY,
   //       see the marker on the effect below. That is the Phase 71.2 poll-CTA anchor: on the
@@ -370,7 +375,9 @@ export default function EventScheduler({
      which move the displayed day WITHIN one week through `initialDate` and expect the day-peak
      landing to follow. A same-week different-day hand-over is a genuine day intent; the week's
      own Monday is not, because the only producer of that value is the parent's FETCH ANCHOR
-     (`createEvent.js:359` `setHeatmapWeekStart(effectiveMonday)` -> `:840` the fallthrough),
+     (`createEvent.js`, anchor `setHeatmapWeekAnchor({` on the group path -> the
+     `heatmapWeekAnchor?.monday` fallthrough in `calendarInitialDate`; the setter was named
+     `setHeatmapWeekStart` when this was written),
      re-emitted as a fresh `Date` after every heatmap fetch. In the day arm — the only arm below
      `md` — taking it moved the displayed day to Monday on every non-Monday. That is CR-01.
 
@@ -388,12 +395,14 @@ export default function EventScheduler({
      `prefillDate` are indistinguishable to this component, and defaulting to today would break
      "tap Monday -> create event on Monday". It is closed at the parent, where the two are
      distinguishable — see the matching marker at `createEvent.js`'s `calendarInitialDate`.
-     BOTH halves are reachable in production: `createEvent.js:902` gates the whole form on the
-     GROUP-MEMBERS fetch while the heatmap effect at `:325` runs independently, so which of the
+     BOTH halves are reachable in production: `createEvent.js` gates the whole form on the
+     GROUP-MEMBERS fetch (anchor `Loading group members...`) while the heatmap effect (anchor
+     `const fetchHeatmap`) runs independently, so which of the
      two paths you get is a race between two network calls.
 
      The boundary is MONDAY deliberately (`weekStartsOn: 1`), matching `heatmapWeekStart`'s own
-     snap (`createEvent.js:352`), `resolveWeekNav` and `weekDates` below — a different boundary
+     snap (`createEvent.js`, anchor `const todayMondayLocal = startOfWeek(`), `resolveWeekNav` and
+     `weekDates` below — a different boundary
      here would suppress re-anchors the fetch considers cross-week and vice versa.
      The FUNCTIONAL form is load-bearing: adding `currentDate` to the deps would re-run this
      effect on every navigation and defeat the guard.
@@ -456,7 +465,8 @@ export default function EventScheduler({
   const { selfUuid } = useSelfIdentity();
 
   // Build heatmap lookup: "localDate_localHour" -> slot.
-  // The wire is UTC; the grid is LOCAL. Carried verbatim — `createEvent.js:88-95` mirrors this
+  // The wire is UTC; the grid is LOCAL. Carried verbatim — `createEvent.js`'s
+  // `const peakScrollTime` mirrors this
   // exact keying for `peakScrollTime`, so the two must not drift.
   const heatmapLookup = useMemo(() => {
     const map = new Map<string, HeatmapSlot>();
@@ -517,7 +527,8 @@ export default function EventScheduler({
 
   // ---------------------------------------------------------------------------
   // Columns. Monday week start is kept — the outgoing localizer was never its only carrier
-  // (`createEvent.js:337,975` and the extracted `resolveWeekNav` both use weekStartsOn: 1).
+  // (`createEvent.js`, anchors `const todayMondayLocal = startOfWeek(` and
+  // `isSameWeek(effectiveMondayForUI`, and the extracted `resolveWeekNav` both use weekStartsOn: 1).
   //
   // The week is computed unconditionally now: the day arm needs it too, because the phone strip
   // shows the week CONTAINING the displayed day. Both arrays are separately memoized and selected
@@ -569,7 +580,7 @@ export default function EventScheduler({
   // `views={['week','day']}`, so its Next/Back moved a week in week view and a day in day view.
   // BOTH arms bubble through the same `onWeekChange(date)` regardless of granularity — the
   // parent's `resolveWeekNav` owns the same-week skip and the -3/+12 clamp, and the fetch stays
-  // at `createEvent.js:329-353`. Do not re-implement either here.
+  // in `createEvent.js`'s `const fetchHeatmap`. Do not re-implement either here.
   // ---------------------------------------------------------------------------
   const navigateTo = useCallback(
     (date: Date) => {
@@ -648,12 +659,16 @@ export default function EventScheduler({
       /* DECISION Phase 88.6-52 (W46 live-region half, SPEC R5): the commit is announced HERE, in
          the one derivation, chosen OVER a keyboard-only hook in `handleCellSelect` — that would be
          a second path, and the tap and drag commits would stay silent. What reaches this line is
-         MEASURED: keyboard Enter/Space (`handleCellSelect`), a mouse tap or drag, and a touch
-         LONG-PRESS (`usePaintGesture.ts` `LONG_PRESS_MS = 300`; grid cells carry no click
-         handler). NOT MEASURED, and not claimed: whether a plain assistive-technology double-tap
-         on a phone grid cell commits anything at all (gap-lap ML-29) — it may reach no commit and
-         so no announcement. Plan 88.6-49 routes that gap. The utterance is the panel's printed
-         text verbatim (label + range + duration), so a screen-reader user hears no new words. */
+         MEASURED: keyboard Enter/Space (`handleCellSelect`), a mouse tap or drag, a touch TAP,
+         which commits on finger-up (`usePaintGesture.ts`, anchor `a tap commits on finger-UP`),
+         and a touch long-press drag (`LONG_PRESS_MS = 300`); grid cells carry no click handler and
+         none is added (D-10).
+         MEASURED on iOS VoiceOver 2026-10-04 (owner): a double-tap commits;
+         TalkBack unmeasured, routed to Phase 92
+         (`.planning/deferred/phase-92.md`, the 2026-10-04 APPEND) — amended in place by
+         88.6.1-24 (D-10; AT correction 7, which also corrected the long-press-only touch claim
+         this sentence used to make). The utterance is the panel's printed text verbatim (label +
+         range + duration), so a screen-reader user hears no new words. */
       announce(`${SELECTED_TIME_LABEL} ${formatSlotRange(start, end)} (${formatDuration(start, end)})`);
     },
     [columnDates, onTimeSelected, announce]
@@ -733,7 +748,8 @@ export default function EventScheduler({
   //
   // DECISION Phase 88.1-11 (AMENDED, C2): the long-press threshold moves 250ms -> 300ms.
   // PREMISE RE-VERIFIED this session, not inherited: the deleted Phase 68-03 MOB-07 machine held
-  // 250ms (`EventScheduler.js:214`, recorded in 88.1-09's SUMMARY as it was removed), and it had
+  // 250ms (`EventScheduler.js`, deleted in FE commit `3ff46e7`; the value is recorded in 88.1-09's
+  // SUMMARY as it was removed), and it had
   // NO slop cancellation and NO edge auto-scroll. The replacement is the single owner-ruled
   // 87.8-14 model (ruling 2026-08-02, model (a): long-press paints, plain drag scrolls natively,
   // tap commits one slot) at that model's 300ms, chosen OVER re-tuning the shared hook down to
@@ -744,7 +760,8 @@ export default function EventScheduler({
   //
   // DECISION Phase 88.1-11 (range shape): a drag commits on the ANCHOR's DAY COLUMN, with only
   // the ROWS normalized — chosen OVER letting a horizontal drag span days. A cross-day pair
-  // would reach `createEvent.js:982-1000` as a `duration_minutes` measured in days, which the
+  // would reach `createEvent.js`'s `onTimeSelected={(start, end) =>` as a `duration_minutes`
+  // measured in days, which the
   // manual 1-720 minute field it round-trips through cannot express and no backend contract
   // accepts; the grid's own client-side bound is one day's 10:00-23:59 window (threat
   // T-88.1-29). Multi-day event ranges are a feature with a design, not a drag affordance.
@@ -841,8 +858,9 @@ export default function EventScheduler({
    * BOTH axes are pointed at the grid's own scroll container, and the edge bands are measured
    * from its rect. The hook's documented VERTICAL DEFAULT is the page — correct for the
    * full-page check-in grid it was extracted from, wrong here: this grid lives inside a Radix
-   * dialog whose content is `overflow-hidden` (`Modal.tsx:186`) with the body `overflow-y-auto`
-   * (`Modal.tsx:289`), so a page-level scroll is either inert or scrolls the page BEHIND the
+   * dialog whose content is `overflow-hidden` (`Modal.tsx:345`, `overflow-hidden rounded-[12px]`)
+   * with the body `overflow-y-auto` (`Modal.tsx:462`, `flex-1 overflow-y-auto`), so a page-level
+   * scroll is either inert or scrolls the page BEHIND the
    * modal. The symptom of getting this wrong is a paint that works but stops dead at the visible
    * edge — the exact owner-reported symptom 87.8-14 was written to fix, reappearing in a new
    * host. Built once so the hook's handlers stay referentially stable.
@@ -920,7 +938,7 @@ export default function EventScheduler({
   // "harmless at this re-render frequency but NOT harmless once a drag re-renders". A drag now
   // re-renders WeekGrid each time the selection rectangle crosses a cell boundary, and an
   // uncached payload turns each of those into ~196 cell re-renders — what
-  // `AvailabilityGrid.js:368-373` calls "the smooth/janky boundary on a phone, not a
+  // `AvailabilityGrid.js` (anchor `smooth/janky boundary`) calls "the smooth/janky boundary on a phone, not a
   // micro-optimization".
   //
   // The cache is created INSIDE the memo, so its lifetime is exactly the inputs' lifetime and
@@ -1016,8 +1034,9 @@ export default function EventScheduler({
         // true here. The passive `EventHeatmapBackground` path deliberately passes NOTHING, so
         // its cells stay attribute-free — there the absence is honest.
         ariaSelected: isSelected,
-        // The project focus-visible ring, copied VERBATIM from `AvailabilityGrid.js:628` — a
-        // heatmap grid cell, the closest shipped precedent (88-28 standard). Without it these
+        // The project focus-visible ring, copied VERBATIM from `AvailabilityGrid.js` as it stood
+        // at 88-28 — a heatmap grid cell, the closest shipped precedent (88-28 standard); that file no
+        // longer carries the string (it left with the 88.6 convergence, FE commit `ef216d1`). Without it these
         // gridcells are keyboard-focusable with only the UA default outline.
         // `focus:outline-hidden` is deliberate and allowed; `focusAndMotionTreatment.test.ts`
         // :20-24 says in its own words not to "fix" it to `outline-none`.
@@ -1132,12 +1151,13 @@ export default function EventScheduler({
            - the paired ternary survives INTACT, at full measured strength, on a clean surface.
          THE ALTERNATIVE, if the owner wants column-wide at the 88.1-15 checkpoint: a 2px
          `--color-line-accent` column EDGE RULE, never a fill. That re-opens
-         `DECISION Phase 88-27 D-32 bucket B` (`CalendarListView.js:388-395`, which ruled a NEUTRAL
+         `DECISION Phase 88-27 D-32 bucket B` (`CalendarListView.js:996`, which ruled a NEUTRAL
          rule OVER a coloured one), so it is a decision to raise, not a tweak to apply.
 
      (2) THE TWO TERNARIES ARE PAIRED AND MUTUALLY EXCLUSIVE — surface and day text switch together
          or not at all. The idiom is the §10.3 exemplar's, carried verbatim in shape from
-         `MergedHeatmapGrid.js:139,145` — a file plan 88.1-16 has since DELETED, having first
+         `MergedHeatmapGrid.js` (deleted in FE commit `a31fd40`) — a file plan 88.1-16 has since
+         DELETED, having first
          re-pointed `tintTreatment.test.ts` test 4's third exemplar off it and onto THIS site in
          the same commit. THIS IS NOW THE CANONICAL §10.3 EXEMPLAR; there is no other copy to
          fall back on. COLLAPSING EITHER HALF INTO ONE STATIC CLASS PLUS AN INTERPOLATED
@@ -1151,8 +1171,9 @@ export default function EventScheduler({
 
      (3) THE SURFACE HALF FULL-BLEEDS the header cell via `block -my-2 py-2`, chosen OVER adding a
          `dayHeaderClassName` seam to WeekGrid. WeekGrid owns the header cell and hardcodes
-         `bg-surface-card` and `py-2` on it (`WeekGrid.tsx:457`); this seam hands back that cell's
-         CONTENT, and `WeekGrid.tsx:93-96` says in its own words that a ReactNode is required here
+         `bg-surface-card` and `py-2` on it (`WeekGrid.tsx:488`, `sticky top-0 z-20 bg-surface-card`);
+         this seam hands back that cell's
+         CONTENT, and `WeekGrid.tsx:115-118` (SEAM 2) says in its own words that a ReactNode is required here
          BECAUSE "the scheduler's header is a paired today ternary". The negative margin cancels the
          cell's padding so the tint covers the whole header rather than a chip around the label —
          a chip does not clear the D3 bar. A new seam would change a shared engine with other
@@ -1210,7 +1231,8 @@ export default function EventScheduler({
      plan named. Two reasons, in order of weight:
        1. Radix `TabsTrigger` renders `role="tab"`, not `button` (probed on this tree, not
           assumed). The Layer-3 pin locates the day arm as
-          `getByRole('button', { name: /^day$/i })` (createEvent.integration.test.tsx:111,206) and
+          `getByRole('button', { name: /^day$/i })` (createEvent.integration.test.tsx, its `toolbarButton`
+          helper called with `/^day$/i`) and
           is contractually UNEDITABLE, so Tabs would have forced a harness edit to make the
           implementation pass — the inversion this phase's rules exist to prevent.
        2. Tabs is also the wrong semantic here: `role="tab"` promises a set of tabpanels. There is
@@ -1253,8 +1275,12 @@ export default function EventScheduler({
             (c) mounting it LAST — Tailwind v4's `space-y-4` puts its margin on every child but the
                 last, so a last-mounted region would hand the panel above it a new 16px bottom
                 margin: a 375px layout change. FIRST, it moves nothing (`sr-only` is absolute).
-          The text sits in a span KEYED on `seq`, so every utterance remounts the text node and an
-          aria-atomic region announces even an utterance identical to the last one (gap-lap ML-1).
+          The text sits in a span KEYED on `seq`, so every utterance remounts the text node; in the
+          accessible-name model and in Chromium an aria-atomic region therefore announces even an
+          utterance identical to the last one (gap-lap ML-1). On iOS Safari that is UNVERIFIED: a
+          same-text update may be coalesced by WebKit's managed live-region path, and whether
+          shipping iOS enables it is not known (research AT-4 / AT correction 7; amended in place by
+          88.6.1-24) — the owner's VoiceOver check (plan 88.6.1-57) records it.
           A mount is not an announcement: the region renders empty until the first commit.
 
           NAVIGATION HALF: Back / Next / Today and the desktop week/day toggle announce the NEW
