@@ -343,7 +343,7 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
     file: 'app/components/FriendshipStatusProvider.js',
     contains: "const is404 = err?.message?.includes('404') || err?.status === 404;",
     why:
-      'CONTROL FLOW. Two sites (:180, :198), same line text: a not-found probe that ' +
+      'CONTROL FLOW. Two sites (handleAcceptRequest and handleDeclineRequest), same line text: a not-found probe that ' +
       'resolves to a boolean and picks a UI state. Status-first, same shape as the 409 ' +
       'entry above. Never displayed. No 88.6 plan declares this file.',
   },

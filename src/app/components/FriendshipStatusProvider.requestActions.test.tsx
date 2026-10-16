@@ -498,13 +498,17 @@ describe('friend-request accept / decline (Req 11, D-54 remove on confirm)', () 
     mockApi.acceptRequest.mockReturnValueOnce(dB.promise);
     await renderProvider();
     const accepting = start(() => ctx.acceptRequest('req-1'));
-    const refused = await capture(() => ctx.declineRequest('req-1'));
+    // Started, not awaited: a decline wrongly joined to the held accept would otherwise
+    // hang here instead of failing on the assertion below.
+    const declining = start(() => ctx.declineRequest('req-1'));
     expect(mockApi.declineRequest).not.toHaveBeenCalled();
-    expect(refused.error).toBeDefined();
-    expect(refused).not.toHaveProperty('value');
     dB.resolve({});
     const accepted = await finish(accepting);
+    const refused = await finish(declining);
     expect(accepted.value).toEqual({ alreadyAccepted: false });
+    // Refused, never joined: it did not resolve the accept's outcome as its own.
+    expect(refused).not.toHaveProperty('value');
+    expect(refused.error).toBeInstanceOf(Error);
 
     // Arm (c), the exposed fact and its release: a retry after a failure goes through.
     cleanup();
