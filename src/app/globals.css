@@ -1565,12 +1565,26 @@
      sites exist for either (verified 2026-09-05: all five are primary/secondary/ghost in
      `EmailAddressSection.tsx`) — a future gated `.btn-accent`/`.btn-danger` must mint its pair
      here and its rule beside the others, not fall back to opacity. Full cascade marker at
-     `.btn[aria-disabled='true']`. */
+     `.btn[aria-disabled='true']`.
+     AMENDED Phase 88.6.1-22 (D-39, owner sample pending — Task 2): the DANGER gated pair is
+     minted here, beside the others (`--color-btn-danger-gated-bg` / `-text`, literal hexes: this
+     file has no red palette steps, the same reason the status-error tokens are literals). MEASURED
+     2026-10-04 and re-measured 2026-10-16 with `src/lib/wcag.ts` — light `#7f1d1d` on `#fecaca`
+     **6.9256**, fill ΔL* **37.861** from the resting `#dc2626`, fill on the white card **1.4468**
+     (the gated primary fill reads 1.4188 on the same card). Chosen OVER pair E (the error-box
+     tokens `--color-status-error-subtle` / `--color-status-error-text`: light 6.5563, fill on the
+     card only 1.2675, and its dark half is the exact pair the owner called "rather pink" in
+     UAT3-J1, `.planning/deferred/phase-88.9.md:268`), OVER an `aria-disabled:opacity-50` call-site
+     utility (this marker's own rule; 88.8 measured 2.0974:1 on a composited label), and OVER
+     keeping native `disabled` on danger buttons (R123 / D-39 rule it out — the pressed control
+     drops focus). Accent still has no gated arm — Task 3 records the owner's ruling. */
   --color-btn-primary-gated-bg: var(--purple-200);
   --color-btn-primary-gated-text: var(--purple-700);
   --color-btn-secondary-gated-bg: var(--warm-100);
   --color-btn-secondary-gated-text: var(--warm-600);
   --color-btn-secondary-gated-border: var(--warm-200);
+  --color-btn-danger-gated-bg: #fecaca;
+  --color-btn-danger-gated-text: #7f1d1d;
   /* Phase 88.3-14 (owner ruling 2): the secondary-control RING and its hover step. Bridged as
      `ring-line-control` / `border-line-control` in `@theme inline` above. Dark is `transparent`
      (declared in `.dark`, not omitted, so the 1px is unconditional and the theme toggle shifts
@@ -1933,12 +1947,17 @@
      read as an ACTIVE secondary. Secondary gated keeps its fill and recedes its ink to warm-400
      (**4.8815**, ΔL* 19.79 from warm-200); its ring stays `transparent` like
      `--color-border-control` above (declared, not omitted, so the 1px never shifts). Ghost
-     gated ink is `--color-text-muted` on the card (5.9963). Light marker carries the rule. */
+     gated ink is `--color-text-muted` on the card (5.9963). Light marker carries the rule.
+     88.6.1-22 (D-39): danger gated is `#fecaca` on `#7f1d1d` **6.9256**, fill ΔL* **26.9123**
+     from the dark `#ef4444`, fill on the dark card `#232d3e` **1.3822** — it inverts the light
+     pair ON PURPOSE (deep fill, light ink: the dark primary gated pair's shape). */
   --color-btn-primary-gated-bg: var(--purple-700);
   --color-btn-primary-gated-text: var(--purple-200);
   --color-btn-secondary-gated-bg: var(--purple-800);
   --color-btn-secondary-gated-text: var(--warm-400);
   --color-btn-secondary-gated-border: transparent;
+  --color-btn-danger-gated-bg: #7f1d1d;
+  --color-btn-danger-gated-text: #fecaca;
   /* Phase 88.3-14 (owner ruling 2): ruling 2 is LIGHT-ONLY. Dark `.btn-secondary` is `purple-800`
      on a `purple-900` page and already carries a tonal edge, so both control-edge tokens resolve to
      `transparent` here. DECLARED rather than omitted on purpose: that keeps the 1px border
@@ -2111,22 +2130,35 @@
 
      REJECTED ALTERNATIVE — rename the runtime properties (e.g. `--color-accent` to `--sem-accent`)
      so the namespaces cannot overlap at all. Rejected on cost and blast radius: this file carries
-     140 custom-property declarations that would all need re-checking, and there are NINE JS call
+     140 custom-property declarations that would all need re-checking, and there are JS call
      sites reading these properties through `var()` at runtime, which no CSS-only rename would
      touch and no build step would catch. RE-DERIVED 2026-08-24 by plan 88.1-16, because the
      enumeration this line used to carry (six sites, three of them `EventScheduler.js:459,517,518`)
      was already stale before Phase 88.1 and then went dangling entirely — `EventScheduler.js` no
-     longer exists, the rebuild replaced it with `EventScheduler.tsx`. Current, exhaustive:
-       CalendarMonthView.js:186, SafeImage.js:31, DieLogo.js:12,
-       EventScheduler.tsx:249 and :795 and :807, SchedulerWeekStrip.tsx:144,
-       gameDetail/page.js:1211, colorUtils.js:84-86.
-     Two further sites reach these properties through a Tailwind ARBITRARY VALUE rather than a JS
-     style object — `grouplist.js:299` and `tutorial/TutorialOverlay.js:187`, both
-     `bg-[var(--color-bg-overlay)]`. A rename misses those the same way, so they are named here
-     rather than folded into the count. `groupHomePage/page.js:466` reads `var(--amber-600)`, a
-     RAW palette token outside the `--color-*` namespace this alternative would rename, and is
-     deliberately excluded. Line numbers in this list are a snapshot; the file list is the
-     durable part. A rename
+     longer exists, the rebuild replaced it with `EventScheduler.tsx`.
+     RE-DERIVED AGAIN 2026-10-16 by plan 88.6.1-22 (R029), because the 2026-08-24 list had drifted
+     (its count, and a site it excluded that no longer exists). Current, exhaustive, by command —
+     `grep -rnE "var\(--color-" src` over js/jsx/ts/tsx, tests excluded, every hit opened and
+     comment prose dropped — written as FILE + the `var(…)` it reads, no line numbers:
+       JS string or style-object reads: CalendarMonthView.js `var(--color-content-muted)` (twice),
+       SafeImage.js `var(--color-surface-muted)`, DieLogo.js `var(--color-bg-nav)`,
+       EventScheduler.tsx `var(--color-bg-today-tint)` (assigned to `--color-bg-accent-subtle` in a
+       style object) and `var(--color-btn-primary-bg)` and `var(--color-status-success-text)`,
+       SchedulerWeekStrip.tsx `var(--color-btn-primary-bg)`, gameDetail/page.js
+       `var(--color-btn-primary-bg)`, lib/colorUtils.js `var(--color-content-primary)` and
+       `var(--color-content-secondary)`.
+     Further sites reach these properties through a Tailwind ARBITRARY VALUE rather than a JS
+     style object — grouplist.js and tutorial/TutorialOverlay.js, both `bg-[var(--color-bg-overlay)]`,
+     and UpcomingCountPill.tsx `[background-color:var(--color-btn-accent-bg)]` with
+     `[color:var(--color-btn-accent-text)]`. A rename misses those the same way, so they are named
+     here rather than folded into the JS list.
+     DELIBERATELY EXCLUDED: code that reads a RAW palette token outside the `--color-*` namespace
+     this alternative would rename — Header.js (twice) and LandingPage.js `[--ring:var(--amber-400)]`,
+     UpcomingCountPill.tsx `dark:[background-color:var(--amber-500)]` and `dark:[color:var(--warm-900)]`
+     (by `grep -rnE "var\(--(amber|purple|warm)-[0-9]+" src`, every hit opened; the rest are comment
+     prose). Nothing reads `var(--amber-600)` any more: plan 88.6-21 moved the group page's CTA onto
+     the accent Button, and that file names the shade only in comment prose. Line numbers in this
+     list are a snapshot; the file list is the durable part. A rename
      is still the structurally cleaner end state; if Phase 88 wants it, it is a deliberate
      follow-up, and these three lines are what it deletes.
 
@@ -2362,6 +2394,10 @@ body {
    house precedent for the call-site pattern is `Modal.tsx:260`
    (`cursor-not-allowed opacity-50 hover:text-content-muted`), which works there
    only because that `×` is NOT a `.btn`.
+   CORRECTED 88.6.1-22: that precedent no longer carries an opacity — the close glyph
+   lost it in 88.8 round 3 #39 and now reads `closeDisabled && 'cursor-not-allowed
+   hover:text-content-muted'` (`Modal.tsx:434`, re-read 2026-10-16). The cascade
+   argument above is unchanged.
 
    WITHOUT BOTH HALVES an `aria-disabled` button does not read as gated AND still
    wins hover highlight and press-dim from the five `:not(:disabled)` rules — so
@@ -2371,8 +2407,10 @@ body {
 
    MEASURED BLAST RADIUS AT THE TIME OF THE EDIT (2026-09-04): ZERO shipped
    `.btn` call sites. Only two non-test source files use `aria-disabled` at all —
-   `Modal.tsx:255` (a `DialogClose` styled with bare utilities) and
-   `NextGameNightCard.tsx:390` (className `flex-1 min-h-11 px-3 …`) — and
+   `Modal.tsx:255` (a `DialogClose` styled with bare utilities; now `Modal.tsx:423`
+   `aria-disabled={closeDisabled || undefined}`, re-read 2026-10-16) and
+   `NextGameNightCard.tsx:390` (className `flex-1 min-h-11 px-3 …`; now
+   `NextGameNightCard.tsx:489` `aria-disabled={isFlight || undefined}`) — and
    NEITHER wears `.btn`. So these edits change the rendered behaviour of exactly
    zero existing controls; they are forward compatibility for
    `EmailAddressSection.tsx`, which is the first `.btn` consumer of
@@ -2401,6 +2439,9 @@ body {
      - `.btn-primary[aria-disabled]`   (0,2,0) beats `.btn-primary` (0,1,0) — fill
        AND ink swap, because white ink cannot keep 4.5:1 on any lighter fill.
      - `.btn-secondary[aria-disabled]` (0,2,0) — ink and ring recede, fill stays.
+     - `.btn-danger[aria-disabled]`    (0,2,0) beats `.btn-danger` (0,1,0), declared
+       later — fill AND ink swap, like primary, because white ink cannot keep 4.5:1
+       on a lighter red (88.6.1-22, D-39; numbers at the light token marker).
      - ghost has NO class and NO fill (`Button.tsx`, Tailwind utilities; a grep for
        `btn-ghost` returns zero) — its gated ink is `aria-disabled:text-content-muted`
        IN `Button.tsx`, which is alive because `.btn` sets no `color`. Its ground
@@ -2414,7 +2455,8 @@ body {
    the gated look at all, so the `:focus-visible` split is gone. The hover rules
    below stay narrowed with `:not([aria-disabled='true'])`; the press rule too.
    `.btn-accent` / `.btn-danger` carry no gated arm (zero gated call sites) —
-   see the token marker for what a future one must do. Gate A test 53 pins every
+   see the token marker for what a future one must do. AMENDED Phase 88.6.1-22
+   (D-39): `.btn-danger` now carries one; `.btn-accent` — see Task 3's ruling line. Gate A test 53 pins every
    gated pair AND scans this file for any `aria-disabled` rule that reaches for
    `opacity` again. */
 .btn[aria-disabled='true'] {
@@ -2430,6 +2472,11 @@ body {
   background-color: var(--color-btn-secondary-gated-bg);
   color: var(--color-btn-secondary-gated-text);
   border-color: var(--color-btn-secondary-gated-border);
+}
+
+.btn-danger[aria-disabled='true'] {
+  background-color: var(--color-btn-danger-gated-bg);
+  color: var(--color-btn-danger-gated-text);
 }
 
 /* DECISION Phase 87.8 (D-12): pressed state is an INSTANT OPACITY DIM, chosen OVER a
