@@ -110,7 +110,12 @@ async function openTutorialOnHome(page: Page): Promise<Counters> {
 }
 
 async function pressNextTo(page: Page, indicators: string[], press: (l: Locator) => Promise<void>) {
-  const next = page.getByRole('button', { name: 'Next →', exact: true });
+  // Scoped to the tutorial's footer row (the parent of its "Skip tutorial" button), because at
+  // desktop width CalendarMonthView's month "Next →" is also on the page and an unscoped locator is
+  // a strict-mode violation (CI run 38878098281, journeys). The tutorial surface carries no dialog
+  // role to scope by (the D-49 accept), so its own footer row is the anchor. Both arms use this.
+  const footer = page.getByRole('button', { name: 'Skip tutorial', exact: true }).locator('xpath=..');
+  const next = footer.getByRole('button', { name: 'Next →', exact: true });
   for (const indicator of indicators) {
     await press(next);
     await expect(page.getByText(indicator, { exact: true })).toBeVisible();
