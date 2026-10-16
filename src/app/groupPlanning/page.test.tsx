@@ -431,3 +431,71 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });
+
+describe('groupPlanning page — one load per visit (88.6.1-16, W060)', () => {
+  it('L1: a visit and a create issue ZERO events requests; the create still closes the dialog', async () => {
+    await renderSettled();
+    expect(eventsAPI.getGroupEvents).not.toHaveBeenCalled();
+
+    // Open the dialog and let the page re-render, so the next callbacks come from the OPEN render
+    // (the page's toggle reads the modal state of the render it was created in).
+    act(() => {
+      (h.ce!.modaltoggle as () => void)();
+    });
+    expect(h.ce!.modal).toBe(true);
+
+    // The production order: CreateEvent calls onEventCreated(data) before modaltoggle().
+    act(() => {
+      const ce = h.ce!;
+      (ce.onEventCreated as (e: unknown) => void)({ id: 'E1' });
+      (ce.modaltoggle as () => void)();
+    });
+    expect(eventsAPI.getGroupEvents).not.toHaveBeenCalled();
+    expect(h.ce!.modal).toBe(false);
+  });
+
+  it('L2: identity resolving re-derives the role but does NOT re-load the group or the poll data', async () => {
+    h.SELF.uuid = null;
+    const { rerender } = render(<GroupPlanningPage />);
+    const heading = await screen.findByRole('heading', { level: 3, name: 'Poll Responses' });
+
+    h.SELF.uuid = SELF_UUID;
+    rerender(<GroupPlanningPage />);
+    await waitFor(() => expect(lastRole()).toBe('owner'));
+
+    expect(groupsAPI.getGroup).toHaveBeenCalledTimes(1);
+    expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1);
+    // The group fallback once and the role read once (the fallback's redundancy is Phase 89's,
+    // .planning/deferred/phase-89.md, review r1 #136).
+    expect(groupsAPI.getGroupMembers).toHaveBeenCalledTimes(2);
+    // The poll responses were not blanked to their loading line and remounted.
+    expect(await screen.findByRole('heading', { level: 3, name: 'Poll Responses' })).toBe(heading);
+  });
+
+  it('L3: a failed members fallback is a logger breadcrumb with errCtx, never a raw console call', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('members failed', 'internal', 500));
+      render(<GroupPlanningPage />);
+      await waitFor(() =>
+        expect(h.logInfo).toHaveBeenCalledWith('Error fetching group members:', {
+          name: 'ApiError',
+          message: 'members failed',
+        }),
+      );
+      const raw = consoleSpy.mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].startsWith('Error fetching'),
+      );
+      expect(raw).toHaveLength(0);
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
+  it('L4: a failed group fetch is a logger breadcrumb with errCtx, and the group banner still shows', async () => {
+    (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('group failed', 'internal', 500));
+    render(<GroupPlanningPage />);
+    await screen.findByText("We couldn't load this group");
+    expect(h.logInfo).toHaveBeenCalledWith('Error fetching group:', { name: 'ApiError', message: 'group failed' });
+  });
+});
