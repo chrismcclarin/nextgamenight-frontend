@@ -823,6 +823,9 @@ describe('Phase 88.6-20 — the leave-group failure is ANNOUNCED (R1 third arm /
     expect(region).toHaveAttribute('aria-live', 'polite');
     expect(region).toHaveAttribute('aria-atomic', 'true');
     expect(region!.textContent).toBe('');
+    // Phase 88.6.1-43 (D-22): empty means sr-only, on the same node (CONFIRM-ONLY: the hand
+    // ternary this plan replaces already did this).
+    expect(region).toHaveClass('sr-only');
   });
 
   it('a failed leave puts the RATIFIED reason into that same region, and logs to the error channel', async () => {
@@ -840,6 +843,8 @@ describe('Phase 88.6-20 — the leave-group failure is ANNOUNCED (R1 third arm /
 
     // it is the SAME node that was mounted empty, so the text change is what announces
     expect(document.getElementById(confirm.getAttribute('aria-describedby') as string)).toBe(region);
+    // Phase 88.6.1-43 (D-22): visible the moment it holds text (CONFIRM-ONLY, as above).
+    expect(region).not.toHaveClass('sr-only');
     // the ratified register, not the upstream string
     expect(region.textContent).not.toContain('ETIMEDOUT');
     expect(region.textContent).toBe(getFetchErrorMessage(new Error('x')));
@@ -1035,5 +1040,216 @@ describe('Phase 88.6.1-43 — the default-icon picker is a radio group (D-20 / D
       expect(child).toHaveAttribute('aria-hidden', 'true');
       expect(child.textContent).toBe(ICONS[i].url);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-43 (D-35, D-39; W016 rows 10-11, 18-19; W014 case 1): the control the user
+// pressed stays in the focus order while it works. Line comments only (CF-9).
+//
+// What jsdom can and cannot show (FE-TESTING-CONVENTIONS C-11): jsdom never blurs a
+// disabled element, so "keeps focus" is CONFIRM-ONLY here and proven in the phone e2e spec.
+// The RED halves are the attributes (aria-disabled, no native disabled) and request counts.
+// ---------------------------------------------------------------------------
+describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 18-19; D-35, D-39)', () => {
+  // A promise the test settles by hand, so the request stays in flight while it asserts.
+  function held<T = unknown>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  const asMember = { userRole: 'member' as const };
+  const DELETE_DIALOG = `Delete ${GROUP_NAME}?`;
+
+  // Queued once-values survive vi.clearAllMocks; reset them so a failing arm cannot hand
+  // its leftover to the next test.
+  afterEach(() => {
+    (groupsAPI.updateGroupSettings as Mock).mockReset();
+    (groupsAPI.leaveGroup as Mock).mockReset();
+  });
+
+  it('PC1 (row 18): Save Changes stays focusable while saving, and two presses send one request', async () => {
+    const request = held<Record<string, unknown>>();
+    (groupsAPI.updateGroupSettings as Mock).mockReturnValue(request.promise);
+    const onClose = vi.fn();
+    renderSettings({ onClose });
+    const save = await screen.findByRole('button', { name: 'Save Changes' });
+    save.focus();
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(await screen.findByRole('button', { name: 'Saving...' })).toBe(save);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toHaveAttribute('disabled');
+    expect(save).toHaveClass('btn-primary');
+    expect(groupsAPI.updateGroupSettings as Mock).toHaveBeenCalledTimes(1);
+    // CONFIRM-ONLY in jsdom (C-11)
+    expect(document.activeElement).toBe(save);
+
+    request.resolve({});
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('PC2: a failed save releases the latch, so the next press saves again', async () => {
+    (groupsAPI.updateGroupSettings as Mock)
+      .mockRejectedValueOnce(new Error('upstream'))
+      .mockResolvedValueOnce({});
+    renderSettings();
+    const save = await screen.findByRole('button', { name: 'Save Changes' });
+
+    fireEvent.click(save);
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
+    await screen.findByRole('button', { name: 'Save Changes' });
+    expect(save).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(save);
+    await waitFor(() => expect(groupsAPI.updateGroupSettings as Mock).toHaveBeenCalledTimes(2));
+  });
+
+  it('PC3: the F1 early return releases the latch too', async () => {
+    // a row with NO color_preset key: the F1 guard's failure arm, which returns early
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue({ id: GROUP_ID, name: GROUP_NAME });
+    renderSettings();
+    const colours = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(colours).getByRole('button', { name: 'Teal' }));
+    const save = screen.getByRole('button', { name: 'Save Changes' });
+
+    fireEvent.click(save);
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
+    expect((toast.error as Mock).mock.calls[0][0]).toContain('Colour not saved');
+    await screen.findByRole('button', { name: 'Save Changes' });
+
+    fireEvent.click(save);
+    await waitFor(() => expect(groupsAPI.updateGroupSettings as Mock).toHaveBeenCalledTimes(2));
+  });
+
+  it('PC4 (rows 10-11): Confirm Leave stays focusable while leaving; its Cancel sibling stays natively disabled', async () => {
+    const request = held<void>();
+    (groupsAPI.leaveGroup as Mock)
+      .mockReturnValueOnce(request.promise)
+      .mockReturnValue(new Promise(() => {}));
+    renderSettings(asMember);
+    fireEvent.click(await screen.findByRole('button', { name: 'Leave Group' }));
+    const confirm = await screen.findByRole('button', { name: 'Confirm Leave' });
+    const regionId = confirm.getAttribute('aria-describedby');
+    confirm.focus();
+
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    expect(await screen.findByRole('button', { name: 'Leaving…' })).toBe(confirm);
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(confirm).not.toHaveAttribute('disabled');
+    expect(confirm).toHaveClass('btn-danger');
+    expect(confirm).toHaveAttribute('aria-describedby', regionId as string);
+    // the leave row's own Cancel (the footer has a Cancel too)
+    const cancel = within(confirm.parentElement as HTMLElement).getByRole('button', { name: 'Cancel' });
+    expect(cancel).toBeDisabled();
+    expect(cancel).not.toHaveAttribute('aria-disabled');
+    expect(groupsAPI.leaveGroup as Mock).toHaveBeenCalledTimes(1);
+    // CONFIRM-ONLY in jsdom (C-11)
+    expect(document.activeElement).toBe(confirm);
+
+    request.reject(new Error('upstream'));
+    const region = document.getElementById(regionId as string) as HTMLElement;
+    await waitFor(() => expect(region.textContent).not.toBe(''));
+    expect(confirm).not.toHaveAttribute('aria-disabled');
+    expect(cancel).toBeEnabled();
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(groupsAPI.leaveGroup as Mock).toHaveBeenCalledTimes(2));
+  });
+
+  it('PC5 (R8 idempotency backstop, CONFIRM-ONLY): two failed leaves are both announced on the same node; one region, none nested', async () => {
+    const failure = new Error('upstream');
+    const second = held<void>();
+    (groupsAPI.leaveGroup as Mock)
+      .mockRejectedValueOnce(failure)
+      .mockReturnValueOnce(second.promise);
+    renderSettings(asMember);
+    fireEvent.click(await screen.findByRole('button', { name: 'Leave Group' }));
+    const confirm = await screen.findByRole('button', { name: 'Confirm Leave' });
+    const region = document.getElementById(confirm.getAttribute('aria-describedby') as string) as HTMLElement;
+    const line = getFetchErrorMessage(failure);
+
+    // R8 adjacency: the leave-confirm block holds exactly one live region, and it nests in no
+    // other live region and holds none
+    const block = region.parentElement as HTMLElement;
+    expect(block.querySelectorAll('[role="status"], [role="alert"], [aria-live]')).toHaveLength(1);
+    expect(block.closest('[role="status"], [role="alert"], [aria-live]')).toBeNull();
+    expect(region.querySelector('[role="status"], [role="alert"], [aria-live]')).toBeNull();
+
+    // R8 empty
+    expect(region.textContent).toBe('');
+    expect(region).toHaveClass('sr-only');
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(region.textContent).toBe(line));
+    expect(region).not.toHaveClass('sr-only');
+
+    fireEvent.click(confirm);
+    // positive signal first (CF-26): the second request is in flight
+    await screen.findByRole('button', { name: 'Leaving…' });
+    expect(document.getElementById(confirm.getAttribute('aria-describedby') as string)).toBe(region);
+    expect(region.textContent).toBe('');
+    expect(region).toHaveClass('sr-only');
+
+    second.reject(failure);
+    await waitFor(() => expect(region.textContent).toBe(line));
+    expect(document.getElementById(confirm.getAttribute('aria-describedby') as string)).toBe(region);
+    expect(region).not.toHaveClass('sr-only');
+  });
+
+  it('PC6 (row 19): the Delete Group opener is aria-disabled while the delete is pending, and opens no second dialog', async () => {
+    const request = held<unknown>();
+    (groupsAPI.deleteGroup as Mock).mockReturnValue(request.promise);
+    renderSettings();
+    await waitFor(() => expect(dangerZone().textContent).toContain('37'));
+    const opener = screen.getByRole('button', { name: 'Delete Group' });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: DELETE_DIALOG });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    // the background is hidden from the role tree while the dialog is open
+    expect(await screen.findByRole('button', { name: 'Deleting...', hidden: true })).toBe(opener);
+    expect(opener).toHaveAttribute('aria-disabled', 'true');
+    expect(opener).not.toHaveAttribute('disabled');
+
+    fireEvent.click(opener);
+    expect(screen.getAllByRole('dialog', { name: DELETE_DIALOG })).toHaveLength(1);
+    expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('PC7 (answer 3A, W014 case 1): Cancel while the delete is pending closes the dialog and focus lands on the opener', async () => {
+    // Plan 88.6.1-22 recorded the owner's answer 3A: the dialog's Cancel stays live while a
+    // confirm is pending. Plan 88.6.1-20 recorded that jsdom refuses focus() on a natively
+    // disabled opener, so this arm is RED on the native gate and discriminating here; the
+    // phone e2e spec (test 4) is the real-browser proof.
+    const request = held<unknown>();
+    (groupsAPI.deleteGroup as Mock).mockReturnValue(request.promise);
+    renderSettings();
+    await waitFor(() => expect(dangerZone().textContent).toContain('37'));
+    const opener = screen.getByRole('button', { name: 'Delete Group' });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: DELETE_DIALOG });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await screen.findByRole('button', { name: 'Deleting...', hidden: true });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: DELETE_DIALOG })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    expect(opener).toHaveTextContent('Deleting...');
+    expect(opener).toHaveAttribute('aria-disabled', 'true');
+    expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
   });
 });
