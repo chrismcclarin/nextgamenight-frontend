@@ -63,9 +63,16 @@ export interface FetchErrorBannerProps {
  * by the visible line AND the live region. `COMPACT_NOTICE` is the shipped copy above;
  * `COMPACT_NOTICE_AFTER_FAILED_RETRY` is NEW copy, ratified by the owner on 2026-10-05 (D-47,
  * copy row B1), shown once a retry is KNOWN to have failed.
+ *
+ * Extended in place, Phase 88.6.1-70: there are now THREE constants under the same both-carriers
+ * rule. `REFRESH_FAILED_NOTICE` is NEW copy, ratified by the owner on 2026-10-05 (copy row RF1,
+ * D-47), carried byte-identically by `RefreshFailedNotice`'s visible line and its one polite
+ * region. It is the only line in this file that holds that sentence: docblocks and markers name
+ * the constant and never quote it (D-30).
  */
 const COMPACT_NOTICE = 'Some personal controls are unavailable.';
 const COMPACT_NOTICE_AFTER_FAILED_RETRY = 'Some personal controls are still unavailable.';
+const REFRESH_FAILED_NOTICE = "Couldn't refresh. Showing what loaded earlier.";
 
 /**
  * How long the compact region stays EMPTY after a press before it may refill. AT-4
@@ -103,14 +110,33 @@ function classifyRetryResult(result: unknown): 'failed' | 'succeeded' | 'unknown
   return 'unknown';
 }
 
-export function FetchErrorBanner({
-  state,
-  title = 'Something went wrong',
-  reportSubject,
-  reportContext,
-  compact = false,
-}: FetchErrorBannerProps) {
-  const [showReport, setShowReport] = React.useState(false);
+/** Options for {@link useRetryEpisode}, the one retry mechanism every retry in this file uses. */
+type RetryEpisodeOptions = {
+  /** The derived fetch-error state; a press runs its `retry`. */
+  state: FetchErrorState;
+  /**
+   * Whether THIS component shows the failure right now: `state.showError` for the banner, and
+   * `state.showError && retained` (never an access or gone answer) for the RF1 notice.
+   */
+  failureShown: boolean;
+  /** Empty the polite region from a press for at least `REGION_EMPTY_DWELL_MS`. */
+  dwellOnPress: boolean;
+  /** Mounted while the failure already shows: keep the region empty on the first commit. */
+  quietOnMount: boolean;
+  /** The host's section heading: plan 04's `fallback`, where focus goes when a control leaves. */
+  focusTarget?: React.RefObject<HTMLElement | null>;
+};
+
+/* DECISION Phase 88.6.1-70 (one mechanism): plan 21's retry machinery lives in this ONE
+   module-private hook, used by `FetchErrorBanner` (both branches), `RefreshFailedNotice` and
+   `SectionLoadFailedNotice`. It moved UNCHANGED in behaviour, with two substitutions only: the
+   committed-state reads that were `state.showError` read `failureShown` (the RF1 notice shows a
+   failure only while content is retained), and the press dwell that was keyed on `compact` is
+   keyed on `dwellOnPress`. REJECTED: a second copy of the machinery for the new notices — two
+   copies of a latch, a dwell and an outcome rule drift apart (tenet: one mechanism). Changing
+   this is a decision, not a cleanup. */
+function useRetryEpisode(options: RetryEpisodeOptions) {
+  const { state, failureShown, dwellOnPress, focusTarget } = options;
   const [retrying, setRetrying] = React.useState(false);
   // A retry in THIS failure episode is KNOWN to have failed (its own result said so and the
   // committed state agreed).
@@ -126,22 +152,22 @@ export function FetchErrorBanner({
   // `state.showError` went false during this flight, so the assertive region empties and
   // refills — and that refill already speaks the title (round-2 review #176).
   const assertiveChangedRef = React.useRef(false);
-  const retryRecovery = useFocusRecovery();
+  const retryRecovery = useFocusRecovery({ fallback: focusTarget });
 
   // Resolve a pending outcome against the COMMITTED state, at render — React's documented
   // adjust-state-while-rendering pattern. Each arm is guarded by a state comparison, so it fires
   // once per transition and never loops; a `useEffect` would paint one frame of the old state.
-  if (retryOutcome === 'awaitFailed' && state.showError) {
+  if (retryOutcome === 'awaitFailed' && failureShown) {
     setRetryFailedAgain(true);
     setRetryOutcome('none');
-  } else if (retryOutcome === 'awaitSucceeded' && !state.showError) {
+  } else if (retryOutcome === 'awaitSucceeded' && !failureShown) {
     setRetryFailedAgain(false);
     setRetryOutcome('none');
-  } else if (retryOutcome === 'none' && !retrying && !state.showError && retryFailedAgain) {
+  } else if (retryOutcome === 'none' && !retrying && !failureShown && retryFailedAgain) {
     // The failure episode ended with no retry in flight (see the B1 marker for its measured limit).
     setRetryFailedAgain(false);
   }
-  if (retrying && !state.showError) assertiveChangedRef.current = true;
+  if (retrying && !failureShown) assertiveChangedRef.current = true;
 
   // A resolved outcome needs no expiry; an unmounted banner gets no late state update.
   React.useEffect(() => {
@@ -197,7 +223,7 @@ export function FetchErrorBanner({
       outcomeTimerRef.current = null;
     }
     assertiveChangedRef.current = false;
-    if (compact) {
+    if (dwellOnPress) {
       if (dwellTimerRef.current !== null) clearTimeout(dwellTimerRef.current);
       setRegionDwellDone(false);
       dwellTimerRef.current = setTimeout(() => {
@@ -230,6 +256,91 @@ export function FetchErrorBanner({
       settle();
     }
   };
+  const regionQuiet = retrying || retryOutcome !== 'none' || !regionDwellDone;
+
+  return { retrying, retryOutcome, retryFailedAgain, regionQuiet, handleRetry, assertiveChangedRef };
+}
+
+/** Props of {@link NoticeRow}, the one visible row every small notice in this file renders. */
+interface NoticeRowProps {
+  /** The ratified sentence the row shows (and the one polite region beside it carries). */
+  text: string;
+  /** A retry is in flight: `Retrying…` and `aria-disabled`, never the native attribute. */
+  retrying: boolean;
+  /** The shared press handler; it arms focus recovery from the pressed button. */
+  handleRetry: (event: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>;
+}
+
+/* DECISION Phase 88.6.1-70 (one row): ONE row element for the small notices — the compact
+   identity notice and `RefreshFailedNotice`, and a third, `SectionLoadFailedNotice`, under owner
+   ruling D8-r2 — so they have one look by construction and one floor pin. CHOSEN, too, the one
+   added attribute pair (the sentence's `React.useId` id, and the `Retry`'s `aria-describedby`
+   pointing at it; finding #339): every small-notice `Retry` is described by its own ratified
+   sentence, so a `Retry` beside the identity notice is told apart from RF1's with no new words.
+   Two RF1 notices on ONE page still read alike; naming the list needs words, which stays the
+   owner's wording question (D-31; plan 88.6.1-70 Routed finding 2).
+   REJECTED: (a) a second row markup for RF1 — two class strings that drift apart, and a third
+   opening tag carrying the retry handler, which reds the floor suite's `bannerRetries` count, or,
+   renamed, an RF1 `Retry` the floor suite never sees; (b) merging a caller `className` into this
+   row through `cn` — the row's class strings stay byte-identical (the description tie above is a
+   deliberate addition, not a style change), so a consumer's spacing lives on the RF1 wrapper
+   instead. The prop is named `handleRetry` ON PURPOSE: the floor suite anchors on the button's
+   handler attribute. Changing this is a decision, not a cleanup. */
+function NoticeRow({ text, retrying, handleRetry }: NoticeRowProps) {
+  const textId = React.useId();
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
+      <span id={textId}>{text}</span>
+      {/* DECISION Phase 88.6.1-21 (WR-503 / AC-10): all three link-buttons in this file
+          (this `Retry`, and `Try again` / `Report this` in the full branch) declare the
+          house PHONE-SCOPED link-button floor `min-h-11 md:min-h-0`
+          (`UpcomingEventsCard.js:263`, `DECISION Phase 88-01 (D-36)`; the `.btn` floor is
+          phone-only too). VISIBLE DELTA: on a phone each button row grows to 44px.
+          REJECTED: (a) the register's negative-vertical-margin compensation
+          (`.planning/deferred/phase-88.6.1.md:85`) — the 44px target would overlap the
+          message line above it and unknown caller content around this row, so a tap on text
+          would activate a retry; (b) an all-widths floor — AC-10 is a 375px criterion, and
+          desktop rhythm is not this phase's look call.
+          AMENDED Phase 88.6.1-70 (one row): this row is now shared by the compact notice,
+          `RefreshFailedNotice` and `SectionLoadFailedNotice`, so the floor covers all three small
+          notices, and the floor suite counts this ONE element (`bannerRetries`, expectedCount 2).
+
+          DECISION Phase 88.6.1-21 (Req 7 ring): the same three carry the byte-identical
+          house ring (`Button.tsx:113`; 54 non-test lines in 28 files carried it before this
+          plan, measured 2026-10-15), keyboard-only by `focus-visible`. It is a box-shadow
+          outside the box, clear of the message above (`mt-2`) and the neighbours (`gap-2` /
+          `gap-4`). The orchestrator decision of 2026-10-05; it supersedes the earlier plan to
+          route this look item to Phase 88.9. REJECTED: leaving the browser's default outline
+          (one surface off the house standard on 33 mounts); a rounded or inset variant (the
+          ringed link-buttons in the app mostly carry no rounding — the plan's census, not
+          re-run here). The NO-weight marker in the full branch is honoured: the ring is not a
+          weight utility.
+          AMENDED Phase 88.6.1-70 (one row): the same ring now covers every small notice's `Retry`
+          through this one shared row. */}
+      <button
+        type="button"
+        onClick={handleRetry}
+        aria-disabled={retrying || undefined}
+        aria-describedby={textId}
+        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      >
+        <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
+        {retrying ? 'Retrying…' : 'Retry'}
+      </button>
+    </div>
+  );
+}
+
+export function FetchErrorBanner({
+  state,
+  title = 'Something went wrong',
+  reportSubject,
+  reportContext,
+  compact = false,
+}: FetchErrorBannerProps) {
+  const [showReport, setShowReport] = React.useState(false);
+  const { retrying, retryOutcome, retryFailedAgain, regionQuiet, handleRetry, assertiveChangedRef } =
+    useRetryEpisode({ state, failureShown: state.showError, dwellOnPress: compact, quietOnMount: false });
 
   /* DECISION Phase 88.6-36 (T-88.6-102, W38 class): the compact branch's announcement is a
      SHIPPED `StatusRegion`, mounted ABOVE the `showError` guard and GATED ON `compact`, chosen
@@ -353,46 +464,13 @@ export function FetchErrorBanner({
     // retry affordance. The VISIBLE half still renders only on permanent failure;
     // only the announcing node pre-exists it.
     const noticeText = retryFailedAgain ? COMPACT_NOTICE_AFTER_FAILED_RETRY : COMPACT_NOTICE;
-    const regionQuiet = retrying || retryOutcome !== 'none' || !regionDwellDone;
     return (
       <>
         <StatusRegion politeness="polite" className="sr-only">
           {regionQuiet ? '' : state.showError ? noticeText : ''}
         </StatusRegion>
         {state.showError ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
-            <span>{noticeText}</span>
-            {/* DECISION Phase 88.6.1-21 (WR-503 / AC-10): all three link-buttons in this file
-                (this `Retry`, and `Try again` / `Report this` in the full branch) declare the
-                house PHONE-SCOPED link-button floor `min-h-11 md:min-h-0`
-                (`UpcomingEventsCard.js:263`, `DECISION Phase 88-01 (D-36)`; the `.btn` floor is
-                phone-only too). VISIBLE DELTA: on a phone each button row grows to 44px.
-                REJECTED: (a) the register's negative-vertical-margin compensation
-                (`.planning/deferred/phase-88.6.1.md:85`) — the 44px target would overlap the
-                message line above it and unknown caller content around this row, so a tap on text
-                would activate a retry; (b) an all-widths floor — AC-10 is a 375px criterion, and
-                desktop rhythm is not this phase's look call.
-
-                DECISION Phase 88.6.1-21 (Req 7 ring): the same three carry the byte-identical
-                house ring (`Button.tsx:113`; 54 non-test lines in 28 files carried it before this
-                plan, measured 2026-10-15), keyboard-only by `focus-visible`. It is a box-shadow
-                outside the box, clear of the message above (`mt-2`) and the neighbours (`gap-2` /
-                `gap-4`). The orchestrator decision of 2026-10-05; it supersedes the earlier plan to
-                route this look item to Phase 88.9. REJECTED: leaving the browser's default outline
-                (one surface off the house standard on 33 mounts); a rounded or inset variant (the
-                ringed link-buttons in the app mostly carry no rounding — the plan's census, not
-                re-run here). The NO-weight marker in the full branch is honoured: the ring is not a
-                weight utility. */}
-            <button
-              type="button"
-              onClick={handleRetry}
-              aria-disabled={retrying || undefined}
-              className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            >
-              <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
-              {retrying ? 'Retrying…' : 'Retry'}
-            </button>
-          </div>
+          <NoticeRow text={noticeText} retrying={retrying} handleRetry={handleRetry} />
         ) : null}
       </>
     );
@@ -513,5 +591,111 @@ export function FetchErrorBanner({
         />
       )}
     </div>
+  );
+}
+
+/** Props of {@link RefreshFailedNotice} (plan 88.6.1-70; the contract is in its docblock). */
+export interface RefreshFailedNoticeProps {
+  /** From `useFetchErrorState(...)`: the SAME state the site's first-load banner reads. */
+  state: FetchErrorState;
+  /** True while content from an earlier SUCCESSFUL load of this data, for the current key, may stay on screen. */
+  retained: boolean;
+  /** The heading of the section the notice qualifies: where focus goes when the notice leaves. */
+  focusTarget?: React.RefObject<HTMLElement | null>;
+  /** Outer spacing only (e.g. `mb-4`), on a wrapper rendered ONLY while the notice shows. */
+  className?: string;
+}
+
+/* DECISION Phase 88.6.1-70 (AC-29 / RF1, owner ruling 2026-10-05): a failed REFRESH over content
+   that is still on screen is told by ONE shared notice, `RefreshFailedNotice` — the sentence
+   `REFRESH_FAILED_NOTICE` (copy row RF1, D-47) plus a `Retry` — and the content stays.
+   CHOSEN:
+   - a sibling export in this module, sharing `useRetryEpisode` and `NoticeRow` with the banner;
+   - one always-`sr-only` polite region as the fragment's FIRST child, the visible wrapper second
+     (the 88.6-36 compact shape: one polite region, never two);
+   - the SAME sentence re-announced on every failed Retry, through plan 21's empty-then-refill
+     dwell — no new words, never B1 (D-31);
+   - `retained` decided by the consumer (D-09a's has-loaded flag for the current key, never a row
+     count), so a refresh nobody loaded for shows nothing here and the site's full banner owns it.
+   REJECTED:
+   (a) a mode prop on `FetchErrorBanner` — `title`, `reportSubject`, `reportContext` and `compact`
+       would be meaningless in that mode, a `.js` caller could write `compact` with it unchecked,
+       and the five suites that replace this module wholesale with `vi.mock` (three of them —
+       `EventCalendar.identity`, `grouplist.identity`, `userProfile.identity-error` — render their
+       stub on `showError` alone) would render an RF1 mount as the stubbed banner, so a suite could pass
+       on the wrong element; a sibling export a factory lacks makes vitest throw instead;
+   (b) a second copy of the retry machinery (tenet: one mechanism);
+   (c) a separate module — the hook and the row would have to be exported;
+   (d) `srOnlyWhenEmpty` (D-22) — the region must go quiet during a Retry while the visible line
+       keeps the sentence, and a visible-when-set region would blank the line on every press;
+   (e) the primitive owning an outer margin — placement differs per site, so spacing is the
+       consumer's `className`, rendered only while shown (a healthy page gains no box at 375px);
+   (f) naming the list in the spoken sentence — new words (D-31; Routed finding 2).
+   Changing any of these is a decision, not a cleanup. */
+export function RefreshFailedNotice({ state, retained, focusTarget, className }: RefreshFailedNoticeProps) {
+  const shown = state.showError && retained;
+  const { retrying, regionQuiet, handleRetry } = useRetryEpisode({
+    state,
+    failureShown: shown,
+    dwellOnPress: true,
+    quietOnMount: true,
+    focusTarget,
+  });
+  return (
+    <>
+      <StatusRegion politeness="polite" className="sr-only">
+        {shown && !regionQuiet ? REFRESH_FAILED_NOTICE : ''}
+      </StatusRegion>
+      {shown ? (
+        <div className={className}>
+          <NoticeRow text={REFRESH_FAILED_NOTICE} retrying={retrying} handleRetry={handleRetry} />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** Props of {@link SectionLoadFailedNotice} (owner ruling D8-r2). */
+export interface SectionLoadFailedNoticeProps {
+  /** From `useFetchErrorState(…, { fallbackMessage: <the section's ratified line> })`. */
+  state: FetchErrorState;
+  /** Outer spacing only, on a wrapper rendered ONLY while the notice shows. */
+  className?: string;
+}
+
+/* DECISION Phase 88.6.1-70 (D8-r2, section notice; owner 2026-10-13, orchestrator 2026-10-15): a
+   section whose read failed and NEVER loaded gets the small notice `SectionLoadFailedNotice`,
+   showing `state.message`. CHOSEN: a third sibling export sharing `useRetryEpisode` and
+   `NoticeRow` (one row, one latch, one floor, one ring), so the consumer's `fallbackMessage`
+   gives the owner's ratified line for a code-less failure and a coded failure shows the register
+   sentence for its code, by construction. `state.message` is the code-keyed register's sentence
+   or the caller's `fallbackMessage` (`useFetchErrorState.ts`, anchor
+   `export function getFetchErrorMessage`), so the notice never renders a backend string
+   (T-88.6.1-1404). No `retained` and no access check: its one consumer (plan 88.6.1-74's
+   never-loaded side reads) stores only non-access failures, its access answers handled first.
+   REJECTED: (a) an optional `text` prop on the compact branch — it touches all 12 compact mounts
+   and B1's sentence swap; (b) the compact notice as it ships — its sentence is the identity line,
+   false under a reviews heading; (c) B1 after a failed Retry — identity copy; the same sentence
+   is re-announced instead (D-31); (d) `RefreshFailedNotice` — "showing what loaded earlier" is
+   false for a section that never loaded. Changing any of these is a decision, not a cleanup. */
+export function SectionLoadFailedNotice({ state, className }: SectionLoadFailedNoticeProps) {
+  const shown = state.showError;
+  const { retrying, regionQuiet, handleRetry } = useRetryEpisode({
+    state,
+    failureShown: shown,
+    dwellOnPress: true,
+    quietOnMount: true,
+  });
+  return (
+    <>
+      <StatusRegion politeness="polite" className="sr-only">
+        {shown && !regionQuiet ? state.message : ''}
+      </StatusRegion>
+      {shown ? (
+        <div className={className}>
+          <NoticeRow text={state.message} retrying={retrying} handleRetry={handleRetry} />
+        </div>
+      ) : null}
+    </>
   );
 }
