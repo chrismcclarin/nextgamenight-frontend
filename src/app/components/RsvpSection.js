@@ -21,6 +21,13 @@ import { logger, errCtx } from '@/lib/logger';
    exists to remove. Authoring a different string here is copy authorship, not a cleanup. */
 const NOTE_SAVED_MESSAGE = 'Note saved';
 
+// Copy row E11 (88.6.1-COPY-TABLE.html, a Heard row; owner-ratified), declared once here (D-30).
+// The straight apostrophe is deliberate (D-32 R8): the table's typographic one is normalised.
+const NOTE_LIMIT_MESSAGE = "You've reached the 500-character limit.";
+// The E11 region's test address, after `PAGE_STATUS_TESTID` in `availability-form/[token]/page.js`:
+// a single-element status query cannot address one of this card's three polite regions.
+const NOTE_LIMIT_STATUS_TESTID = 'rsvp-note-limit-status';
+
 /**
  * RsvpSection - RSVP interface for a single event
  * Shows status buttons, note field, count banner, and grouped respondent list
@@ -41,6 +48,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [noteSaved, setNoteSaved] = useState('');
+  const [noteLimitMessage, setNoteLimitMessage] = useState('');
 
   const isPastEvent = eventDate ? new Date(eventDate) < new Date() : false;
 
@@ -149,9 +157,12 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
        outcome. A stale CONFIRMATION is the more urgent of the two — it claims a save the user
        never made for the event now on screen, where a stale error only mis-attributes a
        failure (the reasoning `NextGameNightCard.tsx:220-225` records for the hero flip).
-       Neither clear may be removed without removing the other's reason with it. */
+       Neither clear may be removed without removing the other's reason with it. Phase 88.6.1-38
+       (AC-25): a limit reached on the previous event's draft must not stand on the new event's,
+       so the E11 region is cleared here too. */
     setError(null);
     setNoteSaved('');
+    setNoteLimitMessage('');
   }, [eventId]);
 
   const fetchRsvps = useCallback(async () => {
@@ -180,6 +191,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           if (!noteDirty.current) {
             noteDraft.current = mine.note || '';
             setNote(noteDraft.current);
+            // AC-25: hydration is never typing, so it clears E11 and never sets it (the marker
+            // on the E11 region below says why both halves matter).
+            setNoteLimitMessage('');
           }
         } else {
           setUserRsvp(null);
@@ -187,6 +201,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           if (!noteDirty.current) {
             noteDraft.current = '';
             setNote('');
+            setNoteLimitMessage('');
           }
         }
       }
@@ -474,11 +489,22 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               id={noteId}
               name={noteId}
               /* `maxLength` moves the 500-character discard from the `onChange` gate below to the
-                 UA and exposes the limit programmatically. STATED HONESTLY: it does NOT announce
-                 anything at the moment the cap is reached — the 501st keystroke is still silently
-                 dropped as far as a screen-reader user's ear is concerned. That residual is
-                 ROUTED on the W43 register entry, not claimed closed. The JS gate stays as the
-                 backstop for programmatic value writes, which `maxLength` does not cover. */
+                 UA and exposes the limit programmatically. The JS gate stays as the backstop for
+                 programmatic value writes, which `maxLength` does not cover.
+                 AMENDED Phase 88.6.1-38 (AC-25): reaching 500 is now ANNOUNCED, by the E11 region
+                 beside the outcome pair (copy row E11), set from the keystroke that reaches the
+                 cap. A further keystroke at the cap is still dropped by the UA with no change
+                 event, so nothing new is announced — the user was told when they reached it. The
+                 W43 register residual is closed by this plan. A note that LOADS at the cap (a
+                 saved 500-character note) is told when the user enters the field: the counter
+                 below is this field's description (`aria-describedby`, Phase 88.6-29), so they
+                 hear 500/500 before any keystroke, the same thing a sighted user sees (owner
+                 principle 2026-10-05; the accept an earlier revision proposed is withdrawn).
+                 Each of these is a regression, not a cleanup: removing that `aria-describedby`
+                 (it silences the loaded case); making the counter a live region (it would speak
+                 on every keystroke); setting E11 from hydrated data (it would speak on page
+                 load); removing the hydration clears in `fetchRsvps` (a save the server trimmed
+                 below the cap would leave a stale E11, and the next reach would be silent). */
               maxLength={500}
               aria-describedby={noteCounterId}
               value={note}
@@ -491,6 +517,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   // `handleSaveNote`'s post-await comparison reads.
                   noteDraft.current = e.target.value;
                   setNote(e.target.value);
+                  // AC-25 / E11: the user's own keystroke reaching 500 sets the limit message;
+                  // anything below clears it, so a re-reach re-announces.
+                  setNoteLimitMessage(e.target.value.length === 500 ? NOTE_LIMIT_MESSAGE : '');
                 }
               }}
               placeholder="Add a note (optional)"
@@ -609,6 +638,30 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           srOnlyWhenEmpty
           className="text-content-secondary"
           message={noteSaved}
+        />
+
+        {/* DECISION Phase 88.6.1-38 (AC-25, E11): the note's 500-character limit is announced by
+            an always-mounted, always-`sr-only` polite region, set by the user's own keystroke
+            when the value reaches 500 (copy row E11, a Heard row). It clears below 500, on an
+            event switch and wherever `fetchRsvps` hydrates the note from data (a save's rehydrate
+            included), so a re-reach re-announces on the same node.
+            REJECTED (a) deriving it from the note's length: a saved 500-character note hydrated
+            by `fetchRsvps` would announce the limit on page load with no keystroke. REJECTED (b)
+            making the visible counter a live region: it would speak on every keystroke. REJECTED
+            (c) reusing the polite outcome region above: it is visible when set while E11 is
+            heard-only, and a limit message there would erase "Note saved" or be erased by it.
+            REJECTED (d) an `aria-describedby` target for E11: a description is read when the user
+            enters the field, not when it changes. That same property is why the counter's
+            existing description is KEPT beside E11 — it tells a note that LOADS at the cap on
+            entry, E11 tells the moment typing reaches it; complementary, not alternatives.
+            REJECTED (e) the D-22 prop: it is for visible-when-set regions, and E11 is never
+            visible. This is not a failure region, so the card still has exactly ONE assertive
+            region (R8 adjacency). Never the stack's last child: the count banner or list follows. */}
+        <StatusRegion
+          politeness="polite"
+          className="sr-only"
+          data-testid={NOTE_LIMIT_STATUS_TESTID}
+          message={noteLimitMessage}
         />
 
         {/* Count banner */}
