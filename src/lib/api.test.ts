@@ -1169,3 +1169,108 @@ describe('88.6.1-23 / W062 rider MEDLOW-18 — a timeout is told apart from othe
     expect(Object.prototype.hasOwnProperty.call(caught, 'cause')).toBe(false);
   });
 });
+
+// ADDED by plan 88.6.1-23 task 2 (the R9 mechanism; owner ruling 2026-10-05, copy key R9,
+// `.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/planning-briefs/revision-lap-3-manifest.md:48`).
+// The backend's own failure on GET /rsvp/respond is a JSON 500 (BE `routes/rsvp.js:358`,
+// anchor `Something went wrong processing your RSVP.`), which respondViaToken RESOLVED, so the
+// RSVP page fell to its generic copy and told the person to tap a single-use link the backend
+// may already have consumed. A status of 500 or above now rejects ApiError('internal') at
+// headers, without reading the body, and plan 88.6.1-36's `internal` arm shows R9. Y1, Y2 and
+// Y4 were RED before the fix; Y3 is the confirm-only boundary.
+describe('88.6.1-23 / R9 mechanism — a server error on the RSVP link rejects as internal; the bodies the page reads still resolve', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const answer = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText });
+
+  const capture = async (run: () => Promise<unknown>): Promise<unknown> => {
+    try {
+      await run();
+    } catch (err) {
+      return err;
+    }
+    return null;
+  };
+
+  it('Y1: the backend JSON 500 rejects ApiError(internal, 500) with the constant message and nothing of the body', async () => {
+    vi.stubGlobal('fetch', answer(500, '{"error":"Something went wrong processing your RSVP."}'));
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 500, message: 'rsvp respond request did not complete' });
+    expect((caught as ApiError).details).toBeUndefined();
+    expect((caught as ApiError).upstreamMessage).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(caught, 'cause')).toBe(false);
+    expect(JSON.stringify(errCtx(caught))).not.toContain('processing your RSVP');
+  });
+
+  it('Y2: a JSON 502, 503, 504 and 599 each reject ApiError(internal) with that status', async () => {
+    for (const status of [502, 503, 504, 599]) {
+      vi.stubGlobal('fetch', answer(status, '{"message":"upstream unavailable"}'));
+      const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+      expect(caught, String(status)).toBeInstanceOf(ApiError);
+      expect(caught, String(status)).toMatchObject({
+        code: 'internal',
+        status,
+        message: 'rsvp respond request did not complete',
+      });
+    }
+  });
+
+  // The 404 'Event not found' (BE `routes/rsvp.js:288`) is deliberately NOT pinned here: it
+  // still resolves, and its page wording is an open owner item (revision-lap-3-manifest.md:87,
+  // anchor `OWNER WORDING STILL OWED (small): the RSVP link page`), not this plan's.
+  it('Y3 (CONFIRM-ONLY boundary): every body below 500 the page reads still resolves; a non-JSON 502 still rejects internal', async () => {
+    const BODIES: Array<[number, string]> = [
+      [403, '{"error":"account_not_found","message":"fixture"}'],
+      [403, '{"error":"expired_link","message":"fixture"}'],
+      [410, '{"error":"event_cancelled","group_id":"g-1"}'],
+      [410, '{"error":"event_passed","event_name":"X","group_id":"g-1"}'],
+      [400, '{"error":"Missing required parameters"}'],
+    ];
+    for (const [status, body] of BODIES) {
+      vi.stubGlobal('fetch', answer(status, body));
+      await expect(rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'), `${status} ${body}`).resolves.toEqual(JSON.parse(body));
+    }
+    vi.stubGlobal('fetch', answer(502, '<html><body>Bad gateway</body></html>'));
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 502 });
+  });
+
+  it('Y4: a 503 whose body stalls rejects internal at headers, never reads the body, leaves no timer', async () => {
+    vi.useFakeTimers();
+    const text = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        text.mockImplementation(
+          () =>
+            new Promise<string>((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () =>
+                reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+              );
+            }),
+        );
+        return { ok: false, status: 503, text };
+      }),
+    );
+    const settled = vi.fn();
+    rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes').then(
+      (v) => settled('resolved', v),
+      (e) => settled('rejected', e),
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled, 'a 5xx is decided at headers, not after its body').toHaveBeenCalledTimes(1);
+    const [outcome, value] = settled.mock.calls[0];
+    expect(outcome).toBe('rejected');
+    expect(value).toBeInstanceOf(ApiError);
+    expect(value).toMatchObject({ code: 'internal', status: 503 });
+    expect(text, 'a 5xx body nothing reads is never read').not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
