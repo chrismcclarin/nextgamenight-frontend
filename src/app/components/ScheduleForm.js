@@ -49,6 +49,11 @@ export default function ScheduleForm({
   // Plan 88.6-63 (review round 2 #25): the synchronous in-flight latch. `aria-disabled` on the
   // submit is advisory, so THIS is the refusal — a ref, not state, because `isSubmitting` is not
   // readable synchronously at the top of `onSubmit`. Released in `finally`.
+  // AMENDED Phase 88.6.1-26 (W001 / R3-M19): the refusal is now `useAppForm`'s — a second press
+  // never re-runs react-hook-form, so `Saving...` and `aria-disabled` hold until the first save
+  // settles (this latch returned early INSIDE the second run, whose settle dropped
+  // `isSubmitting` mid-save). This ref stays as a second, local line of defence for any future
+  // path that calls `onSubmit` outside the hook.
   const submitInFlightRef = useRef(false);
 
   // Detect user's timezone using Intl API
@@ -199,7 +204,9 @@ export default function ScheduleForm({
            NO `fallback:` OPTION — the shipped 'Failed to save schedule…' string was hand-rolled
            copy (it is what this file's `FAILED_COPY` roster entry counted), and
            `getFetchErrorMessage(error)` with no fallback already yields ratified copy, so none is
-           authored. Same §6.2 W16 precedent as `AvailabilityForm.js:142`.
+           authored. Same §6.2 W16 precedent as `AvailabilityForm.js`'s
+           `setSubmitError(getFetchErrorMessage(error));` (re-pointed by anchor, Phase 88.6.1-26:
+           the old `:142` had drifted, and that file moves again).
 
            The RE-THROW stays: `handleAppSubmit`'s catch is what routes this to
            `logger.error` -> Sentry (the reachable Sentry path, PRIM-06), so this file needs no
@@ -375,7 +382,16 @@ export default function ScheduleForm({
               name="schedule-game-name"
               value={{ game_id: watchedGameId, game_name: watchedGameName }}
               onChange={({ game_id, game_name }) => {
-                setValue('game_id', game_id || '', { shouldValidate: true });
+                /* DECISION Phase 88.6.1-26 (game field): write `null` for "no picked game", which
+                   the schema accepts and `onSubmit` already normalises to (Game TBD) — chosen
+                   OVER the empty string this wrote, which `z.string().uuid()` rejected as
+                   `Invalid UUID` on every typed-but-unpicked or cleared game, blocking the save.
+                   REJECTED: loosening the schema to accept an empty string (it would let a
+                   non-UUID string through to the backend). `GameComboInput` emits a database id
+                   or `null`, never an empty string. The game error paragraph below stays as a
+                   schema guard, now reachable only by a non-UUID id, which no `GameComboInput`
+                   path emits. */
+                setValue('game_id', game_id ?? null, { shouldValidate: true });
                 setValue('game_name', game_name || '', { shouldValidate: false });
               }}
               groupId={groupId}
@@ -453,6 +469,19 @@ export default function ScheduleForm({
           )}
 
           {/* Server Error (inline submit-error UI) */}
+          {/* DECISION Phase 88.6.1-26 (D-42, ST-1 #2): the conditional `role="alert"` below STAYS
+              (an alert inserted with its text is announced, ARIA 1.2 / AT-4); D-23's always-mounted
+              region is not adopted. AT-4 checks for this site: R1 a plain paragraph in a plain box;
+              R2 it renders inside this dialog's form; R3 `setServerError(null)` runs at the start of
+              every accepted submit and the request round trip separates clear from set; R4 nothing
+              moves focus on failure (Save keeps it — 88.6-63); R5 absent at first render. The 7
+              FormField mounts in this form: R1, R2, R5 by the primitive (plan 88.6.1-15's record);
+              R3/R4 through react-hook-form's `_focusError()` on every failed validation, which
+              focuses the first invalid field whose `aria-describedby` speaks the message — EXCEPT a
+              repeat failure while focus is already inside that field, which re-inserts nothing and
+              moves nothing (a residual of the primitive, reported to the orchestrator). This form
+              keeps ONE server-failure region (`serverError`); field validation alerts are per
+              field. */}
           {serverError && (
             <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
               <p role="alert" className="text-content-status-error text-sm">{serverError}</p>
@@ -484,7 +513,12 @@ export default function ScheduleForm({
             {/* DECISION Phase 88.6-63 (review round 2 #25): `aria-disabled` chosen OVER native
                 `disabled`, which blurs a focused button to <body> mid-save, so a keyboard user whose
                 save FAILED was no longer standing on it. The refusal is the latch, not the
-                attribute. Reverting to `disabled` is a decision, not a cleanup. */}
+                attribute. Reverting to `disabled` is a decision, not a cleanup.
+                AMENDED Phase 88.6.1-26 (W001 / R3-M19): the refusal is now `useAppForm`'s
+                `handleAppSubmit`, which refuses a second submit before react-hook-form runs, so
+                `isSubmitting` holds `Saving...` and `aria-disabled` until the first save settles;
+                `submitInFlightRef` stays as a second, local line. The attribute choice itself
+                (`aria-disabled` over native `disabled`) is unchanged. */}
             <Button variant="primary" size="default" type="submit" aria-disabled={isSubmitting ? 'true' : undefined}>
               {isSubmitting
                 ? 'Saving...'

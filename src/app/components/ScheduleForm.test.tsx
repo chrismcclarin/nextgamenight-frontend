@@ -11,7 +11,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 // Plan 88.6-32: `importOriginal` + spread, NOT the full-replacement factory this used to be.
 // `onSubmit` now derives its copy through `getFetchErrorMessage`, and `deriveCode` resolves the
-// code with `error instanceof ApiError` (`useFetchErrorState.ts:116`). A full replacement
+// code with `error instanceof ApiError` (`useFetchErrorState.ts` `deriveCode`). A full replacement
 // DELETES `ApiError` from this module, and `x instanceof undefined` is a TypeError — so the
 // old factory would have turned a correct migration into a crash inside the catch.
 vi.mock('../../lib/api', async (importOriginal) => ({
@@ -29,7 +29,7 @@ vi.mock('../../lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({ selfUuid: undefined, self: undefined }),
 }));
 // Phase 88.6-44: a FAITHFUL stand-in, not a bare div. It renders exactly what the real
-// `GameComboInput` forwards to its text input (`GameComboInput.js:215-235`: `id`, `name`,
+// `GameComboInput` forwards to its text input (`GameComboInput.js:215-237`, the `<Combobox` block: `id`, `name`,
 // `aria-label={placeholder}`, the external `inputRef`), so the composed audit below sees what
 // THIS FORM passes — which is what the house-rule finding on this surface was about. The real
 // combobox's own ARIA is pinned by `Combobox.test.tsx`'s axe audit; mounting it here would add

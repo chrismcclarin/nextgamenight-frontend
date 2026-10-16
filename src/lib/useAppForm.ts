@@ -17,7 +17,16 @@
  * Info-Disclosure threat T-84-01: only a fixed message + the error object reach
  * `logger.error`; no raw form-field values (potential PII) are spread into the
  * Sentry payload here.
+ *
+ * One submit at a time (Phase 88.6.1-26, W001 / R3-M19): while a submit is
+ * running, `handleAppSubmit` REFUSES another one before react-hook-form runs —
+ * it default-prevents the event and returns, so `onValid` is not called, the
+ * values are not re-validated, and `formState.isSubmitting` (every consumer's
+ * in-flight label and `aria-disabled` source) stays true until the FIRST submit
+ * settles. The guard is released in a `finally`, so a throwing or invalid
+ * submit never wedges the form.
  */
+import { useRef } from 'react';
 import {
   useForm,
   type UseFormProps,
@@ -53,8 +62,21 @@ export function useAppForm<T extends FieldValues>(
     ...options,
   });
 
-  const handleAppSubmit: UseAppFormReturn<T>['handleAppSubmit'] = (onValid) =>
-    form.handleSubmit(async (values, event) => {
+  /* DECISION Phase 88.6.1-26 (W001 / R3-M19): the hook refuses a concurrent submit with a ref
+     checked BEFORE delegating to react-hook-form, so `isSubmitting` (every consumer's label and
+     `aria-disabled` source) persists until the FIRST run settles. REJECTED: consumer latches
+     alone (they return early INSIDE react-hook-form's second lifecycle run, which still flips
+     `isSubmitting` false mid-save, so the button read its rest label again while the first
+     request was pending), and reading `formState.isSubmitting` as the guard (not readable
+     synchronously at the top of the handler). The refusal MUST call `e?.preventDefault?.()`:
+     without it a refused press falls through to a native form post and reloads the page. The
+     ref is shared by every handler this hook returns (one form per hook call, the only shape in
+     use: 2 consumers, ScheduleForm.js and AvailabilityForm.js). Removing the ref or the
+     `preventDefault` is a decision, not a cleanup. */
+  const appSubmitInFlightRef = useRef(false);
+
+  const handleAppSubmit: UseAppFormReturn<T>['handleAppSubmit'] = (onValid) => {
+    const runner = form.handleSubmit(async (values, event) => {
       try {
         await onValid(values, event);
       } catch (err) {
@@ -62,6 +84,19 @@ export function useAppForm<T extends FieldValues>(
         logger.error('form submit failed', err);
       }
     });
+    return async (e) => {
+      if (appSubmitInFlightRef.current) {
+        e?.preventDefault?.();
+        return;
+      }
+      appSubmitInFlightRef.current = true;
+      try {
+        await runner(e);
+      } finally {
+        appSubmitInFlightRef.current = false;
+      }
+    };
+  };
 
   return { ...form, handleAppSubmit };
 }
