@@ -1894,8 +1894,8 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 // per rule set per dialog, no resize.
 //
 // THIS FILE HAS NO STACKED `ConfirmDialog`-over-`Modal` STATE, contrary to RESEARCH §Q1's reading
-// of its two imports: `removeParticipantGate` (`page.js:1097`, `const removeParticipantGate`) is `tier: 'two-tap'` and renders
-// `null` by design (DECISION Phase 88-05 D-07), and `deleteSessionGate` (`:1357`, `const deleteSessionGate`) opens from the
+// of its two imports: `removeParticipantGate` (`page.js:1104`, `const removeParticipantGate`) is `tier: 'two-tap'` and renders
+// `null` by design (DECISION Phase 88-05 D-07), and `deleteSessionGate` (`:1364`, `const deleteSessionGate`) opens from the
 // page-level session rows, never from inside a `Modal`. The three dialogs this file CAN show are
 // audited one at a time below; the stacked-pair audit lives in `ManageMembers.modals.test.tsx`.
 //
@@ -1949,7 +1949,7 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
     opener.focus();
     await user.click(opener);
     const dialog = await screen.findByRole('dialog', { name: 'Participants (6)' });
-    // DERIVED BEFORE WRITING: `page.js:2362` (`<Modal open={showAllParticipants}`) mounts `<Modal open onClose>` with no `initialFocusRef`,
+    // DERIVED BEFORE WRITING: `page.js:2369` (`<Modal open={showAllParticipants}`) mounts `<Modal open onClose>` with no `initialFocusRef`,
     // so the `Modal.tsx` default stands — `<Modal.Header>`'s Close control.
     const close = within(dialog).getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
@@ -1966,7 +1966,7 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
     opener.focus();
     await user.click(opener);
     const dialog = await screen.findByRole('dialog', { name: 'Write a Review' });
-    // `page.js:3433` (`<Modal open={showReviewForm}`): `<Modal open onClose className="max-w-md">`, no `initialFocusRef`.
+    // `page.js:3440` (`<Modal open={showReviewForm}`): `<Modal open onClose className="max-w-md">`, no `initialFocusRef`.
     const close = within(dialog).getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
     await user.keyboard('{Escape}');
