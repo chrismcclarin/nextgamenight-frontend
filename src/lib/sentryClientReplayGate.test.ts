@@ -7,12 +7,16 @@
 // that LANDS on a magic-link route would carry the live credential in the recording, outside
 // every scrub layer this app has. The magic-link pages are entered by full page load from an
 // SMS or email, so the init-time pathname is the right gate: on a token route the replay
-// integration is not registered at all, and everywhere else `href` joins the masked attributes.
+// integration is not registered at all. Everywhere else `href` is in the masked attributes, but
+// that entry is INERT in 8.55.2 (rrweb returns href before the mask function), so token-route
+// links are BLOCKED by selector instead (88.6.1-76, case M2 below).
 //
 // The config module runs `Sentry.init` at import, so each case resets the module registry,
 // sets the jsdom location, imports fresh, and reads what `init` was handed. `@sentry/nextjs`
 // is mocked wholesale — no network, no DSN.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// No imports of its own, so a static import cannot touch the mocked SDK (88.6.1-76, M2).
+import { TOKEN_ROUTE_PREFIXES, TOKEN_QUERY_ROUTES } from './scrubFeedbackPageUrl';
 
 type InitOptions = {
   integrations?: unknown[];
@@ -72,12 +76,12 @@ describe('sentry.client.config.js — replay is gated off the magic-link routes 
     });
   }
 
-  it('registers the replay integration on an ordinary route, with href masked', async () => {
+  it('registers the replay integration on an ordinary route; href is in maskAttributes (inert in 8.55.2; token links are blocked, see M2)', async () => {
     const opts = await loadConfigAt('/dashboard');
     expect(replayIntegration).toHaveBeenCalledTimes(1);
     expect(opts.integrations).toHaveLength(1);
     const replayOpts = replayIntegration.mock.calls[0][0];
-    expect(replayOpts.maskAttributes, 'DOM href attributes are masked in snapshots').toEqual(
+    expect(replayOpts.maskAttributes, 'href stays in maskAttributes, but it is INERT in 8.55.2 (rrweb returns href before the mask function); token-route links are BLOCKED instead (M2)').toEqual(
       expect.arrayContaining(['title', 'placeholder', 'href'])
     );
     // The pre-existing privacy settings survive the edit.
@@ -265,5 +269,57 @@ describe('sentry.client.config.js — names in element selectors leave only reda
       },
     }) as { data: { payload: { message: string } } };
     expect(recorded.data.payload.message).toBe('li > button[aria-label="Accept invite to [REDACTED]"]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-76 (SEC-REACCEPT-1-RULING, route-88.6.1; threats T-88.6.1-1522 / T-88.6.1-1523).
+// Replay snapshots kept aria-label and alt text, which this phase fills with group names and
+// day-times. And the href entry R-7 put in maskAttributes is INERT in 8.55.2: rrweb's
+// transformAttribute returns href before it calls the mask function. So a token-route link on
+// an ordinary page is BLOCKED by selector instead, and the selectors are derived from the two
+// shared route lists.
+// ---------------------------------------------------------------------------
+describe('sentry.client.config.js — replay attribute masking and token-link blocking (88.6.1-76, SEC-REACCEPT-1-RULING)', () => {
+  it('M1: replay masks aria-label and alt beside title, placeholder and the inert href, and maskAllText stays on', async () => {
+    await loadConfigAt('/dashboard');
+    const replayOpts = replayIntegration.mock.calls[0][0];
+    expect(replayOpts.maskAttributes).toEqual(['title', 'placeholder', 'href', 'aria-label', 'alt']);
+    // The SDK masks an attribute ONLY while maskAllText is true, so both values are pinned.
+    expect(replayOpts.maskAllText).toBe(true);
+  });
+
+  it('M2: every token-route link, raw or percent-encoded inside a sign-in returnTo, is blocked; ordinary links are not', async () => {
+    await loadConfigAt('/dashboard');
+    const block = replayIntegration.mock.calls[0][0].block as unknown;
+    expect(Array.isArray(block), 'replayIntegration must be handed a block list').toBe(true);
+    // Joined exactly as the SDK joins it. NO try/catch around matches(): rrweb swallows a
+    // matches() throw and then blocks nothing at all, SDK defaults included, so one unparsable
+    // entry would silently disable the whole list. Here it must throw and red instead.
+    const selector = (block as string[]).join(',');
+    const anchor = (href: string): HTMLAnchorElement => {
+      const a = document.createElement('a');
+      a.setAttribute('href', href);
+      return a;
+    };
+    // Built FROM the lists, so a route added later is checked without editing this test.
+    const blocked: string[] = ['https://www.nextgamenight.app/invite/group/abc123'];
+    for (const prefix of TOKEN_ROUTE_PREFIXES) {
+      blocked.push(`${prefix}abc123`);
+      // The token pages' own sign-in links carry the route encoded inside returnTo.
+      blocked.push(`/api/auth/login?returnTo=${encodeURIComponent(`${prefix}abc123`)}`);
+    }
+    for (const route of TOKEN_QUERY_ROUTES) {
+      blocked.push(`${route}?token=abc123`);
+      blocked.push(`/api/auth/login?returnTo=${encodeURIComponent(`${route}?token=abc123`)}`);
+    }
+    // Lower-case hex escapes: pins the case-insensitive flag on the encoded selectors.
+    blocked.push(`/api/auth/login?returnTo=${encodeURIComponent(`${TOKEN_ROUTE_PREFIXES[0]}abc123`).toLowerCase()}`);
+    for (const href of blocked) {
+      expect(anchor(href).matches(selector), `must be blocked: ${href}`).toBe(true);
+    }
+    for (const href of ['/groupHomePage?id=1', '/groups/invite-history', '/rsvpx', '/invite/accept']) {
+      expect(anchor(href).matches(selector), `must NOT be blocked: ${href}`).toBe(false);
+    }
   });
 });

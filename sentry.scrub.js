@@ -336,6 +336,9 @@ function redactNamedAttributes(str) {
        * `maskAttributes` gains `href`) and the predicate in `src/lib/scrubFeedbackPageUrl.ts`
        * reuses `TOKEN_ROUTE_PREFIXES` plus a new `TOKEN_QUERY_ROUTES` for `/invite/accept`.
        * Pinned by `src/lib/sentryClientReplayGate.test.ts`. THIS leaf is unchanged.]
+       * [CORRECTED 2026-10, 88.6.1-76: the href mask is inert in 8.55.2 (rrweb returns href
+       * before the mask function); token-route links are blocked by selector in
+       * sentry.client.config.js instead.]
 
    REJECTED, recorded so it is not re-proposed: collapsing these entries into ONE
    alternation. It has no FE-route half to export, so the set-equality arm loses its

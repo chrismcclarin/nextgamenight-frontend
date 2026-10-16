@@ -4,7 +4,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { scrubEvent, scrubRecordingEvent, scrubTransaction, scrubSpanJson } from "./sentry.scrub.js";
-import { isTokenBearingPath } from "./src/lib/scrubFeedbackPageUrl";
+import { isTokenBearingPath, TOKEN_ROUTE_PREFIXES, TOKEN_QUERY_ROUTES } from "./src/lib/scrubFeedbackPageUrl";
 
 /* DECISION Phase 88.6 R-7 (code-adversarial-review N1; owner check 2026-09-29 found no
    token-route replay in 90 days; ruling "fix-now"). Session Replay is NOT registered when the
@@ -25,6 +25,18 @@ import { isTokenBearingPath } from "./src/lib/scrubFeedbackPageUrl";
    `tracesSampler` below, keyed on this same `onTokenRoute`.] */
 const onTokenRoute =
   typeof window !== 'undefined' && isTokenBearingPath(window.location.pathname);
+
+// 88.6.1-76 (SEC-REACCEPT-1-RULING): replay BLOCKS any element whose href names a token route,
+// raw or percent-encoded (a sign-in link carries the route encoded inside returnTo; the i flag
+// covers lower-case hex escapes). DERIVED from the two shared lists, never hand-listed (R-7's
+// own rule in src/lib/scrubFeedbackPageUrl.ts, "OVER adding a fourth hand-authored route
+// list"). See the DECISION Phase 88.6.1-76 marker on replayIntegration below.
+const TOKEN_HREF_BLOCK = [
+  ...TOKEN_ROUTE_PREFIXES.map((prefix) => `[href*="${prefix}"]`),
+  ...TOKEN_QUERY_ROUTES.map((route) => `[href*="${route}?"]`),
+  ...TOKEN_ROUTE_PREFIXES.map((prefix) => `[href*="${encodeURIComponent(prefix)}" i]`),
+  ...TOKEN_QUERY_ROUTES.map((route) => `[href*="${encodeURIComponent(`${route}?`)}" i]`),
+];
 
 // The shipped performance sample rate, unchanged — hoisted so the sampler below reads it.
 const RATE = process.env.NODE_ENV === 'production' ? 0.1 : 1.0;
@@ -82,7 +94,7 @@ Sentry.init({
      `replayIntegration({...})` below, and OVER leaving it at 1.0.
      WHY A BOUND AND NOT A PREDICATE: `beforeErrorSampling` is a per-event judgement where
      the ruling asked for a bound, and adding it would drift the integrations-array anchor
-     (`:34-46`) that five 88.6 plans cite read-only.
+     (the `integrations:` key) that five 88.6 plans cite read-only.
      WHY NOT 1.0: AC-2 retires ~100 raw `console.*` calls onto the house logger. At 1.0 every
      captured event in a buffering session flushes the replay buffer and converts that
      session to continuous recording and upload for its remainder — against a plan quota the
@@ -95,7 +107,8 @@ Sentry.init({
      PAIRED WITH: AC-2's convert-on-touch level, amended the same day to `logger.info` (a
      breadcrumb, which creates no event), so this gate bounds the error traffic this phase
      does NOT create as well as the traffic it does. Neither half is sufficient alone.
-     NOT the always-on session sample at `:31` — that is untouched and unaffected. */
+     NOT the always-on session sample (`replaysSessionSampleRate`) — that is untouched and
+     unaffected. (cites corrected 88.6.1-76) */
   replaysOnErrorSampleRate: 0.1,
 
   // If the entire session should be sampled, use the following option:
@@ -110,10 +123,37 @@ Sentry.init({
           // Additional Replay configuration goes in here, for example:
           maskAllText: true,
           blockAllMedia: true,
-          // R-7: `href` joins the masked attributes so a link to a token route rendered on
-          // an ORDINARY page (e.g. an invite link shown in a group's settings) is masked in
-          // the DOM snapshot. Sentry's default is ['title', 'placeholder'].
-          maskAttributes: ['title', 'placeholder', 'href'],
+          // R-7 CORRECTED (88.6.1-76): R-7 added href here so a link to a token route rendered
+          // on an ORDINARY page would be masked in the DOM snapshot. In @sentry-internal/replay
+          // 8.55.2 that entry is INERT: rrweb's transformAttribute returns href (and src)
+          // BEFORE it calls the mask function (node_modules/@sentry-internal/replay/build/npm/esm/index.js:479-481
+          // vs :499-500), so it never masked anything. It STAYS in the list: it is harmless,
+          // and it takes effect if a future SDK masks href.
+          // DECISION Phase 88.6.1-76 (SEC-REACCEPT-1-RULING; R-7 correction). CHOSEN, two parts:
+          // (a) aria-label and alt join the masked attributes. This phase adds group names and
+          // day-times to labels (D-19 rows H1-H2, C1/A2), and the residual's ruling
+          // (88.6-SECURITY.md:320) routed the tightening here. The SDK masks them ONLY while
+          // maskAllText is true (index.js:9354, "if (!maskAllText) {"), and the gate suite's M1
+          // pins both. (b) An element whose href names a token route, raw or percent-encoded
+          // inside a sign-in returnTo, is BLOCKED (TOKEN_HREF_BLOCK above), so the snapshot
+          // keeps only its class and size (index.js:962-968, "if (needBlock) {"). The block
+          // option is merged with the SDK's own defaults (index.js:9312-9318, getOption); M2
+          // pins both directions with jsdom matches().
+          // REJECTED: relying on maskAttributes for href (inert, as above); blocking every link
+          // (destroys replay navigation context on every page); a hand-written fourth route
+          // list (R-7 already chose reuse).
+          // WHAT THIS DOES NOT REACH. Masking reaches the snapshot and replay's attribute map,
+          // never Sentry's selector STRINGS: the click and keyDown breadcrumb messages and the
+          // INP, CLS and LCP selectors are built from the LIVE DOM, not the masked snapshot
+          // (replay index.js:4777; @sentry/browser build/npm/esm/integrations/breadcrumbs.js:111;
+          // values written raw at @sentry/core build/esm/utils-hoist/browser.js:118). The names
+          // in them are redacted by redactNamedAttributes in sentry.scrub.js (its
+          // DECISION Phase 88.6.1-76 P-09 marker), not by this option. The two controls are
+          // deliberate halves of one fix; removing either one re-opens a channel the other
+          // cannot reach.
+          // Removing the block list or the two masked attributes is a decision, not a cleanup.
+          maskAttributes: ['title', 'placeholder', 'href', 'aria-label', 'alt'],
+          block: TOKEN_HREF_BLOCK,
           // T-84-01 (A1): beforeSend does NOT run on replay events, so scrub recorded
           // navigation/fetch URLs here (Custom events only — see marker (v) in
           // sentry.scrub.js; the Meta `href` is outside this hook, which is why the route
