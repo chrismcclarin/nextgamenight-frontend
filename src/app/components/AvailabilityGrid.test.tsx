@@ -380,3 +380,52 @@ describe('88.6-63 (review round 2 #23) — Clear All keeps focus; the summary an
     expect(region).toHaveTextContent('1 preferred, 0 if-need-be slots selected');
   });
 });
+
+// Plan 88.6.1-17 (D-14 / AC-21, copy row A2). Before this plan every check-in cell was named
+// only by its state, so a VoiceOver user touching the grid heard "not selected" 196 to 392
+// times with no day and no time. Copy row A2 (owner-ratified, D-30) names each cell
+// "{long day} at {time}, {state}", state one of "preferred", "if need be", "not selected".
+// Cells are located by the data-slot-id attribute (the e2e convention), never by name.
+const slotCells = () => Array.from(document.querySelectorAll<HTMLElement>('[data-slot-id]'));
+
+describe('88.6.1-17 (D-14 / AC-21, copy row A2) — a check-in cell is named by its day, time and state', () => {
+  it('G1: the first cell of a grid starting Monday 2026-06-29 is "Monday, June 29 at 10:00 AM, not selected"', () => {
+    renderHarness(1);
+    const cells = slotCells();
+    expect(cells).toHaveLength(28);
+    expect(cells[0]).toHaveAccessibleName('Monday, June 29 at 10:00 AM, not selected');
+  });
+
+  it('G2: after a tap the same cell is named "..., preferred"', () => {
+    renderHarness(1);
+    fireEvent.pointerDown(slotCells()[0]);
+    expect(slotCells()[0]).toHaveAccessibleName('Monday, June 29 at 10:00 AM, preferred');
+  });
+
+  it('G3: painted in the If Need Be mode the cell says "if need be", never the stored enum', () => {
+    renderHarness(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Adding: Preferred' }));
+    // Anti-vacuity: the mode really switched before the tap.
+    expect(screen.getByRole('button', { name: 'Adding: If Need Be' })).toBeTruthy();
+    fireEvent.pointerDown(slotCells()[0]);
+    const cell = slotCells()[0];
+    expect(cell).toHaveAccessibleName('Monday, June 29 at 10:00 AM, if need be');
+    expect(cell.getAttribute('aria-label')).not.toContain('if-need-be');
+  });
+
+  it('U1: in the unavailable-week mode a cell exposes aria-disabled="true" (#170)', () => {
+    render(
+      <Grid
+        value={[]}
+        onChange={() => {}}
+        numDays={1}
+        weekStartDate={WEEK_START}
+        timezone={PROFILE_TZ}
+        disabled
+      />
+    );
+    const cells = slotCells();
+    expect(cells).toHaveLength(28);
+    expect(cells[0]).toHaveAttribute('aria-disabled', 'true');
+  });
+});
