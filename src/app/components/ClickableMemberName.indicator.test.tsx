@@ -44,7 +44,7 @@
  */
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
 
 import ClickableMemberName from './ClickableMemberName';
 import { FriendshipContext } from './FriendshipStatusProvider';
@@ -606,5 +606,113 @@ describe('Phase 88.6.1-37 — one request per press, no stale failure, focus kep
       await waitFor(() => expect(document.activeElement).toBe(nameTrigger()));
       cleanup();
     }
+  });
+});
+
+// Phase 88.6.1-37 Task 2 (D-22, D-42, R8): the popover's success line is an always-mounted polite
+// region (plan 06's srOnlyWhenEmpty), the SAME node before and after; the two alerts stay inserted
+// alerts; the Pending span stays a span (it renders inside a p at five of the nine mounts).
+describe('Phase 88.6.1-37 — the popover outcome regions (D-22 / D-42)', () => {
+  it('T2a. the popover success region is present, empty and sr-only before Add friend, and the SAME node after', async () => {
+    renderWithStatus('none');
+    const addFriend = await openPopoverByKeyboard();
+    const regions = screen.getAllByRole('status');
+    expect(regions).toHaveLength(1);
+    const region = regions[0];
+    expect(region).toBeEmptyDOMElement();
+    expect(region).toHaveClass('sr-only');
+    await act(async () => {
+      fireEvent.click(addFriend);
+    });
+    const after = screen.getByText('Request sent').closest('[role="status"]');
+    expect(after).toBe(region);
+    expect(region).not.toHaveClass('sr-only');
+    expect(region).toHaveClass('text-content-status-success');
+  });
+
+  it('T2b. a popover failure: exactly one alert, in the popover, beside an empty success region', async () => {
+    sendRequest.mockRejectedValueOnce(new Error('boom'));
+    renderWithStatus('none');
+    const addFriend = await openPopoverByKeyboard();
+    fireEvent.click(addFriend);
+    await screen.findByRole('alert');
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].textContent).toBe(X3);
+    const popover = document.querySelector('[data-member-popover]') as HTMLElement;
+    expect(popover.contains(alerts[0])).toBe(true);
+    const region = within(popover).getByRole('status');
+    expect(region).toBeEmptyDOMElement();
+    expect(region.contains(alerts[0])).toBe(false);
+    expect(alerts[0].contains(region)).toBe(false);
+  });
+
+  it('T2c. held-out backstop: the same inline failure twice is inserted (announced) twice', async () => {
+    sendRequest.mockRejectedValueOnce(new Error('boom')).mockRejectedValueOnce(new Error('boom'));
+    renderWithStatus('none');
+    const inserted: Element[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const r of records)
+        r.addedNodes.forEach((n) => {
+          if (!(n instanceof Element)) return;
+          const alert = n.matches('[role="alert"]') ? n : n.querySelector('[role="alert"]');
+          if (alert && alert.textContent === X3) inserted.push(alert);
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    fireEvent.click(addFriendPlus()!);
+    await screen.findByRole('alert');
+    fireEvent.click(addFriendPlus()!);
+    await waitFor(() => expect(sendRequest).toHaveBeenCalledTimes(2));
+    await screen.findByRole('alert');
+    observer.disconnect();
+    expect(inserted).toHaveLength(2);
+    expect(inserted[0]).not.toBe(inserted[1]);
+  });
+
+  it('T2d. confirm-only: inside a p the Pending and failure nodes are spans and React reports no nesting error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const inP = (s: Status) => (
+        <FriendshipContext.Provider value={{ getStatus: () => s, sendRequest } as never}>
+          <p>
+            <ClickableMemberName userId="u1" username="ada" />
+          </p>
+        </FriendshipContext.Provider>
+      );
+      render(inP('pending_sent'));
+      expect(screen.getByText('⏳ Pending').tagName).toBe('SPAN');
+      cleanup();
+      sendRequest.mockRejectedValueOnce(new Error('boom'));
+      render(inP('none'));
+      fireEvent.click(addFriendPlus()!);
+      expect((await screen.findByRole('alert')).tagName).toBe('SPAN');
+      const nesting = () => spy.mock.calls.filter((c) => String(c[0]).includes('validateDOMNesting'));
+      expect(nesting()).toHaveLength(0);
+      cleanup();
+      // Anti-vacuity: a div inside a p DOES produce the report this test relies on.
+      render(
+        <p>
+          <div>x</div>
+        </p>,
+      );
+      expect(nesting().length).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('T2e. a send that resolves, then accepted: the SAME region now carries the Friend pill', async () => {
+    const { setStatus } = renderWithStatus('none');
+    const addFriend = await openPopoverByKeyboard();
+    const region = screen.getByRole('status');
+    await act(async () => {
+      fireEvent.click(addFriend);
+    });
+    expect(region).toHaveTextContent('Request sent');
+    setStatus('accepted');
+    expect(region.isConnected).toBe(true);
+    expect(within(region).getByText('Friend')).toBeInTheDocument();
+    expect(screen.queryByText('Request sent')).toBeNull();
   });
 });
