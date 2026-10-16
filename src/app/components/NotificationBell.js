@@ -4,6 +4,7 @@ import { invitesAPI } from '../../lib/api';
 import { logger } from '@/lib/logger';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { useDismissal } from '@/components/ui/useDismissal';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 
@@ -50,6 +51,8 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // available" notice, which must not render in success-green.
   const [confirmation, setConfirmation] = useState(null);
   const dropdownRef = useRef(null);
+  // Whichever trigger renders (row or icon, one per variant) — Escape returns focus here.
+  const triggerRef = useRef(null);
 
   // MOB-08 (Plan 77-01): invites + friendRequests now live in
   // UnreadNotificationProvider so the in-menu badge AND the mobile hamburger
@@ -70,17 +73,35 @@ function NotificationBell({ user, variant = 'icon', label }) {
     declineRequest: ctxDeclineFriend,
   } = useFriendshipStatus();
 
-  // Click-outside detection to close dropdown
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setIsOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  /* DECISION Phase 88.6.1-28 (D-18, D-08a): the bell dismisses through the shared `useDismissal`
+     hook (`src/components/ui/useDismissal.ts`, extracted from KebabMenu by plan 88.6.1-05). CHOSEN:
+     Escape on the container as a React handler that claims the key with `preventDefault`, focus
+     leaving the container closes, an outside mousedown closes, and that outside listener exists
+     only while the panel is open. The bell owns only `isOpen`; `closePanel` sets it false and does
+     nothing else.
+     REJECTED (a): a bell-local copy of those handlers — the duplication tenet; D-18 says "never a
+     copy".
+     REJECTED (b): keeping the mount-time outside mousedown listener with empty deps — it ran on
+     every page for the life of the header and set state on every outside click while closed.
+     REJECTED (c): Escape as a document keydown listener — document listeners run in registration
+     order and cannot be claimed (research P-10).
+     WHY `preventDefault` IS LOAD-BEARING: the row variant renders inside the phone hamburger
+     (`src/app/Header.js:302`, `variant="row" label="Invites"`), whose Escape listener is on the
+     document (`src/app/Header.js:31-42`, `if (!mobileMenuOpen) return;`). The App Router hydrates
+     the document itself (`node_modules/next/dist/client/app-index.js:42`,
+     `const appElement = document;`), so React's root listener and Header's share one node and
+     `stopPropagation` cannot stop Header's — only Header's bail on a default-prevented Escape
+     (plan 88.6.1-45, D-08a) makes one Escape close the bell alone. Pinned by NB-6
+     (`NotificationBell.test.tsx`).
+     Re-inlining these handlers, or moving Escape to a document listener, is a decision, not a
+     cleanup. */
+  const closePanel = () => setIsOpen(false);
+  const { containerProps } = useDismissal({
+    open: isOpen,
+    onDismiss: closePanel,
+    containerRef: dropdownRef,
+    triggerRef,
+  });
 
   // Clear confirmation after 3 seconds
   useEffect(() => {
@@ -252,7 +273,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
   ) : null;
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative" ref={dropdownRef} {...containerProps}>
       {variant === 'row' ? (
         // Full-width row hit area — entire surface is one tap target;
         // text-left so the label aligns with surrounding rows.
@@ -289,6 +310,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // 38 re-introduces a 1.06:1 hover state; `surfaceHoverSweep.test.ts` test 4b pins
         // all three by name so that goes red. That is a decision, not a cleanup.
         <button
+          ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
           className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
@@ -336,6 +358,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       ) : (
         // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01.
         <button
+          ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
           // Phase 88.3 (Req 7 / UI-SPEC §5.8.2): this icon-only trigger shipped with NO
           // focus-visible ring at all — unlike the row variant above — and fell to the UA
