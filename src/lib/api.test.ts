@@ -36,6 +36,18 @@ describe('ApiError — shape', () => {
     expect(err.status).toBe(429);
     expect(err.details).toEqual({ retryAfter: 30 });
   });
+
+  // 88.6.1-23 MEDLOW-18 (S1): the platform ErrorOptions ride a sixth optional parameter, so a
+  // transport failure can keep its cause. Built without it, the shape is unchanged.
+  it('S1: keeps an ErrorOptions cause non-enumerably, and has NO own cause without options', () => {
+    const boom = new TypeError('boom');
+    const withCause = new ApiError('x', 'network', 0, undefined, undefined, { cause: boom });
+    expect(withCause.cause).toBe(boom);
+    expect(Object.keys(withCause)).not.toContain('cause');
+    expect(withCause.name).toBe('ApiError');
+    expect(withCause).toBeInstanceOf(ApiError);
+    expect(Object.prototype.hasOwnProperty.call(new ApiError('x', 'network', 0), 'cause')).toBe(false);
+  });
 });
 
 describe('mapErrorToCode — status mapping', () => {
@@ -1041,5 +1053,116 @@ describe('88.6.1-23 / R3-M3 (D-26) — a non-OK pre-fill lookup is not held by i
     expect(value).toBeInstanceOf(ApiError);
     expect(value).toMatchObject({ code: 'network', status: 0 });
     expect(text, 'the 410 body carries the page discriminant, so it is still read').toHaveBeenCalledTimes(1);
+  });
+});
+
+// ADDED by plan 88.6.1-23 task 2 (W062 rider MEDLOW-18; register
+// `.planning/deferred/phase-88.6.1.md:193`). The transport catch collapsed every failure onto
+// one cause-less message, so a breadcrumb could not tell a timeout from a dropped connection.
+// The register asked for "cause + a distinct name"; the name stays 'ApiError' because consumers
+// branch on instanceof and 'ApiError — shape' pins the name. A timeout is told apart by its
+// MESSAGE (built from the helper's constants only) and every failure keeps its cause.
+// S1 (in 'ApiError — shape'), T1 and T2 were RED before the fix; T4 and T5 are confirm-only.
+describe('88.6.1-23 / W062 rider MEDLOW-18 — a timeout is told apart from other transport failures, and the cause is kept', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const PREFILL = { magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' };
+
+  // [helper, call, the helper's own failure constant]
+  const SIX: Array<[string, () => Promise<unknown>, string]> = [
+    ['rsvpPublicAPI.respondViaToken', () => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'), 'rsvp respond request did not complete'],
+    ['magicAuthAPI.validateToken', () => magicAuthAPI.validateToken('t'), 'magic-auth validate request did not complete'],
+    ['availabilityFormAPI.submitResponse', () => availabilityFormAPI.submitResponse({ a: 1 }), 'availability response submission did not complete'],
+    ['availabilityFormAPI.getExistingResponse', () => availabilityFormAPI.getExistingResponse('p1', 'tok'), 'availability existing-response lookup did not complete'],
+    ['availabilityFormAPI.prefillFromGcal', () => availabilityFormAPI.prefillFromGcal(PREFILL), 'Failed to import from Google Calendar'],
+    ['availabilityFormAPI.prefillFromSaved', () => availabilityFormAPI.prefillFromSaved(PREFILL), 'Failed to use saved availability'],
+  ];
+
+  const capture = async (run: () => Promise<unknown>): Promise<unknown> => {
+    try {
+      await run();
+    } catch (err) {
+      return err;
+    }
+    return null;
+  };
+
+  it('T1: a timeout says so in the message and keeps the AbortError as its cause, for all six helpers', async () => {
+    vi.useFakeTimers();
+    for (const [name, run, failure] of SIX) {
+      // Models real fetch: it settles only by rejecting when the request's signal aborts.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          (_url: string, init?: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () =>
+                reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+              );
+            }),
+        ),
+      );
+      const settled = vi.fn();
+      run().then(
+        (v) => settled('resolved', v),
+        (e) => settled('rejected', e),
+      );
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(settled, name).toHaveBeenCalledTimes(1);
+      const [outcome, value] = settled.mock.calls[0];
+      expect(outcome, name).toBe('rejected');
+      expect(value, name).toBeInstanceOf(ApiError);
+      expect(value, name).toMatchObject({
+        code: 'network',
+        status: 0,
+        name: 'ApiError',
+        message: `${failure} (timed out after 20000 ms)`,
+      });
+      expect((value as ApiError).cause, name).toBeInstanceOf(Error);
+      expect(((value as ApiError).cause as Error).name, name).toBe('AbortError');
+    }
+  });
+
+  it('T2: any other transport failure keeps the message byte-unchanged and the caught value as cause, for all six', async () => {
+    for (const [name, run, failure] of SIX) {
+      const boom = new TypeError('Failed to fetch');
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(boom));
+      const caught = await capture(run);
+      expect(caught, name).toBeInstanceOf(ApiError);
+      expect(caught, name).toMatchObject({ code: 'network', status: 0, name: 'ApiError', message: failure });
+      expect((caught as ApiError).cause, name).toBe(boom);
+    }
+  });
+
+  // Prohibition 5: what is ADDED carries no URL and no token. The caught text is never spliced
+  // into the message, so errCtx (name and message only) cannot carry the token-bearing URL.
+  it('T4 (CONFIRM-ONLY): a TypeError quoting the token-bearing URL never reaches the message or errCtx', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(
+        new TypeError('NetworkError when attempting to fetch resource https://x.invalid/rsvp/respond?token=tok-SECRET-123'),
+      ),
+    );
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('tok-SECRET-123', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(errCtx(caught)).toEqual({ name: 'ApiError', message: 'rsvp respond request did not complete' });
+    const json = JSON.stringify(errCtx(caught));
+    expect(json).not.toContain('tok-SECRET-123');
+    expect(json).not.toContain('http');
+  });
+
+  // A JSON SyntaxError's text can quote the response body, so the parse failure keeps no cause.
+  it('T5 (CONFIRM-ONLY): an unparseable 200 rejects internal with NO own cause property', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '<!DOCTYPE html><html><body>gateway</body></html>' }),
+    );
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 200 });
+    expect(Object.prototype.hasOwnProperty.call(caught, 'cause')).toBe(false);
   });
 });
