@@ -500,3 +500,20 @@ describe('groupPlanning page — one load per visit (88.6.1-16, W060)', () => {
     expect(h.logInfo).toHaveBeenCalledWith('Error fetching group:', { name: 'ApiError', message: 'group failed' });
   });
 });
+
+describe('groupPlanning page — loading line and breadcrumb (88.6.1-16, G5 / R7-M7)', () => {
+  it("G5: while Auth0 resolves the session the page reads Getting your group's plans... (byte-equal to the route fallback)", () => {
+    h.AUTH = { user: undefined, isLoading: true };
+    render(<GroupPlanningPage />);
+    expect(screen.getByText("Getting your group's plans...")).toBeInTheDocument();
+    expect(screen.queryByText('Loading...')).toBeNull();
+  });
+
+  it('M1: the breadcrumb nav carries min-w-0 beside inline-block max-w-full wrap-break-word', async () => {
+    await renderSettled();
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    for (const token of ['min-w-0', 'inline-block', 'max-w-full', 'wrap-break-word']) {
+      expect(nav.classList.contains(token), token).toBe(true);
+    }
+  });
+});
