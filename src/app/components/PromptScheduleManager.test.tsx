@@ -4,7 +4,7 @@
  * than extended. It runs AFTER this surface's last migration commit, per UI-SPEC §7.5.
  *
  * HOW THE AUDIT ROOT IS IDENTIFIED, and why it is not `getByRole('dialog')`.
- * The shipped analog (`QRCodeModal.test.tsx:34`) scopes to `screen.getByRole('dialog')`,
+ * The shipped analog (`QRCodeModal.test.tsx`, anchor `const dialog = screen.getByRole('dialog');`) scopes to that role,
  * because that component has exactly one rendered shape. This one has TWO, and BOTH are real:
  *
  *   - `variant="inline"` — the PRODUCTION shape. `PromptScheduleSection.js` mounts it this way
@@ -48,7 +48,7 @@
  * (heading-order)". Neither mutant is committed.
  */
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -272,5 +272,177 @@ describe('PromptScheduleManager — AC-8 toast duration polarity + AC-2 channel'
     expect(Object.keys(ctx as object).sort()).toEqual(['message', 'name']);
     expect(logger.error).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+});
+
+// A promise the test settles by hand, so each request and each refetch commits when the test says.
+function deferred<T = unknown>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe('PromptScheduleManager — Recurring Check-ins focus never falls to <body> (88.6.1-30, D-04/D-05)', () => {
+  // The section heading is a level-3 Heading named EXACTLY this (the row headings are level 3 too,
+  // but they carry the schedule name, so the exact string picks the section heading).
+  const sectionHeading = () =>
+    screen.getByRole('heading', { level: 3, name: 'Recurring Check-ins' });
+
+  // clearAllMocks keeps queued Once values; a case that fails early would hand its unused queue to
+  // the next case. Reset the three API stubs so every case starts from its own sequence.
+  beforeEach(() => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockReset();
+    (promptSettingsAPI.deleteSchedule as unknown as Mock).mockReset();
+    (promptSettingsAPI.toggleSchedule as unknown as Mock).mockReset();
+  });
+
+  it('T1. Confirm Delete lands focus on the Recurring Check-ins heading, never <body> (H5)', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockResolvedValue(SETTINGS);
+    const del = deferred();
+    (promptSettingsAPI.deleteSchedule as unknown as Mock).mockReturnValue(del.promise);
+    renderManager();
+
+    const deleteButton = await screen.findByRole('button', { name: 'Delete' });
+    const heading = sectionHeading();
+    // D-05: the markup carries no tab index of its own; the hook adds one when it focuses.
+    expect(heading).not.toHaveAttribute('tabindex');
+
+    deleteButton.focus();
+    fireEvent.click(deleteButton);
+    const confirm = screen.getByRole('button', { name: 'Confirm Delete' });
+    confirm.focus();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(heading.getAttribute('tabindex')).toBe('-1');
+
+    await act(async () => {
+      del.resolve({});
+    });
+  });
+
+  it('T2. focus moves only when a removal commits, and only once (R5 ordering backstop)', async () => {
+    const refetch = deferred<typeof SETTINGS>();
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock)
+      .mockResolvedValueOnce(SETTINGS)
+      .mockReturnValueOnce(refetch.promise);
+    const del = deferred();
+    (promptSettingsAPI.deleteSchedule as unknown as Mock).mockReturnValue(del.promise);
+    renderManager();
+
+    const deleteButton = await screen.findByRole('button', { name: 'Delete' });
+    const heading = sectionHeading();
+
+    deleteButton.focus();
+    fireEvent.click(deleteButton);
+    // Opening the confirm moves nothing (the held-out control: green before and after the fix).
+    expect(document.activeElement).toBe(deleteButton);
+
+    const confirm = screen.getByRole('button', { name: 'Confirm Delete' });
+    confirm.focus();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+
+    // The delete settles, the refresh starts and is held, then commits an empty list.
+    await act(async () => {
+      del.resolve({});
+    });
+    await waitFor(() =>
+      expect(promptSettingsAPI.getGroupPromptSettings).toHaveBeenCalledTimes(2)
+    );
+    await act(async () => {
+      refetch.resolve({ ...SETTINGS, schedules: [] });
+    });
+
+    // Positive signal first: the schedule row (and its confirm row's ancestor) is gone.
+    await screen.findByRole('heading', { name: 'No schedules yet' });
+    // It acted once: the later removal of the schedule row moved nothing.
+    expect(document.activeElement).toBe(heading);
+  });
+
+  it('T3. Cancel returns focus to the desktop Delete that opened the confirm', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockResolvedValue(SETTINGS);
+    renderManager();
+
+    const deleteButton = await screen.findByRole('button', { name: 'Delete' });
+    deleteButton.focus();
+    fireEvent.click(deleteButton);
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    cancel.focus();
+    fireEvent.click(cancel);
+
+    await waitFor(() => expect(document.activeElement).toBe(deleteButton));
+  });
+
+  it('T4. Cancel on the phone path returns focus to the Schedule actions trigger', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockResolvedValue(SETTINGS);
+    renderManager();
+
+    const trigger = await screen.findByRole('button', { name: 'Schedule actions' });
+    fireEvent.click(trigger);
+    const listId = trigger.getAttribute('aria-controls');
+    expect(listId).toBeTruthy();
+    const list = document.getElementById(listId as string) as HTMLElement;
+    fireEvent.click(within(list).getByRole('button', { name: 'Delete' }));
+    // KebabMenu restored focus to its trigger after the item ran.
+    expect(document.activeElement).toBe(trigger);
+
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    cancel.focus();
+    fireEvent.click(cancel);
+
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('T5. in the modal shape Confirm Delete lands on the dialog title, never the container or <body>', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockResolvedValue(SETTINGS);
+    const del = deferred();
+    (promptSettingsAPI.deleteSchedule as unknown as Mock).mockReturnValue(del.promise);
+    renderManager({ variant: 'modal', onClose: vi.fn() });
+
+    const dialog = await screen.findByRole('dialog');
+    const deleteButton = await within(dialog).findByRole('button', { name: 'Delete' });
+    deleteButton.focus();
+    fireEvent.click(deleteButton);
+    const confirm = within(dialog).getByRole('button', { name: 'Confirm Delete' });
+    confirm.focus();
+    fireEvent.click(confirm);
+
+    const title = within(screen.getByRole('dialog')).getByRole('heading', {
+      name: 'Recurring Check-ins',
+    });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
+    expect(document.activeElement).not.toBe(document.body);
+
+    await act(async () => {
+      del.resolve({});
+    });
+  });
+
+  it('T6. a Confirm Delete pressed while focus is on <body> (the Safari pointer shape) still lands on the heading', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockResolvedValue(SETTINGS);
+    const del = deferred();
+    (promptSettingsAPI.deleteSchedule as unknown as Mock).mockReturnValue(del.promise);
+    renderManager();
+
+    const deleteButton = await screen.findByRole('button', { name: 'Delete' });
+    const heading = sectionHeading();
+    // No focus() calls: the pointer shape where the clicked button never took focus.
+    fireEvent.click(deleteButton);
+    const confirm = screen.getByRole('button', { name: 'Confirm Delete' });
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(document.activeElement).not.toBe(document.body);
+
+    await act(async () => {
+      del.resolve({});
+    });
   });
 });
