@@ -7,7 +7,7 @@
 // updateUserRole, removeUserFromGroup, approveMember, rejectMember,
 // transferOwnership.
 import * as React from 'react';
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const OWNER_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -22,8 +22,11 @@ const PENDING_UUID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 // caller is before rendering. The leave-confirm flow this file now pins only
 // exists on a non-owner's OWN row, and it is unreachable with a hardcoded owner.
 // Every pre-existing test is byte-equivalent: `beforeEach` restores OWNER_UUID.
+// Phase 88.6.1-42: `invitePanelProps` records the props the mocked FriendInvitePanel was last
+// rendered with, so a test can call its `onMemberAdded` (the un-awaited fifth refresh).
 const h = vi.hoisted(() => ({
   selfUuid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' as string | undefined,
+  invitePanelProps: null as null | { onMemberAdded?: () => void },
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -58,7 +61,12 @@ vi.mock('@/app/components/ClickableMemberName', () => ({
   default: ({ username }: { username?: string }) => <span>{username}</span>,
 }));
 
-vi.mock('@/app/components/FriendInvitePanel', () => ({ default: () => null }));
+vi.mock('@/app/components/FriendInvitePanel', () => ({
+  default: (props: { onMemberAdded?: () => void }) => {
+    h.invitePanelProps = props;
+    return null;
+  },
+}));
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
@@ -112,6 +120,7 @@ function renderManageMembers() {
 beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = OWNER_UUID;
+  h.invitePanelProps = null;
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(ROSTER);
   (invitesAPI.getGroupPendingInvites as Mock).mockResolvedValue([]);
   (groupsAPI.updateUserRole as Mock).mockResolvedValue({});
@@ -724,5 +733,248 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
       await screen.findByRole('dialog', { name: 'Make Target an admin?' })
     ).toBeInTheDocument();
     expect(groupsAPI.updateUserRole as Mock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-42 shared helpers (file scope; plan 88.6.1-78's RF-9 / RF-10 reuse them).
+// ---------------------------------------------------------------------------
+
+/** A promise the test settles by hand: queue it as one API answer to hold a request in flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+type ManageMembersProps = React.ComponentProps<typeof ManageMembers>;
+
+/**
+ * Render with `renderManageMembers`'s props merged with `overrides`; `rerender(next)` re-renders
+ * the SAME element with those base props merged with `next` (`{ modal: false }`,
+ * `{ group_id: 'grp-2' }`, or nothing), so callbacks such as `modaltoggle` keep their identity.
+ */
+function renderWithRerender(overrides: Partial<ManageMembersProps> = {}) {
+  const base: ManageMembersProps = {
+    group_id: GROUP_ID,
+    user: { sub: 'auth0|owner' },
+    modal: true,
+    modaltoggle: vi.fn(),
+    onMembersUpdated: vi.fn(),
+    group_name: 'G',
+    ...overrides,
+  };
+  const result = render(<ManageMembers {...base} />);
+  return {
+    ...result,
+    rerender: (next: Partial<ManageMembersProps> = {}) =>
+      result.rerender(<ManageMembers {...base} {...next} />),
+  };
+}
+
+describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)', () => {
+  // The viewer's own row marker: unique on screen (the harness viewer is the owner). Never
+  // `Owner`, which matches both the mocked username and the owner badge.
+  async function loadRosterAndCaptureSelf() {
+    await openMembersModal();
+    await screen.findByText('Target');
+    return screen.getByText('(You)');
+  }
+
+  // Synchronous: run only after a POSITIVE signal that the refresh request was made.
+  function expectRosterKept(selfMarker: HTMLElement) {
+    expect(screen.getByText('(You)')).toBe(selfMarker);
+    expect(selfMarker.isConnected).toBe(true);
+    expect(screen.queryByText('Loading members...')).toBeNull();
+  }
+
+  function holdNextMembersGet() {
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    return held;
+  }
+
+  async function refreshRequested() {
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+  }
+
+  const WITHOUT_TARGET = ROSTER.filter((m) => m.id !== TARGET_UUID);
+  const TARGET_AS_ADMIN = [ROSTER[0], { ...ROSTER[1], UserGroup: { role: 'admin' } }, ROSTER[2]];
+
+  it('T1: the first load names what is loading; a remove refresh keeps the rows painted (AC-28 remove)', async () => {
+    const first = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(first.promise);
+    renderManageMembers();
+    // Confirm-only half: the first-load line is byte-unchanged (D-33 row 20).
+    expect(screen.getByText('Loading members...')).toBeInTheDocument();
+    await act(async () => {
+      first.resolve(ROSTER);
+    });
+    await screen.findByText('Target');
+    const self = screen.getByText('(You)');
+
+    const held = holdNextMembersGet();
+    fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await refreshRequested();
+    expectRosterKept(self);
+
+    await act(async () => {
+      held.resolve(WITHOUT_TARGET);
+    });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    expect(screen.queryByText('Target')).toBeNull();
+  });
+
+  it('T2: a role change refresh keeps the rows painted (AC-28 role change)', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(TARGET_AS_ADMIN);
+    const self = await loadRosterAndCaptureSelf();
+    const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
+    const held = holdNextMembersGet();
+    fireEvent.change(select, { target: { value: 'member' } });
+    await refreshRequested();
+    expectRosterKept(self);
+    await act(async () => {
+      held.resolve(ROSTER);
+    });
+  });
+
+  it('T3: an approve refresh keeps the rows painted (AC-28 approve; Phase 91.1 deletes this control)', async () => {
+    const self = await loadRosterAndCaptureSelf();
+    const held = holdNextMembersGet();
+    fireEvent.click(screen.getByText('Approve'));
+    await refreshRequested();
+    expectRosterKept(self);
+    await act(async () => {
+      held.resolve([ROSTER[0], ROSTER[1], { ...ROSTER[2], UserGroup: { role: 'member' } }]);
+    });
+  });
+
+  it('T4: a reject refresh keeps the rows painted (AC-28 reject; Phase 91.1 deletes this control)', async () => {
+    const self = await loadRosterAndCaptureSelf();
+    const held = holdNextMembersGet();
+    fireEvent.click(screen.getByText('Reject'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    await refreshRequested();
+    // getByText ignores Radix's aria-hide, so the roster behind the open dialog is queryable.
+    expectRosterKept(self);
+    await act(async () => {
+      held.resolve(ROSTER.filter((m) => m.id !== PENDING_UUID));
+    });
+  });
+
+  it('T5: the un-awaited fifth refresh (a member added from the invite panel) keeps the rows painted', async () => {
+    const self = await loadRosterAndCaptureSelf();
+    const held = holdNextMembersGet();
+    act(() => {
+      h.invitePanelProps?.onMemberAdded?.();
+    });
+    await refreshRequested();
+    expectRosterKept(self);
+    await act(async () => {
+      held.resolve(ROSTER);
+    });
+  });
+
+  it('T6: a failed refresh keeps the rows and never covers them with the full banner', async () => {
+    const self = await loadRosterAndCaptureSelf();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await waitFor(() =>
+      expect(logger.info).toHaveBeenCalledWith('Error fetching members:', expect.anything())
+    );
+    await act(async () => {});
+    expect(screen.getByText('(You)')).toBe(self);
+    expect(self.isConnected).toBe(true);
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+    expect(screen.queryByText('No members found.')).toBeNull();
+    expect(screen.queryByText('Loading members...')).toBeNull();
+  });
+
+  it('T7: a reopen shows the last roster at once and refreshes behind it', async () => {
+    const view = renderWithRerender();
+    await screen.findByRole('dialog', { name: 'Manage Group Members' });
+    await screen.findByText('Target');
+    view.rerender({ modal: false });
+    holdNextMembersGet();
+    view.rerender({ modal: true });
+    await screen.findByRole('dialog', { name: 'Manage Group Members' });
+    // The Modal remounted, so the node is new: presence, not identity.
+    expect(screen.getByText('(You)')).toBeInTheDocument();
+    expect(screen.queryByText('Loading members...')).toBeNull();
+  });
+
+  it('T8: a role change keeps focus on the role select', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(TARGET_AS_ADMIN);
+    await loadRosterAndCaptureSelf();
+    const select = screen.getByLabelText('Role for Target') as HTMLSelectElement;
+    select.focus();
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
+    fireEvent.change(select, { target: { value: 'member' } });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    expect(document.activeElement).toBe(select);
+    expect(select.isConnected).toBe(true);
+  });
+
+  it('T8b: a role change whose refresh MOVES the focused row keeps focus on its select', async () => {
+    const ROBIN_UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const robin = {
+      id: ROBIN_UUID,
+      user_id: 'auth0|second',
+      username: 'Robin',
+      UserGroup: { role: 'member' },
+    };
+    const before = [ROSTER[0], { ...ROSTER[1], UserGroup: { role: 'admin' } }, robin];
+    // The members GET has no order: the rewritten row comes back LATER, so React re-inserts it.
+    const after = [ROSTER[0], robin, { ...ROSTER[1], UserGroup: { role: 'member' } }];
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(before);
+    await loadRosterAndCaptureSelf();
+    const select = screen.getByLabelText('Role for Target') as HTMLSelectElement;
+    select.focus();
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(after);
+    fireEvent.change(select, { target: { value: 'member' } });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    // The move committed: Target's row now follows Robin's.
+    await waitFor(() =>
+      expect(
+        screen.getByText('Robin').compareDocumentPosition(screen.getByText('Target')) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+    );
+    await act(async () => {});
+    // Never a waitFor on the focus itself: focus sat on the select before the move committed.
+    expect(document.activeElement).toBe(select);
+    expect(select.isConnected).toBe(true);
+  });
+
+  it('T9: a failed FIRST load shows the full banner, never the empty sentence (confirm-only)', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    renderManageMembers();
+    expect(await screen.findByText("Couldn't load members")).toBeInTheDocument();
+    expect(screen.queryByText('No members found.')).toBeNull();
+    expect(screen.queryByText('Loading members...')).toBeNull();
+  });
+
+  it('T10: a roster that loaded EMPTY keeps its sentence through a failed refresh, never under the full banner (D-50)', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce([]);
+    // Not openMembersModal: with no row for the viewer the title reads `Members`.
+    renderManageMembers();
+    await screen.findByText('No members found.');
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    act(() => {
+      h.invitePanelProps?.onMemberAdded?.();
+    });
+    await waitFor(() =>
+      expect(logger.info).toHaveBeenCalledWith('Error fetching members:', expect.anything())
+    );
+    await act(async () => {});
+    expect(screen.getByText('No members found.')).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+    expect(screen.queryByText('Loading members...')).toBeNull();
   });
 });
