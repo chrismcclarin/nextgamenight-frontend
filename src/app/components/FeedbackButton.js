@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { Textarea, SelectControl } from '@/components/ui/Input';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { useFocusRecovery } from '@/components/ui/useFocusRecovery';
 import { FEEDBACK_SEND_FAILED_COPY } from './FeedbackForm';
 
 /**
@@ -45,6 +46,17 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
   // getElementById, never by a CSS id selector.
   const reactId = useId();
   const errorId = `${reactId}-submit-error`;
+  // The character counter under the textarea; the textarea is described by it (review r2 #189).
+  const counterId = `${reactId}-char-count`;
+
+  // D-35 (Phase 88.6.1-33): the in-flight latch for the pressed Submit. A ref, because a state
+  // flag does not land before a second synchronous press dispatches. Released in finally.
+  const submitInFlightRef = useRef(false);
+  // Req 5 (Phase 88.6.1-33): the thank-you line, the host target a successful send hands focus
+  // to through the one shared helper. No fallback: inside a Modal the hook's floor is the
+  // dialog's own title (plan 88.6.1-04, consumer contract item 4).
+  const successMessageRef = useRef(null);
+  const submitRecovery = useFocusRecovery();
 
   // DECISION Phase 88-17 (Req 9): the hand-rolled document-level Escape listener
   // that used to live here is REMOVED, not kept alongside <Modal>. Radix's
@@ -172,11 +184,24 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // D-35 (Phase 88.6.1-33): the refusal is the FIRST line after preventDefault and sits outside
+    // the try, so the finally of the in-flight run is the only release. A second press, or a
+    // forced form submit, files nothing while a send is pending.
+    if (submitInFlightRef.current) return;
 
     if (text.trim().length < 10) {
       setError('Feedback must be at least 10 characters.');
       return;
     }
+
+    submitInFlightRef.current = true;
+    // Armed synchronously, before any await (consumer contract item 1). `from` is the submit
+    // button: Safari does not focus a clicked button, so without it the hook would see no
+    // watched control on an iPhone and decline the hand-off.
+    const settle = submitRecovery.arm({
+      preferred: () => successMessageRef.current,
+      from: e.nativeEvent?.submitter,
+    });
 
     try {
       setSubmitting(true);
@@ -279,7 +304,9 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
       // draft the person typed. Changing this is a decision, not a cleanup.
       setError(getFetchErrorMessage(err, { fallback: FEEDBACK_SEND_FAILED_COPY }));
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
+      settle();
     }
   };
 
@@ -433,7 +460,22 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                     <polyline points="22 4 12 14.01 9 11.01" />
                   </svg>
                 </div>
-                <p className="text-xl font-bold text-content-primary">
+                {/* DECISION Phase 88.6.1-33 (Req 5 / D-04, the success hand-off): a successful
+                    send swaps the form, and the focused submit button with it, for this line.
+                    Focus is handed to it through the ONE shared helper (useFocusRecovery, armed
+                    in the submit handler), chosen OVER leaving it to the dialog primitive (focus
+                    lands on the dialog container, which D-04 counts as lost, and the outcome is
+                    never read), OVER the dialog title floor (it reads the title, not the
+                    outcome) and OVER a polite live region (a second channel for a line that
+                    focus already reads and that is already visible). No new words; the hook
+                    adds the focusable attribute itself and, inside the open dialog, keeps it.
+                    KNOWN RISK (review r2 #190): the shipped two-second close then moves focus on
+                    to the opener, which can cut the line's speech short. The delay is
+                    deliberately left as shipped here; plan 88.6.1-57 step 19.1 measures whether
+                    the whole line is spoken before focus returns to the menu toggle, and if it
+                    is cut off the owner rules between a longer delay and a dialog that stays
+                    until dismissed. Changing this is a decision, not a cleanup. */}
+                <p ref={successMessageRef} className="text-xl font-bold text-content-primary">
                   Thanks! Your feedback has been submitted.
                 </p>
               </div>
@@ -483,8 +525,9 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                       placeholder="Tell us what's on your mind..."
                       rows={5}
                       className="resize-none"
+                      aria-describedby={counterId}
                     />
-                    <p className="text-xs text-content-muted mt-1">
+                    <p id={counterId} className="text-xs text-content-muted mt-1">
                       {text.trim().length} characters (10 minimum)
                     </p>
                   </div>
@@ -517,12 +560,29 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                     {error}
                   </StatusRegion>
 
-                  {/* Submit */}
+                  {/* DECISION Phase 88.6.1-33 (D-35, Req 4): the pressed submit button takes
+                      aria-disabled plus a first-line ref latch (submitInFlightRef) while it
+                      sends, following DECISION Phase 88.6-22 (FriendInvitePanel, the rule of
+                      POSITION), chosen OVER the native attribute, which drops a keyboard or
+                      switch user out of the focus order mid-send. The validity half (fewer than
+                      ten characters) stays native (the rule of KIND), chosen OVER moving it too:
+                      FriendInvitePanel's Send exception rests on that button being the only stop
+                      after an empty field, while here the field's own counter states the minimum
+                      AND the field is described by it, so a screen-reader user hears the minimum
+                      on the field itself, and the dialog's Close stays reachable. There is no
+                      sibling in-flight gate in this form. The latch is a ref because a state flag
+                      does not land before a second synchronous press; each send files a GitHub
+                      issue, so a refused second press is the difference between one report and
+                      two. VISIBLE DELTA, disclosed: while sending, the button takes the DR-C gated
+                      colour pair (the primary button's aria-disabled rule in globals.css) instead
+                      of the disabled wash. Dropping either half, or restoring the native
+                      attribute, is a decision, not a cleanup. */}
                   <div className="flex justify-end">
                     <Button
                       type="submit"
                       variant="primary"
-                      disabled={submitting || text.trim().length < 10}
+                      disabled={text.trim().length < 10}
+                      aria-disabled={submitting || undefined}
                       aria-describedby={error ? errorId : undefined}
                     >
                       {submitting ? 'Submitting...' : 'Submit'}
