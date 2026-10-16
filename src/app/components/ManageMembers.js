@@ -37,6 +37,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // loaded-EMPTY one included. A has-loaded flag, never a row count. Plan 88.6.1-78 moves it
     // below the members error adapter and re-derives it through `useRetainedContent` (C10).
     const rosterRetained = hasLoaded;
+    // W027: bumped at the start of every fetchMembers call; a run that is no longer the latest
+    // writes nothing after its awaits (see the W027 marker above fetchMembers).
+    const fetchGenerationRef = useRef(0);
+    // The group the latest fetch asked for: a fetch for another group resets the previous
+    // group's error, pending invites and role, and the banner shows an error only for this key.
+    const [requestedGroupId, setRequestedGroupId] = useState(null);
     const [userRole, setUserRole] = useState(null);
     /* DECISION Phase 88.6-19 (R1 / UI-SPEC §6.2 arm 1): the members LOAD failure holds the
        ERROR OBJECT, not a flattened "Failed to load members" string, and renders through the
@@ -92,13 +98,45 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         // the resolved UUID instead of sticking at a wrong "no role".
     }, [modal, group_id, user?.sub, selfUuid]);
 
+    /* DECISION Phase 88.6.1-42 (W027 / IN-208): a generation counter (`fetchGenerationRef`)
+       bumped at CALL START and checked after every await (the members GET, the pending-invites
+       GET, the catch, each finally), so a superseded run writes nothing. It is the house idiom of
+       `QuickSuggestions.js` (`generationRef`), moved from an effect cleanup to the call start.
+       REJECTED: (a) IN-208's `isCancelled` closure passed from the effect (the `EventCalendar.js`
+       88.6-27 shape), because four of the five refresh callers are handlers with no effect cleanup
+       to invalidate them, so a remove refresh and an identity refresh could still land out of
+       order; (b) `AbortController`, rejected by name in 88.6-27.
+       ALSO CHOSEN, each over a named alternative:
+       - the error is cleared on SUCCESS, not at fetch start, CHOSEN OVER clearing it up front:
+         that unmounts the banner and its focused Try again the moment a retry starts;
+       - the error is RESET when a fetch asks for a different group than the latest one did
+         (`requestedGroupId`), together with the previous group's pending invites and the
+         caller's role, and the banner shows an error only for that group, CHOSEN OVER clearing
+         it on success alone (a previous group's failure would hold the new group's first-load
+         place, banner and all, until a success) and over a reset in the effect alone (the commit
+         that changes the group would still mount the previous group's banner and its live
+         region);
+       - the invite and role reset runs on a group change ONLY, CHOSEN OVER every refresh (the
+         title would flip to the plain members title for the length of each refresh);
+       - a payload that is not an array is a FAILURE, CHOSEN OVER writing an empty roster: that
+         printed the empty sentence for a request that returned no roster (Req 9, SPEC
+         Prohibition 2). Its breadcrumb below is byte-unchanged.
+       Changing any of this is a decision, not a cleanup. */
     const fetchMembers = async () => {
         if (!group_id || !user?.sub) return;
+        const generation = ++fetchGenerationRef.current;
+        const isCurrent = () => generation === fetchGenerationRef.current;
+        if (requestedGroupId !== group_id) {
+            setRequestedGroupId(group_id);
+            setError(null);
+            setPendingInvites([]);
+            setUserRole(null);
+        }
         setLoading(true);
-        setError(null);
         try {
             // Use groupsAPI.getGroupMembers which automatically includes Authorization header
             const data = await groupsAPI.getGroupMembers(group_id);
+            if (!isCurrent()) return;
 
             // Ensure data is an array before processing
             /* DECISION Phase 88.6-19 (AC-2 / T-84-01): this report's second argument is a SHAPE
@@ -111,13 +149,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 logger.info('Members data is not an array:', {
                     received: data === null ? 'null' : typeof data,
                 });
-                setMembers([]);
-                setLoading(false);
+                setError(new Error("The members request didn't complete."));
                 return;
             }
 
             setMembers(data || []);
             setLoadedGroupId(group_id);
+            setError(null);
 
             // Find current user's role by the nested member.id (UUID) vs the
             // resolved selfUuid. Gated on identity resolution: while selfUuid is
@@ -137,24 +175,27 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 try {
                     setPendingLoading(true);
                     const invites = await invitesAPI.getGroupPendingInvites(group_id);
+                    if (!isCurrent()) return;
                     setPendingInvites(Array.isArray(invites) ? invites : []);
                 } catch (inviteErr) {
+                    if (!isCurrent()) return;
                     setPendingInvites([]);
                 } finally {
-                    setPendingLoading(false);
+                    if (isCurrent()) setPendingLoading(false);
                 }
             } else {
                 setPendingInvites([]);
             }
         } catch (error) {
             logger.info('Error fetching members:', errCtx(error));
+            if (!isCurrent()) return;
             // Keep the ERROR object (88-14 idiom): useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
             setError(
                 error instanceof Error ? error : new Error("The members request didn't complete.")
             );
         } finally {
-            setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
     };
 
@@ -168,7 +209,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     });
     const retryMembers = useCallback(() => fetchMembersRef.current?.(), []);
     const membersErrorState = useFetchErrorState({
-        isError: Boolean(error),
+        isError: Boolean(error) && requestedGroupId === group_id,
         error,
         refetch: retryMembers,
     });
@@ -296,7 +337,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             await fetchMembers();
             if (onMembersUpdated) onMembersUpdated();
             // No success receipt here BY RULING, not by omission: Phase 91.1 deletes the
-            // approve/reject controls (ROADMAP :1527), so wiring a receipt for a control a
+            // approve/reject controls (ROADMAP `### Phase 91.1: Pending-member vestige removal`), so wiring a receipt for a control a
             // later phase removes is out of scope per the 88.6 SPEC. Phase 91.1 owns it.
         } catch (error) {
             logger.info('Error approving member:', errCtx(error));
@@ -310,7 +351,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             await fetchMembers();
             if (onMembersUpdated) onMembersUpdated();
             // No success receipt here BY RULING — same Phase 91.1 deletion as the approve
-            // handler above (ROADMAP :1527). Phase 91.1 owns this control's receipt.
+            // handler above (ROADMAP `### Phase 91.1: Pending-member vestige removal`). Phase 91.1 owns this control's receipt.
             return true;
         } catch (error) {
             logger.info('Error rejecting member:', errCtx(error));
