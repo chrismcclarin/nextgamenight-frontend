@@ -173,8 +173,16 @@ async function openVisualScheduler(page: Page): Promise<void> {
 
   // The heatmap fetch resolves after mount; every case below depends on the
   // fetched week being rendered (the wash, the count badges, `scrollToTime`).
+  // The name is copy row C1's COUNTED shape since 88.6.1-24 (D-12), matched end to end, e.g.
+  // "Monday, October 5 at 10:00 AM, 1 of 4 available" - so this guard is also the real-browser
+  // pin on the shape a screen reader hears. A cell without availability keeps the plain name and
+  // cannot satisfy it.
   await expect(
-    dialog(page).getByRole('gridcell', { name: /^Availability for \d{4}-\d{2}-\d{2} hour \d+$/ }).first(),
+    dialog(page)
+      .getByRole('gridcell', {
+        name: /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2} at \d{1,2}:\d{2} (AM|PM), \d+ of \d+ available$/,
+      })
+      .first(),
     'no gridcell carries an availability annotation — the CI fixture group has NO availability data, which makes the scheduler cases vacuous. This is a FIXTURE failure (scripts/e2e-fixtures.js owns the invariant), not a scheduler failure',
   ).toBeVisible();
 }
@@ -1453,7 +1461,11 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
           const labelled = wrapper.matches('[aria-label]')
             ? (wrapper as HTMLElement)
             : (wrapper.querySelector('[aria-label]') as HTMLElement | null);
-          const matched = /^Availability for \d{4}-\d{2}-\d{2} hour (\d+)$/.exec(
+          // The name is copy row C1 since 88.6.1-24 (D-12): "{weekday}, {month} {d} at {h:mm}
+          // {AM|PM}, {n} of {N} available". Only the COUNTED shape is parsed - its 12-hour hour
+          // and meridiem - and converted to the 24-hour key `hours` compares, here in page
+          // context (the Node-side `toMinutes` cannot be called from inside `evaluate`).
+          const matched = /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2} at (\d{1,2}):\d{2} (AM|PM), \d+ of \d+ available$/.exec(
             labelled?.getAttribute('aria-label') ?? '',
           );
           if (!matched) return; // an un-annotated cell carries no availability, by construction
@@ -1463,7 +1475,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
           // empty aria-hidden div. So the cell's own text IS the count.
           const count = Number((wrapper.textContent ?? '').trim());
           if (!Number.isFinite(count)) return;
-          const hour = Number(matched[1]);
+          const hour = (Number(matched[1]) % 12) + (matched[2] === 'PM' ? 12 : 0);
           hours.set(hour, Math.max(hours.get(hour) ?? 0, count));
         });
 

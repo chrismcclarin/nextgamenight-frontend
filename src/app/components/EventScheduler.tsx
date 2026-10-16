@@ -52,6 +52,7 @@ import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityColor';
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
 import { maxAvailabilityPerDay, peakHourForDay } from './heatmap/dayAggregate';
+import { slotCellName } from './heatmap/slotCellName';
 import SchedulerWeekStrip, { stripTabId } from './SchedulerWeekStrip';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import {
@@ -985,12 +986,18 @@ export default function EventScheduler({
         </div>
       ) : undefined;
 
-      // Every cell is named for screen readers. The ANNOTATED name is a verbatim parity carry —
-      // it is what the harness locates cells by — so the plain-slot name deliberately uses a
-      // different shape, keeping "which cells carry availability" answerable by name alone.
-      const ariaLabel = annotated
-        ? `Availability for ${dateStr} hour ${hour}`
-        : `${format(start, 'EEEE, MMMM d')} at ${format(start, 'h:mm a')}`;
+      // DECISION Phase 88.6.1-24 (D-12 / D-33 row 10, copy row C1): every cell is named by the
+      // shared `slotCellName` - "Monday, October 5 at 10:00 AM, 1 of 4 available" on a cell with
+      // availability, the plain "Monday, October 5 at 11:00 AM" on every other cell, INCLUDING a
+      // cell annotated only by a calendar conflict (its tooltip still opens; no new words). Built
+      // from this cell's own `start`, the Date the commit path derives its range from, so the time
+      // a screen-reader user hears can never differ from the slot they commit; the two half-hours
+      // of one hour are named separately. REJECTED - the old annotated name: an ISO date and a
+      // 24-hour number that VoiceOver on iOS never spoke (the owner's readout, CONTEXT Specific
+      // Ideas) and that both half-hours shared; it was kept as a test anchor, and the anchors moved
+      // with it in this commit. `annotated` still drives the tooltip only.
+      // Changing this is a decision, not a cleanup.
+      const ariaLabel = slotCellName(start, availableCount, totalMembers);
 
       const isSelected =
         !!selectedSlot && start < selectedSlot.end && end > selectedSlot.start;
@@ -1042,6 +1049,12 @@ export default function EventScheduler({
                 // The count badge is the mandatory NON-COLOUR cue, not decoration — a wash-only
                 // encoding is unreadable to the ~8% of men with colour-vision deficiency.
                 <span
+                  // Plan 88.6.1-24 (D-12): hidden from assistive tech. iOS VoiceOver lands on a
+                  // gridcell only when it has no accessible children (research AT-1, the WebKit
+                  // leaf rule), so this badge would be spoken INSTEAD of the cell's name; the name
+                  // carries the same count. It stays the visible non-colour cue the two style
+                  // markers below protect.
+                  aria-hidden="true"
                   // The badge's SIZE is a utility now, not an inline declaration. An inline
                   // declaration is neither a class nor a token, so it is invisible to every
                   // source-scan gate in this phase — which is why D-01 names this site separately
