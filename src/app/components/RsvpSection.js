@@ -545,26 +545,45 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
         {/*
           THE OUTCOME PAIR (W44/P3 + the note-save success). Both regions are ALWAYS MOUNTED and
-          EMPTY-FIRST — `StatusRegion`'s documented contract (`StatusRegion.tsx:9-12`): a screen
-          reader announces CHANGES to a live region, not the conditional mount of a new one, so
-          the `{error && …}` this replaces made the failure silent for exactly the users who need
-          it most. Do NOT add `empty:hidden` either — `display:none` takes the region out of the
-          accessibility tree, which is the same defect wearing a different hat.
+          EMPTY-FIRST — `StatusRegion`'s documented contract (`StatusRegion.tsx:9-17`, the
+          EMPTY-FIRST bullet). CORRECTED Phase 88.6.1-38 (D-42): "a conditionally mounted region is
+          not announced" holds for POLITE / status regions only; an inserted `role="alert"` that
+          arrives with its text IS announced (ARIA 1.2 `alert`). The `{error && …}` paragraph this
+          failure region replaced was silent for another reason: it carried no live role at all
+          (the parent of FE commit `ef216d1` renders it as a bare text-sm error-ink paragraph).
+          The failure region stays always-mounted for two other reasons: node identity (the text
+          lands in the node that was already there), and the clear-at-start below, which makes an
+          identical repeated failure re-announce. Do NOT add `empty:hidden` either — `display:none`
+          takes the region out of the accessibility tree, which is the same defect wearing a
+          different hat.
 
-          THE WRAPPER IS `display: contents`, and that is a requirement rather than tidiness. The
-          parent stack is `space-y-4` (`> * + *`), so an always-mounted normal child would take a
-          permanent 16px top margin while it is empty and zero-height — an idle layout delta on
-          this card that nothing sanctions. A `contents` box generates no box, so the parent's
-          margin never applies, and each region carries its own `mt-4` only when it has something
-          to say. That reproduces the OLD conditional `<p>`'s spacing exactly: 16px when set,
-          nothing when empty. Hoisting either region out of this wrapper re-opens the delta.
+          DECISION Phase 88.6.1-38 (D-22, W029): both regions are DIRECT children of this
+          `space-y-4` stack, on the primitive's `srOnlyWhenEmpty` prop, with NO margin utility.
+          History: Phase 88.6-29 put them in a `display: contents` wrapper on Tailwind v3's
+          adjacent-sibling reasoning; under v4.3.3 the stack rule is
+          `:where(& > :not(:last-child))` setting `margin-block-end`, so nothing supplied the gap
+          BELOW a visible message and it sat flush, 0px, on the count banner (WR-301, W029).
+          Chosen: empty means visually hidden and out of flow, so an idle region adds no gap; set
+          means an in-flow child that gets the stack's own 16px above and below. REJECTED (a)
+          keeping the wrapper and moving the conditional margin to `mb-4` (WR-301's suggested
+          fix): a per-site conditional margin is the idiom D-22 retires, and D-22 rejected a
+          repaired `contents` wrapper as fragile (AT-5). REJECTED (b) direct children without the
+          prop: an empty region would be an in-flow zero-height block whose own 16px
+          `margin-block-end` adds an idle gap. REJECTED (c) the old conditional `mt-4`: it
+          collapses into the previous sibling's margin for 16px above and still leaves 0px below.
+          Do not wrap these regions again or give either a margin utility. Neither may become the
+          stack's LAST child: an out-of-flow last child would hand the visible child before it a
+          16px bottom margin. The count banner, the list or the empty-state line always follows.
 
           DECISION Phase 88.6-29 (W44, the SUCCESS half): the note-save success announces through
           a SIBLING always-mounted POLITE region carrying the ratified string "Note saved"
           (UI-SPEC §6.3, owner ruling 2026-09-16 — this plan WIRES it and does not re-ratify it).
           Visible when set, per the 2026-09-14 ruling (#32 + #166, arm 2) that made this phase's
           new polite regions visible rather than `sr-only`; `sr-only` is the RECORDED REJECTED
-          arm. It is NOT a mirror of the assertive region beside it: that one is `role="alert"` in
+          arm.
+          AMENDED Phase 88.6.1-38 (D-22): the region takes `srOnlyWhenEmpty`. It is hidden only
+          while it has nothing to say and is visible whenever set, so the 2026-09-14 ruling and its
+          rejected arm both stand. It is NOT a mirror of the assertive region beside it: that one is `role="alert"` in
           error ink, and routing a confirmation through it would fire a success at the user as an
           interruption, painted red. Two regions here is not a §6.2 breach — the failure still has
           exactly ONE region, and a success region is not a failure region (the distinction D52
@@ -579,18 +598,18 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           — no DOM mutation, no announcement — so without it only the FIRST save ever announces.
           That same clear IS the mutual clear; there is deliberately no second one in the `catch`.
         */}
-        <div className="contents">
-          <StatusRegion
-            politeness="assertive"
-            className={`text-content-status-error ${error ? 'mt-4' : ''}`}
-            message={error}
-          />
-          <StatusRegion
-            politeness="polite"
-            className={`text-content-secondary ${noteSaved ? 'mt-4' : ''}`}
-            message={noteSaved}
-          />
-        </div>
+        <StatusRegion
+          politeness="assertive"
+          srOnlyWhenEmpty
+          className="text-content-status-error"
+          message={error}
+        />
+        <StatusRegion
+          politeness="polite"
+          srOnlyWhenEmpty
+          className="text-content-secondary"
+          message={noteSaved}
+        />
 
         {/* Count banner */}
         {totalResponses > 0 && (
