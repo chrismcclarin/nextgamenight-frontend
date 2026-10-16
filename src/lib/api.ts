@@ -778,16 +778,47 @@ const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
  * clears). REJECTED: `AbortSignal.timeout` (a second deadline mechanism beside the controller
  * the six helpers already share). Reading the body outside this helper again is a decision,
  * not a cleanup — it re-opens the stalled-body hang on the magic-link critical path.
+ * [AMENDED Phase 88.6.1-23 (R3-M3 / D-26): every sentence above stands. The helper gains ONE
+ * opt-in, `skipErrorBody` (a boolean, or a predicate over the status), so a caller that
+ * DISCARDS a non-OK body is not held by it.]
+ *
+ * DECISION Phase 88.6.1-23 (R3-M3 / D-26): CHOSEN — one opt-in, a boolean or a per-status
+ * predicate, that lets a caller which DISCARDS a non-OK body (for every status, or for the
+ * statuses the predicate names) skip reading it. When it says skip, the helper never reads the
+ * body, cancels it through this helper's own controller and returns `{ res, text: '' }`. The
+ * read still exists only in this helper, so the 88.6-62 rule above ("reading the body outside
+ * this helper again is a decision") is honoured, not bypassed. `getExistingResponse` passes
+ * the boolean (it returns `null` for every non-OK answer).
+ * REJECTED (a): a fetch-then-read split under the same controller at the call site (the
+ * register's second option). It puts a second body-handling path outside this helper, which is
+ * what 88.6-62 forbids.
+ * REJECTED (b): leaving the unread body un-cancelled. Nothing would ever drain it, and it can
+ * hold the connection.
+ * REJECTED (c): `res.body.cancel()`. A second cancellation mechanism beside the controller, and
+ * `body` can be null.
+ * REJECTED (d): skipping a body a helper READS. `respondViaToken` reads `result.error` off its
+ * 403 / 410 bodies and the prefill helpers read their error copy off a non-OK body (DECISION
+ * Phase 88.6-42's D62 branch B), so none of them takes the boolean form.
+ * Turning the opt-in on for another helper or another status, or reading the body outside this
+ * helper, is a decision, not a cleanup.
  */
 async function timedPublicFetch(
   url: string,
   init: RequestInit,
-  failureMessage: string
+  failureMessage: string,
+  { skipErrorBody = false }: { skipErrorBody?: boolean | ((status: number) => boolean) } = {}
 ): Promise<{ res: Response; text: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PUBLIC_TRANSPORT_TIMEOUT_MS);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
+    const skip =
+      !res.ok && (typeof skipErrorBody === 'function' ? skipErrorBody(res.status) : skipErrorBody);
+    if (skip) {
+      // Cancel the unread body through the one mechanism this helper owns (REJECTED (b), (c)).
+      controller.abort();
+      return { res, text: '' };
+    }
     const text = await res.text();
     return { res, text };
   } catch {
@@ -1550,11 +1581,17 @@ export const availabilityFormAPI = {
   // both mean "nothing to pre-fill" to the one consumer. A TRANSPORT failure (incl. the 20s
   // timeout) REJECTS, and the consumer's own catch treats it as optional pre-fill and proceeds
   // to READY; before this, a stalled GET held the page on "Loading" forever.
+  // [AMENDED Phase 88.6.1-23 (R3-M3): a non-2xx now resolves `null` WITHOUT waiting for its
+  // body — this is the one caller that passes `timedPublicFetch`'s `skipErrorBody` opt-in in
+  // its boolean form, because it discards every non-OK body. Only a transport failure
+  // (including the 20 s timeout) still rejects. See DECISION Phase 88.6.1-23 (R3-M3 / D-26) on
+  // that helper.]
   getExistingResponse: async (promptId: string, token: string) => {
     const { res, text } = await timedPublicFetch(
       `${PUBLIC_API_BASE_URL}/availability-responses/${encodeURIComponent(promptId)}?magic_token=${encodeURIComponent(token)}`,
       { headers: { 'Content-Type': 'application/json' } },
-      AVAILABILITY_EXISTING_TRANSPORT_FAILURE
+      AVAILABILITY_EXISTING_TRANSPORT_FAILURE,
+      { skipErrorBody: true }
     );
     if (!res.ok) return null;
     try {
