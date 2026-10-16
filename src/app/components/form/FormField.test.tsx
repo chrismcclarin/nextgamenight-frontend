@@ -66,6 +66,52 @@ describe('FormField a11y contract', () => {
     expect(label).toHaveClass('sr-only');
     expect(label).not.toHaveClass('font-normal');
   });
+
+  // Phase 88.6.1-26 carry-in (AT-4 R3): React skips nothing it can see when a consumer re-sets an
+  // identical error string, so the alert node stayed the same and an identical second verdict
+  // was silent. The OPTIONAL `errorKey` prop lets the consumer bump a sequence per verdict: a new
+  // key re-mounts the alert paragraph (a fresh insertion is announced). No key = today's render.
+  it('FK1: bumping errorKey with an identical error re-mounts the alert; no key keeps the node', () => {
+    const { rerender } = render(
+      <FormField label="Email" error="Email is required" errorKey={1}>
+        <input type="text" />
+      </FormField>
+    );
+    const first = screen.getByRole('alert');
+    rerender(
+      <FormField label="Email" error="Email is required" errorKey={2}>
+        <input type="text" />
+      </FormField>
+    );
+    const second = screen.getByRole('alert');
+    expect(second).toHaveTextContent('Email is required');
+    expect(second).not.toBe(first);
+    // The association survives the re-mount: same id, still described by it.
+    expect(screen.getByLabelText('Email').getAttribute('aria-describedby')).toBe(second.id);
+
+    // Same key: the node is kept (no spurious re-announce on an unrelated re-render).
+    rerender(
+      <FormField label="Email" error="Email is required" errorKey={2}>
+        <input type="text" />
+      </FormField>
+    );
+    expect(screen.getByRole('alert')).toBe(second);
+
+    // No key at all: byte-identical to the shipped render, the node is kept across re-renders.
+    cleanup();
+    const { rerender: rerenderPlain } = render(
+      <FormField label="Email" error="Email is required">
+        <input type="text" />
+      </FormField>
+    );
+    const plain = screen.getByRole('alert');
+    rerenderPlain(
+      <FormField label="Email" error="Email is required">
+        <input type="text" />
+      </FormField>
+    );
+    expect(screen.getByRole('alert')).toBe(plain);
+  });
 });
 
 function SelectHarness({ error }: { error?: string }) {

@@ -357,3 +357,49 @@ describe('88.6.1-26 — a typed game name saves as Game TBD (game field)', () =>
     expect(screen.getByRole('dialog').textContent).not.toMatch(/Invalid UUID/i);
   });
 });
+
+// Phase 88.6.1-26 carry-in (the FormField register entry "FormField's error alert does not
+// re-announce an identical second verdict", AT-4 R3). react-hook-form keeps the same error object
+// across failed submits, so a repeat failure while focus is ALREADY inside the invalid field (a
+// second Enter) re-inserted nothing and moved nothing: silent to a screen reader. The form now
+// passes react-hook-form's per-attempt `submitCount` to each FormField as `errorKey`, so every
+// failed submit inserts a fresh alert node.
+describe('88.6.1-26 carry-in — an identical second field verdict is inserted again (FormField errorKey)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('K1: pressing Enter twice in an emptied Timezone field inserts the field alert twice', async () => {
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+    const timezone = screen.getByRole('textbox', { name: 'Timezone' });
+    const form = timezone.closest('form') as HTMLFormElement;
+    let submits = 0;
+    form.addEventListener('submit', () => {
+      submits += 1;
+    });
+    const inserted: Element[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const r of records)
+        r.addedNodes.forEach((n) => {
+          if (!(n instanceof Element)) return;
+          const alert = n.matches('[role="alert"]') ? n : n.querySelector('[role="alert"]');
+          if (alert && alert.textContent === 'Timezone is required') inserted.push(alert);
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    await user.clear(timezone);
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Timezone is required');
+    await waitFor(() => expect(document.activeElement).toBe(timezone));
+
+    await user.keyboard('{Enter}');
+    // Positive signal first: the second submit really ran (CF-26).
+    await waitFor(() => expect(submits).toBe(2));
+    await waitFor(() => expect(inserted).toHaveLength(2));
+    observer.disconnect();
+    expect(inserted[0]).not.toBe(inserted[1]);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(document.activeElement).toBe(timezone);
+    expect(promptSettingsAPI.createSchedule).not.toHaveBeenCalled();
+  });
+});
