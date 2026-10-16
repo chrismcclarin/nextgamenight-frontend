@@ -2555,12 +2555,44 @@ function Profile(){
                                             {/* Not a <label>: this names a GROUP of toggle
                                                 buttons, not a single form control, and a label
                                                 with no control is a label pointing at nothing. */}
+                                            {/* DECISION Phase 88.6.1-48 (D-21 / D-44): the seven days carry
+                                                `aria-pressed`, read from the SAME expression the colour ternary reads,
+                                                so state and colour cannot disagree. They are two-way pressed toggles,
+                                                and the theme toggles in this file use the same attribute (DECISION
+                                                Phase 88-10). REJECTED: native checkboxes or role="checkbox" — honest
+                                                for a multi-select too, but D-21 / D-44 ruled `aria-pressed`, and a
+                                                native box changes the look.
+
+                                                `All` / `Clear` is an ACTION (D-21) and carries no pressed state: its
+                                                label says what the next press does, and "pressed" on it would describe
+                                                a button that cannot stay pressed.
+
+                                                FLOOR: phone-scoped `min-h-11 md:min-h-0`, the house phone floor
+                                                (UpcomingEventsCard.js `min-h-11 md:min-h-0`; Input.tsx
+                                                `max-md:min-h-11`, which the sibling inputs in this form use). AC-19 is
+                                                a 375px criterion and this is a non-look phase, so desktop renders as
+                                                before. REJECTED: an all-width `min-h-11`, which grows every desktop row
+                                                for no requirement. `min-w-11 md:min-w-0` as well, because `Fri` and
+                                                `All` are under 44px wide by class arithmetic. The floor sits in the
+                                                STATIC part of each className, so pressed and unpressed both carry it.
+
+                                                KEPT RAW, not migrated to `<Button variant="ghost">`: D-21 says "in
+                                                place", and the migration is a look change (`.btn` weight 600 over these
+                                                400-weight labels, plus its padding and elevation). This ANSWERS rather
+                                                than overrides DECISION Phase 88.6-17 (D-11, outcome (a)): its worry, a
+                                                hand-rolled floor watched by nothing, is closed, because this floor is
+                                                pinned in controlSizeFloor.test.tsx's NAMED_SUBJECTS (profileDayToggles,
+                                                profileDaysAllClear and their Width twins).
+
+                                                Dropping the attribute, the floor or its source pin is a decision, not a
+                                                cleanup. */}
                                             <span id="days-of-week-label" className="block text-sm text-content-secondary mb-1">Days of Week</span>
                                             <div role="group" aria-labelledby="days-of-week-label" className="flex flex-wrap gap-2 mt-1">
                                                 {[0, 1, 2, 3, 4, 5, 6].map(day => (
                                                     <button
                                                         key={day}
                                                         type="button"
+                                                        aria-pressed={recurringForm.daysOfWeek.includes(day)}
                                                         onClick={() => {
                                                             const days = recurringForm.daysOfWeek;
                                                             setRecurringForm({
@@ -2570,7 +2602,7 @@ function Profile(){
                                                                     : [...days, day].sort((a, b) => a - b)
                                                             });
                                                         }}
-                                                        className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                                                        className={`px-3 py-1.5 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-lg text-sm border transition-colors ${
                                                             recurringForm.daysOfWeek.includes(day)
                                                                 ? 'bg-btn-primary text-btn-primary-text border-btn-primary'
                                                                 : 'bg-surface-card text-content-secondary border-line hover:border-line-accent'
@@ -2587,7 +2619,7 @@ function Profile(){
                                                             daysOfWeek: recurringForm.daysOfWeek.length === 7 ? [] : [0, 1, 2, 3, 4, 5, 6]
                                                         });
                                                     }}
-                                                    className="px-3 py-1.5 rounded-btn text-sm border border-line text-content-secondary hover:border-line-accent transition-colors"
+                                                    className="px-3 py-1.5 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-btn text-sm border border-line text-content-secondary hover:border-line-accent transition-colors"
                                                 >
                                                     {recurringForm.daysOfWeek.length === 7 ? 'Clear' : 'All'}
                                                 </button>
