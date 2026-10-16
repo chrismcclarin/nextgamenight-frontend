@@ -164,14 +164,23 @@ export class ApiError extends Error {
    * Rendering this anywhere is a defect, not a simplification.
    */
   readonly upstreamMessage?: string;
+  /**
+   * @param options the platform's own `ErrorOptions` (88.6.1-23, W062 rider MEDLOW-18), used by
+   * `timedPublicFetch` to keep a transport failure's `cause`. Built without it, an ApiError has
+   * NO own `cause` property (its shape is unchanged). A cause reaches Sentry only as a linked
+   * exception on an EVENT (the `linkedErrors` integration's default key is `cause`), where
+   * `scrubEvent` scrubs every exception value like any other; `errCtx` (name and message only)
+   * never forwards it into a breadcrumb.
+   */
   constructor(
     message: string,
     code: ApiErrorCode,
     status: number,
     details?: unknown,
-    upstreamMessage?: string
+    upstreamMessage?: string,
+    options?: ErrorOptions
   ) {
-    super(message);
+    super(message, options);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
@@ -770,6 +779,11 @@ const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
  * routes do not carry" was false for the validate route. (2) The body is read INSIDE the
  * deadline, so a response whose headers arrive and whose body then stalls rejects at 20 s
  * instead of hanging; the helper therefore returns `{ res, text }`.]
+ * [AMENDED Phase 88.6.1-23 (MEDLOW-18): "they are collapsed onto `failureMessage` rather than
+ * discriminated here" now has ONE exception — a timeout (this helper's own deadline fired)
+ * carries the suffix " (timed out after 20000 ms)" — and every failure keeps the caught value
+ * as the ApiError's platform `cause`. See the DECISION Phase 88.6.1-23 (W062 rider MEDLOW-18)
+ * marker at the catch.]
  *
  * DECISION Phase 88.6-62 (review round 2 #4/#13): the body read is FOLDED into this timed
  * helper (the review's first-named option) and the timer is still cleared in `finally`, so
@@ -821,8 +835,39 @@ async function timedPublicFetch(
     }
     const text = await res.text();
     return { res, text };
-  } catch {
-    throw new ApiError(failureMessage, 'network', 0);
+  } catch (caught) {
+    // DECISION Phase 88.6.1-23 (W062 rider MEDLOW-18): CHOSEN — keep the caught value as the
+    // platform `cause`, and tell a timeout apart by its MESSAGE, keyed on this helper's own
+    // deadline (its controller's signal is aborted; the skip path above returns and never
+    // throws, so the timer is the only thing that can have aborted it). The message is built
+    // from constants only: the helper's failure constant and PUBLIC_TRANSPORT_TIMEOUT_MS.
+    // REJECTED (a): a distinct `name`. `name` is fixed at 'ApiError', consumers branch on
+    // instanceof, and the 'ApiError — shape' test pins it (APPENDIX-DF :164).
+    // REJECTED (b): a new ApiErrorCode such as a timeout code. Every consumer renders the same
+    // `network` copy for both, `shouldRetry` and the Sentry tags key on `network`, and plan
+    // 88.6.1-36 keys the RSVP timeout state on `network`.
+    // REJECTED (c): classifying by the caught error's own name or text. Engines differ and a
+    // test double can fake it; the helper's own signal is the one source of truth.
+    // REJECTED (d): splicing the caught text into the message. An engine's TypeError can quote
+    // the request URL, `respondViaToken` and `getExistingResponse` carry the magic token in the
+    // query, and the message reaches breadcrumbs through `errCtx`.
+    // REJECTED (e): a cause on `guardedJson`'s `internal` rejection. A JSON SyntaxError's text
+    // can quote the response body (SPEC Prohibition 5).
+    // Honest limit: CORS, DNS and offline failures stay one class. The browser reports them as
+    // the same TypeError on purpose; the cause carries whatever the browser said.
+    // Putting the caught text into the message, or a cause on the parse failure, is a decision,
+    // not a cleanup.
+    const timedOut = controller.signal.aborted;
+    throw new ApiError(
+      timedOut
+        ? `${failureMessage} (timed out after ${PUBLIC_TRANSPORT_TIMEOUT_MS} ms)`
+        : failureMessage,
+      'network',
+      0,
+      undefined,
+      undefined,
+      { cause: caught }
+    );
   } finally {
     clearTimeout(timer);
   }

@@ -769,7 +769,8 @@ describe('88.6-58 — getExistingResponse, the SIXTH apiFetch-bypassing helper, 
     expect(settled).toHaveBeenCalledTimes(1);
     const [outcome, value] = settled.mock.calls[0];
     expect(outcome).toBe('rejected');
-    expect((value as Error).message).toBe('availability existing-response lookup did not complete');
+    // 88.6.1-23 MEDLOW-18: a timeout says so (the helper's own deadline fired).
+    expect((value as Error).message).toBe('availability existing-response lookup did not complete (timed out after 20000 ms)');
   });
 
   it('a 200 with a non-JSON body resolves null (guarded parse; the object | null contract kept)', async () => {
@@ -898,7 +899,9 @@ describe('88.6-62 — the magic-link transport contract (review round 2 cluster 
     const [outcome, value] = settled.mock.calls[0];
     expect(outcome).toBe('rejected');
     expect(value).toBeInstanceOf(ApiError);
-    expect(value).toMatchObject({ code: 'network', status: 0, message: failure });
+    // 88.6.1-23 MEDLOW-18: a timeout says so, and the AbortError is kept as the cause.
+    expect(value).toMatchObject({ code: 'network', status: 0, message: `${failure} (timed out after 20000 ms)` });
+    expect(((value as ApiError).cause as Error).name).toBe('AbortError');
   });
 
   it.each(SIX)('CONFIRM-ONLY: %s leaves NO timer pending once it resolves', async (_name, run) => {
