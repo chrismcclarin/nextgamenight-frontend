@@ -228,8 +228,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   };
 
   // Adapter onto the shared fetch-error pair, matching the 88-14 friends-page
-  // pattern: the hook documents that it reads ONLY isError/error/refetch
-  // (useFetchErrorState.ts:89). `retry` must be stable — the hook puts it in a
+  // pattern: the hook documents that it reads ONLY isError/error/refetch (its docblock, anchor
+  // "only `isError`/`error`/`refetch` are read"). `retry` must be stable — the hook puts it in a
   // useCallback dep AND in its refocus-recovery effect deps.
   const fetchGroupsRef = useRef(null);
   useEffect(() => {
@@ -515,8 +515,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               /* DECISION Phase 88.6-21 (W42/W62b, SPEC A11y mandate): the KEYBOARD target is the
                  TITLE BLOCK below, not this card. The card keeps a pointer-only `onClick`;
                  `role="button"` / `tabIndex` / `onKeyDown` moved onto the title `<div>` (NO
-                 aria-label — see the note there). This is `EventDayModal.js:280-359`'s H1 remedy
-                 applied VERBATIM, not a second similar-looking fix.
+                 aria-label — see the note there). This is EventDayModal's H1 remedy (its
+                 `AMENDED Phase 88.3 code-adversarial-review run 3 (H1` paragraph) applied
+                 VERBATIM, not a second similar-looking fix.
 
                  WHAT WAS MEASURED HERE BEFORE THE FIX (2026-09-16, at FE `5a648e4`), because the
                  88.5 marker below says there is no axe pin on this list to catch either half:
@@ -537,7 +538,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  REJECTED: a `target !== currentTarget` guard on the card's own `onKeyDown` — it
                  fixes the hijack and leaves every descendant hidden from AT, which is the half
                  88.9's chip-adoption widening is blocked on.
-                 The markers at `:491-510` below describe the pre-fix shape as deliberate; what
+                 The markers below (the NESTED-INTERACTIVE paragraph of the `DECISION Phase 88.5
+                 (SPEC Req 5, UI-SPEC 6.5)` marker) describe the pre-fix shape as deliberate; what
                  changed is this phase's A11y mandate plus 88.9's blocked dependency, named here
                  rather than overridden silently. A decision, not a cleanup. */
               /* DECISION Phase 88.6-47 (row 4 of the 2026-09-17 CI e2e red): the keyboard-target
@@ -663,8 +665,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         role="button"
                         tabIndex={0}
                         /* NO aria-label, deliberately — the EventDayModal remedy this applies
-                           carries the same rejection verbatim (`EventDayModal.js:343-347`, "NO
-                           aria-label ... 88.3 code-adversarial-review run 4, 2026-08-28"): on a
+                           carries the same rejection verbatim (EventDayModal's note, anchor "NO
+                           aria-label, deliberately (88.3 code-adversarial-review run 4"): on a
                            role="button" an explicit label REPLACES the name computed from the
                            subtree, and the subtree here IS the group name. Computing it means a
                            quote-bearing name like `Bob's "Board" Crew` arrives intact with no
@@ -801,7 +803,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  * Removing them is a decision, not a cleanup.
                  *
                  * `tinted` is gated on `!hasBgImage`, and that gate is LOAD-BEARING (verified
-                 * 2026-09-01, `colorUtils.js:739`). The tinted chip arm paints `bg-white/85` and
+                 * 2026-09-01, `colorUtils.js` `groupInkVars`, its background-IMAGE arm). The
+                 * tinted chip arm paints `bg-white/85` and
                  * takes its initials from `var(--group-ink-l, var(--t-color-l))`. On a card with
                  * a background PHOTO `groupInkVars` returns `{}`, so that chain falls through to
                  * `--t-color-l`, which `getTextStyle`'s image branch sets to WHITE — white
@@ -909,7 +912,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       CHOSEN: on the tinted arm both spans read the CARD INK PAIR out of the
                       cascade — `--group-ink` / `--group-ink-l` for the row, the 85% muted rung
                       `--group-ink-muted` / `--group-ink-muted-l` for the 12px date — exactly as the
-                      card title at `:398` already forks on `--t-color`. The ink is STORED per preset
+                      card title `Heading` (its `[color:var(--t-color-l)] dark:[color:var(--t-color)]`
+                      class) already forks on `--t-color`. The ink is STORED per preset
                       per theme and is selected by the SAME `dark:` fork that selects the ground, so
                       the pole is a function of the RENDERED ground by construction. Req 8's failure
                       mode — a pole chosen by "does this group have a colour" — cannot occur here.
