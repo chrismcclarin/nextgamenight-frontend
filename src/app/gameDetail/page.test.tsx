@@ -651,6 +651,41 @@ describe('gameDetail sessions header (D-39)', () => {
     expect(filterToggle.className).toContain('w-full');
     expect(filterToggle.className).toContain('sm:w-auto');
   });
+
+  // 88.6.1-47 (D-21 / D-44, AC-19): the toggle is a DISCLOSURE — aria-expanded, and an
+  // aria-controls present only while the panel is mounted (the KM-2 pair, KebabMenu's house
+  // form). The arrow glyphs are hidden, so the name is exactly the words. No aria-pressed.
+  it('F1: Show Filters & Sort is a disclosure whose name is the words and whose aria-controls exists only while open', async () => {
+    const user = userEvent.setup();
+    renderGameDetail();
+    const header = await sessionsHeader();
+    const toggle = within(header).getByRole('button', { name: 'Show Filters & Sort' });
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+    expect(toggle).not.toHaveAttribute('aria-pressed');
+    expect(within(toggle).getByText('▼')).toHaveAttribute('aria-hidden', 'true');
+
+    await user.click(toggle);
+    const open = within(header).getByRole('button', { name: 'Hide Filters' });
+    expect(open).toBe(toggle);
+    expect(open).toHaveAttribute('aria-expanded', 'true');
+    expect(open).not.toHaveAttribute('aria-pressed');
+    expect(within(open).getByText('▲')).toHaveAttribute('aria-hidden', 'true');
+    const panelId = open.getAttribute('aria-controls');
+    expect(panelId).toBeTruthy();
+    const panel = document.getElementById(panelId as string);
+    expect(panel).not.toBeNull();
+    expect(
+      (panel as HTMLElement).contains(screen.getByRole('heading', { name: 'Filter & Sort Sessions' }))
+    ).toBe(true);
+
+    await user.click(open);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+    expect(toggle).not.toHaveAttribute('aria-pressed');
+    expect(toggle).toHaveAccessibleName('Show Filters & Sort');
+  });
 });
 
 // D-40 / F-6c / F-6d. jsdom applies no media queries, so BOTH breakpoint
@@ -770,6 +805,112 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Delete this session?')).toBeInTheDocument();
     expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+  });
+
+  // 88.6.1-47 (H6 / D-04 / D-05, AC-14): the confirmed delete is followed by the dialog's own
+  // restore to the opener, and only once the DEFERRED refetch removes the card does focus land on
+  // the list heading — never <body>. Ordering backstop (host half): the first waitFor is the
+  // restored opener, so a settle-time focus move would fail it.
+  it('H6a: after a confirmed delete focus returns to the opener, then lands on Game Sessions (N) once the refetch removes the card', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+
+    const sessions = await sessionsSection();
+    const refetch = deferred(eventsAPI.getGroupEvents as Mock);
+    const desktopDelete = within(sessions).getByRole('button', { name: 'Delete' });
+    await user.click(desktopDelete);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(SESSION.id);
+    await waitFor(() => expect(document.activeElement).toBe(desktopDelete));
+
+    await act(async () => {
+      refetch.settle([]);
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Game Sessions (0)' }))
+    );
+  });
+});
+
+// 88.6.1-47 (H6, AC-14 adjacency + empty): deleting an UPCOMING session lands focus on the
+// heading of the list that held it — `Upcoming (N)` while that section survives, else
+// `Game Sessions (N)` (the Upcoming section is omitted when empty, DECISION Phase 88-33 Task 7
+// step 1b rider). Fixtures derive from FUTURE_SESSION, so this describe pins the clock in its
+// OWN hooks (the W64 rule above TEST_NOW).
+describe('gameDetail session delete — focus lands on the list heading (88.6.1-47, H6)', () => {
+  const FUTURE_2 = {
+    ...FUTURE_SESSION,
+    id: 'evt-future-2',
+    comments: 'The second upcoming night',
+    start_date: new Date(TEST_NOW.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(TEST_NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function deleteFirstUpcomingThroughKebab(
+    user: ReturnType<typeof userEvent.setup>,
+    upcomingHeadingName: string
+  ) {
+    const heading = await screen.findByRole('heading', { name: upcomingHeadingName });
+    const card = heading.closest('.card') as HTMLElement;
+    const [trigger] = await within(card).findAllByRole('button', { name: 'Session actions' });
+    await user.click(trigger);
+    const list = document.getElementById(trigger.getAttribute('aria-controls') as string);
+    expect(list, 'the Session actions kebab names its open list through aria-controls').not.toBeNull();
+    await user.click(within(list as HTMLElement).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    return trigger;
+  }
+
+  it('H6b: with another upcoming session left, focus lands on Upcoming (1)', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner', events: [FUTURE_SESSION, FUTURE_2] });
+    await screen.findByRole('heading', { name: 'Upcoming (2)' });
+    const refetch = deferred(eventsAPI.getGroupEvents as Mock);
+
+    const trigger = await deleteFirstUpcomingThroughKebab(user, 'Upcoming (2)');
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(FUTURE_SESSION.id);
+    // The dialog's own restore: back on the named kebab trigger first.
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    await act(async () => {
+      refetch.settle([FUTURE_2]);
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Upcoming (1)' }))
+    );
+  });
+
+  it('H6c: deleting the LAST upcoming session unmounts that section, and focus lands on Game Sessions (1)', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner', events: [SESSION, FUTURE_SESSION] });
+    await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    await screen.findByRole('heading', { name: 'Game Sessions (1)' });
+    const refetch = deferred(eventsAPI.getGroupEvents as Mock);
+
+    const trigger = await deleteFirstUpcomingThroughKebab(user, 'Upcoming (1)');
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(FUTURE_SESSION.id);
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    await act(async () => {
+      refetch.settle([SESSION]);
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Game Sessions (1)' }))
+    );
+    expect(screen.queryByRole('heading', { name: /^Upcoming/ })).toBeNull();
   });
 });
 
@@ -1139,7 +1280,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(sending.className).not.toMatch(/(^|[\s:])disabled:opacity-/);
   });
 
-  it('keeps focus ON the control while sending, and does not move it when the outcome settles', async () => {
+  it('keeps focus ON the control while sending, and lands it on the settled chip once (D-06)', async () => {
     const user = userEvent.setup();
     const invite$ = deferredInvite();
     renderEventDetail({ role: 'owner', participants: [GUEST] });
@@ -1153,13 +1294,12 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     await act(async () => {
       invite$.settle({});
     });
-    await screen.findByText('Invite sent!');
-    // RECORDED, not asserted as a landing target: focus is NOT moved. Under arm B
-    // the button is replaced by a non-focusable status chip, so the user lands
-    // wherever its removal leaves them — `<body>`. This is a DOM fact and belongs
-    // in the jsdom half; it is disclosed in 88.6-18-SUMMARY.md rather than
-    // silently absorbed.
-    expect(document.activeElement).toBe(document.body);
+    const chip = await screen.findByText('Invite sent!');
+    // D-06 (owner 2026-10-04, 88.6.1-47): the chip takes focus ONCE, through the shared
+    // useFocusRecovery hook armed at the press. Before this, the button was replaced by a
+    // non-focusable chip and the user landed on <body> (this test pinned that landing; it is
+    // flipped in place). A named target, never "not body" (C-5).
+    await waitFor(() => expect(document.activeElement).toBe(chip));
   });
 
   it('re-enables and re-sends after a failure — the latch clears in the error branch only', async () => {
@@ -1199,7 +1339,8 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(chip.tagName).toBe('SPAN');
     expect(chip).not.toHaveAttribute('role');
     expect(chip).not.toHaveAttribute('aria-live');
-    expect(chip).not.toHaveAttribute('tabindex');
+    // D-06 (88.6.1-47): programmatically focusable, still OUT of the Tab order.
+    expect(chip).toHaveAttribute('tabindex', '-1');
     // The branch `title` is the only fuller explanation each settled state has.
     expect(chip).toHaveAttribute('title', 'Invite sent!');
     // Geometry survives: on a <span> nothing supplies what `.btn` supplied.
@@ -1243,6 +1384,87 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     }
     // `min-h-11` is still present — from the cva base, not the call site.
     expect(invite.className).toContain('min-h-11');
+  });
+
+  // 88.6.1-47 (D-06 / W041, AC-14): the settled-chip focus landing at its other mounts and
+  // edges. The shared useFocusRecovery hook (plan 88.6.1-04) is armed at the press with the chip
+  // as the preferred target, so focus moves only when it was lost, and never off a user who went
+  // elsewhere.
+  it('D6-3: inside the See-all dialog the settled chip takes focus, and focus stays inside the dialog', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [...SIX_PARTICIPANTS, GUEST] });
+    const dialog = await openParticipantsModal(user);
+
+    await user.click(within(dialog).getByRole('button', { name: INVITE }));
+    await act(async () => {
+      invite$.settle({});
+    });
+
+    const chip = await within(dialog).findByText('Invite sent!');
+    // Before D-06 the removed button sent focus to the dialog CONTAINER (C-5).
+    await waitFor(() => expect(document.activeElement).toBe(chip));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it('D6-4: a 409 pending outcome pressed in the Safari click shape (no focus on the button) lands on the Invite pending chip', async () => {
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    // The Safari shape: a click that does NOT focus the button. Asserted first, because the
+    // whole arm turns on it — `user.click` would focus the button and pass with or without the
+    // hook's `from` seed.
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(invite);
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      invite$.fail(new ApiError('This person already has a pending invite', 'invite_pending', 409));
+    });
+
+    const chip = await screen.findByText('Invite pending');
+    await waitFor(() => expect(document.activeElement).toBe(chip));
+  });
+
+  it('D6-5 (control): a user who moved focus elsewhere while sending is not moved when the chip renders', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await user.click(invite);
+    const share = screen.getByRole('button', { name: 'Share Game QR' });
+    act(() => {
+      share.focus();
+    });
+    expect(document.activeElement).toBe(share);
+
+    await act(async () => {
+      invite$.settle({});
+    });
+    // POSITIVE settle signal first (P-6), then the "not moved" read.
+    await screen.findByText('Invite sent!');
+    expect(document.activeElement).toBe(share);
+  });
+
+  it('D6-6 (control): an error outcome keeps focus on the same node, now named Retry', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await user.click(invite);
+    const sending = screen.getByRole('button', { name: 'Sending...' });
+    expect(sending).toBe(invite);
+
+    await act(async () => {
+      invite$.fail(new Error('network'));
+    });
+
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    expect(retry).toBe(invite);
+    expect(document.activeElement).toBe(retry);
   });
 });
 
