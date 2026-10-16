@@ -327,7 +327,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
    * sent and received once per session and every member row in the app reads through it.
    *
    * The `as` narrows the JS module's inferred `getStatus: () => string` to the signature the
-   * provider actually implements (`FriendshipStatusProvider.js:96-134`). `checkJs` is off, so
+   * provider actually implements (`getStatus` in `FriendshipStatusProvider.js`, anchor `const getStatus = useCallback(`). `checkJs` is off, so
    * the inferred arity comes from the context DEFAULT rather than from the real value.
    */
   const { getStatus } = useContext(FriendshipContext) as {

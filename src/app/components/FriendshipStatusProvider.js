@@ -13,7 +13,10 @@ export const FriendshipContext = createContext({
   declineRequest: async () => ({ alreadyDeclined: false }),
   refreshFriendships: async () => {},
   loading: true,
-  error: false,
+  error: null,
+  hasLoaded: false,
+  isRequestActionPending: () => false,
+  retryFriendships: async () => {},
 });
 
 // POLL-02: convenience hook so consumers (NotificationBell, friends/page)
@@ -33,69 +36,76 @@ export function FriendshipStatusProvider({ children }) {
   const [sentRequests, setSentRequests] = useState([]);
   const [receivedRequests, setReceivedRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // POLL-02: extracted into a named function so the mount useEffect AND the
   // accept/decline mutators (and any future consumer) can re-pull friendship
   // state from a single source. `cancelled` ref pattern preserved for the
   // mount path; manual refreshes ignore cancellation since the caller owns
   // the lifecycle.
-  const loadFriendshipData = useCallback(async () => {
-    if (!user?.sub) return;
-    try {
-      const [friendsData, sentData, receivedData] = await Promise.all([
-        friendshipsAPI.getFriends(),
-        friendshipsAPI.getSentRequests(),
-        friendshipsAPI.getReceivedRequests(),
-      ]);
-      setFriends(friendsData || []);
-      setSentRequests(sentData || []);
-      setReceivedRequests(receivedData || []);
-    } catch (err) {
-      console.error('FriendshipStatusProvider: failed to load friendship data', err);
-      setLoadError(true);
-    }
-  }, [user?.sub]);
-
-  useEffect(() => {
-    if (!user?.sub) return;
-
-    let cancelled = false;
-
-    async function initialLoad() {
+  // AMENDED Phase 88.6.1-66: the mount effect now calls this same loader (the twin mount loader is gone), and the
+  // generation guard below replaces the `cancelled` flag: a newer load, including the next user's or a sign-out's call, supersedes an older one.
+  // DECISION Phase 88.6.1-66 (one guarded load + load-error recovery): ONE loader serves the mount effect,
+  // refreshFriendships, retryFriendships and every post-action load. Each call takes the next generation, and only
+  // the LATEST may write the three lists, the load-error flag, the has-loaded flag and `loading`, and record that it
+  // settled. An older load that lands later writes nothing and resolves to the latest load's outcome, so a banner's
+  // Retry still learns the truth. Every server-confirmed list edit starts a load (accept, decline, either 404 arm,
+  // the reconcile finding a row gone, a sent request), so no snapshot taken before the edit can land last and undo it.
+  // A load that SUCCEEDS clears the flag and resolves { isError: false }; one that FAILS stores the caught error
+  // object and resolves { isError: true }. The flag is never cleared at the START of a load: a banner keyed on it
+  // (FR1 / N7, plans 88.6.1-40 / -44) must stay mounted through its own Retry.
+  // REJECTED: twin mount and refresh loaders (the old pair had already drifted); a superseded load resolving
+  // undefined (a banner's failed retry would go silent); a boolean flag (no error code to pick the message); a banner
+  // retry that always starts a new load (see the retryFriendships marker). Restoring a second loader, letting a superseded load write, or clearing the flag at the start is a decision, not a cleanup.
+  const loadSeqRef = useRef(0);
+  const latestLoadRef = useRef(null);
+  const settledSeqRef = useRef(0);
+  const loadFriendshipData = useCallback(() => {
+    const seq = ++loadSeqRef.current;
+    const load = (async () => {
+      if (!user?.sub) return;
       try {
         const [friendsData, sentData, receivedData] = await Promise.all([
           friendshipsAPI.getFriends(),
           friendshipsAPI.getSentRequests(),
           friendshipsAPI.getReceivedRequests(),
         ]);
-
-        if (cancelled) return;
-
+        if (seq !== loadSeqRef.current) return latestLoadRef.current;
         setFriends(friendsData || []);
         setSentRequests(sentData || []);
         setReceivedRequests(receivedData || []);
+        setLoadError(null);
+        setHasLoaded(true);
+        return { isError: false };
       } catch (err) {
-        if (cancelled) return;
         console.error('FriendshipStatusProvider: failed to load friendship data', err);
-        setLoadError(true);
+        if (seq !== loadSeqRef.current) return latestLoadRef.current;
+        setLoadError(err instanceof Error ? err : new Error());
+        return { isError: true };
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (seq === loadSeqRef.current) setLoading(false);
+        if (seq === loadSeqRef.current) settledSeqRef.current = seq;
       }
-    }
-
-    initialLoad();
-
-    return () => {
-      cancelled = true;
-    };
+    })();
+    latestLoadRef.current = load;
+    return load;
   }, [user?.sub]);
+
+  useEffect(() => {
+    setHasLoaded(false);
+    setFriends([]);
+    setSentRequests([]);
+    setReceivedRequests([]);
+    loadFriendshipData();
+  }, [loadFriendshipData]);
 
   const getStatus = useCallback(
     (targetUserId) => {
       if (loadError) return 'unknown';
+      // DECISION Phase 88.6.1-66 (getStatus): 'unknown' until the first load settles, chosen OVER classifying against the still-empty lists (which offered + to an existing friend); FE-17's withhold rule
+      // applied to the lists — every consumer renders 'unknown' as the plain name, no ring or an inert chip. It ends when the newest load settles and never comes back on a refresh.
+      if (loading) return 'unknown';
       if (!targetUserId) return 'unknown';
 
       // Friend / pending classifications key on the nested Users.id UUID and do
@@ -130,7 +140,7 @@ export function FriendshipStatusProvider({ children }) {
 
       return 'none';
     },
-    [loadError, selfUuid, friends, sentRequests, receivedRequests]
+    [loadError, loading, selfUuid, friends, sentRequests, receivedRequests]
   );
 
   const handleSendRequest = useCallback(
@@ -311,17 +321,46 @@ export function FriendshipStatusProvider({ children }) {
     [loadFriendshipData, reconcileFailedRequest, runOncePerRow]
   );
 
+  // DECISION Phase 88.6.1-66 (retryFriendships): the banners' retry joins the newest load while it is still running and starts one only when none is, so several erroring banners refocusing at once share one load.
+  // CHOSEN OVER making refreshFriendships join (the post-unfriend sync and every confirmed edit need a NEW load, or a snapshot taken before the edit can land last and undo it) and over an always-fresh retry
+  // (one three-read load per banner, each superseding the last). Pointing the banners back at refreshFriendships, or making refreshFriendships join, is a decision, not a cleanup.
+  const retryFriendships = useCallback(() => {
+    if (settledSeqRef.current !== loadSeqRef.current) return latestLoadRef.current;
+    return loadFriendshipData();
+  }, [loadFriendshipData]);
+
+  // DECISION Phase 88.6.1-66: a send that does not throw (its 409 included) starts the newest load, chosen over a load inside handleSendRequest, because this wrapper covers the 409 arm that returns early, in one place.
+  // Known limit, ROUTED to Phase 93 (.planning/deferred/phase-93.md, the code-less 409 split): a swallowed 409 resolves like a success, so the member-name popover shows its sent line for an
+  // already-friends 409 until this load lands, and for a request the other person sent until the popover closes; telling the 409s apart needs the backend's codes (reading the 409's text is the
+  // raw-message read the house forbids). REJECTED: awaiting this load before resolving, which still mislabels the reverse-pending case and delays every successful send's confirmation by a full load.
+  // Changing this before Phase 93 lands the codes is a decision, not a cleanup.
+  const sendRequestAndSync = useCallback(
+    async (targetUserId) => {
+      await handleSendRequest(targetUserId);
+      loadFriendshipData();
+    },
+    [handleSendRequest, loadFriendshipData]
+  );
+
   return (
     <FriendshipContext.Provider
       value={{
         getStatus,
-        sendRequest: handleSendRequest,
+        sendRequest: sendRequestAndSync,
         receivedRequests,
         acceptRequest: handleAcceptRequest,
         declineRequest: handleDeclineRequest,
         refreshFriendships: loadFriendshipData,
+        retryFriendships,
         loading,
         error: loadError,
+        // DECISION Phase 88.6.1-66 (hasLoaded, D-50 / contract C3): true when the newest load that SUCCEEDED ran for the user signed in now; a failure never clears it (a list that loaded
+        // empty is still what loaded). The mount effect's reset (it re-runs exactly on a change of signed-in user) makes it false until that user's first success and empties the three lists it
+        // describes, so no previous-user row stays on screen; a sign-out's call takes a generation, so no late load sets it back. Plan 88.6.1-72's RF1 reads it. CHOSEN OVER: a row count (D-50);
+        // the loading flag (a failed first load ends it too); a flag the page observes after mounting; storing the sub a load ran for and comparing it with the signed-in one (same-source, but the
+        // FE CI gate against comparing the sub reads every code line, and an alias of the sub only hides the same compare); the resolved self UUID (it can resolve after the lists land); clearing it on a failure.
+        // Turning this into a count, storing a sub here, dropping the effect's reset or its list clears, or clearing it on a failure is a decision, not a cleanup.
+        hasLoaded,
         isRequestActionPending,
       }}
     >
