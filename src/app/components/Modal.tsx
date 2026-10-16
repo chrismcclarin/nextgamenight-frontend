@@ -37,6 +37,7 @@ import {
   handleDialogCloseAutoFocus,
   recordDialogOpener,
 } from '@/components/ui/dialog';
+import { DIALOG_ROLE_SELECTOR } from '@/components/ui/focusPageFloor';
 import { cn } from '@/lib/cn';
 
 export type ModalSize = 'sm' | 'default' | 'lg';
@@ -63,6 +64,51 @@ export function preventNonDismissableClose(
   event: Pick<Event, 'preventDefault'>
 ): void {
   if (!dismissable) event.preventDefault();
+}
+
+/**
+ * Stacked-dialog guard (Phase 88.6.1-43, wave 5 CI gate). An outside interaction whose target
+ * sits inside ANOTHER dialog belongs to that dialog, so it is cancelled here and this one stays
+ * open. The target may already be detached (the press closed the dialog it sat in);
+ * `closest` still walks the detached subtree to that dialog's content.
+ *
+ * DECISION Phase 88.6.1-43 (wave 5 CI gate; owner answer 3A via plan 88.6.1-22; CI runs
+ * 38972642726 / 38976822652): a press inside ANOTHER open or just-closed dialog never dismisses
+ * this one, decided HERE in the primitive. MEASURED 2026-10-16 in Chromium at 375x667 with the
+ * shipped Modal + ConfirmDialog + useConfirmAction built on production Next's vendored React
+ * (18.3.0-canary-178c267a4e-20241218): Radix defers a modal dialog's pointer-down-outside to the
+ * click (`deferPointerDownOutside`, @radix-ui/react-dialog 1.1.17). A press on Cancel in a
+ * confirm that is a React SIBLING of this dialog (GroupSettings.js "Siblings of the Modal, not
+ * children") arms this dialog's outside handler, Cancel's own onClick closes the confirm, this
+ * dialog's layer re-renders inside the same click task with the confirm gone from Radix's
+ * stack, and the deferred dispatch then reads "pointer events enabled" and closes THIS dialog
+ * too. Every dialog stacked on a house Modal was exposed, pending or not: GroupSettings' delete
+ * confirm, and ManageMembers' roster beneath its Transfer, Leave, four ConfirmDialog and
+ * FriendInvitePanel siblings. Not focus: Radix's modal content already cancels every
+ * focus-outside. jsdom runs react-dom 18.2, which re-renders the layer later and so drops the
+ * dispatch by accident, which is why a plain click test is green on the broken tree.
+ * CHOSEN OVER (b) rendering each stacked dialog as a React child of the one beneath, so Radix
+ * counts the press as inside: it fixes one site at a time across eight sibling mounts, and
+ * reverses GroupSettings' recorded sibling decision for no gain over a fix in one place.
+ * OVER (c) Radix's DismissableLayerBranch around the upper dialog: the branch unmounts with that
+ * dialog and leaves Radix's branch set in the same cleanup that was measured to run BEFORE the
+ * deferred dispatch, so it is gone exactly when it is needed (reasoned from the measured order,
+ * not separately run). OVER (d) a guard on "the press began while a later dialog covered this
+ * one": it costs a document listener per open dialog to also cover the upper dialog's OVERLAY,
+ * a path MEASURED not exposed (this dialog's deferred listener runs first, while the upper
+ * dialog is still live, and is correctly gated). A press on this dialog's own backdrop, with
+ * nothing stacked, still dismisses it. Pinned by Modal.test.tsx MS1-MS3 and
+ * GroupSettings.test.tsx PC8, both driven through `pressInStackedDialog`
+ * (src/test-utils/stackedDialogPress.ts). Removing this guard is a decision, not a cleanup.
+ */
+export function preventStackedDialogDismiss(
+  own: Element | null,
+  event: Pick<Event, 'target' | 'preventDefault'>
+): void {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const dialog = target.closest(DIALOG_ROLE_SELECTOR);
+  if (dialog && dialog !== own) event.preventDefault();
 }
 
 /**
@@ -197,8 +243,16 @@ function ModalRoot({
   // pop-up's floating element). Same reason, same REJECTED alternative: handling it in the
   // pop-up is too late, because Radix listens on `document` in the capture phase. Every other
   // Escape still closes the dialog.
+  //
+  // A SECOND guard rides the same two handlers since Phase 88.6.1-43 (wave 5 CI gate): an
+  // outside interaction whose target sits inside another dialog never dismisses this one, at
+  // any `dismissable` value. See `DECISION Phase 88.6.1-43` on `preventStackedDialogDismiss`.
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
   const preventOutsideDismiss = React.useCallback(
-    (event: Event) => preventNonDismissableClose(dismissable, event),
+    (event: Event) => {
+      preventNonDismissableClose(dismissable, event);
+      preventStackedDialogDismiss(contentRef.current, event);
+    },
     [dismissable]
   );
 
@@ -264,6 +318,7 @@ function ModalRoot({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        ref={contentRef}
         hideCloseButton
         onOpenAutoFocus={handleOpenAutoFocus}
         onCloseAutoFocus={handleCloseAutoFocus}
