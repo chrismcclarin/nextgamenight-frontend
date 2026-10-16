@@ -64,32 +64,70 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
   // harmless today only because close() is idempotent. Re-adding a keydown
   // listener for this modal is a decision, not a cleanup.
 
-  // Reset local form state on the provider's open TRANSITION (isOpen becoming
-  // true). Both entry points (FAB and nav row) call the same provider open(),
-  // so both produce the identical reset — same pathname-derived category (set
-  // by the provider in the same transition), empty text, no error, not
-  // submitted. Neither entry point performs its own ad hoc reset.
-  useEffect(() => {
-    if (variant === 'row' || !isOpen) return;
-    setText('');
-    setError(null);
-    setSubmitted(false);
-  }, [variant, isOpen]);
-
   /* R2 #34, fixed Phase 88.6-31: the success panel's 2s timer is HELD IN A REF and cleared on
      unmount — the treatment its sibling `FeedbackForm.js` has carried since round 6 #6, applied
      here for the same reason and one worse one. The timer called the SHARED provider `close()`
-     off `useFeedbackModal()`, with no ref and no cleanup, and this component has TWO mount sites
-     (`src/app/layout.js` and `src/app/Header.js`), so an uncleared handle fired into an unmounted
-     component and shut a dialog the provider already believed closed. Any prior handle is cleared
-     BEFORE arming, so a double-submit cannot leave two live timers on one slot. */
+     off `useFeedbackModal()`, with no ref and no cleanup, and the floating instance that hosts
+     the dialog keeps living while its dialog closes and reopens, and it can unmount, so an
+     uncleared handle fired after the dialog it belonged to was gone and shut a dialog the
+     provider already believed closed. Any prior handle is cleared BEFORE arming, so a
+     double-submit cannot leave two live timers on one slot.
+
+     AMENDED Phase 88.6.1-33 (W028 / IN-209; W017 / WR-204): as first written, this note gave a
+     second mount site (the Header) as a reason the handle could outlive its dialog. That mount
+     is the row variant, which returns before the submit handler exists and can never arm this
+     timer. The ref's live reasons are two: the dialog's close transition, where the handle is
+     now also cleared (the open-transition effect below, fixed by this plan), and unmount, kept
+     as the backstop the R2 #34 test in `FeedbackModals.test.tsx` pins. */
   const successTimerRef = useRef(null);
+  // W017 (Phase 88.6.1-33): bumped on every close. A send reads it before its await and writes
+  // nothing visible if it changed, so a send that settles after its dialog closed is inert.
+  const openGenerationRef = useRef(0);
   useEffect(
     () => () => {
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
     },
     []
   );
+
+  // Reset local form state on the provider's open TRANSITION (isOpen becoming
+  // true). Both entry points (FAB and nav row) call the same provider open(),
+  // so both produce the identical reset — same pathname-derived category (set
+  // by the provider in the same transition), empty text, no error, not
+  // submitted. Neither entry point performs its own ad hoc reset. The CLOSE
+  // half of the same transition (isOpen becoming false) is handled here too,
+  // in one effect, so both entry points also get the identical close.
+  //
+  // DECISION Phase 88.6.1-33 (W017 / WR-204, Req 11): the dialog CLOSES without this
+  // component unmounting (the provider only flips isOpen, and the layout-root instance hosts
+  // the dialog), so the held 2 s timer is cleared on close as well as on re-arm and unmount,
+  // and a per-close generation (openGenerationRef) makes a send that settles after its dialog
+  // closed write nothing visible. Chosen OVER unmount-only cleanup (the defect: the old timer
+  // closed a re-opened dialog and wiped its draft), OVER clearing only at the next open (a late
+  // success would still paint a thank-you panel over a new draft and arm a fresh timer), and
+  // OVER showing the late outcome somewhere else (new words, D-31). Closing also DETACHES an
+  // in-flight send: the latch and the busy state are released here, so the re-opened dialog is
+  // usable at once and its submit button sends the new draft, chosen OVER keeping the old busy
+  // state across the reopen (it would show a busy label about a draft that was not sent, and
+  // refuse a press with no reason given; D-31 forbids new words to explain it). The detached
+  // run releases nothing unless its generation is still current. Two drafts can then be in
+  // flight at once; each is a separate report, so that is two issues, not a duplicate. The
+  // person who closed mid-send is not told the outcome; the send still happened and a failure
+  // still reaches Sentry. Changing this is a decision, not a cleanup.
+  useEffect(() => {
+    if (variant === 'row') return;
+    if (!isOpen) {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+      openGenerationRef.current += 1;
+      submitInFlightRef.current = false;
+      setSubmitting(false);
+      return;
+    }
+    setText('');
+    setError(null);
+    setSubmitted(false);
+  }, [variant, isOpen]);
 
   // Auth guard: invisible when not logged in. Precedes the variant switch so
   // the row branch is unreachable for a logged-out visitor — Footer.js:11-12
@@ -138,10 +176,10 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
           open(invokerRef?.current ?? e.currentTarget);
           // Close the mobile dropdown in the SAME transition (Header passes
           // its setMobileMenuOpen(false) here, the same close-on-tap idiom
-          // the nav links use at Header.js:185,193).
+          // the nav links use: their close-on-tap `onClick` in `src/app/Header.js`).
           if (onOpen) onOpen();
         }}
-        // Class string copied from ThemeToggle.js:32 with ONE change:
+        // Class string copied from ThemeToggle.js:37 (`w-full text-left flex items-center gap-3`) with ONE change:
         // active:opacity-75 (the Plan 87.8-01 press idiom) instead of the
         // old bg-surface-card-hover token-swap press state — plan 08 converged
         // the two remaining token-swap sites; do not reintroduce the old idiom.
@@ -151,7 +189,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
         // DECISION Phase 88.3 (§10.1): the hover moved to `bg-surface-header-hover`,
         // NOT the `bg-surface-hover` the other 38 swept sites took — this row renders on
         // the dark header panel under `text-white` (1.06:1 on warm-50 vs 10.48:1 on
-        // warm-700). ThemeToggle.js:32 moved identically, so the "copied from
+        // warm-700). ThemeToggle.js:37 (the same row class line) moved identically, so the "copied from
         // ThemeToggle.js with ONE change" note above still holds. Full reasoning at
         // NotificationBell.js's marker; pinned by name in `surfaceHoverSweep.test.ts`
         // test 4b. Converging it is a decision, not a cleanup.
@@ -195,6 +233,8 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
     }
 
     submitInFlightRef.current = true;
+    // W017: the dialog this send belongs to; compared after the await and in finally.
+    const generation = openGenerationRef.current;
     // Armed synchronously, before any await (consumer contract item 1). `from` is the submit
     // button: Safari does not focus a clicked button, so without it the hook would see no
     // watched control on an iPhone and decline the hand-off.
@@ -250,9 +290,12 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
         userAgent: navigator.userAgent,
       });
 
+      // W017: the dialog closed while this send was in flight; paint nothing and arm no timer.
+      if (openGenerationRef.current !== generation) return;
       setSubmitted(true);
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       successTimerRef.current = setTimeout(() => {
+        successTimerRef.current = null;
         setSubmitted(false);
         setText('');
         close();
@@ -263,7 +306,9 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
          a broken GitHub-feedback writer was invisible to the owner — the half-applied round-7 #6
          fix. The `console.error` that stood here is REPLACED by this capture rather than
          respelled to `logger.error`: one escalation per failure path, and `logger.error` takes
-         only `(msg, err)` and forwards `extra: { msg }` (`logger.ts:20`, `:28-30`) — it has NO
+         only `(msg, err)` and forwards `extra: { msg }` (`logger.ts:27`, `error(msg: string, err?:
+         unknown)`; `:45-47`, `extra: upstreamMessage ? { msg, upstreamMessage } : { msg }`) plus,
+         for an ApiError, the backend's own string (`upstreamMessage`, DECISION Phase 88.6-58) — it has NO
          tags channel, so it could not carry the `channel` discriminator below, and it forwards
          the error object whose `.message` is the backend's extracted string. This file gains a
          `Sentry` import and NO `logger` import.
@@ -289,6 +334,8 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
       Sentry.captureException(new Error(`feedback submit failed: ${cls}${code}`), {
         tags: { feature: 'feedback', op: 'submit', channel: 'github' },
       });
+      // W017: the capture above still runs for a stale failure; only the visible line is skipped.
+      if (openGenerationRef.current !== generation) return;
       // SPEC R1: the raw `error.message ||` read is gone; the CLOSED ratified register answers
       // every CODED failure.
       // AMENDED Phase 88.6.1-33 (F2, D-30): this note first said the call took no fallback
@@ -304,8 +351,13 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
       // draft the person typed. Changing this is a decision, not a cleanup.
       setError(getFetchErrorMessage(err, { fallback: FEEDBACK_SEND_FAILED_COPY }));
     } finally {
-      submitInFlightRef.current = false;
-      setSubmitting(false);
+      // W017: a detached run (its dialog closed) must not clear a newer send's busy state; the
+      // close transition already released it.
+      if (openGenerationRef.current === generation) {
+        submitInFlightRef.current = false;
+        setSubmitting(false);
+      }
+      // Always: a replaced arm's settle is a no-op (plan 88.6.1-04).
       settle();
     }
   };
@@ -388,7 +440,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
             `flex items-center justify-center` (`.btn` declares `display: inline-flex`,
             `align-items` and `justify-content` unlayered). `fixed bottom-6 right-6 z-30` are
             ALIVE and stay — `z-30` in particular is the shipped `DECISION Phase 87.8 D-09/D-10`
-            above. MEASURED while editing: `:257` carried NO separate `bg-*` utility, so the
+            above. MEASURED while editing: the FAB's class line carried NO separate `bg-*` utility, so the
             purple fill travels entirely on `btn-primary` and no live fill was deleted. */}
         <Button
           variant="primary"

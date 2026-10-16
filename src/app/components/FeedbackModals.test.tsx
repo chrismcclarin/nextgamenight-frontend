@@ -364,8 +364,10 @@ describe('FeedbackButton — Phase 88.6-31 (the FAB, the capture, the timer)', (
       await screen.findByText(/Thanks! Your feedback has been submitted\./i);
       expect(screen.getByTestId('probe')).toHaveTextContent('open');
 
-      // The modal can close under it: the close button, Escape, an outside click, a route
-      // change. The component unmounts; the shared provider does not.
+      // The component unmounts; the shared provider does not. Closing the modal (the close
+      // button, Escape, an outside click) unmounts the DIALOG, not this component: that close
+      // path is pinned in FeedbackButton.test.tsx (88.6.1-33, W017). This test pins the
+      // unmount path.
       rerender(<Harness mounted={false} />);
       await vi.advanceTimersByTimeAsync(3000);
 
