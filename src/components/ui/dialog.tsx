@@ -179,11 +179,14 @@ DialogDescription.displayName = DialogPrimitive.Description.displayName;
    (e) restoring while focus is on a live element: it pulled focus out of a dialog that opened
        after this one (the chained Settings -> Manage Members case, measured RED by case D).
    (f) capturing the opener somewhere other than `onOpenAutoFocus` so that a dialog whose
-       content holds an `autoFocus` descendant returns focus to its opener. Radix skips its open
-       event when focus is already inside (react-focus-scope `hasFocusedCandidate`), so no
+       content holds an auto-focused descendant (React's autofocus prop) returns focus to its
+       opener. Radix skips its open event when focus is already inside (react-focus-scope
+       `hasFocusedCandidate`), so no
        opener is captured and that case FLOORS, by decision: moving 88.6-44's measured capture
        point on unmeasured Radix-portal timing is not worth it for zero consumers (no dialog
-       holds an `autoFocus` descendant today). A future dialog that adds one revisits this.
+       holds an auto-focused descendant today — the one autofocus prop in non-test source is
+       an inline profile editor outside every dialog). A future dialog that adds one revisits
+       this. (Spelled without the prop's camel-case name so the census grep counts only code.)
    (g) flooring step (2) from the opener: in a stacked O -> A -> B chain the opener sits inside
        O, so the floor would focus O's title behind B and B's trap would yank focus back
        (review L-29, measured RED by case D3 against a throwaway).
