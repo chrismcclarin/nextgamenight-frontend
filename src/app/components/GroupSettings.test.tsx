@@ -17,6 +17,7 @@ import * as React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+import userEvent from '@testing-library/user-event';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -778,7 +779,8 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
     );
 
     // … the owner changes something else entirely …
-    fireEvent.click(screen.getByTitle('Dice'));
+    // Phase 88.6.1-43: found by role + name, the way a screen-reader user finds the tile.
+    fireEvent.click(screen.getByRole('radio', { name: 'Dice' }));
 
     // … and the colour survives the save.
     const settings = await saveAndCapture();
@@ -848,5 +850,190 @@ describe('Phase 88.6-20 — the leave-group failure is ANNOUNCED (R1 third arm /
     // `logger.info` — a NET-NEW error channel on an irreversible path, not a channel move.
     expect(logger.error as Mock).toHaveBeenCalled();
     expect((logger.error as Mock).mock.calls[0][0]).toContain('leaving group');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-43 (D-20 / D-43, D-33 row 12, D-21): the eight default-icon tiles are ONE
+// radio group, built on the shared useRadioGroup hook. Comments in this block are line
+// comments only (FE-TESTING-CONVENTIONS CF-9).
+// ---------------------------------------------------------------------------
+describe('Phase 88.6.1-43 — the default-icon picker is a radio group (D-20 / D-43)', () => {
+  // The shipped names and emoji, in reading order (D-33 row 12: the names are a reuse of
+  // the shipped DEFAULT_PROFILE_PICTURES name strings, not new words).
+  const ICONS = [
+    { name: 'Dice', url: '\u{1F3B2}' },
+    { name: 'Cards', url: '\u{1F0CF}' },
+    { name: 'Trophy', url: '\u{1F3C6}' },
+    { name: 'Game', url: '\u{1F3AE}' },
+    { name: 'Puzzle', url: '\u{1F9E9}' },
+    { name: 'Star', url: '\u{2B50}' },
+    { name: 'Fire', url: '\u{1F525}' },
+    { name: 'Rocket', url: '\u{1F680}' },
+  ];
+
+  async function iconGroup(): Promise<HTMLElement> {
+    return await screen.findByRole('radiogroup', { name: 'Choose a default icon:' });
+  }
+
+  function checkedRadios(group: HTMLElement): HTMLElement[] {
+    return within(group)
+      .getAllByRole('radio')
+      .filter((r) => r.getAttribute('aria-checked') === 'true');
+  }
+
+  function tabStops(group: HTMLElement): HTMLElement[] {
+    return within(group)
+      .getAllByRole('radio')
+      .filter((r) => r.getAttribute('tabindex') === '0');
+  }
+
+  // The "Current selection" preview disc is the element right before its caption.
+  function previewText(): string {
+    const caption = screen.getByText('Current selection');
+    return (caption.previousElementSibling as HTMLElement).textContent ?? '';
+  }
+
+  it('GS-R1: one radiogroup named by the visible label, eight radios named by the shipped names, in order', async () => {
+    renderSettings();
+    const group = await iconGroup();
+    const radios = within(group).getAllByRole('radio');
+    expect(radios).toHaveLength(8);
+    ICONS.forEach((icon, i) => {
+      // exact-name match: a tile named by its emoji glyph is not found here
+      expect(within(group).getByRole('radio', { name: icon.name })).toBe(radios[i]);
+    });
+    for (const icon of ICONS) {
+      expect(within(group).queryByRole('radio', { name: new RegExp(icon.url, 'u') })).toBeNull();
+    }
+  });
+
+  it('GS-R2: a stored emoji makes its tile the only checked radio and the only tab stop', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, profile_picture_url: '\u{1F3B2}' });
+    const group = await iconGroup();
+    const dice = within(group).getByRole('radio', { name: 'Dice' });
+    expect(checkedRadios(group)).toEqual([dice]);
+    expect(tabStops(group)).toEqual([dice]);
+  });
+
+  it('GS-R3: with no stored picture nothing is checked and the first tile is the one tab stop', async () => {
+    renderSettings();
+    const group = await iconGroup();
+    for (const r of within(group).getAllByRole('radio')) {
+      expect(r).toHaveAttribute('aria-checked', 'false');
+    }
+    expect(tabStops(group)).toEqual([within(group).getByRole('radio', { name: 'Dice' })]);
+  });
+
+  it('GS-R4: applying a custom image URL reaches the no-checked state; the first tile is the tab stop', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, profile_picture_url: '\u{1F680}' });
+    const group = await iconGroup();
+    expect(checkedRadios(group)).toEqual([within(group).getByRole('radio', { name: 'Rocket' })]);
+
+    const field = screen.getByLabelText('Or enter a custom image URL:');
+    fireEvent.change(field, { target: { value: 'https://example.com/icon.png' } });
+    fireEvent.click(within(field.parentElement as HTMLElement).getByRole('button', { name: 'Use' }));
+
+    for (const r of within(group).getAllByRole('radio')) {
+      expect(r).toHaveAttribute('aria-checked', 'false');
+    }
+    expect(tabStops(group)).toEqual([within(group).getByRole('radio', { name: 'Dice' })]);
+  });
+
+  it('GS-R5: clicking a tile makes it the one checked radio', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, profile_picture_url: '\u{1F3B2}' });
+    const group = await iconGroup();
+    const trophy = within(group).getByRole('radio', { name: 'Trophy' });
+    fireEvent.click(trophy);
+    expect(checkedRadios(group)).toEqual([trophy]);
+  });
+
+  it('GS-R6: arrows move focus AND check, wrapping at both ends; the preview follows', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, profile_picture_url: '\u{1F680}' });
+    const group = await iconGroup();
+    const rocket = within(group).getByRole('radio', { name: 'Rocket' });
+    const dice = within(group).getByRole('radio', { name: 'Dice' });
+    rocket.focus();
+
+    fireEvent.keyDown(rocket, { key: 'ArrowRight' });
+    expect(checkedRadios(group)).toEqual([dice]);
+    expect(document.activeElement).toBe(dice);
+    expect(previewText()).toBe('\u{1F3B2}');
+
+    fireEvent.keyDown(dice, { key: 'ArrowLeft' });
+    expect(checkedRadios(group)).toEqual([rocket]);
+    expect(document.activeElement).toBe(rocket);
+    expect(previewText()).toBe('\u{1F680}');
+  });
+
+  it('GS-R7: Space on a focused unchecked tile checks it', async () => {
+    const user = userEvent.setup();
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, profile_picture_url: '\u{1F3B2}' });
+    const group = await iconGroup();
+    const star = within(group).getByRole('radio', { name: 'Star' });
+    star.focus();
+    await user.keyboard(' ');
+    expect(checkedRadios(group)).toEqual([star]);
+  });
+
+  it('GS-R8 (tracer): the arrow-selected icon is what Save Changes sends', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue({});
+    renderSettings();
+    const group = await iconGroup();
+    const dice = within(group).getByRole('radio', { name: 'Dice' });
+    dice.focus();
+    fireEvent.keyDown(dice, { key: 'ArrowRight' });
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowRight' });
+    const trophy = within(group).getByRole('radio', { name: 'Trophy' });
+    expect(checkedRadios(group)).toEqual([trophy]);
+    expect(document.activeElement).toBe(trophy);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(groupsAPI.updateGroupSettings as Mock).toHaveBeenCalledTimes(1));
+    const settings = (groupsAPI.updateGroupSettings as Mock).mock.calls[0][1];
+    expect(settings.profile_picture_url).toBe('\u{1F3C6}');
+  });
+
+  it('GS-R9: the radiogroup passes an axe audit', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, profile_picture_url: '\u{1F3B2}' });
+    const group = await iconGroup();
+    expect(await axe(group)).toHaveNoViolations();
+  });
+
+  it('GS-R10: the tiles look as they did, and the kept title is the single name source of each tile', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, profile_picture_url: '\u{1F3C6}' });
+    const group = await iconGroup();
+    const radios = within(group).getAllByRole('radio');
+    radios.forEach((r, i) => {
+      for (const cls of [
+        'p-4',
+        'border-2',
+        'rounded-lg',
+        'text-3xl',
+        'focus-visible:ring-2',
+        'focus-visible:ring-focus-ring',
+        'focus-visible:ring-offset-2',
+      ]) {
+        expect(r).toHaveClass(cls);
+      }
+      expect(r).not.toHaveClass('min-h-11');
+      if (ICONS[i].name === 'Trophy') {
+        expect(r).toHaveClass('border-accent', 'bg-surface-muted');
+        expect(r).not.toHaveClass('border-line');
+      } else {
+        expect(r).toHaveClass('border-line');
+        expect(r).not.toHaveClass('border-accent');
+      }
+      // the single name source (owner ruling 2026-10-05), pinned by attribute: the tooling
+      // cannot pin "read once" (it reports a title as the description even when it was the
+      // name), so no assertion is made on the accessible description
+      expect(r).toHaveAttribute('title', ICONS[i].name);
+      expect(r).not.toHaveAttribute('aria-label');
+      expect(r.children).toHaveLength(1);
+      const child = r.children[0] as HTMLElement;
+      expect(child.tagName).toBe('SPAN');
+      expect(child).toHaveAttribute('aria-hidden', 'true');
+      expect(child.textContent).toBe(ICONS[i].url);
+    });
   });
 });
