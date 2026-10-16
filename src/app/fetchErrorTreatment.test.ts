@@ -347,31 +347,17 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
       'resolves to a boolean and picks a UI state. Status-first, same shape as the 409 ' +
       'entry above. Never displayed. No 88.6 plan declares this file.',
   },
-  {
-    file: 'app/invite/game/[token]/page.js',
-    contains: "const msg = err?.message || '';",
-    why:
-      'CONTROL FLOW. `classifyError`\'s local — a classifier over fetch-`TypeError` text ' +
-      'that picks transient-vs-permanent. AMENDED by plan 88.6-23 (wave 7, 2026-09-16), ' +
-      'which executed the removal the previous wording predicted: the FIVE backend-prose ' +
-      'arms of `isPermanent` are GONE and that half now reads `httpStatus === 404 || ' +
-      'httpStatus === 410`. What this local still feeds is the `isTransient` half, whose ' +
-      'arms match text the CLIENT produces (fetch / `TypeError`), so plan 88.6-42\'s ' +
-      'alias drop cannot reach them and this read is not on a path to zero. Never ' +
-      'displayed: the copy the classifier selects is ratified register copy.',
-  },
-  {
-    file: 'app/invite/game/[token]/page.js',
-    contains: "lowerMsg.includes('failed to fetch') ||",
-    why:
-      'CONTROL FLOW, and it is on the "Failed to X" assertion, not the raw-message one: ' +
-      "the lower-cased literal 'failed to fetch' is the browser's own TypeError text being " +
-      'MATCHED, not copy being authored. AMENDED by plan 88.6-23 (wave 7, 2026-09-16): the ' +
-      'previous wording said "Removed with the classifier by 88.6-23", which was WRONG in ' +
-      'both halves — the classifier survives and this arm was deliberately left untouched. ' +
-      'Only the prose arms of `isPermanent` were removed. This entry is PERMANENT unless the ' +
-      'transient classification itself is redesigned.',
-  },
+  // DELETED by plan 88.6.1-19 (W048 / WR-410, 2026-10-15), in the SAME COMMIT as the code they
+  // matched: BOTH `app/invite/game/[token]/page.js` entries. The first allow-listed
+  // `classifyError`'s local that copied the error's message into a string (a raw-message read);
+  // the second allow-listed the arm that matched the lower-cased browser fetch-failure text (a
+  // "Failed to X" match, not authored copy). Their matched code is GONE: the classifier now
+  // decides on the HTTP status alone (404 or 410 permanent, everything else transient) and
+  // reads no message text at all, so STANDING RULE (1) above requires both rows to go. The
+  // phase outline's "correct the two `why` strings" was overtaken: once the arms were deleted
+  // the entries had nothing left to describe. The review's gated alternative (keep the text arms
+  // for errors with no status) was rejected as dead code — see the AMENDED paragraph of the
+  // page's `DECISION Phase 88.6-23` marker in `classifyError`.
   // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16): the third
   // `app/invite/game/[token]/page.js` entry, which allow-listed the prose-matched 410 guard
   // `if (err.message && (err.message.includes('expired') || …))`. That line no longer exists —

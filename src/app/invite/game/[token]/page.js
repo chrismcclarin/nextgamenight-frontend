@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
+// Copy row L1 (D-30, owner-ratified 2026-10-04), byte-equal to this route's own `loading.tsx` label.
+const LOADING_LABEL = 'Loading your game night invite...';
+
 // POLL-05 status enum (D-INVITE-LANDING-04 zero-flash mandate):
 // loading → preview (unauth) | joining → joined | already-joined | expired
 //                                                | error-transient | error-permanent
@@ -28,16 +31,7 @@ function GameInvitePage() {
   // network failures consistently land on the retry CTA, not the dead-end
   // "invite no longer valid" copy.
   const classifyError = (err) => {
-    const msg = err?.message || '';
     const httpStatus = err?.status;
-    const lowerMsg = msg.toLowerCase();
-    const isTransient =
-      httpStatus === 0 ||
-      (httpStatus >= 500 && httpStatus < 600) ||
-      err?.name === 'TypeError' ||
-      lowerMsg.includes('network') ||
-      lowerMsg.includes('failed to fetch') ||
-      lowerMsg.includes('fetch');
     /* DECISION Phase 88.6-23 (D-45 / D-59): `isPermanent` decides on the HTTP STATUS ALONE —
        chosen OVER the five backend-prose arms it replaced (`expired`, `passed`, `full`,
        `deleted`, `Invalid invite`), which is the shape that ships today and the one a future
@@ -57,11 +51,24 @@ function GameInvitePage() {
        `User not found` on the join route — which lands permanent either way, so the mapping
        is unchanged by it.)
 
-       THE `isTransient` ARMS BELOW ARE DELIBERATELY UNTOUCHED: they match fetch/`TypeError`
-       text the CLIENT produces, not backend prose, so the alias drop cannot reach them. */
+       AMENDED Phase 88.6.1-19 (W048 / WR-410): the paragraph that stood here said the transient
+       arms were safe to leave because they matched only text the CLIENT produces. That was
+       false. The text they read is the error's message, and for every HTTP error that is the
+       backend envelope's own `message` (`extractErrorMessage` in `api.ts`), so a 404 or 410
+       whose message happened to mention the network or fetching was classified transient and
+       offered Retry on a dead link. Those arms are now DELETED — the status-0 and 5xx tests,
+       the TypeError name test, the three message-text tests and the lower-cased message local —
+       and the STATUS ALONE decides: 404 or 410 is permanent; everything else (status 0, any
+       5xx, a thrown runtime error with no status) is transient. Status 0 and 5xx were never
+       404/410, so deleting them changes no answer; the text arms could only ever turn a 404/410
+       into "transient", which was the defect.
+       REJECTED: the review's gated shape (keep the text arms, run them only when there is no
+       HTTP status). Without a status `isPermanent` is already false, so the gated arms could
+       never change the answer — dead code defended by a comment.
+       Re-adding a message-text test to this classifier is a decision, not a cleanup. */
     const isPermanent = httpStatus === 404 || httpStatus === 410;
     // Ambiguous → treat as transient. findOrCreate makes retry idempotent.
-    return isPermanent && !isTransient ? 'permanent' : 'transient';
+    return isPermanent ? 'permanent' : 'transient';
   };
 
   // POLL-05 race fix (D-INVITE-LANDING-04): single-shot in-flight guard.
@@ -231,7 +238,7 @@ function GameInvitePage() {
   // mandates legit first-joins go loading → joining → joined without
   // bouncing through 'already-joined'.
   if (authLoading || status === 'loading' || status === 'joining') {
-    const label = status === 'joining' ? 'Joining game night...' : 'Loading...';
+    const label = status === 'joining' ? 'Joining game night...' : LOADING_LABEL;
     return (
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4 text-center">
@@ -266,8 +273,9 @@ function GameInvitePage() {
                     24x24 viewBox (x/y 3.75-20.25, corner radius 2.5) plus a five-pip face as
                     filled circles at r=1.25.
                     ⚠ THE `<svg>` OPENING TAG ABOVE IS BYTE-UNCHANGED, deliberately:
-                    `tintTreatment.test.ts:437` counts `className="w-8 h-8 text-content-accent-strong"`
-                    openings and expects exactly 2 in this file, and `accentSweep.test.ts:60` lists
+                    `tintTreatment.test.ts:461` (anchor `<svg className="w-8 h-8 ${STRONG_TEXT}"`) counts `className="w-8 h-8 text-content-accent-strong"`
+                    openings and expects exactly 2 in this file, and `accentSweep.test.ts:68-73` (anchor
+                    `Glyphs on amber-100 circles`) lists
                     this file in its seven-circle census. Both suites were re-run green after this
                     edit. Restyling the tag, or swapping this glyph back, is a decision. */}
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.25 3.75h11.5a2.5 2.5 0 012.5 2.5v11.5a2.5 2.5 0 01-2.5 2.5H6.25a2.5 2.5 0 01-2.5-2.5V6.25a2.5 2.5 0 012.5-2.5z" />
@@ -289,7 +297,7 @@ function GameInvitePage() {
                 and the `href` is byte-identical. Surviving utilities go on `<Button
                 className>`, never on the slotted child (Slot concatenates without
                 tailwind-merge). `block` is dead under unlayered `.btn`'s
-                `display: inline-flex` (globals.css:2195); `w-full` and `text-center` are not. */}
+                `display: inline-flex` (globals.css, anchor `.btn {`); `w-full` and `text-center` are not. */}
             <Button asChild variant="primary" size="default" className="w-full text-center">
               <a
                 href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/game/${token}`)}`}
@@ -344,7 +352,7 @@ function GameInvitePage() {
             </div>
             {/* h1 @ 20 STAYS at 20 (D-04's second row): this is a mutually-exclusive STATUS
                 branch, not the page title. The `ErrorFallback` precedent
-                (`typeScaleTouchedSurfaces.test.ts:263-271`) is why level and size are
+                (`typeScaleTouchedSurfaces.test.ts:1659`, anchor `'components/ui/ErrorFallback.tsx': { 1: 1 }`) is why level and size are
                 separate facts. Promoting it to Display would be the demotion-in-reverse the
                 88-29 amendment describes. */}
             <Heading level={1} size="heading" className="text-content-primary mb-2">
@@ -374,7 +382,7 @@ function GameInvitePage() {
         {status === 'expired' && (
           <div className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-surface-elevated rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <svg className="w-8 h-8 text-content-muted" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -397,7 +405,7 @@ function GameInvitePage() {
         {status === 'error-transient' && (
           <div className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
@@ -431,7 +439,7 @@ function GameInvitePage() {
         {status === 'error-permanent' && (
           <div className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>

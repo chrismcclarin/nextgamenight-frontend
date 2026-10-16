@@ -106,7 +106,7 @@ describe('invite/game/[token] — status-keyed branches (D-45 / D-59)', () => {
 
   it('a transient failure renders the RATIFIED register line, never the upstream text', async () => {
     // A real network failure arrives as `ApiError(…, 'network', 0)` from `apiFetch`
-    // (`src/lib/api.ts:348-352`). R1: the register supplies the words.
+    // (`src/lib/api.ts`, anchor `if (error instanceof TypeError)`). R1: the register supplies the words.
     preview().mockRejectedValue(
       new ApiError('Network error: Could not connect to the server.', 'network', 0)
     );
