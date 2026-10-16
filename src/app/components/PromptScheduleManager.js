@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { promptSettingsAPI } from '../../lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
@@ -41,6 +41,10 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // and react-hook-form's defaultValues block re-evaluates from scratch
   // (template_name='' rather than the prior dirty value).
   const [createOpenCounter, setCreateOpenCounter] = useState(0);
+
+  // The inline section heading (88.6.1-30, D-05): ScheduleList's Confirm Delete target. Null in the
+  // modal shape, which renders no inline heading; plan 04's floor then finds the dialog title.
+  const headingRef = useRef(null);
 
   const queryClient = useQueryClient();
   const isAdmin = ['owner', 'admin'].includes(userRole);
@@ -219,6 +223,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
           onToggle={canManageSchedules ? handleToggle : null}
           onDelete={canManageSchedules ? handleDelete : null}
           onCreate={canManageSchedules ? handleCreate : null}
+          focusFallbackRef={headingRef}
         />
       )}
 
@@ -239,7 +244,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       <div className="bg-surface-card rounded-card border border-line surface-flat-phone">
         {/* Header without close button */}
         <div className="flex justify-between items-center p-4 pb-3 border-b border-line">
-          <Heading level={3} size="heading" className="text-content-primary">
+          <Heading ref={headingRef} level={3} size="heading" className="text-content-primary">
             Recurring Check-ins
           </Heading>
         </div>
