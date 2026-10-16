@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import * as Sentry from '@sentry/nextjs';
@@ -10,6 +10,8 @@ import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
 import { Textarea, SelectControl } from '@/components/ui/Input';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { StatusRegion } from '@/components/ui/StatusRegion';
+import { FEEDBACK_SEND_FAILED_COPY } from './FeedbackForm';
 
 /**
  * Feedback entry points + modal (MOB-04, Plan 87.8-05, D-09).
@@ -38,6 +40,11 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
+  // The failure region's id (the FeedbackForm sibling's useId shape); Submit is described by it
+  // while it holds a message. React useId ids contain colons, so tests select by
+  // getElementById, never by a CSS id selector.
+  const reactId = useId();
+  const errorId = `${reactId}-submit-error`;
 
   // DECISION Phase 88-17 (Req 9): the hand-rolled document-level Escape listener
   // that used to live here is REMOVED, not kept alongside <Modal>. Radix's
@@ -257,9 +264,20 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
       Sentry.captureException(new Error(`feedback submit failed: ${cls}${code}`), {
         tags: { feature: 'feedback', op: 'submit', channel: 'github' },
       });
-      // SPEC R1: the raw `error.message ||` read is gone. Called with NO `fallback`, so the
-      // CLOSED ratified register answers and no copy is authored (P1).
-      setError(getFetchErrorMessage(err));
+      // SPEC R1: the raw `error.message ||` read is gone; the CLOSED ratified register answers
+      // every CODED failure.
+      // AMENDED Phase 88.6.1-33 (F2, D-30): this note first said the call took no fallback
+      // because no copy had been authored (P1). That reasoning rested on there being no ratified
+      // line for a failure with no known cause; copy row F2 is that line (owner, 2026-10-04),
+      // declared once in `FeedbackForm.js` (plan 88.6.1-34, `FEEDBACK_SEND_FAILED_COPY`) and
+      // imported here, chosen OVER a second copy in this file (the duplication tenet) and OVER
+      // editing the register's own unknown sentence (the register stays surface-neutral,
+      // `DECISION Phase 88.8 D-19` in `useFetchErrorState.ts`). It is passed as `fallback`, so
+      // it answers ONLY the unknown arm: a code-less failure, a failure that is not an ApiError,
+      // and the proxy's CSRF refusal (D-24, `isCsrfRejection`). Every coded failure keeps its
+      // register line. The register's unknown line advised a refresh, which throws away the
+      // draft the person typed. Changing this is a decision, not a cleanup.
+      setError(getFetchErrorMessage(err, { fallback: FEEDBACK_SEND_FAILED_COPY }));
     } finally {
       setSubmitting(false);
     }
@@ -471,12 +489,33 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                     </p>
                   </div>
 
-                  {/* Error */}
-                  {error && (
-                    <div className="bg-status-error-subtle border border-status-error text-content-status-error px-4 py-3 rounded-sm text-sm">
-                      {error}
-                    </div>
-                  )}
+                  {/* DECISION Phase 88.6.1-33 (W019 / WR-206, Req 8; D-22, D-42): a failed send
+                      is ANNOUNCED, from one assertive status region that is mounted EMPTY
+                      whenever the form is, and the same node carries the failure line. Chosen
+                      OVER a conditionally mounted alert box: NOT because an inserted alert that
+                      arrives with its text goes unheard (D-42 found that it IS heard), but
+                      because AC-24 requires the same node before and after the outcome, and
+                      because the submit path clears the error before every request, so an
+                      identical second failure is a real text change on this node and is
+                      announced again. It is visible only while it holds text, through the D-22
+                      srOnlyWhenEmpty prop; the box classes moved here verbatim and apply only
+                      while a message is set, and the primitive supplies the small text size, so
+                      nothing on screen changes (the FeedbackForm sibling's shape). The submit
+                      button is described by it while it holds a message, so a person returning
+                      to it hears why the send failed. Changing this is a decision, not a
+                      cleanup. */}
+                  <StatusRegion
+                    id={errorId}
+                    politeness="assertive"
+                    srOnlyWhenEmpty
+                    className={
+                      error
+                        ? 'bg-status-error-subtle border border-status-error text-content-status-error px-4 py-3 rounded-sm'
+                        : undefined
+                    }
+                  >
+                    {error}
+                  </StatusRegion>
 
                   {/* Submit */}
                   <div className="flex justify-end">
@@ -484,6 +523,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                       type="submit"
                       variant="primary"
                       disabled={submitting || text.trim().length < 10}
+                      aria-describedby={error ? errorId : undefined}
                     >
                       {submitting ? 'Submitting...' : 'Submit'}
                     </Button>
