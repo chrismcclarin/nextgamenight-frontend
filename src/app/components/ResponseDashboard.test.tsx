@@ -17,7 +17,8 @@
 // module-private by design (`useFetchErrorState.ts:50`, whose own docblock records that it has
 // exactly one reader). The ratified copy is asserted as a literal string instead.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ComponentType } from 'react';
@@ -451,6 +452,200 @@ describe('ResponseDashboard — W031: one Sentry event per failure episode, none
     await waitFor(() => expect(toastCalls.error).toHaveBeenCalledWith(FORBIDDEN_COPY));
     expect(reminderCalls()).toHaveLength(1);
     expect(reminderCalls()[0][1]).toBe(failure);
+  });
+});
+
+// Phase 88.6.1-11 — D-35 (Req 4, the rule of POSITION: the Remind button the user pressed stays
+// focusable while it works, with a per-row ref latch) and Req 5 (D-04 / D-05: when the success
+// unmounts that button, focus lands on the row's "Reminded ..." text instead of <body>).
+// `useFocusRecovery` is REAL here, never mocked: the focus contract is what these cases pin.
+// C-11: jsdom never blurs a disabled element, so an in-flight `activeElement` read is
+// CONFIRM-ONLY; the RED halves are the attributes and the request count. The phone e2e
+// (`e2e/response-dashboard-remind.spec.ts`) proves focus in a real browser.
+describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-row latch) and Req 5 (focus survives its success)', () => {
+  const memberA = { user_id: 'uA', username: 'Member A', has_responded: false, last_reminded_at: null };
+  const memberB = { user_id: 'uB', username: 'Member B', has_responded: false, last_reminded_at: null };
+  const rowOf = (name: string) => screen.getByText(name).closest('li') as HTMLElement;
+  // One interactive control per row today: the Remind button (its name changes while in flight).
+  const remindIn = (name: string) => within(rowOf(name)).getByRole('button');
+  const remindedTextIn = (name: string) => within(rowOf(name)).getByText(/^Reminded \d+m ago$/);
+  function deferred() {
+    let resolve: (v?: unknown) => void = () => {};
+    let reject: (e: unknown) => void = () => {};
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it('AC-12: the pressed Remind carries aria-disabled (never native disabled), reads "Sending...", and a second press sends nothing', async () => {
+    api.getRespondents.mockResolvedValue([memberA]);
+    const d = deferred();
+    api.sendReminder.mockImplementationOnce(() => d.promise);
+    const user = userEvent.setup();
+    render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText('Member A');
+    const button = remindIn('Member A');
+
+    await user.click(button);
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toHaveAttribute('disabled');
+    expect(button).toHaveTextContent(/^Sending\.\.\.$/);
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(api.sendReminder).toHaveBeenCalledTimes(1);
+    // CONFIRM-ONLY in jsdom (C-11).
+    expect(document.activeElement).toBe(button);
+
+    await act(async () => { d.resolve({}); });
+  });
+
+  it('per row: two rows in flight each keep "Sending..." and aria-disabled, and settling one does not flip the other', async () => {
+    api.getRespondents.mockResolvedValue([memberA, memberB]);
+    const dA = deferred();
+    const dB = deferred();
+    api.sendReminder
+      .mockImplementationOnce(() => dA.promise)
+      .mockImplementationOnce(() => dB.promise);
+    const user = userEvent.setup();
+    render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText('Member A');
+
+    await user.click(remindIn('Member A'));
+    await user.click(remindIn('Member B'));
+    for (const name of ['Member A', 'Member B']) {
+      expect(remindIn(name)).toHaveTextContent(/^Sending\.\.\.$/);
+      expect(remindIn(name)).toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(api.sendReminder).toHaveBeenCalledWith('prompt-1', 'uA');
+    expect(api.sendReminder).toHaveBeenCalledWith('prompt-1', 'uB');
+
+    await act(async () => { dA.resolve({}); });
+    // POSITIVE signal: A settled into its "Reminded ..." text; B is still in flight.
+    expect(await within(rowOf('Member A')).findByText(/^Reminded \d+m ago$/)).toBeInTheDocument();
+    expect(remindIn('Member B')).toHaveTextContent(/^Sending\.\.\.$/);
+    expect(remindIn('Member B')).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => { dB.resolve({}); });
+  });
+
+  it('Req 5: after a successful remind, focus lands on that row\'s "Reminded ..." text, only after the button is removed, never on <body>', async () => {
+    api.getRespondents.mockResolvedValue([memberA]);
+    const d = deferred();
+    api.sendReminder.mockImplementationOnce(() => d.promise);
+    const user = userEvent.setup();
+    render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText('Member A');
+    const button = remindIn('Member A');
+
+    await user.click(button);
+    expect(document.activeElement).toBe(button);
+    // R5 ordering backstop: while the request is held, the pressed button is still there.
+    expect(button).toBeInTheDocument();
+
+    await act(async () => { d.resolve({}); });
+    // POSITIVE signal (C-5: a NAMED node, not merely "not body").
+    await waitFor(() => expect(document.activeElement).toBe(remindedTextIn('Member A')));
+    expect(button).not.toBeInTheDocument();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('an unmounted dashboard arms nothing when a late remind succeeds: no focusin listener, no observer', async () => {
+    api.getRespondents.mockResolvedValue([memberA]);
+    const d = deferred();
+    api.sendReminder.mockImplementationOnce(() => d.promise);
+    const user = userEvent.setup();
+    const view = render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText('Member A');
+    await user.click(remindIn('Member A'));
+
+    view.unmount();
+    // Let the hook's own unmount microtask run before the spies go in, so only the late
+    // resolve's calls can count.
+    await act(async () => { await Promise.resolve(); });
+    const addSpy = vi.spyOn(document, 'addEventListener');
+    const observeSpy = vi.spyOn(MutationObserver.prototype, 'observe');
+    try {
+      await act(async () => {
+        d.resolve({});
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(api.sendReminder).toHaveBeenCalledTimes(1);
+      expect(addSpy.mock.calls.filter((c) => c[0] === 'focusin')).toHaveLength(0);
+      expect(observeSpy).not.toHaveBeenCalled();
+    } finally {
+      addSpy.mockRestore();
+      observeSpy.mockRestore();
+    }
+  });
+
+  it('a row the user is not on arms nothing: a later removal of the focused control never sends focus to that row\'s text', async () => {
+    api.getRespondents.mockResolvedValue([memberA, memberB]);
+    const dA = deferred();
+    const dB = deferred();
+    api.sendReminder
+      .mockImplementationOnce(() => dA.promise)
+      .mockImplementationOnce(() => dB.promise);
+    const failure = await codedError('forbidden', 403);
+    const user = userEvent.setup();
+    const view = render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText('Member A');
+
+    await user.click(remindIn('Member A'));
+    await user.click(remindIn('Member B'));
+    const buttonB = remindIn('Member B');
+    expect(document.activeElement).toBe(buttonB);
+
+    await act(async () => { dA.resolve({}); });
+    const textA = await within(rowOf('Member A')).findByText(/^Reminded \d+m ago$/);
+    await act(async () => { dB.reject(failure); });
+    await waitFor(() => expect(buttonB).toHaveTextContent(/^Remind$/));
+    expect(document.activeElement).toBe(buttonB);
+
+    // Remove B's Remind button by a path that keeps A's text mounted and moves no focus itself:
+    // B becomes the viewer's own row, which never shows Remind.
+    view.rerender(<ResponseDashboard {...baseProps} currentUserId="uB" />);
+    expect(buttonB).not.toBeInTheDocument();
+    // Give the hook's observer (a microtask) and any one-macrotask follow-up their turn, then
+    // read focus synchronously (CF-26: never a waitFor around an absence).
+    await act(async () => {
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(textA).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(textA);
+  });
+
+  it('floor: the Remind button carries the house 44px negative-margin floor and the aria-disabled wash, never the native-disabled one', async () => {
+    api.getRespondents.mockResolvedValue([memberA]);
+    render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText('Member A');
+
+    const tokens = remindIn('Member A').className.split(/\s+/);
+    for (const token of ['min-h-11', '-my-2', 'inline-flex', 'items-center', 'aria-disabled:opacity-50']) {
+      expect(tokens).toContain(token);
+    }
+    expect(tokens).not.toContain('disabled:opacity-50');
+  });
+
+  it('the failure path keeps the button: back to "Remind", no aria-disabled, no disabled, one toast (confirm-only)', async () => {
+    api.getRespondents.mockResolvedValue([memberA]);
+    api.sendReminder.mockRejectedValue(await codedError('forbidden', 403));
+    const user = userEvent.setup();
+    render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText('Member A');
+    const button = remindIn('Member A');
+
+    await user.click(button);
+    await waitFor(() => expect(toastCalls.error).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(button).toHaveTextContent(/^Remind$/));
+    expect(button).toBeInTheDocument();
+    expect(button).not.toHaveAttribute('aria-disabled');
+    expect(button).not.toHaveAttribute('disabled');
+    // CONFIRM-ONLY in jsdom (C-11).
+    expect(document.activeElement).toBe(button);
   });
 });
 
