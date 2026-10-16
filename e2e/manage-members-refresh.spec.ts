@@ -74,6 +74,21 @@ async function realRoster(route: Route): Promise<{ response: APIResponse; body: 
 test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone project)', () => {
   test.skip(({ isMobile }) => !isMobile, 'D-09a / Req 5 H1 phone proof — phone project only');
 
+  // DECISION Phase 88.6.1-42 (wave 5 CI gate, CI run 38976822652): every route this file
+  // registers is removed after each test with behavior 'ignoreErrors', before fixture teardown
+  // closes the page. A members read the app sends after the last assertion was still inside
+  // realRoster's route.fetch when the context closed; route.fetch threw "Target page, context
+  // or browser has been closed", which failed a test that had passed, and printed request
+  // headers into the public CI log. 'ignoreErrors' does not wait for a running handler and
+  // silently catches anything it throws after unrouting (Playwright 1.60 Page.unrouteAll).
+  // REJECTED: a try/catch inside realRoster that returns when the page is closed. The handler
+  // cannot reliably tell "the page closed" from "the read failed" (isClosed may not have
+  // flipped when the fetch rejects), and swallowing a real mid-test failure would turn a loud
+  // error into a silent timeout. Assertions are unchanged.
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test("a phone remove keeps the roster painted while it refreshes, then focus lands on the next member's actions button", async ({
     page,
   }) => {
