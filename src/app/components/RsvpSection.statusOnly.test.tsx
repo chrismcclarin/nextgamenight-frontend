@@ -896,6 +896,96 @@ describe('RsvpSection AC-25 — the note announces its 500-character limit (E11)
 });
 
 // ---------------------------------------------------------------------------------------
+// Phase 88.6.1-38 — R10 / AC-31 (shared rule 12), the respondent note.
+//
+// 16. A MEMBER'S NOTE LOSES ITS LINE BREAKS. The respondent note span collapsed typed newlines and
+//     had no wrap rule for a long unbroken string. It now carries the two literal classes every
+//     R10 site uses (whitespace-pre-line, wrap-anywhere), stays a React text child, and renders
+//     through the shared collapseBlankLines (owner ruling #115): single and double breaks as
+//     typed, a run of three or more as one blank line. jsdom pins the classes and the rendered
+//     textContent; the 375px layout half is plan 88.6.1-52's all-sites spec.
+const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
+
+// The viewer's own row carries no note, so the textarea never holds the value under test; a
+// second respondent, Pat, carries it.
+const withOtherNote = (note: string) => ({
+  rsvps: [
+    {
+      id: 'rsvp-own',
+      event_id: EVENT_ID,
+      user_id: SELF_UUID,
+      status: 'yes',
+      note: null,
+      User: { id: SELF_UUID, username: 'me' },
+    },
+    {
+      id: 'rsvp-pat',
+      event_id: EVENT_ID,
+      user_id: OTHER_UUID,
+      status: 'yes',
+      note,
+      User: { id: OTHER_UUID, username: 'Pat' },
+    },
+  ],
+  summary: { yes: 2, maybe: 0, no: 0 },
+});
+
+// Every SPAN whose own textContent equals the RENDERED note value.
+const spansWithText = (text: string) =>
+  Array.from(document.querySelectorAll('span')).filter((el) => el.textContent === text);
+
+async function renderOtherNote(note: string) {
+  getEventRsvps.mockResolvedValue(withOtherNote(note));
+  renderSection();
+  // POSITIVE signal: the respondent list has rendered.
+  await screen.findByText('Pat');
+}
+
+describe('RsvpSection R10 / AC-31 — the respondent note keeps its typed lines and never renders as markup', () => {
+  it('a typed newline survives, and the span carries whitespace-pre-line and wrap-anywhere', async () => {
+    const note = 'Line one\nLine two';
+    await renderOtherNote(note);
+
+    const spans = spansWithText(note);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toHaveClass('whitespace-pre-line', 'wrap-anywhere');
+    expect(spans[0].textContent).toContain('\n');
+  });
+
+  it('encoding (AC-31 pin): <b>x</b> renders as seven literal characters and no b element exists in the row', async () => {
+    const note = '<b>x</b>';
+    await renderOtherNote(note);
+
+    const spans = spansWithText(note);
+    expect(spans).toHaveLength(1);
+    const row = spans[0].parentElement as HTMLElement;
+    expect(row.textContent).toContain('<b>x</b>');
+    expect(row.querySelector('b')).toBeNull();
+  });
+
+  it('R10 empty (held out): three spaces render as typed and three newlines as one blank line, both classes', async () => {
+    await renderOtherNote('   ');
+    const spaces = spansWithText('   ');
+    expect(spaces).toHaveLength(1);
+    expect(spaces[0]).toHaveClass('whitespace-pre-line', 'wrap-anywhere');
+    cleanup();
+
+    await renderOtherNote('\n\n\n');
+    const breaks = spansWithText('\n\n');
+    expect(breaks).toHaveLength(1);
+    expect(breaks[0]).toHaveClass('whitespace-pre-line', 'wrap-anywhere');
+  });
+
+  it('flood (owner ruling #115): Top, 5000 newlines, Bottom renders exactly one blank line between the words', async () => {
+    await renderOtherNote('Top' + '\n'.repeat(5000) + 'Bottom');
+
+    const spans = spansWithText('Top\n\nBottom');
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toHaveClass('whitespace-pre-line', 'wrap-anywhere');
+  });
+});
+
+// ---------------------------------------------------------------------------------------
 // Phase 88.6-29 — W60 / W61.
 //
 // 11. KEYSTROKES LOST TO THEIR OWN SAVE (W60). `handleSaveNote` cleared `noteDirty`
