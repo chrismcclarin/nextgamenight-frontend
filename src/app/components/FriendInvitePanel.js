@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, invitesAPI, groupsAPI } from '../../lib/api';
 import { QRCodeSVG } from 'qrcode.react';
-import { toast } from 'sonner';
 import { UserChip } from '@/components/ui/UserChip';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { DialogClose, DialogTitle } from '../../components/ui/dialog';
@@ -13,6 +12,7 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '@/lib/logger';
 
 // UI-SPEC §6.3 row "FriendInvitePanel.js email-invite `validation` override" — ratified
@@ -20,6 +20,11 @@ import { logger, errCtx } from '@/lib/logger';
 const INVALID_EMAIL_MESSAGE = "That doesn't look like a valid email address. Check it and try again.";
 // Copy row G2 (88.6.1-COPY-TABLE.html, ratified 2026-10-04; D-30 site constant, D-32 R8 ASCII apostrophe).
 const INVITE_SEND_FAILED_MESSAGE = "We couldn't send that invite. Please try again.";
+// The copy confirmation (copy row G3's sentence, byte-identical to the literal this panel
+// shipped; the QR dialog hoists the same constant, plan 88.6.1-12).
+const LINK_COPIED_ANNOUNCEMENT = 'Invite link copied to the clipboard.';
+// How long the visible label reads Copied! after a successful copy.
+const COPIED_LABEL_MS = 2000;
 
 // `openedFrom` is the entry point this panel was opened from: 'create' is the
 // auto-open immediately after a group is created (createGroup.js) and swaps in
@@ -27,7 +32,7 @@ const INVITE_SEND_FAILED_MESSAGE = "We couldn't send that invite. Please try aga
 // header. Deliberately a plain comment, NOT a JSDoc `@param` block — under
 // checkJs a partial @param list becomes the component's whole props type and
 // every other prop then fails to typecheck at the call sites.
-function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false, openedFrom = 'default' }) {
+function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = 'default' }) {
     const { user } = useUser();
     // FE-18 cutover: exclude-self keys on the resolved Users.id UUID (async).
     const { selfUuid } = useSelfIdentity();
@@ -58,7 +63,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
     const [inviteUrl, setInviteUrl] = useState(null);
     const [tokenLoading, setTokenLoading] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [resetting, setResetting] = useState(false);
+    // Bumped once per successful copy; keys the announcement text so a repeat copy re-announces.
+    const [copySeq, setCopySeq] = useState(0);
 
     /* DECISION Phase 88.6-22 (R3 #149, the rule of KIND + the rule of POSITION): every gated
        BUTTON on this surface carries `aria-disabled` plus a SYNCHRONOUS first-line ref latch
@@ -94,11 +100,33 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
        :2334). Fill and ink swap instead of the whole control washing out.
 
        Dropping either half of any pair, or restoring the native attribute, is a decision, not
-       a cleanup. */
+       a cleanup.
+
+       AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (D-35, W016 row 17; W015): the
+       count of gated buttons on this surface is now THREE (bulk invite, Send, Add Friend). The
+       fourth, the admin invite-link reset, was deleted under W015 (see the marker in the QR
+       section). And the email field no longer stays native while sending: the form submits on
+       Enter FROM the field (Send is the submit button), so on a phone keyboard's Go key the
+       field IS the control just activated, and native disabling drops focus (CT-3 row 17). It
+       is read-only and aria-disabled instead; a second Enter reaches handleEmailInvite, whose
+       first line is the in-flight refusal. VISIBLE DELTA, disclosed: the field no longer dims
+       while sending. No gated look is added to it, chosen OVER an opacity utility on the gated
+       state (the 88.8 colour-not-opacity rule; tokenContrast.test.ts test 53, the line
+       "no aria-disabled rule uses opacity") and OVER muted ink on the input ground (an
+       ink/ground pair no gate measures in dark mode — a look decision for Phase 88.9). The Send
+       button's Sending... label and gated colour pair carry the in-flight state. The friend
+       checkbox stays the rule-of-KIND example: a state gate on a control nobody pressed. The
+       paragraphs above are kept as history. */
     const bulkInviteInFlightRef = useRef(false);
     const emailInviteInFlightRef = useRef(false);
     const addFriendInFlightRef = useRef(false);
-    const resetInviteInFlightRef = useRef(false);
+
+    // The copy label's 2 s handle; see the copy-announcement marker in the QR section.
+    const copiedTimerRef = useRef(null);
+
+    // The Req 5 recovery target when Add Friend's prompt unmounts with the focused button.
+    const inviteByEmailHeadingRef = useRef(null);
+    const addFriendRecovery = useFocusRecovery({ fallback: inviteByEmailHeadingRef });
 
     // Fetch friends on open
     useEffect(() => {
@@ -155,9 +183,19 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             setFriendPrompt(null);
             setFriendRequestSent(false);
             setInviteUrl(null);
+            if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+            copiedTimerRef.current = null;
             setCopied(false);
         }
     }, [open]);
+
+    // The copy label's timer never outlives the panel.
+    useEffect(
+        () => () => {
+            if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+        },
+        []
+    );
 
     const toggleFriend = (friendUserId) => {
         setSelectedFriends(prev => {
@@ -384,6 +422,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         if (addFriendInFlightRef.current) return;
         if (!friendPrompt?.id) return;
         addFriendInFlightRef.current = true;
+        /* DECISION Phase 88.6.1-27 (Req 5, D-04/D-05): when the request settles as sent, the
+           prompt block unmounts together with the focused Add Friend button, and focus used to
+           fall to the dialog container. The recovery is armed here, synchronously and before any
+           await, and settled in the finally below; its target is the "Invite by Email" section
+           heading, chosen OVER the email field (focus into a field raises the phone keyboard
+           unasked), the friend-request line (focusing a live region speaks it twice) and the
+           dialog title (further from where the user stood). No heading is minted — this one
+           already exists. A programmatic focus may draw the browser's ring on the heading
+           (RESEARCH P-11); the shipped recovery targets do the same. Changing this is a
+           decision, not a cleanup. */
+        const settle = addFriendRecovery.arm();
         setAddingFriend(true);
         try {
             await friendshipsAPI.sendRequest(friendPrompt.id);
@@ -394,6 +443,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         } finally {
             setAddingFriend(false);
             addFriendInFlightRef.current = false;
+            settle();
         }
     };
 
@@ -402,55 +452,15 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         try {
             await navigator.clipboard.writeText(inviteUrl);
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            setCopySeq((n) => n + 1);
+            if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+            copiedTimerRef.current = setTimeout(() => {
+                copiedTimerRef.current = null;
+                setCopied(false);
+            }, COPIED_LABEL_MS);
         } catch (err) {
             logger.info('Failed to copy link:', errCtx(err));
         }
-    };
-
-    // GUARD-02 G5: no blocking browser dialogs on a touched path. The
-    // destructive reset is confirmed via a sonner toast action button, and
-    // failures surface through toast.error (live-region backed) instead of a
-    // blocking modal.
-    const doResetInviteLink = async () => {
-        // The in-flight refusal, synchronous and FIRST — see the latch marker above. The
-        // shipped `resetting` read is a STATE read and cannot refuse a second synchronous
-        // press; it is kept because it also short-circuits the confirm toast below.
-        if (resetInviteInFlightRef.current) return;
-        if (!group?.id || resetting) return;
-        resetInviteInFlightRef.current = true;
-        setResetting(true);
-        try {
-            const data = await groupsAPI.resetInviteToken(group.id);
-            setInviteUrl(data.invite_url);
-            toast.success('Invite link reset. The old QR code and link no longer work.');
-        } catch (err) {
-            logger.info('Failed to reset invite token:', errCtx(err));
-            /* DECISION Phase 88.6-22 (W15 / R1 / DEF-88-25-01, UI-SPEC §6.4): the toast keeps
-               its INTENT — this action still reports its own failure — and stops quoting the
-               backend. `err.message` is `body.message ?? body.error ?? \`HTTP error! status: N\``
-               (api.ts extractErrorMessage), so whatever the server said landed verbatim in the
-               DOM. No `fallback` is passed: UI-SPEC §6.3 ratifies no string for this action, and
-               the plan's own idiom is that a code-less failure resolves to the register's
-               `unknown` line rather than to a newly authored one. Reinstating a fallback here
-               means authoring copy §6.3 did not ratify — a decision, not a cleanup. */
-            toast.error(getFetchErrorMessage(err));
-        } finally {
-            setResetting(false);
-            resetInviteInFlightRef.current = false;
-        }
-    };
-
-    const handleResetInviteLink = () => {
-        if (resetInviteInFlightRef.current) return;
-        if (!group?.id || resetting) return;
-        toast('Reset invite link?', {
-            description: 'The current QR code and link will stop working.',
-            action: {
-                label: 'Reset',
-                onClick: () => doResetInviteLink(),
-            },
-        });
     };
 
     /* DECISION Phase 88-15 (SPEC Req 7 / §6.3, owner deferral 2026-08-04): the
@@ -632,6 +642,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             NOTHING for empty children (Heading.tsx:162) and would take the `id`
                             with it. */}
                         <Heading
+                            ref={inviteByEmailHeadingRef}
                             level={3}
                             size="label"
                             id="invite-by-email-heading"
@@ -682,8 +693,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 required
                                 aria-invalid={emailError ? 'true' : undefined}
                                 aria-describedby={emailError ? 'invite-email-error' : undefined}
-                                disabled={emailLoading}
-                                className="flex-1 disabled:opacity-50"
+                                readOnly={emailLoading}
+                                aria-disabled={emailLoading ? 'true' : undefined}
+                                className="flex-1"
                             />
                             <Button
                                 variant="primary"
@@ -867,27 +879,39 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                             would print "Invite link copied" underneath a button that
                                             already reads "Copied!", i.e. the same fact twice; and
                                             REJECTED — leaving it to the label swap, which is the
-                                            silent-success outcome this pass exists to close. */}
+                                            silent-success outcome this pass exists to close.
+
+                                            AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (Req 8 R8; Req 11):
+                                            a repeat copy is announced again — the sentence sits in a
+                                            span keyed on a per-copy sequence, so each copy is a new
+                                            text node — chosen OVER clearing the
+                                            state at the start of the handler (it would flash the
+                                            focused button's label back during the write). The 2 s
+                                            label handle is held in a ref and cleared on re-arm, close
+                                            and unmount, chosen OVER unmount-only cleanup (all three
+                                            hosts keep the panel mounted while closed, so close is the
+                                            common exit). The shape is the QR dialog's (plan
+                                            88.6.1-12), so the app has one copy idiom. The region stays
+                                            sr-only for its whole life and does not take the D-22
+                                            prop. Changing any of this is a decision, not a cleanup. */}
                                         <StatusRegion
                                             id="invite-link-copied-status"
                                             className="sr-only"
-                                            message={copied ? 'Invite link copied to the clipboard.' : ''}
-                                        />
-                                        {/* Reset invite link — admin-only per Phase 69 CONTEXT D-INV-02.
-                                            Rendered (not just disabled) only for owner/admin so non-admins
-                                            don't see the button at all. */}
-                                        {isAdmin && (
-                                            <Button
-                                                variant="secondary"
-                                                size="default"
-                                                onClick={handleResetInviteLink}
-                                                aria-disabled={resetting ? 'true' : undefined}
-                                                className="mt-2 w-full text-content-status-error"
-                                                title="Invalidate the current invite link and generate a new one"
-                                            >
-                                                {resetting ? 'Resetting…' : 'Reset invite link'}
-                                            </Button>
-                                        )}
+                                        >
+                                            <span key={copySeq}>{copied ? LINK_COPIED_ANNOUNCEMENT : ''}</span>
+                                        </StatusRegion>
+                                        {/* DECISION Phase 88.6.1-27 (Req 14, W015, LATENT-AND-DEAD-RULING):
+                                            this panel has no invite-link reset. The admin flag that
+                                            gated one here was never passed by any of the three hosts,
+                                            so the control, its two reset handlers, their in-flight
+                                            latch and the toast library they used were dead code and
+                                            were deleted. The working reset lives in Manage Members,
+                                            behind its reset confirm gate (ManageMembers.js at the
+                                            useConfirmAction call that builds it, :368 on 2026-10-15),
+                                            chosen OVER wiring this copy up: a second entry point is a
+                                            product idea recorded as the todo
+                                            2026-10-03-group-kebab-second-home-for-invite-link-reset.md.
+                                            Re-adding a reset here is a decision, not a cleanup. */}
                                     </div>
                                 ) : (
                                     <p className="text-content-muted text-sm text-center py-4">

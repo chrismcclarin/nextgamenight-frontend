@@ -53,12 +53,6 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({ user: h.user, isLoading: false }),
 }));
 
-// `toast` is callable AND carries .success/.error — the reset-link flow uses both.
-vi.mock('sonner', () => {
-  const toast = Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() });
-  return { toast };
-});
-
 // qrcode.react draws a canvas-free SVG, but its output is irrelevant here and
 // noisy in snapshots — stub to a recognisable marker so the QR BRANCH is still
 // provably reached.
@@ -84,7 +78,6 @@ vi.mock('@/lib/api', async (importOriginal) => {
       ...actual.groupsAPI,
       getGroupMembers: vi.fn().mockResolvedValue([]),
       getInviteToken: vi.fn().mockResolvedValue({ invite_url: 'https://example.test/join/tok' }),
-      resetInviteToken: vi.fn().mockResolvedValue({ invite_url: 'https://example.test/join/new' }),
     },
     invitesAPI: {
       ...actual.invitesAPI,
@@ -115,8 +108,6 @@ export interface RenderPanelOptions {
   friends?: Array<Record<string, unknown>>;
   /** Group roster; every `id` here counts as already-in-group. */
   members?: Array<Record<string, unknown>>;
-  /** Admin-only affordances (the reset-invite-link control). */
-  isAdmin?: boolean;
   /** Panel visibility — `false` renders nothing at all (early return). */
   open?: boolean;
   /** Pass `null` to render without group context (no QR section). */
@@ -130,7 +121,6 @@ export function renderPanel(options: RenderPanelOptions = {}) {
   const {
     friends = [FRIENDSHIP],
     members = [],
-    isAdmin = false,
     open = true,
     group = GROUP,
     openedFrom = 'default',
@@ -145,7 +135,6 @@ export function renderPanel(options: RenderPanelOptions = {}) {
       open={open}
       onClose={onClose}
       onMemberAdded={onMemberAdded}
-      isAdmin={isAdmin}
       openedFrom={openedFrom}
     />
   );
@@ -956,13 +945,8 @@ describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 
-  it('2. the ADMIN surface — the extra reset control — passes both rules', async () => {
-    renderPanel({ isAdmin: true });
-    await screen.findByRole('button', { name: 'Reset invite link' });
-    const dialog = screen.getByRole('dialog');
-    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
-    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
-  });
+  // Arm 2 audited the admin-only reset surface, which 88.6.1-27 deleted (W015): no host ever
+  // passed the flag that rendered it, and the working reset lives in Manage Members.
 
   it('3. the EMPTY-friends and NO-GROUP branches are audited too', async () => {
     // An audit of one branch is an audit of one branch. The empty branch swaps the
