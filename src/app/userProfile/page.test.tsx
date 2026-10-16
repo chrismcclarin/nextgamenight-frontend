@@ -2020,19 +2020,25 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
   });
 });
 
-describe('phone verification — wrong code shows error, never verifies (H1)', () => {
-  async function reachArmedVerify() {
-    renderProfile({ sms_enabled: true, phone_verified: false });
-    const phone = await screen.findByRole('textbox', { name: 'Phone number' });
-    fireEvent.change(phone, { target: { value: '+1 415 555 2671' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
-    const code = await screen.findByRole('textbox', { name: 'Verification code' });
-    fireEvent.change(code, { target: { value: '123456' } });
-    // Two buttons on the page are named "Verify" (this one + a link-style one in
-    // the SMS rows) — scope to the code-entry row.
-    return within(code.parentElement as HTMLElement).getByRole('button', { name: 'Verify' });
-  }
+// Shared by the H1 describe below and plan 88.6.1-18's in-flight describe after it (moved to
+// module scope by 88.6.1-18, not copied).
+async function reachArmedVerify() {
+  // An earlier test leaves a never-settling savePhone implementation behind, and
+  // vi.clearAllMocks() clears calls, not implementations — so set it here first.
+  const { usersAPI } = await import('@/lib/api');
+  (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  renderProfile({ sms_enabled: true, phone_verified: false });
+  const phone = await screen.findByRole('textbox', { name: 'Phone number' });
+  fireEvent.change(phone, { target: { value: '+1 415 555 2671' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
+  const code = await screen.findByRole('textbox', { name: 'Verification code' });
+  fireEvent.change(code, { target: { value: '123456' } });
+  // Two buttons on the page are named "Verify" (this one + a link-style one in
+  // the SMS rows) — scope to the code-entry row.
+  return within(code.parentElement as HTMLElement).getByRole('button', { name: 'Verify' });
+}
 
+describe('phone verification — wrong code shows error, never verifies (H1)', () => {
   it('200 { verified: false } → error copy, SMS toggles stay disabled, cache untouched', async () => {
     const { usersAPI } = await import('@/lib/api');
     const { patchSelfCache } = await import('@/lib/hooks/selfIdentityCache');
@@ -2071,6 +2077,133 @@ describe('phone verification — wrong code shows error, never verifies (H1)', (
     expect(
       screen.queryByText("That code didn't match. Check it and try again.")
     ).not.toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// Plan 88.6.1-18 — the pressed Verify (W066 / WR-505, D-35) and focus after success (Req 5)
+// ===========================================================================
+// Rule of POSITION: while a check is in flight the pressed Verify is aria-disabled (never
+// natively disabled), reads copy row P1, and a synchronous ref latch refuses a second press.
+// jsdom never blurs a disabled element (C-11), so the RED half of each in-flight pin is the
+// attributes and the request count; the focus lines are confirm-only here and proven in the
+// phone e2e spec (e2e/profile-pressed-controls.spec.ts).
+describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
+  const WRONG_CODE_LINE = "That code didn't match. Check it and try again.";
+  const P1 = 'Verifying...';
+
+  // Each case sets its own verifyPhone implementation; restore the default afterwards so a
+  // held or failing implementation never leaks into a later suite (clearAllMocks keeps impls).
+  afterEach(async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  it('V1: the pressed Verify reads Verifying..., is aria-disabled (not native) and stays mounted while the check runs', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    const verify = await reachArmedVerify();
+    verify.focus();
+    fireEvent.click(verify);
+
+    // POSITIVE settle on the SAME node.
+    await waitFor(() => expect(verify).toHaveTextContent(P1));
+    expect(verify).toHaveAttribute('aria-disabled', 'true');
+    expect(verify).not.toBeDisabled();
+    expect(verify.isConnected).toBe(true);
+    // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, C-11); the real-browser
+    // proof is the phone e2e spec.
+    expect(document.activeElement).toBe(verify);
+
+    await act(async () => { release({ verified: false }); });
+    await screen.findByText(WRONG_CODE_LINE);
+  });
+
+  it('V2: three presses send ONE check, and a losing duplicate can never paint the wrong-code line over a verified number (WR-505)', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    // The race, modelled for real: the FIRST check is held; every LATER check resolves at
+    // once as a duplicate that loses ({ verified: false }).
+    let releaseFirst: (value?: unknown) => void = () => {};
+    let calls = 0;
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) return new Promise((resolve) => { releaseFirst = resolve; });
+      return Promise.resolve({ verified: false, error: 'Invalid or expired code' });
+    });
+
+    const verify = await reachArmedVerify();
+    fireEvent.click(verify);
+    fireEvent.click(verify);
+    fireEvent.click(verify);
+
+    await waitFor(() => expect(verify).toHaveTextContent(P1));
+    expect(usersAPI.verifyPhone).toHaveBeenCalledTimes(1);
+    // Still in flight after the second and third press, until the FIRST check settles.
+    expect(verify).toHaveAttribute('aria-disabled', 'true');
+    expect(verify).toHaveTextContent(P1);
+
+    await act(async () => { releaseFirst({ verified: true }); });
+    // POSITIVE settle first, then the absence (CF-26).
+    await screen.findByText('Phone verified');
+    expect(screen.queryByText(WRONG_CODE_LINE)).toBeNull();
+  });
+
+  it('V3: a failed check releases the latch — the button resets and a second press sends a second check', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({
+      verified: false,
+      error: 'Invalid or expired code',
+    });
+
+    const verify = await reachArmedVerify();
+    fireEvent.click(verify);
+    await screen.findByText(WRONG_CODE_LINE);
+    expect(verify.textContent).toBe('Verify');
+    expect(verify).not.toHaveAttribute('aria-disabled');
+    expect(verify).not.toBeDisabled();
+
+    fireEvent.click(verify);
+    expect(usersAPI.verifyPhone).toHaveBeenCalledTimes(2);
+    await screen.findByText(WRONG_CODE_LINE);
+  });
+
+  it('V4: after a successful check focus lands on "Phone verified" (not <body>), only once the button is gone; the checkmark is aria-hidden', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    const verify = await reachArmedVerify();
+    await user.click(verify);
+    // R5 ordering: while the check is held the pressed Verify still holds focus.
+    expect(document.activeElement).toBe(verify);
+
+    await act(async () => { release({ verified: true }); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByText('Phone verified'))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(verify.isConnected).toBe(false);
+
+    const row = screen.getByText('Phone verified').parentElement as HTMLElement;
+    const checkmark = row.querySelector('svg');
+    expect(checkmark).not.toBeNull();
+    expect(checkmark).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('V5: the recovery is wired with the profile h1 as its fallback (R5 empty; the primitive half is plan 04)', async () => {
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/app/userProfile/page.js', 'utf8')
+    );
+    expect(source).toContain('useFocusRecovery({ fallback: profileHeadingRef })');
+    expect(source).toContain('ref={profileHeadingRef}');
   });
 });
 
