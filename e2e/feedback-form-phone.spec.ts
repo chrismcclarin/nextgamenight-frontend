@@ -13,6 +13,11 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 //     so the empty error region and gate line no longer leave a band; the file input is named
 //     "Screenshot (optional) …" and Subject is named without its star; a POSITIVE CONTROL (a
 //     rejected file's line, in flow, 4px below the drop zone) makes the idle reading non-vacuous.
+//   Test C (task 3) — Submit in flight (D-35): aria-disabled, never natively disabled, still
+//     FOCUSED (jsdom cannot prove focus here, C-11 / CT-3), and one POST however it is pressed
+//     twice; copy row F2 on a code-less 413; the visible error box sits in the space-y-4 stack;
+//     after a successful send focus lands on the success title "Thank You!" (Req 5). The public
+//     feedback writer is answered in the browser by `page.route`, so nothing reaches the backend.
 //
 // NOT RUN LOCALLY. The `phone` project depends on the `setup` project, which signs in through
 // Auth0 with credentials that are deliberately absent on a developer machine (there is no local
@@ -210,5 +215,102 @@ test.describe('Report Bug form at 375px (Phase 88.6.1-34)', () => {
       Math.abs(ctl.gap - idle.cal),
       `with the rejection line shown the screenshot-to-buttons gap is ${ctl.gap}px against the ${idle.cal}px stack gap — the line must grow the screenshot block, not add a band below it`,
     ).toBeLessThanOrEqual(1);
+  });
+
+  test("Submit at 375 — stays focused and busy while sending, sends once, shows F2 on an unexplained failure, and focus lands on 'Thank You!' after a send", async ({
+    page,
+  }) => {
+    // The public feedback writer is answered in the browser: nothing reaches the backend, so no
+    // feedback row and no admin mail are created. The predicate matches the public path only,
+    // never the authenticated `/feedback/github` writer.
+    let posts = 0;
+    let reply: { status: number; body: unknown } = { status: 413, body: { error: 'Payload Too Large' } };
+    let openGate: () => void = () => {};
+    let gate: Promise<void> = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    const isPublicWriter = (url: URL) => url.pathname.endsWith('/feedback');
+    await page.route(isPublicWriter, async (route) => {
+      const request = route.request();
+      const headers = request.headers();
+      const origin = headers['origin'] ?? '*';
+      if (request.method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: {
+            'access-control-allow-origin': origin,
+            'access-control-allow-methods': 'POST, OPTIONS',
+            'access-control-allow-headers': headers['access-control-request-headers'] ?? 'content-type',
+          },
+        });
+        return;
+      }
+      if (request.method() === 'POST') {
+        posts += 1;
+        await gate;
+        await route.fulfill({
+          status: reply.status,
+          contentType: 'application/json',
+          headers: { 'access-control-allow-origin': origin },
+          body: JSON.stringify(reply.body),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    const dialog = await openReportBug(page);
+    await dialog.getByPlaceholder(/Brief description/i).fill('Synthetic e2e subject');
+    await dialog.getByPlaceholder(/provide as much detail/i).fill('Synthetic e2e description.');
+    const submit = dialog.getByRole('button', { name: /^(Submit|Submitting\.\.\.)$/ });
+    await guardResolved(submit, 'the Report Bug form Submit button');
+
+    await submit.focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => posts, { message: 'the first Enter on Submit must send exactly one POST' }).toBe(1);
+
+    // In flight: busy, still focusable, still focused (D-35; the real-browser half of CT-3).
+    await expect(submit, 'Submit must be aria-disabled while sending').toHaveAttribute('aria-disabled', 'true');
+    await expect(submit, 'Submit must NOT be natively disabled while sending (rule of POSITION)').not.toHaveAttribute('disabled');
+    await expect(submit, 'Submit must read "Submitting..." while sending').toHaveText('Submitting...');
+    await expect(submit, 'Submit must keep focus while sending').toBeFocused();
+
+    // A second activation while pending sends nothing (Edge R4).
+    await page.keyboard.press('Enter');
+
+    openGate();
+    const errorRegion = dialog.locator('[id$="-submit-error"]');
+    await expect(errorRegion, 'copy row F2 on a code-less 413 (the unknown arm), exact text').toHaveText(
+      "We couldn't send your feedback. Please try again.",
+    );
+    await expect(submit, 'Submit must still hold focus after the failure').toBeFocused();
+    await expect(submit, 'Submit must read "Submit" again after the failure').toHaveText('Submit');
+    await expect(submit, 'Submit must drop aria-disabled after the failure').not.toHaveAttribute('aria-disabled');
+    expect(posts, `the second Enter while pending must not send — ${posts} POSTs were made`).toBe(1);
+
+    const boxGap = await errorRegion.evaluate((el) => {
+      const form = el.closest('form');
+      const input = form?.querySelector('input[type="file"]');
+      const shotBlock = input?.closest('form > div');
+      if (!shotBlock) return null;
+      return el.getBoundingClientRect().top - shotBlock.getBoundingClientRect().bottom;
+    });
+    expect(boxGap, 'error-box read failed — the screenshot block was not found').not.toBeNull();
+    expect(
+      Math.abs((boxGap ?? Number.NaN) - 16),
+      `the visible error box sits ${boxGap}px below the screenshot block — expected the space-y-4 gap of 16px (+-1)`,
+    ).toBeLessThanOrEqual(1);
+
+    // A successful send: focus lands on the success title (Req 5), before the 2 s self-close.
+    reply = { status: 200, body: { success: true } };
+    gate = Promise.resolve();
+    await page.keyboard.press('Enter');
+    await expect(
+      page.getByRole('heading', { name: 'Thank You!' }),
+      'after a successful send focus must land on the success title "Thank You!", not on the dialog container or <body>',
+    ).toBeFocused();
+    expect(posts, `exactly two POSTs in total (one failed, one succeeded) — ${posts} were made`).toBe(2);
+
+    await page.unroute(isPublicWriter);
   });
 });

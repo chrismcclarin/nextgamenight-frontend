@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Input, Textarea, SelectControl } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { useFocusRecovery } from '@/components/ui/useFocusRecovery';
 
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -23,13 +24,21 @@ const LOADING_DETAILS_COPY = 'Loading your details — one moment';
 const REPLY_TO_UNAVAILABLE_COPY =
   "We couldn't load your email address, so we won't be able to reply to this.";
 const screenshotAttachedCopy = (fileName) => `Screenshot attached: ${fileName}`;
+// DECISION Phase 88.6.1-34 (D-30 F2): copy row F2 (ratified 2026-10-04) is declared ONCE, here,
+// and EXPORTED — one literal, two readers. `FeedbackButton.js` (plan 88.6.1-33) imports this
+// constant rather than declaring a second copy (CP-2), so the two feedback writers can never
+// drift apart. Markers name it by row id and constant name and never quote it, so the literal
+// occurs once in this file. Declaring a second copy is a decision, not a cleanup.
+export const FEEDBACK_SEND_FAILED_COPY = "We couldn't send your feedback. Please try again.";
 
 export default function FeedbackForm({ onClose, initialType = 'bug', initialSubject = '', initialDescription = '' }) {
   // Phase 88.8 plan 13 Task 3(b): the contact handle is the APP address off the
   // shared self row, never the Auth0 SESSION claim. The Auth0 hook that used to
   // live here had exactly ONE consumer (the `user_email` line below) and was
   // removed with it — re-verified by grep before deleting, not taken on trust.
-  // This component is mounted only while the modal is open (Footer.js:173-175),
+  // This component is mounted only while the modal is open (`Footer.js:187`, anchor
+  // `{showFeedbackForm && (`; the second mount is `FetchErrorBanner.tsx:507`, anchor
+  // `showReport &&`),
   // so the hook costs one already-deduplicated query at most; logged out it does
   // not fire at all (`enabled: Boolean(user?.sub)`).
   const { self, query: selfQuery } = useSelfIdentity();
@@ -63,7 +72,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      converting it is a decision for the Button migration, not this fix. And the ERROR case is disclosed: a signed-in reporter whose
      address could not be loaded (the self query errored, or the row carries no usable
      address) is told the reply-to is missing — never given the stale session address,
-     never blocked from filing. */
+     never blocked from filing.
+     AMENDED Phase 88.6.1-34 (D-35): the IN-FLIGHT half of the gate moved to `aria-disabled` + a
+     first-line ref latch (rule of POSITION); the validity half stays native as recorded here. */
   const replyToUnavailable =
     selfQuery.isError === true ||
     (self !== undefined && !(self?.email && !isSyntheticAddress(self.email)));
@@ -73,6 +84,13 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   const [screenshot, setScreenshot] = useState(null);
   const [screenshotError, setScreenshotError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // D-35 (Phase 88.6.1-34): the synchronous in-flight latch. A REF, not the `submitting` state:
+  // a state flag is not updated until the next render, so a second activation in the same tick
+  // would read it as false. Set after validation, released in `handleSubmit`'s `finally`.
+  const submitInFlightRef = useRef(false);
+  // Req 5 (Phase 88.6.1-34): no `fallback` — inside a Modal the floor finds the open dialog's
+  // title, which after a successful send is the success panel's "Thank You!" DialogTitle.
+  const focusRecovery = useFocusRecovery();
   const [submitted, setSubmitted] = useState(false);
   // 88-33 Task 4 (UAT row 291): initial-focus target — see the note at the Modal below.
   const subjectInputRef = useRef(null);
@@ -82,14 +100,39 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      calls FIVE state setters and `onClose`, and the modal can close under it — the close
      button, Escape, an outside click, or a route change — so an uncleared timer fires
      into an unmounted component and calls the parent's `onClose` a second time, after the
-     parent believes the dialog is already shut. */
+     parent believes the dialog is already shut.
+     AMENDED Phase 88.6.1-34 (#39): "the modal can close under it" covers a close AFTER the timer
+     is armed, and the clear below still covers that case. A close BEFORE then (mid-send, by
+     Escape or the header close button) ran this clear while the ref was still null, because
+     the timer is armed only after the send's await; the late send then armed a timer on the
+     dead instance, and 2 s later its `onClose` closed the RE-OPENED form, typed text and all.
+     The unmount guard below now covers that case. */
   const successTimerRef = useRef(null);
-  useEffect(
-    () => () => {
+  /* DECISION Phase 88.6.1-34 (late send): an UNMOUNT-SCOPED guard, checked right after the
+     send's await and in the catch after the class-only capture — chosen OVER (a) a
+     `[submitted]`-keyed effect that owns the timer: sound in itself (`setSubmitted` on an
+     unmounted instance does nothing), but it must either take `onClose` as a dependency, and
+     the Footer mount passes a fresh arrow each render (`setShowFeedbackForm(false)`), so any
+     Footer re-render inside the 2 s window would restart the timer — one such mount site is
+     enough (plan 88.6.1-69 removes the banner mount and has `FeedbackModalProvider` pass a
+     stable close, so this rejection holds through the Footer alone) — or leave `onClose` out
+     against the hooks dependency rule; and OVER (b) clearing only at unmount, the shape that was
+     the only guard until now, which ran while the ref was still null. The house shape is
+     `invite/group/[token]/page.js:69` (`const unmountedRef = useRef(false);`), reset in the
+     effect body and set in its cleanup: the reset is REQUIRED, because StrictMode runs the
+     cleanup and then the body again, and without it a dev-mode send would land into a form that
+     looks unmounted. Same bug, different shape, on purpose: plan 88.6.1-33 fixes W017 in
+     `FeedbackButton.js` with a per-close generation, because that dialog stays mounted across a
+     close; this form unmounts on close at every mount site, so the unmount guard is its
+     equivalent. Changing this is a decision, not a cleanup. */
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
-    },
-    []
-  );
+    };
+  }, []);
   /* Round 5 #8/#40: DOCUMENT-UNIQUE ids, not module-level literals. This component has
      two independent mount sites — `Footer.js` (root layout, every page) and
      `FetchErrorBanner.tsx`, which can itself appear more than once — so the hard-coded
@@ -124,13 +167,14 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      appearance a CHANGE, exactly as EmailAddressSection does for its unavailable copy. */
   const [statusLine, setStatusLine] = useState('');
   /* Round-7 residual (refuted-HIGH): a SUCCESSFUL attach announced nothing while a REJECTED one
-     did. EMPTY-FIRST, exactly as `StatusRegion.tsx:9-12` states and as this file's own `:99-107`
-     (round-5 #41) and `:404-409` (round-6 #31) comments record — a region that mounts WITH its
+     did. EMPTY-FIRST, exactly as `StatusRegion.tsx:9-12` (`EMPTY-FIRST`) states and as this
+     file's own round-5 #41 comment on `statusLine` and round-6 #31 comment on the
+     screenshot-error region record — a region that mounts WITH its
      content announces nothing, and a conditionally-mounted third region here would be the THIRD
      recurrence of that same bug in this one file. The value is the attached FILENAME, not a fixed
      sentence: a fixed string makes every repeat attach text -> identical text -> SILENCE, and the
      remove-then-reattach case is the real one (the input is not rendered at all while a screenshot
-     is attached, `:346`'s `{screenshot ? (`). */
+     is attached, by the screenshot block's `{screenshot ? (` ternary). */
   const [attachStatus, setAttachStatus] = useState('');
   useEffect(() => {
     setStatusLine(
@@ -174,8 +218,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
     // CLEAR PATH 1 of 2 (the other is the post-success timer body). A region still asserting a
     // screenshot is attached after the user pressed Remove is wrong, not merely stale.
     setAttachStatus('');
-    /* INERT AT RUNTIME, and left in place deliberately (Phase 88.6-31): `:346` is
-       `{screenshot ? (`, so the `sr-only peer` input is CONDITIONALLY RENDERED and
+    /* INERT AT RUNTIME, and left in place deliberately (Phase 88.6-31): the screenshot block's
+       `{screenshot ? (` ternary means the `sr-only peer` input is CONDITIONALLY RENDERED and
        `fileInputRef.current` is null exactly while a screenshot is attached. React mounts a
        BRAND-NEW empty input when `screenshot` returns to null, so there is no retained value to
        clear and no silent-screenshot-drop defect here. Removing this line is a behaviour-neutral
@@ -218,6 +262,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // D-35 (Phase 88.6.1-34): the in-flight refusal is the FIRST line after preventDefault, so a
+    // second press, or a press then Enter in a field, files nothing while a send is pending.
+    if (submitInFlightRef.current) return;
     // DR3: the press is blocked HERE while the self row loads (aria-disabled, not native).
     if (selfNotReady) return;
 
@@ -225,6 +272,22 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       setError('Please fill in all required fields');
       return;
     }
+
+    submitInFlightRef.current = true;
+    /* DECISION Phase 88.6.1-34 (D-04, Req 5): a successful send swaps this form for the success
+       panel, which unmounts the Submit the user pressed (`DECISION Phase 88-17` keeps two
+       returns). The shared `useFocusRecovery` hook, armed here synchronously before any await
+       and settled in `finally`, sends focus to the success panel's own "Thank You!" title
+       through the page floor (no fallback: inside a Modal the floor finds the still-open
+       dialog's title). Chosen OVER (a) leaving Radix's landing on the dialog container — D-04
+       counts that as lost, and the reader hears the dialog, not the outcome; (b) a direct focus
+       call on the success title in an effect — a per-host inline copy, rejected by tenet (D-04);
+       (c) merging the two returns so Submit never unmounts — `DECISION Phase 88-17` keeps two
+       returns. `from` is the submitter (consumer contract point 1): Safari does not focus a
+       clicked button, so without it the hook would see no watched control there and decline.
+       The success panel's 2 s self-close restore is `Modal`'s (88.6-44, plan 88.6.1-20's
+       floor), not this hook's. Changing this is a decision, not a cleanup. */
+    const settle = focusRecovery.arm({ from: e.nativeEvent?.submitter });
 
     try {
       setSubmitting(true);
@@ -258,12 +321,14 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       // move and the account-deletion scrub will not match.
       //
       // WHY A SYNTHETIC ADDRESS SENDS NULL, AND WHAT THAT COSTS. `user_email` is a
-      // CONTACT HANDLE: `routes/feedback.js` puts it in the admin mail's From line
-      // (`:162`, `:183`) and, when truthy, in `replyTo` (`:204`). Putting the
+      // CONTACT HANDLE: the backend's `routes/feedback.js` puts it in the admin mail's
+      // From lines (`routes/feedback.js:430` and `routes/feedback.js:451`, anchor
+      // `|| 'Anonymous'`) and, when truthy, in `replyTo` (`routes/feedback.js:472`, anchor
+      // `replyTo: safeSubmitterEmail`). Putting the
       // provisioning sentinel there publishes a non-address as if someone could be
       // reached at it. Sending null instead means the From line falls back to its
       // existing 'Anonymous' literal and the options object carries NO `replyTo`
-      // key at all — because `:204` is a conditional spread, not an assignment.
+      // key at all — because that `replyTo` line is a conditional spread, not an assignment.
       // That is the CORRECT outcome: there is no inbox behind
       // `<sub>@auth0.local`. The test is the BROAD `@auth0` substring per
       // DECISION Phase 88.2 NIX-AUTH0, never `@auth0.local` alone.
@@ -296,6 +361,10 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       // block) is unchanged and still true. A stale DECISION marker is worse than none — the
       // next reader treats it as intent.
       await feedbackAPI.submitFeedback(feedbackBody);
+      // DECISION Phase 88.6.1-34 (late send), see `unmountedRef`: this form was closed while the
+      // send was in flight. Return before the success swap and before the timer is armed; the
+      // `finally` still runs, and acts only on this dead instance.
+      if (unmountedRef.current) return;
 
       setSubmitted(true);
       successTimerRef.current = setTimeout(() => {
@@ -308,8 +377,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
            the old screenshot-rejection line) still on it. Added to the EXISTING timer body rather
            than rewriting it, and beside `setScreenshot(null)` above, which was already here.
            CLEAR PATH 2 of 2 for the attach region (the other is `removeScreenshot`). NOT in the
-           `:82-87` unmount-cleanup effect — that effect's whole body is a `clearTimeout`; it resets
-           no state and can carry no clear. */
+           `successTimerRef` unmount-cleanup effect — that effect resets no state (its cleanup only
+           clears the timer and marks the instance unmounted) and can carry no clear. */
         setError(null);
         setScreenshotError(null);
         setAttachStatus('');
@@ -323,7 +392,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
          `logger.error` beside it would be a SECOND Sentry event for one failure, and it forwards
          the error OBJECT whose `.message` is the backend's extracted string — precisely what the
          PII posture below rules out on the app's own bug channel. `logger.error` also takes only
-         `(msg, err)` and forwards `extra: { msg }` (`logger.ts:20`, `:28-30`): it has no tags
+         `(msg, err)` (`logger.ts:27`, `error(msg: string, err?: unknown): void;`) and forwards
+         `extra: { msg }`, plus a string `upstreamMessage` when present (`logger.ts:46`,
+         `extra: upstreamMessage ?`): it has no tags
          channel, so it could not carry the `channel` discriminator that separates the two feedback
          writers. This file therefore gains NO `logger` import. */
       /* Round 6 #3/#28: REPORTED, not stdout-only. This is the app's own bug channel, so a
@@ -351,9 +422,18 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       Sentry.captureException(new Error(`feedback submit failed: ${cls}${code}`), {
         tags: { feature: 'feedback', op: 'submit', channel: 'public' },
       });
+      // DECISION Phase 88.6.1-34 (late send): a send that fails after its form closed is still
+      // captured above (the report was lost, the one case the capture exists for), but nothing
+      // is set on the dead instance.
+      if (unmountedRef.current) return;
       /* SPEC R1 (Phase 88.6-31): the raw `err.message ||` read is gone — the user-facing value
          comes from the CLOSED ratified register, called with NO `fallback` so the register's own
          `unknown` line answers and no copy is authored (P1).
+         AMENDED Phase 88.6.1-34 (D-30 F2): the owner ratified copy row F2 (2026-10-04), so the
+         call now passes `FEEDBACK_SEND_FAILED_COPY` as its `fallback` and the `unknown` arm reads
+         F2. The register's generic line told a reporter to refresh the page, which throws away
+         the typed report. Coded failures (network, rate_limited, internal) keep their register
+         lines.
 
          NAMED UI-SPEC §6.2 MUTATION-ROW EXCEPTION, dated 2026-09-16. §6.2's mutation row
          prescribes `toast.error(...)` and adds "Do not add a second region"; this site keeps
@@ -368,8 +448,11 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
          transgression: `88.6-UI-SPEC.md` §14 A-30 / D52 is a written §6.2 exception of exactly
          this shape. A-30's OWN exception is NOT inherited — it rests on facts specific to
          `createGroup.js` and says so. No `sonner` import is added to this file. */
-      setError(getFetchErrorMessage(err));
+      setError(getFetchErrorMessage(err, { fallback: FEEDBACK_SEND_FAILED_COPY }));
     } finally {
+      // D-35: release the latch; Req 5: settle the focus recovery (it acts after the commit).
+      submitInFlightRef.current = false;
+      settle();
       setSubmitting(false);
     }
   };
@@ -532,7 +615,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                     THE `.btn` LOOK IS ACCEPTED, DELIBERATELY AND VISIBLY: migrating hands this
                     control 14px/600 type, the lozenge padding, and a hover wash plus elevation it
                     does not have today. Already disclosed — UI-SPEC §1.2's EXISTING **V-15** row
-                    names `FeedbackForm.js:355` (remove-screenshot) by file and line. NO new
+                    names `FeedbackForm.js:355` (remove-screenshot) by file and line — the V-15
+                    row's own words, kept as a quote; the control it means is the
+                    `Remove screenshot` Button below, whose line has since moved. NO new
                     V-number is minted and no second V-15 row is written; minting one would put a
                     second row in a CLOSED list for a delta already rowed.
 
@@ -620,7 +705,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 RENDERED HERE ON PURPOSE — a SIBLING of the screenshotError region above, OUTSIDE
                 the `{screenshot ? … : …}` ternary. Inside the ternary is where it would naturally
                 land and is exactly where it would be CONDITIONALLY MOUNTED, and a region created
-                by the event it announces announces NOTHING (`StatusRegion.tsx:9-12`). This file
+                by the event it announces announces NOTHING (`StatusRegion.tsx:9-12`,
+                `EMPTY-FIRST`). This file
                 has already been fixed for that same bug TWICE — the round-5 #41 comment on
                 `statusLine` and the round-6 #31 comment on the region above — so a third
                 conditionally-mounted region would be the third recurrence. Always mounted, EMPTY
@@ -716,7 +802,20 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             {statusLine}
           </StatusRegion>
 
-          {/* Buttons */}
+          {/* Buttons.
+              DECISION Phase 88.6.1-34 (D-35): the PRESSED Submit gets `aria-disabled` plus the
+              first-line ref latch in `handleSubmit` (`submitInFlightRef`) while sending, per the
+              rule of POSITION (`DECISION Phase 88.6-22`, `FriendInvitePanel.js:77`). Rejected
+              (a): native `disabled` in flight — it drops a keyboard or switch user out of the
+              focus order mid-send. Rejected (b): gating Cancel too — Cancel is a sibling, so it
+              stays natively disabled; Submit keeps the dialog's tab stop, and Escape and the
+              header close button still close it. Rejected (c): moving the validity half — the
+              88.8 DR3 marker keeps it native, a Button-migration decision. DISCLOSED DELTA: in
+              flight Submit shows the DR-C gated colour pair (`globals.css:2424`,
+              `.btn-primary[aria-disabled='true']`) instead of the disabled wash — the same pair it
+              already shows while the self row loads. The latch also refuses an Enter in a field:
+              implicit submission is possible now that Submit is not natively disabled in flight.
+              Changing this is a decision, not a cleanup. */}
           <div className="flex gap-3 justify-end">
             <Button
               variant="secondary"
@@ -728,8 +827,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             <Button
               type="submit"
               variant="primary"
-              disabled={submitting || !subject.trim() || !description.trim()}
-              aria-disabled={selfNotReady ? 'true' : undefined}
+              disabled={!subject.trim() || !description.trim()}
+              aria-disabled={selfNotReady || submitting ? 'true' : undefined}
               /* Round 5 #37: the failure joins the gate line, so a user returning to
                  Submit hears WHY it failed and not only whether it is available. */
               aria-describedby={[error ? errorId : null, statusId].filter(Boolean).join(' ')}

@@ -1016,6 +1016,33 @@ describe('FeedbackForm — Phase 88.6.1-34 task 3 (D-35, Req 5, F2, R8 idempoten
     expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
   });
 
+  it('Req 5, the Safari shape — a send whose Submit never took focus (Safari does not focus a clicked button) still lands on "Thank You!" through the submitter', async () => {
+    // Deviation pin (Phase 88.6.1-34, consumer contract point 1): the hook is armed with the
+    // event's submitter. Without it, focus on <body> at the press leaves the hook nothing to
+    // watch, and Radix moves focus to the dialog CONTAINER when the form is swapped out.
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    const pressed = submitButton();
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+    Object.defineProperty(submitEvent, 'submitter', { value: pressed });
+    act(() => {
+      fireEvent(pressed.closest('form')!, submitEvent);
+    });
+    await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+
+    d.release(OK_RESPONSE);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Thank You!' }))
+    );
+  });
+
   it('F2 (D-30, CP-2) — an unexplained failure (a code-less 413 maps to unknown) shows exactly copy row F2 in the assertive error region', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => PAYLOAD_TOO_LARGE));
     const user = userEvent.setup();
