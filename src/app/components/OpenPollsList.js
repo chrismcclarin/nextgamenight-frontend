@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { promptAPI } from '../../lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
+import { collapseBlankLines } from '../../lib/collapseBlankLines';
 import {
   openPromptsSchema,
   softFailPromptQueryFn,
@@ -40,6 +41,10 @@ import { toast } from 'sonner';
  */
 export default function OpenPollsList({ groupId, group, userRole, currentUserDbId, focusFallbackRef }) {
   const [showStartPoll, setShowStartPoll] = useState(false);
+  // Req 4 in-flight latch, keyed per check-in id: the ref refuses synchronously, the state
+  // renders the End item's `ariaDisabled`. See DECISION Phase 88.6.1-29 (Req 4) above handleClose.
+  const closingPromptIdsRef = useRef(new Set());
+  const [closingPromptIds, setClosingPromptIds] = useState(() => new Set());
   const queryClient = useQueryClient();
 
   // Phase 84 (PRIM-07 / D-12): open prompts via useQuery on the shared promptKeys
@@ -99,8 +104,24 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
      (e) the planning page's "Availability Polls" heading: it lies outside this component, and D-05
          names the section's own control.
      Changing the target is a decision, not a cleanup. */
+  /* DECISION Phase 88.6.1-29 (Req 4, DECISION 88.6-22 rule of POSITION): one End request per
+     check-in while the first is in flight. Before this, a re-commit from a re-opened menu sent a
+     second PATCH, whose outcome was the backend's 409 and then the ratified "already closed" toast.
+     The real order of refusal: while the request is in flight the End item carries
+     `aria-disabled` through KebabMenu's shipped per-item `ariaDisabled` flag, and KebabMenu's
+     handler refusal of a flagged item (`if (item.ariaDisabled) return;`) runs before its two-tap
+     commit, so that is what refuses a re-commit from a re-opened menu. The per-id ref latch checked
+     on the first line below is defense-in-depth for any caller of handleClose that bypasses that
+     refusal; it refuses synchronously, and a refused commit does not re-arm the focus hook.
+     REJECTED: the native `disabled` attribute (88.6-16 and 88.6-22: a natively disabled focused
+     control blurs to `<body>`, and the focus hook would then read the user as having moved on).
+     REJECTED: no guard, which leaves a concurrent double close to the backend.
+     Removing either half is a decision, not a cleanup. */
   const handleClose = async (promptId) => {
+    if (closingPromptIdsRef.current.has(promptId)) return;
     const settle = focusRecovery.arm();
+    closingPromptIdsRef.current.add(promptId);
+    setClosingPromptIds((prev) => new Set(prev).add(promptId));
     try {
       await promptAPI.closePrompt(promptId);
       // Backend has already flipped status to 'closed'; invalidate so the
@@ -142,6 +163,12 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
       );
     } finally {
       settle();
+      closingPromptIdsRef.current.delete(promptId);
+      setClosingPromptIds((prev) => {
+        const next = new Set(prev);
+        next.delete(promptId);
+        return next;
+      });
     }
   };
 
@@ -206,6 +233,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
               key={p.id}
               prompt={p}
               group={group}
+              closing={closingPromptIds.has(p.id)}
               onClose={handleClose}
             />
           ))}
@@ -242,7 +270,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
  * Backend re-validates on PATCH (defense in depth) so a forged client-side
  * flag still fails with 403 — see threat T-71.2-11 in plan.
  */
-function OpenPollCard({ prompt, group, onClose }) {
+function OpenPollCard({ prompt, group, closing, onClose }) {
   const isAuto = !!prompt.created_by_settings_id;
 
   // Note: Plan 01 named the include attribute `template_name` (the actual
@@ -296,9 +324,20 @@ function OpenPollCard({ prompt, group, onClose }) {
             Deadline: {deadlineDisplay}
           </p>
         )}
+        {/* DECISION Phase 88.6.1-29 (R10 / AC-31, shared rule 12): `whitespace-pre-line` +
+            `wrap-anywhere`, the one pair decided for all five R10 sites so that plans 29, 38 and 52
+            agree, so a check-in note keeps the line breaks people type. REJECTED:
+            `whitespace-pre-wrap` (it keeps runs of spaces and leading indentation, which a note does
+            not need, and the five sites must not diverge). REJECTED: splitting the text into line
+            elements or rendering markup (SPEC Constraint: user text renders as text only).
+            CHOSEN as well (owner ruling #115, 2026-10-13): the value passes through plan
+            88.6.1-84's shared `collapseBlankLines`, so a run of three or more breaks renders as one
+            blank line, OVER rendering every break as typed (a flood of blank lines pushes the card
+            off a phone screen) and OVER a server cap (it would change stored text); the stored
+            message is untouched. Removing the call is a decision, not a cleanup. */}
         {prompt.custom_message && (
-          <p className="text-sm text-content-secondary mt-2 italic">
-            &ldquo;{prompt.custom_message}&rdquo;
+          <p className="text-sm text-content-secondary mt-2 italic whitespace-pre-line wrap-anywhere">
+            &ldquo;{collapseBlankLines(prompt.custom_message)}&rdquo;
           </p>
         )}
       </div>
@@ -312,6 +351,7 @@ function OpenPollCard({ prompt, group, onClose }) {
               danger: true,
               twoTap: true,
               confirmLabel: 'Tap again to end',
+              ariaDisabled: closing,
               onClick: () => onClose(prompt.id),
             },
           ]}
