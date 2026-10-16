@@ -978,3 +978,130 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     expect(screen.queryByText('Loading members...')).toBeNull();
   });
 });
+
+describe('ManageMembers W027 + honest failures (88.6.1-42)', () => {
+  const NEWBIE = {
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    user_id: 'auth0|newbie',
+    username: 'Newbie',
+    UserGroup: { role: 'member' },
+  };
+
+  it('W1: a run started before the identity resolved lands last and cannot wipe the pending invites (IN-208)', async () => {
+    h.selfUuid = undefined;
+    const d1 = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(d1.promise);
+    (invitesAPI.getGroupPendingInvites as Mock).mockResolvedValue([
+      { id: 'inv-1', invited_email: 'pending-invite@example.test' },
+    ]);
+    const view = renderWithRerender();
+    h.selfUuid = OWNER_UUID;
+    // The effect re-runs on `selfUuid`: a second run starts while the first is still held.
+    view.rerender();
+    await screen.findByText('pending-invite@example.test');
+    await act(async () => {
+      d1.resolve(ROSTER);
+    });
+    await act(async () => {});
+    expect(screen.getByText('pending-invite@example.test')).toBeInTheDocument();
+  });
+
+  it('W2: two handler refreshes resolving in reverse order — the newer roster wins', async () => {
+    await openMembersModal();
+    await screen.findByText('Target');
+    const dA = deferred<unknown>();
+    const dB = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(dA.promise);
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(dB.promise);
+    act(() => {
+      h.invitePanelProps?.onMemberAdded?.();
+      h.invitePanelProps?.onMemberAdded?.();
+    });
+    await act(async () => {
+      dB.resolve([...ROSTER, NEWBIE]);
+    });
+    await screen.findByText('Newbie');
+    await act(async () => {
+      dA.resolve(ROSTER);
+    });
+    await act(async () => {});
+    expect(screen.getByText('Newbie')).toBeInTheDocument();
+  });
+
+  it('W3: a non-array FIRST load is a failure — the banner, never the empty sentence', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce({ members: [] });
+    renderManageMembers();
+    expect(await screen.findByText("Couldn't load members")).toBeInTheDocument();
+    expect(screen.queryByText('No members found.')).toBeNull();
+    expect(logger.info).toHaveBeenCalledWith('Members data is not an array:', { received: 'object' });
+  });
+
+  it('W4: a non-array REFRESH keeps the rows', async () => {
+    await openMembersModal();
+    await screen.findByText('Target');
+    const self = screen.getByText('(You)');
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce({ members: [] });
+    fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await waitFor(() =>
+      expect(logger.info).toHaveBeenCalledWith('Members data is not an array:', { received: 'object' })
+    );
+    await act(async () => {});
+    expect(screen.getByText('(You)')).toBe(self);
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+    expect(screen.queryByText('No members found.')).toBeNull();
+  });
+
+  it('W5: the banner and its Try again stay mounted until the retry succeeds', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    renderManageMembers();
+    await screen.findByText("Couldn't load members");
+    const tryAgain = screen.getByRole('button', { name: /try again/i });
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    fireEvent.click(tryAgain);
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+    expect(tryAgain.isConnected).toBe(true);
+    expect(screen.getByText("Couldn't load members")).toBeInTheDocument();
+    expect(screen.queryByText('Loading members...')).toBeNull();
+    await act(async () => {
+      held.resolve(ROSTER);
+    });
+    await screen.findByText('Target');
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+  });
+
+  it('W6: after a group change, the previous group\'s failure never stands in for the new group\'s first load', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    const view = renderWithRerender();
+    await screen.findByText("Couldn't load members");
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    view.rerender({ group_id: 'grp-2' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenLastCalledWith('grp-2'));
+    expect(screen.getByText('Loading members...')).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+    await act(async () => {
+      held.resolve(ROSTER);
+    });
+    await screen.findByText('Target');
+  });
+
+  it('W6b: after a group change, the previous group\'s pending invites and the caller\'s role are dropped', async () => {
+    (invitesAPI.getGroupPendingInvites as Mock).mockResolvedValueOnce([
+      { id: 'inv-a', invited_email: 'group-a-invite@example.test' },
+    ]);
+    const view = renderWithRerender();
+    await screen.findByText('group-a-invite@example.test');
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    view.rerender({ group_id: 'grp-2' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenLastCalledWith('grp-2'));
+    expect(screen.queryByText('group-a-invite@example.test')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Manage Group Members' })).toBeNull();
+    await act(async () => {
+      held.resolve(ROSTER);
+    });
+    expect(await screen.findByRole('heading', { name: 'Manage Group Members' })).toBeInTheDocument();
+  });
+});
