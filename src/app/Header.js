@@ -123,7 +123,7 @@ function Header(){
                 MEASURED BASIS: the header/nav chrome is DARK IN BOTH THEMES — a deliberate,
                 shipped choice (`globals.css` `--color-bg-header`: warm-800 light / warm-900
                 dark; `--color-bg-nav`: purple-900; recorded as "intentional, keep" in
-                `.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md:59-60`). Against that dark
+                `.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md:613`, `Header vs nav colors`). Against that dark
                 ground Req 7's purple-700 ring reads 1.93:1 on warm-800, 1.78:1 on purple-900
                 and 1.38:1 on warm-700 (header-hover) — all below WCAG 2.4.11's 3:1 floor. The
                 value dark mode already uses, amber-400, reads 9.00 / 8.30 / 6.27 on those same
@@ -132,7 +132,7 @@ function Header(){
                 first focus-visible ring in this same plan.
 
                 Rejected — overriding `--color-focus-ring` here instead of `--ring`. That shape
-                looks like the shipped `EventScheduler.tsx:228-236` precedent but is INERT on
+                looks like the shipped `src/app/components/EventScheduler.tsx:253` (`THE OVERRIDDEN PROPERTY IS`) precedent but is INERT on
                 this chain. That precedent overrides a ONE-hop alias; this ring chain is TWO
                 hops (`--color-focus-ring` -> `--ring` -> the emitted `--tw-ring-color`), and
                 `--ring: var(--color-focus-ring)` is declared on `:root`, so its `var()` is
