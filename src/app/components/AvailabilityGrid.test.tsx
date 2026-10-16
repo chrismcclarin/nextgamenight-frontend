@@ -430,3 +430,85 @@ describe('88.6.1-17 (D-14 / AC-21, copy row A2) — a check-in cell is named by 
     expect(cells[0]).toHaveAttribute('aria-disabled', 'true');
   });
 });
+
+// Plan 88.6.1-17, whole grid (AC-21 "each WriteCell"). The expected TIMES are read off the
+// rendered full-width row labels (the house argument above: assert what a sighted user reads,
+// not a string this suite invents). The expected DAYS are A2's ratified long form, written out
+// literally, so a change to the day format string turns this red.
+const LONG_DAYS = [
+  'Monday, June 29',
+  'Tuesday, June 30',
+  'Wednesday, July 1',
+  'Thursday, July 2',
+  'Friday, July 3',
+  'Saturday, July 4',
+  'Sunday, July 5',
+];
+
+describe('88.6.1-17 whole grid (AC-21) — every cell, every state, on the wall clock the labels show', () => {
+  it('G4: all 196 cells of a 7-day grid are named by their column day, their row label and their state, all distinct', () => {
+    const { container } = render(
+      <Grid value={[]} onChange={() => {}} numDays={7} weekStartDate={WEEK_START} timezone={PROFILE_TZ} />
+    );
+    // The full-width row label is the only rendered element carrying the sm:inline class.
+    const rowLabels = [...container.querySelectorAll('span[class~="sm:inline"]')].map((s) =>
+      (s.textContent ?? '').trim()
+    );
+    // Anti-vacuity: 28 labels, first and last as the grid is specified.
+    expect(rowLabels).toHaveLength(28);
+    expect(rowLabels[0]).toBe('10:00 AM');
+    expect(rowLabels[27]).toBe('11:30 PM');
+
+    const cells = [...container.querySelectorAll<HTMLElement>('[data-slot-id]')];
+    expect(cells).toHaveLength(196);
+    // DOM order is row-major: index i is row floor(i / 7), column i mod 7.
+    cells.forEach((cell, i) => {
+      const row = Math.floor(i / 7);
+      const col = i % 7;
+      expect(cell.getAttribute('aria-label'), `cell ${i}`).toBe(
+        LONG_DAYS[col] + ' at ' + rowLabels[row] + ', not selected'
+      );
+    });
+    const names = cells.map((c) => c.getAttribute('aria-label'));
+    expect(new Set(names).size).toBe(196);
+    expect(cells[0]).toHaveAccessibleName('Monday, June 29 at 10:00 AM, not selected');
+    expect(cells[195]).toHaveAccessibleName('Sunday, July 5 at 11:30 PM, not selected');
+  });
+
+  it('G5: the name follows the grid wall clock, not the slot instant — two profile zones, same name, different slot id', () => {
+    const renderFirstCell = (tz: string) => {
+      const { container, unmount } = render(
+        <Grid value={[]} onChange={() => {}} numDays={1} weekStartDate={WEEK_START} timezone={tz} />
+      );
+      const cell = container.querySelector<HTMLElement>('[data-slot-id]')!;
+      const out = { slotId: cell.getAttribute('data-slot-id'), name: cell.getAttribute('aria-label') };
+      unmount();
+      return out;
+    };
+    const kiritimati = renderFirstCell('Pacific/Kiritimati');
+    const kathmandu = renderFirstCell('Asia/Kathmandu');
+    // Anti-vacuity: the persisted instant really moved (by 8 h 15 min) between the two renders.
+    expect(kiritimati.slotId).toBeTruthy();
+    expect(kathmandu.slotId).toBeTruthy();
+    expect(kiritimati.slotId).not.toBe(kathmandu.slotId);
+    expect(kiritimati.name).toBe('Monday, June 29 at 10:00 AM, not selected');
+    expect(kathmandu.name).toBe('Monday, June 29 at 10:00 AM, not selected');
+  });
+
+  it('G6: a column filled in the If Need Be mode says "if need be" on all 28 cells and never speaks the enum', () => {
+    renderHarness(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Adding: Preferred' }));
+    expect(screen.getByRole('button', { name: 'Adding: If Need Be' })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('checkbox')[1]); // bulk-fill day 0
+
+    const names = slotCells().map((c) => c.getAttribute('aria-label') ?? '');
+    expect(names).toHaveLength(56);
+    const ifNeedBe = names.filter((n) => n.endsWith(', if need be'));
+    const empty = names.filter((n) => n.endsWith(', not selected'));
+    expect(ifNeedBe).toHaveLength(28);
+    expect(empty).toHaveLength(28);
+    // The 28 if-need-be names are day 0's column (even DOM indexes in a 2-day grid).
+    expect(ifNeedBe.every((n) => n.startsWith('Monday, June 29 at '))).toBe(true);
+    expect(names.some((n) => n.includes('if-need-be'))).toBe(false);
+  });
+});

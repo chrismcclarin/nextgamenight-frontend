@@ -186,7 +186,8 @@ export default function AvailabilityGrid({
   // misrouted feature — two similarly-named features, profile *availability* vs
   // weekly *check-in*, were historically conflated, and the multi-day request
   // behind the broadcast belongs to PROFILE availability, where Phase 48-01
-  // already shipped day-pill multi-select — userProfile/page.js:826) and OVER
+  // already shipped day-pill multi-select — the profile page's Days of Week pill
+  // group, days-of-week-label) and OVER
   // (b) any future "re-add linked days here". Derived state cannot desync: the
   // 2026-05-16 "checkbox stays checked after Clear All" bug is impossible by
   // construction. Re-adding a broadcast here is a product decision, not a
