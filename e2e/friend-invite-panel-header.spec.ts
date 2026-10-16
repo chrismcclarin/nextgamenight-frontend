@@ -54,6 +54,20 @@ test('R7-M5: the Invite Members header row is 12px/8px at phone and 24px/12px at
 
   // Positive control: the close button is still a 44 x 44 target, and the text column ends at
   // or before it.
+  // Wait for the open animation first. The dialog opens with dialog.tsx's `zoom-in-95` over
+  // `duration-200`, and boundingBox() reads the TRANSFORMED box, so a read mid-animation measured
+  // the 44px button at 43.35-43.96px in CI (run 38878098281, both projects). The padding reads
+  // above use computed style, which a transform does not touch. Infinite animations (a spinner)
+  // are skipped, since their `finished` never settles; a cancelled one rejects, and is treated as
+  // done (a cancelled animation no longer transforms anything).
+  await dialog.evaluate((el) =>
+    Promise.all(
+      el
+        .getAnimations({ subtree: true })
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
   const close = dialog.getByRole('button', { name: 'Close' }).first();
   const closeBox = await close.boundingBox();
   const columnBox = await column.boundingBox();
