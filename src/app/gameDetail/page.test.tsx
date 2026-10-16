@@ -327,6 +327,12 @@ export interface RenderEventDetailOptions {
   getEventRejectsWith?: unknown;
   /** Merged over the event fixture (e.g. a location a test asserts is NOT on screen). */
   eventOverrides?: Record<string, unknown>;
+  /**
+   * Render with the self identity still unresolved (`selfUuid` undefined), so a test can resolve
+   * it later and drive the fetch effect's identity re-run. Default false: every older test is
+   * unchanged.
+   */
+  identityPending?: boolean;
 }
 
 /**
@@ -362,8 +368,9 @@ export function renderEventDetail(options: RenderEventDetailOptions = {}) {
     urlGroupId = GROUP_ID,
     getEventRejectsWith,
     eventOverrides = {},
+    identityPending = false,
   } = options;
-  h.selfUuid = SELF_UUID;
+  h.selfUuid = identityPending ? undefined : SELF_UUID;
   h.search =
     urlGroupId === null ? `event_id=${EVENT_ID}` : `event_id=${EVENT_ID}&group_id=${urlGroupId}`;
   if (getEventRejectsWith !== undefined) {
@@ -2645,5 +2652,41 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     await flushMacrotask();
     expect(screen.getByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Azul' })).toBeNull();
+  });
+
+  it('S4: suggestions that land before identity resolves survive the identity re-run of the SAME event (wave 4 CI gate)', async () => {
+    // CI run 38878098281 (game-suggestion-card.spec.ts, phone): Recommended Games never rendered.
+    // The first event load is still in flight when identity resolves, so the fetch effect re-runs
+    // fetchEventOnly for the same event before the first run stamped it as loaded. That re-run's
+    // reset used to clear the suggestions, and the suggestions effect (keyed on the event, not on
+    // identity) never asked again. S3 above still pins the different-event half of the rule.
+    let settleFirstGetEvent: (value: unknown) => void = () => {};
+    (eventsAPI.getEvent as Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settleFirstGetEvent = resolve;
+        })
+    );
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([
+      { id: 'g-catan', name: 'Catan' },
+    ]);
+    const { rerender } = renderEventDetail({ identityPending: true });
+    // The suggestions answer lands while the first event load is still held.
+    await waitFor(() => expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(1));
+    await flushMacrotask();
+    // Identity resolves: the fetch effect re-runs fetchEventOnly for the SAME event.
+    h.selfUuid = SELF_UUID;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Catan' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Recommended Games' })).toBeInTheDocument();
+    // Suggestions are event-scoped: the identity re-run must not ask again.
+    expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(1);
+    // The superseded first load settles last and applies nothing.
+    await act(async () => {
+      settleFirstGetEvent(eventFixture());
+    });
+    await flushMacrotask();
+    expect(screen.getByRole('button', { name: 'Catan' })).toBeInTheDocument();
   });
 });
