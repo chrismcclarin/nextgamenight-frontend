@@ -49,7 +49,7 @@ import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 // AC-2 convert-on-touch (owner ruling 2026-09-09; LEVEL AMENDED 2026-09-13). This file's
 // 20 raw console calls route through the house logger at `info`, which is
-// Sentry.addBreadcrumb (logger.ts:34-36) — a BREADCRUMB, not an event. `errCtx` is the
+// Sentry.addBreadcrumb (logger.ts:52-53) — a BREADCRUMB, not an event. `errCtx` is the
 // shared name+message builder (88.6-13); the raw Error is never passed as `ctx`.
 import { logger, errCtx } from '../../lib/logger';
 
@@ -260,6 +260,8 @@ function Profile(){
     const saveInFlightRef = useRef(false);
     const resendInFlightRef = useRef(false);
     const verifyInFlightRef = useRef(false);
+    // W016 / D-35 (88.6.1-18): Replay Tutorial's synchronous latch — see its marker at the button.
+    const replayInFlightRef = useRef(false);
     /* R2 #29, second defect: the cooldown ticker used to be a LOCAL `const timer`, cleared only
        by its own tick — nothing cancelled it on unmount. Held in a ref and cleared in the
        existing unmount effect below, alongside removeArmedTimerRef. */
@@ -387,7 +389,7 @@ function Profile(){
         };
     }, []);
 
-    const { replayTutorial } = useTutorial();
+    const { replayTutorial, showTutorial } = useTutorial();
     const { timezone, setTimezone } = useTimezone();
     const { setTheme, resolvedTheme } = useTheme();
     const [themeMounted, setThemeMounted] = useState(false);
@@ -536,13 +538,19 @@ function Profile(){
     }, []);
 
     const handleReplayTutorial = async () => {
+        // W016 / D-35: the in-flight refusal, synchronous and FIRST — Replay is `aria-disabled`
+        // while resetting, not natively disabled, so it stays pressable (see its marker).
+        if (replayInFlightRef.current) return;
+        // Refused while the tour is open: Replay keeps focus under the tour's scrim (D-49).
+        if (showTutorial) return;
         if (!user?.sub) return;
         if (!selfUuid) {
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
+        replayInFlightRef.current = true;
+        setReplayingTutorial(true);
         try {
-            setReplayingTutorial(true);
             await usersAPI.resetTutorial(selfUuid);
             replayTutorial();
         } catch (error) {
@@ -553,6 +561,8 @@ function Profile(){
                 })
             );
         } finally {
+            // Released in `finally` so a FAILED reset does not strand the control.
+            replayInFlightRef.current = false;
             setReplayingTutorial(false);
         }
     };
@@ -1481,7 +1491,7 @@ function Profile(){
        sets `maxBreadcrumbs` in `sentry.client.config.js`). So an in-place swap would evict
        every other breadcrumb in the session and destroy the diagnostic value of whatever event
        that session later files. That is the same unbounded per-paint flood
-       `src/lib/colorUtils.js:583-602` already litigated and rejected — including the tempting
+       `src/lib/colorUtils.js:596-618` already litigated and rejected — including the tempting
        escape hatch, since `dedupeIntegration` compares only against the immediately preceding
        event. That precedent is worded in EVENTS and these calls emit none; it is cited anyway
        because it is the shipped LATCH idiom, and a latch is what an unbounded per-paint report
@@ -2642,7 +2652,7 @@ function Profile(){
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1252` (recurring) and `:1299`
+                                            `userProfile/page.js:1308` (recurring) and `:1355`
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
@@ -2893,10 +2903,35 @@ function Profile(){
                     <p className="text-base text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
                     </p>
+                    {/* DECISION Phase 88.6.1-18 (Replay, W016 / D-35): while the reset runs, Replay is
+                        `aria-disabled` and `handleReplayTutorial` refuses a second press through
+                        `replayInFlightRef` — the rule of POSITION (`DECISION Phase 88.6-22`,
+                        FriendInvitePanel.js:59): this is the control the user just pressed
+                        (Requirement 4, SPEC amendment row 11).
+                        WHY: a natively disabled button drops focus to <body> in a real browser the
+                        moment it is pressed, and the native attribute was the only thing refusing a
+                        second reset (the handler had no in-flight guard). A focused Replay is also
+                        what the v2.1 tutorial rewrite's "focus back to Replay" item will need (D-49
+                        carry-over); the tutorial itself is NOT changed here — no role, Escape or
+                        focus handling (D-49).
+                        REFUSED WHILE THE TOUR IS OPEN: Replay stays focused under the tour's scrim
+                        until the v2.1 rewrite moves focus into the tour (D-49), so it is also
+                        `aria-disabled` and refused while `showTutorial` is true; otherwise Enter
+                        behind the scrim re-sends the reset while the tour shows. This reads the
+                        provider's existing value; the overlay and provider are not edited.
+                        REJECTED: (a) native `disabled` — the cause; (b) leaving Replay native until
+                        the v2.1 rewrite — it is a Requirement 4 control in its own right, and D-49
+                        struck the tutorial's dialog work, not this row.
+                        Disclosed visible delta: while resetting, Replay shows the DR-C gated primary
+                        colour pair instead of the 50% native-disabled wash, and keeps that pair
+                        while the tour is open (under the tour's scrim) — the same disclosure
+                        FriendInvitePanel.js:87-90 makes. The in-flight label is existing text, not
+                        new copy (D-31 not triggered). Restoring the native attribute or dropping
+                        the latch is a decision, not a cleanup. */}
                     <Button
                         variant="primary"
                         onClick={handleReplayTutorial}
-                        disabled={replayingTutorial}
+                        aria-disabled={replayingTutorial || showTutorial ? 'true' : undefined}
                     >
                         {replayingTutorial ? 'Starting...' : 'Replay Tutorial'}
                     </Button>

@@ -527,7 +527,7 @@ describe('userProfile availability settings', () => {
   // The recurring DATE pair had NO client guard of any kind: the server rejects an
   // inverted range with a code-less 400 that renders the generic register copy and
   // discards the form (`routes/availability.js:137`). The TIME pair on the same form
-  // already refuses it with a ratified toast (`userProfile/page.js:1252`,
+  // already refuses it with a ratified toast (`userProfile/page.js:1308`,
   // 88-CODE-REVIEW MED#7) and is deliberately untouched.
   //
   // THIS ASSERTS THE DERIVATION, NOT A DATE. A test that pinned a literal would pass
@@ -546,7 +546,7 @@ describe('userProfile availability settings', () => {
     const endDate = screen.getByLabelText('End Date (Optional)') as HTMLInputElement;
 
     // THE EMPTY-SIBLING CASE, on the control that actually has one. `start_date` seeds to
-    // today (userProfile/page.js:210, HEAT-02 expansion 4) while `end_date` seeds to '', so
+    // today (userProfile/page.js:213, HEAT-02 expansion 4) while `end_date` seeds to '', so
     // it is the START control whose bound must be ABSENT here — not an empty string, which
     // would be a real bound of nothing on a field the user is entitled to leave blank.
     expect(
@@ -1597,8 +1597,8 @@ describe('userProfile save-status slots (DEF-88-10-02)', () => {
 // ===========================================================================
 // 88-CODE-REVIEW H1 — a wrong verification code is NOT success
 // ===========================================================================
-// The backend's wrong-code outcome is a 200 { verified: false } (routes/
-// users.js:727-732 — only MALFORMED input 400s), so the handler must read the
+// The backend's wrong-code outcome is a 200 { verified: false }
+// (routes/users.js:823-828 — only MALFORMED input 400s), so the handler must read the
 // body. Before H1 it discarded it: a wrong code marked the phone verified in
 // local state and the immortal self cache while the DB row stayed false — the
 // SMS toggles enabled and SMS silently never sent. These pins hold the gate.
