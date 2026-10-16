@@ -18,6 +18,8 @@ import { logger, errCtx } from '@/lib/logger';
 // UI-SPEC §6.3 row "FriendInvitePanel.js email-invite `validation` override" — ratified
 // 2026-09-28 (`H3-COPY-RULING`). Declared once; byte-equal to the §6.3 row.
 const INVALID_EMAIL_MESSAGE = "That doesn't look like a valid email address. Check it and try again.";
+// Copy row G2 (88.6.1-COPY-TABLE.html, ratified 2026-10-04; D-30 site constant, D-32 R8 ASCII apostrophe).
+const INVITE_SEND_FAILED_MESSAGE = "We couldn't send that invite. Please try again.";
 
 // `openedFrom` is the entry point this panel was opened from: 'create' is the
 // auto-open immediately after a group is created (createGroup.js) and swaps in
@@ -43,6 +45,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
     const [email, setEmail] = useState('');
     const [emailLoading, setEmailLoading] = useState(false);
     const [emailError, setEmailError] = useState('');
+    // The send lane (88.6.1-27): failures about the SEND action, never about the typed address.
+    const [sendError, setSendError] = useState('');
     const [emailSuccess, setEmailSuccess] = useState('');
 
     // Add friend prompt state
@@ -146,6 +150,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             setInviteResult(null);
             setEmail('');
             setEmailError('');
+            setSendError('');
             setEmailSuccess('');
             setFriendPrompt(null);
             setFriendRequestSent(false);
@@ -244,6 +249,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                which is unstyleable, untranslated and does not reach the region this surface now
                announces through. */
             setEmailSuccess('');
+            setSendError('');
             setEmailError('Enter an email address to send an invite.');
             return;
         }
@@ -252,6 +258,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         emailInviteInFlightRef.current = true;
         setEmailLoading(true);
         setEmailError('');
+        setSendError('');
         setEmailSuccess('');
         setFriendPrompt(null);
         setFriendRequestSent(false);
@@ -335,8 +342,32 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                    register; 11 other non-test `byCode:` override sites at d03f728, git grep
                    2026-09-28), and a client-side format regex (a hand-written
                    pattern stricter than `isEmail` refuses addresses the server accepts, with no
-                   way around it — the server stays the single source of truth). */
-                setEmailError(getFetchErrorMessage(err, { byCode: { validation: INVALID_EMAIL_MESSAGE } }));
+                   way around it — the server stays the single source of truth).
+
+                   AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (copy row G2, D-30; the
+                   lane rule of D-11a): (1) the arm now passes a `fallback`, G2. "No fallback"
+                   rested on there being no ratified line for this action; D-30 ratified one. The
+                   register's unknown line told the user to refresh the page, which throws away the
+                   address they typed. (2) Only `validation` writes the FIELD lane: together with the
+                   two code arms above, the field lane holds verdicts about the ADDRESS TYPED. Every
+                   other failure is about the SEND and goes to the send lane, which the Send button
+                   names in its description, so the field is not announced as invalid. (3) REJECTED:
+                   one shared region with the invalid flag merely dropped for non-field codes (that
+                   region's id is the field's description target and would carry action failures);
+                   moving the two 409 arms to the send lane (they are fixed by changing the address,
+                   and 88.6-22 keeps them deliberately); a toast (not tied to the control, and gone
+                   before a screen reader reaches it). (4) Once plan 88.6.1-07's CSRF predicate
+                   lands, a blocked send resolves through the unknown code and reads G2 too.
+                   Changing any of this is a decision, not a cleanup. */
+                const message = getFetchErrorMessage(err, {
+                    byCode: { validation: INVALID_EMAIL_MESSAGE },
+                    fallback: INVITE_SEND_FAILED_MESSAGE,
+                });
+                if (code === 'validation') {
+                    setEmailError(message);
+                } else {
+                    setSendError(message);
+                }
             }
         } finally {
             setEmailLoading(false);
@@ -644,6 +675,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 onChange={(e) => {
                                     setEmail(e.target.value);
                                     setEmailError('');
+                                    setSendError('');
                                     setEmailSuccess('');
                                 }}
                                 placeholder="user@example.com"
@@ -658,6 +690,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 size="default"
                                 type="submit"
                                 aria-disabled={emailLoading || !email.trim() ? 'true' : undefined}
+                                aria-describedby={sendError ? 'invite-email-send-error' : undefined}
                                 className="shrink-0"
                             >
                                 {emailLoading ? 'Sending...' : 'Send'}
@@ -689,12 +722,32 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             on `className` because StatusRegion.tsx:43 is `cn('text-sm', className)`.
                             `text-red-500` (#ef4444) measured 3.76:1 on --color-bg-card (#ffffff),
                             below the 4.5:1 AA floor; `text-content-status-error`
-                            (--color-status-error-text #991b1b, globals.css:1552) measures 8.31:1. */}
+                            (--color-status-error-text #991b1b, globals.css:1552) measures 8.31:1.
+
+                            AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (D-22, D-42):
+                            (1) D-42 — "a screen reader announces a CHANGE to a live region, not the
+                            conditional mount of a new one" holds for polite regions; an alert region
+                            that arrives with its text is announced too. This region stays
+                            always-mounted for node identity and the one house shape, not because an
+                            insertion would be silent. (2) D-22 — the "margin only when filled"
+                            paragraph above is superseded: the region carries the house empty shape
+                            (the srOnlyWhenEmpty prop), so its mt-2 is unconditional and an empty
+                            region is out of flow — no idle space, the same 8px when it shows. Its
+                            sibling directly below is the send lane, which holds failures about the
+                            SEND action (see the else-arm marker in handleEmailInvite). */}
                         <StatusRegion
                             id="invite-email-error"
                             politeness="assertive"
+                            srOnlyWhenEmpty
                             message={emailError}
-                            className={`text-content-status-error${emailError ? ' mt-2' : ''}`}
+                            className="mt-2 text-content-status-error"
+                        />
+                        <StatusRegion
+                            id="invite-email-send-error"
+                            politeness="assertive"
+                            srOnlyWhenEmpty
+                            message={sendError}
+                            className="mt-2 text-content-status-error"
                         />
                         {/* R3 #148 / r2 #182: the SUCCESS announced too. A surface that announces
                             every failure and no success tells a screen-reader user the invite
@@ -703,8 +756,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             breached by a success region (the A-31 precedent). */}
                         <StatusRegion
                             id="invite-email-status"
+                            srOnlyWhenEmpty
                             message={emailSuccess}
-                            className={`text-content-status-success${emailSuccess ? ' mt-2' : ''}`}
+                            className="mt-2 text-content-status-success"
                         />
                         {friendPrompt && !friendRequestSent && (
                             <div className="mt-3 p-3 bg-surface-sunken border border-line rounded-lg flex items-center justify-between gap-3">
@@ -735,8 +789,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             position and its classes are byte-identical to the `<p>` it replaces. */}
                         <StatusRegion
                             id="invite-friend-request-status"
+                            srOnlyWhenEmpty
                             message={friendRequestSent ? 'Friend request sent!' : ''}
-                            className={`text-content-status-success${friendRequestSent ? ' mt-2' : ''}`}
+                            className="mt-2 text-content-status-success"
                         />
                     </div>
 
@@ -814,6 +869,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                             REJECTED — leaving it to the label swap, which is the
                                             silent-success outcome this pass exists to close. */}
                                         <StatusRegion
+                                            id="invite-link-copied-status"
                                             className="sr-only"
                                             message={copied ? 'Invite link copied to the clipboard.' : ''}
                                         />
