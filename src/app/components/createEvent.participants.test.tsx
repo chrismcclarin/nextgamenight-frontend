@@ -70,9 +70,14 @@ vi.mock('@/lib/api', async (importOriginal) => {
   };
 });
 
-import CreateEvent from './createEvent';
+import CreateEventDefault from './createEvent';
 import { eventsAPI } from '@/lib/api';
 import { toast } from 'sonner';
+
+// createEvent is a JS component whose inferred prop types come from its defaults
+// (`editingEvent = null` infers `null`); cast to a permissive type so the edit-mode arm can pass
+// an event (plan 88.6.1-26, C4).
+const CreateEvent = CreateEventDefault as unknown as React.ComponentType<Record<string, unknown>>;
 
 /** Every visible participant-name input, in DOM order. */
 function nameInputs(): HTMLInputElement[] {

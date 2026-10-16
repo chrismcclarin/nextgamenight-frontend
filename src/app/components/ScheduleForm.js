@@ -72,8 +72,9 @@ export default function ScheduleForm({
   };
 
   // Initialize form with the shared rhf + Zod primitive (PRIM-06 / D-10)
-  /* DECISION Phase 88.6.1-26 (carry-in, FormField errorKey): every FormField below gets
-     `errorKey={submitCount}`, react-hook-form's per-attempt counter, so each failed submit
+  /* DECISION Phase 88.6.1-26 (carry-in, FormField errorKey): every FormField below (and
+     MemberSelector, which takes the same prop) gets `errorKey={submitCount}`, react-hook-form's
+     per-attempt counter, so each failed submit
      re-inserts the field alert even when the verdict is identical and focus is already inside
      the field (a second Enter re-inserted nothing and moved nothing — silent). Chosen OVER a
      hand-rolled per-field sequence writer (react-hook-form writes these verdicts, and
@@ -479,6 +480,7 @@ export default function ScheduleForm({
                 }
               }}
               error={errors.selected_member_ids?.message}
+              errorKey={submitCount}
             />
           )}
 

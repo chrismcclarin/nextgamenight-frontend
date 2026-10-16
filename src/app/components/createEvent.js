@@ -26,6 +26,8 @@ import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
 
 const REQUIRED_SR_LABEL = '(required)';
+const CREATING_EVENT_LABEL = 'Creating...';
+const UPDATING_EVENT_LABEL = 'Updating...';
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
   // GameComboInput userId props below), not the Auth0 sub (87.5 BINT-02). searchAll
@@ -42,6 +44,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [ballotError, setBallotError] = useState(null);
   const [heatmapData, setHeatmapData] = useState(null);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
+  // Plan 88.6.1-26 (D-35): the submit's in-flight latch (a REF, read on the first statement after
+  // `e.preventDefault()` in `onSubmit`) and the state behind its `aria-disabled` and its C7 label.
+  // The reasoning is the DECISION marker at the submit button.
+  const eventSubmitInFlightRef = useRef(false);
+  const [eventSubmitting, setEventSubmitting] = useState(false);
   /* DECISION Phase 88.1-21 (H1): the fetched week anchor is stored as ONE object,
      `{ monday, fromNavigation }`, chosen OVER a bare `Date` plus reading `currentWeekStart`
      back out at the consumer. The two facts — WHICH week landed, and whether it landed because
@@ -701,151 +708,159 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    if (eventSubmitInFlightRef.current) return;
+    eventSubmitInFlightRef.current = true;
+    setEventSubmitting(true);
     try {
-      let gameId = newEvent.game_id || null;
+      try {
+        let gameId = newEvent.game_id || null;
 
-      // If user typed a custom game name (no game_id selected), resolve it
-      if (!gameId && newEvent.game_name && newEvent.game_name.trim()) {
-        try {
-          const resolvedGame = await gamesAPI.resolveGame(newEvent.game_name.trim());
-          gameId = resolvedGame.id;
-        } catch (resolveError) {
-          logger.info('Error resolving game:', errCtx(resolveError));
-          toast.error(getFetchErrorMessage(resolveError));
-          return;
-        }
-      }
-
-      const eventDataToSubmit = prepareEventData({
-        ...newEvent,
-        game_id: gameId || null,
-      });
-      // Remove game_name from submission data (backend doesn't expect it on events)
-      delete eventDataToSubmit.game_name;
-      
-      // Use the viewer's PROFILE timezone (with browser-TZ fallback handled
-      // inside TimezoneProvider) for converting wall-clock back to UTC.
-      // This is the headline TZ-01 save-side fix — see Phase 62-02. We never
-      // call Intl.DateTimeFormat().resolvedOptions().timeZone here, because
-      // that would leak browser TZ when the user's profile TZ is different
-      // (e.g., traveling).
-      const userTimezone = timezone;
-
-      if (eventDataToSubmit.start_date) {
-        // datetime-local input value is "YYYY-MM-DDTHH:mm" — interpret it as
-        // a wall-clock in the viewer's profile TZ and convert to UTC.
-        const utc = wallClockToUtc(eventDataToSubmit.start_date, userTimezone);
-        if (!utc) {
-          toast.error('Invalid start date/time. Please re-enter and try again.');
-          return;
-        }
-        eventDataToSubmit.start_date = utc.toISOString();
-      }
-
-      // Add timezone to event data for Google Calendar creation
-      eventDataToSubmit.timezone = userTimezone;
-      
-      // Validate ballot options: if any are provided, need at least 2
-      const validBallotOptions = ballotOptions.filter(o => o.game_name && o.game_name.trim());
-      if (validBallotOptions.length > 0 && validBallotOptions.length < 2) {
-        toast.error('A ballot requires at least 2 game options. Please add more or remove all options.');
-        return;
-      }
-      // Phase 87 (adversarial review #6/#7): the backend de-dups ballot options
-      // by trimmed game_name, so two options with the same name collapse to one
-      // and the ballot would be rejected server-side (400). Block it here with a
-      // clear inline message so duplicate names never reach submit.
-      if (validBallotOptions.length >= 2) {
-        const distinctNames = new Set(validBallotOptions.map(o => o.game_name.trim()));
-        if (distinctNames.size < 2) {
-          toast.error('Ballot options must have at least 2 different games. Please give each option a distinct name.');
-          return;
-        }
-      }
-
-      // Include rsvp_deadline in the submission data — same TZ-01 wall-clock
-      // → profile-TZ → UTC conversion as start_date above.
-      if (newEvent.rsvp_deadline) {
-        const utc = wallClockToUtc(newEvent.rsvp_deadline, userTimezone);
-        if (!utc) {
-          toast.error('Invalid RSVP deadline. Please re-enter and try again.');
-          return;
-        }
-        eventDataToSubmit.rsvp_deadline = utc.toISOString();
-      } else {
-        eventDataToSubmit.rsvp_deadline = null;
-      }
-
-      if (editingEvent) {
-        // Update existing event
-        await eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit);
-
-        // Update ballot options if we have valid ones
-        if (validBallotOptions.length >= 2) {
+        // If user typed a custom game name (no game_id selected), resolve it
+        if (!gameId && newEvent.game_name && newEvent.game_name.trim()) {
           try {
-            await ballotAPI.updateBallotOptions(editingEvent.id, validBallotOptions.map(o => ({
-              game_id: o.game_id || null,
-              game_name: o.game_name.trim()
-            })));
-          } catch (ballotErr) {
-            logger.info('Error updating ballot options:', errCtx(ballotErr));
-            setBallotError('Event updated but ballot options could not be saved.');
+            const resolvedGame = await gamesAPI.resolveGame(newEvent.game_name.trim());
+            gameId = resolvedGame.id;
+          } catch (resolveError) {
+            logger.info('Error resolving game:', errCtx(resolveError));
+            toast.error(getFetchErrorMessage(resolveError));
+            return;
           }
         }
 
-        if (onEventCreated) {
-          onEventCreated(null); // Signal that event was updated
+        const eventDataToSubmit = prepareEventData({
+          ...newEvent,
+          game_id: gameId || null,
+        });
+        // Remove game_name from submission data (backend doesn't expect it on events)
+        delete eventDataToSubmit.game_name;
+      
+        // Use the viewer's PROFILE timezone (with browser-TZ fallback handled
+        // inside TimezoneProvider) for converting wall-clock back to UTC.
+        // This is the headline TZ-01 save-side fix — see Phase 62-02. We never
+        // call Intl.DateTimeFormat().resolvedOptions().timeZone here, because
+        // that would leak browser TZ when the user's profile TZ is different
+        // (e.g., traveling).
+        const userTimezone = timezone;
+
+        if (eventDataToSubmit.start_date) {
+          // datetime-local input value is "YYYY-MM-DDTHH:mm" — interpret it as
+          // a wall-clock in the viewer's profile TZ and convert to UTC.
+          const utc = wallClockToUtc(eventDataToSubmit.start_date, userTimezone);
+          if (!utc) {
+            toast.error('Invalid start date/time. Please re-enter and try again.');
+            return;
+          }
+          eventDataToSubmit.start_date = utc.toISOString();
         }
-      } else {
-        // Include ballot options in the event creation payload for atomic creation
-        // This ensures ballot exists BEFORE notifications fire (so ballot link is included)
+
+        // Add timezone to event data for Google Calendar creation
+        eventDataToSubmit.timezone = userTimezone;
+      
+        // Validate ballot options: if any are provided, need at least 2
+        const validBallotOptions = ballotOptions.filter(o => o.game_name && o.game_name.trim());
+        if (validBallotOptions.length > 0 && validBallotOptions.length < 2) {
+          toast.error('A ballot requires at least 2 game options. Please add more or remove all options.');
+          return;
+        }
+        // Phase 87 (adversarial review #6/#7): the backend de-dups ballot options
+        // by trimmed game_name, so two options with the same name collapse to one
+        // and the ballot would be rejected server-side (400). Block it here with a
+        // clear inline message so duplicate names never reach submit.
         if (validBallotOptions.length >= 2) {
-          eventDataToSubmit.ballot_options = validBallotOptions.map(o => ({
-            game_id: o.game_id || null,
-            game_name: o.game_name.trim()
-          }));
+          const distinctNames = new Set(validBallotOptions.map(o => o.game_name.trim()));
+          if (distinctNames.size < 2) {
+            toast.error('Ballot options must have at least 2 different games. Please give each option a distinct name.');
+            return;
+          }
         }
 
-        // Create new event (with ballot options atomically if provided)
-        const data = await eventsAPI.createEvent(eventDataToSubmit);
-
-        if (onEventCreated) {
-          onEventCreated(data);
+        // Include rsvp_deadline in the submission data — same TZ-01 wall-clock
+        // → profile-TZ → UTC conversion as start_date above.
+        if (newEvent.rsvp_deadline) {
+          const utc = wallClockToUtc(newEvent.rsvp_deadline, userTimezone);
+          if (!utc) {
+            toast.error('Invalid RSVP deadline. Please re-enter and try again.');
+            return;
+          }
+          eventDataToSubmit.rsvp_deadline = utc.toISOString();
+        } else {
+          eventDataToSubmit.rsvp_deadline = null;
         }
+
+        if (editingEvent) {
+          // Update existing event
+          await eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit);
+
+          // Update ballot options if we have valid ones
+          if (validBallotOptions.length >= 2) {
+            try {
+              await ballotAPI.updateBallotOptions(editingEvent.id, validBallotOptions.map(o => ({
+                game_id: o.game_id || null,
+                game_name: o.game_name.trim()
+              })));
+            } catch (ballotErr) {
+              logger.info('Error updating ballot options:', errCtx(ballotErr));
+              setBallotError('Event updated but ballot options could not be saved.');
+            }
+          }
+
+          if (onEventCreated) {
+            onEventCreated(null); // Signal that event was updated
+          }
+        } else {
+          // Include ballot options in the event creation payload for atomic creation
+          // This ensures ballot exists BEFORE notifications fire (so ballot link is included)
+          if (validBallotOptions.length >= 2) {
+            eventDataToSubmit.ballot_options = validBallotOptions.map(o => ({
+              game_id: o.game_id || null,
+              game_name: o.game_name.trim()
+            }));
+          }
+
+          // Create new event (with ballot options atomically if provided)
+          const data = await eventsAPI.createEvent(eventDataToSubmit);
+
+          if (onEventCreated) {
+            onEventCreated(data);
+          }
+        }
+
+        /* DECISION Phase 88-16 (CONTEXT D-13, Req 12): the receipt fires HERE —
+           one statement BEFORE `modaltoggle()` — not after it. Sonner's <Toaster>
+           lives in the root layout and survives the SPA re-render/navigation that
+           closing this modal kicks off; queueing the toast on the far side of the
+           close is what loses it. The ORDER is the decision, not a formatting
+           choice: swapping these two lines is a regression, not a cleanup.
+           Copy is the D-12 terse-utility register ("{Object} {past-tense verb}"),
+           verbatim from the UI-SPEC §6.2 register — do not warm it up.
+           Verified this session that nothing between the API success and this line
+           can eat it: all five shipped `onEventCreated` consumers
+           (groupHomePage:509, groupPlanning:286, gameDetail:1221/2243/2258, and the
+           legacy read-grid at its :518 -> its parent) refetch or unmount; none
+           navigates. NOTE: that fifth consumer was deleted by plan 88-31's dead-code
+           gate, so the live count is now four — the claim is unaffected, but do not
+           re-verify it expecting five. RE-VERIFIED Phase 88.6.1-15 (2026-10-15): the
+           line numbers above are history; the mounts are found by
+           `grep -rn 'onEventCreated=' src --include='*.js'` (five JSX mounts in
+           `groupPlanning/page.js`, `gameDetail/page.js` x3, `groupHomePage/page.js`),
+           and every handler they name refetches, toggles or bumps a refresh key —
+           none navigates. */
+        toast.success(editingEvent ? 'Event updated' : 'Event created');
+        modaltoggle();
+        // Reset form. Phase 66-01: derivedSelectedSlot resets automatically
+        // when newEvent.start_date is cleared by createEventForm — no separate
+        // selectedTimeSlot reset needed.
+        setNewEvent(createEventForm(group_id, groupMembers));
+        setBallotOptions([]);
+        setBallotError(null);
+        setUseVisualCalendar(true);
+      } catch (error) {
+        logger.info(`Error ${editingEvent ? 'updating' : 'creating'} event:`, errCtx(error));
+        toast.error(getFetchErrorMessage(error));
       }
-
-      /* DECISION Phase 88-16 (CONTEXT D-13, Req 12): the receipt fires HERE —
-         one statement BEFORE `modaltoggle()` — not after it. Sonner's <Toaster>
-         lives in the root layout and survives the SPA re-render/navigation that
-         closing this modal kicks off; queueing the toast on the far side of the
-         close is what loses it. The ORDER is the decision, not a formatting
-         choice: swapping these two lines is a regression, not a cleanup.
-         Copy is the D-12 terse-utility register ("{Object} {past-tense verb}"),
-         verbatim from the UI-SPEC §6.2 register — do not warm it up.
-         Verified this session that nothing between the API success and this line
-         can eat it: all five shipped `onEventCreated` consumers
-         (groupHomePage:509, groupPlanning:286, gameDetail:1221/2243/2258, and the
-         legacy read-grid at its :518 -> its parent) refetch or unmount; none
-         navigates. NOTE: that fifth consumer was deleted by plan 88-31's dead-code
-         gate, so the live count is now four — the claim is unaffected, but do not
-         re-verify it expecting five. RE-VERIFIED Phase 88.6.1-15 (2026-10-15): the
-         line numbers above are history; the mounts are found by
-         `grep -rn 'onEventCreated=' src --include='*.js'` (five JSX mounts in
-         `groupPlanning/page.js`, `gameDetail/page.js` x3, `groupHomePage/page.js`),
-         and every handler they name refetches, toggles or bumps a refresh key —
-         none navigates. */
-      toast.success(editingEvent ? 'Event updated' : 'Event created');
-      modaltoggle();
-      // Reset form. Phase 66-01: derivedSelectedSlot resets automatically
-      // when newEvent.start_date is cleared by createEventForm — no separate
-      // selectedTimeSlot reset needed.
-      setNewEvent(createEventForm(group_id, groupMembers));
-      setBallotOptions([]);
-      setBallotError(null);
-      setUseVisualCalendar(true);
-    } catch (error) {
-      logger.info(`Error ${editingEvent ? 'updating' : 'creating'} event:`, errCtx(error));
-      toast.error(getFetchErrorMessage(error));
+    } finally {
+      eventSubmitInFlightRef.current = false;
+      setEventSubmitting(false);
     }
   };
 
@@ -1448,12 +1463,40 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Submit Buttons */}
           <div className="flex gap-2 justify-end">
+            {/* DECISION Phase 88.6.1-26 (closable mid-create): the dialog stays closable while a
+                create or update is in flight — Cancel, the header close, Escape and an outside press
+                (the last three reach `onClose` through `Modal`'s `handleOpenChange`) are NOT gated;
+                the request finishes and its toast appears after the dialog is gone (owner ruling,
+                2026-10-05: fine). REJECTED: blocking close while creating (createGroup's shape,
+                88.6.1-15). A late success cannot reopen a closed dialog, because every host's
+                `modaltoggle` closes (groupPlanning's toggle runs from the closure captured while the
+                dialog was open). Gating any close path here is a decision, not a cleanup. */}
             <Button variant="secondary" onClick={modaltoggle}>
               Cancel
             </Button>
             {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css`, the `.btn` floor inside `@media (width < 48rem)`, with its reasoning in the comment directly above it), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
-            <Button type="submit" data-testid="create-event-submit">
-              {editingEvent ? 'Update Event' : 'Create Event'}
+            {/* DECISION Phase 88.6.1-26 (D-35, rule of POSITION): this submit is the PRESSED control,
+                so its in-flight gate is `aria-disabled` plus a first-line REF latch in `onSubmit`
+                (`eventSubmitInFlightRef`, read right after `e.preventDefault()`, released in the
+                `finally` that wraps the whole body) — the createGroup shape (88.6.1-15) — plus the
+                owner-ratified in-flight label (copy row C7, 2026-10-05: `Creating...` /
+                `Updating...`, the same working cue as ScheduleForm's `Saving...` and
+                AvailabilityForm's `Submitting...`). The label is SEEN on screen, and it is the
+                button's accessible name, read when focus arrives or the user re-reads it; whether a
+                screen reader speaks the in-flight rename by itself is NOT measured by this plan
+                (plan 88.6.1-57's VoiceOver check measures it). REJECTED: no gate (a double tap
+                created two events and sent two rounds of notifications — CT-3's census missed it
+                because it searched for `disabled=` tags), the native attribute (it drops a keyboard
+                user to <body> mid-create) and a label that stays put while working (only the gated
+                colour would show the press registered; the name would never say so). The gated
+                look is the shipped primary pair; no new token. VISIBLE DELTA, disclosed: while in
+                flight the text is shorter, so the button narrows slightly inside this right-aligned
+                row; its 44px floor is unchanged. Removing the latch, the attribute or the label
+                swap is a decision, not a cleanup. */}
+            <Button type="submit" data-testid="create-event-submit" aria-disabled={eventSubmitting || undefined}>
+              {eventSubmitting
+                ? (editingEvent ? UPDATING_EVENT_LABEL : CREATING_EVENT_LABEL)
+                : (editingEvent ? 'Update Event' : 'Create Event')}
             </Button>
           </div>
         </form>

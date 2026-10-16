@@ -28,6 +28,7 @@ const MemberSelector = MemberSelectorDefault as unknown as ComponentType<{
   selectedMemberIds: string[];
   onSelectAllMembers: (checked: boolean) => void;
   error?: string | null;
+  errorKey?: number;
 }>;
 
 const ANN_SUB = 'auth0|ann';
