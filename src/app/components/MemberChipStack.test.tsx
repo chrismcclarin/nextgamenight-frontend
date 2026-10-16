@@ -416,6 +416,13 @@ describe('MemberChipStack — collapsed stack', () => {
      * routed to Phase 89. They are ONE question and want ONE owner. When a host-supplied
      * fallback lands, this arm INVERTS — it is the instrument for that fix, not a pin on the bug.
      */
+    // AMENDED Phase 88.6.1-41: the host-supplied target LANDED, in grouplist.js (plan 88.6.1-04's
+    // shared useFocusRecovery, D-04/D-05). It is pinned by grouplist.focus.test.tsx F1, F2 and F3:
+    // the surviving card's title block, else "Your Groups", and never before the refresh commits.
+    // This arm does NOT invert. With no host mounted the component has no in-component target by
+    // construction (D-04 records the in-component remedy as unavailable), so <body> is still the
+    // truth here. It is the COMPONENT half; the host half lives in the host's own suite, and
+    // mounting a host here would be a second copy of that pin.
     const rerenderWith = (members: typeof MEMBERS) => (
       <FriendshipContext.Provider value={friendshipValue() as never}>
         <div role="button" tabIndex={0} className="relative">
@@ -445,8 +452,23 @@ describe('MemberChipStack — collapsed stack', () => {
       document.activeElement,
       'W45(b): focus is on <body> after the expanded row unmounts. This asserts the RESIDUAL — ' +
         'no in-component restore target survives this path, and the host-supplied target is an ' +
-        'open question recorded in .planning/deferred/phase-88.6.md. Invert this arm when it lands.',
+        'open question recorded in .planning/deferred/phase-88.6.md. The host target has since landed ' +
+        'in grouplist.js (88.6.1-41) and is pinned by grouplist.focus.test.tsx F1/F2/F3; this ' +
+        'component half does not invert.',
     ).toBe(document.body);
+  });
+
+  it('21e. SOURCE: the null return is reachable ONLY through a host prop change (members is never held in state)', () => {
+    // 21d's path (the expanded row unmounting) needs nonSelf to empty while expanded is untouched.
+    // These three facts together say that only a NEW members prop from the host can do it: one
+    // null return in the file, nonSelf computed in render from the prop, and no state that holds
+    // a member list.
+    const src = COMPONENT_SRC;
+    expect(src.match(/return null;/g) ?? []).toHaveLength(1);
+    expect(src).toMatch(/const nonSelf = \(members \?\? \[\]\)\.filter\(/);
+    const stateCalls = src.match(/useState(?:<[^>]*>)?\([^)]*\)/g) ?? [];
+    expect(stateCalls.length).toBeGreaterThan(0);
+    expect(stateCalls.filter((call) => /members/.test(call))).toEqual([]);
   });
 });
 
