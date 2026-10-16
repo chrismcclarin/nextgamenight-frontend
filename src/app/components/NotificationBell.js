@@ -8,6 +8,9 @@ import { useDismissal } from '@/components/ui/useDismissal';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 
+// Copy row N1 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:100) — heard, not seen.
+const LOADING_NOTIFICATIONS = 'Loading notifications';
+
 function NotificationBell({ user, variant = 'icon', label }) {
   const [isOpen, setIsOpen] = useState(false);
   /* DECISION Phase 88.6-31 (ACCEPT §9 / #164, owner ruling 2026-09-14, option 1): both disclosure
@@ -46,6 +49,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
      still "points at this id" whenever the panel exists. Going back to the unconditional
      attribute is a decision, not a cleanup. */
   const panelId = `${useId()}-notification-panel`;
+  // The panel heading's id, derived from panelId (no second useId call): the section names itself
+  // through it (DECISION Phase 88.6.1-28, D-18, D-33 row 21, at the panel below).
+  const headingId = `${panelId}-heading`;
   const [actionLoading, setActionLoading] = useState(null);
   // { text, tone: 'success' | 'muted' } — muted is the L-8 "no longer
   // available" notice, which must not render in success-green.
@@ -387,9 +393,22 @@ function NotificationBell({ user, variant = 'icon', label }) {
           - row variant (mobile hamburger): render inline so the panel expands
             within the menu naturally (no fixed/absolute escape from flow).
           - icon variant (desktop nav): fixed/absolute overlay near the bell. */}
+      {/* DECISION Phase 88.6.1-28 (D-18, D-33 row 21): the panel is a `section` named by
+          `aria-labelledby` pointing at its own visible "Notifications" heading — CHOSEN because it
+          gives a named region a VoiceOver user finds in the rotor, with no new words.
+          REJECTED: an `aria-label` on the section (a second copy of the words that can drift from
+          the heading, and a new literal); a dialog role (it promises modal semantics and a focus
+          trap that an inline panel does not have — the row variant sits inside the hamburger); the
+          menu role or the popup-role attribute (FORBIDDEN, DECISION Phase 88.6-16,
+          `src/app/components/KebabMenu.js`); a div carrying an explicit region role (the native
+          element already carries that role).
+          The idref is safe because the heading's children are a fixed literal
+          (`src/components/ui/Heading.tsx:30-37`, anchor "It is NOT a safe").
+          Adding a role, or naming the panel with its own label, is a decision, not a cleanup. */}
       {isOpen && (
-        <div
+        <section
           id={panelId}
+          aria-labelledby={headingId}
           className={
             variant === 'row'
               ? "bg-surface-card border-t border-line-header"
@@ -403,7 +422,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                 default. LEVEL PRESERVED (P4) — `typeScaleTouchedSurfaces`' EXPECTED_LEVELS entry
                 for this file (`{ 3: 1 }`) is byte-unchanged; only the SOURCE of the rung and the
                 weight moves, and `font-bold` was already what this site shipped. */}
-            <Heading level={3} size="label" className="text-content-primary">
+            <Heading id={headingId} level={3} size="label" className="text-content-primary">
               Notifications
             </Heading>
           </div>
@@ -437,7 +456,19 @@ function NotificationBell({ user, variant = 'icon', label }) {
           <div className="max-h-80 overflow-y-auto">
             {loading ? (
               <div className="px-4 py-8 text-center">
-                <div className="inline-block w-5 h-5 border-2 border-line border-t-accent rounded-full animate-spin" />
+                {/* DECISION Phase 88.6.1-28 (D-30 N1): CHOSEN — plain sr-only text inside the
+                    panel, which the user reaches when reading it, with the spinner hidden from
+                    assistive tech.
+                    REJECTED: a status role on this wrapper — it mounts together with the panel,
+                    and a conditionally mounted polite region is not reliably announced (D-42;
+                    `src/components/ui/StatusRegion.tsx:9-12`, anchor "EMPTY-FIRST"); and the
+                    provider's loading flag is first-load only
+                    (`src/app/components/UnreadNotificationProvider.js`, anchors "useState(true)"
+                    and "setLoading(false);"), so there is no later change to announce.
+                    REJECTED: an `aria-label` on the spinner div — a name on a generic element is
+                    not exposed. */}
+                <div className="inline-block w-5 h-5 border-2 border-line border-t-accent rounded-full animate-spin" aria-hidden="true" />
+                <span className="sr-only">{LOADING_NOTIFICATIONS}</span>
               </div>
             ) : totalCount === 0 ? (
               <div className="px-4 py-8 text-center">
@@ -554,7 +585,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
               </>
             )}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
