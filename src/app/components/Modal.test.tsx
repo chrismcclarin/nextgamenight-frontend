@@ -12,12 +12,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import * as React from 'react';
-import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { withoutComments } from '../../test-utils/sourceScan';
+import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 import { Combobox, type ComboboxItem } from '../../components/ui/Combobox';
 import { DialogTitle } from '../../components/ui/dialog';
 import { Modal, preventNonDismissableClose } from './Modal';
@@ -715,6 +716,85 @@ describe('Modal', () => {
       const event = { preventDefault: vi.fn() };
       preventNonDismissableClose(true, event);
       expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+  });
+
+  // Phase 88.6.1, wave 5 CI gate (e2e/group-settings-pending-focus.spec.ts arm 4, CI runs
+  // 38972642726 / 38976822652): a press inside a SECOND dialog that is a React sibling of this
+  // one must never dismiss this one. pressInStackedDialog reproduces the order production Next
+  // commits the press in; its header says why a plain click cannot see this path in jsdom.
+  describe('a press inside a stacked sibling dialog never dismisses the dialog beneath it', () => {
+    function StackedSiblings({ onOuterClose }: { onOuterClose: () => void }) {
+      const [second, setSecond] = React.useState(false);
+      return (
+        <>
+          <Modal open onClose={onOuterClose}>
+            <Modal.Header>Customize Group</Modal.Header>
+            <Modal.Body>
+              <button type="button" onClick={() => setSecond(true)}>
+                Open the second dialog
+              </button>
+            </Modal.Body>
+          </Modal>
+          <Modal open={second} onClose={() => setSecond(false)}>
+            <Modal.Header>Remove Bee?</Modal.Header>
+            <Modal.Footer>
+              <Modal.Action variant="secondary" onClick={() => setSecond(false)}>
+                Cancel
+              </Modal.Action>
+            </Modal.Footer>
+          </Modal>
+        </>
+      );
+    }
+
+    async function openSecond() {
+      const onOuterClose = vi.fn();
+      render(<StackedSiblings onOuterClose={onOuterClose} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Open the second dialog' }));
+      const second = await screen.findByRole('dialog', { name: 'Remove Bee?' });
+      // Radix registers each layer's document pointerdown listener one macrotask after mount.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      return { onOuterClose, second };
+    }
+
+    it('MS1: Cancel in the stacked dialog closes only that dialog', async () => {
+      const { onOuterClose, second } = await openSecond();
+      pressInStackedDialog(within(second).getByRole('button', { name: 'Cancel' }));
+      // positive signal first (CF-26): the second dialog is gone
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Remove Bee?' })).toBeNull());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      expect(onOuterClose).not.toHaveBeenCalled();
+    });
+
+    it('MS2: the header Close in the stacked dialog closes only that dialog', async () => {
+      const { onOuterClose, second } = await openSecond();
+      pressInStackedDialog(within(second).getByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Remove Bee?' })).toBeNull());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      expect(onOuterClose).not.toHaveBeenCalled();
+    });
+
+    // CONTROL, green on both trees by design and not counted as a pin: a press on this
+    // dialog's own backdrop, with nothing stacked above it, still dismisses it. It proves the
+    // stacked-dialog guard does not swallow a genuine outside press.
+    it('MS3 (control): a press on the backdrop, with nothing stacked, still dismisses', async () => {
+      const onOuterClose = vi.fn();
+      render(<StackedSiblings onOuterClose={onOuterClose} />);
+      await screen.findByRole('dialog', { name: 'Customize Group' });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      const backdrop = document.querySelector('[data-state="open"].fixed.inset-0');
+      expect(backdrop).toBeInstanceOf(HTMLElement);
+      pressInStackedDialog(backdrop as HTMLElement);
+      await waitFor(() => expect(onOuterClose).toHaveBeenCalledTimes(1));
     });
   });
 

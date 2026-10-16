@@ -47,6 +47,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import GroupSettings from './GroupSettings';
+import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 import { groupsAPI, ApiError } from '@/lib/api';
 // Phase 88.6-20 (R1): the ratified copy is read through its ONE reader rather than copied into
 // this file as a literal, so the assertions cannot drift from the register.
@@ -1250,6 +1251,40 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     await waitFor(() => expect(document.activeElement).toBe(opener));
     expect(opener).toHaveTextContent('Deleting...');
     expect(opener).toHaveAttribute('aria-disabled', 'true');
+    expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
+  });
+
+  // PC8 is PC7 driven the way production commits a pointer press (wave 5 CI gate, CI runs
+  // 38972642726 / 38976822652: the phone e2e arm 4 found NO dialog left after Cancel and focus
+  // on the page h1). PC7's fireEvent.click is green on the broken tree because react-dom 18.2
+  // drops the settings dialog's deferred outside-press; pressInStackedDialog's header says why.
+  // onClose is the discriminator: the settings Modal is `open` by literal, so a dismissal shows
+  // as a call to the host's onClose, not as a dialog leaving the DOM.
+  it('PC8 (answer 3A, real-browser order): a pointer press on Cancel while the delete is pending closes ONLY the confirm', async () => {
+    const request = held<unknown>();
+    (groupsAPI.deleteGroup as Mock).mockReturnValue(request.promise);
+    const onClose = vi.fn();
+    renderSettings({ onClose });
+    await waitFor(() => expect(dangerZone().textContent).toContain('37'));
+    const opener = screen.getByRole('button', { name: 'Delete Group' });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: DELETE_DIALOG });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await screen.findByRole('button', { name: 'Deleting...', hidden: true });
+
+    pressInStackedDialog(within(dialog).getByRole('button', { name: 'Cancel' }));
+    // positive signal first (CF-26): the confirm closed and focus reached the opener
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: DELETE_DIALOG })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Customize Group' })).toBeInTheDocument();
+    expect(opener).toHaveTextContent('Deleting...');
+    expect(opener).toHaveAttribute('aria-disabled', 'true');
+
+    fireEvent.click(opener);
+    expect(screen.queryByRole('dialog', { name: DELETE_DIALOG })).toBeNull();
     expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
   });
 });
