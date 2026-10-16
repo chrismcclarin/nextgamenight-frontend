@@ -707,9 +707,13 @@ export default function GameDetailPage() {
         // valid event id must stop it too, or that URL would still make a request.
         if (gameIdRejected) return;
         if (!event_id || !hasGroup) return;
+        // 88.6.1-25 (retention rule): an answer for an event the page has moved past is dropped, so
+        // a superseded event's suggestions never land on the next event's screen.
+        let superseded = false;
         const fetchSuggestions = async () => {
             try {
                 const data = await suggestionsAPI.getEventSuggestions(event_id);
+                if (superseded) return;
                 if (Array.isArray(data)) {
                     setEventSuggestions(data);
                 } else if (data && Array.isArray(data.suggestions)) {
@@ -719,10 +723,13 @@ export default function GameDetailPage() {
                     setEventSuggestions([]);
                 }
             } catch {
-                setEventSuggestions([]);
+                if (!superseded) setEventSuggestions([]);
             }
         };
         fetchSuggestions();
+        return () => {
+            superseded = true;
+        };
     }, [event_id, hasGroup, gameIdRejected]);
 
     // Scroll to ballot section when #vote hash is in URL (from notification links)

@@ -2616,4 +2616,34 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
     await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
   });
+
+  it('S3: a superseded event\'s suggestions never land on the next event (clean-slate rule, Rule 2 deviation)', async () => {
+    let settleA: (value: unknown) => void = () => {};
+    // Event A's suggestions stay in flight; event B's resolve empty.
+    (suggestionsAPI.getEventSuggestions as Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            settleA = resolve;
+          })
+      )
+      .mockResolvedValueOnce([]);
+    const { rerender } = renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockResolvedValue(
+      eventFixture({ id: SECOND_EVENT_ID, title: 'Second Night' })
+    );
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    await waitFor(() => expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(2));
+    await flushMacrotask();
+    // A's held answer lands LAST.
+    await act(async () => {
+      settleA([{ id: 'g-azul', name: 'Azul' }]);
+    });
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Azul' })).toBeNull();
+  });
 });
