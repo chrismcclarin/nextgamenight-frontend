@@ -24,17 +24,48 @@ function Header(){
     const { totalCount } = useUnreadNotificationCount();
 
     // Escape closes the mobile hamburger menu while it's open.
-    // Reuses the FeedbackButton.js:41-50 idiom (document keydown listener,
-    // attached only while open, cleaned up on close/unmount).
+    // The listener is a document keydown listener attached only while the menu
+    // is open and removed on close or unmount. FeedbackButton once carried the
+    // same idiom and removed it under DECISION Phase 88-17 (Req 9)
+    // (src/app/components/FeedbackButton.js:61, `DECISION Phase 88-17 (Req 9)`)
+    // because its modal is a Radix dialog that owns its own Escape; this menu
+    // is not a Radix dialog, so it keeps its own listener.
     // Scope-limited per CONTEXT D-01: closes hamburger only — no app-wide
     // escape-sweep event (no current consumers; YAGNI).
+    //
+    // DECISION Phase 88.6.1-45 (D-08a): CHOSEN — return when the event is
+    // already default-prevented, the precedent at src/app/gameDetail/page.js:606
+    // (the description-collapse listener, `event.defaultPrevented`). A layer
+    // that claimed the Escape owns it: the bell panel's shared useDismissal hook
+    // (src/components/ui/useDismissal.ts) default-prevents the Escape it acts
+    // on, and so does a Radix dialog that dismisses.
+    // WHY it is required, not belt-and-braces: the Next 14 App Router hydrates
+    // React on the document itself (the next package's dist/client/app-index.js
+    // sets its app element to document), so React's root listener and this one
+    // sit on the SAME node; the bell's stopPropagation cannot stop a later
+    // listener there. Without this line one Escape with the Invites panel open
+    // (`variant="row" label="Invites"`, below in this file) closes the panel AND
+    // this menu. Pinned by Header.test.tsx HD-1, which models that order.
+    // REJECTED (a): relying on the claiming layer's stopPropagation — true only
+    // in a jsdom test, where React's root is a div; false in production.
+    // REJECTED (b): registering this listener in the capture phase — it would
+    // run BEFORE the bell's React handler and close the menu first, which is
+    // the bug.
+    // REJECTED (c): copying the precedent's two other bails (an editable
+    // target, an open dialog) — this panel holds no editable control, and a
+    // Radix dialog that consumes an Escape already default-prevents it, so this
+    // one condition covers that case (HD-3).
+    // REJECTED (d): a React onKeyDown on the header instead of a document
+    // listener — it would miss an Escape pressed while focus is outside the
+    // header, and D-08a asked for the bail, not a new listener model.
+    // Removing the default-prevented condition, or moving this listener to the
+    // capture phase, is a decision, not a cleanup.
     useEffect(() => {
         if (!mobileMenuOpen) return;
 
         function handleKeyDown(e) {
-            if (e.key === 'Escape') {
-                setMobileMenuOpen(false);
-            }
+            if (e.key !== 'Escape' || e.defaultPrevented) return;
+            setMobileMenuOpen(false);
         }
 
         document.addEventListener('keydown', handleKeyDown);
