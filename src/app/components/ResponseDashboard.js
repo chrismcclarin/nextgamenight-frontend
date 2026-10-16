@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { toast } from 'sonner';
 import { promptAPI } from '@/lib/api';
 import {
@@ -9,6 +9,7 @@ import {
 } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger } from '@/lib/logger';
 import { formatDateTime } from '../../lib/datetime';
 import { useTimezone } from './TimezoneProvider';
@@ -37,7 +38,8 @@ export default function ResponseDashboard({
   const [respondents, setRespondents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [remindingUserId, setRemindingUserId] = useState(null);
+  // D-35 (Phase 88.6.1-11): the rows whose reminder is in flight, one entry per row.
+  const [remindingUserIds, setRemindingUserIds] = useState([]);
   const { timezone } = useTimezone();
 
   /* The phase's ONE staleness idiom, ported from the shipped
@@ -60,6 +62,14 @@ export default function ResponseDashboard({
   const inFlightGenerationRef = useRef(null);
   // W031 (Phase 88.6.1-11): the respondents capture's per-episode latch; see the catch below.
   const lastReportedKeyRef = useRef(null);
+  // D-35 (Phase 88.6.1-11): the synchronous per-row latch (a Set of user ids); see handleRemind.
+  const remindInFlightRef = useRef(new Set());
+  // Req 5 (Phase 88.6.1-11): the 'Responses:' heading is the focus fallback (D-05), and each
+  // row's settled "Reminded ..." text is the preferred target; see handleRemind.
+  const responsesHeadingRef = useRef(null);
+  const recovery = useFocusRecovery({ fallback: responsesHeadingRef });
+  const remindStatusIdPrefix = useId();
+  const statusIdFor = (userId) => `${remindStatusIdPrefix}remind-status-${userId}`;
 
   // 87.4 PR-2 (D-02): the sub arm is dropped. groupPlanning now passes the
   // caller's resolved Users.id UUID as `currentUserId` (was user?.sub), and the
@@ -179,19 +189,61 @@ export default function ResponseDashboard({
     refetch: fetchRespondents,
   });
 
+  /* DECISION Phase 88.6.1-11 (D-35) [Req 4, the rule of POSITION, `DECISION Phase 88.6-22` at
+     `FriendInvitePanel.js:59`]: the Remind button the admin pressed takes `aria-disabled` plus a
+     SYNCHRONOUS per-row ref latch (`remindInFlightRef`, a Set of user ids, refused on the first
+     line, released in `finally`), chosen OVER the native attribute it shipped with. A natively
+     disabled control leaves the focus order, stranding a keyboard or switch user mid-send. The
+     latch is a REF because a state write does not land before a second synchronous press
+     (`FriendInvitePanel.js:74-75`). The in-flight state is PER ROW (`remindingUserIds`): one
+     shared id flipped the first row back to 'Remind' mid-flight when a second row was pressed.
+     REJECTED: (a) one shared latch (it would silently drop a press on a second row, which
+     works today); (b) natively gating the other rows (they are independent actions on different
+     members, not siblings of one action, so nothing stays native); (c) a not-allowed cursor
+     utility on the gated state (a desktop cursor change in a non-look phase). Dropping either
+     half, or restoring the native attribute, is a decision, not a cleanup. */
   // Handle sending reminder
   const handleRemind = async (userId) => {
-    setRemindingUserId(userId);
+    if (remindInFlightRef.current.has(userId)) return;
+    remindInFlightRef.current.add(userId);
+    setRemindingUserIds((prev) => [...prev, userId]);
 
     try {
       await promptAPI.sendReminder(promptId, userId);
 
+      /* DECISION Phase 88.6.1-11 (Req 5) [D-04 / D-05; D-06 is the precedent for focusing settled
+         text]: a successful remind unmounts the focused button (the row then shows its
+         'Reminded ...' text), so the host arms plan 88.6.1-04's `useFocusRecovery` and focus
+         lands on that row's text, else on the 'Responses:' heading (the fallback), never on
+         <body>. The text takes programmatic focus only (the hook adds and removes `tabindex=-1`);
+         no heading and no text is minted.
+         ARM AT SUCCESS, NOT AT PRESS: a failure removes nothing, so arming at press would leave
+         the hook armed over an outcome with no removal. Arming after the await gives up the
+         hook's arm-while-focused moment, so this host restores it with a GUARD: it arms only
+         while THIS row's Remind button (looked up by its id with `getElementById`, compared as an
+         element, never by text) still holds focus at success. A user who moved to another row or
+         control meanwhile is never armed for, so never pulled back (D-04 never moves them); an
+         unmounted dashboard has no such button, so a late resolve adds no focusin listener and
+         no observer. On Safari's click path a pressed button never takes focus, so the guard
+         arms nothing there and the removal drops no focus, because the button held none; plan
+         88.6.1-57's optional VoiceOver step observes what iOS does.
+         REJECTED: (a) inline per-host focus code (D-04, rejected by tenet);
+         (b) arming after the await on behalf of a row the user is not on;
+         (c) moving this guard into the shared hook (its contract is unchanged; the guard is this
+         host's post-await choice). The
+         `last_reminded_at` write happens either way. It is a decision, not a cleanup. */
+      const pressed = document.getElementById(remindButtonIdFor(statusIdFor(userId)));
+      const settle =
+        pressed !== null && pressed === document.activeElement
+          ? recovery.arm({ preferred: () => document.getElementById(statusIdFor(userId)) })
+          : null;
       // Update local state with new last_reminded_at
       setRespondents(prev => prev.map(r =>
         r.user_id === userId
           ? { ...r, last_reminded_at: new Date().toISOString() }
           : r
       ));
+      settle?.();
     } catch (err) {
       // AC-2 WIDENED x the D2 AC-16 carve-out: `logger.error` (a Sentry EVENT) is retained here
       // rather than demoted to `logger.info`, because AC-16 (a) requires a capture on this
@@ -249,7 +301,8 @@ export default function ResponseDashboard({
         toast.error(getFetchErrorMessage(err));
       }
     } finally {
-      setRemindingUserId(null);
+      remindInFlightRef.current.delete(userId);
+      setRemindingUserIds((prev) => prev.filter((id) => id !== userId));
     }
   };
 
@@ -338,7 +391,7 @@ export default function ResponseDashboard({
 
   return (
     <div className="bg-surface-card rounded-card border border-line p-4">
-      <Heading level={3} size="heading" className="text-content-primary mb-3">
+      <Heading ref={responsesHeadingRef} level={3} size="heading" className="text-content-primary mb-3">
         Responses: {responseCount}/{totalCount} responded
       </Heading>
 
@@ -402,7 +455,8 @@ export default function ResponseDashboard({
                 <RemindButton
                   userId={r.user_id}
                   lastRemindedAt={r.last_reminded_at}
-                  isReminding={remindingUserId === r.user_id}
+                  isReminding={remindingUserIds.includes(r.user_id)}
+                  statusId={statusIdFor(r.user_id)}
                   onRemind={handleRemind}
                 />
               )}
@@ -423,10 +477,35 @@ export default function ResponseDashboard({
   );
 }
 
+/* DECISION Phase 88.6.1-11 (floor) [SPEC Constraints: 44x44 is the floor on every control this
+   phase touches]: the Remind button was about 28px tall (a 20px small-text line plus its
+   vertical padding). It takes the house negative-margin floor (`userProfile/page.js:1530`): a
+   44px minimum height that centres its label, with a negative vertical margin that cancels the
+   row's own vertical padding, so the row stays its height.
+   ARITHMETIC (read from the class strings: the row's `py-2 px-2` and bottom border, the list's
+   `space-y-1`): the button's margin box is 44 - 16 = 28px tall, the row is 28 + 16 + 1px border =
+   45px, and the button's border box spans the row's padding box only, so it stops above the
+   row's bottom border; adjacent rows are separated by that border plus the 4px list gap. The
+   username is plain text, so Remind is the only interactive control in a row today.
+   REJECTED: (a) the plain minimum height alone (every pending row grows by about 16px, a look
+   change in a non-look phase); (b) dropping the floor at the medium breakpoint (unnecessary once
+   the row does not grow). DISCLOSED DELTA: the hover wash and the focus ring now span the row's
+   full height. OWNER-CONFIRMED 2026-10-05 ('Ratify'; plan 88.6.1-58 ledger row P-13) on the
+   condition that no Remind tap area overlaps another control, which the phone spec's no-overlap
+   test pins (`e2e/response-dashboard-remind.spec.ts`, test 3). Changing the margin, the padding
+   or the gap is a decision, not a cleanup.
+   The in-flight wash is the aria-disabled opacity variant at the same 0.5 as before (house
+   raw-button precedent at `KebabMenu.js:520`). */
+
+/** The Remind button's id, derived from its row's status id in ONE place (Req 5 guard). */
+function remindButtonIdFor(statusId) {
+  return `${statusId}-button`;
+}
+
 /**
  * RemindButton - Button to send reminder with 24-hour cooldown display
  */
-function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
+function RemindButton({ userId, lastRemindedAt, isReminding, statusId, onRemind }) {
   // Check if within 24-hour cooldown
   if (lastRemindedAt) {
     const hoursSince = (Date.now() - new Date(lastRemindedAt)) / (1000 * 60 * 60);
@@ -442,7 +521,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
       }
 
       return (
-        <span className="text-sm text-content-muted shrink-0">
+        <span id={statusId} className="text-sm text-content-muted shrink-0">
           Reminded {timeAgo}
         </span>
       );
@@ -451,9 +530,10 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
 
   return (
     <button
+      id={remindButtonIdFor(statusId)}
       onClick={() => onRemind(userId)}
-      disabled={isReminding}
-      className="px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      aria-disabled={isReminding || undefined}
+      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>
