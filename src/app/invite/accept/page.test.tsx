@@ -12,7 +12,7 @@
 //
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only.
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'd'.repeat(48);
@@ -258,5 +258,144 @@ describe('invite/accept — AC-2: the invite-info failure is a house-logger brea
     // T-84-01: the ctx carries the error's name and message and nothing else — never the body.
     const ctx = (logger.info as unknown as Mock).mock.calls[0][1];
     expect(Object.keys(ctx).sort()).toEqual(['message', 'name']);
+  });
+});
+
+// Plan 88.6.1-35 — W039 (AC-32) and the Req 8 page region (AC-24).
+//
+// The page's region handle. Re-declared here on purpose: the page must NOT export it (Next's
+// generated route types reject a page module's extra named exports; see the rsvp page's
+// "NOT EXPORTED, deliberately" note).
+const PAGE_STATUS_TESTID = 'invite-accept-page-status';
+const ACCEPTED_ANNOUNCEMENT =
+  "You've joined the group! You can now see events, suggest games, and coordinate with your group.";
+const NOT_FOUND_LINE = 'This invite may have already been accepted or expired.';
+
+// A first POST that stays in flight until the test resolves it, and the route's REAL answer to
+// any repeat call for the same token (routes/invites.js, the 'Pending invite not found' 404):
+// the accept route is not idempotent, so a second POST can only fail.
+function holdFirstAcceptThen404() {
+  let resolveFirst: (v: unknown) => void = () => {};
+  accept()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        })
+    )
+    .mockRejectedValue(wireError(404, { error: 'Pending invite not found' }));
+  return (v: unknown) => resolveFirst(v);
+}
+
+describe('invite/accept — W039 single-shot accept and the Req 8 page region (plan 88.6.1-35)', () => {
+  it('T1: a re-run with a new user object mid-flight issues no second POST and the success lands', async () => {
+    const resolveFirst = holdFirstAcceptThen404();
+
+    const { rerender } = render(<InviteAcceptPage />);
+
+    // Positive signal first: the POST has really been issued.
+    await screen.findByText('Accepting your invite...');
+    expect(accept()).toHaveBeenCalledTimes(1);
+
+    // The hazard: an Auth0 revalidation hands back a NEW user object with the same subject, and
+    // the effect depends on it.
+    await act(async () => {
+      authState.user = { sub: 'auth0|abc' };
+      rerender(<InviteAcceptPage />);
+    });
+
+    await act(async () => {
+      resolveFirst({ success: true, group_id: GROUP_ID });
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: /you've joined the group!/i }),
+      'the re-run cancelled the successful POST and fired a second one, whose 404 told a person ' +
+        'who had just joined that the invite may have already been accepted'
+    ).toBeInTheDocument();
+    expect(screen.queryByText(NOT_FOUND_LINE)).toBeNull();
+    expect(accept()).toHaveBeenCalledTimes(1);
+  });
+
+  it('T2: under StrictMode the accept POSTs once and the success lands', async () => {
+    const resolveFirst = holdFirstAcceptThen404();
+
+    render(
+      <React.StrictMode>
+        <InviteAcceptPage />
+      </React.StrictMode>
+    );
+
+    await screen.findByText('Accepting your invite...');
+
+    await act(async () => {
+      resolveFirst({ success: true, group_id: GROUP_ID });
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: /you've joined the group!/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(NOT_FOUND_LINE)).toBeNull();
+    expect(accept()).toHaveBeenCalledTimes(1);
+  });
+
+  it('T3: the slot-0 region is the same empty node through loading and accepting, then speaks the success', async () => {
+    authState.isLoading = true;
+    let resolveFirst: (v: unknown) => void = () => {};
+    accept().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        })
+    );
+
+    const { container, rerender } = render(<InviteAcceptPage />);
+
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region.textContent).toBe('');
+    expect(region).toHaveClass('sr-only');
+    // Fragment slot 0: the region is the page's first element.
+    expect(container.firstElementChild).toBe(region);
+
+    await act(async () => {
+      authState.isLoading = false;
+      rerender(<InviteAcceptPage />);
+    });
+
+    await screen.findByText('Accepting your invite...');
+    // Node identity across the loading-return to main-return swap (C-6).
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(region.textContent).toBe('');
+
+    await act(async () => {
+      resolveFirst({ success: true, group_id: GROUP_ID });
+    });
+
+    await screen.findByRole('heading', { name: /you've joined the group!/i });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(region.textContent).toBe(ACCEPTED_ANNOUNCEMENT);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(container.querySelectorAll('svg:not([aria-hidden="true"])')).toHaveLength(0);
+  });
+
+  it('T4 (held-out backstop, R8 idempotency): a re-run after the success neither re-POSTs nor flashes', async () => {
+    accept().mockResolvedValue({ success: true, group_id: GROUP_ID });
+
+    const { rerender } = render(<InviteAcceptPage />);
+
+    await screen.findByRole('heading', { name: /you've joined the group!/i });
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    const spoken = region.textContent;
+
+    await act(async () => {
+      authState.user = { sub: 'auth0|abc' };
+      rerender(<InviteAcceptPage />);
+    });
+
+    expect(accept()).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Accepting your invite...')).toBeNull();
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(region.textContent).toBe(spoken);
   });
 });
