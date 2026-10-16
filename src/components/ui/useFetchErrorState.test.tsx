@@ -16,6 +16,7 @@ import { useFetchErrorState, getFetchErrorMessage } from './useFetchErrorState';
 import { FetchErrorBanner } from './FetchErrorBanner';
 import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
+import { logger } from '@/lib/logger';
 
 afterEach(() => cleanup());
 
@@ -302,16 +303,17 @@ describe('FetchErrorBanner — SPEC Edge Coverage (R1)', () => {
     // FetchErrorBanner adds a POLITE sr-only sibling for transient "Retrying…" text, and
     // the two must never nest or duplicate.
     //
-    // WHAT IT DOES NOT PROVE: that the failure is ANNOUNCED. The UI-SPEC §6.2
-    // ANNOUNCEMENT row is NOT marked verified by this arm, and plan 88.6-13 does not
-    // satisfy it. The reason is EMPTY-FIRST: `StatusRegion.tsx:9-12` records that screen
-    // readers announce CHANGES to a MOUNTED live region, not the conditional mount of a
-    // new one — while `FetchErrorBanner.tsx:58` is `if (!state.showError) return null;`,
-    // so the whole banner, its assertive region included, enters the DOM together with
-    // its text. Routed durably, NOT left as an observation:
-    // `.planning/deferred/phase-88.9.md`, with plan 88.6-36 (the plan that declares
-    // FetchErrorBanner.tsx) named as the in-phase home if the owner wants it sooner.
-    // No shared primitive is edited here — FetchErrorBanner has 29 call sites.
+    // WHAT IT DOES NOT PROVE: that the failure is ANNOUNCED at a real call site.
+    // REWRITTEN IN PLACE, Phase 88.6.1-21 (AC-11 / D-42): the assertive region now PRE-EXISTS
+    // in the component — the full branch's render keeps its Banner mounted (visually hidden
+    // while healthy), so the failure is text injected into a mounted region (the C1 arm below
+    // pins the node identity). In production, though, every full mount is caller-gated (22
+    // after wave 4: CT-2a's 21 plus plan 88.6.1-25's event-view banner), so the region is
+    // INSERTED together with its text — which IS announced for `role="alert"` (D-42;
+    // `StatusRegion.tsx:9-17`, the EMPTY-FIRST bullet's alert carve-out). FetchErrorBanner
+    // has 33 mounts, re-countable from periodictabletop/ with
+    //   grep -rn '<FetchErrorBanner' src --include='*.js' --include='*.tsx' | grep -v '\.test\.'
+    // (38 lines at FE a4f38aa, 5 of them comment prose).
     const { container } = render(<FetchErrorBanner state={errorState('boom')} />);
 
     expect(container.querySelectorAll('[aria-live="assertive"]')).toHaveLength(1);
@@ -342,8 +344,10 @@ describe('FetchErrorBanner — SPEC Edge Coverage (R1)', () => {
 //   (b) IDENTITY  — the element reference is CAPTURED before the transition and asserted to be
 //                   the SAME node afterwards (`toBe`), not merely present in both states;
 //   (c) VISIBILITY— `sr-only` in BOTH states, asserted mechanically. `StatusRegion` supplies no
-//                   default visibility (`StatusRegion.tsx:43` is `cn('text-sm', className)`), so
-//                   an unstated className would ship a visible empty node on every consumer.
+//                   default visibility (`StatusRegion.tsx:102-106`, anchor `className={cn(`:
+//                   'text-sm', then className, then only the opt-in srOnlyWhenEmpty, default
+//                   false; re-anchored Phase 88.6.1-21), so an unstated className would ship a
+//                   visible empty node on every consumer.
 // ---------------------------------------------------------------------------
 
 /** The healthy twin of `errorState` — same shape, `showError` false. */
@@ -404,12 +408,22 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
   });
 
   it('adds no region to the FULL branch — the gate on `compact` is what keeps plan 13 green', () => {
-    // The `showError` guard covers BOTH branches, so an UNGATED hoist would put this polite
-    // region in the full branch alongside the one already composed there. That is the exact
-    // shape the arm above ("mounts exactly ONE assertive and ONE polite") goes red on; this is
-    // its positive control from the other side.
+    // An UNGATED hoist of the compact region would add a SECOND polite region to the full branch,
+    // beside the one composed there. That is the exact shape the arm above ("mounts exactly ONE
+    // assertive and ONE polite") goes red on; this is its positive control from the other side.
+    // REWRITTEN IN PLACE, Phase 88.6.1-21 (AC-11 / D-42): the healthy full branch no longer
+    // renders nothing — it keeps its Banner mounted (visually hidden) so the failure arrives as a
+    // change to a mounted assertive region. What stays pinned is the count: still exactly ONE
+    // polite region, so the compact region has not leaked into this branch.
     const { container } = render(<FetchErrorBanner state={healthyState()} />);
-    expect(container.innerHTML, 'the full branch still renders nothing while healthy').toBe('');
+    const assertive = container.querySelectorAll('[aria-live="assertive"]');
+    const polite = container.querySelectorAll('[aria-live="polite"]');
+    expect(assertive, 'the healthy full branch mounts ONE assertive region').toHaveLength(1);
+    expect(polite, 'and ONE polite region').toHaveLength(1);
+    expect(assertive[0].textContent, 'both empty while healthy').toBe('');
+    expect(polite[0].textContent).toBe('');
+    expect(container.querySelectorAll('[role="status"][aria-live="polite"]')).toHaveLength(1);
+    expect(container.querySelectorAll('button'), 'no control while healthy').toHaveLength(0);
   });
 
   it('carries no weight utility on any of the three link-buttons, colour and underline intact', () => {
@@ -945,5 +959,169 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await waitFor(() => expect(document.activeElement).toBe(title));
     expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
     expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-21 Task 2 — the full branch keeps its Banner mounted (AC-11 / D-42), its buttons
+// leave the atomic alert (Banner's `actions` slot), and a FAILED retry is told through the polite
+// region — with ONE outcome rule shared with the compact branch: the outcome is read from the
+// retry's OWN result and takes effect only once the committed state agrees.
+// ---------------------------------------------------------------------------
+
+/** A retry that hands back a fresh deferred on every call, so each press is driven separately. */
+function pressableRetry() {
+  const pending: Deferred[] = [];
+  const retry = vi.fn(() => {
+    const d = deferred();
+    pending.push(d);
+    return d.promise;
+  });
+  return { retry, pending };
+}
+
+describe('FetchErrorBanner — the full branch region and the retry outcome (plan 88.6.1-21, AC-11 / D-42)', () => {
+  it('C1: the assertive region is mounted EMPTY while healthy and the SAME node carries the failure', () => {
+    const { container, rerender } = render(<FetchErrorBanner title={HOST_TITLE} state={healthyState()} />);
+
+    const assertives = container.querySelectorAll('[aria-live="assertive"]');
+    expect(assertives, 'one assertive region exists BEFORE the failure').toHaveLength(1);
+    const region = assertives[0] as HTMLElement;
+    expect(region).toHaveAttribute('role', 'alert');
+    expect(region.textContent, 'empty first (Edge R3 empty)').toBe('');
+    const root = container.firstElementChild as HTMLElement;
+    expect(root, 'the healthy banner is visually hidden').toHaveClass('sr-only');
+    expect(container.textContent, 'nothing to see or hear while healthy').toBe('');
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+
+    rerender(<FetchErrorBanner title={HOST_TITLE} state={errorState('boom')} />);
+
+    expect(container.querySelector('[aria-live="assertive"]'), 'the SAME node (Edge R3 ordering)').toBe(region);
+    expect(region).toHaveTextContent(HOST_TITLE);
+    expect(region).toHaveTextContent('boom');
+    expect(container.firstElementChild).toBe(root);
+    expect(root).not.toHaveClass('sr-only');
+    expect(container.querySelectorAll('[aria-live="assertive"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
+    for (const live of Array.from(container.querySelectorAll('[aria-live]'))) {
+      expect(live.querySelector('[aria-live]'), 'never nested (Edge R3 adjacency)').toBeNull();
+    }
+    // At least one, never a fixed count: plan 88.6.1-69 makes `Report this` conditional.
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) {
+      expect(button.closest('[aria-live]'), `${button.textContent}: outside every live region`).toBeNull();
+    }
+  });
+
+  it('C2: every failed retry says Retrying… and then the title, each as a NEW node', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    const { container } = render(<FetchErrorBanner title={HOST_TITLE} state={failingState(retry)} />);
+    const polite = container.querySelector('[aria-live="polite"]') as HTMLElement;
+    const button = screen.getByRole('button', { name: 'Try again' });
+
+    let settledNode: ChildNode | null = null;
+    for (const round of [0, 1]) {
+      await user.click(button);
+      expect(polite.textContent, `failure ${round + 1}: in flight`).toBe('Retrying…');
+      const inFlightNode = polite.firstChild;
+      if (settledNode) {
+        expect(inFlightNode, `failure ${round + 1}: the press is a node addition, not a text rewrite`).not.toBe(settledNode);
+      }
+      await act(async () => {
+        pending[round].resolve({ isError: true });
+      });
+      expect(polite.textContent, `failure ${round + 1}: settled`).toBe(HOST_TITLE);
+      expect(polite.firstChild, `failure ${round + 1}: the outcome is a NEW node`).not.toBe(inFlightNode);
+      settledNode = polite.firstChild;
+    }
+  });
+
+  it('C3: a success-shaped or an unknown result never puts the title in the polite region', async () => {
+    const user = userEvent.setup();
+    for (const result of [{ isError: false }, undefined]) {
+      const { retry, pending } = pressableRetry();
+      const { container, unmount } = render(<FetchErrorBanner title={HOST_TITLE} state={failingState(retry)} />);
+      const polite = container.querySelector('[aria-live="polite"]') as HTMLElement;
+      await user.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(polite.textContent).toBe('Retrying…');
+      await act(async () => {
+        pending[0].resolve(result);
+      });
+      expect(polite.textContent, `result ${JSON.stringify(result)}: no failure is announced`).toBe('');
+      unmount();
+    }
+  });
+
+  it('C4: a success whose state commits one macrotask later is never announced as a failure', async () => {
+    const user = userEvent.setup();
+    const d = deferred();
+    const controls: RetryHostControls = {};
+    const { container } = render(<RetryHost d={d} gate="component" onResolved="none" controls={controls} />);
+    const polite = container.querySelector('[aria-live="polite"]') as HTMLElement;
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      d.resolve({ isError: false });
+    });
+    // Settled, but the committed state still shows the failure (the TanStack lag).
+    expect(screen.getByText('boom')).toBeInTheDocument();
+    expect(polite.textContent, 'never the title between the settle and the commit').toBe('');
+
+    act(() => controls.setFailed?.(false));
+    expect(screen.queryByText('boom')).toBeNull();
+    expect(polite.textContent).toBe('');
+    expect(container.querySelector('[aria-live="assertive"]')?.textContent).toBe('');
+  });
+
+  it('C5: a REJECTED retry is caught, reported once with the errCtx shape, never announced, and releases the latch', async () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      const { retry, pending } = pressableRetry();
+      const { container } = render(<FetchErrorBanner title={HOST_TITLE} state={failingState(retry)} />);
+      const polite = container.querySelector('[aria-live="polite"]') as HTMLElement;
+      const button = screen.getByRole('button', { name: 'Try again' });
+
+      await user.click(button);
+      await act(async () => {
+        pending[0].reject(new TypeError('adapter bug'));
+      });
+      expect(button, 'the latch released').toHaveTextContent('Try again');
+      expect(button).not.toHaveAttribute('aria-disabled');
+      expect(polite.textContent, 'an unknown outcome never speaks the title').toBe('');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][1], 'name and message only (T-84-01)').toEqual({
+        name: 'TypeError',
+        message: 'adapter bug',
+      });
+
+      await user.click(button);
+      expect(retry, 'a second press retries again').toHaveBeenCalledTimes(2);
+      await act(async () => {
+        pending[1].resolve(undefined);
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('C6: when the assertive region itself empties and refills during the flight, the polite title is skipped', async () => {
+    const user = userEvent.setup();
+    const d = deferred();
+    const { container } = render(<RetryHost d={d} gate="component" atPress onResolved="fail" />);
+    const assertive = container.querySelector('[aria-live="assertive"]') as HTMLElement;
+    const polite = container.querySelector('[aria-live="polite"]') as HTMLElement;
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(assertive.textContent, 'the never-loaded shape empties the assertive region at the press').toBe('');
+    await act(async () => {
+      d.resolve({ isError: true });
+    });
+    expect(container.querySelector('[aria-live="assertive"]')).toBe(assertive);
+    expect(assertive, 'the refill already speaks the title').toHaveTextContent(HOST_TITLE);
+    expect(assertive).toHaveTextContent('boom');
+    expect(polite.textContent, 'so the polite region does not repeat it').toBe('');
   });
 });
