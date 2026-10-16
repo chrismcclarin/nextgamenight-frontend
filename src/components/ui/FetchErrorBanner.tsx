@@ -362,11 +362,32 @@ export function FetchErrorBanner({
         {state.showError ? (
           <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
             <span>{noticeText}</span>
+            {/* DECISION Phase 88.6.1-21 (WR-503 / AC-10): all three link-buttons in this file
+                (this `Retry`, and `Try again` / `Report this` in the full branch) declare the
+                house PHONE-SCOPED link-button floor `min-h-11 md:min-h-0`
+                (`UpcomingEventsCard.js:263`, `DECISION Phase 88-01 (D-36)`; the `.btn` floor is
+                phone-only too). VISIBLE DELTA: on a phone each button row grows to 44px.
+                REJECTED: (a) the register's negative-vertical-margin compensation
+                (`.planning/deferred/phase-88.6.1.md:85`) — the 44px target would overlap the
+                message line above it and unknown caller content around this row, so a tap on text
+                would activate a retry; (b) an all-widths floor — AC-10 is a 375px criterion, and
+                desktop rhythm is not this phase's look call.
+
+                DECISION Phase 88.6.1-21 (Req 7 ring): the same three carry the byte-identical
+                house ring (`Button.tsx:113`; 54 non-test lines in 28 files carried it before this
+                plan, measured 2026-10-15), keyboard-only by `focus-visible`. It is a box-shadow
+                outside the box, clear of the message above (`mt-2`) and the neighbours (`gap-2` /
+                `gap-4`). The orchestrator decision of 2026-10-05; it supersedes the earlier plan to
+                route this look item to Phase 88.9. REJECTED: leaving the browser's default outline
+                (one surface off the house standard on 33 mounts); a rounded or inset variant (the
+                ringed link-buttons in the app mostly carry no rounding — the plan's census, not
+                re-run here). The NO-weight marker in the full branch is honoured: the ring is not a
+                weight utility. */}
             <button
               type="button"
               onClick={handleRetry}
               aria-disabled={retrying || undefined}
-              className="inline-flex items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted"
+              className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
               <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
               {retrying ? 'Retrying…' : 'Retry'}
@@ -434,43 +455,45 @@ export function FetchErrorBanner({
     retryOutcome === 'none' && retryFailedAgain && state.showError && !assertiveChangedRef.current;
   const politeText = retrying ? 'Retrying…' : politeTitle ? title : '';
 
+  // The full branch's controls, rendered in Banner's `actions` slot (outside the live region).
+  // Hoisted so the Banner's own opening tag carries no handler of its own.
+  const actionRow = state.showError ? (
+    <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+      {/* DECISION Phase 88.6-36 (D-03 / UI-SPEC §4.5): the three link-buttons in this file
+          (the compact `Retry` above, and `Try again` / `Report this` here) carry NO weight
+          utility. §4.5 names these three sites explicitly as the EMPHASIS case — the emphasis
+          is carried by `text-content-link` and `underline`, both of which stay, so the 500
+          deleted with no look delta. Chosen OVER 700, which would make a text link louder than
+          the banner title beside it. What was NOT measured, stated rather than implied: the
+          COMPUTED rendered weight. This suite is jsdom, which performs no layout and loads no
+          stylesheet, so `getComputedStyle().fontWeight` reads the UA default identically
+          before and after and would prove nothing (the D28 rule). The pins are class-level. */}
+      <button
+        type="button"
+        onClick={handleRetry}
+        aria-disabled={retrying || undefined}
+        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      >
+        <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
+        {retrying ? 'Retrying…' : 'Try again'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowReport(true)}
+        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      >
+        <Icon name="Flag" size={14} />
+        Report this
+      </button>
+    </div>
+  ) : null;
+
   return (
     <div className={state.showError ? undefined : 'sr-only'}>
       <Banner
         tone="warning"
         title={state.showError ? title : undefined}
-        actions={
-          state.showError ? (
-            <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
-              {/* DECISION Phase 88.6-36 (D-03 / UI-SPEC §4.5): the three link-buttons in this file
-                  (the compact `Retry` above, and `Try again` / `Report this` here) carry NO weight
-                  utility. §4.5 names these three sites explicitly as the EMPHASIS case — the emphasis
-                  is carried by `text-content-link` and `underline`, both of which stay, so the 500
-                  deleted with no look delta. Chosen OVER 700, which would make a text link louder than
-                  the banner title beside it. What was NOT measured, stated rather than implied: the
-                  COMPUTED rendered weight. This suite is jsdom, which performs no layout and loads no
-                  stylesheet, so `getComputedStyle().fontWeight` reads the UA default identically
-                  before and after and would prove nothing (the D28 rule). The pins are class-level. */}
-              <button
-                type="button"
-                onClick={handleRetry}
-                aria-disabled={retrying || undefined}
-                className="inline-flex items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted"
-              >
-                <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
-                {retrying ? 'Retrying…' : 'Try again'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowReport(true)}
-                className="inline-flex items-center gap-1 text-content-link underline hover:no-underline"
-              >
-                <Icon name="Flag" size={14} />
-                Report this
-              </button>
-            </div>
-          ) : null
-        }
+        actions={actionRow}
       >
         {state.showError ? <p>{state.message}</p> : null}
       </Banner>
