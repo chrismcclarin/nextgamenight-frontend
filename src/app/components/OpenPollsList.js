@@ -15,6 +15,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { toast } from 'sonner';
 
 /**
@@ -33,8 +34,11 @@ import { toast } from 'sonner';
  * @param {string} props.userRole - 'owner' | 'admin' | 'member' | 'pending'
  * @param {string} [props.currentUserDbId] - Caller's User.id UUID (currently
  *   informational; the can_close gate is server-derived in the response).
+ * @param {{ current: HTMLElement | null }} [props.focusFallbackRef] - Where focus goes after an
+ *   ended check-in's row leaves the DOM (Phase 88.6.1-29, H4): the host's own expand control.
+ *   When omitted, the shared focus-recovery hook floors to the page (`main h1`, plan 88.6.1-04).
  */
-export default function OpenPollsList({ groupId, group, userRole, currentUserDbId }) {
+export default function OpenPollsList({ groupId, group, userRole, currentUserDbId, focusFallbackRef }) {
   const [showStartPoll, setShowStartPoll] = useState(false);
   const queryClient = useQueryClient();
 
@@ -65,6 +69,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
      whose request had failed. Empty and failed are different facts and get different surfaces; do not
      re-merge these two branches. */
   const pollsErrorState = useFetchErrorState(openPollsQuery);
+  const focusRecovery = useFocusRecovery({ fallback: focusFallbackRef });
 
   // Post-write cache invalidation replaces the old loadPrompts() refetch — keeps
   // the open-polls list fresh after a direct-API write (A1/A4).
@@ -77,7 +82,25 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
   // positive role allowlist.
   const canCreate = userRole && userRole !== 'pending';
 
+  /* DECISION Phase 88.6.1-29 (D-04, D-05, H4): ending a check-in arms plan 88.6.1-04's ONE shared
+     focus-recovery hook at the START of this handler, with the host's own expand control (the
+     Check-ins `role="button"` header, passed down as `focusFallbackRef`) as the fallback. The hook
+     acts only once the ended row has left the DOM and only if focus was lost with it; without the
+     prop it floors to the page `<h1>` (plan 04's floor). REJECTED, each for its reason:
+     (a) a heading minted for Check-ins: D-05 forbids it, and the Section's own note keeps the title
+         a span;
+     (b) a fallback prop on KebabMenu: D-04 forbids it, and so does KebabMenu's own restore marker;
+     (c) focusing after the refresh await resolves: TanStack commits the removal a macrotask after
+         that (RESEARCH M-2.1, P-6), so focus would leave a row still on screen; the ordering arm of
+         PromptScheduleSection.test.tsx shows that RED;
+     (d) the next row's kebab trigger as `preferred`: D-05 names the expand control, whose
+         accessible name carries the live count badge, so landing there announces the outcome; a
+         next-row target announces only "Check-in actions";
+     (e) the planning page's "Availability Polls" heading: it lies outside this component, and D-05
+         names the section's own control.
+     Changing the target is a decision, not a cleanup. */
   const handleClose = async (promptId) => {
+    const settle = focusRecovery.arm();
     try {
       await promptAPI.closePrompt(promptId);
       // Backend has already flipped status to 'closed'; invalidate so the
@@ -117,6 +140,8 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
           },
         })
       );
+    } finally {
+      settle();
     }
   };
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { promptSettingsAPI, promptAPI } from '../../lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
@@ -53,6 +53,9 @@ export default function PromptScheduleSection({
   // sections cannot collide on one id — the idiom already shipped at `CalendarListView.js:172`
   // and `ParticipantRow.js:13`.
   const panelId = `prompt-schedule-panel-${useId()}`;
+  // H4 focus fallback for Check-ins (D-05): the section has no heading, so its own expand control
+  // is the target and none is minted. See DECISION Phase 88.6.1-29 (D-04, D-05, H4) in OpenPollsList.js.
+  const expandControlRef = useRef(null);
 
   const isAdmin = userRole === 'owner' || userRole === 'admin';
 
@@ -234,6 +237,7 @@ export default function PromptScheduleSection({
           (animate out, then hide) — disproportionate machinery on the phase's tracer plan.
           Reverting to the CSS-only collapse is a decision, not a cleanup. */}
       <div
+        ref={expandControlRef}
         role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
@@ -304,6 +308,7 @@ export default function PromptScheduleSection({
           group={group}
           userRole={userRole}
           currentUserDbId={currentUserDbId}
+          focusFallbackRef={expandControlRef}
         />
 
         {/* Recurring-schedules manager — admin-only sub-mount per D-UI-01.
