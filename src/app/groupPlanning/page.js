@@ -19,6 +19,10 @@ import { logger, errCtx } from '../../lib/logger';
 const LOAD_OK = Object.freeze({ isError: false });
 const LOAD_FAILED = Object.freeze({ isError: true });
 
+// Copy row G5 (D-30): byte-equal to the route fallback label (groupPlanning/loading.tsx), so the
+// wording does not change when the route boundary hands over to the page.
+const AUTH_LOADING_MESSAGE = "Getting your group's plans...";
+
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
     // Phase 87.3-05 (D-02): resolve the caller's own Users.id UUID via the
@@ -274,7 +278,7 @@ export default function GroupPlanningPage() {
 
     if (!user) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
-            {authLoading ? 'Loading...' : 'Redirecting to login...'}
+            {authLoading ? AUTH_LOADING_MESSAGE : 'Redirecting to login...'}
         </div>;
     }
 
@@ -324,10 +328,24 @@ export default function GroupPlanningPage() {
                 The links also carry the project focus ring, DECISION Phase 88.3-17 (DEF-88.3-13-04,
                 owner ruling A: the browser default outline is unreadable on some surfaces) — they
                 are the page's FIRST tab stops. The separators are aria-hidden so a screen reader
-                does not read "greater than" between crumbs. Still open elsewhere, for the same
-                88.9 pointer: 3 of the 5 breadcrumbs lack the ring (userProfile's Home link and
-                both gameDetail breadcrumbs' Home links) and 6 separator spans are not hidden. */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                does not read "greater than" between crumbs. Still open elsewhere at FE 2f3d4c4: five
+                breadcrumb links lacked the ring (userProfile's Home link, both gameDetail Home links
+                and both gameDetail group-name links) and 6 separator spans were not hidden.
+                AMENDED Phase 88.6.1-16 (D-46): as first written this sentence counted three (Home
+                links only); the Phase 88.6.1 research re-count found five, which is D-46. The ring
+                and the six exposed separators are no longer an 88.9 pointer — Phase 88.6.1
+                Requirement 7 fixes them in each page's own plan, and plan 88.6.1-55 pins every
+                breadcrumb link's ring and separator in the shared breadcrumb scan. The crumb-weight
+                question above stays with Phase 88.9. */}
+            {/* DECISION Phase 88.6.1-16 (R7-M7): the nav carries min-w-0 beside its inline-block
+                max-w-full pill. The token is inert today (the nav's parent is a block box) and is
+                KEPT on purpose: if the nav ever becomes a flex item, a minimum width of auto would
+                beat the max-width cap and re-open UAT3-D1 (a long unbroken group name running off a
+                375px screen). Chosen OVER omitting it as inert — the reasoning the groupHomePage
+                breadcrumb marker records (its "deliberately NOT added" sentence), which plan
+                88.6.1-55 amends while it adds the token to the shared breadcrumb scan. Removing it
+                is a decision, not a cleanup. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {group && (
