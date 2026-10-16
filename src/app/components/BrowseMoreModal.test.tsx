@@ -11,6 +11,7 @@ import { act, render, screen, cleanup, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+import * as Sentry from '@sentry/nextjs';
 import BrowseMoreModal from './BrowseMoreModal';
 import { ApiError } from '../../lib/api';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
@@ -33,7 +34,12 @@ vi.mock('../../lib/api', async (importOriginal) => ({
   suggestionsAPI: api,
 }));
 
+// Plan 88.6.1-32 (W006): the failed-fetch capture, counted per failure episode (the
+// FeedbackForm.test.tsx idiom).
+vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn() }));
+
 beforeEach(() => {
+  vi.mocked(Sentry.captureException).mockClear();
   api.getGroupSuggestions.mockReset();
   api.getEventSuggestions.mockReset();
   api.getGroupSuggestions.mockResolvedValue({ suggestions: [] });
@@ -421,5 +427,147 @@ describe('BrowseMoreModal refresh keeps the list (88.6.1-32, D-09, D-41, AC-27, 
     expect(await screen.findByRole('button', { name: 'Catan' })).toBeInTheDocument();
     await waitFor(() => expect(slotRegions().polite.textContent).toBe(UPDATING));
     expect(screen.queryByText(FIRST_LOAD_LINE)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Plan 88.6.1-32 (AC-13, D-35, CT-3 row 22): at a player count of 1 the decrement is
+// aria-disabled with NO native disabled attribute, and its handler's first line refuses, so a
+// press at 1 (or with an EMPTY box, which the clamp alone would turn into 1) writes nothing and
+// sends no request. (W006, D-26): the failed-fetch Sentry capture is kept, class-only, and
+// latched to one event per failure episode, re-armed on open and on a successful response.
+// ---------------------------------------------------------------------------------------------
+
+function decrement() {
+  return screen.getByRole('button', { name: 'Decrease player count' });
+}
+function playerBox() {
+  return screen.getByRole('spinbutton', { name: 'Player count' });
+}
+async function renderSettledWith(props: Partial<typeof baseProps>, games: SuggestionGame[] = []) {
+  api.getGroupSuggestions.mockResolvedValueOnce({ suggestions: games });
+  const utils = render(<BrowseMoreModal {...baseProps} {...props} />);
+  if (games.length > 0) {
+    await screen.findByRole('button', { name: games[0].name });
+  } else {
+    await screen.findByRole('link', { name: /add games to your collection/i });
+  }
+  return utils;
+}
+// One held refresh, driven by the increase button and settled by the caller's outcome.
+async function refreshWith(
+  user: ReturnType<typeof userEvent.setup>,
+  outcome: { reject: unknown } | { resolve: SuggestionGame[] }
+) {
+  const d = holdNext();
+  await user.click(screen.getByRole('button', { name: 'Increase player count' }));
+  await waitFor(() => expect(slotRegions().polite.textContent).toBe(UPDATING));
+  await act(async () => {
+    if ('reject' in outcome) d.reject(outcome.reject);
+    else d.resolve({ suggestions: outcome.resolve });
+  });
+  await waitFor(() => expect(slotRegions().polite.textContent).toBe(''));
+}
+
+describe('BrowseMoreModal decrement at 1 and the capture latch (88.6.1-32, AC-13, W006)', () => {
+  it('H: at 1 the decrement is aria-disabled, not natively disabled, and keeps its compact square', async () => {
+    const user = userEvent.setup();
+    await renderSettledWith({ defaultPlayerCount: 2 });
+    await user.click(decrement());
+    expect(playerBox()).toHaveValue(1);
+    const dec = decrement();
+    expect(dec).toHaveAttribute('aria-disabled', 'true');
+    expect(dec).not.toHaveAttribute('disabled');
+    expect(dec.className).not.toMatch(/(^|\s)disabled:/);
+    expect(dec).toHaveClass('btn-compact');
+    expect(dec).toHaveClass('focus-visible:ring-inset');
+    expect(dec).toHaveClass('w-8');
+    expect(dec).toHaveClass('h-8');
+  });
+
+  it('I: a press at 1 writes nothing and sends no request', async () => {
+    const user = userEvent.setup();
+    await renderSettledWith({ defaultPlayerCount: 1 });
+    expect(playerBox()).toHaveValue(1);
+    const callsBefore = api.getGroupSuggestions.mock.calls.length;
+    await user.click(decrement());
+    await user.click(decrement());
+    await act(async () => {});
+    expect(playerBox()).toHaveValue(1);
+    expect(api.getGroupSuggestions.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('J: with an EMPTY box the decrement refuses instead of writing 1 (Edge R4 boundary)', async () => {
+    const user = userEvent.setup();
+    await renderSettledWith({});
+    await user.clear(playerBox());
+    expect(playerBox()).toHaveValue(null);
+    await act(async () => {});
+    const callsBefore = api.getGroupSuggestions.mock.calls.length;
+    await user.click(decrement());
+    await act(async () => {});
+    expect(playerBox()).toHaveValue(null);
+    expect(decrement()).toHaveAttribute('aria-disabled', 'true');
+    expect(api.getGroupSuggestions.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('K1: two failing refreshes in one episode file exactly one class-only event', async () => {
+    const user = userEvent.setup();
+    await renderSettled([CATAN, AZUL]);
+    await refreshWith(user, { reject: networkError() });
+    await refreshWith(user, { reject: networkError() });
+    expect(slotRegions().assertive.textContent).toBe(getFetchErrorMessage(networkError()));
+    const capture = vi.mocked(Sentry.captureException);
+    expect(capture).toHaveBeenCalledTimes(1);
+    const args = capture.mock.calls[0];
+    expect(args).toHaveLength(2);
+    expect(args[0]).toBeInstanceOf(Error);
+    expect((args[0] as Error).message).toBe('browse-more suggestions fetch failed: ApiError network');
+    expect((args[0] as Error).message).not.toContain('SECRET-UPSTREAM-TEXT');
+    expect(args[1]).toEqual({ tags: { feature: 'suggestions', op: 'browse-more-fetch' } });
+  });
+
+  it('K2: a success re-arms the latch, and a different failure code is a new episode', async () => {
+    const user = userEvent.setup();
+    await renderSettled([CATAN, AZUL]);
+    const capture = vi.mocked(Sentry.captureException);
+    await refreshWith(user, { reject: networkError() });
+    await refreshWith(user, { reject: networkError() });
+    expect(capture).toHaveBeenCalledTimes(1);
+    await refreshWith(user, { resolve: [CATAN] });
+    await refreshWith(user, { reject: networkError() });
+    expect(capture).toHaveBeenCalledTimes(2);
+    await refreshWith(user, { reject: new ApiError('SECRET-UPSTREAM-TEXT', 'internal', 500) });
+    expect(capture).toHaveBeenCalledTimes(3);
+    expect((capture.mock.calls[2][0] as Error).message).toBe(
+      'browse-more suggestions fetch failed: ApiError internal'
+    );
+  });
+
+  it('K3: a reopen is a new episode', async () => {
+    const user = userEvent.setup();
+    const { rerender } = await renderSettled([CATAN, AZUL]);
+    const capture = vi.mocked(Sentry.captureException);
+    await refreshWith(user, { reject: networkError() });
+    await refreshWith(user, { reject: networkError() });
+    expect(capture).toHaveBeenCalledTimes(1);
+    rerender(<BrowseMoreModal {...baseProps} open={false} />);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    api.getGroupSuggestions.mockRejectedValueOnce(networkError());
+    rerender(<BrowseMoreModal {...baseProps} open />);
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
+  });
+
+  it('L: Enter from 2 to 1 leaves focus on the decrement (CONFIRM-ONLY in jsdom)', async () => {
+    // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, FE-TESTING-CONVENTIONS C-11):
+    // this arm passes against a native disabled gate too. The real proof is the phone e2e test
+    // in e2e/browse-games-modal.spec.ts.
+    const user = userEvent.setup();
+    await renderSettledWith({ defaultPlayerCount: 2 });
+    const dec = decrement();
+    dec.focus();
+    await user.keyboard('{Enter}');
+    expect(playerBox()).toHaveValue(1);
+    expect(document.activeElement).toBe(decrement());
   });
 });
