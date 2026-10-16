@@ -749,6 +749,18 @@ export async function apiFetch<T = unknown>(
    `ApiError('network')` and every unparseable body an `ApiError('internal')` (see
    `timedPublicFetch` / `guardedJson` below).]
 
+   [AMENDED Phase 88.6.1-23 (R9 mechanism, owner ruling 2026-10-05): `respondViaToken` is a
+   SECOND scoped exception, 5xx ONLY — a status of 500 or above rejects `ApiError('internal')`
+   before the parse (and before any body read: its timedPublicFetch call skips a 5xx body), and
+   every status below 500 still resolves its parsed body unchanged. The binding constraint above
+   is a CONSEQUENCE constraint for the bodies a consumer reads; the RSVP page reads only 403 and
+   410 discriminants, and no 5xx body carries one. What it fixes: the app's own JSON 500 on
+   `/rsvp/respond` RESOLVED and fell to the page's generic copy, which tells the person to tap
+   a single-use link the backend may already have consumed; the owner ruled that a server error
+   shows R9 (plan 88.6.1-36's `internal` arm). "ONE scoped exception" in the bracket above now
+   reads: validateToken is the one helper that throws on a 4xx, and respondViaToken throws on
+   5xx only. See the DECISION Phase 88.6.1-23 (R9 mechanism) marker at the guard.]
+
    AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review MEDLOW-2, owner ruling
    `FIX-NOW-SET-RULING: as-recommended`): the census above was FIVE and is SIX. The sixth,
    `availabilityFormAPI.getExistingResponse`, was MISSED — a raw `fetch(...).then(res =>
@@ -802,7 +814,9 @@ const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
  * body, cancels it through this helper's own controller and returns `{ res, text: '' }`. The
  * read still exists only in this helper, so the 88.6-62 rule above ("reading the body outside
  * this helper again is a decision") is honoured, not bypassed. `getExistingResponse` passes
- * the boolean (it returns `null` for every non-OK answer).
+ * the boolean (it returns `null` for every non-OK answer), and `respondViaToken` passes a
+ * predicate that is true for 500 and above only (nothing reads its 5xx body; see its
+ * DECISION Phase 88.6.1-23 (R9 mechanism) marker).
  * REJECTED (a): a fetch-then-read split under the same controller at the call site (the
  * register's second option). It puts a second body-handling path outside this helper, which is
  * what 88.6-62 forbids.
@@ -812,7 +826,8 @@ const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
  * `body` can be null.
  * REJECTED (d): skipping a body a helper READS. `respondViaToken` reads `result.error` off its
  * 403 / 410 bodies and the prefill helpers read their error copy off a non-OK body (DECISION
- * Phase 88.6-42's D62 branch B), so none of them takes the boolean form.
+ * Phase 88.6-42's D62 branch B), so none of them takes the boolean form; respondViaToken's
+ * predicate stays false below 500, so its 403 / 410 bodies are still read.
  * Turning the opt-in on for another helper or another status, or reading the body outside this
  * helper, is a decision, not a cleanup.
  */
@@ -1184,10 +1199,40 @@ export const rsvpPublicAPI = {
     const { res, text } = await timedPublicFetch(
       `${PUBLIC_API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${encodeURIComponent(eventId)}&u=${encodeURIComponent(userId)}&s=${encodeURIComponent(status)}`,
       {},
-      RSVP_RESPOND_TRANSPORT_FAILURE
+      RSVP_RESPOND_TRANSPORT_FAILURE,
+      { skipErrorBody: (s) => s >= 500 }
     );
+    // DECISION Phase 88.6.1-23 (R9 mechanism; owner ruling 2026-10-05, copy key R9): CHOSEN — a
+    // status of 500 or above rejects `internal` at headers, before any body read (the status
+    // predicate on timedPublicFetch's skip opt-in above) and before the parse; every status
+    // below 500 still resolves its parsed body. `internal` is the code this module already gives
+    // every 5xx (`statusToCode`), and the RSVP page's `internal` arm (plan 88.6.1-36) shows R9,
+    // which is true whether or not the single-use token was spent (the backend consumes it
+    // before the work that can 500, BE `routes/rsvp.js` `consumeByNonce`).
+    // WHY DECISION Phase 88.6-42's no-throw rule does not bind here: it is a CONSEQUENCE
+    // constraint that protects the bodies the page reads, the 403 and 410 discriminants. The
+    // backend's 5xx body carries none of them and the page never reads it, so this throw
+    // strands no read.
+    // REJECTED (a): a full res.ok throw. That is branch A (owner, 2026-09-09): it strands the
+    // four 403 / 410 reads.
+    // REJECTED (b): telling the 500 apart on the page by its text. Backend prose is never a
+    // discriminant here (the error-envelope roster pins this page's reads at four), and a
+    // resolved body carries no status.
+    // REJECTED (c): attaching the 5xx body as `details` or `upstreamMessage`. Nothing reads it,
+    // and a raw backend body must not ride a diagnostic (SPEC Prohibition 5).
+    // REJECTED (d): reading the 5xx body and checking the status afterwards (the first draft of
+    // this guard). Nothing reads that body, so the page would wait for it, and a 5xx whose body
+    // stalls would hold the person for the full 20 s and then reject `network` instead of
+    // `internal`. Also rejected: a second body path outside timedPublicFetch to check the
+    // status first (DECISION Phase 88.6-62 forbids it), and the boolean form of the skip, which
+    // would also drop the 403 / 410 bodies. The per-status predicate skips only the body
+    // nothing reads.
+    // Widening this below 500, or reading the 5xx body, is a decision, not a cleanup.
+    if (res.status >= 500) throw new ApiError(RSVP_RESPOND_TRANSPORT_FAILURE, 'internal', res.status);
     // NO res.ok throw — rsvp/[token]/page.js reads `result.error` off the parsed 410 body
     // to tell "cancelled" from "already happened", and D62 branch B keeps that read.
+    // [AMENDED Phase 88.6.1-23 (R9 mechanism): except a status of 500 or above, which rejects
+    // internal above — no 5xx body carries a discriminant the page reads.]
     return guardedJson(text, res.status, RSVP_RESPOND_TRANSPORT_FAILURE);
   },
 };
