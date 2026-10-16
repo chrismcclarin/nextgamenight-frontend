@@ -1,6 +1,6 @@
-import { test, expect, type Request, type Route } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
-import { assertTheme } from './support/contrast';
+import { expectGatedPair, holdWrites } from './support/inFlight';
 
 // Phase 88.6.1 plan 22 (D-39, D-35; outline shared rule 9): the account-deletion dialog's
 // pressed "Delete my account" action, seen in a real browser at 375px.
@@ -28,6 +28,11 @@ import { assertTheme } from './support/contrast';
 // nothing handed on. heldDeletes() asserts the hold caught exactly one DELETE. Defence in depth,
 // not relied on: CI's database is an ephemeral postgres:16 service per run (ci.yml, job e2e).
 //
+// Phase 88.6.1-43: the hold and the gated-colour probe now live ONCE in e2e/support/inFlight.ts
+// (holdWrites, expectGatedPair), shared with e2e/group-settings-pending-focus.spec.ts. Same
+// behaviour as the inline copies they replace: the one answered read is the deletion pre-flight,
+// through holdWrites' answerGet; heldDeletes stays local, built on the hold's count.
+//
 // PHONE ONLY, and CI ONLY like every spec here: the phone project needs the setup project's
 // Auth0 login, whose credentials exist only in CI (C-14). Typecheck and listing are the local
 // proof; the CI e2e job is the proof.
@@ -38,27 +43,13 @@ test.skip(
 
 test.describe('Account deletion — the pressed danger action stays focusable at 375px (88.6.1-22)', () => {
   test('pressed "Delete my account" keeps the gated colour, focus moves to the progress wrapper, the header Close is unavailable, a second Enter sends nothing', async ({ page }) => {
-    const held: Request[] = [];
-    const heldDeletes = (): number =>
-      held.filter(
-        (request) =>
-          request.method() === 'DELETE' && new URL(request.url()).pathname.endsWith('/users/me'),
-      ).length;
-
-    await page.route('**/*', async (route: Route) => {
-      const request = route.request();
-      const method = request.method();
-      if (method === 'GET' || method === 'HEAD') {
-        if (new URL(request.url()).pathname.endsWith('/users/me/deletion-blockers')) {
-          await route.fulfill({ status: 200, json: { groups: [] } });
-          return;
-        }
-        await route.fallback();
-        return;
-      }
-      // Held: never answered, never handed on. This is what makes the test safe.
-      held.push(request);
+    // Registered BEFORE navigation. Held: never answered, never handed on. This is what makes
+    // the test safe.
+    const hold = await holdWrites(page, {
+      answerGet: (url) =>
+        url.pathname.endsWith('/users/me/deletion-blockers') ? { groups: [] } : undefined,
     });
+    const heldDeletes = (): number => hold.count('DELETE', /\/users\/me$/);
 
     await page.goto('/userProfile');
 
@@ -85,64 +76,9 @@ test.describe('Account deletion — the pressed danger action stays focusable at
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
 
-    await assertTheme(page, 'dark');
-
-    // Settle the colour transition before comparing: .btn carries
-    // transition: var(--theme-transition) (src/app/globals.css, the .btn rule), and
-    // --theme-transition animates background-color and color over 0.25s, so a read right after
-    // the press lands mid-transition and fails a correct tree (the trap readShadow's docblock in
-    // e2e/touch-targets.spec.ts measured on .btn). Two gates: finite animations awaited, then
-    // two consecutive matching reads.
-    await pressed.evaluate(async (node) => {
-      const running = (node as HTMLElement)
-        .getAnimations()
-        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity);
-      await Promise.all(running.map((animation) => animation.finished.catch(() => undefined)));
-    });
-    let previous: string | null = null;
-    await expect
-      .poll(
-        async () => {
-          const now = await pressed.evaluate((node) => {
-            const cs = getComputedStyle(node as HTMLElement);
-            return `${cs.backgroundColor}|${cs.color}`;
-          });
-          const stable = previous !== null && now === previous;
-          previous = now;
-          return stable;
-        },
-        {
-          message:
-            'the pressed action\'s computed colours never stopped changing; .btn transitions them over 0.25s — do not remove the settle and read the interpolated value instead',
-          timeout: 5_000,
-          intervals: [50, 50, 100, 100, 250],
-        },
-      )
-      .toBe(true);
-
-    const colours = await pressed.evaluate((node) => {
-      const element = node as HTMLElement;
-      const cs = getComputedStyle(element);
-      const probe = document.createElement('span');
-      probe.style.backgroundColor = 'var(--color-btn-danger-gated-bg)';
-      probe.style.color = 'var(--color-btn-danger-gated-text)';
-      element.insertAdjacentElement('afterend', probe);
-      const ps = getComputedStyle(probe);
-      const read = {
-        background: cs.backgroundColor,
-        ink: cs.color,
-        opacity: cs.opacity,
-        probeBackground: ps.backgroundColor,
-        probeInk: ps.color,
-      };
-      probe.remove();
-      return read;
-    });
-    // Anti-vacuity: an unresolved token would leave the probe transparent.
-    expect(colours.probeBackground, 'the gated danger fill token did not resolve').not.toBe('rgba(0, 0, 0, 0)');
-    expect(colours.background, 'the pressed action paints the gated danger fill').toBe(colours.probeBackground);
-    expect(colours.ink, 'the pressed action paints the gated danger ink').toBe(colours.probeInk);
-    expect(colours.opacity, 'the gated state is colour, never an opacity wash').toBe('1');
+    // Theme pre-assertion, the transition settle and the token probe comparison, in one shared
+    // helper (opacity 1, computed colours equal --color-btn-danger-gated-bg / -text).
+    await expectGatedPair(page, pressed, 'danger', 'dark');
 
     // Focus is on the progress wrapper ITSELF, checked by identity. A text check cannot do this
     // job: the pressed action reads the same in-flight label and, being aria-disabled, keeps
