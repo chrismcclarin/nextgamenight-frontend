@@ -24,7 +24,7 @@
 // suite written anywhere else, or spelled any other way, would evaporate with nothing
 // going red.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -70,6 +70,17 @@ const OPEN_BALLOT = {
   tied_options: [],
 };
 
+// Plan 88.6.1-31: a closed ballot whose tie the organizer has broken (the winner branch).
+const WINNER = {
+  ballot_status: 'closed',
+  rsvp_deadline: null,
+  options: OPTIONS,
+  winner: { game_id: 'g1', game_name: 'Catan' },
+  needs_tie_break: false,
+  needs_fallback_pick: false,
+  tied_options: null,
+};
+
 function renderBallot(ballot: Record<string, unknown>, props: Record<string, unknown> = {}) {
   (ballotAPI.getBallot as Mock).mockResolvedValue(ballot);
   return render(
@@ -81,6 +92,40 @@ function renderBallot(ballot: Record<string, unknown>, props: Record<string, unk
       {...props}
     />
   );
+}
+
+// Plan 88.6.1-31: queue one getBallot answer per entry, in order. A Promise entry is HELD until
+// the test settles it; a plain object resolves at once. Once the queue is spent, getBallot
+// resolves undefined (the reset in beforeEach), which renders nothing.
+function renderBallotSequence(
+  answers: Array<Record<string, unknown> | Promise<unknown>>,
+  props: Record<string, unknown> = {}
+) {
+  const get = ballotAPI.getBallot as Mock;
+  for (const answer of answers) {
+    if (answer instanceof Promise) get.mockImplementationOnce(() => answer);
+    else get.mockResolvedValueOnce(answer);
+  }
+  return render(
+    <BallotSection
+      eventId={EVENT_ID}
+      eventDate="2026-10-01"
+      userRole="owner"
+      userRsvpStatus="yes"
+      {...props}
+    />
+  );
+}
+
+// A promise the test settles by hand.
+function deferred<T = unknown>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 /** Resolve a control's description the way assistive technology does, and read it back. */
@@ -95,6 +140,11 @@ function describedTextOf(control: Element): string {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Plan 88.6.1-31: clearAllMocks keeps implementations and queued Once answers, so a held or
+  // unspent answer from one case would leak into the next. Every case sets what it needs.
+  (ballotAPI.getBallot as Mock).mockReset();
+  (ballotAPI.toggleVote as Mock).mockReset();
+  (ballotAPI.resolveTie as Mock).mockReset();
 });
 
 afterEach(cleanup);
@@ -251,5 +301,180 @@ describe('BallotSection — focus and the in-flight gate (88.6-22)', () => {
 
     release({});
     await waitFor(() => expect(screen.getByRole('button', { name: /Catan/ })).not.toBeDisabled());
+  });
+});
+
+// Plan 88.6.1-31 Task 1 (W013 / D-35, E14, Req 5). The pick buttons in the tie-break and the
+// fallback lists both call one handler. What these cases prove about E14 is the pick's
+// accessible NAME while it saves, which is what a screen reader reads when focus arrives on the
+// pick or the user re-reads it. Whether a screen reader speaks the rename UNPROMPTED while focus
+// already sits on the pick is NOT measured here (jsdom has no speech); that is owed to plan
+// 88.6.1-57's VoiceOver walk (review #191).
+//
+// jsdom never blurs a disabled element (FE-TESTING-CONVENTIONS C-11), so the RED half of T1a and
+// T1b is the attributes and the request count, never document.activeElement. T1e and T1f ARE
+// focus tests, because there the focused control is REMOVED, which jsdom does observe.
+describe('BallotSection — one pick per press, the heard in-flight name, and focus after the pick (88.6.1-31)', () => {
+  it('T1a: a tie-break pick in flight keeps its place (aria-disabled, never native), is NAMED "Catan, saving", and a second and third press send nothing', async () => {
+    const hold = deferred();
+    (ballotAPI.resolveTie as Mock).mockImplementationOnce(() => hold.promise);
+    const user = userEvent.setup();
+    renderBallot(TIE_BREAK);
+    const catan = await screen.findByRole('button', { name: 'Catan' });
+    const wingspan = screen.getByRole('button', { name: 'Wingspan' });
+
+    await user.click(catan);
+
+    expect(catan).toHaveAttribute('aria-disabled', 'true');
+    expect(catan).not.toHaveAttribute('disabled');
+    expect(catan).toBeInTheDocument();
+    expect(catan).toHaveAccessibleName('Catan, saving');
+    expect(wingspan).toBeDisabled();
+    expect(wingspan).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(catan);
+    fireEvent.click(catan);
+    expect(ballotAPI.resolveTie).toHaveBeenCalledTimes(1);
+    expect(catan).toHaveAttribute('aria-disabled', 'true');
+    expect(catan).toHaveAccessibleName('Catan, saving');
+
+    await act(async () => {
+      hold.resolve({ winner: { game_id: 'g1', game_name: 'Catan' } });
+    });
+    await waitFor(() => expect(catan).not.toHaveAttribute('aria-disabled'));
+    expect(catan).not.toHaveAttribute('disabled');
+    expect(catan).not.toHaveAttribute('aria-label');
+    expect(catan).toHaveAccessibleName('Catan');
+    expect(wingspan).not.toBeDisabled();
+    expect(wingspan).toHaveAccessibleName('Wingspan');
+  });
+
+  it('T1b: a fallback pick in flight keeps its place (aria-disabled, never native), is NAMED "Wingspan, saving", and a second and third press send nothing', async () => {
+    const hold = deferred();
+    (ballotAPI.resolveTie as Mock).mockImplementationOnce(() => hold.promise);
+    const user = userEvent.setup();
+    renderBallot(FALLBACK_PICK);
+    const wingspan = await screen.findByRole('button', { name: 'Wingspan' });
+    const catan = screen.getByRole('button', { name: 'Catan' });
+
+    await user.click(wingspan);
+
+    expect(wingspan).toHaveAttribute('aria-disabled', 'true');
+    expect(wingspan).not.toHaveAttribute('disabled');
+    expect(wingspan).toBeInTheDocument();
+    expect(wingspan).toHaveAccessibleName('Wingspan, saving');
+    expect(catan).toBeDisabled();
+    expect(catan).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(wingspan);
+    fireEvent.click(wingspan);
+    expect(ballotAPI.resolveTie).toHaveBeenCalledTimes(1);
+    expect(wingspan).toHaveAttribute('aria-disabled', 'true');
+    expect(wingspan).toHaveAccessibleName('Wingspan, saving');
+
+    await act(async () => {
+      hold.resolve({ winner: { game_id: 'g2', game_name: 'Wingspan' } });
+    });
+    await waitFor(() => expect(wingspan).not.toHaveAttribute('aria-disabled'));
+    expect(wingspan).not.toHaveAttribute('disabled');
+    expect(wingspan).toHaveAccessibleName('Wingspan');
+    expect(catan).not.toBeDisabled();
+    expect(catan).toHaveAccessibleName('Catan');
+  });
+
+  it('T1c: two presses dispatched inside ONE act send ONE resolveTie (the latch is a ref, not state)', async () => {
+    const hold = deferred();
+    (ballotAPI.resolveTie as Mock).mockImplementation(() => hold.promise);
+    renderBallot(TIE_BREAK);
+    const catan = await screen.findByRole('button', { name: 'Catan' });
+
+    // No re-render runs between these two dispatches, so the second press runs the SAME
+    // closure as the first: a state-only first-line check cannot refuse it.
+    act(() => {
+      catan.click();
+      catan.click();
+    });
+    expect(ballotAPI.resolveTie).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      hold.resolve({});
+    });
+  });
+
+  it('T1d: two vote presses dispatched inside ONE act send ONE toggleVote (probe: RED on the state-only guard, so the toggle takes a ref latch)', async () => {
+    const hold = deferred();
+    (ballotAPI.toggleVote as Mock).mockImplementation(() => hold.promise);
+    renderBallot(OPEN_BALLOT);
+    const catan = await screen.findByRole('button', { name: 'Catan' });
+
+    act(() => {
+      catan.click();
+      catan.click();
+    });
+    expect(ballotAPI.toggleVote).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      hold.resolve({ voted: true });
+    });
+  });
+
+  it('T1e: a successful pick moves focus to the winner card only AFTER the refetch removes the pick, never to <body> (Req 5, R5 ordering backstop)', async () => {
+    const refetch = deferred();
+    (ballotAPI.resolveTie as Mock).mockResolvedValueOnce({ winner: { game_id: 'g1', game_name: 'Catan' } });
+    const user = userEvent.setup();
+    renderBallotSequence([TIE_BREAK, refetch.promise]);
+    const catan = await screen.findByRole('button', { name: 'Catan' });
+
+    await user.click(catan);
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2));
+
+    // resolveTie has resolved; the refetch is held. Nothing has moved yet.
+    expect(document.activeElement).toBe(catan);
+    expect(catan).toHaveAttribute('aria-disabled', 'true');
+    expect(catan).toHaveAccessibleName('Catan, saving');
+
+    await act(async () => {
+      refetch.resolve(WINNER);
+    });
+    await waitFor(() => {
+      const active = document.activeElement;
+      expect(active).not.toBe(document.body);
+      expect(active?.textContent).toContain('Winner');
+      expect(active?.textContent).toContain('Catan');
+    });
+    expect(catan).not.toBeInTheDocument();
+  });
+
+  it('T1f: a failed vote whose refetch shows the tie-break moves focus to the Game Vote heading, never <body> (Req 5, R5 empty)', async () => {
+    (ballotAPI.toggleVote as Mock).mockRejectedValueOnce(new Error('boom'));
+    const user = userEvent.setup();
+    renderBallotSequence([OPEN_BALLOT, TIE_BREAK]);
+    const option = await screen.findByRole('button', { name: 'Catan' });
+
+    await user.click(option);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Game Vote' }))
+    );
+    expect(option).not.toBeInTheDocument();
+  });
+
+  it('T1g: a game name holding quotes and an emoji is NAMED exactly "{name}, saving" while in flight, and its visible text is unchanged', async () => {
+    const fancy = { id: 'opt-3', game_id: 'g3', game_name: 'Ticket to Ride: "Europe" 🚂', user_voted: false };
+    const hold = deferred();
+    (ballotAPI.resolveTie as Mock).mockImplementationOnce(() => hold.promise);
+    const user = userEvent.setup();
+    renderBallot({ ...TIE_BREAK, options: [fancy, OPTIONS[1]], tied_options: [fancy, OPTIONS[1]] });
+    const pick = await screen.findByRole('button', { name: 'Ticket to Ride: "Europe" 🚂' });
+
+    await user.click(pick);
+
+    expect(pick).toHaveAttribute('aria-label', 'Ticket to Ride: "Europe" 🚂, saving');
+    expect(pick).toHaveAccessibleName('Ticket to Ride: "Europe" 🚂, saving');
+    expect(pick.textContent).toBe('Ticket to Ride: "Europe" 🚂');
+
+    await act(async () => {
+      hold.resolve({});
+    });
   });
 });
