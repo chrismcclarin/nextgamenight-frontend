@@ -136,14 +136,17 @@ type RetryEpisodeOptions = {
    copies of a latch, a dwell and an outcome rule drift apart (tenet: one mechanism). Changing
    this is a decision, not a cleanup. */
 function useRetryEpisode(options: RetryEpisodeOptions) {
-  const { state, failureShown, dwellOnPress, focusTarget } = options;
+  const { state, failureShown, dwellOnPress, quietOnMount, focusTarget } = options;
   const [retrying, setRetrying] = React.useState(false);
   // A retry in THIS failure episode is KNOWN to have failed (its own result said so and the
   // committed state agreed).
   const [retryFailedAgain, setRetryFailedAgain] = React.useState(false);
   const [retryOutcome, setRetryOutcome] = React.useState<RetryOutcome>('none');
   // False from a compact press until REGION_EMPTY_DWELL_MS has passed (the B1 marker).
-  const [regionDwellDone, setRegionDwellDone] = React.useState(true);
+  // AMENDED Phase 88.6.1-70 (quietOnMount): also false from a MOUNT while the failure already
+  // shows, read on the first render only, so that notice fills its region after the dwell.
+  const [regionDwellDone, setRegionDwellDone] = React.useState(() => !(quietOnMount && failureShown));
+  const quietAtMountRef = React.useRef(!regionDwellDone);
 
   const retryInFlightRef = React.useRef(false);
   const outcomeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -188,6 +191,17 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
       dwellTimer.current = null;
     };
   }, []);
+  // A notice MOUNTED while its failure already shows (a remount, a key switch back to an errored
+  // cache) renders its polite region EMPTY on the first commit and fills it after the dwell: an
+  // inserted polite region carrying text is not announced (StatusRegion's EMPTY-FIRST bullet,
+  // D-42). The timer goes through `dwellTimerRef`, so the unmount cleanup above clears it.
+  React.useEffect(() => {
+    if (!quietAtMountRef.current) return;
+    dwellTimerRef.current = setTimeout(() => {
+      dwellTimerRef.current = null;
+      setRegionDwellDone(true);
+    }, REGION_EMPTY_DWELL_MS);
+  }, []);
 
   /* DECISION Phase 88.6.1-21 (R123 / W064 / Req 5): both retries (the compact `Retry` and the
      full `Try again`) are gated in flight by `aria-disabled` plus a synchronous first-line REF
@@ -213,7 +227,17 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
      wash. LIMIT, named honestly: where the CALLER swaps the banner out for the retry (a never-loaded
      TanStack query reports `pending`, so `showError` is false from the press to the outcome), the
      in-flight look is never seen and the hook's floor is what catches focus — at the press. That
-     derivation is outside this file (Phase 92, `.planning/deferred/phase-92.md`). */
+     derivation is outside this file (Phase 92, `.planning/deferred/phase-92.md`).
+
+     AMENDED Phase 88.6.1-70 (C12 b): every retry control in this file (the shared row's `Retry`,
+     `Try again`, `Report this`) also arms the SAME hook instance when it takes FOCUS and settles
+     at once (`watchFocus`, plan 04 contract (8)), skipped while a press is in flight, so the press
+     arm above is untouched. A refresh nobody pressed (`useFetchErrorState`'s tab-return
+     re-attempt on `visibilitychange`) that removes a focused control then still lands focus on
+     the host target or the floor, never `<body>`; a user who moved to another live control has
+     already disarmed it. REJECTED: an arm tied to the tab-return effect (it lives in
+     `useFetchErrorState`, which owns no target), and extending plan 04 with a press-free arm (its
+     published arm plus settle already express a watch). */
   const handleRetry = async (event: React.MouseEvent<HTMLButtonElement>) => {
     if (retryInFlightRef.current) return;
     retryInFlightRef.current = true;
@@ -258,7 +282,24 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
   };
   const regionQuiet = retrying || retryOutcome !== 'none' || !regionDwellDone;
 
-  return { retrying, retryOutcome, retryFailedAgain, regionQuiet, handleRetry, assertiveChangedRef };
+  // C12 (b): arm the ONE recovery hook from the focused control and settle at once, so the
+  // post-settle rules make it a watch. A press in flight owns the episode; the watch stands aside.
+  const { arm } = retryRecovery;
+  const watchFocus = React.useCallback(() => {
+    if (retryInFlightRef.current) return;
+    const settle = arm();
+    settle();
+  }, [arm]);
+
+  return {
+    retrying,
+    retryOutcome,
+    retryFailedAgain,
+    regionQuiet,
+    handleRetry,
+    assertiveChangedRef,
+    watchFocus,
+  };
 }
 
 /** Props of {@link NoticeRow}, the one visible row every small notice in this file renders. */
@@ -269,6 +310,8 @@ interface NoticeRowProps {
   retrying: boolean;
   /** The shared press handler; it arms focus recovery from the pressed button. */
   handleRetry: (event: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>;
+  /** C12 (b): arms the same recovery hook when the `Retry` takes focus. */
+  watchFocus: () => void;
 }
 
 /* DECISION Phase 88.6.1-70 (one row): ONE row element for the small notices — the compact
@@ -286,7 +329,7 @@ interface NoticeRowProps {
    deliberate addition, not a style change), so a consumer's spacing lives on the RF1 wrapper
    instead. The prop is named `handleRetry` ON PURPOSE: the floor suite anchors on the button's
    handler attribute. Changing this is a decision, not a cleanup. */
-function NoticeRow({ text, retrying, handleRetry }: NoticeRowProps) {
+function NoticeRow({ text, retrying, handleRetry, watchFocus }: NoticeRowProps) {
   const textId = React.useId();
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
@@ -320,6 +363,7 @@ function NoticeRow({ text, retrying, handleRetry }: NoticeRowProps) {
       <button
         type="button"
         onClick={handleRetry}
+        onFocus={watchFocus}
         aria-disabled={retrying || undefined}
         aria-describedby={textId}
         className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
@@ -339,8 +383,15 @@ export function FetchErrorBanner({
   compact = false,
 }: FetchErrorBannerProps) {
   const [showReport, setShowReport] = React.useState(false);
-  const { retrying, retryOutcome, retryFailedAgain, regionQuiet, handleRetry, assertiveChangedRef } =
-    useRetryEpisode({ state, failureShown: state.showError, dwellOnPress: compact, quietOnMount: false });
+  const {
+    retrying,
+    retryOutcome,
+    retryFailedAgain,
+    regionQuiet,
+    handleRetry,
+    assertiveChangedRef,
+    watchFocus,
+  } = useRetryEpisode({ state, failureShown: state.showError, dwellOnPress: compact, quietOnMount: false });
 
   /* DECISION Phase 88.6-36 (T-88.6-102, W38 class): the compact branch's announcement is a
      SHIPPED `StatusRegion`, mounted ABOVE the `showError` guard and GATED ON `compact`, chosen
@@ -470,7 +521,7 @@ export function FetchErrorBanner({
           {regionQuiet ? '' : state.showError ? noticeText : ''}
         </StatusRegion>
         {state.showError ? (
-          <NoticeRow text={noticeText} retrying={retrying} handleRetry={handleRetry} />
+          <NoticeRow text={noticeText} retrying={retrying} handleRetry={handleRetry} watchFocus={watchFocus} />
         ) : null}
       </>
     );
@@ -549,6 +600,7 @@ export function FetchErrorBanner({
       <button
         type="button"
         onClick={handleRetry}
+        onFocus={watchFocus}
         aria-disabled={retrying || undefined}
         className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
       >
@@ -558,6 +610,7 @@ export function FetchErrorBanner({
       <button
         type="button"
         onClick={() => setShowReport(true)}
+        onFocus={watchFocus}
         className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
       >
         <Icon name="Flag" size={14} />
@@ -616,7 +669,16 @@ export interface RefreshFailedNoticeProps {
    - the SAME sentence re-announced on every failed Retry, through plan 21's empty-then-refill
      dwell — no new words, never B1 (D-31);
    - `retained` decided by the consumer (D-09a's has-loaded flag for the current key, never a row
-     count), so a refresh nobody loaded for shows nothing here and the site's full banner owns it.
+     count), so a refresh nobody loaded for shows nothing here and the site's full banner owns it;
+   - `quietOnMount`: a notice mounted while a failure already shows (a remount of the retained
+     branch, a key switch back to an errored cache) renders its region EMPTY on the first commit
+     and fills it after `REGION_EMPTY_DWELL_MS`, because an inserted polite region carrying text is
+     not announced (StatusRegion's EMPTY-FIRST bullet, D-42);
+   - the `Retry` arms the ONE recovery hook when it takes focus (`watchFocus`, C12 b), so a
+     refresh nobody pressed (the tab-return re-attempt) that succeeds while `Retry` holds focus
+     lands focus on `focusTarget`, else the floor — and a user who moved on is never moved.
+     REJECTED beside it: an arm tied to the tab-return effect in `useFetchErrorState` (not this
+     module, and it owns no target); a press-free arm added to plan 04 (arm plus settle is one).
    REJECTED:
    (a) a mode prop on `FetchErrorBanner` — `title`, `reportSubject`, `reportContext` and `compact`
        would be meaningless in that mode, a `.js` caller could write `compact` with it unchecked,
@@ -634,7 +696,7 @@ export interface RefreshFailedNoticeProps {
    Changing any of these is a decision, not a cleanup. */
 export function RefreshFailedNotice({ state, retained, focusTarget, className }: RefreshFailedNoticeProps) {
   const shown = state.showError && retained;
-  const { retrying, regionQuiet, handleRetry } = useRetryEpisode({
+  const { retrying, regionQuiet, handleRetry, watchFocus } = useRetryEpisode({
     state,
     failureShown: shown,
     dwellOnPress: true,
@@ -648,7 +710,12 @@ export function RefreshFailedNotice({ state, retained, focusTarget, className }:
       </StatusRegion>
       {shown ? (
         <div className={className}>
-          <NoticeRow text={REFRESH_FAILED_NOTICE} retrying={retrying} handleRetry={handleRetry} />
+          <NoticeRow
+            text={REFRESH_FAILED_NOTICE}
+            retrying={retrying}
+            handleRetry={handleRetry}
+            watchFocus={watchFocus}
+          />
         </div>
       ) : null}
     </>
@@ -680,7 +747,7 @@ export interface SectionLoadFailedNoticeProps {
    false for a section that never loaded. Changing any of these is a decision, not a cleanup. */
 export function SectionLoadFailedNotice({ state, className }: SectionLoadFailedNoticeProps) {
   const shown = state.showError;
-  const { retrying, regionQuiet, handleRetry } = useRetryEpisode({
+  const { retrying, regionQuiet, handleRetry, watchFocus } = useRetryEpisode({
     state,
     failureShown: shown,
     dwellOnPress: true,
@@ -693,7 +760,7 @@ export function SectionLoadFailedNotice({ state, className }: SectionLoadFailedN
       </StatusRegion>
       {shown ? (
         <div className={className}>
-          <NoticeRow text={state.message} retrying={retrying} handleRetry={handleRetry} />
+          <NoticeRow text={state.message} retrying={retrying} handleRetry={handleRetry} watchFocus={watchFocus} />
         </div>
       ) : null}
     </>

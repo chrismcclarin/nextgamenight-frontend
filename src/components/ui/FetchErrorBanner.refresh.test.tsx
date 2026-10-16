@@ -603,7 +603,7 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     expect(retry).not.toHaveBeenCalled();
   });
 
-  it("RN-16. plan 21's banners: an unpressed success that removes a focused Try again or Retry lands on main h1", async () => {
+  it('RN-16. the plan-21 banners: an unpressed success that removes a focused Try again or Retry lands on main h1', async () => {
     const { retry } = pressableRetry();
     // (i) Full, caller-gated: the whole banner unmounts with the focused Try again.
     const fullControls: HostControls = {};
