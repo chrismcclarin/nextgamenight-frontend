@@ -16,6 +16,22 @@ import { StatusRegion } from '../../components/ui/StatusRegion';
 // string handed to wallClockToUtc. Module-level (stable identity, no deps).
 const pad2 = (n) => String(n).padStart(2, '0');
 
+// Copy row A2 — each check-in cell's accessible name (see DECISION Phase 88.6.1-17 (D-14 /
+// AC-21, copy row A2) at the cellNamePrefixes memo below).
+const CELL_NAME_DAY_FORMAT = 'EEEE, MMMM d';
+const PREFERENCE_WORD_PREFERRED = 'preferred';
+const PREFERENCE_WORD_IF_NEED_BE = 'if need be';
+const PREFERENCE_WORD_NONE = 'not selected';
+
+// "{day} at {time}" + ", " + the state word. Explicit comparisons, never an object-key lookup
+// (a key lookup reaches Object.prototype). The stored wire enum is never spoken.
+function writeCellName(prefix, preference) {
+  let word = PREFERENCE_WORD_NONE;
+  if (preference === 'preferred') word = PREFERENCE_WORD_PREFERRED;
+  else if (preference === 'if-need-be') word = PREFERENCE_WORD_IF_NEED_BE;
+  return prefix + ', ' + word;
+}
+
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
  *
@@ -290,6 +306,42 @@ export default function AvailabilityGrid({
   const formatDayHeader = useCallback((day) => {
     return format(day, 'EEE M/d');
   }, []);
+
+  // DECISION Phase 88.6.1-17 (D-14 / AC-21, copy row A2): what a screen reader hears on a cell.
+  // (a) Each write cell's name is copy row A2 — the column's long day, " at ", the row's time
+  //     label, ", ", the state word — passed through WriteCell's optional name override (the
+  //     ReadCell mechanism).
+  // (b) It is built from the SAME day value the column header shows and the SAME time text the
+  //     row label shows, i.e. the profile-zone wall clock the toolbar's "Times shown in" line
+  //     names. Chosen OVER deriving it from the cell's slot id, a UTC instant that prints the
+  //     browser's zone and disagrees with the labels whenever the profile zone differs (the
+  //     BUG-01 / F-810 class).
+  // (c) The day/time prefixes are computed once per day/slot layout, OVER formatting per cell
+  //     per render: every paint tick re-renders the props of 196-392 cells on a phone, and a
+  //     value-equal string keeps WriteCell's memo short-circuiting (the Phase 87.8 TOUCH
+  //     callback-stability marker below).
+  // (d) The state word is its own constant, OVER speaking the stored value: the stored value is
+  //     the wire enum and must not change; A2 ratifies words with spaces.
+  // (e) The pressed state stays beside the word, OVER dropping either: a boolean cannot carry
+  //     three states, so VoiceOver says both — accepted (AT-3).
+  // (f) REJECTED: row and column index attributes on the grid (D-14) — a restructure that may
+  //     break the VoiceOver double-tap activation the owner measured on 2026-10-04 (D-10).
+  // (g) REJECTED: one shared day-format helper with the scheduler's C1 name (plan 88.6.1-24) —
+  //     the scheduler holds a Date per slot, this grid holds a fixed time of day, and the time
+  //     here must come from this grid's own row label.
+  // (h) The not-selected word repeats WriteCell's fallback on purpose: the fallback is the
+  //     consumer-less write arm's name and stays unchanged (D-45).
+  // (i) The gesture machine is not touched (DECISION Phase 88.1-03, two machines until
+  //     Phase 92).
+  // Changing any of this is a decision, not a cleanup.
+  const cellNamePrefixes = useMemo(
+    () =>
+      days.map((day) => {
+        const dayText = format(day, CELL_NAME_DAY_FORMAT);
+        return timeSlots.map((timeSlot) => dayText + ' at ' + formatTimeLabel(timeSlot));
+      }),
+    [days, timeSlots, formatTimeLabel]
+  );
 
   // Get friendly timezone display name
   const getTimezoneDisplay = useCallback((tz) => {
@@ -888,6 +940,7 @@ export default function AvailabilityGrid({
                       focused={focused}
                       disabled={disabled}
                       preference={preference}
+                      ariaLabel={writeCellName(cellNamePrefixes[colIndex][rowIndex], preference)}
                       slotId={slotId}
                       onMove={handleCellMove}
                       onSelect={handleCellSelect}

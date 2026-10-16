@@ -16,14 +16,15 @@ afterEach(cleanup);
 
 const Grid = AvailabilityGrid as unknown as (props: Record<string, unknown>) => React.JSX.Element;
 
-// The empty (null) write cells carry aria-label "not selected"; the toolbar
-// buttons have text labels, so this name filter targets the grid cells only.
-const cellsByLabel = () => screen.getAllByRole('button', { name: 'not selected' });
+// The write cells carry copy row A2's name ("Monday, June 29 at 10:00 AM, not selected"),
+// which ENDS in the state word; an empty (null) cell ends ", not selected". The toolbar
+// buttons have text labels, so this suffix filter targets the grid cells only.
+const cellsByLabel = () => screen.getAllByRole('button', { name: /, not selected$/ });
 
-// Painted-cell sibling locator: WriteCell renders aria-label={preference ||
-// 'not selected'} (WriteCell.tsx:125), so a cell painted in the default paint
-// mode carries the accessible name "preferred".
-const paintedCells = () => screen.getAllByRole('button', { name: 'preferred' });
+// Painted-cell sibling locator: the cell's name is WriteCell's resolved aria-label (the
+// `ariaLabel` override, else the preference), so a cell painted in the default paint mode
+// carries a name ending ", preferred".
+const paintedCells = () => screen.getAllByRole('button', { name: /, preferred$/ });
 
 // Kiritimati is UTC+14, so a 10:00 wall-clock slot on 2026-06-29 maps to a UTC
 // instant on 2026-06-28 — the cross-day case where a browser-local

@@ -41,10 +41,19 @@ export interface WriteCellProps {
   cols: number;
   /** Whether this cell currently holds roving focus. */
   focused?: boolean;
-  /** Inert cell: tabIndex -1, no keyboard/pointer. */
+  /**
+   * Inert cell: tabIndex -1, no keyboard/pointer. The cell also exposes that state to
+   * assistive tech (aria-disabled) — it is a div, so it has no native disabled.
+   */
   disabled?: boolean;
   /** Current preference value. */
   preference: Preference;
+  /**
+   * The cell's accessible name, supplied by the container (day + time + state — copy row A2
+   * on the check-in grid). Optional: an absent or empty value falls back to the preference
+   * name, so a cell is never nameless.
+   */
+  ariaLabel?: string;
   /** Container handler: clamped target (row, col) on a nav key. */
   onMove?: (row: number, col: number) => void;
   /**
@@ -84,6 +93,7 @@ export const WriteCell = memo(function WriteCell({
   focused = false,
   disabled = false,
   preference,
+  ariaLabel,
   onMove = noop,
   onSelect,
   onPointerDown,
@@ -124,6 +134,22 @@ export const WriteCell = memo(function WriteCell({
     onPointerEnter?.(slotId);
   };
 
+  // DECISION Phase 88.6.1-17 (D-45 / D-14): the container's name override is OPTIONAL and
+  // today's preference-name fallback is kept. Chosen OVER a required name — the WeekGrid write
+  // arm renders this cell with no production consumer, and a required name there would need
+  // words the owner has not ratified (D-31) — and OVER formatting day and time inside the cell,
+  // which would make the cell know each container's time model; the container composes the
+  // name, exactly as with ReadCell. An empty override falls back, so a cell is never nameless.
+  // The mode gate's AT state is aria-disabled on a disabled cell, chosen OVER leaving the
+  // disabled state to the dropped tab stop alone: VoiceOver swipe navigation ignores tab order,
+  // so the cell would read as a working toggle that does nothing (review #170). That agrees
+  // with the rule of kind (DECISION Phase 88.6-25 / 88.6-63 in AvailabilityGrid.js: a mode
+  // gate stays native) because this cell is a div and has no native disabled. The tab stop,
+  // the swallowed key and pointer handling and the disabled colour branch are unchanged.
+  // Changing this is a decision, not a cleanup.
+  const resolvedName =
+    typeof ariaLabel === 'string' && ariaLabel.length > 0 ? ariaLabel : preference || 'not selected';
+
   return (
     <div
       ref={cellRef}
@@ -148,8 +174,9 @@ export const WriteCell = memo(function WriteCell({
       }}
       data-slot-id={slotId}
       role="button"
-      aria-label={preference || 'not selected'}
+      aria-label={resolvedName}
       aria-pressed={!!preference}
+      aria-disabled={disabled ? 'true' : undefined}
       tabIndex={tabIndex}
       onKeyDown={onKeyDown}
       onPointerDown={handlePointerDown}

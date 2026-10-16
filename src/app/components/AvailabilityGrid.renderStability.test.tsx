@@ -44,7 +44,7 @@ beforeEach(() => renderCounts.clear());
 
 const Grid = AvailabilityGrid as unknown as (props: Record<string, unknown>) => React.JSX.Element;
 
-const cellsByLabel = () => screen.getAllByRole('button', { name: 'not selected' });
+const cellsByLabel = () => screen.getAllByRole('button', { name: /, not selected$/ });
 
 type Slot = { slotId: string; preference: string };
 
