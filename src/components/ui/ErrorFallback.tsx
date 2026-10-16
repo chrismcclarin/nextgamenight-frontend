@@ -25,6 +25,7 @@
 import * as React from 'react';
 
 import { Heading } from './Heading';
+import { useFocusRecovery } from './useFocusRecovery';
 
 export interface ErrorFallbackProps {
   /** Retry handler (a boundary's `reset`/`resetError`). Omit to render no retry. */
@@ -67,6 +68,24 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
   ) => {
     const showRetry = Boolean(onRetry) && !loopGuardTripped;
     const handleReload = onReload ?? (() => window.location.reload());
+    const fallbackRecovery = useFocusRecovery();
+
+    /* DECISION Phase 88.6.1-21 (Req 5): `Try again` arms the SAME shared recovery hook as
+       `FetchErrorBanner`, chosen because resetting the boundary removes the pressed button: the
+       floor then lands on the re-rendered page's `main h1`, else `main`, or on this fallback's own
+       `<h1>` if the boundary trips again. `from: event.currentTarget` is the hook's contract (1):
+       this is not a KebabMenu item, and Safari does not focus a clicked button.
+       REJECTED: focusing a target from inside the boundary's `reset` (the boundary does not know
+       the page it re-renders), and doing nothing (focus falls to <body>). `Reload page` is not
+       armed: a full reload needs no focus target. */
+    const handleRetry = (event: React.MouseEvent<HTMLButtonElement>) => {
+      const settle = fallbackRecovery.arm({ from: event.currentTarget });
+      try {
+        onRetry?.();
+      } finally {
+        settle();
+      }
+    };
 
     return (
       <div
@@ -149,7 +168,7 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
             {showRetry && (
               <button
                 type="button"
-                onClick={onRetry}
+                onClick={handleRetry}
                 className="inline-flex items-center justify-center rounded-btn bg-primary px-5 py-2.5 text-sm text-primary-foreground transition-colors hover:opacity-90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 Try again

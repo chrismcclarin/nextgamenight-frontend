@@ -26,6 +26,7 @@ import { Icon } from './Icon';
 import { StatusRegion } from './StatusRegion';
 import FeedbackForm from '@/app/components/FeedbackForm';
 import type { FetchErrorState } from './useFetchErrorState';
+import { useFocusRecovery } from './useFocusRecovery';
 
 export interface FetchErrorBannerProps {
   /** Derived state from {@link useFetchErrorState}. */
@@ -64,12 +65,45 @@ export function FetchErrorBanner({
   const [showReport, setShowReport] = React.useState(false);
   const [retrying, setRetrying] = React.useState(false);
 
-  const handleRetry = async () => {
+  const retryInFlightRef = React.useRef(false);
+  const retryRecovery = useFocusRecovery();
+
+  /* DECISION Phase 88.6.1-21 (R123 / W064 / Req 5): both retries (the compact `Retry` and the
+     full `Try again`) are gated in flight by `aria-disabled` plus a synchronous first-line REF
+     latch (`retryInFlightRef`) — D52's idiom, `R123-RULING: extend-d52`, house template
+     `RsvpSection.js:65` (`const statusLatch = useRef(false);`). The gated look is COLOUR
+     (`aria-disabled:text-content-muted`, the ghost variant's gated ink, `Button.tsx:209`). The
+     shared recovery hook is armed at the press with `from: event.currentTarget` (Safari does not
+     focus a clicked button) and NO fallback: this primitive owns no section heading, and
+     `focusPageFloor` resolves the open dialog's title, else `main h1`, else `main` (D-05, D-07).
+
+     REJECTED, each so it is not re-proposed as a tidy-up:
+     (a) the native disabled attribute — it drops focus from the control the user pressed (the
+         rule of POSITION, `DECISION Phase 88.6-22`, `FriendInvitePanel.js:59`);
+     (b) an opacity utility under ANY variant prefix (the 88.8 colour rule; `tokenContrast.test.ts`
+         53(b2)'s regex is blind to a prefixed form — a blind spot, not a permission);
+     (c) a state-only guard: two activations in one tick both read the stale `retrying`;
+     (d) a caller-supplied focus-target prop (33 mounts, none edited here; the floor already
+         reaches the dialog title or the page heading; plan 88.6.1-70 is scheduled to amend this
+         item in place with an OPTIONAL `focusTarget` tried before the floor);
+     (e) inline focus code in this file (D-04: one shared hook, never per-host copies).
+
+     DISCLOSED DELTA: while retrying, the link ink turns muted instead of the former half-opacity
+     wash. LIMIT, named honestly: where the CALLER swaps the banner out for the retry (a never-loaded
+     TanStack query reports `pending`, so `showError` is false from the press to the outcome), the
+     in-flight look is never seen and the hook's floor is what catches focus — at the press. That
+     derivation is outside this file (Phase 92, `.planning/deferred/phase-92.md`). */
+  const handleRetry = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (retryInFlightRef.current) return;
+    retryInFlightRef.current = true;
+    const settle = retryRecovery.arm({ from: event.currentTarget });
     setRetrying(true);
     try {
       await state.retry();
     } finally {
+      retryInFlightRef.current = false;
       setRetrying(false);
+      settle();
     }
   };
 
@@ -141,8 +175,8 @@ export function FetchErrorBanner({
             <button
               type="button"
               onClick={handleRetry}
-              disabled={retrying}
-              className="inline-flex items-center gap-1 text-content-link underline hover:no-underline disabled:opacity-50"
+              aria-disabled={retrying || undefined}
+              className="inline-flex items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted"
             >
               <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
               {retrying ? 'Retrying…' : 'Retry'}
@@ -180,8 +214,8 @@ export function FetchErrorBanner({
           <button
             type="button"
             onClick={handleRetry}
-            disabled={retrying}
-            className="inline-flex items-center gap-1 text-content-link underline hover:no-underline disabled:opacity-50"
+            aria-disabled={retrying || undefined}
+            className="inline-flex items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted"
           >
             <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
             {retrying ? 'Retrying…' : 'Try again'}
