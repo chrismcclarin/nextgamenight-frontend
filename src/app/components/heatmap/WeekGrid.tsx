@@ -96,9 +96,19 @@ interface WeekGridBaseProps {
    */
   cellClassName?: string;
   /**
-   * Width of the time-axis gutter column, in px. Default 24 — the value 87.8-13 F-2 recorded as
-   * fitting the widest compact label ("12p" at 10px mono) at 375px, where the old 40px "read as
-   * dead left padding". The day columns take `1fr` each, so the grid always fits its container.
+   * Width of the time-axis gutter column, in px. Default 28 (was 24). 87.8-13 F-2's rule stands:
+   * the gutter fits the widest compact label, and the old 40px "read as dead left padding" at
+   * 375px. F-2's PREMISE is corrected here: it sized 24 for "12p" at 10px mono, but this grid's
+   * axis label is `text-xs sm:text-sm` (12px, 14px), not mono. The day columns take `1fr` each, so
+   * the grid always fits its container.
+   *
+   * DECISION Phase 88.6.1-24 (SPEC Req 11, register owner item 66): 24 -> 28, chosen OVER shrinking
+   * the label's `pr-1` and OVER a smaller label size. "12p" measured 20.14px at 375 and 23.05px at
+   * 1280 against the 20px content box a 24px gutter with `pr-1` leaves (plan 88.6-26's measurement,
+   * recorded in the register, not re-run here), so it clipped. 28 leaves 24px - the width and the
+   * reason EventHeatmapBackground's own gutter took in 88.6-26 (its `D-01 / delta V-7` marker).
+   * Widening toward 40 re-opens F-2; narrowing below 28 re-opens the clip at desktop width.
+   * Changing this is a decision, not a cleanup.
    */
   gutterPx?: number;
   /**
@@ -109,8 +119,8 @@ interface WeekGridBaseProps {
    *
    * MEMO-STABILITY: pass a stable callback (`useCallback`). Every seam value that reaches a cell
    * must be referentially stable across a drag or it defeats the `React.memo` on ~196 cells that
-   * `AvailabilityGrid.js:368-373` calls "the smooth/janky boundary on a phone, not a
-   * micro-optimization."
+   * `AvailabilityGrid.js` (anchor `smooth/janky boundary`) calls "the smooth/janky boundary on a
+   * phone, not a micro-optimization."
    */
   renderDayHeader?: (col: number) => React.ReactNode;
   /**
@@ -119,7 +129,7 @@ interface WeekGridBaseProps {
    * content and travels with the scroll rather than sticking to the viewport.
    *
    * This hosts the drag-selection rectangle. Selection cannot be expressed as tinted cells:
-   * manual mode legitimately produces OFF-GRID ranges (`createEvent.js:64-74` derives
+   * manual mode legitimately produces OFF-GRID ranges (`createEvent.js`, anchor `const derivedSelectedSlot`, derives
    * `selectedSlot` from a free-form datetime-local plus a 1-720 minute field — e.g. 19:15-20:00
    * on a 30-minute grid).
    */
@@ -143,10 +153,15 @@ interface WeekGridBaseProps {
    * header row and the time gutter — so a consumer whose contract is "N day columns means N
    * column headers" cannot live with it. The rebuilt scheduler is exactly that consumer: BOTH
    * halves of its acceptance harness locate day columns as `getAllByRole('columnheader')` and
-   * assert `toHaveLength(7)` / `[0] === '24 Mon'` (`EventScheduler.test.tsx:99-100,137` and
-   * `createEvent.integration.test.tsx:109,137,184`), and both files are contractually UNEDITABLE.
+   * assert `toHaveLength(7)` / `[0] === '24 Mon'` (`EventScheduler.test.tsx` and
+   * `createEvent.integration.test.tsx`, anchors `columnHeaders()` and `toHaveLength(7)`), and both
+   * files are contractually UNEDITABLE. Amended 2026-10-15 by DECISION Phase 88.6.1-24: that holds
+   * for their COLUMNHEADER pins, which remain unedited; `EventScheduler.test.tsx`'s cell-NAME pins
+   * were re-keyed to copy row C1 by that decision (D-12, owner-confirmed), which this marker never
+   * covered.
    *
-   * WHY NOT change it for everyone: `WeekGrid.test.tsx:171,181` pins the corner AS a columnheader
+   * WHY NOT change it for everyone: `WeekGrid.test.tsx` (anchor `headers[0] is the gutter corner`,
+   * in the `renderDayHeader` describe) pins the corner AS a columnheader
    * ("headers[0] is the gutter corner; the day headers follow") and indexes the day headers from
    * 1. Flipping the default would edit a pin to make a different pin pass — the thing this phase's
    * harness rules forbid. Both readings of a blank corner are ARIA-legal; this makes the choice
@@ -183,7 +198,7 @@ export interface ReadWeekGridProps extends WeekGridBaseProps {
    *
    * WHY THIS EXISTS: today's wrapper is `overflow-x-auto` — horizontal only, with NO height bound.
    * The shipped RBC scheduler gets its vertical scrolling from RBC's own internal scroller inside a
-   * `h-[600px] … overflow-hidden` container (`EventScheduler.js:478`). Without this prop the
+   * `h-[600px] … overflow-hidden` container (`EventScheduler.js`, deleted in FE commit `3ff46e7`). Without this prop the
    * rebuilt grid would simply clip inside the modal, `scrollToTime` parity would silently become a
    * no-op (nothing to scroll), and the phone height budget could not be met — while every pre-e2e
    * gate stayed green, because the only pin is "mounts without throwing".
@@ -198,7 +213,7 @@ export interface ReadWeekGridProps extends WeekGridBaseProps {
    * SEAM 5 (88.1-02, SPEC Req 6) — keyboard/read-arm select passthrough. Called with the cell's
    * coordinate when Enter/Space commits on a focused read cell.
    *
-   * This is NOT a new keyboard handler and must never become one: `useHeatmapCell.ts:101-105`
+   * This is NOT a new keyboard handler and must never become one: `useHeatmapCell.ts:101-105` (`case 'Enter':`)
    * already maps Enter/Space to `onSelect`, and `ReadCell` has accepted an `onSelect` prop all
    * along — WeekGrid's read arm simply never populated it, so a keyboard commit on a read cell
    * resolved to `noop`. This seam closes that missing link, and nothing else.
@@ -240,9 +255,10 @@ const DEFAULT_CELL_CLASS = 'h-12 sm:h-14 border border-line';
  * grid into the horizontal-scroll surface D-03 explicitly rejected; `1fr` columns fit-to-width at
  * both target geometries (~117px columns in the create-event modal's real 896px `max-w-4xl`).
  *
- * The idiom is copied from the owner-passed sibling `EventHeatmapBackground.js:210-212`, including
- * `className="contents"` on the per-row wrapper (`:235`) so keeping `role="row"` does not break the
- * single grid.
+ * The idiom is copied from the owner-passed sibling `EventHeatmapBackground.js` (anchor
+ * `gridTemplateColumns: '28px repeat(7, 1fr)'`), including `className="contents"` on the per-row
+ * wrapper (anchor `className="contents" role="row"`, which that file also wears since
+ * 88.6.1-24) so keeping `role="row"` does not break the single grid.
  *
  * NOT AN OVERRIDE OF ANYTHING PRIOR: `DECISION Phase 88-31` above guards the read-data UNION, not
  * the layout. WeekGrid had zero live consumers and `WeekGrid.test.tsx` had no geometry assertions
@@ -261,7 +277,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
     ariaLabel,
     disabled = false,
     cellClassName,
-    gutterPx = 24,
+    gutterPx = 28,
     renderDayHeader,
     overlay,
     scrollContainerRef,
@@ -455,8 +471,9 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
         {...gestureHandlers}
       >
         {/* Day header row. `contents` keeps role="row" without breaking the single grid
-            (EventHeatmapBackground.js:235) — which is also why `sticky` has to live on the header
-            CELLS: a display:contents element cannot itself stick. RBC keeps the day names fixed
+            (EventHeatmapBackground.js, anchor `className="contents" role="row"`) — which is also
+            why `sticky` has to live on the header CELLS: a display:contents element cannot itself
+            stick. RBC keeps the day names fixed
             while the slots scroll, and this is that parity. Backgrounds are required, not
             decorative: a sticky element with no background lets the scrolled cells show through. */}
         <div className="contents" role="row">
@@ -478,9 +495,11 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
         {/* Time-slot rows */}
         {Array.from({ length: slots }, (_, row) => (
           <div key={`r-${row}`} className="contents" role="row">
-            {/* pr-1 (not the old pr-2) because the gutter is now 24px, not 64-80px — 8px of
-                right padding would leave 16px for the label. Matches the owner-passed
-                EventHeatmapBackground.js:238 gutter at the same width. */}
+            {/* pr-1 (not the old pr-2): the gutter is 28px by default since 88.6.1-24 (24px before),
+                not 64-80px, so pr-1 leaves 24px for the label where pr-2 would leave 20. It matches
+                EventHeatmapBackground's gutter again (28px since 88.6-26, its `D-01 / delta V-7`
+                marker) - the "same width" this comment claimed was false between 88.6-26 and
+                88.6.1-24. */}
             <div className="sticky left-0 z-10 bg-surface-card flex items-center justify-end pr-1 text-xs sm:text-sm text-content-secondary">
               {slotLabels?.[row] ?? ''}
             </div>
