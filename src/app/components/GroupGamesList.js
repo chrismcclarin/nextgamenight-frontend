@@ -10,6 +10,9 @@ import { Heading } from '../../components/ui/Heading';
 import { SelectControl } from '../../components/ui/Input';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
+const SORT_ASCENDING_LABEL = 'Sort order: ascending';
+const SORT_DESCENDING_LABEL = 'Sort order: descending';
+
 function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, timezone }) {
     return (
         // DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27): the whole
@@ -371,12 +374,36 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             <option value="player_count">Player Count</option>
                         </SelectControl>
                     </label>
+                    {/* DECISION Phase 88.6.1-48 (D-31 sort toggle): the owner ruled this on
+                        2026-10-05, "Ok and ratified" (wording batch 2, row D: the sort arrow's
+                        screen-reader name "Sort order: ascending" / "Sort order: descending",
+                        plan 48 option A; the arrow grows to 44px on phones) — string S1.
+                        CHOSEN: the name in words from the two hoisted constants above; the glyph in
+                        an aria-hidden span; the `title` hover tip kept byte-identical.
+                        REJECTED: the hover tip as the name (it tells a phone user to "click", the
+                        D-16 class); the arrow glyph as the name (a known screen-reader gap);
+                        dropping the `title` the way plan 88.6.1-54 drops the home-card gear's under
+                        D-19 (that title repeated its name word for word; this one carries the one
+                        fact the name lacks, is the only words a sighted desktop user sees, and the
+                        ratified option A keeps it).
+                        WHAT A SCREEN READER HEARS: the name ("Sort order: ascending, button"), then
+                        the `title` as the accessible description ("Ascending (click to reverse)") —
+                        typically straight after the name on NVDA and JAWS, after a pause as a hint
+                        on VoiceOver. Whether iPhone VoiceOver speaks the word "click" is measured in
+                        the phase's VoiceOver check (plan 88.6.1-57); a heard "click" is a wording
+                        question for the owner about the tip's words, never a reason to delete the
+                        tip.
+                        FLOOR: the arrow sits in Filter's row and the phase's 44x44 rule covers it;
+                        phone-scoped `min-h-11 md:min-h-0` like its neighbours, plus
+                        `min-w-11 md:min-w-0` because the arrow is under 44px wide.
+                        Changing any of this is a decision, not a cleanup. */}
                     <button
+                        aria-label={sortOrder === 'asc' ? SORT_ASCENDING_LABEL : SORT_DESCENDING_LABEL}
                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
+                        className="px-3 py-2 min-h-11 md:min-h-0 min-w-11 md:min-w-0 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
                         title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
-                        {sortOrder === 'asc' ? '\u2191' : '\u2193'}
+                        <span aria-hidden="true">{sortOrder === 'asc' ? '\u2191' : '\u2193'}</span>
                     </button>
                 </div>
                 {/* DECISION Phase 88.6.1-48 (D-21 / D-44): Filter is a DISCLOSURE — it shows and
