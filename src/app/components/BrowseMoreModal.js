@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import * as Sentry from '@sentry/nextjs';
 import { suggestionsAPI } from '../../lib/api';
@@ -82,6 +82,8 @@ export default function BrowseMoreModal({
   // Whether the request behind the list on screen carried a tier filter (D11 (a)); the empty
   // state's variant reads this settled value, never live tier state.
   const [settledFiltersActive, setSettledFiltersActive] = useState(false);
+  // W006 latch: the class-plus-code key of the failure already reported in this episode.
+  const lastReportedKeyRef = useRef(null);
 
   // If the parent updates defaultPlayerCount (e.g., RSVP confirms during the
   // modal's lifetime) and the user hasn't typed yet, sync the input. We only
@@ -93,6 +95,12 @@ export default function BrowseMoreModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultPlayerCount]);
+
+  // A new open is a new failure episode (W006). Declared ABOVE the fetch effect on purpose:
+  // effects run in declaration order, so the latch is re-armed before the open's fetch starts.
+  useEffect(() => {
+    if (open) lastReportedKeyRef.current = null;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -132,6 +140,8 @@ export default function BrowseMoreModal({
         // never reaches this line (the cancelled check above), so this stamps the answer shown.
         setSettledFiltersActive(selectedTiers.size > 0);
         setHasLoaded(true);
+        // Recovery ends the failure episode (W006): the next failure files again.
+        lastReportedKeyRef.current = null;
       } catch (err) {
         if (!cancelled) {
           /* DECISION Phase 88.6-32 (R1 / T-88.6-140): the copy is DERIVED from `ApiError.code`
@@ -146,19 +156,43 @@ export default function BrowseMoreModal({
              theirs from the AC-2 `logger.error` conversion, whose `exception.values[0]` also
              carries the error's message and stack.
 
-             CLASS-ONLY, matching `FeedbackForm.js:236-240`: a wrapped Error naming the class
-             and, when present, the envelope code — never `err.message`, never the response
-             body. Widening it is a decision, not a cleanup. */
+             CLASS-ONLY, matching `FeedbackForm.js:345` (`feedback submit failed`): a wrapped
+             Error naming the class and, when present, the envelope code — never `err.message`,
+             never the response body. Widening it is a decision, not a cleanup.
+
+             AMENDED Phase 88.6.1-32 (W006, D-26): the capture is now LATCHED to one event per
+             failure episode — keyed on class plus code (the `lastReportedKeyRef` idiom of
+             `QuickSuggestions.js:313`, `lastReportedKeyRef.current !== reportKey`), re-armed
+             when the dialog opens and on a successful response — because this effect re-runs on
+             every filter tap, and during an outage it filed one event per tap (WR-106,
+             `88.6-REVIEW-2026-09-24-triaged.md:395`, `WR-106`). A different failure code is a
+             new episode. REJECTED: demoting it to a `logger.info` breadcrumb (the review's
+             first fix option and the research pick, DF-4) — this capture is an AC-16 (a)
+             escalation (owner, 2026-09-09; `88.6-32-PLAN.md:829`, `T-88.6-140`), and 88.6's D2
+             ruling keeps escalations a plan ADDED at event level (`88.6-CONTEXT.md:336`,
+             `where a plan ADDS an escalation`); a breadcrumb files nothing on its own, so an
+             outage of this endpoint would reach no operator. REJECTED: `logger.error` — it
+             forwards the error's message and stack, and this site is class-only.
+             CORRECTION of WR-106's first objection (`88.6-REVIEW-2026-09-24-triaged.md:402`):
+             the allowlist sentence above gave the wrong reason — `logger` is not `console`, so
+             the allowlist never mattered; the true reason this capture is hand-rolled is the
+             class-only payload. WR-106's second objection (`:403`) does not hold: the three
+             siblings did stay at `logger.error` as D2's AC-16 carve-out (`88.6-CONTEXT.md:328`,
+             `survives ONLY where an owner ruling requires a Sentry EVENT`). The sentences above
+             are kept as history. */
           const cls = (err && err.name) || 'Error';
           const code = err && typeof err.code === 'string' ? ` ${err.code}` : '';
-          Sentry.captureException(
-            new Error(`browse-more suggestions fetch failed: ${cls}${code}`),
-            { tags: { feature: 'suggestions', op: 'browse-more-fetch' } }
-          );
+          const reportKey = `browse-more suggestions fetch failed: ${cls}${code}`;
+          if (lastReportedKeyRef.current !== reportKey) {
+            lastReportedKeyRef.current = reportKey;
+            Sentry.captureException(new Error(reportKey), {
+              tags: { feature: 'suggestions', op: 'browse-more-fetch' },
+            });
+          }
           /* NO `fallback:` OPTION, deliberately. UI-SPEC §6.3's register holds no ratified
              string for this site, and an executor never mints user-visible copy — so the
              code-less arm takes the register's own `unknown` copy
-             (`useFetchErrorState.ts:46`) rather than a newly-authored sentence. Adding a
+             (`useFetchErrorState.ts:123`, `unknown: 'Something went wrong`) rather than a newly-authored sentence. Adding a
              fallback here means ratifying one first. */
           setError(getFetchErrorMessage(err));
         }
@@ -315,15 +349,32 @@ export default function BrowseMoreModal({
                 there is no AA violation, but it strands the phase's only two
                 un-standardised controls for the cost of one utility in a commit
                 that already opens both lines. The exemption's `why` above is about
-                SIZE, so a ring does not weaken it. */}
+                SIZE, so a ring does not weaken it.
+
+                DECISION Phase 88.6.1-32 (AC-13, D-35): the decrement's limit at 1 is
+                aria-disabled plus a FIRST-LINE guard in its handler, chosen OVER the native
+                disabled attribute — with that attribute the focused button left the focus
+                order when it reached 1, and focus fell to the page body inside the Radix
+                dialog (register MEDLOW-29) — and OVER relying on the clamp alone: with an
+                EMPTY box the clamp writes 1, which the guard refuses. This is CT-3 census row
+                22, a BOUNDARY, not an in-flight gate. The two utilities that carried the
+                disabled-state variant (the half-opacity one and the not-allowed cursor one)
+                are deleted as dead: the gated look now comes from the unlayered
+                aria-disabled rules on the .btn and .btn-secondary classes in globals.css (the
+                gated colour pair and the not-allowed cursor), so the 50% wash becomes the
+                gated colour pair — a disclosed visible delta, the same shape as every other
+                gated secondary button. No extra opacity utility is added (a double dim). The
+                32x32 exemption and the inset ring above are unchanged (88.6-32 D-10, AC-10).
+                Changing any of this is a decision, not a cleanup. */}
             <div className="flex items-center gap-1" title="Player count">
               <button
                 type="button"
-                onClick={() =>
-                  setPlayerCount((p) => Math.max(1, (p || 1) - 1))
-                }
-                disabled={decrementDisabled}
-                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                onClick={() => {
+                  if (decrementDisabled) return;
+                  setPlayerCount((p) => Math.max(1, (p || 1) - 1));
+                }}
+                aria-disabled={decrementDisabled || undefined}
+                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                 aria-label="Decrease player count"
               >
                 −
@@ -384,10 +435,10 @@ export default function BrowseMoreModal({
                      VARIANT, chosen OVER the plan's literal "keep the `bg-*` utilities on
                      `<Button className>`". Those utilities CANNOT paint on a `Button`:
                      `.btn-secondary` declares `background-color` and `color` UNLAYERED
-                     (`globals.css:2627-2631`) and an unlayered author rule beats every
+                     (`globals.css:2723`, `.btn-secondary {`) and an unlayered author rule beats every
                      `@layer utilities` rule, so `bg-btn-primary text-btn-primary-text` would be
                      dead and every pressed tier would render as an unpressed one.
-                     `.btn-primary` (`globals.css:2378-2381`) sets exactly those two properties
+                     `.btn-primary` (`globals.css:2474`, `.btn-primary {`) sets exactly those two properties
                      off exactly those two tokens, so the variant is the same paint with the
                      cascade the right way round — the same substitution plan 88.6-23 made for a
                      computed `btn ${…}` template. */
@@ -434,7 +485,7 @@ export default function BrowseMoreModal({
               {/* DECISION Phase 88.6-32 (R2): the pair's `rounded-l-btn` / `rounded-r-btn`
                   segmented shape is DELETED with the migration rather than carried onto
                   `<Button className>`. Those utilities are DEAD on any `.btn` element —
-                  unlayered `.btn` sets the `border-radius` SHORTHAND (`globals.css:2199`) and
+                  unlayered `.btn` sets the `border-radius` SHORTHAND (`globals.css:2295`, `border-radius: 8px` in `.btn {`) and
                   beats the `@layer utilities` longhands — so today they paint only in the
                   ACTIVE state, which is the one state that carries no `.btn`. The pair has
                   therefore been rendering half-segmented and half-pill all along; the
@@ -564,7 +615,7 @@ function EmptyState({ variant, onAddGames, onResetFilters }) {
             text-sm` are dead under unlayered `.btn` and are deleted; `Slot` concatenates the
             child's className WITHOUT tailwind-merge, so any surviving utility goes on
             `<Button className>`, never on the `<Link>`. Shipped precedent:
-            `GroupLibrary.js:184`. */}
+            `GroupLibrary.js:194` (`Button asChild`). */}
         <Button asChild variant="primary">
           <Link href="/userProfile" onClick={onAddGames}>
             Add games to your collection
