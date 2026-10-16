@@ -548,7 +548,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                * rendering the component and letting its early return degrade.
                *
                * `ClickableMemberName` returns bare `children` for `unknown`
-               * (`ClickableMemberName.js:157-160`) — no role, no tabIndex, no handler. Routing
+               * (its early return, anchor `if (status === 'unknown') {`) — no role, no tabIndex, no handler. Routing
                * through it produces the right outcome BY ACCIDENT, and a future reader would
                * reasonably "fix" that into something focusable. REJECTED explicitly:
                * focusable-but-inert, which `keyboardOperability.test.tsx:172` test 5 exists to
@@ -560,6 +560,11 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                * would regress that for assistive tech. So it carries the SAME aria-hidden-glyph
                * plus text-carrier composition as an interactive chip, with no status suffix,
                * because `unknown` asserts no relationship. Dropping the carrier is a decision.
+               *
+               * AMENDED Phase 88.6.1-37: `ClickableMemberName`'s `unknown` branch now returns a
+               * keyed, non-focusable plain-name span wrapping `children` (a new node, so focus
+               * recovery sees the swap) — still no role and no tabIndex — so the B-5 choice (its
+               * own inert chip here; focusable-but-inert rejected) stands unchanged.
                */
               if (status === 'unknown') {
                 return (
