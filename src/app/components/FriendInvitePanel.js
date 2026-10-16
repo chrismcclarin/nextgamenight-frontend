@@ -22,6 +22,10 @@ const INVALID_EMAIL_MESSAGE = "That doesn't look like a valid email address. Che
 const INVITE_SEND_FAILED_MESSAGE = "We couldn't send that invite. Please try again.";
 // D-32 R2 (ratified 2026-10-04; ASCII apostrophe, R8): an all-failed friend batch with no code.
 const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try again.";
+// Copy row X3, reused at Add Friend by the owner's ruling of 2026-10-05 (D-47; D-32 R8 ASCII
+// apostrophe). Plan 88.6.1-37 hoists the same row as SEND_REQUEST_FAILED_MESSAGE at the member
+// plus button: two site constants by D-30's placement rule, not a shared module.
+const FRIEND_REQUEST_FAILED_MESSAGE = "We couldn't send that request.";
 // The copy confirmation (copy row G3's sentence, byte-identical to the literal this panel
 // shipped; the QR dialog hoists the same constant, plan 88.6.1-12).
 const LINK_COPIED_ANNOUNCEMENT = 'Invite link copied to the clipboard.';
@@ -60,6 +64,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     const [friendPrompt, setFriendPrompt] = useState(null); // { id, username, email } — id is the Users.id UUID
     const [addingFriend, setAddingFriend] = useState(false);
     const [friendRequestSent, setFriendRequestSent] = useState(false);
+    // Add Friend's failure lane (88.6.1-27): every failure except the already-pending answer.
+    const [friendRequestError, setFriendRequestError] = useState('');
 
     // QR code invite state
     const [inviteUrl, setInviteUrl] = useState(null);
@@ -184,6 +190,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
             setEmailSuccess('');
             setFriendPrompt(null);
             setFriendRequestSent(false);
+            setFriendRequestError('');
             setInviteUrl(null);
             if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
             copiedTimerRef.current = null;
@@ -309,6 +316,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         setEmailSuccess('');
         setFriendPrompt(null);
         setFriendRequestSent(false);
+        setFriendRequestError('');
 
         try {
             await invitesAPI.sendInvite(group.id, invitedEmail);
@@ -444,12 +452,40 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
            decision, not a cleanup. */
         const settle = addFriendRecovery.arm();
         setAddingFriend(true);
+        // Emptied at every attempt, so a repeat failure is a change the lane announces again.
+        setFriendRequestError('');
         try {
             await friendshipsAPI.sendRequest(friendPrompt.id);
             setFriendRequestSent(true);
-        } catch {
+        } catch (err) {
             // Silently fail — they may already have a pending request
-            setFriendRequestSent(true);
+            //
+            // AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (copy row X3 reuse, owner ruling 2026-10-05; SPEC Prohibition 2):
+            // (1) KEPT — the already-pending answer still shows "Friend request sent!" (the
+            // owner's ruling: that deliberate case stays). (2) CHANGED — every other failure shows
+            // X3 from the friend-request error lane, which Add Friend names in its description,
+            // and the prompt stays so Add Friend can be pressed again; before this, every failure
+            // claimed success. (3) HOW THE CASES ARE TOLD APART — the request route answers a
+            // pending request in either direction and an existing friendship with two 409s that
+            // carry no error code, so the API client maps both to conflict from the status alone,
+            // and conflict is the only signal this site reads. The existing-friendship answer
+            // therefore also keeps the success line; it reaches this button only when the
+            // friends list failed to load or went stale, because the prompt is skipped for a
+            // known friend. Splitting it needs a registered error code from the backend (Phase
+            // 93's conversion of the raw-error routes), and when one lands this branch changes in
+            // the same commit or the pending answer silently falls to X3. (4) REJECTED — X3 for
+            // every failure (it would tell someone whose request is already waiting that it
+            // failed, against the ruling); branching on the backend's error text (the prose
+            // fallback the email catch above removed on 2026-08-21, and a read the
+            // error-envelope roster suite forbids); unmounting the prompt on failure (it strands
+            // the retry and drops focus); writing the failure into the email send lane (that
+            // lane describes the Send button, a different action). Only the error's code is
+            // read here. Changing any of this is a decision, not a cleanup.
+            if (err?.code === 'conflict') {
+                setFriendRequestSent(true);
+            } else {
+                setFriendRequestError(FRIEND_REQUEST_FAILED_MESSAGE);
+            }
         } finally {
             setAddingFriend(false);
             addFriendInFlightRef.current = false;
@@ -836,6 +872,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     size="default"
                                     onClick={handleAddFriend}
                                     aria-disabled={addingFriend ? 'true' : undefined}
+                                    aria-describedby={friendRequestError ? 'invite-friend-request-error' : undefined}
                                     className="shrink-0"
                                 >
                                     {addingFriend ? 'Sending...' : 'Add Friend'}
@@ -852,6 +889,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             srOnlyWhenEmpty
                             message={friendRequestSent ? 'Friend request sent!' : ''}
                             className="mt-2 text-content-status-success"
+                        />
+                        <StatusRegion
+                            id="invite-friend-request-error"
+                            politeness="assertive"
+                            srOnlyWhenEmpty
+                            message={friendRequestError}
+                            className="mt-2 text-content-status-error"
                         />
                     </div>
 
