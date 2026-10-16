@@ -177,8 +177,11 @@ describe('useConfirmAction — dialog tier', () => {
     });
 
     expect(screen.getByTestId('pending')).toHaveTextContent('true');
-    // While pending, the confirm control is disabled — but even if a call
-    // slips through (double tap, stale pointer event), it must not re-fire.
+    // While pending the hook reports the confirm as unavailable, and the dialog
+    // renders that pending confirm as aria-disabled (88.6.1-22, R123) — it stays
+    // focusable and is no longer natively disabled, so React no longer swallows a
+    // second press. A call that reaches the hook (double tap, stale pointer event)
+    // must still not re-fire: the hook's pendingRef refuses it.
     expect(screen.getByTestId('disabled-empty')).toHaveTextContent('true');
 
     await act(async () => {
@@ -562,9 +565,40 @@ describe('ConfirmDialog — dialog tier', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  it('disables the confirm control while a commit is pending', () => {
+  // 88.6.1-22 (R123 / D-39), REWRITTEN in place: the pending confirm used to be natively
+  // disabled, and a natively disabled control leaves the focus order in a real browser —
+  // the control the person just pressed. It now carries aria-disabled and keeps btn-danger,
+  // whose gated colour pair comes from the .btn-danger aria-disabled rule in globals.css.
+  it('keeps the pending confirm focusable — aria-disabled, no native disabled, still btn-danger (R123 / D-39)', () => {
     renderConfirmDialog({ pending: true, confirmDisabled: () => true });
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    const confirmButton = screen.getByRole('button', { name: 'Delete' });
+    expect(confirmButton).toHaveAttribute('aria-disabled', 'true');
+    expect(confirmButton).not.toHaveAttribute('disabled');
+    expect(confirmButton).toHaveClass('btn-danger');
+  });
+
+  // 88.6.1-22 (R123 guard): with the native attribute gone React no longer drops the click,
+  // so the component's own first-line pending guard is what refuses it. Rendered WITHOUT the
+  // hook (and with a validity predicate that says "valid"), so nothing else can refuse it.
+  it('refuses a press on the pending confirm — onConfirm is never called (R123 guard)', () => {
+    const { onConfirm } = renderConfirmDialog({ pending: true, confirmDisabled: () => false });
+    const confirmButton = screen.getByRole('button', { name: 'Delete' });
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  // 88.6.1-22 (CT-2c), owner ruling 3A on 2026-10-16: Cancel, the header close, Escape and the
+  // overlay stay LIVE while a commit is pending (the 88-05 D-08 marker in ConfirmDialog.tsx).
+  // This pins the ruling, so a later "lock Cancel too" edit reds here and reaches the owner.
+  it('Cancel and the header close stay live while a commit is pending (owner ruling 3A, CT-2c)', () => {
+    const { onCancel, onConfirm } = renderConfirmDialog({ pending: true, confirmDisabled: () => true });
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(cancel).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Close' })).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(cancel);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it('passes an axe audit on the OPEN dialog', async () => {
@@ -667,6 +701,59 @@ describe('ConfirmDialog — typed tier', () => {
     );
   });
 
+  // 88.6.1-22 (D-26): the typed input is the activated control on the Enter path, so while
+  // the commit is pending it stays in the focus order — read-only and aria-disabled, never
+  // natively disabled.
+  it('keeps the pending typed input focusable — readOnly + aria-disabled, never natively disabled (D-26)', () => {
+    renderConfirmDialog({ ...typedProps, pending: true, confirmDisabled: () => true });
+    const input = screen.getByLabelText(/To confirm, type/i);
+    expect(input).toHaveAttribute('readonly');
+    expect(input).toHaveAttribute('aria-disabled', 'true');
+    expect(input).not.toBeDisabled();
+  });
+
+  // 88.6.1-22 (D-26 Enter guard): the Enter handler returns on pending BEFORE it consults the
+  // caller's validity predicate — here the predicate says "valid", so only the guard refuses.
+  it('Enter on the pending typed input never commits (D-26 Enter guard)', () => {
+    const { onConfirm } = renderConfirmDialog({
+      ...typedProps,
+      pending: true,
+      confirmDisabled: () => false,
+    });
+    fireEvent.keyDown(screen.getByLabelText(/To confirm, type/i), { key: 'Enter' });
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('the typed input keeps focus when the commit starts (D-26)', async () => {
+    const shared = {
+      ...typedProps,
+      onCancel: vi.fn(),
+      onConfirm: vi.fn(),
+      confirmDisabled: () => true,
+    };
+    const { rerender } = render(<ConfirmDialog {...shared} open pending={false} />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/To confirm, type/i)).toHaveFocus()
+    );
+    rerender(<ConfirmDialog {...shared} open pending />);
+    // CONFIRM-ONLY in jsdom: jsdom never blurs a disabled element, so this would pass
+    // against a natively disabled input too. TI1 above (the attributes) is the RED half;
+    // the real-browser proof is routed to plan 88.6.1-43's phone arm.
+    expect(document.activeElement).toBe(screen.getByLabelText(/To confirm, type/i));
+  });
+
+  // 88.6.1-22 (rule of KIND): only the IN-FLIGHT half moved to aria-disabled. An unmatched
+  // phrase is a VALIDITY state, and that half stays natively disabled.
+  it('keeps the validity half native — an unmatched phrase is disabled with no aria-disabled', () => {
+    renderConfirmDialog({
+      ...typedProps,
+      confirmDisabled: (value?: string) => value !== 'Tuesday Crew',
+    });
+    const confirmButton = screen.getByRole('button', { name: 'Delete group' });
+    expect(confirmButton).toBeDisabled();
+    expect(confirmButton).not.toHaveAttribute('aria-disabled');
+  });
+
   it('renders the caller-supplied pre-flight blocker panel above the input', () => {
     renderConfirmDialog({
       ...typedProps,
@@ -697,7 +784,8 @@ describe('ConfirmDialog — typed tier', () => {
 
   // Outside-pointer dismissal is defeated for the typed tier (D-08). Radix's
   // own outside detection needs a real browser, so the DECISION seam is pinned
-  // here the way `Modal.test.tsx:89-105` pins its escape hatch.
+  // here the way `Modal.test.tsx:703-719` (describe 'outside-dismiss escape hatch') pins its
+  // escape hatch.
   it('marks the typed tier non-dismissable and the other tiers dismissable', () => {
     expect(isDismissableTier('typed')).toBe(false);
     expect(isDismissableTier('dialog')).toBe(true);
@@ -742,6 +830,72 @@ describe('ConfirmDialog — typed tier', () => {
     rerender(<ConfirmDialog {...shared} open />);
 
     expect(screen.getByLabelText(/To confirm, type/i)).toHaveValue('');
+  });
+});
+
+// 88.6.1-22 (AC-9): the real pairing — a real useConfirmAction spread into the real
+// ConfirmDialog — so the in-flight refusal is exercised end to end, not by a stub.
+function PendingDialogHarness({
+  onConfirm,
+}: {
+  onConfirm: UseConfirmActionConfig['onConfirm'];
+}) {
+  const confirm = useConfirmAction({
+    tier: 'dialog',
+    title: 'Delete this session?',
+    body: 'The play record, scores and who was there are deleted for everyone.',
+    confirmLabel: 'Delete',
+    onConfirm,
+  });
+  return (
+    <div>
+      <button data-testid="open" onClick={() => confirm.trigger('s1', 'Tuesday session')}>
+        Delete session
+      </button>
+      <ConfirmDialog {...confirm.dialogProps} />
+    </div>
+  );
+}
+
+describe('ConfirmDialog — a pending commit through the real hook (AC-9, R123 / D-39)', () => {
+  it('two synchronous presses reach onConfirm once; the confirm stays aria-disabled and focused until it settles', async () => {
+    const gate = deferred();
+    const onConfirm = vi.fn(() => gate.promise);
+    render(<PendingDialogHarness onConfirm={onConfirm} />);
+
+    fireEvent.click(screen.getByTestId('open'));
+    const confirmButton = screen.getByRole('button', { name: 'Delete' });
+    confirmButton.focus();
+
+    await act(async () => {
+      fireEvent.click(confirmButton);
+      fireEvent.click(confirmButton);
+    });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+
+    // The SAME node, now pending.
+    const pendingConfirm = screen.getByRole('button', { name: 'Delete' });
+    expect(pendingConfirm).toBe(confirmButton);
+    expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
+    expect(pendingConfirm).not.toHaveAttribute('disabled');
+    // CONFIRM-ONLY in jsdom: jsdom never blurs a disabled element, so this focus check
+    // would pass on a natively disabled button too. The attribute checks above are the
+    // RED half; the real-browser focus arm is routed to plan 88.6.1-43.
+    expect(document.activeElement).toBe(pendingConfirm);
+
+    // A third press while pending still issues nothing (concurrency: the attribute holds
+    // through the second activation and until the first commit settles).
+    await act(async () => {
+      fireEvent.click(pendingConfirm);
+    });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      gate.resolve();
+      await gate.promise;
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 });
 
