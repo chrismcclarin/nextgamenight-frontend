@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
-import { invitesAPI } from '../../../lib/api';
+import { invitesAPI, isCsrfRejection } from '../../../lib/api';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
 import { StatusRegion } from '@/components/ui/StatusRegion';
@@ -34,11 +34,17 @@ import { logger, errCtx } from '@/lib/logger';
    IT FAILS TOWARD THE PROXY, DELIBERATELY: only the proxy's own marked body is excluded, so the
    arm fires for the backend refusal and for nothing the proxy produced. Both 403 shapes carry
    their own arm in `page.test.tsx` — an arm for the backend 403 alone passes on the ungated
-   version and proves nothing. */
+   version and proves nothing.
+
+   AMENDED Phase 88.6.1-35 (D-24): the gate's reason above STANDS — the arm is still gated on the
+   403 not being the proxy's. The structural test of the proxy's flag now has ONE home,
+   `isCsrfRejection` in `src/lib/api.ts` (`DECISION Phase 88.6.1-07`), which
+   `getFetchErrorMessage` also reads, so a CSRF 403 here falls to the register's unknown line.
+   CHOSEN over keeping this page's own copy of that test: two definitions of the proxy body's
+   shape can drift (a later change to the flag would update one). Behaviour is unchanged for
+   every `ApiError`: both checks are strict on status 403 and on the boolean `true`. */
 function isWrongEmailRefusal(err) {
-  if (err?.code !== 'forbidden' || err?.status !== 403) return false;
-  const body = err?.details;
-  return !(body && typeof body === 'object' && body.csrf_rejected === true);
+  return err?.code === 'forbidden' && err?.status === 403 && !isCsrfRejection(err);
 }
 
 // The page region's test handle. NOT EXPORTED, deliberately — the reason is recorded on the rsvp
@@ -50,6 +56,18 @@ const PAGE_STATUS_TESTID = 'invite-accept-page-status';
 // screen-reader announcement read ONE source and cannot drift apart (no new words, D-31).
 const ACCEPTED_HEADLINE = "You've joined the group!";
 const ACCEPTED_DETAIL = 'You can now see events, suggest games, and coordinate with your group.';
+const ERROR_HEADLINE = 'Unable to accept invite';
+const INVITED_HEADLINE = "You're invited!";
+const INVITED_GENERIC_LINE = "You've been invited to a group on Next Game Night.";
+
+// Copy row L1 (D-30, owner-ratified 2026-10-04), byte-equal to this route's own `loading.tsx`
+// label. Three ASCII dots, no apostrophe.
+const LOADING_LABEL = 'Checking your invitation...';
+
+/** Join the non-empty parts of an announcement with one space (never a trailing space). */
+function joinParts(...parts) {
+  return parts.filter(Boolean).join(' ');
+}
 
 function InviteAcceptPage() {
   const searchParams = useSearchParams();
@@ -66,9 +84,17 @@ function InviteAcceptPage() {
      `group_name`, no `groupName`. So the read always stored `null` and the heading below always
      rendered "You've joined the group!". Deleting it changes NO rendered string (P1); it just
      stops a dead read pretending the copy is dynamic. The BE half — adding `group_name` to that
-     200 body — is deliberately NOT owned here and has no owner invented for it. */
+     200 body — is deliberately NOT owned here and has no owner invented for it.
+
+     AMENDED Phase 88.6.1-35 (W054): its twin — the camelCase id alias read beside the snake_case
+     `group_id` on the same success body — was dead for the same reason (the route's sole success
+     body carries the snake_case id only) and is deleted. The "User not found" half of W054 stays
+     with Phase 93. */
   const [error, setError] = useState(null);
   const [inviteInfo, setInviteInfo] = useState(null);
+  // Req 8: the signed-out announcement waits for the invite-info request to SETTLE (success, null
+  // body or failure) — see DECISION Phase 88.6.1-35 (Req 8 / AC-24) at the return below.
+  const [inviteInfoSettled, setInviteInfoSettled] = useState(false);
 
   // W039: the single-shot accept latch and the unmount-scoped write guard — see the
   // DECISION Phase 88.6.1-35 (W039 / WR-401) marker in the accept effect below.
@@ -172,7 +198,7 @@ function InviteAcceptPage() {
         const result = await invitesAPI.acceptInviteByToken(tokenToUse);
         if (unmountedRef.current) return;
         setStatus('accepted');
-        setGroupId(result.group_id || result.groupId || null);
+        setGroupId(result.group_id || null);
       } catch (err) {
         if (unmountedRef.current) return;
         setStatus('error');
@@ -225,17 +251,20 @@ function InviteAcceptPage() {
         const info = await invitesAPI.getInviteInfo(token);
         if (cancelled) return;
         setInviteInfo(info);
+        setInviteInfoSettled(true);
       } catch (err) {
         // Fall back to generic message if fetch fails.
         // AC-2 (owner ruling 2026-09-09, level AMENDED 2026-09-13): the raw `console.error` is
-        // retired onto the house logger at `info` — `Sentry.addBreadcrumb` (`logger.ts:34-36`),
+        // retired onto the house logger at `info` — `Sentry.addBreadcrumb` (`logger.ts:53`),
         // NOT an event. The message string is verbatim, and the caught error rides in the CONTEXT
         // OBJECT via the shared `errCtx(err)` helper rather than being passed as an object:
         // `logger.info(msg, ctx)`'s second parameter is `ctx?: Record<string, unknown>`
-        // (`logger.ts:24`) and `checkJs: false` means no typecheck catches that at a `.js` site.
+        // (`logger.ts:31`) and `checkJs: false` means no typecheck catches that at a `.js` site.
         // `errCtx` also keeps the `message:` key OFF this line, which is what stops a correct
         // conversion redding `fetchErrorTreatment`'s R1 gate (see the helper's own marker).
         logger.info('Failed to fetch invite info:', errCtx(err));
+        if (cancelled) return;
+        setInviteInfoSettled(true);
       }
     }
 
@@ -248,9 +277,36 @@ function InviteAcceptPage() {
   // W039 / Req 8: the outcome the page region speaks. Composed ONLY from text the settled branch
   // already renders (its <h1> plus its first body line, one space), read from the same hoisted
   // values the markup reads — see DECISION Phase 88.6.1-35 (Req 8 / AC-24) at the return below.
+  const inviterName = inviteInfo?.inviter_name || 'Someone';
+  const invitedGroupName = inviteInfo?.group_name || 'a group';
+  const memberCount = inviteInfo?.member_count;
+  /* DECISION Phase 88.6.1-35 (member count): the count line renders ONLY when the count is a number
+     above zero. The old guard tested the raw count's truthiness, so when the info route counts zero
+     active members it rendered a stray `0` glued to the end of the sentence. REJECTED: printing a
+     zero count — true, but not what the line was written to say, and no ratified wording exists
+     for it. Changing this is a decision, not a cleanup. */
+  const memberCountLine =
+    typeof memberCount === 'number' && memberCount > 0
+      ? `The group has ${memberCount} member${memberCount !== 1 ? 's' : ''}.`
+      : '';
+
   let announcement = '';
-  if (!authLoading && status === 'accepted') {
-    announcement = `${ACCEPTED_HEADLINE} ${ACCEPTED_DETAIL}`;
+  if (!authLoading) {
+    if (status === 'accepted') {
+      announcement = joinParts(ACCEPTED_HEADLINE, ACCEPTED_DETAIL);
+    } else if (status === 'error') {
+      announcement = joinParts(ERROR_HEADLINE, error);
+    } else if (status === 'not-logged-in' && inviteInfoSettled) {
+      announcement = joinParts(
+        INVITED_HEADLINE,
+        inviteInfo
+          ? joinParts(
+              `${inviterName} invited you to join ${invitedGroupName} on Next Game Night.`,
+              memberCountLine
+            )
+          : INVITED_GENERIC_LINE
+      );
+    }
   }
 
   let body;
@@ -260,7 +316,7 @@ function InviteAcceptPage() {
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4 text-center">
           <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
-          <p className="text-content-secondary">Loading...</p>
+          <p className="text-content-secondary">{LOADING_LABEL}</p>
         </div>
       </div>
     );
@@ -317,12 +373,12 @@ function InviteAcceptPage() {
             <div className="text-center">
               {/* Red X icon */}
               <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
               <Heading level={1} size="heading" className="text-content-primary mb-2">
-                Unable to accept invite
+                {ERROR_HEADLINE}
               </Heading>
               <p className="text-content-secondary mb-6">{error}</p>
               <Button asChild variant="primary" size="default" className="w-full text-center">
@@ -352,7 +408,7 @@ function InviteAcceptPage() {
               </div>
 
               <Heading level={1} size="heading" className="text-content-primary mb-2">
-                You&apos;re invited!
+                {INVITED_HEADLINE}
               </Heading>
 
               {inviteInfo ? (
@@ -360,17 +416,17 @@ function InviteAcceptPage() {
                   {/* §4.5 emphasis: 500 -> 400, and the distinction is carried by the colour
                       token each span already had (`text-content-primary` against the
                       paragraph's `text-content-secondary`), not by the weight. */}
-                  <span className="text-content-primary">{inviteInfo.inviter_name || 'Someone'}</span> invited you to join{' '}
-                  <span className="text-content-primary">{inviteInfo.group_name || 'a group'}</span> on Next Game Night.
-                  {inviteInfo.member_count && (
+                  <span className="text-content-primary">{inviterName}</span> invited you to join{' '}
+                  <span className="text-content-primary">{invitedGroupName}</span> on Next Game Night.
+                  {memberCountLine && (
                     <span className="block text-sm text-content-muted mt-1">
-                      The group has {inviteInfo.member_count} member{inviteInfo.member_count !== 1 ? 's' : ''}.
+                      {memberCountLine}
                     </span>
                   )}
                 </p>
               ) : (
                 <p className="text-content-secondary mb-6">
-                  You&apos;ve been invited to a group on Next Game Night.
+                  {INVITED_GENERIC_LINE}
                 </p>
               )}
 
@@ -415,6 +471,13 @@ function InviteAcceptPage() {
      NO FOCUS MOVE on this page: nothing the user operated is removed — the accept runs on load
      from an emailed link and the sign-in control is a navigation (the availability-form
      ERROR-flip rule; the rsvp page's NO FOCUS MOVE rule).
+
+     SIGNED OUT: the announcement waits for the invite-info request to SETTLE (success, null body
+     or failure), so it speaks once, with the final words. REJECTED: announcing the generic line at
+     once and again when the names arrive — two announcements for one screen. ACCEPTED COST: a
+     request that never settles announces nothing, while the page still shows its heading, the
+     generic line and the sign-in control. The small print under the sign-in control is not
+     announced (heading plus first body line, the sibling invite pages' rule).
      Changing any of this is a decision, not a cleanup. */
   return (
     <>
