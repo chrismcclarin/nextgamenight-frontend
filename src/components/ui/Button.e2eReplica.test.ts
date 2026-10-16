@@ -88,7 +88,9 @@ describe('E10 planted replica is byte-derived from the SHIPPED gameDetail row co
 
   it("INVITE = the settled <span>'s static classes + the `member` branch ink (its widest settled label)", () => {
     const prefix = PAGE.match(
-      /<span\s+className=\{`(inline-flex min-h-11[^`$]*?)\$\{branchInk\}`\}/,
+    // Attributes may sit between `<span` and `className` (plan 88.6.1-47 added `ref` and `tabIndex`);
+    // the pin reads the class template, not the attribute order. Loosened at the wave 5 gate (2026-10-16).
+      /<span\s[^>]*?className=\{`(inline-flex min-h-11[^`$]*?)\$\{branchInk\}`\}/,
     );
     expect(prefix, 'GuestInviteButton settled <span> className not found').not.toBeNull();
     const ink = PAGE.match(
