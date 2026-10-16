@@ -14,6 +14,7 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 // and the T-84-05 PII rules identical to every query-driven report.
 import { queryCacheOnError } from '../../lib/queryClient';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -24,6 +25,35 @@ import { logger, errCtx } from '../../lib/logger';
 // D-32 R2 (R8: straight apostrophe), byte-identical to the line this page already showed; the
 // same name as the FriendInvitePanel twin's constant.
 const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try again.";
+
+// The row among the elements carrying `attribute` whose value is `id` (compared as strings).
+function rowElementFor(attribute, id) {
+    const rows = document.querySelectorAll('[' + attribute + ']');
+    for (const row of rows) {
+        if (row.getAttribute(attribute) === String(id)) return row;
+    }
+    return null;
+}
+
+// Captures the row's next and previous siblings NOW and returns a resolver for the focus
+// recovery hook: when it runs, the first of them that is still connected, is not a row the
+// caller reports as still in flight, and holds a button or input carrying neither the native
+// disabled attribute nor aria-disabled="true" yields that control; else nothing, so the hook
+// takes its fallback (see the Req 5 marker on the hook instances).
+function neighbourControl(row, isRowInFlight) {
+    const candidates = row ? [row.nextElementSibling, row.previousElementSibling] : [];
+    return () => {
+        for (const candidate of candidates) {
+            if (!candidate || !candidate.isConnected) continue;
+            if (isRowInFlight && isRowInFlight(candidate)) continue;
+            const control = Array.from(candidate.querySelectorAll('button, input')).find(
+                (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-disabled') !== 'true'
+            );
+            if (control) return control;
+        }
+        return null;
+    };
+}
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
@@ -49,6 +79,9 @@ function FriendsPage() {
         // successful unfriend so friend pills EVERYWHERE update without a manual
         // reload (the local optimistic filter below only fixes THIS page's list).
         refreshFriendships,
+        // 88.6.1-66's read-only fact: an accept or decline for that request id is in flight on
+        // ANY surface (the bell included). Its context default is a function, never undefined.
+        isRequestActionPending,
     } = useFriendshipStatus();
 
     // Tab state
@@ -67,7 +100,9 @@ function FriendsPage() {
     const [searchResult, setSearchResult] = useState(null);
     const [searchError, setSearchError] = useState(null);
     const [searching, setSearching] = useState(false);
-    const [requestSent, setRequestSent] = useState(false);
+    // The person the last successful send went to (review r2 #47): the confirmation belongs
+    // to them, not to whatever result is shown when the send settles.
+    const [sentToId, setSentToId] = useState(null);
     const [sendingRequest, setSendingRequest] = useState(false);
 
     // Error state. `friendsLoadError` is the FETCH failure (the whole list is
@@ -107,10 +142,65 @@ function FriendsPage() {
        settle empties the selection, and a native gate would then blur the very button the user
        pressed. Disclosed visible delta: at rest with nothing selected (and while a group's
        members load) it shows the gated colour pair instead of the 50% wash; pressing it then
-       sends nothing. */
+       sends nothing.
+
+       The other pressed controls on this page, the same rule: Search, Send Request, Remove (its
+       latch is the confirm hook's own re-entry refusal), Accept and Decline. The SIBLING of a
+       pressed request-row button keeps the native attribute (Accept while Decline runs, and the
+       reverse), and so does the friend checkbox: both are the rule of KIND, gates on controls
+       nobody pressed. Search's empty-field half stays native too (rule of KIND): a press never
+       empties the field, and Tab past it reaches the tab strip, so it is no dead end, unlike the
+       invite panel's dialog. A request row whose request runs from the BELL is natively
+       disabled on both buttons here (plan 88.6.1-66's in-flight fact, read only while this page
+       has no press of its own for the row), chosen OVER leaving them live (the provider refuses
+       an other-kind press with no request sent, and the page would report a decline that was
+       never sent as failed) and OVER an aria-disabled pair (neither button was pressed on this
+       surface, so no focus has to be kept). Disclosed visible delta: Remove no longer dims
+       while removing; its label carries the state, and the 88.8 rule forbids an opacity look on
+       a gated control. REJECTED for every pressed control: native disabling (a natively
+       disabled element leaves the focus order). */
     const bulkInviteInFlightRef = useRef(false);
     // Newest wins for the group-members load: bumped on every run of the members effect below.
     const membersLoadGenRef = useRef(0);
+    const searchInFlightRef = useRef(false);
+    const sendRequestInFlightRef = useRef(false);
+    // Request ids whose accept or decline THIS page pressed and is still waiting on.
+    const requestActionInFlightRef = useRef(new Set());
+    const addFriendHeadingRef = useRef(null);
+    const sentChipRef = useRef(null);
+    const friendsTabRef = useRef(null);
+    const requestsTabRef = useRef(null);
+    const sentTabRef = useRef(null);
+    const tabRefs = { friends: friendsTabRef, requests: requestsTabRef, sent: sentTabRef };
+    // The id of the search result shown now (kept current after each commit): a send that
+    // settles later reads it to decide whether its outcome still belongs on screen.
+    const shownResultIdRef = useRef(null);
+
+    /* DECISION Phase 88.6.1-40 (Req 5, D-04/D-05, D-06 shape): four controls now keep focus
+       while they work and are then unmounted by their own success (Send Request by the chip,
+       Remove with its row, Accept and Decline with theirs), so each host arms the ONE shared
+       recovery hook (plan 88.6.1-04) at the press. Targets: the "Request sent" chip itself,
+       programmatic only and out of the Tab order (the shape the owner ruled for the guest-invite
+       chip, D-06), because focusing it is also what makes the outcome heard, and only for the
+       person the request went to; the neighbouring row's first enabled control (adjacency),
+       never a control still in flight, because one recovery per host covers only the latest
+       press (a re-arm replaces the earlier one), chosen OVER one recovery per request row (a
+       structural split of the row for a case the skip already lands on the tab); else the
+       section's own tab button (no heading is minted, D-05). REJECTED: the page heading (far
+       from where the user stood), the Add Friend heading for a successful send (the outcome
+       would stay unheard), a polite region plus the heading (plan 88.6.1-27's panel shape,
+       needed there because its success line IS a live region; here the chip is plain text), and
+       a fallback prop on any primitive (D-04). The two-tap confirm still guards a destructive
+       press on a Remove that focus lands on. Changing this is a decision, not a cleanup. */
+    const sendRecovery = useFocusRecovery({ fallback: addFriendHeadingRef });
+    const removeRecovery = useFocusRecovery({ fallback: friendsTabRef });
+    const requestRecovery = useFocusRecovery({ fallback: requestsTabRef });
+    // A request row is "in flight" for the neighbour resolver while THIS page waits on it.
+    const isRequestRowInFlight = (row) => {
+        const id = row.getAttribute('data-request-row');
+        if (id === null) return false;
+        return Array.from(requestActionInFlightRef.current).some((inFlight) => String(inFlight) === id);
+    };
 
     // Fetch all data on mount
     useEffect(() => {
@@ -272,17 +362,23 @@ function FriendsPage() {
 
     // Search handler
     const handleSearch = async (e) => {
+        // FIRST, always: a refused submit must never fall through to a native form post.
         e.preventDefault();
+        // The in-flight refusal (the rule-of-POSITION marker above): Search stays focusable.
+        if (searchInFlightRef.current) return;
         if (!searchEmail.trim()) return;
 
+        searchInFlightRef.current = true;
         setSearching(true);
         setSearchResult(null);
+        shownResultIdRef.current = null;
         setSearchError(null);
-        setRequestSent(false);
+        setSentToId(null);
 
         try {
             const result = await friendshipsAPI.searchUserByEmail(searchEmail.trim());
             setSearchResult(result);
+            shownResultIdRef.current = result?.id ?? null;
         } catch (err) {
             if (err?.status === 404) {
                 setSearchError('No user found with that email.');
@@ -315,19 +411,34 @@ function FriendsPage() {
                 );
             }
         } finally {
+            searchInFlightRef.current = false;
             setSearching(false);
         }
     };
 
     // Send friend request
-    const handleSendRequest = async (addresseeUserId) => {
+    const handleSendRequest = async (addresseeUserId, event) => {
+        // The in-flight refusal, synchronous and FIRST (the rule-of-POSITION marker above).
+        if (sendRequestInFlightRef.current) return;
+        sendRequestInFlightRef.current = true;
+        // Clear-then-set (D-32 R8): a repeated failure is removed here and re-inserted below,
+        // so it is announced again.
+        setSearchError(null);
+        // Armed before the first await (plan 88.6.1-04 consumer contract). The chip is the
+        // target only while the result shown is still the person this request went to.
+        const settle = sendRecovery.arm({
+            preferred: () => (shownResultIdRef.current === addresseeUserId ? sentChipRef.current : null),
+            from: event?.currentTarget,
+        });
         setSendingRequest(true);
         try {
             await friendshipsAPI.sendRequest(addresseeUserId);
-            setRequestSent(true);
+            setSentToId(addresseeUserId);
             // Refresh sent requests list
             fetchSentRequests();
         } catch (err) {
+            // Only while the result shown NOW (not the one at the press) is still the addressee.
+            if (shownResultIdRef.current !== addresseeUserId) return;
             setSearchError(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't send that request. Please try again.",
@@ -343,7 +454,9 @@ function FriendsPage() {
                 })
             );
         } finally {
+            sendRequestInFlightRef.current = false;
             setSendingRequest(false);
+            settle();
         }
     };
 
@@ -351,7 +464,15 @@ function FriendsPage() {
     // 404-stale silencing, and friends-list refresh. Local fetchFriends()
     // still kept since the friends-tab list is owned here (not in the
     // provider's getStatus-only consumer surface).
-    const handleAccept = async (friendshipId) => {
+    // Since 88.6.1-66 the provider drops the row inside the awaited call, the moment the
+    // server confirms, so the recovery is armed and the neighbour captured before that await.
+    const handleAccept = async (friendshipId, event) => {
+        if (requestActionInFlightRef.current.has(friendshipId)) return;
+        requestActionInFlightRef.current.add(friendshipId);
+        const settle = requestRecovery.arm({
+            preferred: neighbourControl(rowElementFor('data-request-row', friendshipId), isRequestRowInFlight),
+            from: event?.currentTarget,
+        });
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'accept' }));
         try {
             await ctxAcceptRequest(friendshipId);
@@ -359,26 +480,40 @@ function FriendsPage() {
         } catch (err) {
             logger.info('Error accepting request:', errCtx(err));
         } finally {
+            requestActionInFlightRef.current.delete(friendshipId);
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
+            settle();
         }
     };
 
     // Decline friend request — provider handles optimistic removal +
     // 404-stale silencing. No friends-list refresh needed.
-    const handleDecline = async (friendshipId) => {
+    const handleDecline = async (friendshipId, event) => {
+        if (requestActionInFlightRef.current.has(friendshipId)) return;
+        requestActionInFlightRef.current.add(friendshipId);
+        const settle = requestRecovery.arm({
+            preferred: neighbourControl(rowElementFor('data-request-row', friendshipId), isRequestRowInFlight),
+            from: event?.currentTarget,
+        });
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'decline' }));
         try {
             await ctxDeclineRequest(friendshipId);
         } catch (err) {
             logger.info('Error declining request:', errCtx(err));
         } finally {
+            requestActionInFlightRef.current.delete(friendshipId);
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
+            settle();
         }
     };
 
     // Remove friend — the COMMIT half only. It is unreachable except through the
     // gate below, which is what makes the first tap non-destructive.
     const performRemoveFriend = async (friendshipId) => {
+        // Runs synchronously inside the second tap, so this arms before the first await.
+        const settle = removeRecovery.arm({
+            preferred: neighbourControl(rowElementFor('data-friend-row', friendshipId)),
+        });
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'remove' }));
         setRemoveError(null);
         try {
@@ -411,6 +546,7 @@ function FriendsPage() {
             );
         } finally {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
+            settle();
         }
     };
 
@@ -565,13 +701,17 @@ function FriendsPage() {
         if (isAlreadyFriend(foundUser.id)) {
             return { type: 'already-friends', label: 'Already friends' };
         }
-        // `requestSent` ranks ABOVE isPendingRequest: handleSendRequest refetches
+        // The sent state ranks ABOVE isPendingRequest: handleSendRequest refetches
         // the sent list immediately, and once it lands the same request also
         // classifies as pending — which raced the "Request sent" confirmation
-        // out after ~hundreds of ms. requestSent resets on the next search, so
+        // out after ~hundreds of ms. The sent-to id resets on the next search, so
         // the just-sent confirmation persists for THIS result without going
         // stale (owner UAT 2026-07-13, rode plan 10).
-        if (requestSent) {
+        // AMENDED Phase 88.6.1-40 (review r2 #47): the confirmation is now keyed to the
+        // person it was sent to (`sentToId`), replacing the id-less flag, because a send that
+        // settled after a new search used to mark the person found next as sent. The rank
+        // above isPendingRequest and its reason are unchanged.
+        if (sentToId !== null && sentToId === foundUser.id) {
             return { type: 'sent', label: 'Request sent' };
         }
         if (isPendingRequest(foundUser.id)) {
@@ -710,12 +850,13 @@ function FriendsPage() {
                     tab conditional and outside the row map — because a live region that
                     mounts with the armed row announces nothing (empty-first contract,
                     StatusRegion.tsx:8-11). Moving it inside the Friends tab or into the
-                    row is a silent a11y regression, not a tidy-up. */}
+                    row is a silent a11y regression, not a tidy-up. That premise holds because
+                    this gate's region is POLITE; an inserted alert would be announced (D-42). */}
                 {removeFriendGate.statusNode}
 
                 {/* Search Section */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <Heading level={2} size="heading" className="text-content-primary mb-3">Add Friend</Heading>
+                    <Heading ref={addFriendHeadingRef} level={2} size="heading" className="text-content-primary mb-3">Add Friend</Heading>
                     <form onSubmit={handleSearch} className="flex gap-3">
                         {/* 88-33 Task 8 (fork 5): id/name + explicit name — the section
                             heading ("Add Friend") names the card, not the field. */}
@@ -734,7 +875,8 @@ function FriendsPage() {
                             type="submit"
                             variant="primary"
                             size="default"
-                            disabled={searching || !searchEmail.trim()}
+                            disabled={!searching && !searchEmail.trim()}
+                            aria-disabled={searching ? 'true' : undefined}
                         >
                             {searching ? 'Searching...' : 'Search'}
                         </Button>
@@ -750,7 +892,13 @@ function FriendsPage() {
 
                     {/* role="alert": submit-time search feedback, including the legitimate
                         "no user found" outcome — either way the person pressed Search and is
-                        waiting to be told what happened. */}
+                        waiting to be told what happened.
+                        AMENDED Phase 88.6.1-40 (D-42): stays a conditionally mounted alert, chosen
+                        OVER an always-mounted empty assertive region. An alert inserted with its
+                        text is announced (ARIA 1.2), and every path that sets it clears it first
+                        (each search, and each send as of this plan), so a repeat is removed and
+                        re-inserted and is announced again; an empty always-mounted alert would add
+                        a second assertive region to the surface for no listener gain. */}
                     {searchError && (
                         <div role="alert" className="mt-4 p-3 bg-surface-page border border-line rounded-lg">
                             <p className="text-content-secondary">{searchError}</p>
@@ -793,8 +941,8 @@ function FriendsPage() {
                                             );
                                         case 'sent':
                                             return (
-                                                <span className="flex items-center gap-1 text-sm text-content-status-success">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <span ref={sentChipRef} tabIndex={-1} className="flex items-center gap-1 text-sm text-content-status-success">
+                                                    <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                     </svg>
                                                     {action.label}
@@ -805,8 +953,8 @@ function FriendsPage() {
                                                 <Button
                                                     variant="primary"
                                                     size="default"
-                                                    onClick={() => handleSendRequest(searchResult.id)}
-                                                    disabled={sendingRequest}
+                                                    onClick={(e) => handleSendRequest(searchResult.id, e)}
+                                                    aria-disabled={sendingRequest ? 'true' : undefined}
                                                 >
                                                     {sendingRequest ? 'Sending...' : 'Send Request'}
                                                 </Button>
@@ -856,6 +1004,7 @@ function FriendsPage() {
                                this is a decision, not a cleanup. */
                             <button
                                 key={key}
+                                ref={tabRefs[key]}
                                 onClick={() => setActiveTab(key)}
                                 aria-current={activeTab === key ? 'true' : undefined}
                                 className={`pb-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
@@ -891,7 +1040,13 @@ function FriendsPage() {
                             which would blank the list the person is still looking at. */}
                         {/* role="alert": this is a submit-time failure on a destructive action,
                             so it must interrupt. Same DEF-88-19-04 gap as userProfile's phone
-                            flow — a screen-reader user was told nothing when a Remove failed. */}
+                            flow — a screen-reader user was told nothing when a Remove failed.
+                            AMENDED Phase 88.6.1-40 (D-42): stays a conditionally mounted alert,
+                            chosen OVER an always-mounted empty assertive region. An alert inserted
+                            with its text is announced (ARIA 1.2), and every path that sets it
+                            clears it first (each remove), so a repeat is removed and re-inserted
+                            and is announced again; an empty always-mounted alert would add a
+                            second assertive region to the surface for no listener gain. */}
                         {removeError && (
                             <p role="alert" className="text-content-status-error text-sm mb-4">{removeError}</p>
                         )}
@@ -1056,6 +1211,7 @@ function FriendsPage() {
                                         return (
                                             <div
                                                 key={friendship.id}
+                                                data-friend-row={friendship.id}
                                                 className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
                                             >
                                                 <div className="flex items-center gap-3 flex-1">
@@ -1101,7 +1257,7 @@ function FriendsPage() {
                                                             // visible label is "Removing...", so the accessible name
                                                             // must contain it. The hook only owns resting-vs-armed.
                                                             {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
-                                                            disabled={removing}
+                                                            aria-disabled={removing ? 'true' : undefined}
                                                             // DECISION Phase 88-27 (D-32 bucket D): the hover affordance
                                                             // 87.7 stripped from here was a TEXT alpha (error text at
                                                             // 80% on hover). It comes back as a subtle SURFACE, chosen
@@ -1113,7 +1269,7 @@ function FriendsPage() {
                                                             // weight. Same treatment on the two delete-pattern gates in
                                                             // userProfile and on ParticipantRow's Remove, which reaches
                                                             // it by the ordinary bucket-C rule.
-                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
+                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
                                                                 armed
                                                                     ? 'border-status-error font-semibold'
                                                                     : 'border-transparent'
@@ -1165,6 +1321,7 @@ function FriendsPage() {
                                     return (
                                         <div
                                             key={request.id}
+                                            data-request-row={request.id}
                                             className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
                                         >
                                             <div className="flex-1">
@@ -1179,16 +1336,18 @@ function FriendsPage() {
                                                 <Button
                                                     variant="primary"
                                                     size="default"
-                                                    onClick={() => handleAccept(request.id)}
-                                                    disabled={!!actionLoading[request.id]}
+                                                    onClick={(e) => handleAccept(request.id, e)}
+                                                    aria-disabled={actionLoading[request.id] === 'accept' ? 'true' : undefined}
+                                                    disabled={actionLoading[request.id] === 'decline' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
                                                 >
                                                     {actionLoading[request.id] === 'accept' ? 'Accepting...' : 'Accept'}
                                                 </Button>
                                                 <Button
                                                     variant="secondary"
                                                     size="default"
-                                                    onClick={() => handleDecline(request.id)}
-                                                    disabled={!!actionLoading[request.id]}
+                                                    onClick={(e) => handleDecline(request.id, e)}
+                                                    aria-disabled={actionLoading[request.id] === 'decline' ? 'true' : undefined}
+                                                    disabled={actionLoading[request.id] === 'accept' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
                                                 >
                                                     {actionLoading[request.id] === 'decline' ? 'Declining...' : 'Decline'}
                                                 </Button>
