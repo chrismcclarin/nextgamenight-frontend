@@ -375,3 +375,67 @@ describe('FeedbackButton — Phase 88.6-31 (the FAB, the capture, the timer)', (
     }
   });
 });
+
+// Phase 88.6.1 plan 33 (D-30, copy row F2; D-24 at this surface). A send that fails with NO known
+// cause reads F2, which keeps the typed draft, instead of the register's unknown line, which
+// advises a refresh that would throw the draft away. Every CODED failure keeps its register
+// line. The sentence is asserted LITERALLY here, never through the exported constant, so a
+// changed constant cannot pass silently.
+describe('FeedbackButton — F2 at the unknown arm (88.6.1-33, D-30)', () => {
+  const F2 = "We couldn't send your feedback. Please try again.";
+  const REFRESH_UNKNOWN = 'Something went wrong. Refresh the page to try again.';
+
+  async function failWith(err: unknown) {
+    vi.mocked(feedbackAPI.submitGitHubFeedback).mockRejectedValueOnce(err);
+    const user = await openFeedbackModal();
+    await screen.findByRole('dialog');
+    await user.type(
+      screen.getByPlaceholderText(/what happened|tell us|describe/i),
+      'Something went wrong on this page.'
+    );
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+  }
+
+  it('F2-a: an unknown-coded ApiError reads F2 exactly, with a straight apostrophe, never the refresh line or the upstream string', async () => {
+    await failWith(new ApiError('the backend said something quotable', 'unknown', 418, {}));
+    const line = await screen.findByText(F2);
+    expect(line.textContent).toBe(F2);
+    // D-32 R8: the straight apostrophe, never U+2019.
+    expect(line.textContent).not.toContain('’');
+    expect(screen.queryByText(REFRESH_UNKNOWN)).toBeNull();
+    expect(screen.queryByText(/the backend said something quotable/i)).toBeNull();
+  });
+
+  it('F2-b: a failure that is not an ApiError (a network TypeError) derives unknown and reads F2', async () => {
+    await failWith(new TypeError('Failed to fetch'));
+    expect(await screen.findByText(F2)).toBeInTheDocument();
+    expect(screen.queryByText(REFRESH_UNKNOWN)).toBeNull();
+  });
+
+  it("F2-c (D-24): the proxy's code-less CSRF 403 reads F2, never the role refusal", async () => {
+    await failWith(
+      new ApiError('Cross-origin request rejected', 'forbidden', 403, {
+        error: 'Cross-origin request rejected',
+        csrf_rejected: true,
+      })
+    );
+    expect(await screen.findByText(F2)).toBeInTheDocument();
+    expect(screen.queryByText("You don't have access to this. Refresh the page to try again.")).toBeNull();
+  });
+
+  it('F2-d (guard, confirm-only): an unauthorized failure keeps copy row X1, not F2', async () => {
+    await failWith(new ApiError('', 'unauthorized', 401));
+    expect(
+      await screen.findByText('Your session may have expired. Sign in again to continue.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(F2)).toBeNull();
+  });
+
+  it('F2-e (guard, confirm-only): an internal failure keeps its register line, not F2', async () => {
+    await failWith(new ApiError('x', 'internal', 500, {}));
+    expect(
+      await screen.findByText('Something went wrong on our end. Please try again shortly.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(F2)).toBeNull();
+  });
+});
