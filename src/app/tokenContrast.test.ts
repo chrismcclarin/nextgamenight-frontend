@@ -1621,6 +1621,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   // assertable here at all. Two halves: (a) every gated pair clears the floor in both themes,
   // (b) a SOURCE SCAN that no `aria-disabled` rule in globals.css reaches for `opacity` again —
   // because the token pins alone would stay green if someone re-added the dim beside them.
+  // AMENDED Phase 88.6.1-22 (D-39): the danger gated pair joins the loop and the anti-vacuity list.
   // ===================================================================================
 
   it('53. 88.8 HIGH-A — every GATED button pair clears 4.5:1 in BOTH themes, the gated fill is visibly distinct, and no aria-disabled rule uses opacity', () => {
@@ -1638,6 +1639,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       // (the ground is named, not tokenised — there is no `--color-btn-ghost-*` and a
       // `transparent` row would throw in resolve()).
       expectRatio(theme, '--color-text-muted', '--color-bg-card', 4.5, '88.8 HIGH-A / gated ghost label on the card');
+      // Danger (88.6.1-22, D-39): fill AND ink swap, like primary — white ink cannot keep 4.5 on a
+      // lighter red. The gated fill must read as a different control from the resting `--color-error`.
+      expectRatio(theme, '--color-btn-danger-gated-text', '--color-btn-danger-gated-bg', 4.5, '88.6.1-22 D-39 / gated danger label');
+      expectDelta(theme, '--color-btn-danger-gated-bg', '--color-error', 8, '88.6.1-22 D-39 / gated danger fill vs resting fill');
     }
     // The dark primary gated fill is DELIBERATELY not the dark secondary resting fill: a gated
     // Verify (primary) sits beside a promoted Resend (secondary) in the awaiting-code panel, and a
@@ -1662,9 +1667,9 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       offenders,
       `88.8 HIGH-A — an aria-disabled rule sets opacity again: ${offenders.join(' | ')}. Element opacity composites the label with the fill; the gated state is COLOUR (see the .btn[aria-disabled] marker)`,
     ).toEqual([]);
-    // Anti-vacuity: the three gated colour rules must exist, so an empty offender list is not
-    // the result of the rules having been deleted wholesale.
-    for (const sel of [".btn[aria-disabled='true']", ".btn-primary[aria-disabled='true']", ".btn-secondary[aria-disabled='true']"]) {
+    // Anti-vacuity: the gated colour rules must exist, so an empty offender list is not
+    // the result of the rules having been deleted wholesale. (88.6.1-22 D-39 added danger.)
+    for (const sel of [".btn[aria-disabled='true']", ".btn-primary[aria-disabled='true']", ".btn-secondary[aria-disabled='true']", ".btn-danger[aria-disabled='true']"]) {
       expect(MASKED, `88.8 HIGH-A — expected the rule \`${sel}\` in globals.css`).toContain(`${sel} {`);
     }
 
