@@ -618,6 +618,45 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     expect(spinner.innerHTML).not.toContain('opacity-25');
     expect(spinner.innerHTML).not.toContain('opacity-75');
   });
+
+  // Plan 88.6.1-26 (W001 / R3-M19, AC-12, Edge R4). The latch kept the request count at one, but
+  // a second click re-ran react-hook-form, whose settle dropped `isSubmitting` mid-request: the
+  // CTA read `Submit Availability` again with `aria-disabled="false"`. `useAppForm` now refuses
+  // the second submit before react-hook-form runs.
+  it('A1: a second press while submitting sends nothing, and the CTA keeps Submitting... and aria-disabled', async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    (availabilityFormAPI.submitResponse as Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ success: true });
+        })
+    );
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    await user.click(screen.getByRole('checkbox', { name: /unavailable this week/i }));
+
+    const cta = screen.getByRole('button', { name: /submit availability/i });
+    const form = cta.closest('form') as HTMLFormElement;
+    await user.click(cta);
+    await waitFor(() => expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1));
+    expect(cta).toHaveAccessibleName('Submitting...');
+
+    await user.click(cta);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
+    expect(cta).toHaveAccessibleName('Submitting...');
+    expect(cta).toHaveAttribute('aria-disabled', 'true');
+    expect(cta).not.toHaveAttribute('disabled');
+
+    // A refused submit is default-prevented (no native post) and sends nothing.
+    expect(fireEvent.submit(form)).toBe(false);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
+    expect(cta).toHaveAccessibleName('Submitting...');
+
+    release();
+    await waitFor(() => expect(cta).toHaveAccessibleName('Submit Availability'));
+  });
 });
 
 describe('AvailabilityForm "unavailable this week" toggle — exposes its state (88.6-59, review MEDLOW-26)', () => {

@@ -3,7 +3,7 @@
 // catch logs to logger.error -> Sentry (the reachable, tested Sentry path).
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@/lib/logger', () => ({
@@ -34,17 +34,23 @@ vi.mock('../../lib/hooks/useSelfIdentity', () => ({
 // THIS FORM passes — which is what the house-rule finding on this surface was about. The real
 // combobox's own ARIA is pinned by `Combobox.test.tsx`'s axe audit; mounting it here would add
 // floating-ui + a search debounce to every test in this file for no additional signal.
+// Plan 88.6.1-26 (G1): the stand-in now also forwards TYPING the way `GameComboInput.js`
+// `handleInputChange` does — `onChange({ game_id: null, game_name: text || null })` — because
+// without it the form's game-field write was never exercised here, which is how a typed name
+// being rejected as `Invalid UUID` went unseen.
 vi.mock('./GameComboInput', () => ({
   default: ({
     id,
     name,
     placeholder,
     inputRef,
+    onChange,
   }: {
     id?: string;
     name?: string;
     placeholder?: string;
     inputRef?: { current: HTMLInputElement | null };
+    onChange?: (v: { game_id: string | null; game_name: string | null }) => void;
   }) => (
     <input
       type="text"
@@ -54,6 +60,7 @@ vi.mock('./GameComboInput', () => ({
       ref={(node) => {
         if (inputRef) inputRef.current = node;
       }}
+      onChange={(e) => onChange?.({ game_id: null, game_name: e.target.value || null })}
       data-testid="game-combo"
     />
   ),
@@ -294,5 +301,59 @@ describe('88.6-63 (review round 2 #25) — the submit is aria-disabled + latched
 
     held.reject(new Error('Server boom'));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+
+  // Plan 88.6.1-26 (W001 / R3-M19, AC-12, Edge R4 concurrency). The latch above already kept the
+  // request count at one, but it returned early INSIDE react-hook-form's second run, whose settle
+  // flipped `isSubmitting` back to false: the button read `Create Schedule` again and lost
+  // `aria-disabled` while the first save was still pending. `useAppForm` now refuses first.
+  it('S1: after a second press the button still reads Saving... and stays aria-disabled until the FIRST save settles', async () => {
+    const held = holdCreate();
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    const submit = screen.getByRole('button', { name: /create schedule/i });
+    const form = submit.closest('form') as HTMLFormElement;
+    await user.click(submit);
+    await waitFor(() => expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1));
+
+    await user.click(submit);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveAccessibleName('Saving...');
+    expect(submit).toHaveAttribute('aria-disabled', 'true');
+    expect(submit).not.toHaveAttribute('disabled');
+
+    // A refused submit is default-prevented (no native post), and still sends nothing.
+    expect(fireEvent.submit(form)).toBe(false);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveAccessibleName('Saving...');
+
+    held.reject(new Error('Server boom'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(UNKNOWN_COPY));
+    expect(submit).toHaveAccessibleName('Create Schedule');
+  });
+});
+
+// Plan 88.6.1-26 (Requirement 11 class, found at plan time). The game field wrote `game_id: ''`
+// on every keystroke, and `z.string().uuid()` rejects an empty string, so a typed-but-unpicked
+// game blocked the save with the unratified `Invalid UUID`. `onSubmit` already normalises a
+// missing game to `null` (Game TBD); the field now writes `null` itself.
+describe('88.6.1-26 — a typed game name saves as Game TBD (game field)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('G1: typing a game name and saving sends game_id null and shows no Invalid UUID', async () => {
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    await user.type(screen.getByTestId('game-combo'), 'Board Night Special');
+    await user.click(screen.getByRole('button', { name: /create schedule/i }));
+
+    await waitFor(() => expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1));
+    const payload = (promptSettingsAPI.createSchedule as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0][1];
+    expect(payload.game_id).toBeNull();
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/Invalid UUID/i);
   });
 });
