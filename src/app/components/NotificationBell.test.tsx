@@ -202,6 +202,9 @@ describe('the { text, tone } confirmation shape', () => {
    still-missing USER-FACING copy — is RECORDED AND ROUTED, never fixed here, so there is
    deliberately no assertion about any of them below.
    --------------------------------------------------------------------------- */
+// AMENDED Phase 88.6.1-28 (D-18): the outside click, the Escape path and the panel's role and
+// name are now fixed and pinned in the NB describe at the end of this file; the four failures'
+// user-facing copy is plan 88.6.1-44's (N3-N6).
 
 const loggerError = () => logger.error as unknown as Mock;
 
@@ -335,13 +338,15 @@ describe('Phase 88.6-31 — the SINGLE two-attribute ARIA exception (ACCEPT §9 
     expect(document.getElementById(controls!)).toContainElement(screen.getByText('Group Invites'));
   });
 
-  it('PRESERVATION — the exception is ATTRIBUTE-ONLY: no role was added to the panel, and both triggers keep their shipped accessible names and hover/focus pins', () => {
+  it('PRESERVATION — the exception is ATTRIBUTE-ONLY: no explicit role attribute on the panel (its role is the section element\'s implicit region, 88.6.1-28 D-18), and both triggers keep their shipped accessible names and hover/focus pins', () => {
     renderBell();
     const trigger = screen.getByRole('button', { name: 'Notifications' });
     fireEvent.click(trigger);
 
     const panel = document.getElementById(trigger.getAttribute('aria-controls')!)!;
-    // No `role` was added — the remaining disclosure semantics are ROUTED, not fixed.
+    // AMENDED Phase 88.6.1-28 (D-18): the panel's role now comes from its section element (an
+    // implicit region, named by its heading — NB-7). An explicit role attribute stays absent, and
+    // the menu role is forbidden (DECISION Phase 88.6-16).
     expect(panel).not.toHaveAttribute('role');
     // The Phase 88.3 focus-ring treatment on this trigger is byte-unchanged.
     expect(trigger.className).toContain('focus-visible:ring-inset');
@@ -516,5 +521,61 @@ describe('Phase 88.6.1-28 — the panel dismisses through the shared hook (D-18,
       container?.removeEventListener('keydown', rootSpy);
       addSpy.mockRestore();
     }
+  });
+
+  it('NB-7. the open panel is a region named by its own Notifications heading in both variants: a section with no explicit role and no aria-label, the trigger controls it, and no menu semantics exist', async () => {
+    renderBell();
+    await openBell();
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    expect(region.tagName).toBe('SECTION');
+    // The role is the section element's implicit one; nothing spells it, and no second copy of
+    // the words names it (D-33 row 21).
+    expect(region).not.toHaveAttribute('role');
+    expect(region).not.toHaveAttribute('aria-label');
+    // The name resolves through aria-labelledby to the visible level-3 heading itself.
+    const labelledBy = region.getAttribute('aria-labelledby');
+    expect(labelledBy).toBeTruthy();
+    const heading = document.getElementById(labelledBy!);
+    expect(heading).toBe(screen.getByRole('heading', { level: 3, name: 'Notifications' }));
+    expect(heading).toHaveTextContent(/^Notifications$/);
+    // The trigger's conditional aria-controls (DECISION Phase 88.6-59) names this region.
+    expect(trigger.getAttribute('aria-controls')).toBe(region.id);
+    // The menu role is forbidden (DECISION Phase 88.6-16).
+    expect(screen.queryAllByRole('menu')).toHaveLength(0);
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    expect(trigger).not.toHaveAttribute('aria-haspopup');
+
+    // The row variant, the one the phone hamburger mounts, finds the same region.
+    cleanup();
+    render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
+    const rowTrigger = screen.getByRole('button', { name: 'Invites notifications' });
+    fireEvent.click(rowTrigger);
+    expect(await screen.findByText('Group Invites')).toBeInTheDocument();
+    const rowRegion = screen.getByRole('region', { name: 'Notifications' });
+    expect(rowRegion.tagName).toBe('SECTION');
+    expect(rowTrigger.getAttribute('aria-controls')).toBe(rowRegion.id);
+    expect(rowTrigger).not.toHaveAttribute('aria-haspopup');
+  });
+
+  it('NB-8. copy row N1 (D-30): while the first load runs, the open panel carries the screen-reader text Loading notifications and the spinner is hidden from assistive tech', () => {
+    unreadState.loading = true;
+    renderBell();
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    // The panel is found through the trigger's idref, so this test reds on the missing words
+    // alone, not on the region role NB-7 owns.
+    const panel = document.getElementById(trigger.getAttribute('aria-controls')!)!;
+    expect(panel).not.toBeNull();
+    expect(panel).toHaveTextContent('Loading notifications');
+    const words = screen.getByText('Loading notifications');
+    expect(panel).toContainElement(words);
+    expect(words).toHaveClass('sr-only');
+    const spinner = panel.querySelector('.animate-spin');
+    expect(spinner).not.toBeNull();
+    expect(spinner).toHaveAttribute('aria-hidden', 'true');
   });
 });
