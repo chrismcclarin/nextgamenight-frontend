@@ -22,7 +22,7 @@
 //   `renderFriends({ loadError: ... })` for the failed-fetch case. Those two are
 //   deliberately DIFFERENT surfaces; see the DECISION marker on the Friends tab.
 import * as React from 'react';
-import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
@@ -75,12 +75,15 @@ const providerCtx = vi.hoisted(() => ({
   receivedRequests: [] as Array<Record<string, unknown>>,
   acceptRequest: vi.fn(),
   declineRequest: vi.fn(),
+  // 88.6.1-40: stands in for plan 88.6.1-66's read-only context fact (a request row in flight on any surface).
+  isRequestActionPending: vi.fn((_id: string) => false),
 }));
 vi.mock('@/app/components/FriendshipStatusProvider', () => ({
   useFriendshipStatus: () => ({
     receivedRequests: providerCtx.receivedRequests,
     acceptRequest: providerCtx.acceptRequest,
     declineRequest: providerCtx.declineRequest,
+    isRequestActionPending: providerCtx.isRequestActionPending,
     loading: false,
     getStatus: () => 'none',
     refreshFriendships: providerCtx.refreshFriendships,
@@ -188,8 +191,9 @@ beforeEach(() => {
   // `clearAllMocks` clears CALLS, not IMPLEMENTATIONS, so a rejection set by one arm
   // would leak into every later one in file order. Restore the defaults explicitly.
   providerCtx.receivedRequests = [];
-  providerCtx.acceptRequest.mockResolvedValue({});
-  providerCtx.declineRequest.mockResolvedValue({});
+  providerCtx.acceptRequest.mockReset().mockResolvedValue({});
+  providerCtx.declineRequest.mockReset().mockResolvedValue({});
+  providerCtx.isRequestActionPending.mockImplementation(() => false);
   // 88.6.1-40: the API mocks too (reset first, so an unconsumed one-shot cannot leak), because one arm's admin group used to leak into every later render.
   (groupsAPI.getUserGroups as Mock).mockReset().mockResolvedValue([]);
   (groupsAPI.getGroupMembers as Mock).mockReset().mockResolvedValue([]);
@@ -958,5 +962,361 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     });
     await waitFor(() => expect(inviteButton()).not.toHaveAttribute('aria-disabled'));
     expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+});
+
+// Phase 88.6.1-40 Task 2 (D-35, Req 5 / D-04 / D-05, review r2 #47 / #201, review r3 H-02).
+// jsdom never blurs a disabled element (FE-TESTING-CONVENTIONS C-11), so every RED half below is
+// an ATTRIBUTE or a REQUEST COUNT; the focus claims are proven on a positive signal (C-5).
+const RILEY_HIT = { id: 'user-search-hit', username: 'Riley', email: 'riley@example.com' };
+const MORGAN_HIT = { id: 'user-morgan', username: 'Morgan', email: 'morgan@example.com' };
+const SAM_REQUEST = { id: 'req-1', Requester: { id: FRIEND_2_UUID, username: 'Sam' } };
+const RILEY_REQUEST = { id: 'req-2', Requester: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', username: 'Riley' } };
+
+const emailField = () => screen.getByPlaceholderText("Enter friend's email address");
+
+// Runs one search to a hit and resolves once the hit's card shows its name.
+async function searchShows(hit: { username: string }, email: string) {
+  (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValueOnce(hit);
+  fireEvent.change(emailField(), { target: { value: email } });
+  fireEvent.submit(emailField().closest('form') as HTMLFormElement);
+  return screen.findByText(hit.username);
+}
+
+// Runs one search to a hit and returns the hit's Send Request button.
+async function searchTo(hit: { username: string }, email: string) {
+  await searchShows(hit, email);
+  return screen.findByRole('button', { name: 'Send Request' });
+}
+
+// A request row: the nearest ancestor of the requester's name that holds both row buttons.
+function requestRow(name: string): HTMLElement {
+  let el: HTMLElement | null = screen.getByText(name).parentElement;
+  while (el && el.querySelectorAll('button').length < 2) el = el.parentElement;
+  return el as HTMLElement;
+}
+
+// An accept/decline stand-in that drops its row from the provider's list only when it resolves
+// (the order plan 88.6.1-66 gives the real provider: remove on confirm, then resolve).
+function dropOnResolve(hold: Promise<unknown>) {
+  return async (id: string) => {
+    await hold;
+    providerCtx.receivedRequests = providerCtx.receivedRequests.filter((r) => r.id !== id);
+    return {};
+  };
+}
+
+async function openRequests(requests: Array<Record<string, unknown>>) {
+  providerCtx.receivedRequests = requests;
+  const utils = renderFriends();
+  await screen.findByText('Dana');
+  fireEvent.click(screen.getByRole('button', { name: /^Requests/ }));
+  await screen.findByText(String((requests[0].Requester as { username: string }).username));
+  return utils;
+}
+
+describe('friends — pressed controls keep focus and land it somewhere real (88.6.1-40)', () => {
+  it('S1: Search is native-disabled only for an empty field; in flight it is aria-disabled and searches once', async () => {
+    renderFriends({ friends: [] });
+    const search = await screen.findByRole('button', { name: 'Search' });
+    // GUARD (rule of KIND): an empty field at rest keeps the native attribute.
+    expect(search).toHaveAttribute('disabled');
+    expect(search).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.change(emailField(), { target: { value: 'riley@example.com' } });
+    const held = deferred<unknown>();
+    (friendshipsAPI.searchUserByEmail as Mock).mockReturnValueOnce(held.promise);
+    fireEvent.click(search);
+    expect(search).toHaveAttribute('aria-disabled', 'true');
+    expect(search).not.toHaveAttribute('disabled');
+    expect(search).toHaveTextContent('Searching...');
+    fireEvent.click(search);
+    // The Enter-from-field path.
+    fireEvent.submit(search.closest('form') as HTMLFormElement);
+    expect(friendshipsAPI.searchUserByEmail as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      held.resolve(null);
+    });
+  });
+
+  it('S2: Send Request in flight is aria-disabled, reads Sending..., and sends once for two presses', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const send = await searchTo(RILEY_HIT, 'riley@example.com');
+    const held = deferred<unknown>();
+    (friendshipsAPI.sendRequest as Mock).mockReturnValueOnce(held.promise);
+    act(() => send.focus());
+    fireEvent.click(send);
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    expect(send).not.toHaveAttribute('disabled');
+    expect(send).toHaveTextContent('Sending...');
+    fireEvent.click(send);
+    expect(friendshipsAPI.sendRequest as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      held.resolve({});
+    });
+  });
+
+  it('S3: a successful send hands focus to the Request sent chip, out of the Tab order (Req 5, D-06 shape)', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const send = await searchTo(RILEY_HIT, 'riley@example.com');
+    act(() => send.focus());
+    fireEvent.click(send);
+
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText('Request sent')));
+    const chip = screen.getByText('Request sent');
+    expect(chip).toHaveAttribute('tabindex', '-1');
+    expect(chip.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('S4 (R8 backstop): a repeated send failure is removed and re-inserted; focus stays on Send Request', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const send = await searchTo(RILEY_HIT, 'riley@example.com');
+    (friendshipsAPI.sendRequest as Mock).mockRejectedValueOnce(new Error('x'));
+    fireEvent.click(send);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "We couldn't send that request. Please try again."
+    );
+
+    const held = deferred<unknown>();
+    (friendshipsAPI.sendRequest as Mock).mockReturnValueOnce(held.promise);
+    const again = screen.getByRole('button', { name: 'Send Request' });
+    act(() => again.focus());
+    fireEvent.click(again);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(document.activeElement).toBe(again);
+
+    await act(async () => {
+      held.reject(new Error('x'));
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "We couldn't send that request. Please try again."
+    );
+  });
+
+  it('S-race (a): a send that settles after a new search never marks the person found next as sent (review r2 #47)', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const send = await searchTo(RILEY_HIT, 'riley@example.com');
+    const held = deferred<unknown>();
+    (friendshipsAPI.sendRequest as Mock).mockReturnValueOnce(held.promise);
+    act(() => send.focus());
+    fireEvent.click(send);
+
+    await searchShows(MORGAN_HIT, 'morgan@example.com');
+    await act(async () => {
+      held.resolve({});
+    });
+    // Positive signal: the send settled (Morgan's button no longer reads Sending...).
+    expect(await screen.findByRole('button', { name: 'Send Request' })).toBeInTheDocument();
+    expect(screen.queryByText('Request sent')).toBeNull();
+    expect(document.activeElement?.textContent).not.toBe('Request sent');
+  });
+
+  it('S-race (b): a send that fails after a new search never puts its alert on the next person found', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const send = await searchTo(RILEY_HIT, 'riley@example.com');
+    const held = deferred<unknown>();
+    (friendshipsAPI.sendRequest as Mock).mockReturnValueOnce(held.promise);
+    fireEvent.click(send);
+
+    await searchShows(MORGAN_HIT, 'morgan@example.com');
+    await act(async () => {
+      held.reject(new Error('x'));
+    });
+    expect(await screen.findByRole('button', { name: 'Send Request' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('R1: Remove in flight is aria-disabled, reads Removing..., names the person, and removes once', async () => {
+    const held = deferred<unknown>();
+    (friendshipsAPI.removeFriend as Mock).mockReturnValueOnce(held.promise);
+    renderFriends();
+    const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove).not.toHaveAttribute('disabled');
+    expect(remove).toHaveTextContent('Removing...');
+    expect(remove).toHaveAccessibleName('Removing Dana');
+    // GUARD half: the confirm hook's own re-entry refusal.
+    fireEvent.click(remove);
+    expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      held.resolve({});
+    });
+  });
+
+  it('R2: after a removal focus lands on the next row\'s first enabled control (Req 5 adjacency)', async () => {
+    renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
+    const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    act(() => remove.focus());
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    // No group is selected, so Sam's checkbox is natively disabled and his Remove is first.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove Sam' }))
+    );
+  });
+
+  it('R3: after the last removal focus lands on the Friends tab button (Req 5 empty)', async () => {
+    renderFriends();
+    const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    act(() => remove.focus());
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Friends/ }))
+    );
+  });
+
+  it('A1: Accept and Decline in flight are aria-disabled; the sibling stays native; each sends once', async () => {
+    await openRequests([SAM_REQUEST, RILEY_REQUEST]);
+    const accepting = deferred<unknown>();
+    providerCtx.acceptRequest.mockReturnValueOnce(accepting.promise);
+    const sam = within(requestRow('Sam'));
+    const samAccept = sam.getByRole('button', { name: 'Accept' });
+    fireEvent.click(samAccept);
+    expect(samAccept).toHaveAttribute('aria-disabled', 'true');
+    expect(samAccept).not.toHaveAttribute('disabled');
+    expect(samAccept).toHaveTextContent('Accepting...');
+    expect(sam.getByRole('button', { name: 'Decline' })).toHaveAttribute('disabled');
+    fireEvent.click(samAccept);
+    expect(providerCtx.acceptRequest).toHaveBeenCalledTimes(1);
+
+    const declining = deferred<unknown>();
+    providerCtx.declineRequest.mockReturnValueOnce(declining.promise);
+    const riley = within(requestRow('Riley'));
+    const rileyDecline = riley.getByRole('button', { name: 'Decline' });
+    fireEvent.click(rileyDecline);
+    expect(rileyDecline).toHaveAttribute('aria-disabled', 'true');
+    expect(rileyDecline).toHaveTextContent('Declining...');
+    expect(riley.getByRole('button', { name: 'Accept' })).toHaveAttribute('disabled');
+    fireEvent.click(rileyDecline);
+    expect(providerCtx.declineRequest).toHaveBeenCalledTimes(1);
+    expect(requestRow('Sam')).toHaveAttribute('data-request-row', 'req-1');
+
+    await act(async () => {
+      accepting.resolve({});
+      declining.resolve({});
+    });
+  });
+
+  it('A2: after an accept the row leaves and focus lands on the next row\'s Accept (Req 5 adjacency)', async () => {
+    await openRequests([SAM_REQUEST, RILEY_REQUEST]);
+    providerCtx.acceptRequest.mockImplementationOnce(dropOnResolve(Promise.resolve()));
+    const samAccept = within(requestRow('Sam')).getByRole('button', { name: 'Accept' });
+    act(() => samAccept.focus());
+    fireEvent.click(samAccept);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(requestRow('Riley')).getByRole('button', { name: 'Accept' }))
+    );
+  });
+
+  it('A3: after the last accept focus lands on the Requests tab button (Req 5 empty)', async () => {
+    await openRequests([SAM_REQUEST]);
+    providerCtx.acceptRequest.mockImplementationOnce(dropOnResolve(Promise.resolve()));
+    const samAccept = within(requestRow('Sam')).getByRole('button', { name: 'Accept' });
+    act(() => samAccept.focus());
+    fireEvent.click(samAccept);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Requests/ }))
+    );
+  });
+
+  it('A4 (R5 ordering backstop): the pressed Accept holds focus while pending; the next Accept takes it only after the row leaves', async () => {
+    await openRequests([SAM_REQUEST, RILEY_REQUEST]);
+    const held = deferred<unknown>();
+    providerCtx.acceptRequest.mockImplementationOnce(dropOnResolve(held.promise));
+    const samAccept = within(requestRow('Sam')).getByRole('button', { name: 'Accept' });
+    act(() => samAccept.focus());
+    fireEvent.click(samAccept);
+    // Confirm-only in jsdom (C-11); the attribute is the RED half.
+    expect(document.activeElement).toBe(samAccept);
+    expect(samAccept.isConnected).toBe(true);
+    expect(samAccept).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      held.resolve({});
+    });
+    const rileyAccept = within(requestRow('Riley')).getByRole('button', { name: 'Accept' });
+    await waitFor(() => expect(document.activeElement).toBe(rileyAccept));
+    expect(screen.queryByText('Sam')).toBeNull();
+  });
+
+  it('A5 (R5 concurrency, review r2 #201): a row still in flight is never the focus target; the Requests tab is', async () => {
+    await openRequests([SAM_REQUEST, RILEY_REQUEST]);
+    const accepting = deferred<unknown>();
+    const declining = deferred<unknown>();
+    providerCtx.acceptRequest.mockImplementationOnce(dropOnResolve(accepting.promise));
+    providerCtx.declineRequest.mockImplementationOnce(dropOnResolve(declining.promise));
+    const samAccept = within(requestRow('Sam')).getByRole('button', { name: 'Accept' });
+    act(() => samAccept.focus());
+    fireEvent.click(samAccept);
+    const rileyDecline = within(requestRow('Riley')).getByRole('button', { name: 'Decline' });
+    act(() => rileyDecline.focus());
+    fireEvent.click(rileyDecline);
+
+    // Riley's decline settles FIRST, then Sam's accept.
+    await act(async () => {
+      declining.resolve({});
+    });
+    await flushMacrotask();
+    await act(async () => {
+      accepting.resolve({});
+    });
+    await flushMacrotask();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Requests/ }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('A6 (review r3 H-02): a row whose request runs from the bell is natively disabled here; a press made here keeps aria-disabled', async () => {
+    providerCtx.isRequestActionPending.mockImplementation((id: string) => id === 'req-1');
+    const { rerender } = await openRequests([SAM_REQUEST, RILEY_REQUEST]);
+    const sam = within(requestRow('Sam'));
+    const samAccept = sam.getByRole('button', { name: 'Accept' });
+    const samDecline = sam.getByRole('button', { name: 'Decline' });
+    expect(samAccept).toHaveAttribute('disabled');
+    expect(samAccept).not.toHaveAttribute('aria-disabled');
+    expect(samDecline).toHaveAttribute('disabled');
+    expect(samDecline).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(samAccept);
+    fireEvent.click(samDecline);
+    expect(providerCtx.acceptRequest).toHaveBeenCalledTimes(0);
+    expect(providerCtx.declineRequest).toHaveBeenCalledTimes(0);
+    const riley = within(requestRow('Riley'));
+    for (const name of ['Accept', 'Decline']) {
+      expect(riley.getByRole('button', { name })).not.toHaveAttribute('disabled');
+      expect(riley.getByRole('button', { name })).not.toHaveAttribute('aria-disabled');
+    }
+
+    // The bell's request settles: Sam's row is live again.
+    providerCtx.isRequestActionPending.mockImplementation(() => false);
+    rerender(<FriendsPage />);
+    expect(samAccept).not.toHaveAttribute('disabled');
+    expect(samDecline).not.toHaveAttribute('disabled');
+
+    // A press made HERE sets the provider's record too; the page's own record wins (rule of POSITION).
+    const held = deferred<unknown>();
+    providerCtx.acceptRequest.mockImplementationOnce((id: string) => {
+      providerCtx.isRequestActionPending.mockImplementation((x: string) => x === id);
+      return held.promise;
+    });
+    const rileyAccept = riley.getByRole('button', { name: 'Accept' });
+    fireEvent.click(rileyAccept);
+    expect(rileyAccept).toHaveAttribute('aria-disabled', 'true');
+    expect(rileyAccept).not.toHaveAttribute('disabled');
+
+    await act(async () => {
+      held.resolve({});
+    });
   });
 });
