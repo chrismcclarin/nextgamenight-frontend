@@ -22,6 +22,7 @@ import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+import { logger } from '@/lib/logger';
 
 const SELF_UUID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const FRIEND_UUID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -651,6 +652,195 @@ describe('FriendInvitePanel — gated controls stay in the focus order (88.6-22)
       expect(document.getElementById('invite-friend-request-status') ?? document.body)
         .toHaveTextContent('Friend request sent!')
     );
+  });
+});
+
+// Phase 88.6.1 plan 27 Task 2 — W016 row 17 (the field while sending), the newly found Req 5
+// case (Add Friend unmounts itself on settle), and plan 12's cross-plan note (the copy timer).
+describe('FriendInvitePanel — pressed controls, focus and the copy timer (88.6.1-27)', () => {
+  const emailField = () => screen.getByRole('textbox', { name: 'Invite by Email' });
+  const copyRegion = () => document.getElementById('invite-link-copied-status');
+  const COPIED = 'Invite link copied to the clipboard.';
+
+  // The handles of every 2000 ms timer the spy saw — Radix, user-event and the focus hook
+  // schedule their own timers, so the copy label's is picked out by its delay.
+  function copyTimerHandles(spy: { mock: { calls: unknown[][]; results: Array<{ value: unknown }> } }) {
+    return spy.mock.calls
+      .map((call, i) => ({ delay: call[1], handle: spy.mock.results[i]?.value }))
+      .filter((entry) => entry.delay === 2000)
+      .map((entry) => entry.handle);
+  }
+
+  function stubClipboard(writeText: Mock) {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  }
+
+  // Prompts Add Friend for Dana after a successful email invite.
+  async function openAddFriendPrompt() {
+    const { friendshipsAPI: api, invitesAPI } = await import('@/lib/api');
+    (api.searchUserByEmail as Mock).mockResolvedValue({
+      id: FRIEND_UUID,
+      username: 'Dana',
+      email: 'dana@example.test',
+    });
+    (invitesAPI.sendInvite as Mock).mockResolvedValue({});
+    renderPanel({ friends: [] });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(emailField(), { target: { value: 'dana@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    return screen.findByRole('button', { name: 'Add Friend' });
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('R: an Enter send from the field keeps the field focusable (read-only + aria-disabled, never native disabled) and sends once (W016 row 17, AC-12)', async () => {
+    const { invitesAPI, friendshipsAPI: api } = await import('@/lib/api');
+    (api.searchUserByEmail as Mock).mockResolvedValue(null);
+    let release: (value: unknown) => void = () => {};
+    (invitesAPI.sendInvite as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    const field = emailField();
+    await user.type(field, 'newcomer@example.test{Enter}');
+    await screen.findByRole('button', { name: 'Sending...' });
+
+    expect(field).toHaveAttribute('readonly');
+    expect(field).toHaveAttribute('aria-disabled', 'true');
+    expect(field).not.toHaveAttribute('disabled');
+    // CONFIRM-ONLY in jsdom (C-11): jsdom never blurs a disabled element, so the RED half of
+    // this arm is the attribute above, not this focus line.
+    expect(document.activeElement).toBe(field);
+    expect(screen.getByRole('button', { name: 'Sending...' })).toHaveAttribute('aria-disabled', 'true');
+
+    await user.keyboard('{Enter}');
+    expect(invitesAPI.sendInvite).toHaveBeenCalledTimes(1);
+    expect(field).toHaveAttribute('readonly');
+    expect(field).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Sending...' })).toHaveAttribute('aria-disabled', 'true');
+
+    release({});
+    await screen.findByRole('button', { name: 'Send' });
+    expect(field).not.toHaveAttribute('readonly');
+    expect(field).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('F1: when Add Friend succeeds and its prompt unmounts, focus lands on the Invite by Email heading (Req 5, D-04/D-05)', async () => {
+    const { friendshipsAPI: api } = await import('@/lib/api');
+    (api.sendRequest as Mock).mockResolvedValue({});
+    const user = userEvent.setup();
+    const add = await openAddFriendPrompt();
+
+    await user.click(add);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Invite by Email' }))
+    );
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(document.getElementById('invite-friend-request-status')).toHaveTextContent('Friend request sent!');
+  });
+
+  it('F2: the already-pending answer (a 409 the client maps to conflict) also lands focus on the heading (Req 5)', async () => {
+    const { friendshipsAPI: api, ApiError } = await import('@/lib/api');
+    (api.sendRequest as Mock).mockRejectedValueOnce(
+      new ApiError('HTTP error! status: 409', 'conflict', 409)
+    );
+    const user = userEvent.setup();
+    const add = await openAddFriendPrompt();
+
+    await user.click(add);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Invite by Email' }))
+    );
+    expect(document.getElementById('invite-friend-request-status')).toHaveTextContent('Friend request sent!');
+  });
+
+  it('K1: a repeat copy is announced again on the same node, and the first 2 s timer is cleared on re-arm (Req 8 R8, Req 11)', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    renderPanel();
+    const copy = await screen.findByRole('button', { name: 'Copy Invite Link' });
+
+    await user.click(copy);
+    await screen.findByRole('button', { name: 'Copied!' });
+    const region = copyRegion()!;
+    expect(region.textContent).toBe(COPIED);
+    const [firstHandle] = copyTimerHandles(setSpy);
+    expect(firstHandle).toBeDefined();
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => records.push(...list));
+    observer.observe(region, { childList: true, characterData: true, subtree: true });
+
+    await user.click(screen.getByRole('button', { name: 'Copied!' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(records.length).toBeGreaterThan(0));
+    observer.disconnect();
+    expect(copyRegion()).toBe(region);
+    expect(region.textContent).toBe(COPIED);
+    expect(clearSpy).toHaveBeenCalledWith(firstHandle);
+  });
+
+  it('K2: closing the panel clears the pending 2 s timer, and a reopen starts fresh (SPEC Edge R11)', async () => {
+    const user = userEvent.setup();
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { rerender, onClose, onMemberAdded } = renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Copy Invite Link' }));
+    await screen.findByRole('button', { name: 'Copied!' });
+    const [pending] = copyTimerHandles(setSpy);
+    expect(pending).toBeDefined();
+
+    rerender(
+      <FriendInvitePanel group={GROUP} open={false} onClose={onClose} onMemberAdded={onMemberAdded} />
+    );
+    expect(clearSpy).toHaveBeenCalledWith(pending);
+
+    rerender(
+      <FriendInvitePanel group={GROUP} open onClose={onClose} onMemberAdded={onMemberAdded} />
+    );
+    expect(await screen.findByRole('button', { name: 'Copy Invite Link' })).toBeInTheDocument();
+    expect(copyRegion()?.textContent).toBe('');
+  });
+
+  it('K3: unmounting the panel clears the pending 2 s timer (Req 11)', async () => {
+    const user = userEvent.setup();
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { unmount } = renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Copy Invite Link' }));
+    await screen.findByRole('button', { name: 'Copied!' });
+    const [pending] = copyTimerHandles(setSpy);
+    expect(pending).toBeDefined();
+
+    unmount();
+    expect(clearSpy).toHaveBeenCalledWith(pending);
+  });
+
+  it('K4: a rejected clipboard write announces nothing and keeps the label (a guard, green by design)', async () => {
+    const user = userEvent.setup();
+    stubClipboard(vi.fn().mockRejectedValue(new Error('denied')));
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined);
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Copy Invite Link' }));
+    await waitFor(() => expect(info).toHaveBeenCalledTimes(1));
+    expect(info.mock.calls[0][0]).toBe('Failed to copy link:');
+    expect(copyRegion()?.textContent).toBe('');
+    expect(screen.getByRole('button', { name: 'Copy Invite Link' })).toBeInTheDocument();
   });
 });
 
