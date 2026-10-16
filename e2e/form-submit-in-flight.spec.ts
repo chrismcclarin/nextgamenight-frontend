@@ -1,4 +1,4 @@
-import { test, expect, type Route, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Route, type Page } from '@playwright/test';
 
 // Phase 88.6.1 plan 26 — a second press while a form is working changes nothing, proven in a real
 // browser at the phone project's 375 x 667 (and in journeys).
@@ -50,7 +50,7 @@ async function holdRequests(page: Page, match: (url: URL) => boolean, method: st
 }
 
 /** Phone floor and width: at least 44px tall, inside the viewport. */
-async function expectPhoneBox(page: Page, locator: ReturnType<Page['getByRole']>, what: string) {
+async function expectPhoneBox(page: Page, locator: Locator, what: string) {
   const box = await locator.boundingBox();
   expect(box, `${what} has no layout box`).not.toBeNull();
   const viewport = page.viewportSize();
@@ -163,5 +163,53 @@ test.describe('Availability form — the pressed pre-fill button (D-35, copy row
     await expect(page.getByTestId('prefill-status')).toContainText(failure);
     await expect(savedButton).toBeFocused();
     expect(saved.count()).toBe(1);
+  });
+});
+
+test.describe('Create Event — a second press while creating changes nothing (D-35)', () => {
+  test('a second press while creating changes nothing: one POST, the submit reads Creating..., stays aria-disabled and focused', async ({
+    page,
+  }) => {
+    const groupId = process.env.E2E_GROUP_ID ?? '1';
+    // The create goes to the same-origin BFF: `POST /api/events` exactly (`BFF_BASE` is `/api` in
+    // src/lib/api.ts). Only that pathname and method is held; everything else continues.
+    const create = await holdRequests(page, (url) => url.pathname === '/api/events', 'POST');
+
+    await page.goto(`/groupHomePage?id=${groupId}`);
+    await page.getByRole('button', { name: /add new game event/i }).click();
+    await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
+
+    // The existing journey's values (e2e/create-event.spec.ts), so no new game is minted.
+    const gameName = process.env.E2E_GAME_NAME ?? 'Catan';
+    await page.getByPlaceholder('Search for a game or type a name').fill(gameName);
+    await page.getByRole('button', { name: /switch to manual entry/i }).click();
+    const start = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    await page.getByLabel(/start date & time/i).fill(`${start.toISOString().slice(0, 10)}T19:00`);
+    await page.getByPlaceholder(/enter duration in minutes/i).fill('120');
+
+    // Found by test id: the accessible name changes mid-flight (copy row C7), the test id does not.
+    const submit = page.getByTestId('create-event-submit');
+    await submit.click();
+    await create.firstSeen;
+
+    await expect(submit).toHaveAttribute('aria-disabled', 'true');
+    await expect(submit).not.toHaveAttribute('disabled');
+    await expect(submit).toHaveAccessibleName('Creating...');
+    await expect(submit).toBeFocused();
+    await expectPhoneBox(page, submit, 'the busy Create Event submit');
+
+    await submit.click({ force: true });
+    await page.waitForTimeout(500);
+    expect(create.count()).toBe(1);
+    await expect(submit).toHaveAccessibleName('Creating...');
+
+    // Abort the held create: the failure is a toast, the dialog stays open, and the person is
+    // left where they pressed, on the re-enabled submit.
+    await create.abortAll();
+    await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
+    await expect(submit).toHaveAccessibleName('Create Event');
+    await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(submit).toBeFocused();
+    expect(create.count()).toBe(1);
   });
 });

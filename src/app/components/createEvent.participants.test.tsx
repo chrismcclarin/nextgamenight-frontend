@@ -5,13 +5,17 @@
 // state to its neighbour), undo-on-remove (fork 4), and the duplicate-name hint
 // (triage A1 — non-blocking by ruling).
 //
+// Since plan 88.6.1-26 it also covers the submit's in-flight guard and its in-flight label in both
+// modes (create and edit): one submit at a time, `aria-disabled` (never native `disabled`), and
+// copy row C7 `Creating...` / `Updating...`. The guard needs none of the scheduling half.
+//
 // The modal's scheduling half is stubbed out: this file is about the
 // participants list, and EventScheduler/heatmap are expensive to mount (a 28-row x 7-column
 // grid plus its gesture machine). The mock is STILL justified after plan 88.1-16 removed
 // react-big-calendar — the reason changed from "pulls in a heavy dependency" to "is heavy
 // to mount", but the cost this file is avoiding did not go away with the dependency.
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -56,7 +60,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
       getGroupMembers: vi.fn().mockResolvedValue(fixtures.members),
     },
     gamesAPI: { ...actual.gamesAPI, searchAll: vi.fn().mockResolvedValue([]) },
-    eventsAPI: { ...actual.eventsAPI, createEvent: vi.fn().mockResolvedValue({}) },
+    eventsAPI: { ...actual.eventsAPI, createEvent: vi.fn().mockResolvedValue({}), updateEvent: vi.fn().mockResolvedValue({}) },
     ballotAPI: { ...actual.ballotAPI, getBallot: vi.fn().mockResolvedValue(null) },
     availabilityAPI: {
       ...actual.availabilityAPI,
@@ -67,6 +71,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import CreateEvent from './createEvent';
+import { eventsAPI } from '@/lib/api';
+import { toast } from 'sonner';
 
 /** Every visible participant-name input, in DOM order. */
 function nameInputs(): HTMLInputElement[] {
@@ -257,5 +263,122 @@ describe('add-participant focus (UAT row 542)', () => {
     const fresh = inputs[inputs.length - 1]; // new rows append at the end
     expect(fresh.value).toBe('');
     await waitFor(() => expect(fresh).toHaveFocus());
+  });
+});
+
+// Plan 88.6.1-26 (D-35 rule of POSITION, copy row C7, plan 88.6.1-15's finding). Create Event's
+// submit had NO in-flight guard: one double tap created two events and sent two rounds of
+// notifications, and the button gave no sign it was working. It now refuses a second submit on
+// the first statement after `e.preventDefault()`, carries `aria-disabled` (never native
+// `disabled`, which drops a keyboard user to <body>) and reads `Creating...` / `Updating...`.
+describe('createEvent — the submit refuses a second press, stays focusable and says it is working (88.6.1-26, D-35, C7)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function holdOnce(fn: unknown) {
+    let resolve: (v: unknown) => void = () => {};
+    (fn as Mock).mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        })
+    );
+    return (v: unknown = {}) => resolve(v);
+  }
+
+  function submitButton(): HTMLElement {
+    return screen.getByTestId('create-event-submit');
+  }
+
+  it('C1: two submits dispatched in ONE act create exactly one event (Edge R4 idempotency)', async () => {
+    await renderModal();
+    const form = submitButton().closest('form') as HTMLFormElement;
+    act(() => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('C2: while creating, the submit is aria-disabled (not disabled) and reads Creating...; then Create Event again', async () => {
+    const release = holdOnce(eventsAPI.createEvent);
+    await renderModal();
+    const form = submitButton().closest('form') as HTMLFormElement;
+
+    fireEvent.submit(form);
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
+    expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(submitButton()).not.toHaveAttribute('disabled');
+    // Copy row C7, exact bytes: three ASCII full stops.
+    expect(submitButton()).toHaveAccessibleName('Creating...');
+
+    fireEvent.submit(form);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
+    expect(submitButton()).toHaveAccessibleName('Creating...');
+
+    // The modaltoggle stub keeps the dialog mounted, so the restore after a SUCCESS is observable.
+    release({});
+    await waitFor(() => expect(submitButton()).not.toHaveAttribute('aria-disabled'));
+    expect(submitButton()).toHaveAccessibleName('Create Event');
+  });
+
+  // CONFIRM-ONLY (green before the fix by design): guards the release in `finally`.
+  it('C3: after a FAILED create the submit is released (Create Event, no aria-disabled) and a retry creates', async () => {
+    const toastError = vi.spyOn(toast, 'error');
+    (eventsAPI.createEvent as Mock).mockRejectedValueOnce(new Error('boom'));
+    await renderModal();
+    const form = submitButton().closest('form') as HTMLFormElement;
+
+    fireEvent.submit(form);
+    // Positive signal first: the rejection was handled (its toast fired).
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    await waitFor(() => expect(submitButton()).not.toHaveAttribute('aria-disabled'));
+    expect(submitButton()).toHaveAccessibleName('Create Event');
+
+    fireEvent.submit(form);
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
+  });
+
+  it('C4: in EDIT mode the submit reads Updating... while it works, then Update Event again', async () => {
+    const release = holdOnce(eventsAPI.updateEvent);
+    render(
+      <CreateEvent
+        group_id="group-1"
+        modal
+        modaltoggle={vi.fn()}
+        onEventCreated={vi.fn()}
+        user={{ sub: 'auth0|self' }}
+        hideVisualCalendar
+        userRole="owner"
+        editingEvent={{
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          group_id: 'group-1',
+          // A game_id, so onSubmit never reaches the unmocked gamesAPI.resolveGame.
+          game_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          Game: { name: 'Catan' },
+          EventParticipations: [],
+          duration_minutes: 120,
+        }}
+      />
+    );
+    const button = await screen.findByRole('button', { name: 'Update Event' });
+    expect(button).toBe(submitButton());
+    const form = button.closest('form') as HTMLFormElement;
+
+    fireEvent.submit(form);
+    await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(1));
+    expect(submitButton()).toHaveAccessibleName('Updating...');
+    expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(submitButton()).not.toHaveAttribute('disabled');
+
+    fireEvent.submit(form);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(1);
+
+    release({});
+    await waitFor(() => expect(submitButton()).toHaveAccessibleName('Update Event'));
+    expect(submitButton()).not.toHaveAttribute('aria-disabled');
   });
 });
