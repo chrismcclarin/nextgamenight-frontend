@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
+import { groupsAPI, promptAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
 import ResponseDashboard from '../components/ResponseDashboard';
@@ -44,7 +44,6 @@ export default function GroupPlanningPage() {
 
     const [group, setGroup] = useState(null);
     const [groupError, setGroupError] = useState(null);
-    const [groupEvents, setGroupEvents] = useState([]);
 
     // Modal state for CreateEvent. When the URL carries prefill params we
     // open the modal automatically so the user lands directly on the event
@@ -72,11 +71,27 @@ export default function GroupPlanningPage() {
         }
     }, [authLoading, user]);
 
+    /* DECISION Phase 88.6.1-16 (W060 double fetch): the group and poll loads run ONCE per user
+       and group; only the role re-derive follows identity. Two effects, chosen OVER the single
+       shared effect that Phase 87.3-05 (FE dabb4a6) gave the identity dependency so the role
+       would re-run once identity resolved — which also re-ran BOTH loads at that moment, fetching
+       each twice on a cold visit, blanking the poll responses to their loading line mid-view and
+       remounting them, and letting a failed second poll fetch hide a good first result behind the
+       error banner (the AC-29 shape). The loads key on the user's sub, following EventCalendar's
+       fetch effect and UserHomePage's upcoming-events effect (a fresh user object per render
+       must not re-fetch); the role effect keeps the user object, unchanged since 87.3-05.
+       Merging them back is a decision, not a cleanup. */
     useEffect(() => {
         if (user?.sub && groupId) {
             fetchGroup();
-            fetchGroupEvents();
             fetchHeatmapData();
+        }
+        // The fetches are re-declared per render; the deps above are the reload triggers on purpose.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.sub, groupId]);
+
+    useEffect(() => {
+        if (user?.sub && groupId) {
             // fetchUserRole self-gates on selfUuid; selfUuid is in the deps so
             // the self-role derive re-runs once identity resolves (D-04).
             fetchUserRole();
@@ -108,13 +123,13 @@ export default function GroupPlanningPage() {
                     const members = await groupsAPI.getGroupMembers(groupId);
                     groupData.Users = members || [];
                 } catch (memberError) {
-                    console.error('Error fetching group members:', memberError);
+                    logger.info('Error fetching group members:', errCtx(memberError));
                 }
             }
 
             setGroup(groupData);
         } catch (error) {
-            console.error('Error fetching group:', error);
+            logger.info('Error fetching group:', errCtx(error));
             /* DECISION Phase 88-25 (Req 14 / Req 11, DEF-88-16-01): a failed group load renders
                the shared fetch-error treatment with a retry, chosen OVER the native browser alert
                this shipped with. A browser alert is unstyled, un-dismissable by keyboard
@@ -129,17 +144,6 @@ export default function GroupPlanningPage() {
             setGroupError(
                 error instanceof Error ? error : new Error("The group request didn't complete.")
             );
-        }
-    };
-
-    const fetchGroupEvents = async () => {
-        if (!groupId) return;
-        try {
-            const events = await eventsAPI.getGroupEvents(groupId);
-            setGroupEvents(events || []);
-        } catch (error) {
-            console.error('Error fetching group events:', error);
-            setGroupEvents([]);
         }
     };
 
@@ -266,8 +270,6 @@ export default function GroupPlanningPage() {
 
     const handleEventCreated = (newEvent) => {
         toggleEventModal();
-        // Refresh events after creation
-        fetchGroupEvents();
     };
 
     if (!user) {
@@ -297,16 +299,22 @@ export default function GroupPlanningPage() {
             {/* DECISION Phase 88.6-21 (#175, owner ruling 2026-09-14, option 2 — label all five
                 breadcrumb navs). THIS ATTRIBUTE IS THE ONLY EDIT PLAN 21 MAKES TO THIS FILE. The
                 file is not swept, not migrated, and its `no-console` allowlist entry
-                (`.eslintrc.json:59`) is deliberately untouched: AC-2's convert-on-touch rule is
+                (the `no-console` override list in `.eslintrc.json`) is deliberately untouched: AC-2's convert-on-touch rule is
                 scoped to plans that convert LOGGING, and an `aria-label` converts none — so plan
                 43's census is undisturbed. The ruling is assigned ONCE per nav; the other four
                 belong to plans 17 and 18 and are already done.
                 AMENDED Phase 88.6-53 (2026-09-28): the "not swept, not migrated" half is STALE —
                 plan 88.6-53 swept this file (headings onto Heading, off-scale weights, body text,
                 aria-current on the current crumb). What still stands is the no-console allowlist
-                entry (now at .eslintrc.json:30; the :59 above has drifted): its four console
-                calls are untouched by 53 too, and the entry belongs to the ROADMAP :28
-                milestone-close sweep (ledger P08), not to a type sweep. */}
+                entry (the same override list; the line number first cited above had drifted): its
+                four console calls are untouched by 53 too, and the entry belongs to the ROADMAP :28
+                milestone-close sweep (ledger P08), not to a type sweep.
+                AMENDED Phase 88.6.1-16 (W060, ROADMAP :28 convert-on-touch): the file's four raw
+                console calls are gone — one deleted with the unread events fetch, three moved to
+                the house breadcrumb logger at info with errCtx — and the file's entry in that
+                override list was removed in the same change. ROADMAP :28's convert-on-touch rule
+                applies to a file this phase edits, so the milestone-close sweep (ledger P08) has
+                nothing left here, and lint now guards the file. BOOKKEEPING: nothing breaks. */}
             {/* DECISION Phase 88.6-53 (D-03 / UI-SPEC §4.5; R2 #171): the two links are 400 (the
                 emphasis is carried by the link colour token) and the current crumb is 700 with
                 aria-current="page" — chosen to MATCH this page's parent, the groupHomePage
@@ -469,10 +477,7 @@ export default function GroupPlanningPage() {
                 group_id={groupId}
                 modal={eventModal}
                 modaltoggle={toggleEventModal}
-                onEventCreated={(newEvent) => {
-                    handleEventCreated(newEvent);
-                    fetchGroupEvents();
-                }}
+                onEventCreated={handleEventCreated}
                 user={user}
                 // Phase 71.2 / Plan 03 hotfix — when arriving via the email CTA
                 // (prompt_id present), surface the visual heatmap so the user

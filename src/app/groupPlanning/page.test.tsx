@@ -5,10 +5,11 @@
 // exact text (P4, P1) — plus the breadcrumb's landmark name and "you are here" marker.
 //
 // Mock surface copied from groupHomePage.identity.test.tsx, with ONE deliberate change: the
-// useUser mock returns a MODULE-LEVEL constant user. The page's fetch effect depends on the
+// useUser mock returns a MODULE-LEVEL constant user. The page's role effect still depends on the
 // `user` OBJECT (deps [user, groupId, selfUuid]), so a fresh literal per call — the identity
-// suite's shape — would re-run the four fetches after every state update, an endless loop.
-// The same reasoning keeps the search params and the identity query constant.
+// suite's shape — would re-run the role fetch after every state update, an endless loop. The
+// group and poll loads now key on the user's sub instead (88.6.1-16). The same reasoning keeps
+// the search params and the identity query constant within a test.
 //
 // Two mocks added by plan 88.6.1-16: a logger spy (the page's failure paths are Sentry
 // BREADCRUMBS at info, and the ctx each one passes is asserted exactly), and a PASS-THROUGH
