@@ -29,6 +29,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
+    // The group whose roster is on screen (D-09a): the has-loaded flag is this id compared with
+    // `group_id`, never `members.length` — a roster that loaded empty and one never loaded differ.
+    const [loadedGroupId, setLoadedGroupId] = useState(null);
+    const hasLoaded = loadedGroupId === group_id;
+    // Retained content for the RF1 convergence (D-51, D-50): this group's roster loaded, a
+    // loaded-EMPTY one included. A has-loaded flag, never a row count. Plan 88.6.1-78 moves it
+    // below the members error adapter and re-derives it through `useRetainedContent` (C10).
+    const rosterRetained = hasLoaded;
     const [userRole, setUserRole] = useState(null);
     /* DECISION Phase 88.6-19 (R1 / UI-SPEC §6.2 arm 1): the members LOAD failure holds the
        ERROR OBJECT, not a flattened "Failed to load members" string, and renders through the
@@ -109,6 +117,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             }
 
             setMembers(data || []);
+            setLoadedGroupId(group_id);
 
             // Find current user's role by the nested member.id (UUID) vs the
             // resolved selfUuid. Gated on identity resolution: while selfUuid is
@@ -144,7 +153,6 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             setError(
                 error instanceof Error ? error : new Error("The members request didn't complete.")
             );
-            setMembers([]);
         } finally {
             setLoading(false);
         }
@@ -491,17 +499,45 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     compact, non-blocking degrade notice rather than fail silently. */}
                 <FetchErrorBanner state={selfIdentityErrorState} compact />
 
-                {loading ? (
-                    <p className="text-content-secondary">Loading members...</p>
-                ) : membersErrorState.showError ? (
+                {/* DECISION Phase 88.6.1-42 (D-09a, D-33 row 20): the first-load line replaces
+                    content only on the FIRST load of THIS group. A refresh (a role change, a remove,
+                    an approve, a reject, a member added from the invite panel) keeps the rows
+                    painted. A failed refresh keeps what loaded (the rows, or a loaded-empty
+                    roster's sentence), and the full banner renders only while nothing has loaded
+                    for this group; the shared RF1 notice that qualifies kept content is mounted by
+                    plan 88.6.1-78. A reopen shows the last roster and refreshes behind it. The four
+                    slots below are mutually exclusive by construction.
+
+                    REJECTED, each with its reason:
+                    (a) the row count as the has-loaded flag: a roster that loaded empty and a
+                        roster never loaded are different states.
+                    (b) a plain boolean: a reopen for another group would paint the previous
+                        group's rows and their Remove controls.
+                    (c) a busy marker or a visible updating line on the roster: D-09 (owner),
+                        nothing extra in Manage Members; dimming old rows is Phase 88.9's.
+                    (d) the full banner above kept rows, D-09a's own clause, AMENDED by D-51 (the
+                        RF1 convergence the owner ratified 2026-10-05): a "couldn't load" banner
+                        over a loaded roster contradicts itself.
+                    (e) a row count in the retained rule (the full banner over a roster that loaded
+                        EMPTY): the owner ruled on 2026-10-05 (D-50, ruling Y) that a loaded-empty
+                        list is retained content; the banner there throws away the knowledge that
+                        the last good read found nobody, and the RF1 notice above the sentence
+                        states the failure.
+                    Changing this is a decision, not a cleanup. */}
+                {membersErrorState.showError && !rosterRetained && (
                     <FetchErrorBanner
                         state={membersErrorState}
                         title="Couldn't load members"
                         reportContext="manage members — member list fetch"
                     />
-                ) : members.length === 0 ? (
+                )}
+                {loading && !hasLoaded && !membersErrorState.showError && (
+                    <p className="text-content-secondary">Loading members...</p>
+                )}
+                {rosterRetained && members.length === 0 && (
                     <p className="text-content-secondary">No members found.</p>
-                ) : (
+                )}
+                {rosterRetained && members.length > 0 && (
                     <>
                         {/* Pending Members Section (admin/owner only) */}
                         {canManageMembers && members.filter(m => m.UserGroup?.role === 'pending').length > 0 && (
