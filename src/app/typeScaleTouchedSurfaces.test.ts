@@ -1637,7 +1637,12 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/components/tutorial/simulated/AvailabilityPromptDemo.js': { 3: 1 },
   'app/components/tutorial/simulated/ProblemSlide.js': { 2: 1 },
   'app/friends/page.js': { 1: 4, 2: 1 },
-  'app/gameDetail/page.js': { 1: 3, 2: 5, 3: 1 },
+  // RAISED { 1: 3, 2: 5, 3: 1 } -> { 1: 3, 2: 6, 3: 1 } by plan 88.6.1-25 task 2 (2026-10-16,
+  // review r2 #180): the event view's message-screen title ("Event not found" and the no-access
+  // title share ONE render helper) is now a `<Heading level={2} size="heading">` instead of a
+  // heading-styled paragraph. One more mutually exclusive branch, not a level change: no existing
+  // heading moved level or size. Not an R7 heading-order finding.
+  'app/gameDetail/page.js': { 1: 3, 2: 6, 3: 1 },
   'app/global-error.tsx': { 1: 1 },
   'app/goodbye/page.tsx': { 1: 2 },
   'app/groupHomePage/page.js': { 1: 1 },

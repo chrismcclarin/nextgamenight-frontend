@@ -1,4 +1,4 @@
-import { test, expect, type Request } from '@playwright/test';
+import { test, expect, type Page, type Request } from '@playwright/test';
 
 // Phase 88.6.1 plan 25 (Requirement 1) — an event link opened SIGNED OUT, at phone width.
 //
@@ -58,4 +58,76 @@ test.describe('Phase 88.6.1-25 — a signed-out event link at phone width (phone
     await expect(page.getByText("We couldn't load this event")).toBeVisible();
     expect(loginRequests, 'no second sign-in request after the round trip').toHaveLength(1);
   });
+
+  // The three answers below are rendered from an intercepted event fetch, so they need no seeded
+  // event. Each path is a fixed fake UUID WITHOUT a group_id, so the suggestions fetch waits for the
+  // event and no other API call fires. Each ends with the phone-first overflow check at 375px.
+
+  test('(a) a bad event id is "Event not found" with zero event or sign-in requests (AC-6)', async ({
+    page,
+  }) => {
+    const eventRequests: string[] = [];
+    const loginRequests: string[] = [];
+    page.on('request', (req: Request) => {
+      const { pathname } = new URL(req.url());
+      if (pathname.startsWith('/api/events')) eventRequests.push(req.url());
+      if (pathname === '/api/auth/login') loginRequests.push(req.url());
+    });
+    await page.goto('/gameDetail?event_id=not-a-uuid');
+    await expect(page.getByText('Event not found')).toBeVisible();
+    await expectBackLinkFloor(page);
+    expect(eventRequests, 'no event request is built from a bad id').toHaveLength(0);
+    expect(loginRequests, 'a bad id never redirects to sign-in').toHaveLength(0);
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('(b) a 403 is the no-access screen with Back to Home and no sign-in request (AC-3)', async ({
+    page,
+  }) => {
+    const loginRequests: string[] = [];
+    page.on('request', (req: Request) => {
+      if (new URL(req.url()).pathname === '/api/auth/login') loginRequests.push(req.url());
+    });
+    await page.route('**/api/events/**', (route) =>
+      route.fulfill({ status: 403, json: { error: 'Access denied' } })
+    );
+    await page.goto(INTERCEPTED_EVENT_PATH);
+    await expect(page.getByText("You don't have access to this event")).toBeVisible();
+    await expectBackLinkFloor(page);
+    expect(loginRequests, 'a 403 never redirects to sign-in').toHaveLength(0);
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('(c) a 500 is the E3 banner with Try again (AC-5)', async ({ page }) => {
+    await page.route('**/api/events/**', (route) =>
+      route.fulfill({ status: 500, json: { code: 'internal', message: 'Internal error' } })
+    );
+    await page.goto(INTERCEPTED_EVENT_PATH);
+    await expect(page.getByText("We couldn't load this event")).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
 });
+
+// A syntactically valid, obviously fake event id: it passes the page's UUID guard, and every
+// request for it is intercepted before it leaves the browser.
+const INTERCEPTED_EVENT_PATH = '/gameDetail?event_id=00000000-0000-4000-8000-0000000000e1';
+
+// The geometry half of the unit suite's F1 (jsdom does no layout): at 375px the message screen's
+// back link is a 44px phone target (SPEC phone-first floor). Non-null box first, so a missing link
+// fails as a missing link rather than as a vacuous height check.
+async function expectBackLinkFloor(page: Page) {
+  const link = page.getByRole('link', { name: /Back to Home/ });
+  await expect(link).toBeVisible();
+  const box = await link.boundingBox();
+  expect(box, 'the Back to Home link did not render a box').not.toBeNull();
+  if (!box) return;
+  expect(box.height, 'the Back to Home link is at least 44px tall at phone width').toBeGreaterThanOrEqual(44);
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth
+  );
+  expect(overflow, 'no horizontal overflow at 375px').toBeLessThanOrEqual(0);
+}

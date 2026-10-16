@@ -350,6 +350,11 @@ function GuestInviteButton({ groupId, userId }) {
 const EVENT_NOT_FOUND_TITLE = 'Event not found';
 const EVENT_NOT_FOUND_DETAIL = 'This event no longer exists or has been cancelled.';
 const PAGE_LOADING_LABEL = 'Loading game night...';
+// Copy rows E1, E2 and E3 (88.6.1-COPY-TABLE.html, ratified 2026-10-04, D-30), shipped with the
+// straight apostrophe (D-32 R8).
+const EVENT_NO_ACCESS_TITLE = "You don't have access to this event";
+const EVENT_NO_ACCESS_DETAIL = "You may be signed in with a different account, or you haven't been invited yet.";
+const EVENT_LOAD_FAILED_TITLE = "We couldn't load this event";
 
 // 88.6.1-25 (D-01): the per-event sign-in latch. The key follows the in-repo `ng<feature>:<purpose>`
 // convention (src/app/page.js, 'nggroups:refresh'). Every helper is FAIL-CLOSED: a storage call that
@@ -371,6 +376,14 @@ function writeSignInLatch(eventId) {
         return true;
     } catch {
         return false;
+    }
+}
+
+function clearSignInLatch(eventId) {
+    try {
+        window.sessionStorage.removeItem(SIGN_IN_LATCH_PREFIX + eventId);
+    } catch {
+        // Nothing to do: a latch that cannot be removed only means one more banner, never a loop.
     }
 }
 
@@ -441,6 +454,10 @@ export default function GameDetailPage() {
     // storage failed, so the 401 renders the banner instead).
     const [eventError, setEventError] = useState(null);
     const [signInRedirect, setSignInRedirect] = useState('idle');
+    // 88.6.1-25 (D-02, review r2 #31): true from the moment a 410 `account_deleted` from the event
+    // fetch starts the identity recheck until that recheck settles. Set in the SAME batch as the
+    // error (the query's own fetching flag is still false in that render, so the banner would flash).
+    const [identityRecheckPending, setIdentityRecheckPending] = useState(false);
     const [showReviewForm, setShowReviewForm] = useState(false);
     const [userRole, setUserRole] = useState(null);
     // Phase 71.1 GAMP-09: scope detection for two-QR model.
@@ -743,7 +760,29 @@ export default function GameDetailPage() {
         const isCurrentRun = () => gen === eventFetchGenRef.current;
         // Identity-only re-run (selfUuid resolved after first load of the SAME
         // event): refresh in place — no full-page loading flash (#1/#18).
-        if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
+        if (loadedEntityKeyRef.current !== entityKey) {
+            setLoading(true);
+            // 88.6.1-25 (retention rule, review r2 #30): a DIFFERENT event starts from a clean slate,
+            // so a failure there never shows the previous event and a roster 403 there never keeps the
+            // previous event's role or roster. Phase 87.3-04's "never downgrade to 'none'" protects the
+            // SAME event's scope during an identity re-run, which keeps the same entity key and never
+            // reaches this reset; 'none' is the initial value. The group id resets to the guarded URL
+            // hint, NOT null, so the suggestions fetch can still start before the event loads.
+            setSingleEvent(null);
+            setEventError(null);
+            setSignInRedirect('idle');
+            setUserRole(null);
+            setUserScope('none');
+            setGroupMembers([]);
+            setGroupMembersByUserId({});
+            setParticipants([]);
+            setRsvpByUserId({});
+            setEventRsvpStatuses({});
+            setBringersSet(new Set());
+            setEventSuggestions([]);
+            setSuggestionsPlayerCount(null);
+            setEffectiveGroupId(group_id || null);
+        }
         try {
             // 88.6.1-25 (D-01, RESEARCH P-2): ONLY the getEvent rejection decides the page state, so it
             // has its own try. The roster, RSVP and bring fetches below keep their own soft catches: a
@@ -755,6 +794,26 @@ export default function GameDetailPage() {
                 logger.info('Error fetching event:', errCtx(error));
                 if (!isCurrentRun()) return;
                 eventErrorGenRef.current = gen;
+                const code = error instanceof ApiError ? error.code : 'unknown';
+                // TERMINAL answers clear any event still on screen, so neither the no-access state nor
+                // the redirect loader can sit under a retained event (Prohibition 1); every other code
+                // keeps a retained event of the same entity. Lap 3: a deliberate wave-4 LOCAL list, ONE
+                // membership test; plan 88.6.1-74 replaces it with plan 70's isAccessOrGoneError.
+                if (['unauthorized', 'forbidden', 'not_found', 'account_deleted'].includes(code)) {
+                    setSingleEvent(null);
+                }
+                // An answer the backend sends only to an AUTHENTICATED caller proves the session, so it
+                // clears the sign-in latch (review r2 #305). Never a 401, network, 5xx, 429 or unknown.
+                if (code === 'forbidden' || code === 'not_found' || code === 'account_deleted') {
+                    clearSignInLatch(event_id);
+                }
+                // D-02: re-check identity so useSelfIdentity's own effect routes to the goodbye
+                // logout, even from a tab whose self row was cached before the deletion.
+                if (code === 'account_deleted') {
+                    setIdentityRecheckPending(true);
+                    const settle = () => setIdentityRecheckPending(false);
+                    Promise.resolve(selfIdentityQuery?.refetch?.()).then(settle, settle);
+                }
                 setEventError(
                     error instanceof Error ? error : new Error("The event request didn't complete.")
                 );
@@ -763,6 +822,7 @@ export default function GameDetailPage() {
             if (!isCurrentRun()) return;
             setEventError(null);
             setSignInRedirect('idle');
+            clearSignInLatch(event_id);
             setSingleEvent(eventData);
 
             // Backend GET /events/:event_id flattens EventParticipations via
@@ -1183,6 +1243,31 @@ export default function GameDetailPage() {
         refetch: retryGameData,
     });
 
+    // 88.6.1-25 (AC-5): the event view's adapter, copied from the game view's above (the same ref hop,
+    // because fetchEventOnly is re-declared every render and the hook needs a STABLE refetch). A
+    // same-event retry does NOT clear `eventError` first, so the banner stays mounted (its own
+    // retrying state) until the retry settles instead of flashing "Event not found".
+    const fetchEventOnlyRef = useRef(null);
+    useEffect(() => {
+        fetchEventOnlyRef.current = fetchEventOnly;
+    });
+    const retryEventOnly = useCallback(() => fetchEventOnlyRef.current?.(), []);
+    // 88.6.1-25 (review r2 #139): the hook re-fetches on every visible `visibilitychange` while it is
+    // armed, so it is armed only for answers that can CHANGE. Not for a 404 (final), and not for a 401
+    // whose redirect or held loader owns the screen; `forbidden` stays armed (access can be granted)
+    // and so does `account_deleted` (gate (iii)'s fallthrough reads this state). Kept separate from the
+    // terminal-code list in fetchEventOnly, so replacing that list does not touch this predicate.
+    const eventErrorArmedCode = eventError instanceof ApiError ? eventError.code : 'unknown';
+    const eventErrorArmed =
+        Boolean(eventError) &&
+        eventErrorArmedCode !== 'not_found' &&
+        !(eventErrorArmedCode === 'unauthorized' && signInRedirect !== 'declined');
+    const eventErrorState = useFetchErrorState({
+        isError: eventErrorArmed,
+        error: eventError,
+        refetch: retryEventOnly,
+    });
+
     // DECISION Phase 88.6.1-25 (D-01): CHOSEN — a latched `window.location.replace` to sign-in on ANY
     // 401 from the event fetch, decided only after `useUser` has settled and only for the CURRENT
     // fetch generation, with the per-event latch written BEFORE navigating and read fail-closed.
@@ -1194,6 +1279,9 @@ export default function GameDetailPage() {
     // settle; that is the SPEC's concurrency backstop race). PREMISE (RESEARCH MC-6): session storage
     // belongs to the tab, so the latch survives the same-tab round trip through Auth0; the signed-out
     // phone e2e (e2e/event-link-signed-out.spec.ts) measures it in Chromium and owner check A on iOS.
+    // WHY NO LOOP (review r2 #305): 401 -> latch -> sign-in -> a 403 / 404 / 410 or a good load
+    // clears it -> a later 401 redirects once more -> a 401 on return finds the latch and gets the
+    // banner. Only an answer that proves the session clears the latch; a 401 never does.
     // Removing the latch or the auth-settled gate is a decision, not a cleanup.
     useEffect(() => {
         if (authLoading || !event_id) return;
@@ -1723,7 +1811,13 @@ export default function GameDetailPage() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center max-w-md mx-auto px-6">
-                    <p className="text-content-primary text-xl font-bold mb-2">{title}</p>
+                    {/* DECISION Phase 88.6.1-25 (message-screen heading): CHOSEN — the title is an h2 at
+                        the `heading` size, so a screen reader's heading navigation finds it. REJECTED:
+                        an h1 (PAGE_SURFACES in typeScaleTouchedSurfaces.test.ts lists this file and forces
+                        every h1 here to the 30/700 Display rung, a look change in a non-look phase).
+                        REJECTED: keeping the heading-styled paragraph (its only recorded reason was the
+                        heading-count pin, which is bookkeeping; the pin moved with this, review r2 #180). */}
+                    <Heading level={2} size="heading" className="text-content-primary mb-2">{title}</Heading>
                     <p className="text-content-secondary mb-6">{detail}</p>
                     <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                         ← Back to Home
@@ -2487,21 +2581,58 @@ export default function GameDetailPage() {
         );
     }
 
-    // 88.6.1-25 (D-01, RESEARCH P-5): an event 401 holds the loader while the sign-in decision is
-    // pending and while redirecting, so "Event not found" never paints for a frame before navigation.
-    // Only a declined redirect (latch already set, or storage failed) falls through to the banner.
+    /* DECISION Phase 88.6.1-25 (D-01 / D-02 / AC-2..AC-5): the event view's failure gates, in this
+       ORDER, mirroring DECISION Phase 88-25 for the game view below (keep the error object, take the
+       copy from its code, check a failure BEFORE "Event not found"). Each answer the event fetch can
+       get has its own screen: (i) the loader while a 401's sign-in redirect is pending or under way,
+       or while a 410's identity recheck runs; (ii) a 403 is the no-access screen; (iii) every other
+       failure, a declined 401 included, is the shared banner with Try again; (iv) only a real 404
+       (or a rejected id, gated earlier) reaches "Event not found". REJECTED: classifying in
+       fetchEventOnly's old single catch, which also caught the roster fetch, so a members 403 after
+       a good event would have become the no-access screen (RESEARCH P-2). Reordering these is a
+       decision, not a cleanup. */
+    const eventErrorCode = eventError instanceof ApiError ? eventError.code : null;
+    // (i) A 401 holds the loader while the sign-in decision is pending and while redirecting, so
+    // "Event not found" never paints for a frame before navigation (RESEARCH P-5); only a declined
+    // redirect (latch already set, or storage failed) falls through to the banner.
     const holdEventLoader =
+        !game_id && eventErrorCode === 'unauthorized' && signInRedirect !== 'declined';
+    // (i) D-02: a 410 holds the loader ONLY while the recheck this run started is in flight, or while
+    // the identity query itself reports the deleted account (its effect is routing to goodbye). Any
+    // other settled outcome falls through to the banner, so the loader is never a dead end (r2 #31).
+    const holdAccountDeletedLoader =
         !game_id &&
-        eventError instanceof ApiError &&
-        eventError.code === 'unauthorized' &&
-        signInRedirect !== 'declined';
+        eventErrorCode === 'account_deleted' &&
+        (identityRecheckPending || selfIdentityErrorState.code === 'account_deleted');
 
     // The shared loader (both views) reads copy row E4 and is a labelled status, RouteFallback's
     // contract (role="status" + aria-label), so the loader that holds the redirect is announced.
-    if (loading || holdEventLoader) {
+    if (loading || holdEventLoader || holdAccountDeletedLoader) {
         return (
             <div className="flex items-center justify-center min-h-screen" role="status" aria-label={PAGE_LOADING_LABEL}>
                 <p className="text-content-secondary">{PAGE_LOADING_LABEL}</p>
+            </div>
+        );
+    }
+
+    // (ii) AC-3: the same helper as "Event not found", so the reused Back to Home link (D-33 row 18)
+    // and the layout cannot drift. The terminal arm already cleared any retained event.
+    if (!game_id && eventError && eventErrorState.code === 'forbidden') {
+        return renderEventMessageState(EVENT_NO_ACCESS_TITLE, EVENT_NO_ACCESS_DETAIL);
+    }
+
+    // (iii) AC-5: every other failure, inside the same two wrappers as the game view's banner.
+    if (!game_id && !singleEvent && eventErrorState.showError && eventErrorState.code !== 'not_found') {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="w-full max-w-md px-6">
+                    <FetchErrorBanner
+                        state={eventErrorState}
+                        title={EVENT_LOAD_FAILED_TITLE}
+                        // A quoted literal on purpose: loggerCtxShape.test.ts (test 5) gates every reportContext.
+                        reportContext="Game detail page — event fetch"
+                    />
+                </div>
             </div>
         );
     }
@@ -2511,6 +2642,9 @@ export default function GameDetailPage() {
     // tap. Distinct from the "Game not found" branch below — the user
     // arrived via /gameDetail?event_id=X expecting an event, so we tell
     // them the event is gone (not the game) and link back to userHome.
+    // [AMENDED Phase 88.6.1-25 (D-01 / AC-4)] This gate now receives ONLY a real 404 (a rejected
+    // event id is answered by the earlier gate with the same screen); every other failure is
+    // classified above it, so the sentence is true whenever it shows.
     if (event_id && !singleEvent) {
         return renderEventMessageState(EVENT_NOT_FOUND_TITLE, EVENT_NOT_FOUND_DETAIL);
     }
