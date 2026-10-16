@@ -52,10 +52,11 @@ describe('WeekGrid — CSS-grid geometry (88.1-02 C12)', () => {
     render(
       <WeekGrid variant="read" days={3} slots={2} getCell={readCell} ariaLabel="geometry" />
     );
-    // The default gutter is 28px since 88.6.1-24 (register owner item 66: the widest compact hour
-    // label, "12p", clipped at 24 - see the DECISION on `gutterPx` in WeekGrid.tsx).
+    // The default gutter is 32px since the 88.6.1 wave 4 CI gate (28px from 88.6.1-24, 24px
+    // before): register owner item 66, the hour label overflowing its gutter cell - "12p" at 24px,
+    // then "10p" at 28px in CI's desktop project. See the DECISION on `gutterPx` in WeekGrid.tsx.
     expect(screen.getByRole('grid')).toHaveStyle({
-      gridTemplateColumns: '28px repeat(3, 1fr)',
+      gridTemplateColumns: '32px repeat(3, 1fr)',
     });
   });
 

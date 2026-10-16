@@ -1682,7 +1682,8 @@ test.describe('Phase 88.6.1-24 (SPEC Req 11, register owner item 66) — the sch
   // NO project skip, deliberately: the label is `text-xs sm:text-sm`, so it is WIDER at desktop
   // width than on the phone - "12p" was measured at 20.14px at 375 and 23.05px at 1280 against the
   // 20px content box a 24px gutter left (plan 88.6-26's measurement, in the register). The gutter is
-  // 28px since 88.6.1-24 (WeekGrid's `gutterPx` default); this runs at 375 (`phone`) and 1280
+  // 32px since the 88.6.1 wave 4 CI gate (WeekGrid's `gutterPx` default; 28px from 88.6.1-24 let
+  // "10p" overflow by 1px here at 1280, CI run 38878098281); this runs at 375 (`phone`) and 1280
   // (`journeys`) so a regression at either width is caught. The label cell is right-justified, so a
   // label that no longer fits overflows to the LEFT, out of its own cell.
   test('the hour gutter fits its widest label at this project\'s width', async ({ page }) => {
@@ -1719,7 +1720,7 @@ test.describe('Phase 88.6.1-24 (SPEC Req 11, register owner item 66) — the sch
     );
     expect(
       overflowing,
-      `these hour labels extend past their gutter cell — register owner item 66 has regressed; the gutter is WeekGrid's \`gutterPx\` (28px default since 88.6.1-24): ${JSON.stringify(overflowing)}`,
+      `these hour labels extend past their gutter cell — register owner item 66 has regressed; the gutter is WeekGrid's \`gutterPx\` (32px default since the 88.6.1 wave 4 CI gate): ${JSON.stringify(overflowing)}`,
     ).toEqual([]);
   });
 });

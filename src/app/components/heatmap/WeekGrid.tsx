@@ -96,7 +96,7 @@ interface WeekGridBaseProps {
    */
   cellClassName?: string;
   /**
-   * Width of the time-axis gutter column, in px. Default 28 (was 24). 87.8-13 F-2's rule stands:
+   * Width of the time-axis gutter column, in px. Default 32 (28 from 88.6.1-24, 24 before). 87.8-13 F-2's rule stands:
    * the gutter fits the widest compact label, and the old 40px "read as dead left padding" at
    * 375px. F-2's PREMISE is corrected here: it sized 24 for "12p" at 10px mono, but this grid's
    * axis label is `text-xs sm:text-sm` (12px, 14px), not mono. The day columns take `1fr` each, so
@@ -107,7 +107,16 @@ interface WeekGridBaseProps {
    * 1280 against the 20px content box a 24px gutter with `pr-1` leaves (plan 88.6-26's measurement,
    * recorded in the register, not re-run here), so it clipped. 28 leaves 24px - the width and the
    * reason EventHeatmapBackground's own gutter took in 88.6-26 (its `D-01 / delta V-7` marker).
-   * Widening toward 40 re-opens F-2; narrowing below 28 re-opens the clip at desktop width.
+   * AMENDED by the 88.6.1 wave 4 CI gate (2026-10-16, CI run 38878098281): 28 -> 32, the same
+   * "widen, do not shrink `pr-1` or the label" choice. 28 was not enough at desktop width: in CI's
+   * `journeys` project (1280) the "10p" label at `text-sm` measured 25px wide (left 217, right 242)
+   * against the 24px content box a 28px gutter with `pr-1` leaves (cell 218-246), so it overflowed
+   * left by 1px; the phone (`text-xs`) fit. 88.6.1-24 had recorded that CI font metrics were not
+   * measured. 32 leaves a 28px box, 3px over that measurement, and costs each of 7 day columns
+   * about 0.57px. This gutter NO LONGER matches EventHeatmapBackground's 28px: that grid's label is
+   * `text-xs font-mono` at every width (no `sm:text-sm` step) and its own 88.6-26 measurement still
+   * holds, so it was deliberately not widened.
+   * Widening toward 40 re-opens F-2; narrowing below 32 re-opens the overflow at desktop width.
    * Changing this is a decision, not a cleanup.
    */
   gutterPx?: number;
@@ -277,7 +286,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
     ariaLabel,
     disabled = false,
     cellClassName,
-    gutterPx = 28,
+    gutterPx = 32,
     renderDayHeader,
     overlay,
     scrollContainerRef,
@@ -495,11 +504,12 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
         {/* Time-slot rows */}
         {Array.from({ length: slots }, (_, row) => (
           <div key={`r-${row}`} className="contents" role="row">
-            {/* pr-1 (not the old pr-2): the gutter is 28px by default since 88.6.1-24 (24px before),
-                not 64-80px, so pr-1 leaves 24px for the label where pr-2 would leave 20. It matches
-                EventHeatmapBackground's gutter again (28px since 88.6-26, its `D-01 / delta V-7`
-                marker) - the "same width" this comment claimed was false between 88.6-26 and
-                88.6.1-24. */}
+            {/* pr-1 (not the old pr-2): the gutter is 32px by default since the 88.6.1 wave 4 CI
+                gate (28px from 88.6.1-24, 24px before), not 64-80px, so pr-1 leaves 28px for the
+                label where pr-2 would leave 24. It does NOT match EventHeatmapBackground's 28px
+                gutter (its `D-01 / delta V-7` marker): the two matched only between 88.6.1-24 and
+                the wave 4 CI gate, and the difference is deliberate (see the DECISION on
+                `gutterPx`). */}
             <div className="sticky left-0 z-10 bg-surface-card flex items-center justify-end pr-1 text-xs sm:text-sm text-content-secondary">
               {slotLabels?.[row] ?? ''}
             </div>
