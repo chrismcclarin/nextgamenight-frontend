@@ -16,6 +16,7 @@ import {
 } from '@floating-ui/react';
 import { FriendshipContext } from './FriendshipStatusProvider';
 import { Button } from '../../components/ui/Button';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '@/lib/logger';
 
@@ -43,7 +44,10 @@ function firstRendered(candidates) {
  * Render decisions per status:
  * - self     → name with desktop hover-tooltip showing blue "You" pill
  *              (no mobile inline indicator — self is informational, not actionable)
- * - unknown  → plain span (API failed; graceful degradation, no indicator)
+ * - unknown  → plain span (graceful degradation, no indicator). AMENDED Phase 88.6.1-37 (plan 66):
+ *              'unknown' has three causes: the self identity has not resolved (FE-17), the
+ *              first friendship load has not settled (plan 88.6.1-66's loading arm), or a
+ *              friendship load failed. The plain name is right for all three.
  * - accepted → name with desktop hover-tooltip showing green "Friend" pill
  *              + mobile-only "✓ Friend" inline indicator (preserved for touch parity)
  * - none / pending_sent / pending_received → name with desktop hover-tooltip
@@ -250,9 +254,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // DECISION Phase 88.6-34 (AC-2 WIDENED 2026-09-09, level AMENDED 2026-09-13):
       // `logger.info`, chosen OVER `logger.error` and OVER `logger.warn`. `logger.error` is
       // `captureException` with no throttle, dedupe or level gate, and `replaysOnErrorSampleRate`
-      // (1.0) against `replaysSessionSampleRate` (0.1) means most sessions are BUFFERING — so the
-      // first captured event flushes the Session Replay buffer and converts that session to
-      // continuous recording and upload. That arm bit hardest EXACTLY HERE: it would have egressed
+      // (0.1; sentry.client.config.js, anchor `replaysOnErrorSampleRate: 0.1,`) means most sessions
+      // BUFFER (the session sample is 0.1), and a captured event flushes the buffer and converts the
+      // session to continuous recording and upload in roughly one buffering session in ten. That arm
+      // bit hardest EXACTLY HERE: it would have egressed
       // a masked replay of the member-identity surface on a failed friend request. `logger.warn` is
       // not cheaper (`captureMessage` is an event too); only `logger.info` is event-free. What
       // changed is the CHANNEL and the lint gate, NOT the egress — this was a breadcrumb before and
@@ -269,6 +274,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // the raw `Error` as the ctx: the signature is `Record<string, unknown>` and a `.js` call
       // site gets no typecheck. Converts IN PLACE — a catch inside an async handler, not a render
       // body or a per-item loop.
+      // CORRECTED Phase 88.6.1-37 (W009): the rate read 1.0 here after Phase 88.6 set it to 0.1.
       logger.info('Failed to send friend request:', errCtx(err));
       setSendError(true);
       if (inline) setInlineSendError(true);
@@ -353,7 +359,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
     arm({ preferred: resolveStatusTarget })();
   }, [arm, resolveStatusTarget]);
 
-  // Graceful degrade for unknown (API failed) — no popover, no inline indicator.
+  // Graceful degrade for unknown — no popover, no inline indicator. AMENDED Phase 88.6.1-37 (plan 66):
+  // 'unknown' means the self identity has not resolved (FE-17), the first friendship load has not
+  // settled (plan 88.6.1-66's loading arm), or a friendship load failed; the plain name fits all three.
   // The plain name is ONE keyed span wrapping the children or the username, so it is a NEW node
   // when the status turns to or from unknown (React would otherwise reuse the focused trigger or
   // Pending span as it, and nothing would recover). No role and no tab stop
@@ -368,6 +376,13 @@ export default function ClickableMemberName({ userId, username, children, showIn
 
   // All other states render the name with a desktop hover-tooltip popover.
   // Mobile inline indicators vary per status (handled in renderMobileIndicator).
+
+  // The green "Friend" pill, in ONE place: the accepted return and the success region both use it.
+  const renderFriendPill = () => (
+    <span className="text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
+      Friend
+    </span>
+  );
 
   const renderTooltipContent = () => {
     // DECISION Phase 88.6-34 (D-01 / D-03, UI-SPEC §4.2 + §4.5): both pills below move
@@ -397,38 +412,69 @@ export default function ClickableMemberName({ userId, username, children, showIn
       );
     }
 
-    // Accepted → green "Friend" pill. Informational only, no action.
-    if (status === 'accepted') {
-      return (
-        <span className="text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
-          Friend
-        </span>
-      );
+    // Accepted → green "Friend" pill. Informational only, no action. When a send from this
+    // popover resolved first, the pill renders inside the success region instead (below).
+    if (status === 'accepted' && !sent) {
+      return renderFriendPill();
     }
 
-    // Already sent (optimistic UI after clicking Add friend)
-    // Delta review 2026-08-06 (MED): both outcome swaps UNMOUNT the focused
-    // Add-friend button — without live-region roles the outcome was silent to
-    // screen readers on the keyboard path MED#16 just promoted (the mobile "+"
-    // path had this treatment from D-13; the popover path did not). Insertion-
-    // announced role=status/alert is the same idiom the mobile pending span
-    // defends at its own marker. Focus survival is FloatingFocusManager's
-    // restoreFocus (render site below).
-    // `font-medium` DELETED (Phase 88.6-34, §4.5 EMPHASIS): the row already carries
-    // `text-content-status-success`, so the colour token is doing the work and 400 is the
-    // outcome. HIERARCHY (700) was the wrong arm — this is a transient confirmation line, not a
-    // heading. `text-sm` STAYS: Label 14 is the rung for a status line, and it must match the
-    // `sendError` twin below, which renders in the SAME popover slot — splitting the pair across
-    // two rungs would resize the popover the moment a send fails.
-    if (sent) {
-      return (
-        <div role="status" className="flex items-center gap-1.5 text-sm text-content-status-success">
+    // Delta review 2026-08-06 (MED), AMENDED Phase 88.6.1-37 (D-42): an alert inserted with its
+    // text IS announced reliably, so the failure line below stays an inserted alert; an inserted,
+    // populated polite status line is NOT announced on NVDA, JAWS or VoiceOver on macOS (AT-4 item
+    // 6), and keyboard users open this popover with exactly those readers. That is why the success
+    // line moved into the always-mounted region below. Focus survival is FloatingFocusManager's
+    // restoreFocus plus the shared hook's name-origin target (render site below).
+    // `font-medium` DELETED (Phase 88.6-34, §4.5 EMPHASIS): the success line already carries
+    // `text-content-status-success`, so the colour token is doing the work and 400 is the outcome.
+    // `text-sm` STAYS for both outcome lines (Label 14, the primitive supplies it for the region):
+    // the success line renders in the region and the failure line in the action slot, inside the
+    // same popover, so the popover does not resize between them.
+    //
+    // DECISION Phase 88.6.1-37 (R3-M18 / D-22): ONE always-mounted polite region in the floating
+    // element, empty and `sr-only` until a send succeeds, then the SAME node carries the check mark
+    // and `Request sent`: the popover gets the house pair, this region plus the failure alert.
+    // REJECTED: (a) the inserted, populated status line it replaces (silent on the desktop readers
+    // above); (b) one region for both outcomes (a polite region cannot carry the assertive failure).
+    // Since plan 88.6.1-66 a send the provider resolves includes a swallowed 409, so this region can
+    // read `Request sent` for a request the server already held; when the follow-up load says the
+    // two are friends, the same region carries the existing Friend pill, so a screen reader hears
+    // the correction in words already on screen (review r2 #199, D-55(c)). Telling the 409s apart is
+    // Phase 93's. Moving the region back to a conditional mount is a decision, not a cleanup.
+    let successContent = null;
+    if (sent && status === 'accepted') {
+      successContent = renderFriendPill();
+    } else if (sent) {
+      successContent = (
+        <>
           <span>&#10003;</span>
           <span>Request sent</span>
-        </div>
+        </>
       );
     }
+    return (
+      <>
+        {renderPopoverAction()}
+        <StatusRegion srOnlyWhenEmpty className="flex items-center gap-1.5 text-content-status-success">
+          {successContent}
+        </StatusRegion>
+      </>
+    );
+  };
 
+  // The popover's action slot: nothing after a success, the failure alert, the pending button,
+  // or Add friend.
+  const renderPopoverAction = () => {
+    if (sent) return null;
+
+    // DECISION Phase 88.6.1-37 (R3-M18 / D-42): this failure line STAYS an inserted alert,
+    // chosen OVER an always-mounted assertive region, which drops the spoken Alert prefix on NVDA
+    // and JAWS with Chromium and is silent on Firefox with Orca (AT-4 item 7). R1 pass (the
+    // floating div is displayed). R2: pass where the name's host is not a dialog; on the two
+    // Modal hosts (Manage Members, the event page's Participants dialog) it is measured by
+    // e2e/member-plus-failure.spec.ts Test D (CI, phone) and recorded in the 88.6.1-37 SUMMARY.
+    // R3 pass (cleared at the start of each send, in the render of every status change, and by the
+    // popover's 300ms close reset). R4: the focus restore lands on the floating element that holds
+    // the line (UNVERIFIED on a device; a plan-57 lead). R5 pass (not present at page load).
     if (sendError && status === 'none') {
       return (
         <div role="alert" className="text-sm text-content-status-error">
@@ -477,7 +523,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // same split-family defect plan 88.6-26 refused for the Banner family and plan 88.6-29 refused
   // for its mutually-exclusive `:179`/`:183` pair. They are also subordinate annotations riding
   // INSIDE an inline run beside the member name (`ml-1`, same baseline), which is the case
-  // `UpcomingEventsCard.js:265-281` records an explicit counter-argument against promoting; at 14
+  // `UpcomingEventsCard.js:265-283` records an explicit counter-argument against promoting; at 14
   // an annotation could render as large as the name it annotates, at nine different call sites
   // with nine different container sizes. 12 is the app's FLOOR, not below it, so nothing here is
   // illegible. Promoting them is a decision, not a cleanup.
@@ -544,6 +590,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // AMENDED Phase 88.6.1-37 (X3, D-30): this line and the popover's twin now read copy row X3
       // from ONE module constant, so "the copy is REUSED from it" still holds (the same constant).
       // The branch is gated on `'none'` (R3-M2), so the "+" beside it renders unconditionally.
+      // AMENDED Phase 88.6.1-37 (D-42): it stays an inserted alert (AT-4). R1 pass (`md:hidden`
+      // matches the "+" that triggers it); R2 pass (rendered inline, inside any dialog's content);
+      // R3 pass (cleared at the start of each send and in the render of every status change);
+      // R4 pass (the focus target IS the line); R5 pass (never present at page load).
       return (
         <>
           <span
@@ -565,9 +615,14 @@ export default function ClickableMemberName({ userId, username, children, showIn
       return <span className="md:hidden ml-1 text-xs text-content-status-error">Failed</span>;
     }
     if (status === 'pending_sent' || status === 'pending_received') {
-      // role="status" makes this span an implicit polite live region, so its
-      // appearance is ANNOUNCED when it replaces the "+" button after a
-      // successful add (the swap is otherwise silent to screen readers).
+      // The `status` role makes this span an implicit polite live region. AMENDED Phase
+      // 88.6.1-37 (D-42): its insertion is announced on VoiceOver iOS and TalkBack, the only
+      // readers that see this phone-only span, and the focus move below speaks it regardless.
+      // DECISION Phase 88.6.1-37 (R3-M18): this span is KEPT hand-rolled, chosen OVER the house
+      // `StatusRegion`, which renders a div: five of the nine mounts put this component inside a
+      // p (`ManageMembers.js:522`, `:564-565`; `gameDetail/page.js:1641`, `:3334`, `:3382`),
+      // where a div is invalid and React reports it through validateDOMNesting (T2d pins that).
+      // Converting it is a decision, not a cleanup.
       // tabIndex={-1} makes it programmatically focusable — the focus effect
       // above moves focus here after the swap, chosen over returning focus to
       // the row or a stable ancestor because this span renders in the exact
@@ -669,6 +724,14 @@ export default function ClickableMemberName({ userId, username, children, showIn
     //   control from ONE surface; it does not reopen the size decision, and the
     //   `touch-targets.spec.ts` assertion still must NOT be tightened to 44x44.
     //
+    // AMENDED Phase 88.6.1-37 (cite drift): today's containers, by class token, re-derived
+    //   2026-10-16. Constrained (1): `RsvpSection.js:647` `space-y-1`. Exactly at 8px:
+    //   `gameDetail/page.js:1723` `space-y-2` (Participants). Roomy: `ManageMembers.js:516` and
+    //   `:550` `space-y-3` over `p-4` rows (two lists), and the event page's three `py-2` rows
+    //   (`gameDetail/page.js:2421` in the Participants dialog, `:3331` and `:3378`, the reviews).
+    //   One single-instance Winner line (`gameDetail/page.js:1641`). None on the home group card
+    //   (`MemberChipStack.tsx` passes the opt-out). Still ONE lever.
+    //
     // DECISION Phase 87.8 (D-13): invisible pseudo-element hit extension
     // chosen OVER visible min-height growth (the per-CTA token technique at
     // the 13 shipped 44px CTA sites — wrong for an inline control inside a
@@ -726,8 +789,8 @@ export default function ClickableMemberName({ userId, username, children, showIn
 
           Three specifics, each a choice:
           - `role="button"` + `tabIndex` chosen OVER a real `<button>`: this span is rendered
-            inside a `<p>` at `ManageMembers.js:446` and inside table-ish rows elsewhere
-            (9 render sites), and it must stay inline phrasing content that wraps with the
+            inside a `<p>` at `ManageMembers.js:522` and `:564-565` (the event page wraps it in a
+            paragraph at three more mounts) and inside table-ish rows elsewhere (9 render sites), and it must stay inline phrasing content that wraps with the
             surrounding text.
           - `stopPropagation` on the key handler is LOAD-BEARING, not defensive: at
             `grouplist.js` the name renders inside a `role="button"` group card that has its
