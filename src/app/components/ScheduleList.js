@@ -210,10 +210,11 @@ export default function ScheduleList({
                 {/* Pause/Resume toggle */}
                 <button
                   onClick={() => onToggle?.(schedule.id)}
+                  aria-disabled={togglingIds?.[schedule.id] ? 'true' : undefined}
                   className={`px-3 py-1.5 text-sm rounded-btn transition-colors ${
                     isActive
-                      ? 'bg-status-warning-subtle text-content-status-warning hover:bg-status-warning-subtle-hover'
-                      : 'bg-status-success-subtle text-content-status-success hover:bg-status-success-subtle-hover'
+                      ? 'bg-status-warning-subtle text-content-status-warning enabled-hover:bg-status-warning-subtle-hover'
+                      : 'bg-status-success-subtle text-content-status-success enabled-hover:bg-status-success-subtle-hover'
                   }`}
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
@@ -247,6 +248,7 @@ export default function ScheduleList({
                     {
                       label: isActive ? 'Pause' : 'Resume',
                       onClick: () => onToggle?.(schedule.id),
+                      ariaDisabled: !!togglingIds?.[schedule.id],
                     },
                     {
                       label: 'Delete',

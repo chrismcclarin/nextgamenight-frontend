@@ -450,7 +450,8 @@ describe('PromptScheduleManager — Recurring Check-ins focus never falls to <bo
 describe('PromptScheduleManager — the cached list survives a failed refresh under RF1; one toggle per press (88.6.1-30, AC-29 / Req 4)', () => {
   // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE). Written once in this suite; the
   // component never writes it (contract C7). Shown, it is in the DOM TWICE (the visible line and
-  // the one polite region).
+  // the one polite region). The positive signal waits for BOTH copies (waitFor + getAllByText):
+  // findAllByText resolves at the first match, so a region that fills a moment later would read 1.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
   const FULL_TITLE = "We couldn't load your schedules";
 
@@ -499,7 +500,7 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
     const pause = await screen.findByRole('button', { name: 'Pause' });
     const before = screen.queryAllByRole('status');
     fireEvent.click(pause);
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
     return { ...rendered, before };
   }
 
@@ -648,7 +649,7 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
       renderWithClient();
       fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
 
-      expect(await screen.findAllByText(RF1)).toHaveLength(2);
+      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
       expect(rowHeading()).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '+ New Schedule' })).toBeInTheDocument();
       expect(screen.queryByText(FULL_TITLE)).toBeNull();
@@ -664,7 +665,7 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
     getSettings().mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
     await act(() => client.invalidateQueries());
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
     expect(screen.getByRole('heading', { name: 'No schedules yet' })).toBe(empty);
     expect(screen.queryByText(FULL_TITLE)).toBeNull();
     const region = screen.getAllByRole('status').find((n) => n.textContent === RF1);

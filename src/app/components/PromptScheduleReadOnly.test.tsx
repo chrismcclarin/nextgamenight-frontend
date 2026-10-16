@@ -41,7 +41,8 @@ type Mock = ReturnType<typeof vi.fn>;
 
 // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE). Written once here; the component never
 // writes it (contract C7). While the notice shows it is in the DOM TWICE: the visible line and
-// the one polite region.
+// the one polite region. The positive signal waits for BOTH copies (waitFor + getAllByText):
+// findAllByText resolves at the first match, so a region that fills a moment later would read 1.
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // The full banner's title at this site (the component's own shipped title, unchanged).
 const FULL_TITLE = "We couldn't load your schedules";
@@ -91,7 +92,7 @@ async function reachRetainedFailure() {
   const before = screen.queryAllByRole('status');
   getSettings().mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
   await refresh(rendered.client);
-  expect(await screen.findAllByText(RF1)).toHaveLength(2);
+  await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
   return { ...rendered, before };
 }
 
@@ -123,7 +124,7 @@ describe('PromptScheduleReadOnly — a failed refresh keeps what loaded earlier 
     getSettings().mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
     await refresh(client);
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
     expect(screen.getByText('No schedules configured.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: 'Recurring Check-ins (0)' })).toBeInTheDocument();
     expect(screen.queryByText(FULL_TITLE)).toBeNull();
@@ -189,7 +190,7 @@ describe('PromptScheduleReadOnly — a failed refresh keeps what loaded earlier 
       await screen.findByText('Thursday check-in');
       await refresh(client);
 
-      expect(await screen.findAllByText(RF1)).toHaveLength(2);
+      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
       expect(screen.getByText('Thursday check-in')).toBeInTheDocument();
       expect(screen.getByText('Sunday check-in')).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 3, name: 'Recurring Check-ins (1)' })).toBeInTheDocument();

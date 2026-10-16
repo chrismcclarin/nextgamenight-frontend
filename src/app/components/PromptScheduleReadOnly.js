@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { promptSettingsAPI } from '../../lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
@@ -10,7 +11,12 @@ import {
 } from '../../lib/schemas/prompts';
 import { Heading } from '../../components/ui/Heading';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import {
+  FetchErrorBanner,
+  RefreshFailedNotice,
+  RetainedContentFocusGuard,
+  useRetainedContent,
+} from '../../components/ui/FetchErrorBanner';
 
 /**
  * PromptScheduleReadOnly - Read-only schedule summary for GroupSettings
@@ -32,6 +38,10 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
  * @param {string} props.groupPageUrl - URL to the group page for "Manage on group page" link
  */
 export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
+  // The section heading (88.6.1-30, D-05): the RF1 notice's and the withdrawal guard's focus
+  // target. The summary sits mid-dialog inside Customize Group, so the dialog-title floor would
+  // land a screen above it on a phone.
+  const headingRef = useRef(null);
   const settingsQuery = useQuery({
     queryKey: promptKeys.settings(groupId),
     queryFn: softFailPromptQueryFn(
@@ -44,6 +54,9 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
   });
 
   const { data, isPending } = settingsQuery;
+  // C3 (plan 70): has-loaded is DATA PRESENCE, never a count — TanStack keeps `data` across a
+  // failed refetch, so a list that loaded empty is retained content too (owner ruling Y).
+  const hasSettingsData = data !== undefined;
 
   /* DECISION Phase 88.6-15 (D-31 / UI-SPEC §6.2 `:518`): the ERROR branch is checked BEFORE
      the empty branch, chosen OVER the shipped order in which a rejected fetch fell straight
@@ -61,6 +74,10 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
      exactly why the empty copy could paint on a failure. The soft-fail-on-ZodError behaviour is
      PRESERVED (D-31's explicit instruction) and has its own negative-control test arm. */
   const settingsErrorState = useFetchErrorState(settingsQuery);
+  // C10 (plan 70): false on an access or gone answer, and on every failure after it until the
+  // next success; the memory is kept with this query's cache entry, so it outlives a remount.
+  const hasRetainedSettings = useRetainedContent(hasSettingsData, settingsErrorState, { queryKey: promptKeys.settings(groupId) });
+  const failedWithNothingCached = settingsErrorState.showError && !hasRetainedSettings;
 
   const loading = isPending;
   const schedules = data?.schedules || [];
@@ -76,17 +93,20 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
           server state the error-before-empty ordering exists to stop, one element higher. No new
           string is authored: the parenthetical is omitted, never replaced. The count returns for
           every data branch, a TRUE zero included. */}
-      <Heading level={3} size="heading" className="text-content-primary mb-3">
-        {settingsErrorState.showError
+      <Heading ref={headingRef} level={3} size="heading" className="text-content-primary mb-3">
+        {failedWithNothingCached
           ? 'Recurring Check-ins'
           : `Recurring Check-ins (${activeCount})`}
       </Heading>
+      {/* C12 (a), plan 70: outside the retained block, so it stays mounted when an access answer
+          withdraws the list; the same ref the notice gets. It renders nothing. */}
+      <RetainedContentFocusGuard retained={hasRetainedSettings} focusTarget={headingRef} />
 
       {loading && (
         <p className="text-sm text-content-muted">Loading schedules...</p>
       )}
 
-      {!loading && settingsErrorState.showError && (
+      {!loading && failedWithNothingCached && (
         <FetchErrorBanner
           state={settingsErrorState}
           title="We couldn't load your schedules"
@@ -94,20 +114,30 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
         />
       )}
 
-      {!loading && !settingsErrorState.showError && schedules.length === 0 && (
-        <p className="text-sm text-content-muted">No schedules configured.</p>
-      )}
-
-      {!loading && !settingsErrorState.showError && schedules.length > 0 && (
-        <ul className="space-y-2 mb-4">
-          {schedules.map(s => (
-            <li key={s.id} className="flex items-center gap-2 text-sm text-content-secondary">
-              <span className={`w-2 h-2 rounded-full ${s.is_active ? 'bg-status-success' : 'bg-surface-muted'}`} />
-              <span>{s.name || 'Unnamed schedule'}</span>
-              {!s.is_active && <span className="text-content-muted text-xs">(paused)</span>}
-            </li>
-          ))}
-        </ul>
+      {/* The retained block: copy row RF1's notice above what loaded earlier, an empty list
+          included — see `DECISION Phase 88.6.1-30 (AC-29 / RF1)` in PromptScheduleManager.js. */}
+      {hasRetainedSettings && (
+        <>
+          <RefreshFailedNotice
+            state={settingsErrorState}
+            retained={hasRetainedSettings}
+            focusTarget={headingRef}
+            className="mb-3"
+          />
+          {schedules.length === 0 ? (
+            <p className="text-sm text-content-muted">No schedules configured.</p>
+          ) : (
+            <ul className="space-y-2 mb-4">
+              {schedules.map(s => (
+                <li key={s.id} className="flex items-center gap-2 text-sm text-content-secondary">
+                  <span className={`w-2 h-2 rounded-full ${s.is_active ? 'bg-status-success' : 'bg-surface-muted'}`} />
+                  <span>{s.name || 'Unnamed schedule'}</span>
+                  {!s.is_active && <span className="text-content-muted text-xs">(paused)</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       <a
