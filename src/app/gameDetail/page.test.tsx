@@ -1213,7 +1213,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     // mounted on this page unconditionally (gameDetail is one of the six call sites that fix
     // closes), and a page-wide count of 1 became a count of 2. The ASSERTION'S INTENT is
     // unchanged and is now actually enforced where it claims to be: the GuestInvite region is
-    // this chip's own sibling (`gameDetail/page.js:294-306` returns the two inside one
+    // this chip's own sibling (`gameDetail/page.js:295-308`, GuestInviteButton's `if (settled) {`, returns the two inside one
     // fragment), so scoping to the chip's parent is the subtree the comment always meant. A
     // page-wide count here would also have gone red for any unrelated surface adding a region,
     // which is the wrong gate to hand the next executor.
@@ -1894,8 +1894,8 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 // per rule set per dialog, no resize.
 //
 // THIS FILE HAS NO STACKED `ConfirmDialog`-over-`Modal` STATE, contrary to RESEARCH §Q1's reading
-// of its two imports: `removeParticipantGate` (`page.js:903`) is `tier: 'two-tap'` and renders
-// `null` by design (DECISION Phase 88-05 D-07), and `deleteSessionGate` (`:1101`) opens from the
+// of its two imports: `removeParticipantGate` (`page.js:1097`, `const removeParticipantGate`) is `tier: 'two-tap'` and renders
+// `null` by design (DECISION Phase 88-05 D-07), and `deleteSessionGate` (`:1357`, `const deleteSessionGate`) opens from the
 // page-level session rows, never from inside a `Modal`. The three dialogs this file CAN show are
 // audited one at a time below; the stacked-pair audit lives in `ManageMembers.modals.test.tsx`.
 //
@@ -1949,7 +1949,7 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
     opener.focus();
     await user.click(opener);
     const dialog = await screen.findByRole('dialog', { name: 'Participants (6)' });
-    // DERIVED BEFORE WRITING: `page.js:2033` mounts `<Modal open onClose>` with no `initialFocusRef`,
+    // DERIVED BEFORE WRITING: `page.js:2362` (`<Modal open={showAllParticipants}`) mounts `<Modal open onClose>` with no `initialFocusRef`,
     // so the `Modal.tsx` default stands — `<Modal.Header>`'s Close control.
     const close = within(dialog).getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
@@ -1966,7 +1966,7 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
     opener.focus();
     await user.click(opener);
     const dialog = await screen.findByRole('dialog', { name: 'Write a Review' });
-    // `page.js:3088`: `<Modal open onClose className="max-w-md">`, no `initialFocusRef`.
+    // `page.js:3433` (`<Modal open={showReviewForm}`): `<Modal open onClose className="max-w-md">`, no `initialFocusRef`.
     const close = within(dialog).getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
     await user.keyboard('{Escape}');

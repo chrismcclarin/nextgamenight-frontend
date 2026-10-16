@@ -153,8 +153,8 @@ function GuestInviteButton({ groupId, userId }) {
        prop on the control it is meant to back up. The house states the rule in prose at
        `src/components/ui/useConfirmAction.ts:210-212` — "Refs mirror the state the event handlers
        must read SYNCHRONOUSLY. Two clicks inside one tick see stale state but never a stale ref."
-       Keeping the state term beside it matches the recorded belt-and-braces at
-       `src/app/restore/group/[token]/page.tsx:343` / `:346-347`.
+       Keeping the state term beside it matches the recorded belt-and-braces in
+       `src/app/restore/group/[token]/page.tsx` (`handleTakeOver`'s `if (acceptingRef.current) return;`).
 
        WHY PER INSTANCE. This component renders once per participant (three render sites:
        `:126`, `:1351`, `:1964`), so a module-scope or page-level flag would let one guest's
@@ -473,6 +473,9 @@ export default function GameDetailPage() {
     // here so all downstream renders/hooks have a non-null value to key off.
     // The URL group_id (from searchParams) takes precedence; falls back to
     // the event response only when the URL omits it.
+    // [AMENDED Phase 88.6.1-25 (D-41)] No longer true: the event's OWN group now wins once the
+    // event loads (see the D-41 marker at the derive in fetchEventOnly). The guarded URL value
+    // only seeds this until then, so the suggestions fetch can start early.
     const [effectiveGroupId, setEffectiveGroupId] = useState(group_id || null);
     // Phase 71.1: cached group members roster — needed by handleLeaveEvent
     // to resolve the caller's own row via Plan 71.1-01's caller-self-row
@@ -693,11 +696,17 @@ export default function GameDetailPage() {
     // Phase 71.1-02 Blocker 1 fix: gate on effectiveGroupId (URL-or-derived)
     // so game-only callers loading /gameDetail?event_id=X without a URL
     // group_id still get suggestions once the event response loads.
+    // [AMENDED Phase 88.6.1-25 (D-41)] "URL-or-derived" now reads: the guarded URL hint first (so
+    // the fetch can start before the event loads), then the event's own group once it has loaded.
+    // getEventSuggestions is event-scoped: the group decides only WHETHER to ask, so the effect keys
+    // on `hasGroup`, not on which group; otherwise the hint giving way to the event's group would
+    // ask twice (review r2 #140).
+    const hasGroup = Boolean(effectiveGroupId);
     useEffect(() => {
         // 88.6.1-25 (AC-6): this effect reads event_id on its own, so a rejected game id beside a
         // valid event id must stop it too, or that URL would still make a request.
         if (gameIdRejected) return;
-        if (!event_id || !effectiveGroupId) return;
+        if (!event_id || !hasGroup) return;
         const fetchSuggestions = async () => {
             try {
                 const data = await suggestionsAPI.getEventSuggestions(event_id);
@@ -714,7 +723,7 @@ export default function GameDetailPage() {
             }
         };
         fetchSuggestions();
-    }, [event_id, effectiveGroupId, gameIdRejected]);
+    }, [event_id, hasGroup, gameIdRejected]);
 
     // Scroll to ballot section when #vote hash is in URL (from notification links)
     useEffect(() => {
@@ -838,7 +847,17 @@ export default function GameDetailPage() {
             // Without this, game-only callers loading a bare /gameDetail?event_id=X
             // URL would skip the groupMembers fetch entirely and render with
             // userScope='none' (no participants strip, no Leave kebab).
-            const derivedGroupId = group_id || eventData?.group_id || eventData?.Group?.id;
+            // [AMENDED Phase 88.6.1-25 (D-41)] "a hint, not the source of truth" is now TRUE in
+            // code: the event's own group comes first and the URL value is only the fallback.
+            // DECISION Phase 88.6.1-25 (D-41): CHOSEN — on the event view the event's own group wins;
+            // the URL group_id is only a hint (this comment's own words) and a fallback.
+            // REJECTED (a): URL-first, the Phase 71.1-02 precedence. A stale or hand-edited link
+            // fetched ANOTHER group's roster, whose 403 was swallowed so the caller silently rendered
+            // as scope 'none', and it pointed cancel, edit, BringSummary and the guest invite at the
+            // wrong group. REJECTED (b): ignoring the URL entirely. The guarded URL hint still seeds
+            // effectiveGroupId, so the suggestions fetch can start before the event loads.
+            // Putting the URL first again is a decision, not a cleanup.
+            const derivedGroupId = eventData?.group_id || eventData?.Group?.id || group_id;
             // (88-33 Task 9, UAT row 371 / T-88-33-02: the debug console.log that
             // printed the derived group UUID here is deleted — info disclosure.)
             setEffectiveGroupId(derivedGroupId || null);
@@ -925,7 +944,8 @@ export default function GameDetailPage() {
 
     // (88-33 Task 5: the 65-02 "clean up the second-click confirm timer on unmount"
     // effect that lived here is gone with the hand-rolled timer — useConfirmAction
-    // performs the same unmount cleanup internally, absorbed from KebabMenu.js:63-71.)
+    // performs the same unmount cleanup internally (its "Unmount cleanup" block; that code has
+    // since left KebabMenu).)
 
     // Phase 65-02: cancel-event handler invoked from the kebab menu.
     // Single click cancels and redirects — no modal, no second confirm. The
@@ -937,13 +957,16 @@ export default function GameDetailPage() {
         // SYNCHRONOUSLY because the second activation runs the PREVIOUS render's closure, where
         // the state flag is still false; a state-only guard here is byte-equivalent to the item
         // gate it is meant to back up. The state term is KEPT beside it, matching the recorded
-        // belt-and-braces at `restore/group/[token]/page.tsx:343`/`:346-347`.
+        // belt-and-braces in `restore/group/[token]/page.tsx` (`handleTakeOver`'s
+        // `if (acceptingRef.current) return;`).
         if (cancellingRef.current || cancellingEvent) return;
         cancellingRef.current = true;
         setCancellingEvent(true);
         try {
             await eventsAPI.deleteEvent(singleEvent.id);
-            router.push(`/groupHomePage?id=${group_id}`);
+            // 88.6.1-25 (AC-7, D-41): the EVENT's group, never the URL value, which a bare link
+            // omits (this pushed the literal `id=null`); Home when no group is known.
+            router.push(effectiveGroupId ? `/groupHomePage?id=${effectiveGroupId}` : '/');
         } catch (err) {
             logger.info('Error cancelling event:', errCtx(err));
             /* DECISION Phase 88-25 (Req 14 / T-88-25-01): failure copy is DERIVED from
@@ -2257,7 +2280,8 @@ export default function GameDetailPage() {
                                 <GameSuggestionCard
                                     key={game.id}
                                     game={game}
-                                    onClick={() => router.push(`/gameDetail?game_id=${game.id}&group_id=${group_id}`)}
+                                    // 88.6.1-25 (D-03, D-41): the event's group, not the URL value.
+                                    onClick={() => router.push(`/gameDetail?game_id=${game.id}&group_id=${effectiveGroupId}`)}
                                 />
                             ))}
                         </div>
@@ -2277,7 +2301,8 @@ export default function GameDetailPage() {
 
                 {editEventModal && editingEvent && (
                     <CreateEvent
-                        group_id={group_id}
+                        // 88.6.1-25 (AC-7, D-41): the event's group, never null from a bare link.
+                        group_id={effectiveGroupId}
                         modal={editEventModal}
                         modaltoggle={() => { setEditEventModal(false); setEditingEvent(null); }}
                         onEventCreated={() => {
