@@ -92,8 +92,21 @@ const BEARER = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
 //    (a minimum value length, requiring a digit or a non-letter) would also spare short or
 //    all-letter real tokens (`x-auth-token: abc`), so the fail-safe direction is kept.
 // Widening or unbounding the prefix is a decision, not a cleanup.
+// DECISION Phase 88.6.1-76 (escaped quotes, carry-in from 88.6.1-08's deferred item): text that
+// is serialised a SECOND time puts a backslash before every quote, and the pair leaked
+// (refresh_token: \"v1x\" came back with v1x in it; the JSON-in-JSON pair came back whole).
+// CHOSEN: each optional quote may carry ONE leading backslash, and a backslash ends the value
+// only when it escapes a quote. So the escaped pair redacts to the same shape as the plain
+// one, escapes kept: \"[REDACTED]\" and {\"[REDACTED]\"}. The key group is untouched, so no
+// new KEY is matched; the only new matches are pairs this rule already names, written with
+// escaped quotes. Both value alternatives start on disjoint characters, so the rule stays
+// linear. REJECTED: dropping the backslash from the value class outright. A value that holds a
+// bare backslash (password=ab\cd) would then leave its tail behind, which narrows a credential
+// control. REJECTED: leaving the value class as it was. It ate the escaping backslash of the
+// closing quote, so the output read \"[REDACTED]" with its closing quote half-escaped.
+// Removing the backslash allowance or the quote-escape exception is a decision, not a cleanup.
 const SECRET_KV =
-  /\b((?:[a-z0-9]+[_-]){0,3}[a-z0-9]*(?:token|secret|password)|authorization|api[_-]?key)\b(["'])?\s*[=:]\s*(["'])?[^&\s"']+/gi;
+  /\b((?:[a-z0-9]+[_-]){0,3}[a-z0-9]*(?:token|secret|password)|authorization|api[_-]?key)\b(\\?["'])?\s*[=:]\s*(\\?["'])?(?:[^&\s"'\\]|\\(?!["']))+/gi;
 // long digit runs (phone numbers, etc.).
 const PHONE = /(?<![\w.])\+?\d[\d\s().-]{7,}\d(?![\w.])/g;
 // DECISION Phase 88.6-59 (review MEDLOW-11, dated 2026-09-29): Auth0 subs —

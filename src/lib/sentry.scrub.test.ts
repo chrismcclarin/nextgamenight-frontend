@@ -165,6 +165,14 @@ describe('W007 — OAuth-shaped key=value pairs and the logger breadcrumb (88.6.
     // quoted string, and a quoted value keeps its pair of quotes.
     expect(scrubString('{"refresh_token":"v1.x"}')).toBe(`{"${R}"}`);
     expect(scrubString('refresh_token: "v1.x"')).toBe(`"${R}"`);
+    // 88.6.1-76 (carry-in from 88.6.1-08's deferred item): the same pairs serialised a SECOND
+    // time, so every quote carries a backslash. Before: the first came back
+    // [REDACTED]"v1x\" (the value survived) and the JSON one came back unchanged. Same shape
+    // as the unescaped pair, escapes kept: the backslash belongs to its quote.
+    expect(scrubString('refresh_token: \\"v1x\\"')).toBe(`\\"${R}\\"`);
+    expect(scrubString('{\\"refresh_token\\":\\"v1x\\"}')).toBe(`{\\"${R}\\"}`);
+    // A backslash that escapes no quote is part of the value, and still goes with it.
+    expect(scrubString('password=ab\\cd&x=1')).toBe(`${R}&x=1`);
     // Owner ruling #10 (2026-10-13, `88.6.1-PLAN-REVIEW-work/RULINGS.md`), the cost line of the
     // W007 marker in `sentry.scrub.js`: the ONE word after a `<word>-token:` prose colon is
     // eaten, by design (fail-safe). Before this plan only the bare `token` after the hyphen
