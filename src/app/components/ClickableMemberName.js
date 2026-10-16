@@ -18,6 +18,7 @@ import { FriendshipContext } from './FriendshipStatusProvider';
 import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import { DIALOG_ROLE_SELECTOR } from '../../components/ui/focusPageFloor';
 import { logger, errCtx } from '@/lib/logger';
 
 // Copy row X3 (D-30), straight ASCII apostrophe (D-32 R8): the ONE failure line both failure sites read.
@@ -115,6 +116,8 @@ export default function ClickableMemberName({ userId, username, children, showIn
   const friendIndicatorRef = useRef(null);
   const plainNameRef = useRef(null);
   const nameTriggerRef = useRef(null);
+  // The dialog the name sits in, if any: the popover's portal container (marker at the portal).
+  const portalRootRef = useRef(null);
   // Review r2 #197: armed by ONE inline success, consumed by the 87.8 D-13 handoff below.
   const d13OnceRef = useRef(false);
   const { arm } = useFocusRecovery();
@@ -151,7 +154,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
      popover's "Add friend" button was the LAST tab stop in the whole document —
      Enter "opened" the flow (WCAG operable, nominally) but its commit button was
      practically unreachable (WCAG 2.4.3). Hover-open keeps the no-focus-move
-     behavior: yanking focus on hover is its own a11y failure. */
+     behavior: yanking focus on hover is its own a11y failure.
+     AMENDED Phase 88.6.1-37 (popover inside a dialog): outside a dialog the portal
+     still appends to document.body; inside one it appends to the dialog (the
+     DECISION marker at the portal). */
   const [openedByKeyboard, setOpenedByKeyboard] = useState(false);
 
   const { refs, floatingStyles, context } = useFloating({
@@ -285,13 +291,15 @@ export default function ClickableMemberName({ userId, username, children, showIn
   };
 
   // The name trigger's ONE reference callback: floating-ui's setter, plus the node recorded as a
-  // name-origin recovery target. A stable callback, never an inline arrow (an inline callback ref
-  // changes identity every render and would re-fire floating-ui's setter each time).
+  // name-origin recovery target, plus the dialog the name sits in (the popover's portal root, see
+  // the DECISION marker at the portal). A stable callback, never an inline arrow (an inline
+  // callback ref changes identity every render and would re-fire floating-ui's setter each time).
   const floatingSetReference = refs.setReference;
   const setReference = useCallback(
     (node) => {
       floatingSetReference(node);
       nameTriggerRef.current = node;
+      portalRootRef.current = node ? node.closest(DIALOG_ROLE_SELECTOR) : null;
     },
     [floatingSetReference]
   );
@@ -469,9 +477,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // DECISION Phase 88.6.1-37 (R3-M18 / D-42): this failure line STAYS an inserted alert,
     // chosen OVER an always-mounted assertive region, which drops the spoken Alert prefix on NVDA
     // and JAWS with Chromium and is silent on Firefox with Orca (AT-4 item 7). R1 pass (the
-    // floating div is displayed). R2: pass where the name's host is not a dialog; on the two
-    // Modal hosts (Manage Members, the event page's Participants dialog) it is measured by
-    // e2e/member-plus-failure.spec.ts Test D (CI, phone) and recorded in the 88.6.1-37 SUMMARY.
+    // floating div is displayed). R2 pass on every host: inside a dialog the popover portals into
+    // it (DECISION Phase 88.6.1-37 (popover inside a dialog), at the portal), so on the two Modal
+    // hosts (Manage Members, the event page's Participants dialog) the line sits inside the
+    // aria-modal subtree.
     // R3 pass (cleared at the start of each send, in the render of every status change, and by the
     // popover's 300ms close reset). R4: the focus restore lands on the floating element that holds
     // the line (UNVERIFIED on a device; a plan-57 lead). R5 pass (not present at page load).
@@ -865,7 +874,26 @@ export default function ClickableMemberName({ userId, username, children, showIn
           function stays byte-unchanged and the diff stays readable. */}
       {showInlineIndicator && renderMobileIndicator()}
       {isOpen && (
-        <FloatingPortal>
+        // DECISION Phase 88.6.1-37 (popover inside a dialog): the portal's container is the
+        // nearest dialog the name sits in (plan 88.6.1-04's DIALOG_ROLE_SELECTOR, recorded by
+        // setReference), else document.body as before (a null ref falls back to the body).
+        // Why, measured: CI Test D (e2e/member-plus-failure.spec.ts, phone, run 38878098281)
+        // found Add friend inside Manage Members could not keep focus (focus went back to the
+        // name) and was not the hit target at its centre (pointer-events none). A modal Radix
+        // dialog traps focus by DOM containment, sets pointer-events: none on the body and
+        // carries aria-modal, so a popover portalled to the body sits outside all three.
+        // REJECTED: (a) the body portal (the measured failure); (b) registering the popover as a
+        // Radix dismissable-layer branch (covers outside-dismiss only, not the trap, the pointer
+        // lock or aria-modal); (c) changing the house Modal (a fleet-wide behaviour change, and
+        // plan 88.6.1-20's file this wave); (d) a modal FloatingFocusManager (moves focus but
+        // leaves the pointer lock and aria-modal). Visible delta, disclosed: inside a dialog the
+        // popover is kept within the dialog's box (the content clips with overflow-hidden, and
+        // flip / shift keep it inside) instead of overlaying the page around the dialog;
+        // placement and offset are unchanged, so the NOT SWEPT (Phase 88.9) note still holds.
+        // The floating element keeps data-member-popover, so the Modal's Escape guard still
+        // hands that Escape to the popover. Portalling back to the body inside a dialog is a
+        // decision, not a cleanup.
+        <FloatingPortal root={portalRootRef}>
           {/* MED#16: focus manager on KEYBOARD open only — initial focus lands on
               the popover's first tabbable (the Add friend button), Esc/close
               returns it to the name span (returnFocus default). modal={false}
