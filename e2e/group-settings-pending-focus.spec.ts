@@ -151,8 +151,35 @@ test.describe('Group settings — pressed controls keep focus and send one write
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(page.getByRole('dialog', { name: DELETE_DIALOG })).toHaveCount(0);
 
+    // DIAGNOSTIC (orchestrator, wave 5 gate, 2026-10-16): CI run 38972642726 found no button named
+    // "Deleting..." here although the gate keeps `pending` true and the jsdom pin PC7 passes. Measured
+    // WITHOUT the accessibility tree so the locator cannot hide what it measures (plan 37's Test D shape).
+    const measured = await page.evaluate(() => {
+      const describe = (el: Element | null) =>
+        el ? `${el.tagName.toLowerCase()}${el.getAttribute('role') ? `[role=${el.getAttribute('role')}]` : ''}` : null;
+      const buttons = Array.from(document.querySelectorAll('button'))
+        .filter((b) => /Delet/.test(b.textContent ?? ''))
+        .map((b) => {
+          const hidden = b.closest('[aria-hidden="true"], [inert]');
+          return {
+            text: (b.textContent ?? '').trim(),
+            ariaDisabled: b.getAttribute('aria-disabled'),
+            disabled: b.hasAttribute('disabled'),
+            hiddenAncestor: hidden ? `${describe(hidden)} aria-hidden=${hidden.getAttribute('aria-hidden')} inert=${hidden.hasAttribute('inert')}` : null,
+            inDialog: describe(b.closest('[role="dialog"]')),
+            focused: document.activeElement === b,
+          };
+        });
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"]')).map((d) => ({
+        name: d.getAttribute('aria-label') ?? document.getElementById(d.getAttribute('aria-labelledby') ?? '')?.textContent?.trim() ?? null,
+        state: d.getAttribute('data-state'),
+        ariaHidden: d.closest('[aria-hidden="true"]') !== null,
+      }));
+      return { buttons, dialogs, active: describe(document.activeElement), activeText: (document.activeElement?.textContent ?? '').trim().slice(0, 40) };
+    });
+    expect.soft(true, `measured after Cancel: ${JSON.stringify(measured)}`).toBe(true);
     const opener = page.getByRole('button', { name: 'Deleting...', exact: true });
-    await expect(opener).toBeFocused();
+    await expect(opener, `measured after Cancel: ${JSON.stringify(measured)}`).toBeFocused();
     await expect(opener).toHaveAttribute('aria-disabled', 'true');
     await expect(opener).not.toHaveAttribute('disabled');
 
