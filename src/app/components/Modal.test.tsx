@@ -12,13 +12,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import * as React from 'react';
-import { act, render, screen, cleanup } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { withoutComments } from '../../test-utils/sourceScan';
 import { Combobox, type ComboboxItem } from '../../components/ui/Combobox';
+import { DialogTitle } from '../../components/ui/dialog';
 import { Modal, preventNonDismissableClose } from './Modal';
 
 afterEach(cleanup);
@@ -222,6 +223,364 @@ describe('Modal', () => {
     });
   });
 
+  // Phase 88.6.1-20 (D-07, AC-15, W014 / WR-201). MEASURED before the fix: whenever the opener
+  // was gone, natively disabled, or a dialog that handed off to this one, the close dropped focus
+  // on <body>. Every harness renders a page <main><h1>, and each landing is asserted by IDENTITY
+  // against a named node, never "not body" (FE-TESTING-CONVENTIONS C-5). The heading is captured
+  // BEFORE the dialog opens: Radix marks everything outside an open modal aria-hidden.
+  describe('AC-15 focus floor on close (88.6.1-20)', () => {
+    // The `{open && <Modal open>}` unmount shape most consumers use; "Delete" removes the opener
+    // and closes the dialog in ONE handler (the H8 shape).
+    function RemovedOpenerHost() {
+      const [open, setOpen] = React.useState(false);
+      const [deleted, setDeleted] = React.useState(false);
+      return (
+        <main>
+          <h1>Game night</h1>
+          {!deleted && (
+            <button type="button" onClick={() => setOpen(true)}>
+              Open it
+            </button>
+          )}
+          {open && (
+            <Modal open onClose={() => setOpen(false)}>
+              <Modal.Header>Delete the row</Modal.Header>
+              <Modal.Body>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleted(true);
+                    setOpen(false);
+                  }}
+                >
+                  Delete
+                </button>
+              </Modal.Body>
+            </Modal>
+          )}
+        </main>
+      );
+    }
+
+    it('A: the opener was removed with the dialog, so focus lands on the page h1', async () => {
+      const user = userEvent.setup();
+      render(<RemovedOpenerHost />);
+      const heading = screen.getByRole('heading', { name: 'Game night' });
+      await user.click(screen.getByRole('button', { name: 'Open it' }));
+      await screen.findByRole('dialog');
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(screen.queryByRole('button', { name: 'Open it', hidden: true })).toBeNull();
+      await vi.waitFor(() => expect(document.activeElement).toBe(heading));
+    });
+
+    // The opener stays mounted and is rerendered natively `disabled` while the dialog is open.
+    // NO `tabindex` on it: jsdom focuses a disabled control that carries one, browsers refuse.
+    function DisabledOpenerHost({
+      openerDisabled = false,
+      onCloseAutoFocus,
+    }: {
+      openerDisabled?: boolean;
+      onCloseAutoFocus?: (event: Event) => void;
+    }) {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <main>
+          <h1>Game night</h1>
+          <button type="button" disabled={openerDisabled} onClick={() => setOpen(true)}>
+            Open it
+          </button>
+          <Modal open={open} onClose={() => setOpen(false)} onCloseAutoFocus={onCloseAutoFocus}>
+            <Modal.Header>Start a check-in</Modal.Header>
+            <Modal.Body>
+              <p>When are you free?</p>
+            </Modal.Body>
+          </Modal>
+        </main>
+      );
+    }
+
+    it('B: the opener was disabled while open, so focus lands on the page h1', async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<DisabledOpenerHost />);
+      const heading = screen.getByRole('heading', { name: 'Game night' });
+      const opener = screen.getByRole('button', { name: 'Open it' });
+      await user.click(opener);
+      await screen.findByRole('dialog');
+      rerender(<DisabledOpenerHost openerDisabled />);
+      expect(opener).toBeDisabled();
+      expect(opener).not.toHaveAttribute('tabindex');
+
+      await user.keyboard('{Escape}');
+      await vi.waitFor(() => expect(document.activeElement).toBe(heading));
+    });
+
+    // The EventDayModal -> QR shape (P-3): an outer dialog stays open under an inner one.
+    function StackedHost({ shareDisabled = false }: { shareDisabled?: boolean }) {
+      const [innerOpen, setInnerOpen] = React.useState(false);
+      return (
+        <main>
+          <h1>Game night</h1>
+          <Modal open onClose={() => {}}>
+            <Modal.Header>Saturday</Modal.Header>
+            <Modal.Body>
+              <button type="button" disabled={shareDisabled} onClick={() => setInnerOpen(true)}>
+                Share QR
+              </button>
+            </Modal.Body>
+          </Modal>
+          <Modal open={innerOpen} onClose={() => setInnerOpen(false)}>
+            <Modal.Header>Event QR code</Modal.Header>
+            <Modal.Body>
+              <p>Scan to join</p>
+            </Modal.Body>
+          </Modal>
+        </main>
+      );
+    }
+
+    it('C: a disabled opener inside a still-open dialog floors to THAT dialog title, not the page', async () => {
+      const user = userEvent.setup();
+
+      // Arm 1: the opener is rerendered disabled while the inner dialog is open.
+      const first = render(<StackedHost />);
+      const outerTitle = screen.getByRole('heading', { name: 'Saturday' });
+      const share = screen.getByRole('button', { name: 'Share QR' });
+      await user.click(share);
+      await screen.findByRole('dialog', { name: 'Event QR code' });
+      first.rerender(<StackedHost shareDisabled />);
+      expect(share).toBeDisabled();
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog', { name: 'Event QR code', hidden: true })).toBeNull();
+      await vi.waitFor(() => expect(document.activeElement).toBe(outerTitle));
+      first.unmount();
+
+      // Arm 2 (WR-201 case 1): a browser blurs a button the moment it is disabled, so the inner
+      // dialog opens with focus on <body> and captures NO opener. Emulated: focus, blur, then
+      // open by a synthetic click that does not move focus.
+      render(<StackedHost />);
+      const outerTitle2 = screen.getByRole('heading', { name: 'Saturday' });
+      const share2 = screen.getByRole('button', { name: 'Share QR' });
+      act(() => share2.focus());
+      act(() => share2.blur());
+      expect(document.activeElement).toBe(document.body);
+      fireEvent.click(share2);
+      await screen.findByRole('dialog', { name: 'Event QR code' });
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog', { name: 'Event QR code', hidden: true })).toBeNull();
+      await vi.waitFor(() => expect(document.activeElement).toBe(outerTitle2));
+    });
+
+    // The groupHomePage Settings -> Manage Members shape: A's button closes A and opens B in ONE
+    // handler. `bHasTabbable={false}` gives B a title through the house DialogTitle and no
+    // tabbable child, so Radix focuses B's CONTAINER on open (FocusScope `focus(container)`).
+    function ChainedHost({ bHasTabbable = true }: { bHasTabbable?: boolean }) {
+      const [aOpen, setAOpen] = React.useState(false);
+      const [bOpen, setBOpen] = React.useState(false);
+      return (
+        <main>
+          <h1>Game night</h1>
+          <button type="button" onClick={() => setAOpen(true)}>
+            Group settings
+          </button>
+          {aOpen && (
+            <Modal open onClose={() => setAOpen(false)}>
+              <Modal.Header>Customize Group</Modal.Header>
+              <Modal.Body>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAOpen(false);
+                    setBOpen(true);
+                  }}
+                >
+                  Manage members
+                </button>
+              </Modal.Body>
+            </Modal>
+          )}
+          <Modal open={bOpen} onClose={() => setBOpen(false)}>
+            {bHasTabbable ? (
+              <Modal.Header>Manage Group Members</Modal.Header>
+            ) : (
+              <DialogTitle>Manage Group Members</DialogTitle>
+            )}
+            <Modal.Body>
+              <p>Members list</p>
+            </Modal.Body>
+          </Modal>
+        </main>
+      );
+    }
+
+    // Flushes A's close: Radix dispatches the unmount autofocus event from a setTimeout queued
+    // when A unmounted, so one later macrotask is guaranteed to run after it.
+    async function flushClosedDialogRestore() {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    it('D: a chained hand-off never focuses the old opener, and closing B floors to the page h1', async () => {
+      const user = userEvent.setup();
+      render(<ChainedHost />);
+      const heading = screen.getByRole('heading', { name: 'Game night' });
+      const settings = screen.getByRole('button', { name: 'Group settings' });
+      await user.click(settings);
+      await screen.findByRole('dialog', { name: 'Customize Group' });
+
+      // fireEvent (synchronous, no timer turn) so A's queued restore has NOT run yet.
+      fireEvent.click(screen.getByRole('button', { name: 'Manage members' }));
+      const b = screen.getByRole('dialog', { name: 'Manage Group Members' });
+      const settingsFocus = vi.fn();
+      settings.addEventListener('focus', settingsFocus);
+      await flushClosedDialogRestore();
+      // Asserted synchronously after the deterministic flush, never inside waitFor (CF-26).
+      expect(settingsFocus).not.toHaveBeenCalled();
+      expect(b.contains(document.activeElement)).toBe(true);
+
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog', { hidden: true })).toBeNull();
+      await vi.waitFor(() => expect(document.activeElement).toBe(heading));
+      settings.removeEventListener('focus', settingsFocus);
+    });
+
+    it('D2: a chained hand-off into a dialog with no tabbable child lands on THAT dialog title', async () => {
+      const user = userEvent.setup();
+      render(<ChainedHost bHasTabbable={false} />);
+      const settings = screen.getByRole('button', { name: 'Group settings' });
+      await user.click(settings);
+      await screen.findByRole('dialog', { name: 'Customize Group' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Manage members' }));
+      const b = screen.getByRole('dialog', { name: 'Manage Group Members' });
+      const bTitle = screen.getByRole('heading', { name: 'Manage Group Members' });
+      // Positive precondition: Radix focused B's container, which counts as lost focus.
+      expect(document.activeElement).toBe(b);
+      const settingsFocus = vi.fn();
+      settings.addEventListener('focus', settingsFocus);
+      await flushClosedDialogRestore();
+      expect(settingsFocus).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(bTitle);
+      settings.removeEventListener('focus', settingsFocus);
+    });
+
+    // Review L-29: the same hand-off one level down, inside an outer dialog O that stays open.
+    function StackedChainHost() {
+      const [aOpen, setAOpen] = React.useState(false);
+      const [bOpen, setBOpen] = React.useState(false);
+      return (
+        <main>
+          <h1>Game night</h1>
+          <Modal open onClose={() => {}}>
+            <Modal.Header>Saturday</Modal.Header>
+            <Modal.Body>
+              <button type="button" onClick={() => setAOpen(true)}>
+                Open A
+              </button>
+            </Modal.Body>
+          </Modal>
+          {aOpen && (
+            <Modal open onClose={() => setAOpen(false)}>
+              <Modal.Header>Customize Group</Modal.Header>
+              <Modal.Body>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAOpen(false);
+                    setBOpen(true);
+                  }}
+                >
+                  Manage members
+                </button>
+              </Modal.Body>
+            </Modal>
+          )}
+          <Modal open={bOpen} onClose={() => setBOpen(false)}>
+            <DialogTitle>Manage Group Members</DialogTitle>
+            <Modal.Body>
+              <p>Members list</p>
+            </Modal.Body>
+          </Modal>
+        </main>
+      );
+    }
+
+    it('D3: a stacked hand-off floors from the dialog holding focus, never the outer title behind it', async () => {
+      const user = userEvent.setup();
+      render(<StackedChainHost />);
+      const outerTitle = screen.getByRole('heading', { name: 'Saturday' });
+      await user.click(screen.getByRole('button', { name: 'Open A' }));
+      await screen.findByRole('dialog', { name: 'Customize Group' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Manage members' }));
+      const b = screen.getByRole('dialog', { name: 'Manage Group Members' });
+      const bTitle = screen.getByRole('heading', { name: 'Manage Group Members' });
+      expect(document.activeElement).toBe(b);
+      const outerTitleFocus = vi.fn();
+      outerTitle.addEventListener('focus', outerTitleFocus);
+      await flushClosedDialogRestore();
+      expect(outerTitleFocus).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(bTitle);
+      outerTitle.removeEventListener('focus', outerTitleFocus);
+    });
+
+    it('E: a consumer onCloseAutoFocus that does not prevent default falls through to the floor', async () => {
+      const user = userEvent.setup();
+      let openerEl: HTMLElement | null = null;
+      // The FeedbackModalProvider failure shape: it tries its invoker, the focus does not land,
+      // and it leaves the event unprevented.
+      const consumer = vi.fn(() => {
+        openerEl?.focus();
+      });
+      const { rerender } = render(<DisabledOpenerHost onCloseAutoFocus={consumer} />);
+      const heading = screen.getByRole('heading', { name: 'Game night' });
+      const opener = screen.getByRole('button', { name: 'Open it' });
+      openerEl = opener;
+      await user.click(opener);
+      await screen.findByRole('dialog');
+      rerender(<DisabledOpenerHost openerDisabled onCloseAutoFocus={consumer} />);
+
+      await user.keyboard('{Escape}');
+      await vi.waitFor(() => expect(document.activeElement).toBe(heading));
+      expect(consumer).toHaveBeenCalledTimes(1);
+    });
+
+    // WR-201 case 3: an autoFocus descendant already holds focus when Radix's scope mounts, so
+    // Radix skips its open event and the primitive captures no opener. Decided (DECISION Phase
+    // 88.6.1-20, REJECTED (f)): that case floors.
+    function AutoFocusHost() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <main>
+          <h1>Game night</h1>
+          <button type="button" onClick={() => setOpen(true)}>
+            Rename
+          </button>
+          <Modal open={open} onClose={() => setOpen(false)}>
+            <Modal.Header>Rename group</Modal.Header>
+            <Modal.Body>
+              <input autoFocus aria-label="Group name" />
+            </Modal.Body>
+          </Modal>
+        </main>
+      );
+    }
+
+    it('F: a dialog opened with an autoFocus descendant floors to the page h1 on close', async () => {
+      const user = userEvent.setup();
+      render(<AutoFocusHost />);
+      const heading = screen.getByRole('heading', { name: 'Game night' });
+      await user.click(screen.getByRole('button', { name: 'Rename' }));
+      const input = await screen.findByRole('textbox', { name: 'Group name' });
+      await vi.waitFor(() => expect(document.activeElement).toBe(input));
+
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog', { hidden: true })).toBeNull();
+      await vi.waitFor(() => expect(document.activeElement).toBe(heading));
+    });
+  });
+
   it('closes on Escape via onClose by default', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
@@ -297,6 +656,40 @@ describe('Modal', () => {
 
       await user.keyboard('{Escape}');
       expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
+  // Review r2 #198 (routed from plan 88.6.1-37): the member pop-up (its floating element carries
+  // `data-member-popover`) owns an Escape pressed inside it, exactly as an expanded combobox
+  // does above. The harness builds its own marked element; it does not import the pop-up.
+  describe('an open member pop-up owns Escape (review r2 #198)', () => {
+    it('G: Escape inside the marked pop-up keeps the dialog; Escape elsewhere in it still closes', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(
+        <Modal open onClose={onClose}>
+          <Modal.Header>Manage Group Members</Modal.Header>
+          <Modal.Body>
+            <div data-member-popover="">
+              <button type="button">Send friend request</button>
+            </div>
+            <button type="button">Remove member</button>
+          </Modal.Body>
+        </Modal>
+      );
+      const inside = screen.getByRole('button', { name: 'Send friend request' });
+      act(() => inside.focus());
+      expect(inside).toHaveFocus();
+      await user.keyboard('{Escape}');
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog', { name: 'Manage Group Members' })).toBeInTheDocument();
+
+      // Second arm (confirm-only, green before the fix): the guard is not a blanket Escape block.
+      const outside = screen.getByRole('button', { name: 'Remove member' });
+      act(() => outside.focus());
+      expect(outside).toHaveFocus();
+      await user.keyboard('{Escape}');
+      expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
 
