@@ -402,6 +402,17 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
     ).toBe(true);
     expect(screen.getByText(ORGANIZER_GUIDANCE)).toBeInTheDocument();
   });
+
+  // 88.6.1-23 R3-M7/M9 (P2): only the backend's token_invalid code is a dead link. A 400 with any
+  // other code is a failed request and renders the register's validation line, never "Link No
+  // Longer Valid" or the organizer guidance. RED before the fix (the 400 resolved into the
+  // invalid-link branch).
+  it('P2: a 400 that is not token_invalid renders the failed-request heading over the validation line', async () => {
+    vi.stubGlobal('fetch', respond(400, '{"code":"validation","message":"Bad input"}'));
+    await useRealValidate();
+    render(<AvailabilityFormPage />);
+    await expectFailedRequest('Something looks off with that request. Refresh the page to try again.');
+  });
 });
 
 describe('availability-form/[token] — the branch roots and the second region', () => {

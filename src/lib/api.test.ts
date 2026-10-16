@@ -1274,3 +1274,142 @@ describe('88.6.1-23 / R9 mechanism — a server error on the RSVP link rejects a
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+// ADDED by plan 88.6.1-23 task 3 (R3-M7/M9; register `.planning/deferred/phase-88.6.1.md:225`,
+// fix text "resolve only when the body code is token_invalid"). validateToken used to call a
+// link dead by HTTP 400 alone, so a second 400 on the route would render as a dead link and a
+// token_invalid moved off 400 would render "Something went wrong". The backend's own code now
+// decides. V1-V4 were RED before the fix. No production behaviour changes today: the validate
+// route's only 400s are token_invalid (BE `routes/magicAuth.js:98`, `:115`).
+describe('88.6.1-23 / R3-M7/M9 — validateToken decides by the token_invalid code, not by HTTP 400', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answer = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText });
+
+  const validateRejection = async (status: number, bodyText: string): Promise<unknown> => {
+    vi.stubGlobal('fetch', answer(status, bodyText));
+    try {
+      await magicAuthAPI.validateToken('t');
+    } catch (err) {
+      return err;
+    }
+    return null;
+  };
+
+  it('V1: a 400 whose code is validation REJECTS a coded ApiError', async () => {
+    const caught = await validateRejection(400, '{"code":"validation","message":"Bad input"}');
+    expect(caught, 'a 400 that is not token_invalid must not resolve').toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'validation', status: 400 });
+  });
+
+  it('V2: a code-less 400 REJECTS validation, the status template as message, the legacy string as upstreamMessage', async () => {
+    const caught = await validateRejection(400, '{"error":"Bad request"}');
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({
+      code: 'validation',
+      status: 400,
+      message: 'HTTP error! status: 400',
+      upstreamMessage: 'Bad request',
+    });
+  });
+
+  it('V3: a 400 whose body is JSON null REJECTS validation', async () => {
+    const caught = await validateRejection(400, 'null');
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'validation', status: 400 });
+  });
+
+  it('V4: a 410 carrying code token_invalid RESOLVES its body into the invalid-link branch', async () => {
+    const body = { code: 'token_invalid', message: 'This link is no longer valid.' };
+    vi.stubGlobal('fetch', answer(410, JSON.stringify(body)));
+    await expect(magicAuthAPI.validateToken('t')).resolves.toEqual(body);
+  });
+});
+
+// ADDED by plan 88.6.1-23 task 3 (W063, AC-34 clause 5; register
+// `.planning/deferred/phase-88.6.1.md:194`). The 88.6-62 cap bounded only NON-JSON text, so a JSON
+// envelope message, a joined field-error text and the two prefill Error messages rode uncapped
+// into every errCtx breadcrumb. capErrorText now redacts (scrubString) and THEN cuts, where each
+// message is built. M1-M4 and M6-M8 were RED before the fix; M5 is confirm-only. The #3 arms
+// above stay green unedited (their text carries no PII, so redact-then-cut is byte-unchanged).
+describe('88.6.1-23 / W063 — every body-derived ApiError message is capped where it is built', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answer = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText });
+
+  const rejectionOf = async (status: number, bodyText: string, run: () => Promise<unknown>): Promise<Error> => {
+    vi.stubGlobal('fetch', answer(status, bodyText));
+    let caught: unknown = null;
+    try {
+      await run();
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'must REJECT on a non-ok response').toBeInstanceOf(Error);
+    return caught as Error;
+  };
+  const viaApiFetch = (status: number, bodyText: string) => rejectionOf(status, bodyText, () => apiFetch('/anything'));
+  const viaPublicFetch = (status: number, bodyText: string) => rejectionOf(status, bodyText, () => publicFetch('/anything'));
+
+  const envelope = (message: unknown, code = 'validation') => JSON.stringify({ code, message });
+  const JWT =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LTEiLCJwcm9tcHQiOiJwLTEifQ.c2lnbmF0dXJlLXZhbHVlLWhlcmUtMTIz';
+
+  it('M1: apiFetch caps a 5000-character envelope message, and errCtx carries the capped text', async () => {
+    const err = await viaApiFetch(400, envelope('m'.repeat(5000)));
+    expect(err.message).toBe('m'.repeat(200) + ' [truncated]');
+    expect(errCtx(err).message).toBe('m'.repeat(200) + ' [truncated]');
+    expect(err).toMatchObject({ code: 'validation' });
+  });
+
+  it('M2: publicFetch caps the same envelope message', async () => {
+    const err = await viaPublicFetch(400, envelope('m'.repeat(5000)));
+    expect(err.message).toBe('m'.repeat(200) + ' [truncated]');
+  });
+
+  it('M3: validateToken caps a 5000-character envelope message on its coded throw', async () => {
+    const err = await rejectionOf(500, envelope('m'.repeat(5000), 'internal'), () => magicAuthAPI.validateToken('t'));
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.message).toBe('m'.repeat(200) + ' [truncated]');
+  });
+
+  it('M4: apiFetch caps the joined field-error text', async () => {
+    const err = await viaApiFetch(400, JSON.stringify({ details: { errors: [{ message: 'n'.repeat(300) }] } }));
+    expect(err.message).toBe('n'.repeat(200) + ' [truncated]');
+  });
+
+  it('M5 (CONFIRM-ONLY): exactly 200 characters pass untouched; a non-string message is coerced like Error, never throwing', async () => {
+    expect((await viaApiFetch(400, envelope('y'.repeat(200)))).message).toBe('y'.repeat(200));
+    expect((await viaApiFetch(400, envelope({ nested: true }))).message).toBe('[object Object]');
+    expect((await viaApiFetch(400, envelope(12345))).message).toBe('12345');
+  });
+
+  // 190 puts `alice@` inside the kept 200 characters: a blind cut keeps ' alice@exa', a fragment
+  // the EMAIL rule cannot match without its TLD, so only redact-then-cut removes it.
+  it('M6: an email straddling character 200 is redacted whole, never cut into a fragment', async () => {
+    const err = await viaApiFetch(400, envelope('a'.repeat(190) + ' alice@example.com'));
+    expect(err.message).not.toContain('alice');
+    expect(err.message).not.toContain('@');
+  });
+
+  // A blind cut keeps the token's first 50 characters, a header-plus-partial-payload fragment
+  // the three-segment JWT rule cannot match.
+  it('M7: a JWT straddling character 200 is redacted whole, never cut into a fragment', async () => {
+    const err = await viaApiFetch(400, envelope('a'.repeat(150) + JWT));
+    expect(JWT.length).toBeGreaterThan(50);
+    expect(err.message).not.toContain('eyJ');
+  });
+
+  it('M8: prefillFromGcal caps the body-derived text of its plain Error', async () => {
+    const err = await rejectionOf(400, JSON.stringify({ error: 'e'.repeat(5000) }), () =>
+      availabilityFormAPI.prefillFromGcal({ magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' }),
+    );
+    expect(err.message).toBe('e'.repeat(200) + ' [truncated]');
+  });
+});

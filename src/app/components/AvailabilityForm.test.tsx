@@ -192,6 +192,19 @@ describe('AvailabilityForm submit-error path', () => {
     expect(thrown.upstreamMessage).toBe(backendMessage);
   });
 
+  // 88.6.1-23 W063 (F1, r2 #158): the submit guard builds the one body-derived ApiError outside
+  // lib/api.ts, so its message arm is capped there too, through the exported capErrorText. The
+  // rendered line is chosen by code and does not change. RED before the fix (uncapped).
+  it('F1: a 5000-character success:false message reaches handleAppSubmit capped at 200 plus the marker', async () => {
+    await submitWith({ success: false, message: 's'.repeat(5000) });
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    const [msg, thrown] = (logger.error as Mock).mock.calls[0];
+    expect(msg).toBe('form submit failed');
+    expect(thrown).toBeInstanceOf(ApiError);
+    expect(thrown.message).toBe('s'.repeat(200) + ' [truncated]');
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong. Refresh the page to try again.');
+  });
+
   // ADDED by plan 88.6-62 task 3 (2026-09-29, /code-adversarial-review 88.6 round 2 #11 / #12,
   // owner ruling `R2-FIXNOW-SET-RULING: yes`). #11: success is decided by the backend's POSITIVE
   // `success: true` (Sonnet/routes/availabilityResponse.js:190, the POST's only 2xx), never by
