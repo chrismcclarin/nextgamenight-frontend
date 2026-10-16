@@ -269,7 +269,7 @@ describe('FriendInvitePanel — Req 9 migration proof', () => {
 // These are BEHAVIORAL, not markup checks, and the shape is deliberate. Every
 // announcement arm captures the live region BEFORE the outcome fires and asserts
 // on THAT SAME NODE afterwards (`expect(after).toBe(before)`) — the idiom
-// StatusRegion.test.tsx:20-29 already uses. Presence alone is satisfied by a
+// StatusRegion.test.tsx:25-34 already uses (`expect(after).toBe(before)` at :32). Presence alone is satisfied by a
 // CONDITIONALLY-mounted region, which is precisely the bug: a screen reader
 // announces a CHANGE to a live region, never the conditional mount of a new one.
 // CORRECTED by 88.6.1-27 (D-42): that rule holds for polite / status regions; an

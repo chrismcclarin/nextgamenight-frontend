@@ -20,6 +20,8 @@ import { logger, errCtx } from '@/lib/logger';
 const INVALID_EMAIL_MESSAGE = "That doesn't look like a valid email address. Check it and try again.";
 // Copy row G2 (88.6.1-COPY-TABLE.html, ratified 2026-10-04; D-30 site constant, D-32 R8 ASCII apostrophe).
 const INVITE_SEND_FAILED_MESSAGE = "We couldn't send that invite. Please try again.";
+// D-32 R2 (ratified 2026-10-04; ASCII apostrophe, R8): an all-failed friend batch with no code.
+const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try again.";
 // The copy confirmation (copy row G3's sentence, byte-identical to the literal this panel
 // shipped; the QR dialog hoists the same constant, plan 88.6.1-12).
 const LINK_COPIED_ANNOUNCEMENT = 'Invite link copied to the clipboard.';
@@ -76,7 +78,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        the addition: an in-flight gate keeps native `disabled` EXCEPT on the control the user
        just activated, where `DECISION Phase 88.5`'s idiom applies instead — a natively disabled
        element leaves the focus order, so a keyboard or switch user is stranded mid-submit
-       (NextGameNightCard.tsx:379-391 spells this out). All four gated buttons here sit on the
+       (NextGameNightCard.tsx:478-487 spells this out, its `removed from the focus order` marker). All four gated buttons here sit on the
        control being activated, so all four move.
 
        WHY BOTH HALVES OR NEITHER: `aria-disabled` refuses nothing at the DOM level. A gated
@@ -95,9 +97,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        silently.
 
        VISIBLE DELTA, disclosed rather than discovered: a gated `.btn` used to take
-       `.btn:disabled { opacity: .5 }` (globals.css:2250-2253) and now takes the DR-C gated
-       COLOUR pair (`.btn-primary[aria-disabled='true']` at :2329, `.btn-secondary[...]` at
-       :2334). Fill and ink swap instead of the whole control washing out.
+       `.btn:disabled { opacity: .5 }` (globals.css:2346-2349, `.btn:disabled {`) and now takes the
+       DR-C gated COLOUR pair (`.btn-primary[aria-disabled='true']` at :2424,
+       `.btn-secondary[...]` at :2429). Fill and ink swap instead of the whole control washing out.
 
        Dropping either half of any pair, or restoring the native attribute, is a decision, not
        a cleanup.
@@ -227,6 +229,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         // BOTH directions, so fixing only this file's other two sites would leave an unowned
         // entry for a string P1 forbids authoring. Only the FIRST is kept — collecting all of
         // them would mean choosing between N messages with no rule for which to show.
+        //
+        // AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (Req 8; D-22; D-32 R2): the
+        // all-failed branch now passes a fallback, R2 (BATCH_INVITE_FAILED_MESSAGE above), so a
+        // code-less first failure no longer reads the register's unknown line
+        // (which told the user to refresh the page); a coded first failure keeps its register
+        // line. The friends page twin already ships the same sentence. Where the outcome is
+        // shown and heard is recorded at the result regions in the bulk block.
         let firstFailure = null;
 
         try {
@@ -358,9 +367,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
 
                    The two code arms ABOVE are kept deliberately. Measured 2026-09-16:
                    MESSAGE_BY_CODE carries byte-identical copy for both
-                   (`useFetchErrorState.ts:88` already_member, `:91` invite_pending), so keeping
-                   them costs nothing and preserves the surface-owns-its-richer-resting-copy
-                   precedence that file records at `:80-87`. Collapsing them into the helper is
+                   (`useFetchErrorState.ts:100` `already_member:`, `:103` `invite_pending:` — re-pointed
+                   2026-10-15 from :88 / :91), so keeping them costs nothing and preserves the
+                   surface-owns-its-richer-resting-copy precedence that file records at `:92-99`
+                   (`richer 'Invite pending' / 'Already a member' resting states take precedence`). Collapsing them into the helper is
                    a decision, not a cleanup.
 
                    AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review H3 + cross-finding
@@ -489,6 +499,25 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     const availableFriends = friends.filter(f => f.friend);
     const selectableCount = availableFriends.filter(f => !groupMemberIds.includes(f.friend.id)).length;
 
+    // The friend batch's outcome, split between the two result regions in the bulk block (see
+    // the marker there): the all-failed outcome is the alert region's, every other outcome the
+    // polite region's. The sentences are the block's own, byte-for-byte.
+    let batchStatusText = '';
+    let batchErrorText = '';
+    if (inviteResult) {
+        if (inviteResult.failCount > 0 && inviteResult.successCount === 0) {
+            batchErrorText = getFetchErrorMessage(inviteResult.firstFailure, { fallback: BATCH_INVITE_FAILED_MESSAGE });
+        } else {
+            batchStatusText = inviteResult.failCount === 0
+                ? (inviteResult.alreadyCount > 0
+                    ? (inviteResult.successCount > 0
+                        ? `Invited ${inviteResult.successCount} — ${inviteResult.alreadyCount} already invited or a member`
+                        : 'Everyone selected was already invited or a member')
+                    : `Invited ${inviteResult.successCount} friend${inviteResult.successCount !== 1 ? 's' : ''}!`)
+                : `Invited ${inviteResult.successCount}, ${inviteResult.failCount} failed`;
+        }
+    }
+
     const body = (
         <>
                     {/* Friends section */}
@@ -582,39 +611,57 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                             : 'Select friends to invite'}
                                 </Button>
 
-                                {inviteResult && (
-                                    /* DECISION Phase 88-27 (D-32 buckets A/B): only the first branch
+                                {/* DECISION Phase 88-27 (D-32 buckets A/B): only the first branch
                                        is a censused tint row. The other two were converged anyway,
                                        chosen OVER touching just the censused one — that would have
                                        left `bg-amber-50 text-amber-700 border-amber-200` and
                                        `bg-red-50 …` beside a token-based sibling, and those raw
                                        literals are light-only values on a card that flips to
                                        `#232d3e`, so they were already wrong in dark mode. The
-                                       IDENTICAL bulk-invite result block at friends/page.js:740-743
+                                       IDENTICAL bulk-invite result block at friends/page.js:912-927 (re-pointed 2026-10-15; the
+                                       success tint literal at :916)
                                        already uses status tokens on all three branches, so this
                                        converges the outlier onto shipped precedent rather than
                                        inventing a treatment. Reverting to raw palette is a
-                                       decision, not a cleanup. */
-                                    /* UI-SPEC §4.5, the EMPHASIS outcome: `font-medium` deleted;
-                                       all three branches already carry a status colour token. */
-                                    <div className={`mt-2 p-3 rounded-lg text-sm ${
-                                        inviteResult.failCount === 0
+                                       decision, not a cleanup.
+
+                                       AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (Req 8; D-22; D-32 R2):
+                                       the result block was a conditionally mounted block with no
+                                       role, so a screen-reader user who pressed Invite heard no
+                                       outcome at all. It is now TWO regions mounted empty with the
+                                       bulk block and hidden while empty (the D-22 house shape): a
+                                       polite region for the all-succeeded, already-invited and
+                                       partial outcomes, and an alert region for the all-failed one.
+                                       Chosen OVER one polite region for every outcome (a total
+                                       failure would queue behind other speech, and the email lane
+                                       on this same panel is assertive) and OVER the alert role for
+                                       all of them (a success is not an alert). The words are the
+                                       block's own and nothing new is heard (D-31); the tint per
+                                       branch is unchanged (88-27 stands). A code-less all-failed
+                                       batch now says R2 (the friends page twin already does); a
+                                       coded one keeps its register line. Changing this is a
+                                       decision, not a cleanup. */}
+                                {/* UI-SPEC §4.5, the EMPHASIS outcome: `font-medium` deleted;
+                                    all three branches already carry a status colour token. */}
+                                <StatusRegion
+                                    id="invite-batch-status"
+                                    srOnlyWhenEmpty
+                                    message={batchStatusText}
+                                    className={batchStatusText
+                                        ? `mt-2 p-3 rounded-lg text-sm ${inviteResult.failCount === 0
                                             ? 'bg-status-success-subtle text-content-status-success border border-status-success'
-                                            : inviteResult.successCount > 0
-                                                ? 'bg-status-warning-subtle text-content-status-warning border border-status-warning'
-                                                : 'bg-status-error-subtle text-content-status-error border border-status-error'
-                                    }`}>
-                                        {inviteResult.failCount === 0
-                                            ? (inviteResult.alreadyCount > 0
-                                                ? (inviteResult.successCount > 0
-                                                    ? `Invited ${inviteResult.successCount} — ${inviteResult.alreadyCount} already invited or a member`
-                                                    : 'Everyone selected was already invited or a member')
-                                                : `Invited ${inviteResult.successCount} friend${inviteResult.successCount !== 1 ? 's' : ''}!`)
-                                            : inviteResult.successCount > 0
-                                                ? `Invited ${inviteResult.successCount}, ${inviteResult.failCount} failed`
-                                                : getFetchErrorMessage(inviteResult.firstFailure)}
-                                    </div>
-                                )}
+                                            : 'bg-status-warning-subtle text-content-status-warning border border-status-warning'}`
+                                        : 'mt-2'}
+                                />
+                                <StatusRegion
+                                    id="invite-batch-error"
+                                    politeness="assertive"
+                                    srOnlyWhenEmpty
+                                    message={batchErrorText}
+                                    className={batchErrorText
+                                        ? 'mt-2 p-3 rounded-lg text-sm bg-status-error-subtle text-content-status-error border border-status-error'
+                                        : 'mt-2'}
+                                />
                             </div>
                         )}
                     </div>
@@ -625,7 +672,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             <div className="flex-1 border-t border-line" />
                             {/* UI-SPEC §4.5 Eyebrow role (D-03): Caption 12 / 700 / uppercase /
                                 tracking. `font-bold` ADDED; `tracking-wide` is the spelling the
-                                nearest shipped eyebrow uses (CalendarListView.js:823). See the
+                                nearest shipped eyebrow uses (CalendarListView.js:1009, `uppercase tracking-wide`). See the
                                 DECISION marker on the second eyebrow below. */}
                             <span className="text-xs font-bold text-content-muted uppercase tracking-wide">or</span>
                             <div className="flex-1 border-t border-line" />
@@ -639,7 +686,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             field's ONLY accessible name. Dropping the `id` here leaves an input
                             with an empty name and no failing build. Safe as an idref target
                             because the children are a STATIC non-empty string — `Heading` renders
-                            NOTHING for empty children (Heading.tsx:162) and would take the `id`
+                            NOTHING for empty children (Heading.tsx:182, `isEmptyChildren(children)) return null`) and would take the `id`
                             with it. */}
                         <Heading
                             ref={inviteByEmailHeadingRef}
@@ -710,16 +757,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                         </form>
                         {/* DECISION Phase 88.6-22 (R2 #177): this is a real FIELD error on the
                             email input, so it takes `politeness="assertive"` — `role="alert"` +
-                            `aria-live="assertive"` (StatusRegion.tsx:40-41) — and spells its id,
+                            `aria-live="assertive"` (StatusRegion.tsx:99-100, `role={assertive ? 'alert' : 'status'}`) — and spells its id,
                             its `aria-describedby` and its `aria-invalid` flip the way the shipped
-                            field-error primitive does (FormField.tsx:78 `${controlId}-error`, :81
-                            and :88 the composed describedby, :87 aria-invalid, :105 role=alert).
+                            field-error primitive does (form/FormField.tsx:88 `${controlId}-error`, :90-93
+                            and :98 the composed describedby, :97 aria-invalid, :131 role=alert;
+                            re-pointed 2026-10-15).
                             That makes this the SECOND spelling of the field error in the phase,
                             never a third.
 
                             REJECTED — adopting `FormField` itself, which on the merits is the
                             better home since it supplies all three attributes. Its `label` prop is
-                            REQUIRED and always renders a visible `<label>` (FormField.tsx:95-101),
+                            REQUIRED and always renders a visible `<label>` (form/FormField.tsx:105-111),
                             which would put a second visible "Invite by Email" above this input and
                             REVERSE the 88-33 Task 8 (fork 5) decision recorded ten lines up — that
                             the visible heading IS the label, associated rather than duplicated.
@@ -731,10 +779,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             one. `mt-2` applies ONLY when filled, so the empty region adds no
                             visible space — the alternative (a wrapper div carrying the margin) was
                             rejected as an extra element for the same result. The error ink rides
-                            on `className` because StatusRegion.tsx:43 is `cn('text-sm', className)`.
+                            on `className` because StatusRegion.tsx:102-106 is `cn('text-sm', className, …)`.
                             `text-red-500` (#ef4444) measured 3.76:1 on --color-bg-card (#ffffff),
                             below the 4.5:1 AA floor; `text-content-status-error`
-                            (--color-status-error-text #991b1b, globals.css:1552) measures 8.31:1.
+                            (--color-status-error-text #991b1b, globals.css:1648) measures 8.31:1.
 
                             AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (D-22, D-42):
                             (1) D-42 — "a screen reader announces a CHANGE to a live region, not the
@@ -823,13 +871,15 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                         that is not achievable and would be wrong. Measured
                                         2026-09-16, the three shipped eyebrows
                                         (CalendarListView.js:823, RsvpSection.js:285,
-                                        NextGameNightCard.tsx:309) are all `font-semibold` (600) and
+                                        NextGameNightCard.tsx:309 as of that date; on 2026-10-15
+                                        they sit at CalendarListView.js:1009, RsvpSection.js:644 and
+                                        NextGameNightCard.tsx:389, each now at 700) are all `font-semibold` (600) and
                                         disagree on tracking — `tracking-wide`, `tracking-wider`,
                                         `tracking-[0.08em]`. §4.5 ratifies 700 and §4.2 gives 600
                                         exactly one home, the Button primitive, so copying any of
                                         them would import a prohibited weight; their own sweeps move
                                         them to 700 later. TRACKING is matched to
-                                        CalendarListView.js:823's `tracking-wide`, which is also the
+                                        CalendarListView.js:1009's `tracking-wide`, which is also the
                                         value these two already carried, so no tracking changes here.
 
                                         NOT a `Heading`: these are `<span>`s inside a divider rule,
@@ -939,13 +989,14 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        RESOLVED STACKING ORDER (verified, not assumed — this panel deliberately
        sits ABOVE other overlays and BELOW the tooltip tier):
          - `.modal-overlay` is `z-index: 50` and renders inside the React tree
-           (globals.css:1075-1078). ManageMembers.js:645 opens this panel as a
+           (globals.css:1075-1078 when written; Phase 88-31 deleted that rule — see its
+           AMENDED BY PHASE 88-31 note in globals.css). ManageMembers.js:961 opens this panel as a
            sibling of that overlay, and grouplist/userHome open it standalone.
          - Radix portals this dialog to the END of <body>, so at an equal
            z-index 50 it still paints above `.modal-overlay` purely by DOM order.
            The stacking relationship the old bespoke value bought is therefore
            preserved structurally, without a bespoke tier.
-         - HeatmapTooltip.js:334-340 pins tooltips at z-index 100 as "always
+         - HeatmapTooltip.js:345-350 (`zIndex: 100` at :369) pins tooltips at z-index 100 as "always
            topmost" (a shipped Plan 72-02 UAT decision). That tier is untouched
            and still clears this dialog.
 
@@ -959,12 +1010,26 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        Reverting to a sheet is a decision, not a cleanup. */
     return (
         <Modal open={open} onClose={onClose} className="max-w-md">
-            {/* Freeform header (the QRCodeModal idiom): <Modal.Header> renders a
+            {/* Freeform header (the QRCodeModal idiom): the Modal header renders a
                 single-line DialogTitle, and this panel's header is a two-line
-                stack. The chrome mirrors <Modal.Header> 1:1 so it matches the
-                fleet, and the title is still the DialogTitle so Radix keeps
-                auto-wiring `aria-labelledby`. */}
-            <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-5">
+                stack. The chrome mirrors the Modal header's phone-first scale
+                (Modal.tsx:407, the class string carrying px-3 py-2 md:px-6 md:py-3)
+                and its bottom border, except two things kept on purpose for the
+                two-line title stack beside the 44px close: items-start (the close
+                stays on the first line instead of centring on two) and gap-3 (the
+                Modal header carries no gap). The title is still the DialogTitle so
+                Radix keeps auto-wiring `aria-labelledby`.
+
+                DECISION Phase 88.6.1-27 (R7-M5): this header shipped with fixed
+                padding — 24px on each side and 20px top and bottom at every width —
+                which made the text column 24px narrower at 375 than every other
+                dialog header, exactly where a long group name wraps (UAT3-D2).
+                It now takes the Modal header's scale: 12px sides and 8px top and
+                bottom on a phone, 24px and 12px from the md breakpoint. Chosen OVER
+                keeping the fixed padding with a recorded deviation. Measured in
+                e2e/friend-invite-panel-header.spec.ts at both widths. Changing this
+                is a decision, not a cleanup. */}
+            <div className="flex items-start justify-between gap-3 border-b border-border px-3 py-2 md:px-6 md:py-3">
                 {/* UAT3-D2 (owner device check 2026-09-30) + code review round 6: the user-supplied group
                     name lands in this column on EVERY entry point — in the title after creation
                     ("<name> is live — who's in?"), in the lead-in otherwise ("to <name>"). A 40-character
