@@ -38,7 +38,48 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
   const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
   const [groups, setGroups] = useState([]);
+  // From Phase 88.6.1-41 on, `loading` means only "a groups request is in flight"; the render
+  // reads it solely for the cards wrapper's `aria-busy`. The first-load gate is `hasLoaded` below.
   const [loading, setLoading] = useState(true);
+  /* DECISION Phase 88.6.1-41 (D-37, Req 9): the home list blanks only on the FIRST load for the
+     signed-in identity, and a refresh changes it in place.
+     CHOSEN:
+     - "Loading groups..." is keyed on `hasLoaded`, a has-loaded flag for the CURRENT identity: the
+       identity whose latest request SETTLED (success or failure), compared against the identity
+       now resolved, so a change of signed-in identity is a first load again (88.6.1-70 contract
+       C3, the same first-load-only rule D-09a gives Manage Members);
+     - a refresh keeps the SAME card nodes mounted, with `aria-busy` on the cards wrapper only;
+     - a failed refresh keeps what loaded: the cards, or the empty-state sentence of a list that
+       loaded empty (D-50, owner ruling Y). The full groups banner renders only while nothing has
+       loaded for this identity (`groupsRetained`, a has-loaded flag, never a row count). The
+       shared RF1 notice that qualifies retained content is mounted by plan 88.6.1-77;
+     - the groups error is cleared on a SUCCESSFUL result, so a pressed retry keeps its banner up
+       until the result is known (88.6.1-70 contract C2);
+     - a generation guard bumped at the START of every fetch, and checked by every post-await write.
+       This is the `QuickSuggestions.js` staleness idiom, which bumps in an effect cleanup; here
+       three of the callers are handlers (the retry, `onUpdate`, `onGroupDeleted`), not an effect.
+     REJECTED, each so it is not re-proposed as a tidy-up:
+     (a) keying the loader on the row count: a user with no groups would blank on every refresh;
+     (b) a visible "Updating" line: D-09 grants one to Browse Games only, and no ratified string
+         exists for this surface (D-31);
+     (c) `aria-busy` on the scroll div: it also holds the alert banner (RESEARCH A3);
+     (d) dimming the cards while busy: a look item, Phase 88.9 per D-09;
+     (e) clearing the error at refresh start: it unmounts a pressed retry mid-flight;
+     (f) the full banner above retained cards (the D-09a clause D-37 inherits, AMENDED by D-51,
+         the RF1 convergence the owner ratified 2026-10-05): a "couldn't load" banner over loaded
+         cards contradicts itself;
+     (g) a row count in the retained rule: the owner ruled 2026-10-05 (D-50, ruling Y) that a list
+         that loaded EMPTY is retained content; the full banner there throws away what the last
+         good read found and hints at groups the user cannot see;
+     (h) a plain has-loaded boolean: after a change of signed-in identity the previous identity's
+         cards, with their gear and Invite controls, would stay on screen until the new list lands.
+     Changing this is a decision, not a cleanup. */
+  const [groupsSettledFor, setGroupsSettledFor] = useState(null);
+  const hasLoaded = groupsSettledFor === selfUuid;
+  const generationRef = useRef(0);
+  // The identity whose cards are on screen. Written only by a SUCCESSFUL result (88.6.1-70
+  // contract C3), never inferred from the row count.
+  const [groupsLoadedFor, setGroupsLoadedFor] = useState(null);
   const [settingsGroup, setSettingsGroup] = useState(null);
   const [userRoles, setUserRoles] = useState({});
   /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserGroups failure is tracked as its own
@@ -82,13 +123,19 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     // Mount-fire gate: wait for the caller's own Users.id UUID to resolve. This
     // guard IS the resolution gate (paired with selfUuid in the effect deps).
     if (!selfUuid) return;
+    // D-37 (edge R9 ordering, latest wins): see the DECISION Phase 88.6.1-41 (D-37) marker above.
+    const generation = ++generationRef.current;
+    const requestedFor = selfUuid;
 
     try {
       setLoading(true);
-      setGroupsError(null);
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
       const groupsData = await groupsAPI.getUserGroups(selfUuid);
+      if (generation !== generationRef.current) return;
       setGroups(groupsData || []);
+      setGroupsLoadedFor(requestedFor);
+      // Cleared on SUCCESS, not at refresh start (88.6.1-70 contract C2).
+      setGroupsError(null);
     } catch (error) {
       // A DEVELOPER log, deliberately NOT routed through `getFetchErrorMessage`: this line is
       // diagnostic only and never reaches a person. The user-facing copy for this failure comes
@@ -99,13 +146,18 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       // scan matches ONE PHYSICAL LINE and its user-facing-sink pattern ends in a bare
       // `message:` arm, so spelling the key at the call site reds a gate this line never touched.
       logger.info('Error fetching groups:', errCtx(error));
+      if (generation !== generationRef.current) return;
       // Keep the ERROR object, not a flattened string: useFetchErrorState reads
       // `ApiError.code` off it to pick the right user-facing copy.
       setGroupsError(
         error instanceof Error ? error : new Error("The groups request didn't complete.")
       );
     } finally {
-      setLoading(false);
+      // Only the latest request clears the busy flag and records the settle.
+      if (generation === generationRef.current) {
+        setLoading(false);
+        setGroupsSettledFor(requestedFor);
+      }
     }
   };
 
@@ -123,7 +175,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     error: groupsError,
     refetch: retryGroups,
   });
-
+  // D-37 / D-50 / D-51: something loaded for the CURRENT identity, success only. A has-loaded
+  // flag and never a row count (88.6.1-70 contract C3), so a list that loaded EMPTY is retained
+  // content too. Plan 88.6.1-77 swaps this right-hand side for its retained-content hook
+  // (contract C10); the render below reads only these two names.
+  const groupsRetained = groupsLoadedFor === selfUuid;
+  // The full groups banner holds the list's place only while nothing is retained (contract C6).
+  const groupsBannerShown = groupsErrorState.showError && !groupsRetained;
 
   const handleGroupClick = (group, e) => {
     // Navigate to group page instead of opening modal
@@ -138,7 +196,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // HERE instead (banner where the list would be), mirroring the
   // groupHomePage/friends identity-error pattern. The header shell is kept so the
   // error state looks intentional, not a broken half-render.
-  if (selfIdentityErrorState.showError) {
+  // AMENDED Phase 88.6.1-41 (AC-29): with a RETAINED identity a failed self refetch no longer
+  // replaces a working list. A failed refetch keeps the query's data, so `selfUuid` stays
+  // defined; this shell is for a terminal failure with NO id, and the compact notice in the
+  // list below carries the retained case.
+  if (selfIdentityErrorState.showError && !selfUuid) {
     return (
       <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
@@ -163,7 +225,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     );
   }
 
-  if (loading) {
+  if (!hasLoaded) {
     return (
       <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
@@ -208,13 +270,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       <FetchErrorBanner state={selfIdentityErrorState} compact />
 
       <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
-        {groupsErrorState.showError ? (
+        {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary
+            that put the full banner in place of retained cards (see DECISION Phase 88.6.1-41
+            (D-37, Req 9) above). The banner holds the list's place only while nothing loaded. */}
+        {groupsBannerShown && (
           <FetchErrorBanner
             state={groupsErrorState}
             title="We couldn't load your groups"
             reportContext="Your groups list (home page)"
           />
-        ) : groups.length === 0 ? (
+        )}
+        {!groupsBannerShown && groups.length === 0 && (
           /* DECISION Phase 88-18 (Req 6): this EmptyState's CTA is rendered IN ADDITION to the
              identical header button above, not instead of it — the opposite call to
              OpenPollsList/PromptScheduleManager, which suppress theirs. The difference is where
@@ -240,8 +306,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               ) : undefined
             }
           />
-        ) : (
-          groups.map((group) => {
+        )}
+        {!groupsBannerShown && groups.length > 0 && (
+          // aria-busy sits on this wrapper, never on the scroll div that also holds the alert
+          // banner (RESEARCH M-3.1, A3). It reproduces the scroll div's column gap, so the
+          // layout is unchanged; the map body below is deliberately not re-indented.
+          <div className="flex flex-col gap-4" aria-busy={loading || undefined}>
+          {groups.map((group) => {
             // Get users from the group (Users array from backend)
             const groupUsers = group.Users || [];
             const lastEvent = group.Events?.[0]; // First event from the included events
@@ -1003,7 +1074,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 </div>
               </div>
             );
-          })
+          })}
+          </div>
         )}
       </div>
       
