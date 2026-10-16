@@ -227,7 +227,7 @@ describe('ClickableMemberName username is keyboard-operable (87.8-08 -> 88-28)',
     await waitFor(() => expect(addFriend).toHaveFocus());
     fireEvent.click(addFriend);
 
-    const failure = await screen.findByText('Failed to send request');
+    const failure = await screen.findByText("We couldn't send that request.");
     expect(failure.closest('[role="alert"]')).not.toBeNull();
   });
 
