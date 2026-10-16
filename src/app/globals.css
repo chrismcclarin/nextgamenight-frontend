@@ -1566,7 +1566,8 @@
      `EmailAddressSection.tsx`) — a future gated `.btn-accent`/`.btn-danger` must mint its pair
      here and its rule beside the others, not fall back to opacity. Full cascade marker at
      `.btn[aria-disabled='true']`.
-     AMENDED Phase 88.6.1-22 (D-39, owner sample pending — Task 2): the DANGER gated pair is
+     AMENDED Phase 88.6.1-22 (D-39, owner chose pair R from the 375px sample on 2026-10-16, in
+     his words "Follow all recommendations"): the DANGER gated pair is
      minted here, beside the others (`--color-btn-danger-gated-bg` / `-text`, literal hexes: this
      file has no red palette steps, the same reason the status-error tokens are literals). MEASURED
      2026-10-04 and re-measured 2026-10-16 with `src/lib/wcag.ts` — light `#7f1d1d` on `#fecaca`
@@ -1577,7 +1578,18 @@
      UAT3-J1, `.planning/deferred/phase-88.9.md:268`), OVER an `aria-disabled:opacity-50` call-site
      utility (this marker's own rule; 88.8 measured 2.0974:1 on a composited label), and OVER
      keeping native `disabled` on danger buttons (R123 / D-39 rule it out — the pressed control
-     drops focus). Accent still has no gated arm — Task 3 records the owner's ruling. */
+     drops focus).
+     AMENDED Phase 88.6.1-22 (owner answer 2Q, 2026-10-16, "Follow all recommendations"): the
+     ACCENT gated pair is minted here too (`--color-btn-accent-gated-bg` / `-text`), chosen OVER
+     a label-only gated accent (full amber with only the words changing — the shape the DR-C
+     marker at `.btn[aria-disabled='true']` warns reads as actively interactive while refusing
+     every press). Light: amber-900 ink on an amber-200 fill **7.2847**, fill ΔL* **44.5194**
+     from the resting amber-700, fill on the white card 1.2454. The resting accent FAMILY is
+     theme-equal by design (Gate A test 45 enumerates exactly its three keys), but this GATED
+     pair forks per theme ON PURPOSE: a theme-equal light-amber fill would be the loudest thing
+     on a dark card, louder than the resting button; the count pill already forks at its own
+     state (tests 51-52). Measured 2026-10-16 with `src/lib/wcag.ts`. Consumers: plan
+     88.6.1-47's two Share Game QR buttons. */
   --color-btn-primary-gated-bg: var(--purple-200);
   --color-btn-primary-gated-text: var(--purple-700);
   --color-btn-secondary-gated-bg: var(--warm-100);
@@ -1585,6 +1597,8 @@
   --color-btn-secondary-gated-border: var(--warm-200);
   --color-btn-danger-gated-bg: #fecaca;
   --color-btn-danger-gated-text: #7f1d1d;
+  --color-btn-accent-gated-bg: var(--amber-200);
+  --color-btn-accent-gated-text: var(--amber-900);
   /* Phase 88.3-14 (owner ruling 2): the secondary-control RING and its hover step. Bridged as
      `ring-line-control` / `border-line-control` in `@theme inline` above. Dark is `transparent`
      (declared in `.dark`, not omitted, so the 1px is unconditional and the theme toggle shifts
@@ -1950,7 +1964,10 @@
      gated ink is `--color-text-muted` on the card (5.9963). Light marker carries the rule.
      88.6.1-22 (D-39): danger gated is `#fecaca` on `#7f1d1d` **6.9256**, fill ΔL* **26.9123**
      from the dark `#ef4444`, fill on the dark card `#232d3e` **1.3822** — it inverts the light
-     pair ON PURPOSE (deep fill, light ink: the dark primary gated pair's shape). */
+     pair ON PURPOSE (deep fill, light ink: the dark primary gated pair's shape).
+     88.6.1-22 (owner answer 2Q, 2026-10-16): accent gated is amber-200 on amber-900 **7.2847**,
+     fill ΔL* **16.0394** from amber-700, fill on the dark card 1.5265 — the inverse of the light
+     pair, forked per theme on purpose (light token marker). */
   --color-btn-primary-gated-bg: var(--purple-700);
   --color-btn-primary-gated-text: var(--purple-200);
   --color-btn-secondary-gated-bg: var(--purple-800);
@@ -1958,6 +1975,8 @@
   --color-btn-secondary-gated-border: transparent;
   --color-btn-danger-gated-bg: #7f1d1d;
   --color-btn-danger-gated-text: #fecaca;
+  --color-btn-accent-gated-bg: var(--amber-900);
+  --color-btn-accent-gated-text: var(--amber-200);
   /* Phase 88.3-14 (owner ruling 2): ruling 2 is LIGHT-ONLY. Dark `.btn-secondary` is `purple-800`
      on a `purple-900` page and already carries a tonal edge, so both control-edge tokens resolve to
      `transparent` here. DECLARED rather than omitted on purpose: that keeps the 1px border
@@ -2442,6 +2461,9 @@ body {
      - `.btn-danger[aria-disabled]`    (0,2,0) beats `.btn-danger` (0,1,0), declared
        later — fill AND ink swap, like primary, because white ink cannot keep 4.5:1
        on a lighter red (88.6.1-22, D-39; numbers at the light token marker).
+     - `.btn-accent[aria-disabled]`    (0,2,0) beats `.btn-accent` (0,1,0), declared
+       later — fill AND ink swap, like danger (88.6.1-22, owner answer 2Q on
+       2026-10-16; numbers at the light token marker).
      - ghost has NO class and NO fill (`Button.tsx`, Tailwind utilities; a grep for
        `btn-ghost` returns zero) — its gated ink is `aria-disabled:text-content-muted`
        IN `Button.tsx`, which is alive because `.btn` sets no `color`. Its ground
@@ -2456,7 +2478,8 @@ body {
    below stay narrowed with `:not([aria-disabled='true'])`; the press rule too.
    `.btn-accent` / `.btn-danger` carry no gated arm (zero gated call sites) —
    see the token marker for what a future one must do. AMENDED Phase 88.6.1-22
-   (D-39): `.btn-danger` now carries one; `.btn-accent` — see Task 3's ruling line. Gate A test 53 pins every
+   (D-39): `.btn-danger` now carries one; AMENDED again (owner answer 2Q, 2026-10-16):
+   `.btn-accent` carries one too, consumed by plan 88.6.1-47. Gate A test 53 pins every
    gated pair AND scans this file for any `aria-disabled` rule that reaches for
    `opacity` again. */
 .btn[aria-disabled='true'] {
@@ -2477,6 +2500,11 @@ body {
 .btn-danger[aria-disabled='true'] {
   background-color: var(--color-btn-danger-gated-bg);
   color: var(--color-btn-danger-gated-text);
+}
+
+.btn-accent[aria-disabled='true'] {
+  background-color: var(--color-btn-accent-gated-bg);
+  color: var(--color-btn-accent-gated-text);
 }
 
 /* DECISION Phase 87.8 (D-12): pressed state is an INSTANT OPACITY DIM, chosen OVER a
