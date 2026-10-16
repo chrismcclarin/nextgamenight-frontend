@@ -177,7 +177,12 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
   {
     file: 'app/userProfile/page.js',
     receiver: 'phoneValidation',
-    declaredAt: 228,
+    // RE-DERIVED by plan 88.6.1-18 (2026-10-15): 228 -> 231. The declaration did not move on its
+    // own: plan 18 added one import (`useFocusRecovery`) and one hoisted copy constant with its
+    // comment line (`VERIFY_CODE_IN_FLIGHT_LABEL`, row P1) above it, and every other symbol that
+    // plan added sits below it. Kept as a line number rather than a text anchor, per the note on
+    // the AvailabilityForm entry above: the line number is what makes a MOVE visible.
+    declaredAt: 231,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +

@@ -46,6 +46,7 @@ import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 // AC-2 convert-on-touch (owner ruling 2026-09-09; LEVEL AMENDED 2026-09-13). This file's
 // 20 raw console calls route through the house logger at `info`, which is
 // Sentry.addBreadcrumb (logger.ts:34-36) — a BREADCRUMB, not an event. `errCtx` is the
@@ -126,6 +127,8 @@ const DEFAULT_PREFERENCES = {
     event_updated: { email: true, sms: false },
     event_cancelled: { email: true, sms: false },
 };
+// Copy row P1 (88.6.1 D-30, ratified 2026-10-04): the pressed Verify's in-flight label.
+const VERIFY_CODE_IN_FLIGHT_LABEL = 'Verifying...';
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -229,8 +232,11 @@ function Profile(){
     const [verificationCode, setVerificationCode] = useState('');
     const [phoneError, setPhoneError] = useState(null);
     const [resendCooldown, setResendCooldown] = useState(0);
+    // True while a verification-code CHECK is in flight (W066). Named for the check, not after
+    // `'verifying'`, which is already the code-ENTRY value of `phoneState` above.
+    const [checkingCode, setCheckingCode] = useState(false);
 
-    /* DECISION Phase 88.6-17 (R2 #29 / T-88.6-146, T-88.6-147): the two phone-flow senders
+    /* DECISION Phase 88.6-17 (R2 #29 / T-88.6-146, T-88.6-147): the three phone-flow senders
        carry a SYNCHRONOUS in-flight latch as their handler's first statement, released in a
        `finally` — chosen OVER relying on the rendered gate alone.
 
@@ -245,13 +251,25 @@ function Profile(){
        the point, and a surviving control can be pressed again.
 
        Both halves land together or neither does: an `aria-disabled` control with no handler
-       refusal is a re-submittable button. Removing either one is a decision, not a cleanup. */
+       refusal is a re-submittable button. Removing either one is a decision, not a cleanup.
+
+       AMENDED Phase 88.6.1-18 (W066): Verify joined them (`verifyInFlightRef`). It had no
+       in-flight state at all, so a double tap sent two verification checks, and a late
+       `{ verified: false }` from the second painted the wrong-code line over a number the first
+       check had already verified (WR-505). Same pair, same rule. */
     const saveInFlightRef = useRef(false);
     const resendInFlightRef = useRef(false);
+    const verifyInFlightRef = useRef(false);
     /* R2 #29, second defect: the cooldown ticker used to be a LOCAL `const timer`, cleared only
        by its own tick — nothing cancelled it on unmount. Held in a ref and cleared in the
        existing unmount effect below, alongside removeArmedTimerRef. */
     const resendTimerRef = useRef(null);
+    // Req 5 (88.6.1-18): a successful check unmounts the focused Verify. The target is the
+    // settled "Phone verified" text, the fallback the profile card's <h1> — see the marker in
+    // `handleVerifyCode`.
+    const phoneVerifiedRef = useRef(null);
+    const profileHeadingRef = useRef(null);
+    const phoneVerifyRecovery = useFocusRecovery({ fallback: profileHeadingRef });
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -603,15 +621,20 @@ function Profile(){
     };
 
     const handleVerifyCode = async () => {
+        // W066 / WR-505 (D-35): the in-flight refusal, synchronous and FIRST — a double tap
+        // used to send two checks. See the marker on `saveInFlightRef`.
+        if (verifyInFlightRef.current) return;
         if (!user?.sub || !verificationCode) return;
         if (!selfUuid) {
             setPhoneError('Still loading your account — please try again in a moment.');
             return;
         }
+        verifyInFlightRef.current = true;
+        setCheckingCode(true);
         try {
             setPhoneError(null);
             // 88-CODE-REVIEW H1: the wrong-code outcome is a 200 { verified: false }
-            // (routes/users.js:727-732 — the Twilio check not approving is a response,
+            // (routes/users.js:823-828 — the Twilio check not approving is a response,
             // not a throw; only MALFORMED input 400s). apiFetch throws solely on
             // !response.ok, so discarding this body took the success path on a wrong
             // code: phone_verified true in local state + the immortal self cache while
@@ -621,6 +644,23 @@ function Profile(){
                 setPhoneError("That code didn't match. Check it and try again.");
                 return;
             }
+            /* DECISION Phase 88.6.1-18 (Req 5): a successful check unmounts the Verify button
+               the user is standing on (the code-entry branch is swapped for the verified row),
+               so focus would fall to <body>. The shared `useFocusRecovery` is armed HERE, at
+               SUCCESS — the only path that removes the button (a wrong code or a failure leaves
+               it mounted), and `arm` seeds from the live focused element, so a user who moved
+               on during the request is not followed. This is the same choice plan 88.6.1-11
+               made against plan 04's "arm before any await" wording.
+               Target: the settled "Phone verified" text, programmatic focus only — it tells a
+               screen-reader user the outcome (D-06 is the precedent). Fallback: the profile
+               card's <h1>, the heading of this block's section (D-05).
+               REJECTED: (a) inline per-host focus code (D-04, by tenet); (b) focusing a
+               "Change number" link — it says nothing about what happened; (c) minting a
+               heading or any text (D-05, D-31).
+               Named residual: Safari does not focus a clicked button, so a mouse press there
+               seeds nothing and focus is left where Safari put it. It is a decision, not a
+               cleanup. */
+            const settle = phoneVerifyRecovery.arm({ preferred: () => phoneVerifiedRef.current });
             setPhoneState('verified');
             setVerificationCode('');
             // Reflect the now-verified number locally (enables the SMS toggles,
@@ -629,17 +669,23 @@ function Profile(){
             // pre-verification row.
             setUserData(prev => (prev ? { ...prev, phone: phoneInput, phone_verified: true } : prev));
             patchSelfCache(queryClient, { phone: phoneInput, phone_verified: true });
+            settle();
         } catch (error) {
             logger.info('Error verifying code:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't check that code. Please try again.",
-                    // The 400 arm covers MALFORMED/missing input only (users.js:701-713)
-                    // — the actual wrong-code outcome is the 200 { verified: false }
-                    // branch above, which reuses the same ratified copy.
+                    // The 400 arm covers MALFORMED/missing input only (routes/users.js:796-799,
+                    // a code that is not 6 digits, and :807-809, no phone on file) — the actual
+                    // wrong-code outcome is the 200 { verified: false } branch above, which
+                    // reuses the same ratified copy.
                     byCode: { validation: "That code didn't match. Check it and try again." },
                 })
             );
+        } finally {
+            // Released in `finally` so a FAILED check does not strand the control.
+            verifyInFlightRef.current = false;
+            setCheckingCode(false);
         }
     };
 
@@ -1636,7 +1682,7 @@ function Profile(){
                                             Re-adding `truncate` here is a decision, not a cleanup —
                                             `Heading.tsx`'s own docblock names this site as an owner of
                                             that call. */}
-                                        <Heading level={1} size="display" className="text-content-primary">
+                                        <Heading ref={profileHeadingRef} level={1} size="display" className="text-content-primary">
                                             {userData?.username || user.name}
                                         </Heading>
                                         {/* §7.3: an icon-only control needs a real accessible
@@ -1854,16 +1900,38 @@ function Profile(){
                                                     aria-describedby={phoneError ? 'phone-flow-error' : undefined}
                                                     className="w-32 text-center tracking-widest"
                                                 />
-                                                {/* An incomplete-code PRECONDITION gate on a control
+                                                {/* DECISION Phase 88.6.1-18 (W066 / D-35): two conditions,
+                                                    two attributes, one control.
+                                                    (1) An incomplete-code PRECONDITION gate on a control
                                                     nobody has activated — the rule of kind leaves it
-                                                    natively `disabled`. */}
+                                                    natively `disabled`.
+                                                    (2) The IN-FLIGHT state is `aria-disabled` plus the
+                                                    `verifyInFlightRef` refusal in `handleVerifyCode` — the
+                                                    rule of POSITION (`DECISION Phase 88.6-22`,
+                                                    FriendInvitePanel.js:59): this is the control the user
+                                                    just pressed, so it keeps focus and a second press is
+                                                    refused. Its label while checking is copy row P1.
+                                                    REJECTED: (a) native `disabled` while checking — it
+                                                    drops focus to <body> in a real browser; (b) folding
+                                                    the precondition into `aria-disabled` — Save & Verify
+                                                    keeps its validity gate native too; (c) making the
+                                                    code field read-only while checking — nothing submits
+                                                    from that field (no form, no key handler on it), so it
+                                                    is not the activated control.
+                                                    Disclosed visible delta: while checking, Verify now
+                                                    shows the P1 label on the gated primary colour pair;
+                                                    before, nothing changed on screen. No call-site
+                                                    opacity or cursor class: both come from the
+                                                    `aria-disabled` rules in globals.css. Dropping either
+                                                    half of the pair is a decision, not a cleanup. */}
                                                 <Button
                                                     variant="primary"
                                                     onClick={handleVerifyCode}
                                                     disabled={verificationCode.length !== 6}
+                                                    aria-disabled={checkingCode ? 'true' : undefined}
                                                     className="whitespace-nowrap"
                                                 >
-                                                    Verify
+                                                    {checkingCode ? VERIFY_CODE_IN_FLIGHT_LABEL : 'Verify'}
                                                 </Button>
                                                 {/* DECISION Phase 88.6-17 (D-8): the cooldown gate is
                                                     `aria-disabled`, with the native `disabled` attribute
@@ -1908,11 +1976,11 @@ function Profile(){
                                     {phoneState === 'verified' && (
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-content-status-success">
-                                                <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </span>
-                                            <span className="text-sm text-content-status-success">Phone verified</span>
+                                            <span ref={phoneVerifiedRef} className="text-sm text-content-status-success">Phone verified</span>
                                             {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
