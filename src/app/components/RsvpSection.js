@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Heading } from '../../components/ui/Heading';
 import { formatDateTime } from '../../lib/datetime';
+import { collapseBlankLines } from '../../lib/collapseBlankLines';
 import { useTimezone } from './TimezoneProvider';
 import { logger, errCtx } from '@/lib/logger';
 
@@ -744,8 +745,23 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                           /* UI-SPEC §4.2: a member's note is BODY COPY, and Caption's closed role
                              list forbids body copy in as many words. §4.2's stated landing rung
                              for 12px misuse is 14, not 16 — it is this row's metadata line under
-                             the name above it, not running prose. Folds 12 -> 14. */
-                          <span className="text-sm text-content-muted ml-0 mt-0.5">{rsvp.note}</span>
+                             the name above it, not running prose. Folds 12 -> 14.
+
+                             DECISION Phase 88.6.1-38 (R10 / AC-31, shared rule 12): the note
+                             keeps its typed line breaks and wraps a long unbroken string with
+                             `whitespace-pre-line` + `wrap-anywhere`, the one pair decided for all
+                             five R10 sites so plans 29, 38 and 52 agree. Two literal classes,
+                             never interpolated. REJECTED `whitespace-pre-wrap`: it keeps runs of
+                             spaces and leading indentation, which a note does not need, and the
+                             sites must not diverge. The value stays a React text child, never
+                             injected as HTML (SPEC Constraint). Chosen as well (owner ruling
+                             #115, 2026-10-13): it renders through plan 88.6.1-84's shared
+                             `collapseBlankLines`, so a run of three or more breaks shows as one
+                             blank line, over rendering every break as typed (a flood of blank
+                             lines pushes the card off a phone screen) and over a server cap (it
+                             would change stored text); the stored note is untouched. Removing
+                             the call is a decision, not a cleanup. */
+                          <span className="text-sm text-content-muted ml-0 mt-0.5 whitespace-pre-line wrap-anywhere">{collapseBlankLines(rsvp.note)}</span>
                         )}
                       </div>
                     ))}
