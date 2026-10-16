@@ -17,6 +17,10 @@ import AutoPromptBehaviorBanner from './AutoPromptBehaviorBanner';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Copy row G4, owner-ratified 2026-10-04 (D-30): byte-equal to the copy table, three ASCII dots as
+// ratified (CP-4a: each row keeps its own ellipsis glyph). Hoisted at the site per D-30's placement rule.
+const CHECK_INS_LOADING_LABEL = 'Loading check-ins...';
+
 /**
  * PromptScheduleSection - Collapsible section for the group planning page.
  *
@@ -50,8 +54,8 @@ export default function PromptScheduleSection({
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   // AC-7: the header's `aria-controls` target. `useId` rather than a literal so two mounted
-  // sections cannot collide on one id — the idiom already shipped at `CalendarListView.js:172`
-  // and `ParticipantRow.js:13`.
+  // sections cannot collide on one id — the idiom already shipped at `CalendarListView.js:186`
+  // (`const uid = useId();`) and `ParticipantRow.js:13` (`const rowId = useId();`).
   const panelId = `prompt-schedule-panel-${useId()}`;
   // H4 focus fallback for Check-ins (D-05): the section has no heading, so its own expand control
   // is the target and none is minted. See DECISION Phase 88.6.1-29 (D-04, D-05, H4) in OpenPollsList.js.
@@ -154,20 +158,23 @@ export default function PromptScheduleSection({
      any interactive failure surface would nest a control inside a control and its retry click
      would bubble to the header's `onClick` and toggle the section. The failure ALREADY has
      exactly one surface — `OpenPollsList`'s banner on the SAME open-polls key
-     (`OpenPollsList.js:104-109`, DECISION-marked at `:37-42`) — and UI-SPEC §6.2 allows exactly
+     (`OpenPollsList.js:200-204` (`<FetchErrorBanner`), DECISION-marked at `:70-75`
+     (`DECISION Phase 88-18 (Req 6 / T-88-18-01`)) — and UI-SPEC §6.2 allows exactly
      one live region per failure.
 
      WHY THE COLLAPSED-AND-FAILED STATE SURFACING NOTHING IS ACCEPTED, and the fact it rests on:
      the only PRODUCTION mount passes `defaultExpanded={true}`
-     (`src/app/groupPlanning/page.js:299-303`; `grep -rn '<PromptScheduleSection' src` returns 5
-     hits — that one plus 4 test renders), so a first failure lands with the panel OPEN and the
+     (`src/app/groupPlanning/page.js:441` (`<PromptScheduleSection`); the production-only command
+     `grep -rnE '<PromptScheduleSection(\s|$|>)' src --include='*.js' | grep -vE '\.(test|spec)\.'`
+     prints exactly one line, that mount), so a first failure lands with the panel OPEN and the
      banner visible. The silent state is reachable only after the user DELIBERATELY collapses the
      section, which is what a disclosure control is for. THE CONDITION THAT RE-OPENS THIS
      DECISION: a mount that stops passing `defaultExpanded={true}`. If that happens the header
      must carry the failure itself.
 
      DO NOT re-tone the `openPollCount === 0` span below into a failure chip — re-merging the
-     empty and failed states is the exact defect this closes, and `OpenPollsList.js:37-42` forbids
+     empty and failed states is the exact defect this closes, and `OpenPollsList.js:70-75`
+     (`DECISION Phase 88-18 (Req 6 / T-88-18-01`) forbids
      it by name ("do not re-merge these two branches").
 
      WEIGHT (R3 / UI-SPEC §4.5, V-6): both chips moved `font-medium` -> `font-bold`. §4.5's
@@ -177,7 +184,7 @@ export default function PromptScheduleSection({
      recorded rejected arm. */
   const renderBadge = () => {
     if (openPollsLoading) {
-      return <span className="text-xs text-content-muted">Loading...</span>;
+      return <span className="text-xs text-content-muted">{CHECK_INS_LOADING_LABEL}</span>;
     }
     // Retained data wins over the error: a count — or a true zero — the user can still trust
     // must not be replaced with nothing. Only a failure with an EMPTY cache omits.
@@ -235,7 +242,17 @@ export default function PromptScheduleSection({
           GIVEN UP, deliberately: the 200ms expand/collapse height transition, which `hidden`
           (display:none) defeats. REJECTED ALTERNATIVE: applying `hidden` on `transitionend`
           (animate out, then hide) — disproportionate machinery on the phase's tracer plan.
-          Reverting to the CSS-only collapse is a decision, not a cleanup. */}
+          Reverting to the CSS-only collapse is a decision, not a cleanup.
+
+          ——— AMENDED Phase 88.6.1-29 (CT correction 9), every sentence above KEPT AS HISTORY: the
+          first paragraph's parse claim is FALSE. Probed 2026-10-05 with this repo's jsdom 29.1.1 /
+          parse5 8.0.1: a `<button>` holding this header's span and its "Next check-in" paragraph
+          parses UNCHANGED; only a paragraph holding a block element restructures. So no hydration
+          mismatch arises from the parser. The CONTENT-MODEL half STANDS and is now the whole
+          reason: a `<button>` allows phrasing content only, and this header holds a `<div>` and a
+          `<p>` ([ASSUMED]: WHATWG content model, not fetched). The choice (`role="button"` over
+          `<button>`) is UNCHANGED and the site is not reopened. Converting it is still a decision,
+          not a cleanup. */}
       <div
         ref={expandControlRef}
         role="button"
@@ -258,7 +275,7 @@ export default function PromptScheduleSection({
                 Section (R7 stays scoped to modals — no Section axe audit is added here and R7's
                 surface list is not amended). The header's accessible name comes from the
                 "Check-ins" span plus the badge; the svg never contributed to it, so
-                `keyboardOperability.test.tsx:87`'s `{ name: /check-ins/i }` is undisturbed. */}
+                `keyboardOperability.test.tsx` (`{ name: /check-ins/i }`) is undisturbed. */}
             <svg
               aria-hidden="true"
               className={`w-4 h-4 text-content-muted transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
@@ -282,18 +299,25 @@ export default function PromptScheduleSection({
           </p>
         )}
       </div>
-      {/* AC-7: `hidden` is what removes this panel from the tab order AND the a11y tree while
-          collapsed — see the amended marker on the header above for the ruling, the `inert`
-          evidence and the transition given up. The `max-h-0 opacity-0` pair is KEPT rather than
-          deleted: it is the EXPANDING half's animation (the panel animates in), and it is what
-          renders correctly in the fraction of a frame between the attribute clearing and paint.
-          Deleting `hidden` to "get the collapse animation back" re-opens WCAG 2.4.3 / 2.4.7. */}
+      {/* DECISION Phase 88.6.1-29 (W018 / WR-205): `hidden` is what removes this panel from the
+          tab order AND the a11y tree while collapsed (see the amended marker on the header above
+          for the ruling and the `inert` evidence); deleting it re-opens WCAG 2.4.3 / 2.4.7.
+          The animation-era classes are DELETED, chosen OVER keeping them: the 2000px height cap,
+          the clip, the 200ms all-property transition, and the collapsed and expanded opacity and
+          height pairs. They were dead: `hidden` clears in the same commit that swapped them, and a
+          CSS transition cannot start from `display:none`. This comment's previous claim that the
+          pair animated the expanding half was false (WR-205). What they cost: the cap clipped a
+          tall admin panel at 2000px, and the clip cut off overflow at the panel's edges (the focus
+          ring's outset, an open kebab list below the last row). Layout is unchanged: no child of
+          this panel carries a top margin at its top edge or a bottom margin at its bottom edge, so
+          the clip's formatting context held no margin in place (measured at plan time); the phone
+          spec `e2e/check-ins-end-focus.spec.ts` guards horizontal page overflow at 375px. When
+          collapsed, the class is inert because `hidden` is display:none. Restoring the classes is
+          a decision, not a cleanup. */}
       <div
         id={panelId}
         hidden={!isExpanded}
-        className={`overflow-hidden transition-all duration-200 ${
-          isExpanded ? 'max-h-[2000px] opacity-100 mt-3' : 'max-h-0 opacity-0'
-        }`}
+        className="mt-3"
       >
         {/* Behavior-shift banner — dismissable, persists across reloads via
             localStorage. Shown to all active members (manual-poll users still
