@@ -14,7 +14,8 @@
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only,
 // so a `.js` sibling would be silently never run.
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'b'.repeat(64);
@@ -266,5 +267,217 @@ describe('invite/game/[token] — W048, L1 and glyphs (plan 88.6.1-19)', () => {
       ).toHaveLength(0);
       cleanup();
     }
+  });
+});
+
+// Plan 88.6.1-19 task 3 — R8 (the game page's slot-0 region) and Req 5 (a Retry that removes
+// the button under the user hands focus to the settled outcome's heading).
+//
+// The region's test handle is re-declared here, never imported (the page must not export it).
+const PAGE_STATUS_TESTID = 'game-invite-page-status';
+const FIXTURE = { game_name: 'Wingspan', event_date: '2030-01-15T12:00:00Z' };
+const FIXTURE_DATE = 'Tuesday, January 15, 2030';
+const NETWORK_LINE = "We couldn't reach the server. Check your connection and try again.";
+const networkError = () =>
+  new ApiError('Network error: Could not connect to the server.', 'network', 0);
+
+/** A promise the test settles by hand. */
+function deferred<T = unknown>() {
+  let resolve: (v: T) => void = () => {};
+  let reject: (e: unknown) => void = () => {};
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe('invite/game/[token] — R8 page announcement and Retry focus (plan 88.6.1-19)', () => {
+  it('R1 (region, expired): one always-mounted sr-only region at slot 0, empty while loading, the SAME node carries the outcome', async () => {
+    const held = deferred();
+    preview().mockReturnValue(held.promise);
+
+    const { container } = render(<GameInvitePage />);
+
+    await screen.findByText('Loading your game night invite...');
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region.textContent).toBe('');
+    expect(container.firstElementChild, 'the region sits at fragment slot 0').toBe(region);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(region).toHaveClass('sr-only');
+
+    await act(async () => {
+      held.reject(postAliasDropError(410, 'gone'));
+    });
+    await screen.findByRole('heading', { name: /game night has passed/i });
+
+    expect(screen.getByTestId(PAGE_STATUS_TESTID), 'node identity across the flip').toBe(region);
+    expect(region.textContent).toBe(
+      'Game Night Has Passed This game night has already passed. Ask the organizer for an invite to the next one!'
+    );
+  });
+
+  it('R2 (joined): the region carries the heading, the game and its date', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(FIXTURE);
+    join().mockResolvedValue({ success: true });
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('heading', { name: "You're in!" });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      `You're in! Wingspan ${FIXTURE_DATE}`
+    );
+  });
+
+  it('R3 (already-joined): the region carries the heading and its detail line', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(FIXTURE);
+    join().mockResolvedValue({ already_joined: true });
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('heading', { name: "You're already in this game" });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      "You're already in this game You joined earlier — see you there!"
+    );
+  });
+
+  it('R4 (transient): the region carries the heading and the register line', async () => {
+    preview().mockRejectedValue(networkError());
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('heading', { name: /couldn't join game night/i });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      `Couldn't join game night ${NETWORK_LINE}`
+    );
+  });
+
+  it('R5 (permanent): the region carries the heading and the invalid-link line', async () => {
+    preview().mockRejectedValue(postAliasDropError(404, 'not_found'));
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('heading', { name: /this invite is no longer valid/i });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      'This invite is no longer valid This invite link is no longer valid.'
+    );
+  });
+
+  it('R6 (signed-out preview): the region names the game and its date', async () => {
+    preview().mockResolvedValue(FIXTURE);
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('link', { name: /join game night/i });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(`Wingspan ${FIXTURE_DATE}`);
+  });
+
+  it('F1 (Req 5): after a Retry, focus lands on the settled heading — and nowhere while in flight', async () => {
+    const user = userEvent.setup();
+    const held = deferred();
+    preview().mockRejectedValueOnce(networkError()).mockReturnValueOnce(held.promise);
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('heading', { name: /couldn't join game night/i });
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('Loading your game night invite...');
+    // Ordering backstop: the page moves focus nowhere while the retry is in flight.
+    expect(document.activeElement).toBe(document.body);
+
+    await act(async () => {
+      held.resolve(FIXTURE);
+    });
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Wingspan' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('F2: the first load moves no focus', async () => {
+    preview().mockRejectedValue(networkError());
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('heading', { name: /couldn't join game night/i });
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('F3: a user who moved focus elsewhere during the retry is not pulled back', async () => {
+    const user = userEvent.setup();
+    const held = deferred();
+    preview().mockRejectedValueOnce(networkError()).mockReturnValueOnce(held.promise);
+
+    render(
+      <>
+        <button type="button">Elsewhere</button>
+        <GameInvitePage />
+      </>
+    );
+
+    await screen.findByRole('heading', { name: /couldn't join game night/i });
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('Loading your game night invite...');
+    const elsewhere = screen.getByRole('button', { name: 'Elsewhere' });
+    act(() => {
+      elsewhere.focus();
+    });
+
+    await act(async () => {
+      held.resolve(FIXTURE);
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Wingspan' });
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it('B1 (R8 idempotency backstop): a Retry that fails the same way clears the region and refills the SAME node', async () => {
+    const user = userEvent.setup();
+    const held = deferred();
+    preview().mockRejectedValueOnce(networkError()).mockReturnValueOnce(held.promise);
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('heading', { name: /couldn't join game night/i });
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    const T = region.textContent;
+    expect(T).toBe(`Couldn't join game night ${NETWORK_LINE}`);
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('Loading your game night invite...');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(region.textContent).toBe('');
+
+    await act(async () => {
+      held.reject(networkError());
+    });
+    await screen.findByRole('heading', { name: /couldn't join game night/i });
+    // Positive wait: the 100 ms dwell may still be running when the heading returns.
+    await waitFor(() => expect(region.textContent).toBe(T));
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+  });
+
+  it('B1-fast (offline Retry): the region stays empty for at least 100 ms before the same text returns', async () => {
+    preview().mockRejectedValueOnce(networkError()).mockRejectedValueOnce(networkError());
+
+    render(<GameInvitePage />);
+
+    await screen.findByRole('heading', { name: /couldn't join game night/i });
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    const T = region.textContent;
+    expect(T).toBe(`Couldn't join game night ${NETWORK_LINE}`);
+
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    const pressedAt = performance.now();
+    await act(async () => {
+      retry.click();
+    });
+    // The second preview call has already rejected inside that act. Without a dwell the region
+    // refills with T in the same tick — a synchronous clear-then-set WebKit does not re-announce.
+    expect(region.textContent, 'the region must read empty right after an instant failure').toBe('');
+
+    await waitFor(() => expect(region.textContent).toBe(T));
+    expect(performance.now() - pressedAt).toBeGreaterThanOrEqual(100);
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
   });
 });
