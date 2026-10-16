@@ -27,6 +27,9 @@
  * redacted wholesale), event.request (url, query_string, Authorization/Cookie
  * headers, cookies, and the POST body), and a deep-scrub of event.extra +
  * event.contexts. This holds even if sendDefaultPii / Sentry.setUser are enabled.
+ * In an SDK element selector, nothing from the first aria-label, title or alt value onward
+ * survives except an allowlisted static label prefix; that is redactNamedAttributes, the first
+ * step of scrubString and of scrubUrl (88.6.1-76, P-09).
  */
 
 const REDACTED = '[REDACTED]';
@@ -141,6 +144,115 @@ const SECRET_KEY_RE = /token|email|phone|secret|password|authorization|api[_-]?k
 // Removing a character from this set, or giving one family its own class again, is a decision,
 // not a cleanup.
 const TOKEN_SEGMENT_END = String.raw`/?#\s"'\x60()[\]{}<>,;`;
+
+// DECISION Phase 88.6.1-76 (P-09, names in element selectors).
+// WHAT. Sentry writes every DOM selector with htmlTreeAsString, which always appends the
+// aria-label, type, name, title and alt attributes with the RAW, unescaped value
+// (@sentry/core 8.55.2 build/esm/utils-hoist/browser.js:114 allowedAttrs, written at :118). In
+// this app those values hold group and member names (src/app/components/ManageMembers.js:619
+// "Role for", src/app/components/ClickableMemberName.js:544 "Add", src/app/friends/page.js:955
+// "Select", src/app/components/grouplist.js:501 alt={group.name}), and this phase adds D-19's
+// gear name and the N8 bell names.
+// CHOSEN. From the FIRST aria-label, title or alt opener, drop everything to the end of the
+// string, except an allowlisted static label prefix (the owner's ask of 2026-10-05: "when
+// sending to Sentry, send customize"). Everything before that opener stays: the tags, ids and
+// classes of the chain up to and including the element that carries the name, normally the
+// clicked control, so a breadcrumb still says which control was clicked
+// (div.card > button.btn[aria-label="Customize [REDACTED]"]).
+// WHY BLANK TO THE END. The SDK writes values unescaped, so the END of a name cannot be found
+// from the string: a crafted name can close the value, inject a fake element and reopen an
+// attribute. The START of the value is real; its end is not. So the rule keeps only what is
+// certainly the app's: the text before the opener, and an allowlisted prefix. Planner probe
+// 2026-10-05 on real SDK output: the rule that tried to find the end let an injected class
+// through on all four crafted trees.
+// COST, written down so nobody "fixes" it back. When an ANCESTOR in the captured chain carries
+// a name-bearing attribute, the clicked control inside it is dropped too (sentry.scrub.test.ts,
+// P-09 battery pair 4). The clicked control's own type and name attributes are dropped, and so
+// is the rest of an exception sentence that embeds a selector. Replay still records the
+// clicked element in its attribute map, and the 80-character channels rarely capture an
+// ancestor at all. Recovering the dropped descendants is possible at the source: the SDK
+// prints a static data-sentry-element value IN PLACE of an element's attributes
+// (browser.js:79-85). That is a per-site markup choice for the owner, not needed for privacy.
+// THE PREFIX LIST is the app's own static label text, so keeping it reveals no user text: a
+// crafted name can only make one of these twelve phrases appear. A label whose text drifts
+// from the list costs debugging only, never privacy. Add a prefix when a templated label is
+// added.
+// WHERE, and why both entry points. The selector reaches Sentry five ways and every one ends
+// in scrubString or scrubUrl: (1) error-event ui.* breadcrumbs, through scrubEvent; (2)
+// replay's own click and keyDown breadcrumbs (@sentry-internal/replay 8.55.2
+// build/npm/esm/index.js:4777), through deepScrubRecording; (3) INP, CLS and interaction span
+// names, through the scrubSpanJson description; (4) LCP and CLS attributes on the pageload
+// root span, through scrubTransaction into scrubEvent's contexts walk; (5) a serialized DOM
+// Event target under extra, through deepScrub. scrubUrl's query strip would otherwise cut a
+// selector at a question mark inside a name before scrubString saw it, so the rule runs first
+// in both. It is idempotent, so the scrubUrl-then-scrubString double pass changes nothing.
+// THE INVARIANT. Tags, ids, classes and type / name values carry no user text in this app,
+// because text before the first opener is kept. The P-09 INVARIANT case in
+// sentry.scrub.test.ts scans the source for the day one does.
+// REJECTED (a): beforeBreadcrumb in Sentry.init. It reaches only core breadcrumbs (@sentry/core
+// build/esm/breadcrumbs.js:30, before replay's hook at :36); it never sees replay's own click
+// breadcrumbs (index.js:4777, added straight to the recording), nor the INP, CLS or LCP
+// selectors, so it would be a second mechanism for one channel in five.
+// REJECTED (b): breadcrumbsIntegration({ dom: false }). It drops every click breadcrumb and
+// reaches neither replay nor spans.
+// REJECTED (c): dom.serializeAttribute. It can only ADD attributes: it replaces the id and
+// classes and still appends the five (browser.js:92-120).
+// REJECTED (d): blanking the whole selector. That loses which control was clicked.
+// REJECTED (e): finding where each value ends (the first version of this rule). A crafted name
+// fakes the end (probe, all four crafted trees).
+// REJECTED (f): (e) plus a strict-grammar check that blanks a record that does not parse. In
+// the probe the grammar (HTML tags only, a type enum, the app's name shapes, the SDK attribute
+// order, at most five elements) accepted every crafted output: the injected text rides in a
+// fake element's class, so only an allowlist of every class and id token in the app would
+// close it, and that cannot be maintained.
+// REJECTED (g): making every name quote-free at the source, so a value would end at the first
+// quote. There is no choke point (61 dynamic name-bearing attribute lines), a scan cannot
+// follow 25 prop-spread lines, and a visible title tooltip would show a typographic quote.
+// KEY RULE. NAME_ATTRIBUTE_KEYS applies in the REPLAY walker only, to replay's attribute map
+// (index.js:4748), as a second control beside the snapshot mask sentry.client.config.js sets
+// in maskAttributes. It is NOT in deepScrub: error-event click breadcrumbs carry only
+// ui.component_name (@sentry/browser 8.55.2 build/npm/esm/integrations/breadcrumbs.js:127),
+// and title is an ordinary key in log context. It is an ADDITIVE key rule of the same kind as
+// SECRET_KEY_RE; the module header's pattern-first rule stands.
+// Keeping anything after the first name-bearing opener other than an allowlisted prefix,
+// removing an attribute from the list, moving this out of scrubString or scrubUrl, or
+// narrowing it to one channel is a decision, not a cleanup.
+// No flags on purpose: it matches only the FIRST opener, and the SDK writes attribute names in
+// lower case.
+const FIRST_NAMED_ATTRIBUTE = /\[(aria-label|title|alt)="([\s\S]*)$/;
+const NAMED_ATTRIBUTE_PREFIXES = Object.freeze([
+  // The bell's friend and invite rows (copy row N8; plan 88.6.1-44).
+  'Accept friend request from ',
+  'Decline friend request from ',
+  'Accept invite to ',
+  'Decline invite to ',
+  // The group card (D-19; plan 88.6.1-54).
+  'Invite member to ',
+  'Customize ',
+  // Existing templated labels: createEvent.js:1408, BallotOptionsEditor.js:71,
+  // ManageMembers.js:619, NextGameNightCard.tsx:464, friends/page.js:955,
+  // ClickableMemberName.js:544 (all under src/app).
+  'Dismiss undo for ',
+  'Remove game option ',
+  'Role for ',
+  'RSVP for ',
+  'Select ',
+  'Add ',
+]);
+const NAME_ATTRIBUTE_KEYS = new Set(['aria-label', 'title', 'alt']);
+
+function redactNamedAttributes(str) {
+  // The replay-leaf guard (marker (v)): these string functions run on every replay Custom
+  // event, so a string with no attribute value in it returns at once.
+  if (str.indexOf('="') === -1) return str;
+  return str.replace(FIRST_NAMED_ATTRIBUTE, (_m, attr, value) => {
+    let keep = '';
+    for (const prefix of NAMED_ATTRIBUTE_PREFIXES) {
+      if (prefix.length > keep.length && value.startsWith(prefix)) keep = prefix;
+    }
+    return `[${attr}="${keep}${REDACTED}"]`;
+  });
+}
 
 /* DECISION Phase 88.6-13 (D3 / review accept-candidate AC-1, RULINGS.md).
    THE AC's NAMESPACE, spelled out because this phase uses `AC-n` in two senses: this is the
@@ -389,7 +501,8 @@ const URL_FRAGMENT =
  */
 function scrubString(str, opts) {
   if (typeof str !== 'string' || str.length === 0) return str;
-  let out = str
+  // 88.6.1-76 (P-09): the named-attribute rule runs FIRST, before every value rule.
+  let out = redactNamedAttributes(str)
     .replace(JWT, REDACTED)
     .replace(BEARER, REDACTED)
     // The whole pair goes; a quote whose partner sat OUTSIDE the match is re-emitted, so the
@@ -430,10 +543,15 @@ function scrubString(str, opts) {
  * 88.6-13: the token-prefix loop MOVED OUT of here into `scrubString` (marker (ii)), which
  * this function already ended by calling — so this function's observable behaviour on a
  * token-bearing URL is unchanged, while every non-URL sink gained the coverage.
+ *
+ * 88.6.1-76 (P-09): the named-attribute rule runs FIRST here, before the query strip; see the
+ * P-09 marker.
  */
 function scrubUrl(url) {
   if (typeof url !== 'string' || url.length === 0) return url;
-  let out = url;
+  // 88.6.1-76 (P-09): BEFORE the query strip, which would otherwise cut a selector at a
+  // question mark inside a name, and before the fragment strip. See the P-09 marker.
+  let out = redactNamedAttributes(url);
   // Strip the query string entirely (it routinely carries magic_token/token).
   const qIndex = out.indexOf('?');
   if (qIndex !== -1) {
@@ -449,7 +567,8 @@ function scrubUrl(url) {
   // `trace_id` is a bare 32-hex string. See the constant's own note.
   out = out.replace(LONG_HEX_PATH_SEGMENT, `$1${REDACTED}`);
   // The token-prefix loop, the JWT/email/phone rules, and the slash guard all live in
-  // `scrubString`. One redaction path, not two.
+  // `scrubString`. One redaction path, not two, except the named-attribute rule, which runs
+  // here first and again in scrubString (idempotent).
   return scrubString(out);
 }
 
@@ -619,10 +738,14 @@ function scrubRecordingEvent(replayEvent) {
  * event, through scrubEvent (pinned end to end through the wired beforeSend by the 88.6.1-08
  * tracer in src/lib/sentryClientReplayGate.test.ts). Console breadcrumbs DO carry a category
  * and reach replay, so the key-hint fix stands.]
+ * [88.6.1-76, P-09: the replay walker ALSO redacts values under the exact keys aria-label,
+ * title and alt, which is replay's attribute map. The event walker deliberately does not; see
+ * the P-09 marker.]
  */
 function deepScrubRecording(value, keyHint) {
   if (typeof value === 'string') {
-    if (keyHint && SECRET_KEY_RE.test(keyHint)) return REDACTED;
+    // NAME_ATTRIBUTE_KEYS: replay's attribute map (88.6.1-76, P-09; this walker ONLY, see the marker).
+    if (keyHint && (SECRET_KEY_RE.test(keyHint) || NAME_ATTRIBUTE_KEYS.has(keyHint))) return REDACTED;
     // Treat URL-looking strings (and anything with a query or token segment) via
     // scrubUrl; everything else via scrubString.
     if (isUrlLike(value)) {
@@ -664,6 +787,12 @@ function deepScrubRecording(value, keyHint) {
      before `beforeSendTransaction` runs (baseclient.js:792-795 precedes :805), and it does NOT
      re-implement `request.url` / `request.query_string` — `scrubEvent` already does both, and a
      second copy is what the duplication tenet forbids.
+   AMENDED 2026-10 (88.6.1-76, R3-M5): the value walk is UNCHANGED; a key-name DENY rule is
+   ADDED beside it (SECRET_KEY_RE, so a string, or each string element of an array, under a
+   matching key becomes the placeholder, and a nested object goes through deepScrub with its
+   key). That is not the allowlist rejected above, and it makes this walker match deepScrub and
+   deepScrubRecording. REJECTED: staying value-only, because the first Sentry.startSpan with
+   attributes would bypass a rule the module header calls universal.
    Narrowing the walk to named keys is a decision, not a cleanup. */
 function scrubSpanJson(span) {
   if (!span || typeof span !== 'object') return span;
@@ -673,12 +802,18 @@ function scrubSpanJson(span) {
   if (span.data && typeof span.data === 'object') {
     for (const k of Object.keys(span.data)) {
       const v = span.data[k];
+      // 88.6.1-76 (R3-M5): the key-name rule the other two walkers apply (see the AMENDED
+      // sentence of the 88.6-61 marker above).
+      const secretKey = SECRET_KEY_RE.test(k);
       if (typeof v === 'string') {
-        span.data[k] = scrubSpanDataString(v);
+        span.data[k] = secretKey ? REDACTED : scrubSpanDataString(v);
       } else if (Array.isArray(v)) {
         for (let i = 0; i < v.length; i += 1) {
-          if (typeof v[i] === 'string') v[i] = scrubSpanDataString(v[i]);
+          if (typeof v[i] === 'string') v[i] = secretKey ? REDACTED : scrubSpanDataString(v[i]);
         }
+      } else if (v && typeof v === 'object') {
+        // A nested object goes through the event walker, as the R3-M5 fix text says.
+        deepScrub(v, k);
       }
       // numbers / booleans are left untouched.
     }

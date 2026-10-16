@@ -224,3 +224,46 @@ describe('sentry.client.config.js — logger breadcrumbs leave only through the 
     expect(out.breadcrumbs[0].data.message).toBe('refresh failed: [REDACTED] [REDACTED] for [REDACTED]');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-76 (P-09; threats T-88.6.1-1524 / T-88.6.1-1525). Sentry writes every DOM
+// selector with the raw aria-label / title / alt value, so a click on a control labelled with
+// a group or member name carries that name. `sentry.scrub.js` redacts it (redactNamedAttributes,
+// the P-09 marker there).
+//
+// WHY THIS CASE EXISTS. `src/lib/sentry.scrub.test.ts` pins the pure functions; this case pins
+// that the SDK is HANDED them. Without it, swapping `beforeSend` or `beforeAddRecordingEvent`
+// for another function would leave every unit test green while the names left unscrubbed. It
+// calls the very functions the two mocks received.
+// ---------------------------------------------------------------------------
+describe('sentry.client.config.js — names in element selectors leave only redacted through the wired hooks (88.6.1-76, P-09)', () => {
+  it('W1: a group or invite name in a click selector leaves only its static label prefix, through the beforeSend and beforeAddRecordingEvent the SDK is handed', async () => {
+    const opts = await loadConfigAt('/dashboard');
+    expect(typeof opts.beforeSend).toBe('function');
+    const event = opts.beforeSend!({
+      breadcrumbs: [
+        { category: 'ui.click', message: 'div.card > button.btn[aria-label="Customize Bob\'s group"][type="button"]' },
+      ],
+    }) as { breadcrumbs: Array<{ message: string }> };
+    expect(event.breadcrumbs[0].message).toBe('div.card > button.btn[aria-label="Customize [REDACTED]"]');
+
+    const beforeAddRecordingEvent = replayIntegration.mock.calls[0][0].beforeAddRecordingEvent as (
+      e: Record<string, unknown>
+    ) => Record<string, unknown>;
+    expect(typeof beforeAddRecordingEvent).toBe('function');
+    // Replay's own click breadcrumb is a Custom event (type 5, tag 'breadcrumb'). The name holds a
+    // question mark, which the query strip in scrubUrl used to cut the selector at.
+    const recorded = beforeAddRecordingEvent({
+      type: 5,
+      timestamp: 1,
+      data: {
+        tag: 'breadcrumb',
+        payload: {
+          category: 'ui.click',
+          message: 'li > button[aria-label="Accept invite to Who\'s in?"][type="button"]',
+        },
+      },
+    }) as { data: { payload: { message: string } } };
+    expect(recorded.data.payload.message).toBe('li > button[aria-label="Accept invite to [REDACTED]"]');
+  });
+});

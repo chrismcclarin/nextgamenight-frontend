@@ -2,6 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { describe, it, expect } from 'vitest';
+// DECISION Phase 88.6.1-76 (P-09 SDK pin): CHOSEN, import the INSTALLED SDK's own selector
+// serializer and run real jsdom elements through it, OVER hand-copying its output, because a
+// hand copy cannot notice an SDK upgrade that escapes values or adds an attribute. REJECTED:
+// declaring @sentry/core in package.json. It must stay the exact copy @sentry/nextjs pins
+// (8.55.2, one hoisted copy), and a separate range could install a second copy the app never
+// runs. Replacing this import with a hand-written selector is a decision, not a cleanup.
+import { htmlTreeAsString } from '@sentry/core';
 // The scrub module lives at the repo root (imported by the three sentry.*.config.js
 // runtime files). This test lives under src/ (A3) so the vitest `include` collects
 // it; it reaches the root module via a relative path.
@@ -738,6 +745,302 @@ describe('scrubRecordingEvent (replay pipeline)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Phase 88.6.1-76 (P-09; threats T-88.6.1-1524 / T-88.6.1-1525). Sentry writes every DOM
+// selector with `htmlTreeAsString` from @sentry/core, which appends the aria-label, type, name,
+// title and alt attributes with their RAW, unescaped values. In this app those values carry
+// group and member names, so every click breadcrumb, replay click, INP span and LCP attribute
+// carried them. The rule (redactNamedAttributes in `sentry.scrub.js`, see its P-09 marker):
+// from the FIRST aria-label, title or alt opener, nothing survives except an allowlisted static
+// label prefix (the app's own text). It never has to find where a name ENDS, which is the one
+// thing a crafted name can fake.
+// ---------------------------------------------------------------------------
+describe('P-09 — names in Sentry element selectors leave only as [REDACTED] (88.6.1-76)', () => {
+  it('P-09: a selector keeps the clicked control and its static label prefix; from the first name-bearing value on, nothing survives (realistic names)', () => {
+    const BATTERY: Array<[string, string]> = [
+      // 1. A group name with quotes, square brackets and an apostrophe (D-19's gear label).
+      [
+        'div.flex.items-center > button.rounded-full.p-2[aria-label="Customize Bob\'s "Fun" [Board] Games"][type="button"]',
+        'div.flex.items-center > button.rounded-full.p-2[aria-label="Customize [REDACTED]"]',
+      ],
+      // 2. Unicode and an emoji, in an alt with no static prefix.
+      [
+        'div.flex.-space-x-2 > img.h-8.w-8.rounded-full[alt="Zoë Ångström 🎲"]',
+        'div.flex.-space-x-2 > img.h-8.w-8.rounded-full[alt="[REDACTED]"]',
+      ],
+      // 3. An email used as a member's display name (ManageMembers, "Role for <username or
+      // email>"). Before this plan the email rule caught only the address, and the name
+      // attribute after it survived.
+      [
+        'td.px-2 > select#member-role-3.rounded[aria-label="Role for alice@example.com"][name="role"]',
+        'td.px-2 > select#member-role-3.rounded[aria-label="Role for [REDACTED]"]',
+      ],
+      // 4. A name-bearing ANCESTOR. This is the price of completeness: everything after the
+      // first name-bearing opener could be a crafted fake, so the button inside is dropped too.
+      [
+        'div.tile[title="Meeple"] > button.icon[aria-label="Accept friend request from Ana"][type="button"] > img[alt="Ana"]',
+        'div.tile[title="[REDACTED]"]',
+      ],
+      // 5. A closing quote-bracket inside a name.
+      [
+        'button.link[aria-label="Add Tom "the Rook"] Smith as a friend"][type="button"]',
+        'button.link[aria-label="Add [REDACTED]"]',
+      ],
+      // 6. An element separator inside a name.
+      [
+        'button[aria-label="Accept invite to A > B"][type="button"]',
+        'button[aria-label="Accept invite to [REDACTED]"]',
+      ],
+      // 7. Truncated (the SDK cuts at its string budget).
+      ['button[aria-label="Customize Bo', 'button[aria-label="Customize [REDACTED]"]'],
+      // 8. Embedded in an exception sentence: the rest of the sentence is dropped too.
+      [
+        'Failed to execute \'querySelector\': \'button[title="Bob"]\' is not a valid selector.',
+        'Failed to execute \'querySelector\': \'button[title="[REDACTED]"]',
+      ],
+    ];
+    for (const [input, output] of BATTERY) {
+      expect(scrubString(input), `scrubString: ${input}`).toBe(output);
+      expect(scrubUrl(input), `scrubUrl: ${input}`).toBe(output);
+      // Idempotent: the scrubUrl-then-scrubString double pass changes nothing.
+      expect(scrubString(scrubString(input)), `twice: ${input}`).toBe(output);
+    }
+  });
+
+  it('P-09 NEGATIVE: selectors and text with no name-bearing attribute are byte-identical', () => {
+    // CONFIRM-ONLY: green before and after. aria-labelledby and data-title are not aria-label
+    // or title, and a key="value" pair outside square brackets is not a selector attribute.
+    for (const s of [
+      'body > div#__next > main > button.btn[type="submit"][name="save"]',
+      'div[aria-labelledby="hdr-1"] > button[data-title="x"]',
+      'token_count="5"',
+      ALPHA,
+    ]) {
+      expect(scrubString(s)).toBe(s);
+    }
+  });
+
+  it('P-09 SDK SHAPE: the installed @sentry/core htmlTreeAsString output, realistic and CRAFTED names, keeps no name text', () => {
+    // A DETACHED jsdom tree, never appended to document.body, so the SDK's walk stops at
+    // div.card and the pinned string is deterministic. 200 is replay's maxStringLength; the
+    // raw pins red the day an SDK upgrade escapes values or adds an attribute.
+    const card = document.createElement('div');
+    card.className = 'card';
+    const gear = document.createElement('button');
+    gear.id = 'gear-1';
+    gear.className = 'btn ghost';
+    gear.setAttribute('aria-label', 'Customize Bob\'s "Fun" [Board] Games');
+    gear.setAttribute('type', 'button');
+    gear.setAttribute('name', 'gear');
+    gear.setAttribute('title', 'Settings for Zoë');
+    gear.setAttribute('data-testid', 'group-gear');
+    gear.setAttribute('role', 'button');
+    const avatar = document.createElement('img');
+    avatar.setAttribute('alt', 'ana@example.com');
+    gear.appendChild(avatar);
+    card.appendChild(gear);
+    const raw = htmlTreeAsString(avatar, { maxStringLength: 200 });
+    expect(raw).toBe(
+      'div.card > button#gear-1.btn.ghost[aria-label="Customize Bob\'s "Fun" [Board] Games"][type="button"][name="gear"][title="Settings for Zoë"] > img[alt="ana@example.com"]'
+    );
+    expect(scrubString(raw)).toBe('div.card > button#gear-1.btn.ghost[aria-label="Customize [REDACTED]"]');
+
+    // CRAFTED names (planner probe 2026-10-05): each closes its own value, opens a fake
+    // element whose CLASS carries free text, and reopens a name-bearing attribute. The first
+    // P-09 design, which looked for where a value ends, let alice-smith through on all three.
+    function craftedLeaf(tag: string, cls: string, attrs: Array<[string, string]>): Element {
+      const holder = document.createElement('div');
+      holder.className = 'card';
+      const el = document.createElement(tag);
+      el.className = cls;
+      for (const [k, v] of attrs) el.setAttribute(k, v);
+      holder.appendChild(el);
+      return el;
+    }
+    const CRAFTED: Array<[Element, string, string]> = [
+      [
+        craftedLeaf('button', 'btn', [
+          ['aria-label', 'Customize x"] > button.alice-smith[aria-label="y'],
+          ['type', 'button'],
+        ]),
+        'div.card > button.btn[aria-label="Customize x"] > button.alice-smith[aria-label="y"][type="button"]',
+        'div.card > button.btn[aria-label="Customize [REDACTED]"]',
+      ],
+      [
+        craftedLeaf('button', 'btn', [
+          ['aria-label', 'Add x"] > button.alice-smith[aria-label=" as a friend'],
+          ['type', 'button'],
+        ]),
+        'div.card > button.btn[aria-label="Add x"] > button.alice-smith[aria-label=" as a friend"][type="button"]',
+        'div.card > button.btn[aria-label="Add [REDACTED]"]',
+      ],
+      [
+        craftedLeaf('img', 'avatar', [['alt', 'x"] > img.alice-smith[alt="y']]),
+        'div.card > img.avatar[alt="x"] > img.alice-smith[alt="y"]',
+        'div.card > img.avatar[alt="[REDACTED]"]',
+      ],
+    ];
+    for (const [leaf, rawExpected, scrubbedExpected] of CRAFTED) {
+      const craftedRaw = htmlTreeAsString(leaf, { maxStringLength: 200 });
+      expect(craftedRaw).toBe(rawExpected);
+      const scrubbed = scrubString(craftedRaw);
+      expect(scrubbed).toBe(scrubbedExpected);
+      expect(scrubbed).not.toContain('alice');
+    }
+  });
+
+  it('P-09: the name leaves no channel — error breadcrumb, replay message and attribute map, INP span, LCP attribute, Event target', () => {
+    const GEAR =
+      'div.flex.items-center > button.rounded-full.p-2[aria-label="Customize Bob\'s "Fun" [Board] Games"][type="button"]';
+    const GEAR_OUT = 'div.flex.items-center > button.rounded-full.p-2[aria-label="Customize [REDACTED]"]';
+    const CRAFTED_RAW =
+      'div.card > button.btn[aria-label="Customize x"] > button.alice-smith[aria-label="y"][type="button"]';
+    const CRAFTED_OUT = 'div.card > button.btn[aria-label="Customize [REDACTED]"]';
+
+    // (1) Error event: a ui.click breadcrumb, through scrubEvent.
+    const errorEvent = { breadcrumbs: [{ category: 'ui.click', message: GEAR }] };
+    expect((scrubEvent(errorEvent) as typeof errorEvent).breadcrumbs[0].message).toBe(GEAR_OUT);
+
+    // (2) Replay: its own click breadcrumb is a Custom event carrying the message AND an
+    // attribute map read from the rrweb mirror. The raw map values stand in for snapshot
+    // masking turned off; the replay walker's key rule is the second control.
+    const replayMessage = 'li.notification > button.btn[aria-label="Accept invite to Who\'s in? #3"][type="button"]';
+    const replay = {
+      type: 5,
+      timestamp: 1,
+      data: {
+        tag: 'breadcrumb',
+        payload: {
+          category: 'ui.click',
+          message: replayMessage,
+          data: {
+            nodeId: 42,
+            node: {
+              id: 42,
+              tagName: 'button',
+              textContent: '******',
+              attributes: {
+                id: 'acc-1',
+                class: 'btn',
+                'aria-label': 'Accept invite to Who\'s in? #3',
+                title: 'Bob',
+                alt: 'Bob',
+                type: 'button',
+                testId: 'notif-accept',
+                role: 'button',
+              },
+            },
+          },
+        },
+      },
+    };
+    const replayOut = scrubRecordingEvent(replay) as typeof replay;
+    expect(replayOut.data.payload.message).toBe(
+      'li.notification > button.btn[aria-label="Accept invite to [REDACTED]"]'
+    );
+    const node = replayOut.data.payload.data.node;
+    expect(node.attributes['aria-label']).toBe(R);
+    expect(node.attributes.title).toBe(R);
+    expect(node.attributes.alt).toBe(R);
+    expect(node.attributes.id).toBe('acc-1');
+    expect(node.attributes.class).toBe('btn');
+    expect(node.attributes.type).toBe('button');
+    expect(node.attributes.testId).toBe('notif-accept');
+    expect(node.attributes.role).toBe('button');
+    expect(node.tagName).toBe('button');
+    expect(node.textContent).toBe('******');
+
+    // (3) An INP span: its NAME is the selector.
+    const span = {
+      description: 'body > div#__next > main > button.btn[aria-label="Select Zoë"][type="button"]',
+      op: 'ui.interaction.click',
+      data: {},
+    };
+    expect((scrubSpanJson(span) as typeof span).description).toBe(
+      'body > div#__next > main > button.btn[aria-label="Select [REDACTED]"]'
+    );
+
+    // (4) The LCP element on the pageload root span, which beforeSendSpan never sees: it rides
+    // in contexts.trace.data, through scrubTransaction into scrubEvent.
+    const txn = {
+      type: 'transaction',
+      transaction: '/dashboard',
+      contexts: { trace: { trace_id: TRACE_ID, data: { 'lcp.element': 'div.hero > img.cover[alt="Bob\'s game night"]' } } },
+    };
+    const txnOut = scrubTransaction(txn) as typeof txn;
+    expect(txnOut.contexts.trace.data['lcp.element']).toBe('div.hero > img.cover[alt="[REDACTED]"]');
+    expect(txnOut.contexts.trace.trace_id).toBe(TRACE_ID);
+
+    // (5) A serialized DOM Event under extra (the SDK's __serialized__ shape), crafted name.
+    const withTarget = {
+      extra: { __serialized__: { type: 'click', target: CRAFTED_RAW, currentTarget: '[object Window]' } },
+    };
+    const targetOut = scrubEvent(withTarget) as typeof withTarget;
+    expect(targetOut.extra.__serialized__.target).toBe(CRAFTED_OUT);
+    expect(JSON.stringify(targetOut)).not.toContain('alice');
+  });
+
+  it('P-09 INVARIANT: no id / name / type / className / data-testid expression carries a user-identity field (the closure keeps everything before the first name)', () => {
+    // WHY THIS SCAN EXISTS. redactNamedAttributes keeps everything BEFORE the first
+    // name-bearing opener: the tags, ids, classes and type / name values of the chain. So the
+    // closure is complete only while none of those carries user text. Read one by one at
+    // planning (every DOM name= value is a literal, a useId() derivative or an entity id);
+    // this scan reds the day one does, and the fix then goes at that site, never into an
+    // allowlist here. LIMIT: the matcher is per line, so a multi-line expression is not seen.
+    // The run after the opening brace excludes only the CLOSING brace, so it crosses the
+    // template-literal opener and still sees a field inside one.
+    const IDENTITY_ATTRIBUTE =
+      /\b(?:id|name|type|className|data-testid)=\{[^}]*\b(?:username|displayName|display_name|first_name|last_name|nickname|full_?[nN]ame|(?:group|member|user|friend|participant|player|owner|friendship|game|event|pic|invite|requester|sender)\??\.(?:name|title|username|email))\b/;
+
+    // Self-check: the scan can fail at all, and it does not flag the look-alikes.
+    for (const offender of [
+      '<div id={member.username}>',
+      'name={`x-${user.name}`}',
+      'className={`chip ${group.name}`}',
+      'data-testid={friend?.username}',
+    ]) {
+      expect(IDENTITY_ATTRIBUTE.test(offender), `must match: ${offender}`).toBe(true);
+    }
+    for (const lookAlike of [
+      'name={`member-role-${member.id}`}',
+      'id={emailFieldId}',
+      'className={`a${emailError ? \' b\' : \'\'}`}',
+      'name={glyph}',
+    ]) {
+      expect(IDENTITY_ATTRIBUTE.test(lookAlike), `must not match: ${lookAlike}`).toBe(false);
+    }
+
+    const SRC = path.resolve(__dirname, '..');
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules') continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (
+          /\.(js|jsx|tsx)$/.test(entry.name) &&
+          !entry.name.includes('.test.') &&
+          !entry.name.includes('.e2eReplica.')
+        ) {
+          files.push(full);
+        }
+      }
+    };
+    walk(SRC);
+    // Non-vacuous: a wrong root would scan nothing and pass.
+    expect(files.length).toBeGreaterThan(100);
+    const hits: string[] = [];
+    for (const file of files) {
+      fs.readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (IDENTITY_ATTRIBUTE.test(line)) hits.push(`${path.relative(SRC, file)}:${i + 1}: ${line.trim()}`);
+        });
+    }
+    expect(hits).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 88.6-61 (review round 2 H-1, owner ruling R2-H1-RULING). Performance payloads —
 // transactions (`beforeSendTransaction`) and spans (`beforeSendSpan`, which is ALSO the only
 // hook that reaches standalone INP/CLS spans) — bypassed every scrub layer: `beforeSend` never
@@ -796,6 +1099,36 @@ describe('scrubSpanJson / scrubTransaction — performance egress (R2 H-1)', () 
     const out = scrubSpanJson(span) as typeof span;
     expect(out.data['code.filepath']).not.toContain('abc');
     expect(out.data['code.filepath']).not.toContain('auth0|123');
+  });
+
+  it('R3-M5: scrubSpanJson applies the key-name rule the other two walkers apply; trace ids untouched', () => {
+    // Phase 88.6.1-76 (R3-M5, AC-34 clause 3; threat T-88.6.1-1521). The span walker was
+    // value-only, so a value that matches no value pattern kept itself under `user.email` or
+    // `token` (planner probe 2026-10-04). deepScrub and deepScrubRecording already redact by
+    // key; this pins the third walker to the same rule. None of these values matches a value
+    // pattern on its own, so only the key rule can redact them.
+    const span = {
+      description: 'x',
+      data: {
+        'user.email': 'not-an-email-value',
+        token: 'plainvalue',
+        'auth.tokens': ['plainA', 'plainB'],
+        user: { email: 'plainvalue', id: 'u1' },
+        'http.method': 'GET',
+        'http.response.status_code': 200,
+      },
+      trace_id: TRACE_ID,
+    };
+    const out = scrubSpanJson(span) as typeof span;
+    expect(out.data['user.email']).toBe(R);
+    expect(out.data.token).toBe(R);
+    expect(out.data['auth.tokens']).toEqual([R, R]);
+    expect(out.data.user.email).toBe(R);
+    expect(out.data.user.id).toBe('u1');
+    expect(out.data['http.method']).toBe('GET');
+    expect(out.data['http.response.status_code']).toBe(200);
+    expect(out.description).toBe('x');
+    expect(out.trace_id).toBe(TRACE_ID);
   });
 
   it('CONFIRM-ONLY (marker (iii)): span trace_id / span_id / parent_span_id survive byte-identical', () => {
