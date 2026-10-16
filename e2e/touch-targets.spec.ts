@@ -2265,6 +2265,31 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await expect(filter).not.toHaveAttribute('aria-controls');
     expect(writes, 'a Filter press sent a write to the API').toEqual([]);
   });
+
+  test('R4 (88.6.1-48, AC-19 / D-31): the group games sort toggle is named in words and measures >= 44x44 at 375px', async ({ page }) => {
+    // Owner ruling 2026-10-05 (S1, option A): named "Sort order: ascending" / "Sort order:
+    // descending"; the arrow and its hover tip unchanged; 44px on phones.
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+
+    const sort = page.getByRole('button', { name: /^Sort order: (ascending|descending)$/ });
+    await guardResolved(sort, 'the Group Games sort-direction toggle');
+    await assertMin44(sort, 'the sort arrow (Group Games, 375px)');
+    await expect(sort).toHaveAccessibleName('Sort order: ascending');
+    await expect(sort).toHaveAttribute('title', 'Ascending (click to reverse)');
+
+    const writes = recordApiWrites(page);
+    await sort.click();
+    await expect(sort).toHaveAccessibleName('Sort order: descending');
+    await expect(sort).toHaveAttribute('title', 'Descending (click to reverse)');
+    await sort.click();
+    await expect(sort).toHaveAccessibleName('Sort order: ascending');
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      'the page scrolls sideways at 375px on the Overview tab',
+    ).toBe(true);
+    expect(writes, 'a sort press sent a write to the API').toEqual([]);
+  });
 });
 
 /* ==========================================================================================

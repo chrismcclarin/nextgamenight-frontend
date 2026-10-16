@@ -187,3 +187,48 @@ describe('GroupGamesList Filter disclosure (88.6.1-48: D-44)', () => {
     expect(tokensOf(filter)).toContain('md:min-h-0');
   });
 });
+
+describe('GroupGamesList sort toggle (88.6.1-48: D-31 ruling of 2026-10-05, S1)', () => {
+  it('S1: the arrow is named in the ratified words, the glyph is hidden, and the hover tip is the description', () => {
+    // Owner ruling 2026-10-05, "Ok and ratified" (S1, option A): the screen-reader name is
+    // "Sort order: ascending" / "Sort order: descending"; the arrow and its hover tip stay as
+    // they look. The tip is what a screen reader gets as the description.
+    renderGames();
+    const sort = screen.getByRole('button', { name: 'Sort order: ascending' });
+    expect(sort).toHaveAttribute('title', 'Ascending (click to reverse)');
+    expect(sort).toHaveAccessibleDescription('Ascending (click to reverse)');
+    const glyph = sort.querySelector('[aria-hidden="true"]');
+    expect(glyph).not.toBeNull();
+    expect((glyph as Element).textContent).toBe('↑');
+
+    fireEvent.click(sort);
+    expect(sort).toHaveAccessibleName('Sort order: descending');
+    expect(sort).toHaveAttribute('title', 'Descending (click to reverse)');
+    expect(sort).toHaveAccessibleDescription('Descending (click to reverse)');
+    expect((sort.querySelector('[aria-hidden="true"]') as Element).textContent).toBe('↓');
+
+    fireEvent.click(sort);
+    expect(sort).toHaveAccessibleName('Sort order: ascending');
+  });
+
+  it('S2: a press reverses the order of the list', () => {
+    renderGames();
+    const azul = screen.getByRole('heading', { name: 'Azul' });
+    const catan = screen.getByRole('heading', { name: 'Catan' });
+    expect(azul.compareDocumentPosition(catan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Located by the hover tip, which is byte-unchanged by this plan, so this arm reads the same
+    // control before and after the name changes.
+    fireEvent.click(screen.getByTitle('Ascending (click to reverse)'));
+    const azulAfter = screen.getByRole('heading', { name: 'Azul' });
+    const catanAfter = screen.getByRole('heading', { name: 'Catan' });
+    expect(catanAfter.compareDocumentPosition(azulAfter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('S3: the arrow carries the phone floor in its classes', () => {
+    renderGames();
+    const sort = screen.getByTitle('Ascending (click to reverse)');
+    for (const cls of FLOOR) {
+      expect(tokensOf(sort), `the sort arrow is missing ${cls}`).toContain(cls);
+    }
+  });
+});

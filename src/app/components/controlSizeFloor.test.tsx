@@ -590,6 +590,22 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-h', 'h'],
       label: "GroupGamesList's `Filter` disclosure, height (D-21 / D-44)",
     },
+    gamesSortToggle: {
+      anchor: 'onClick={() => setSortOrder(',
+      expectedFile: 'app/components/GroupGamesList.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "GroupGamesList's sort-direction arrow, height (D-21; floor confirmed with the owner's S1 ruling)",
+    },
+    gamesSortToggleWidth: {
+      anchor: 'onClick={() => setSortOrder(',
+      expectedFile: 'app/components/GroupGamesList.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "GroupGamesList's sort-direction arrow, width (D-21; the arrow is under 44px wide)",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */
