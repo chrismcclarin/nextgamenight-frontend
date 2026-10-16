@@ -348,3 +348,173 @@ describe('Phase 88.6-31 — the SINGLE two-attribute ARIA exception (ACCEPT §9 
     expect(trigger.className).toContain('hover:text-amber-400');
   });
 });
+
+// Phase 88.6.1-28 (D-18, AC-17, register R128): the bell's panel now dismisses through the
+// shared useDismissal hook (src/components/ui/useDismissal.ts, plan 88.6.1-05). Every test
+// below finds controls by role and name, probes "open" by the trigger's aria-expanded plus the
+// panel's own content, and asserts each absence directly after the synchronous fireEvent (no
+// waitFor around an absence, FE-TESTING-CONVENTIONS CF-26).
+describe('Phase 88.6.1-28 — the panel dismisses through the shared hook (D-18, AC-17)', () => {
+  // The Accept button is matched by an anchored pattern, never the bare name: plan 88.6.1-44
+  // renames it to copy row N8 (Accept invite to {group}), and the seed holds one invite and no
+  // friend request, so the match stays unique.
+  const acceptButton = () => screen.getByRole('button', { name: /^Accept/ });
+
+  function renderWithOutside(variant?: 'row') {
+    return render(
+      <>
+        {variant === 'row' ? (
+          <NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />
+        ) : (
+          <NotificationBell user={{ sub: 'auth0|me' }} label={undefined} />
+        )}
+        <button type="button">Outside</button>
+      </>,
+    );
+  }
+
+  it('NB-1. icon variant: Escape inside the open panel closes it, is default-prevented, and returns focus to the trigger', async () => {
+    renderBell();
+    await openBell();
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    const accept = acceptButton();
+    accept.focus();
+    expect(document.activeElement).toBe(accept);
+
+    // fireEvent returns false when a listener called preventDefault.
+    const notPrevented = fireEvent.keyDown(accept, { key: 'Escape' });
+    expect(notPrevented).toBe(false);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Group Invites')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('NB-2. SPEC Edge R6 idempotency: Escape closes once, and a second Escape on the closed bell is inert and not claimed', async () => {
+    renderBell();
+    await openBell();
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+
+    acceptButton().focus();
+    expect(fireEvent.keyDown(acceptButton(), { key: 'Escape' })).toBe(false);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(trigger);
+
+    // Second Escape, panel closed: nobody claims the key, nothing reopens.
+    const secondNotPrevented = fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(secondNotPrevented).toBe(true);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Group Invites')).toBeNull();
+  });
+
+  it('NB-3. row variant (the phone hamburger mount): Escape on the Invites row closes the panel, is default-prevented, and leaves focus on that row', async () => {
+    render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
+    const trigger = screen.getByRole('button', { name: 'Invites notifications' });
+    fireEvent.click(trigger);
+    expect(await screen.findByText('Group Invites')).toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    // fireEvent.click does not move focus, so the focus assertion below is earned by the restore.
+    expect(document.activeElement).not.toBe(trigger);
+
+    const notPrevented = fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(notPrevented).toBe(false);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Group Invites')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('NB-4. focus leaving the bell closes the panel; focus moving inside it, or a null relatedTarget, does not', async () => {
+    renderWithOutside();
+    await openBell();
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+    const outside = screen.getByRole('button', { name: 'Outside' });
+
+    // Inside: focus moves from the Accept button back to the trigger.
+    fireEvent.focusOut(acceptButton(), { relatedTarget: trigger });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Group Invites')).toBeInTheDocument();
+
+    // Null relatedTarget is ambiguous (a press on non-focusable inside chrome), never a dismissal.
+    fireEvent.focusOut(acceptButton(), { relatedTarget: null });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Group Invites')).toBeInTheDocument();
+
+    // Outside: focus lands on a control that is not part of the bell.
+    fireEvent.focusOut(acceptButton(), { relatedTarget: outside });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Group Invites')).toBeNull();
+  });
+
+  it('NB-5. the outside mousedown listener exists only while open: none while closed, one while open, an inside press keeps it open, an outside press closes it and removes the same function', async () => {
+    const addSpy = vi.spyOn(document, 'addEventListener');
+    const removeSpy = vi.spyOn(document, 'removeEventListener');
+    try {
+      renderWithOutside();
+      const mousedownAdds = () => addSpy.mock.calls.filter(([type]) => type === 'mousedown');
+      const mousedownRemoves = () => removeSpy.mock.calls.filter(([type]) => type === 'mousedown');
+
+      // Closed: the bell leaves nothing on the document.
+      expect(mousedownAdds()).toHaveLength(0);
+
+      await openBell();
+      const trigger = screen.getByRole('button', { name: 'Notifications' });
+      expect(mousedownAdds()).toHaveLength(1);
+
+      // A press inside the panel (its heading text) is not a dismissal.
+      fireEvent.mouseDown(screen.getByText('Notifications'));
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('Group Invites')).toBeInTheDocument();
+
+      // A press outside the bell closes the panel.
+      fireEvent.mouseDown(screen.getByRole('button', { name: 'Outside' }));
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByText('Group Invites')).toBeNull();
+
+      // Closing removed the very function that opening added, and added no second one.
+      expect(mousedownAdds()).toHaveLength(1);
+      expect(mousedownRemoves()).toHaveLength(1);
+      expect(mousedownRemoves()[0][1]).toBe(mousedownAdds()[0][1]);
+    } finally {
+      addSpy.mockRestore();
+      removeSpy.mockRestore();
+    }
+  });
+
+  // NB-6 models production's listener order. The App Router hydrates the DOCUMENT itself
+  // (node_modules/next/dist/client/app-index.js:42, const appElement = document;), so in production
+  // React's root listener and Header's document Escape listener (src/app/Header.js:31-42) share one
+  // node, React's registered first. A synthetic stopPropagation cannot stop a later listener on
+  // the same node, so Header still runs and only sees the claim through defaultPrevented. Under
+  // RTL the React root is the render container, not the document, so a document listener would
+  // never be reached here: a jsdom-only reassurance that does not hold in production. The spy is
+  // therefore registered on the RTL container AFTER render, which reproduces production's order.
+  it('NB-6. production Escape order (D-08a, P-10): a later listener on the React root node runs once and sees the Escape the bell claimed as default-prevented; a closed-bell Escape arrives un-prevented; the bell adds no document keydown listener', async () => {
+    const addSpy = vi.spyOn(document, 'addEventListener');
+    const seen: boolean[] = [];
+    const rootSpy = (event: Event) => {
+      if ((event as KeyboardEvent).key === 'Escape') seen.push(event.defaultPrevented);
+    };
+    let container: HTMLElement | null = null;
+    try {
+      container = renderBell().container;
+      container.addEventListener('keydown', rootSpy);
+      await openBell();
+      const trigger = screen.getByRole('button', { name: 'Notifications' });
+
+      acceptButton().focus();
+      fireEvent.keyDown(acceptButton(), { key: 'Escape' });
+      expect(seen).toEqual([true]);
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+      // Anti-vacuity: with the panel closed the same position sees an un-prevented Escape.
+      fireEvent.keyDown(trigger, { key: 'Escape' });
+      expect(seen).toEqual([true, false]);
+
+      expect(addSpy.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(0);
+    } finally {
+      container?.removeEventListener('keydown', rootSpy);
+      addSpy.mockRestore();
+    }
+  });
+});
