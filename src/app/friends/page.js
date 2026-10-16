@@ -18,7 +18,12 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '../../lib/logger';
+
+// D-32 R2 (R8: straight apostrophe), byte-identical to the line this page already showed; the
+// same name as the FriendInvitePanel twin's constant.
+const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try again.";
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
@@ -89,6 +94,23 @@ function FriendsPage() {
     const [groupMembersLoading, setGroupMembersLoading] = useState(false);
     const [bulkInviteLoading, setBulkInviteLoading] = useState(false);
     const [bulkInviteResult, setBulkInviteResult] = useState(null);
+
+    /* DECISION Phase 88.6.1-40 (D-35, rule of POSITION): the control the user just pressed keeps
+       focus while its request runs: `aria-disabled` plus a SYNCHRONOUS first-line ref latch
+       released in a `finally`, chosen OVER the native `disabled` attribute it shipped with (the
+       FriendInvitePanel twin, DECISION 88.6-22). A natively disabled element leaves the focus
+       order, so a keyboard or switch user is stranded mid-submit. The latch is a ref, not the
+       state flag, because a state write does not land before a second synchronous press.
+
+       Invite to Group is such a control. Its VALIDITY half (no group, no friend selected, the
+       group's members still loading) moves to `aria-disabled` as well, because the batch's own
+       settle empties the selection, and a native gate would then blur the very button the user
+       pressed. Disclosed visible delta: at rest with nothing selected (and while a group's
+       members load) it shows the gated colour pair instead of the 50% wash; pressing it then
+       sends nothing. */
+    const bulkInviteInFlightRef = useRef(false);
+    // Newest wins for the group-members load: bumped on every run of the members effect below.
+    const membersLoadGenRef = useRef(0);
 
     // Fetch all data on mount
     useEffect(() => {
@@ -430,15 +452,22 @@ function FriendsPage() {
     };
 
     // Fetch group members when selected group changes
+    // 88.6.1-40 (Req 11, review r2 #49 and r3 L-05): only the CURRENT group's answer writes (a
+    // generation, the house staleness idiom — see the batch-regions marker below), and when it
+    // lands every selected friend who is already a member leaves the selection.
     useEffect(() => {
+        const gen = ++membersLoadGenRef.current;
         if (!selectedGroupId) {
             setGroupMembers([]);
+            // An older answer's settle no longer clears the loading flag, so this branch does.
+            setGroupMembersLoading(false);
             return;
         }
         setGroupMembersLoading(true);
         setSelectedFriends(new Set());
         groupsAPI.getGroupMembers(selectedGroupId)
             .then(members => {
+                if (gen !== membersLoadGenRef.current) return;
                 const memberList = Array.isArray(members) ? members : members?.members || [];
                 // Roster side of the already-in-group join keys on the Users.id
                 // UUID (member.id). The friend side (friend.id below) keys on the
@@ -447,9 +476,23 @@ function FriendsPage() {
                 // is dropped — a flat-keyed join would silently mismatch, D-07).
                 const memberUserIds = memberList.map(m => m.id);
                 setGroupMembers(memberUserIds);
+                // Read the selection as it is NOW (an updater), not as it was when the load
+                // started, so a check made during the load for a non-member survives.
+                setSelectedFriends(prev => {
+                    if (!memberUserIds.some(id => prev.has(id))) return prev;
+                    const next = new Set(prev);
+                    memberUserIds.forEach(id => next.delete(id));
+                    return next;
+                });
             })
-            .catch(() => setGroupMembers([]))
-            .finally(() => setGroupMembersLoading(false));
+            .catch(() => {
+                if (gen !== membersLoadGenRef.current) return;
+                setGroupMembers([]);
+            })
+            .finally(() => {
+                if (gen !== membersLoadGenRef.current) return;
+                setGroupMembersLoading(false);
+            });
     }, [selectedGroupId]);
 
     // Toggle a friend in the selectedFriends set
@@ -467,34 +510,42 @@ function FriendsPage() {
 
     // Bulk invite handler
     const handleBulkInvite = async () => {
-        if (!selectedGroupId || selectedFriends.size === 0) return;
+        // The in-flight refusal, synchronous and FIRST (the rule-of-POSITION marker above).
+        if (bulkInviteInFlightRef.current) return;
+        // Refused while the chosen group's members load: the selection is pruned when they land.
+        if (!selectedGroupId || selectedFriends.size === 0 || groupMembersLoading) return;
+        bulkInviteInFlightRef.current = true;
+        // Captured BEFORE the loop: the outcome names the group this batch was sent to.
+        const groupName = getSelectedGroupName();
         setBulkInviteLoading(true);
+        // The ONLY place the outcome is cleared: it stays until the next batch starts.
         setBulkInviteResult(null);
 
         let successCount = 0;
         let failCount = 0;
 
-        for (const friendUserId of selectedFriends) {
-            // Skip anyone already in the group; otherwise invite by user_id.
-            // The friend's email is resolved server-side (83-06 PII default-deny).
-            if (groupMembers.includes(friendUserId)) continue;
-            try {
-                await invitesAPI.sendFriendInvite(selectedGroupId, friendUserId);
-                successCount++;
-            } catch (err) {
-                failCount++;
+        try {
+            for (const friendUserId of selectedFriends) {
+                // Skip anyone already in the group; otherwise invite by user_id.
+                // The friend's email is resolved server-side (83-06 PII default-deny).
+                if (groupMembers.includes(friendUserId)) continue;
+                try {
+                    await invitesAPI.sendFriendInvite(selectedGroupId, friendUserId);
+                    successCount++;
+                } catch (err) {
+                    failCount++;
+                }
             }
+
+            setBulkInviteResult({ successCount, failCount, groupName });
+            setSelectedFriends(new Set());
+        } finally {
+            bulkInviteInFlightRef.current = false;
+            setBulkInviteLoading(false);
         }
-
-        setBulkInviteResult({ successCount, failCount });
-        setSelectedFriends(new Set());
-        setBulkInviteLoading(false);
-
-        // Clear result after 5 seconds
-        setTimeout(() => setBulkInviteResult(null), 5000);
     };
 
-    // Get selected group name for feedback messages
+    // Get selected group name for feedback messages (captured once, when a batch starts)
     const getSelectedGroupName = () => {
         const group = userGroups.find(g => String(g.id) === String(selectedGroupId));
         return group?.name || 'group';
@@ -627,6 +678,21 @@ function FriendsPage() {
                 </div>
             </div>
         );
+    }
+
+    // The friend batch's outcome, split between the two result regions in the bulk-invite bar
+    // (see the marker there): the all-failed outcome is the alert region's, every other outcome
+    // the polite region's. A batch that sent nothing and failed nothing claims nothing.
+    let batchStatusText = '';
+    let batchErrorText = '';
+    if (bulkInviteResult && (bulkInviteResult.successCount > 0 || bulkInviteResult.failCount > 0)) {
+        if (bulkInviteResult.failCount > 0 && bulkInviteResult.successCount === 0) {
+            batchErrorText = BATCH_INVITE_FAILED_MESSAGE;
+        } else if (bulkInviteResult.failCount === 0) {
+            batchStatusText = `Invited ${bulkInviteResult.successCount} friend(s) to ${bulkInviteResult.groupName}!`;
+        } else {
+            batchStatusText = `Invited ${bulkInviteResult.successCount} friend(s), ${bulkInviteResult.failCount} failed`;
+        }
     }
 
     const tabs = [
@@ -777,11 +843,22 @@ function FriendsPage() {
                                sat on both arms and carried nothing, which is why it simply drops
                                to 400 rather than being traded for a cue. Removing the attribute
                                is a silent a11y regression, not a tidy-up. */
+                            /* DECISION Phase 88.6.1-40 (Req 7, AC-23): the tab buttons take the
+                               house OUTSET focus ring (the string on the Home breadcrumb link in
+                               groupPlanning/page.js, its first `ring-offset-2` class string), chosen OVER the
+                               group-home twin's INSET form: those tabs carry horizontal padding
+                               (groupHomePage/page.js, its `px-4 py-2 text-sm active:opacity-75`
+                               tab class) and these carry none, so an inset ring would be painted
+                               under the label's first and last glyphs and the count pill, and
+                               Req 7 asks for a ring drawn clear of text. Chosen OVER inset plus
+                               padding too: strip geometry is Phase 88.9's. The browser outline
+                               this replaces is outset as well, so nothing moves at rest. Changing
+                               this is a decision, not a cleanup. */
                             <button
                                 key={key}
                                 onClick={() => setActiveTab(key)}
                                 aria-current={activeTab === key ? 'true' : undefined}
-                                className={`pb-3 text-sm transition-colors relative ${
+                                className={`pb-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                                     activeTab === key
                                         ? 'border-b-2 border-btn-primary text-btn-primary'
                                         : 'text-content-secondary hover:text-content-primary'
@@ -886,7 +963,7 @@ function FriendsPage() {
                                                 variant="primary"
                                                 size="default"
                                                 onClick={handleBulkInvite}
-                                                disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading}
+                                                aria-disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading || groupMembersLoading ? 'true' : undefined}
                                                 aria-busy={bulkInviteLoading || undefined}
                                             >
                                                 {bulkInviteLoading && (
@@ -909,23 +986,57 @@ function FriendsPage() {
                                                 <span>Loading group members...</span>
                                             </div>
                                         )}
-                                        {/* Bulk invite result feedback */}
-                                        {bulkInviteResult && (
-                                            <div className={`mt-3 p-3 rounded-lg text-sm ${
-                                                bulkInviteResult.failCount === 0
+                                        {/* DECISION Phase 88.6.1-40 (Req 8, D-22, D-32 R2; Req 11): the batch
+                                            result was a conditionally mounted block with no role, so a
+                                            screen-reader user who pressed Invite to Group heard no outcome at
+                                            all. It is now TWO regions mounted empty with the bar and hidden
+                                            while empty (the D-22 house shape): a polite region for the
+                                            all-succeeded and partial outcomes, and an alert region for the
+                                            all-failed one. Chosen OVER one polite region for every outcome (a
+                                            total failure would queue behind other speech; the invite panel twin
+                                            is split the same way) and OVER the alert role for all of them (a
+                                            success is not an alert). The words are the block's own (D-31); the
+                                            88-27 tint per branch is unchanged.
+
+                                            The line stays until the next batch starts: the old 5 s self-clear
+                                            is REMOVED, chosen OVER holding and clearing it (a line that
+                                            vanishes on its own can be gone before a sighted user looks back,
+                                            and a first batch's clear could wipe a second batch's line), the
+                                            twin's shape (the invite panel never self-clears). Disclosed visible
+                                            delta, for the owner to confirm: the success, partial and all-failed
+                                            lines no longer disappear after 5 s (if a fade is wanted, only the
+                                            all-success line fades, never under 20 s).
+
+                                            The group is captured when the batch starts, so a later change of
+                                            the group select cannot re-word (and re-announce) the line. A
+                                            selection is pruned of anyone the newly loaded group already holds,
+                                            and only the CURRENT group's members answer writes (a generation:
+                                            an older group's late answer neither prunes nor ends the load);
+                                            Invite to Group refuses while the members load, so the bar never
+                                            claims "Invited 0". Chosen OVER emptying the member list at the
+                                            change (every checkbox would be enabled during the load) and OVER
+                                            natively disabling the checkboxes during the load (a focused one
+                                            would drop focus). Changing any of this is a decision, not a
+                                            cleanup. */}
+                                        <StatusRegion
+                                            id="friends-batch-status"
+                                            srOnlyWhenEmpty
+                                            message={batchStatusText}
+                                            className={batchStatusText
+                                                ? `mt-3 p-3 rounded-lg text-sm ${bulkInviteResult.failCount === 0
                                                     ? 'bg-status-success-subtle text-content-status-success border border-status-success'
-                                                    : bulkInviteResult.successCount > 0
-                                                        ? 'bg-status-warning-subtle text-content-status-warning border border-status-warning'
-                                                        : 'bg-status-error-subtle text-content-status-error border border-status-error'
-                                            }`}>
-                                                {bulkInviteResult.failCount === 0
-                                                    ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
-                                                    : bulkInviteResult.successCount > 0
-                                                        ? `Invited ${bulkInviteResult.successCount} friend(s), ${bulkInviteResult.failCount} failed`
-                                                        : "We couldn't send those invites. Please try again."
-                                                }
-                                            </div>
-                                        )}
+                                                    : 'bg-status-warning-subtle text-content-status-warning border border-status-warning'}`
+                                                : 'mt-3'}
+                                        />
+                                        <StatusRegion
+                                            id="friends-batch-error"
+                                            politeness="assertive"
+                                            srOnlyWhenEmpty
+                                            message={batchErrorText}
+                                            className={batchErrorText
+                                                ? 'mt-3 p-3 rounded-lg text-sm bg-status-error-subtle text-content-status-error border border-status-error'
+                                                : 'mt-3'}
+                                        />
                                     </div>
                                 )}
 
