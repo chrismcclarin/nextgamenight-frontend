@@ -347,3 +347,109 @@ describe('ResponseDashboard — a superseded failure is still REPORTED (review r
     expect(errorCalls()).toHaveLength(1);
   });
 });
+
+// Phase 88.6.1-11 (W031 / D-26, Req 11). `logger.error` is a Sentry EVENT (`logger.ts:45`), so
+// WHEN it fires is user-invisible but operator-visible: one outage used to file one event per
+// return-to-tab (the hook's error-only refocus refetch), and an expected reminder cooldown filed
+// an event every time. These cases pin one event per failure EPISODE and none for a cooldown,
+// while every real failure is still captured with the identical error object (T-84-01).
+describe('ResponseDashboard — W031: one Sentry event per failure episode, none for an expected cooldown', () => {
+  const loggedWith = (msg: string) =>
+    (logger.error as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === msg);
+  const respondentsCalls = () => loggedWith('Failed to fetch respondents:');
+  const reminderCalls = () => loggedWith('Failed to send reminder:');
+  const pendingMember = [
+    { user_id: 'u1', username: 'Pending person', has_responded: false, last_reminded_at: null },
+  ];
+
+  beforeEach(() => {
+    // The file-level beforeEach does not reset the logger mock.
+    (logger.error as unknown as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it('a refocus retry that fails the SAME way files no second event (same episode)', async () => {
+    const first = await codedError('forbidden', 403);
+    const second = await codedError('forbidden', 403);
+    let rejectSecond: ((e: unknown) => void) | undefined;
+    api.getRespondents
+      .mockRejectedValueOnce(first)
+      .mockImplementationOnce(() => new Promise((_res, rej) => { rejectSecond = rej; }));
+
+    render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText(FORBIDDEN_COPY);
+    expect(respondentsCalls()).toHaveLength(1);
+
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(api.getRespondents).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      rejectSecond?.(second);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // The banner is still the forbidden one, and the retry's failure filed nothing new.
+    expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(respondentsCalls()).toHaveLength(1);
+    expect(respondentsCalls()[0][1]).toBe(first);
+  });
+
+  it('a success ends the episode: a later failure files a NEW event (confirm-only; guards against a once-per-mount latch)', async () => {
+    const first = await codedError('forbidden', 403);
+    const later = await codedError('forbidden', 403);
+    api.getRespondents
+      .mockRejectedValueOnce(first)
+      .mockResolvedValueOnce(pendingMember)
+      .mockRejectedValueOnce(later);
+
+    render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText(FORBIDDEN_COPY);
+    await act(async () => {
+      screen.getByRole('button', { name: /try again/i }).click();
+    });
+    await screen.findByText('Pending person');
+
+    await act(async () => {
+      screen.getByRole('button', { name: /refresh/i }).click();
+    });
+    // Settle on the logger count this case exists for, never on the banner copy: what a failed
+    // 403 Refresh SHOWS changes in plan 88.6.1-73, and a copy-based settle would red there.
+    await waitFor(() => expect(respondentsCalls()).toHaveLength(2));
+    expect(respondentsCalls()[0][1]).toBe(first);
+    expect(respondentsCalls()[1][1]).toBe(later);
+  });
+
+  it('a reminder_cooldown answer files NO Sentry event', async () => {
+    api.getRespondents.mockResolvedValue(pendingMember);
+    api.sendReminder.mockRejectedValue(
+      await codedError('reminder_cooldown', 429, {
+        details: { next_reminder_available: new Date('2026-10-17T19:30:00Z').toISOString() },
+      })
+    );
+
+    render(<ResponseDashboard {...baseProps} />);
+    const remind = await screen.findByRole('button', { name: /^remind$/i });
+    await act(async () => { remind.click(); });
+
+    // POSITIVE signal first: the cooldown toast fired, so the catch has run.
+    await waitFor(() => expect(toastCalls.error).toHaveBeenCalledTimes(1));
+    expect(reminderCalls()).toHaveLength(0);
+  });
+
+  it('a NON-cooldown reminder failure still files exactly one event, with the identical error object (confirm-only)', async () => {
+    api.getRespondents.mockResolvedValue(pendingMember);
+    const failure = await codedError('forbidden', 403);
+    api.sendReminder.mockRejectedValue(failure);
+
+    render(<ResponseDashboard {...baseProps} />);
+    const remind = await screen.findByRole('button', { name: /^remind$/i });
+    await act(async () => { remind.click(); });
+
+    await waitFor(() => expect(toastCalls.error).toHaveBeenCalledWith(FORBIDDEN_COPY));
+    expect(reminderCalls()).toHaveLength(1);
+    expect(reminderCalls()[0][1]).toBe(failure);
+  });
+});
+
