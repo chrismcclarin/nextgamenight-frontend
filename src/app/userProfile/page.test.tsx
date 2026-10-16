@@ -2423,3 +2423,63 @@ describe('pattern times print 12-hour (fork 1)', () => {
     expect(document.body.textContent).not.toContain('18:00');
   });
 });
+
+// 88.6.1-48 (D-21 / D-44, AC-19): the seven Days-of-Week buttons are PRESSED toggles; All / Clear
+// beside them is an ACTION and carries no pressed state. The floor is pinned here on the class
+// tokens (jsdom has no layout); the geometry is measured at 375px in e2e/touch-targets.spec.ts and
+// the classes are also source-pinned in controlSizeFloor.test.tsx.
+describe('Days of Week toggles (88.6.1-48: D-21 / D-44, AC-19)', () => {
+  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  async function openDaysGroup() {
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    return screen.getByRole('group', { name: 'Days of Week' });
+  }
+
+  it('D1: each day reports its pressed state, and a press flips it both ways', async () => {
+    const group = await openDaysGroup();
+    for (const name of DAY_NAMES) {
+      expect(within(group).getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
+    }
+    const mon = within(group).getByRole('button', { name: 'Mon' });
+    fireEvent.click(mon);
+    expect(within(group).getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(group).getByRole('button', { name: 'Tue' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(within(group).getByRole('button', { name: 'Mon' }));
+    expect(within(group).getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('D2: All / Clear is an action with no pressed state, and it sets or clears all seven', async () => {
+    const group = await openDaysGroup();
+    const allButton = within(group).getByRole('button', { name: 'All' });
+    expect(allButton).not.toHaveAttribute('aria-pressed');
+    fireEvent.click(allButton);
+    for (const name of DAY_NAMES) {
+      expect(within(group).getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
+    }
+    // The SAME node now reads Clear: the label carries what the next press will do.
+    const clearButton = within(group).getByRole('button', { name: 'Clear' });
+    expect(clearButton).toBe(allButton);
+    expect(clearButton).not.toHaveAttribute('aria-pressed');
+    fireEvent.click(clearButton);
+    for (const name of DAY_NAMES) {
+      expect(within(group).getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
+    }
+  });
+
+  it('D3: the phone floor sits in the static classes, so pressed, unpressed and All / Clear all carry it', async () => {
+    const group = await openDaysGroup();
+    fireEvent.click(within(group).getByRole('button', { name: 'Mon' }));
+    const pressed = within(group).getByRole('button', { name: 'Mon' });
+    const unpressed = within(group).getByRole('button', { name: 'Tue' });
+    const allClear = within(group).getByRole('button', { name: 'All' });
+    expect(pressed).toHaveAttribute('aria-pressed', 'true');
+    for (const el of [pressed, unpressed, allClear]) {
+      const tokens = el.className.split(/\s+/);
+      for (const cls of ['min-h-11', 'md:min-h-0', 'min-w-11', 'md:min-w-0']) {
+        expect(tokens, `${el.textContent} is missing ${cls}`).toContain(cls);
+      }
+    }
+  });
+});

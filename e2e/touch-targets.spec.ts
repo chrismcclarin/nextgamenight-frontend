@@ -2160,6 +2160,52 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await discard.click();
     await expect(page.getByRole('button', { name: 'Change', exact: true })).toBeVisible();
   });
+
+  // 88.6.1-48 (T-88.6.1-962): the toggle arms below only flip client-side state and open a panel.
+  // This recorder fails the arm on any POST / PUT / PATCH / DELETE to an `/api/` path while they
+  // press, so a press that started writing to the fixture account would be caught, not shipped.
+  function recordApiWrites(page: Page): string[] {
+    const writes: string[] = [];
+    page.on('request', (request) => {
+      const method = request.method();
+      const { pathname } = new URL(request.url());
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && pathname.startsWith('/api/')) {
+        writes.push(`${method} ${pathname}`);
+      }
+    });
+    return writes;
+  }
+
+  test('R4 (88.6.1-48, AC-19 / D-21): the Profile Days-of-Week toggles and All measure >= 44x44 at 375px and report pressed state', async ({ page }) => {
+    await page.goto('/userProfile');
+    await page.getByRole('button', { name: '+ Add Schedule' }).click();
+
+    // Seven day toggles plus All / Clear, all inside the group the visible "Days of Week" names.
+    // A missing control is a failure, never a skip.
+    const days = page.getByRole('group', { name: 'Days of Week' }).getByRole('button');
+    await guardResolved(days, 'the Days of Week row (seven day toggles and All)', 8);
+    for (const button of await days.all()) {
+      await assertMin44(button, `"${(await button.textContent())?.trim()}" (Days of Week, 375px)`);
+    }
+
+    const writes = recordApiWrites(page);
+    const group = page.getByRole('group', { name: 'Days of Week' });
+    const mon = group.getByRole('button', { name: 'Mon', exact: true });
+    await mon.click();
+    await expect(mon).toHaveAttribute('aria-pressed', 'true');
+    await mon.click();
+    await expect(mon).toHaveAttribute('aria-pressed', 'false');
+
+    // All / Clear is an action (D-21): no pressed state in either label.
+    await expect(group.getByRole('button', { name: 'All', exact: true })).not.toHaveAttribute('aria-pressed');
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      'the page scrolls sideways at 375px with the Days row open',
+    ).toBe(true);
+    // Save Schedule is never pressed; nothing above may write.
+    expect(writes, 'a toggle press sent a write to the API').toEqual([]);
+  });
 });
 
 /* ==========================================================================================

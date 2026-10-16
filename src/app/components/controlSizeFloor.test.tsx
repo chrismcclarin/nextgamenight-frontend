@@ -517,6 +517,39 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-h', 'h'],
       label: "ErrorFallback's `Reload page`",
     },
+    // 88.6.1-48 (D-21 / D-44): toggle subjects are anchored on a state attribute or a unique handler token, because their names are plain text; a `Width` entry exists wherever `min-w-11` was added, because a height entry cannot see width.
+    profileDayToggles: {
+      anchor: 'aria-pressed={recurringForm.daysOfWeek.includes(day)}',
+      expectedFile: 'app/userProfile/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: 'the seven Profile Days-of-Week toggles, height (D-21)',
+    },
+    profileDayTogglesWidth: {
+      anchor: 'aria-pressed={recurringForm.daysOfWeek.includes(day)}',
+      expectedFile: 'app/userProfile/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: 'the seven Profile Days-of-Week toggles, width (D-21; `Fri` is under 44px wide)',
+    },
+    profileDaysAllClear: {
+      anchor: 'daysOfWeek: recurringForm.daysOfWeek.length === 7',
+      expectedFile: 'app/userProfile/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: 'the Days row `All` / `Clear` action, height (D-21)',
+    },
+    profileDaysAllClearWidth: {
+      anchor: 'daysOfWeek: recurringForm.daysOfWeek.length === 7',
+      expectedFile: 'app/userProfile/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: 'the Days row `All` / `Clear` action, width (D-21; `All` is under 44px wide)',
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */
