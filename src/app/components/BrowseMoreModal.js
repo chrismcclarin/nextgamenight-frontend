@@ -7,6 +7,7 @@ import GameSuggestionCard from './GameSuggestionCard';
 import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 
 /**
  * BrowseMoreModal — In-app modal that replaces the legacy standalone
@@ -43,6 +44,9 @@ const TIER_RANGES = {
   heavy: { min: 3.5, max: 5 },
 };
 
+// Copy row E8 (D-09, hoisted per D-30): the refresh line, with the single ellipsis glyph.
+const UPDATING_SUGGESTIONS = 'Updating suggestions…';
+
 function mergeTierRange(tiers) {
   if (tiers.size === 0) return null; // no filter
   const arr = [...tiers];
@@ -72,6 +76,12 @@ export default function BrowseMoreModal({
   const [sortKey, setSortKey] = useState('rating');
   const [sortDirection, setSortDirection] = useState('desc');
   const [hasEverHadResults, setHasEverHadResults] = useState(false);
+  // The first SUCCESSFUL load (D-09a's has-loaded rule). Never reset: the one mount keeps this
+  // component alive across a close and reopen, so a reopen refreshes in place.
+  const [hasLoaded, setHasLoaded] = useState(false);
+  // Whether the request behind the list on screen carried a tier filter (D11 (a)); the empty
+  // state's variant reads this settled value, never live tier state.
+  const [settledFiltersActive, setSettledFiltersActive] = useState(false);
 
   // If the parent updates defaultPlayerCount (e.g., RSVP confirms during the
   // modal's lifetime) and the user hasn't typed yet, sync the input. We only
@@ -118,6 +128,10 @@ export default function BrowseMoreModal({
         const items = Array.isArray(data) ? data : data?.suggestions || [];
         setSuggestions(items);
         if (items.length > 0) setHasEverHadResults(true);
+        // The closure's tiers are the ones this request was BUILT with; a superseded request
+        // never reaches this line (the cancelled check above), so this stamps the answer shown.
+        setSettledFiltersActive(selectedTiers.size > 0);
+        setHasLoaded(true);
       } catch (err) {
         if (!cancelled) {
           /* DECISION Phase 88.6-32 (R1 / T-88.6-140): the copy is DERIVED from `ApiError.code`
@@ -147,7 +161,6 @@ export default function BrowseMoreModal({
              (`useFetchErrorState.ts:46`) rather than a newly-authored sentence. Adding a
              fallback here means ratifying one first. */
           setError(getFetchErrorMessage(err));
-          setSuggestions([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -204,10 +217,32 @@ export default function BrowseMoreModal({
     setSortDirection('desc');
   };
 
-  const isEmpty = !loading && !error && displaySuggestions.length === 0;
-  const filtersActive = selectedTiers.size > 0;
-  const libraryEmpty = isEmpty && !filtersActive && !hasEverHadResults;
-  const filtersYieldNone = isEmpty && (filtersActive || hasEverHadResults);
+  /* DECISION Phase 88.6.1-32 (D11, owner 2026-10-13): two rulings shape these values.
+
+     D11 (b), OPTION 2 — the Browse Games exception to D-50. After a failed refresh over an
+     EMPTY result the body shows the dialog's first-load failure sentence in the keyed alert
+     paragraph, with no empty-state sentence and no empty-state button, and the slot stays
+     empty; over kept cards the slot carries it instead (D-41). Never both: one alert.
+     D-50 scope note: D-50 (a loaded-empty list keeps its empty sentence under the failure
+     notice) stays as ruled for the RF1 sites; its retained key is "the same filters", and
+     here the failed request usually carries DIFFERENT filters from the empty result, so it is
+     a first load for that key. REJECTED: D-50 as written (option 1) — the filters sentence
+     under the slot's register line states as fact something the server never answered (SPEC
+     Prohibition 2), and nothing on screen says the sentence is old. REJECTED: a blank body
+     with the slot alone carrying the line (option 3) — the body empties, the centred dialog
+     shrinks and jumps (the look D-09 exists to remove), and it says nothing option 2 lacks.
+
+     D11 (a) — the empty-state variant (library-empty vs the filters one) reads the filters of
+     the last SUCCESSFUL response, chosen OVER live tier state: a tier tap would otherwise flip
+     library-empty to the filters variant before the server answers, which breaks the
+     same-node rule a refresh in place rests on. The tier buttons and the reset keep reading
+     live tier state. Changing any of this is a decision, not a cleanup. */
+  const refreshing = hasLoaded && loading;
+  const isEmpty = displaySuggestions.length === 0;
+  const refreshError = hasLoaded && !isEmpty ? error : null;
+  const bodyError = error && (!hasLoaded || isEmpty) ? error : null;
+  const libraryEmpty = isEmpty && !settledFiltersActive && !hasEverHadResults;
+  const filtersYieldNone = isEmpty && (settledFiltersActive || hasEverHadResults);
 
   const decrementDisabled = (playerCount || 1) <= 1;
 
@@ -428,13 +463,63 @@ export default function BrowseMoreModal({
               </div>
             </div>
           </div>
+
+          {/* DECISION Phase 88.6.1-32 (D-09, D-41, copy row E8): after the first SUCCESSFUL load
+              (hasLoaded) a refresh happens IN PLACE — the previous cards or the settled empty
+              state stay as the same nodes, the results wrapper below is aria-busy, and copy
+              row E8 goes into the polite region here. A failed refresh over kept cards puts the
+              register's line (the failure code's own sentence, no fallback) into the assertive
+              sibling region and keeps the cards. Both regions are always mounted, never nested,
+              in one reserved line that is the LAST row of this sticky toolbar, so the busy line
+              appears and clears without moving the dialog.
+              REJECTED, each with its reason: the slot in the scrolling body (it scrolls out of
+              view when the user has scrolled down the grid — exactly when they change a sort);
+              D-22's srOnlyWhenEmpty prop (it collapses an empty region to zero height, so the
+              dialog would move the instant E8 appears — the defect D-09 rules out; AC-26 records
+              this site as keep-with-reason); dimming old rows (a look option, Phase 88.9 per
+              D-09); a spinner (no house spinner primitive, SPEC amendment row 3); aria-busy on a
+              live region (RESEARCH A3 — it sits on the results wrapper only); reserving two
+              lines for a wrapped failure line (20px more permanent blank space on a 667px phone;
+              at 375px a refresh FAILURE may grow the toolbar by one line, while the busy
+              transition, which happens on every tap, never moves); counting a failed first load
+              as settled (nothing to keep, and a stale failure beside the busy line contradicts
+              itself — the D-09a has-loaded rule); clearing the list on a failed refresh (D-41).
+              Also: the first-load failure paragraph in the body is an alert per D-42 (an alert
+              inserted with its text is announced), and the assertive region here stays empty in
+              that state so nothing is said twice. The two body paragraphs (the failure one and
+              the first-load one) carry DISTINCT keys, and the keys are load-bearing for D-42:
+              without them React reuses the first-load node and switches its role and text in
+              place, which is not an inserted alert (r1 A3). In every state at most one alert
+              element contains the failure line; whenever the body carries it, the assertive
+              region here is empty (r1 D9). Changing any of this is a decision, not a cleanup. */}
+          <div data-testid="browse-more-status" className="mt-2 min-h-5">
+            <StatusRegion
+              message={refreshing ? UPDATING_SUGGESTIONS : ''}
+              className="text-content-muted"
+            />
+            <StatusRegion
+              politeness="assertive"
+              message={refreshError || ''}
+              className="text-content-status-error"
+            />
+          </div>
         </div>
 
-        <div className="p-4">
-          {loading ? (
-            <p className="text-content-muted text-center py-12">Loading suggestions...</p>
-          ) : error ? (
-            <p className="text-content-status-error text-center py-12">{error}</p>
+        <div
+          data-testid="browse-more-results"
+          aria-busy={loading || undefined}
+          className="p-4"
+        >
+          {bodyError ? (
+            <p
+              key="browse-more-failure"
+              role="alert"
+              className="text-content-status-error text-center py-12"
+            >
+              {bodyError}
+            </p>
+          ) : !hasLoaded ? (
+            <p key="browse-more-first-load" className="text-content-muted text-center py-12">Loading suggestions...</p>
           ) : libraryEmpty ? (
             <EmptyState
               variant="library-empty"
