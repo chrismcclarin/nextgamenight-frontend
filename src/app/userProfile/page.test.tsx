@@ -90,6 +90,12 @@ const h = vi.hoisted(() => ({
    */
   authError: null as null | Error,
   setTimezone: vi.fn(),
+  // Plan 88.6.1-18: the useTutorial mock used to build a fresh vi.fn() per call, so nothing
+  // could assert on it. Hoisted so the Replay pins can.
+  replayTutorial: vi.fn(),
+  // Whether the tour is showing, read by the useTutorial mock at CALL time so a rerender sees a
+  // changed value. Reset to false in the root beforeEach (clearAllMocks clears no plain values).
+  showTutorial: false,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -158,7 +164,7 @@ vi.mock('sonner', () => {
 
 // Provider hooks the page consumes; each has its own dedicated identity suite.
 vi.mock('@/app/components/tutorial/TutorialProvider', () => ({
-  useTutorial: () => ({ replayTutorial: vi.fn() }),
+  useTutorial: () => ({ replayTutorial: h.replayTutorial, showTutorial: h.showTutorial }),
 }));
 // `setTimezone` is hoisted (not built per call) so the timezone-picker pins can
 // assert what the Combobox committed.
@@ -276,6 +282,7 @@ beforeEach(() => {
   h.self = undefined;
   h.patterns = [];
   h.authError = null;
+  h.showTutorial = false;
 });
 
 afterEach(cleanup);
@@ -2204,6 +2211,99 @@ describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
     );
     expect(source).toContain('useFocusRecovery({ fallback: profileHeadingRef })');
     expect(source).toContain('ref={profileHeadingRef}');
+  });
+});
+
+// ===========================================================================
+// Plan 88.6.1-18 — Replay Tutorial stays focusable while resetting (W016 / D-35, SPEC
+// amendment row 11). The tutorial itself is not changed (D-49).
+// ===========================================================================
+// The single-request pin is green against the OLD page only because React drops clicks on a
+// natively disabled button; the RED half of R1 is the attributes (C-11).
+describe('Replay Tutorial in flight (88.6.1-18: W016, D-35)', () => {
+  const RESET_FAILED = "We couldn't restart the tour. Please try again.";
+
+  afterEach(async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  it('R1: the pressed Replay reads Starting..., is aria-disabled (not native), and three presses send ONE reset', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    replay.focus();
+    fireEvent.click(replay);
+
+    await waitFor(() => expect(replay).toHaveTextContent('Starting...'));
+    expect(replay).toHaveAttribute('aria-disabled', 'true');
+    expect(replay).not.toBeDisabled();
+
+    fireEvent.click(replay);
+    fireEvent.click(replay);
+    expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(1);
+    expect(replay).toHaveTextContent('Starting...');
+    expect(replay).toHaveAttribute('aria-disabled', 'true');
+    // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, C-11); the real-browser
+    // proof is the phone e2e spec.
+    expect(document.activeElement).toBe(replay);
+
+    await act(async () => { release({ tutorial_version: 0 }); });
+    await waitFor(() => expect(replay.textContent).toBe('Replay Tutorial'));
+  });
+
+  it('R2: a successful reset opens the tour once and the button returns to rest', async () => {
+    renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    fireEvent.click(replay);
+
+    await waitFor(() => expect(h.replayTutorial).toHaveBeenCalledTimes(1));
+    expect(h.replayTutorial).toHaveBeenCalledWith();
+    await waitFor(() => expect(replay.textContent).toBe('Replay Tutorial'));
+    expect(replay).not.toHaveAttribute('aria-disabled');
+    expect(replay).not.toBeDisabled();
+  });
+
+  it('R3: a failed reset toasts once, keeps the diagnostic shape, and releases the latch', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+
+    renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    fireEvent.click(replay);
+
+    await waitFor(() => expect(toastMock().error).toHaveBeenCalledTimes(1));
+    expect(toastMock().error).toHaveBeenCalledWith(RESET_FAILED);
+    expect(loggerMock().info).toHaveBeenCalledWith('Error replaying tutorial:', expect.any(Object));
+    await waitFor(() => expect(replay.textContent).toBe('Replay Tutorial'));
+    expect(replay).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(replay);
+    expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(toastMock().error).toHaveBeenCalledTimes(2));
+  });
+
+  it('R4: while the tour is open Replay is aria-disabled and a press sends no second reset', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const { rerender } = renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    fireEvent.click(replay);
+    await waitFor(() => expect(h.replayTutorial).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(replay.textContent).toBe('Replay Tutorial'));
+
+    // The tour opened: Replay still holds focus under its scrim (no focus handling in the
+    // overlay until the v2.1 rewrite, D-49).
+    h.showTutorial = true;
+    rerender(<Profile />);
+
+    expect(replay).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(replay);
+    expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(1);
   });
 });
 
