@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '../../../components/ui/Button';
+import { usePhoneViewport } from '../../../lib/hooks/usePhoneViewport';
 
 import WelcomeSlide from './WelcomeSlide';
 import ProblemSlide from './simulated/ProblemSlide';
@@ -13,9 +14,11 @@ import HeatmapDemo from './simulated/HeatmapDemo';
 import ScheduleDemo from './simulated/ScheduleDemo';
 
 /**
- * TutorialOverlay — explanatory 5-step tour (Phase 73 ONBD-04 rewrite).
+ * TutorialOverlay — explanatory tour (Phase 73 ONBD-04 rewrite): a welcome scene, then six
+ * steps — five demo scenes the indicator numbers `Step 1 of 6` to `Step 5 of 6`, and the
+ * handoff, which it labels "Last step".
  *
- * All content lives inside a single bg-surface-card modal so text is always
+ * All content lives inside a single `bg-surface-page` card so text is always
  * legible regardless of what's behind. The dark backdrop dims the site;
  * the card provides the actual reading surface.
  *
@@ -29,7 +32,7 @@ import ScheduleDemo from './simulated/ScheduleDemo';
  *   7. Handoff   — branched CTA based on signupSource (invited vs cold)
  *
  * Persistent chrome:
- *   - Step indicator (top of card): "Step N of 5"
+ *   - Step indicator (top of card): "Welcome", then `Step N of 6`, then "Last step"
  *   - Footer row (bottom of card): ← Back  ·  Skip tutorial  ·  Next →
  *     Skip is mid-row, near the action — not buried in a corner.
  *
@@ -47,8 +50,42 @@ import ScheduleDemo from './simulated/ScheduleDemo';
 
 const DEMO_PHASES = ['problem', 'checkin', 'availability', 'heatmap', 'schedule', 'handoff'];
 
+// The gesture lines, one constant per arm (D-30 placement; R8 straight apostrophes).
+// Copy row T2 (D-30), phone arm.
+const AVAILABILITY_HINT_PHONE = "Tap a time, or press and hold then drag across the times you're available — takes 30 seconds.";
+// Availability hint, desktop — unchanged (D-16).
+const AVAILABILITY_HINT_DESKTOP = "Click and drag across the times you're available — takes 30 seconds.";
+// Copy row T3 (D-30), phone arm.
+const SCHEDULE_LEAD_PHONE = "Press and hold, then drag across the peak to schedule.";
+// Schedule lead, desktop — unchanged (D-16).
+const SCHEDULE_LEAD_DESKTOP = "Drag across the peak to schedule.";
+// Copy row T4 (D-30), phone arm.
+const SCHEDULE_HINT_PHONE = "Press and hold, then drag to set the time window — same gesture as availability.";
+// Schedule hint, desktop — unchanged (D-16).
+const SCHEDULE_HINT_DESKTOP = "Click and drag to set the time window — same gesture as availability.";
+
 export default function TutorialOverlay({ onComplete }) {
   const router = useRouter();
+  /* DECISION Phase 88.6.1-51 (D-16): CHOSEN — the four gesture lines (copy rows T2, T3, T4 here;
+     R4 in ScheduleDemo) fork on the shared usePhoneViewport hook (plan 88.6.1-09), the event time
+     picker's model; desktop keeps today's sentences (the copy table's Tutorial note).
+
+     REJECTED: (a) one sentence for both widths — the desktop sentence names a mouse gesture a
+     phone does not have, and a touch-neutral sentence would be new words the owner has not
+     ratified (D-31); (b) both strings in the DOM, switched by responsive classes — DECISION Phase
+     88.1-11's reason: jsdom applies no stylesheet, so no unit pin could tell the arms apart;
+     (c) a copy of the hook's subscription here — the duplication tenet; plan 09's census fails
+     on it.
+
+     FIRST PAINT: the hook starts false and flips after mount, and every opening starts on the
+     welcome step (the `useState('welcome')` below), which carries no gesture words — so a phone
+     never paints a desktop gesture line. Moving a gesture line onto the welcome step, or opening
+     the tour on another step, is a decision, not a cleanup.
+
+     INHERITED LIMIT: a tablet 768px or wider reads the desktop sentences — the hook is a viewport
+     proxy (DECISION Phase 88.1-11, in the hook's file). The answer is read ONCE here and handed to
+     ScheduleDemo as its isPhoneViewport prop (that file's marker says why). */
+  const isPhoneViewport = usePhoneViewport();
   const [phase, setPhase] = useState('welcome');
   const [stage, setStage] = useState(0);
   const [signupSource, setSignupSource] = useState('cold');
@@ -267,7 +304,7 @@ export default function TutorialOverlay({ onComplete }) {
               </p>
               <AvailabilityPromptDemo stage={stage} />
               <p className="text-content-secondary text-sm mt-4">
-                Click and drag across the times you&apos;re available — takes 30 seconds.
+                {isPhoneViewport ? AVAILABILITY_HINT_PHONE : AVAILABILITY_HINT_DESKTOP}
               </p>
             </div>
           )}
@@ -293,13 +330,13 @@ export default function TutorialOverlay({ onComplete }) {
           {phase === 'schedule' && (
             <div className="w-full text-center">
               <p className="text-content-primary text-xl mb-4 font-bold">
-                Drag across the peak to schedule.
+                {isPhoneViewport ? SCHEDULE_LEAD_PHONE : SCHEDULE_LEAD_DESKTOP}
               </p>
-              <ScheduleDemo stage={stage} />
+              <ScheduleDemo stage={stage} isPhoneViewport={isPhoneViewport} />
               <p className="text-content-secondary text-sm mt-4">
                 {stage >= 3
                   ? 'Event created. Your group gets RSVP and game-vote notifications.'
-                  : 'Click and drag to set the time window — same gesture as availability.'}
+                  : (isPhoneViewport ? SCHEDULE_HINT_PHONE : SCHEDULE_HINT_DESKTOP)}
               </p>
             </div>
           )}
@@ -394,11 +431,12 @@ function HandoffSlide({ signupSource, onPrimary, onSecondary }) {
       </p>
       <div className="flex flex-col gap-2">
         {/* DECISION Phase 88.6-35 (UI-SPEC §3.2, §3.4 rule 3): this is the file's ONE `.btn`
-            element — measured, not inherited. `:212` is a `bg-btn-primary` TOKEN on a progress
-            dot and `:317`/`:336` (the Back and Next controls) carry `rounded-btn` only; none of
+            element — measured, not inherited. The active progress dot's `bg-btn-primary` is a
+            TOKEN, and the footer's Back and Next controls carry `rounded-btn` only; none of
             the three wears `.btn`, so none of them is migrated here and their utilities are all
             alive. `px-6 py-3` are deleted as dead under unlayered `.btn` padding
-            (globals.css:2202); nothing else on this element survived to move. */}
+            (the `.btn` rule's `padding: 0.5rem 1rem;` in globals.css); nothing else on this
+            element survived to move. */}
         <Button
           variant="primary"
           onClick={onPrimary}
