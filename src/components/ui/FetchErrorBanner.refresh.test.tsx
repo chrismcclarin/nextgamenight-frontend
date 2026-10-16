@@ -14,18 +14,22 @@
 // host exposes `controls.setFailed` and the test releases the commit after the settle.
 import * as React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import type { UseQueryResult } from '@tanstack/react-query';
 import { Modal } from '@/app/components/Modal';
 import {
   FetchErrorBanner,
   RefreshFailedNotice,
   SectionLoadFailedNotice,
   REGION_EMPTY_DWELL_MS,
+  RetainedContentFocusGuard,
+  useRetainedContent,
+  isAccessOrGoneError,
 } from './FetchErrorBanner';
 import { getFetchErrorMessage, useFetchErrorState } from './useFetchErrorState';
-import type { FetchErrorState } from './useFetchErrorState';
+import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
 
 afterEach(() => cleanup());
@@ -673,5 +677,720 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     expect(document.activeElement).toBe(document.body);
     expect(headingFocus).not.toHaveBeenCalled();
     expect(visibleLine()?.textContent, 'the notice stays').toBe(RF1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 3 — an access or gone answer is never a refresh failure (C10), a withdrawal never drops
+// focus to the page body (C12 a), and FetchErrorBanner takes the same optional focusTarget.
+// Expected register lines are READ through getFetchErrorMessage, never typed.
+// ---------------------------------------------------------------------------
+
+/** Dispatch a visibilitychange with the document visible (useFetchErrorState.test.tsx's idiom). */
+function fireVisible() {
+  Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+/** The test drives every load: reassign `next` before the load it should answer. */
+interface LoadSource {
+  next: () => Promise<string[]>;
+}
+const okLoad = (rows: string[]) => () => Promise.resolve(rows);
+const failLoad = (err: unknown) => () => Promise.reject(err);
+
+interface C10Controls {
+  load?: () => Promise<unknown>;
+}
+
+/** The contract's hand-rolled adapter (C1-C5) and C10 derivation, shared by the C10 hosts. */
+function useC10Adapter(source: LoadSource, controls?: C10Controls) {
+  const [rows, setRows] = React.useState<string[]>([]);
+  const [loadedFor, setLoadedFor] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
+  const load = async () => {
+    try {
+      const next = await source.next();
+      setRows(next);
+      setLoadedFor('g1');
+      setError(null);
+      return { isError: false };
+    } catch (err) {
+      // C1 + C2: the rows are never written on a failure; the thrown error itself is stored.
+      setError(err);
+      return { isError: true };
+    }
+  };
+  const loadRef = React.useRef(load);
+  loadRef.current = load;
+  const retry = React.useCallback(() => loadRef.current(), []);
+  if (controls) controls.load = retry;
+  React.useEffect(() => {
+    void loadRef.current();
+  }, []);
+  const errorState = useFetchErrorState({
+    isError: Boolean(error),
+    error,
+    refetch: retry,
+  } as unknown as UseQueryResult);
+  const retained = useRetainedContent(loadedFor === 'g1', errorState);
+  return { rows, errorState, retained };
+}
+
+interface C10HostProps {
+  source: LoadSource;
+  controls?: C10Controls;
+  guard?: boolean;
+  inDialog?: boolean;
+  targetInArm?: boolean;
+}
+
+function C10Host({ source, controls, guard = true, inDialog = false, targetInArm = false }: C10HostProps) {
+  const { rows, errorState, retained } = useC10Adapter(source, controls);
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+  const armHeadingRef = React.useRef<HTMLHeadingElement>(null);
+  const guardTarget = inDialog ? undefined : targetInArm ? armHeadingRef : headingRef;
+  const content = (
+    <>
+      {guard ? <RetainedContentFocusGuard retained={retained} focusTarget={guardTarget} /> : null}
+      {retained ? (
+        <>
+          {targetInArm ? <h3 ref={armHeadingRef}>Member list</h3> : null}
+          <RefreshFailedNotice
+            state={errorState}
+            retained={retained}
+            focusTarget={inDialog ? undefined : headingRef}
+          />
+          <ul>
+            {rows.map((name) => (
+              <li key={name}>
+                <button type="button">{name}</button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : errorState.showError ? (
+        <FetchErrorBanner state={errorState} title="Couldn't load members" />
+      ) : (
+        <p>Loading members</p>
+      )}
+    </>
+  );
+  if (inDialog) {
+    return (
+      <Modal open onClose={() => {}}>
+        <Modal.Header>Members</Modal.Header>
+        <Modal.Body>{content}</Modal.Body>
+      </Modal>
+    );
+  }
+  return (
+    <main>
+      <h1>Group page</h1>
+      <section>
+        <h2 ref={headingRef}>Members</h2>
+        {content}
+      </section>
+      <button type="button">Elsewhere</button>
+    </main>
+  );
+}
+
+/** Some `role="alert"` on the page holds `text`. */
+const alertHolding = (text: string) =>
+  screen.getAllByRole('alert').some((el) => (el.textContent ?? '').includes(text));
+
+// The 25 members of `ApiErrorCode` (src/lib/api.ts, anchor `export type ApiErrorCode =`).
+const ALL_CODES: FetchErrorCode[] = [
+  'unknown',
+  'validation',
+  'unauthorized',
+  'forbidden',
+  'not_found',
+  'rate_limited',
+  'token_invalid',
+  'prompt_closed',
+  'prompt_deadline_expired',
+  'reminder_cooldown',
+  'owner_of_active_groups',
+  'account_deleted',
+  'already_restored',
+  'window_expired',
+  'already_used',
+  'invalid_token',
+  'gone',
+  'conflict',
+  'already_member',
+  'invite_pending',
+  'not_provisioned',
+  'unsupported_address',
+  'internal',
+  'network',
+  'config',
+];
+const ACCESS_OR_GONE: FetchErrorCode[] = [
+  'unauthorized',
+  'forbidden',
+  'not_found',
+  'not_provisioned',
+  'gone',
+  'account_deleted',
+  'invalid_token',
+  'already_used',
+  'window_expired',
+  'token_invalid',
+];
+
+/** Render the C10 host, wait for the first load, then fail a refresh with a 500 (RF1 shows). */
+async function renderWithRf1Shown(props: Omit<C10HostProps, 'source' | 'controls'> = {}) {
+  const source: LoadSource = { next: okLoad(['Ann', 'Bo']) };
+  const controls: C10Controls = {};
+  const utils = render(<C10Host source={source} controls={controls} {...props} />);
+  await screen.findByRole('button', { name: 'Ann' });
+  source.next = failLoad(new ApiError('x', 'internal', 500));
+  await act(async () => {
+    await controls.load?.();
+  });
+  await waitFor(() => expect(screen.getAllByText(RF1).length).toBeGreaterThan(0));
+  return { ...utils, source, controls };
+}
+
+describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () => {
+  it('AG-1. the predicate is true for exactly the ten access or gone codes, only while showing, never without a code', () => {
+    expect(ALL_CODES).toHaveLength(25);
+    for (const code of ALL_CODES) {
+      expect(isAccessOrGoneError({ showError: true, code }), code).toBe(ACCESS_OR_GONE.includes(code));
+      expect(isAccessOrGoneError({ showError: false, code }), `${code} while healthy`).toBe(false);
+    }
+    expect(ALL_CODES.filter((code) => isAccessOrGoneError({ showError: true, code }))).toHaveLength(10);
+    // The four wholesale useFetchErrorState mocks return a state with no code at all.
+    const noCode = { showError: true } as unknown as Pick<FetchErrorState, 'showError' | 'code'>;
+    expect(isAccessOrGoneError(noCode)).toBe(false);
+  });
+
+  it('AG-2. a 401 or a 403 refresh over kept rows: no RF1, no rows, the register line in an alert', async () => {
+    for (const err of [new ApiError('x', 'unauthorized', 401), new ApiError('x', 'forbidden', 403)]) {
+      const source: LoadSource = { next: okLoad(['Ann', 'Bo']) };
+      const controls: C10Controls = {};
+      render(<C10Host source={source} controls={controls} />);
+      await screen.findByRole('button', { name: 'Ann' });
+      source.next = failLoad(err);
+      await act(async () => {
+        await controls.load?.();
+      });
+      const line = getFetchErrorMessage(err);
+      await waitFor(() => expect(alertHolding(line), err.code).toBe(true));
+      expect(screen.queryByText(RF1), `${err.code}: never RF1`).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Ann' }), `${err.code}: rows withdrawn`).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('AG-3. a 500, a network failure and a code-less side-read Error keep the rows under RF1', async () => {
+    const failures: unknown[] = [
+      new ApiError('x', 'internal', 500),
+      new ApiError('x', 'network', 0),
+      // C11: a side read is stored code-less, so its code is `unknown`.
+      new Error('side read failed'),
+    ];
+    for (const err of failures) {
+      const source: LoadSource = { next: okLoad(['Ann', 'Bo']) };
+      const controls: C10Controls = {};
+      render(<C10Host source={source} controls={controls} />);
+      await screen.findByRole('button', { name: 'Ann' });
+      source.next = failLoad(err);
+      await act(async () => {
+        await controls.load?.();
+      });
+      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+      expect(screen.getByRole('button', { name: 'Ann' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Bo' })).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it('AG-4. after a 403 the next 500 still withdraws; a success restores; a later 500 is RF1 again', async () => {
+    const user = userEvent.setup();
+    const source: LoadSource = { next: okLoad(['Ann']) };
+    const controls: C10Controls = {};
+    render(<C10Host source={source} controls={controls} />);
+    await screen.findByRole('button', { name: 'Ann' });
+
+    const forbidden = new ApiError('x', 'forbidden', 403);
+    source.next = failLoad(forbidden);
+    await act(async () => {
+      await controls.load?.();
+    });
+    await waitFor(() => expect(alertHolding(getFetchErrorMessage(forbidden))).toBe(true));
+
+    // The full banner's Try again answers 500.
+    const internal = new ApiError('x', 'internal', 500);
+    source.next = failLoad(internal);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(alertHolding(getFetchErrorMessage(internal))).toBe(true));
+    expect(screen.queryByRole('button', { name: 'Ann' }), 'the withdrawn rows stay withdrawn').toBeNull();
+    expect(screen.queryByText(RF1)).toBeNull();
+
+    // A success ends the memory.
+    source.next = okLoad(['Ann']);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('button', { name: 'Ann' });
+    expect(screen.queryByText(RF1)).toBeNull();
+
+    // And a later transient failure is RF1 over the rows again.
+    source.next = failLoad(new ApiError('x', 'internal', 500));
+    await act(async () => {
+      await controls.load?.();
+    });
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('button', { name: 'Ann' })).toBeInTheDocument();
+  });
+
+  it('AG-12. a code the map does not hold fails CLOSED: it withdraws the rows, while a state with no code stays false', async () => {
+    const mystery = 'mystery_code' as unknown as FetchErrorCode;
+    expect(isAccessOrGoneError({ showError: true, code: mystery })).toBe(true);
+    expect(isAccessOrGoneError({ showError: false, code: mystery })).toBe(false);
+    const noCode = { showError: true } as unknown as Pick<FetchErrorState, 'showError' | 'code'>;
+    expect(isAccessOrGoneError(noCode)).toBe(false);
+
+    const source: LoadSource = { next: okLoad(['Ann']) };
+    const controls: C10Controls = {};
+    render(<C10Host source={source} controls={controls} />);
+    await screen.findByRole('button', { name: 'Ann' });
+    source.next = failLoad(new ApiError('x', mystery, 418));
+    await act(async () => {
+      await controls.load?.();
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument());
+    expect(screen.queryByText(RF1)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ann' })).toBeNull();
+  });
+
+  it('AG-13. after a 403 then a 500, a TanStack consumer that remounts over the cached 500 still shows no pre-403 rows', async () => {
+    const key = ['ag13-members'];
+    let queryFn: () => Promise<string[]> = () => Promise.resolve(['Ann']);
+    const refetchRef: { current: (() => Promise<unknown>) | null } = { current: null };
+    function TanStackConsumer() {
+      const query = useQuery({ queryKey: key, queryFn: () => queryFn() });
+      refetchRef.current = query.refetch;
+      const errorState = useFetchErrorState(query);
+      const retained = useRetainedContent(query.data !== undefined, errorState, { queryKey: key });
+      return retained ? (
+        <section>
+          <RefreshFailedNotice state={errorState} retained={retained} />
+          <ul>
+            {(query.data ?? []).map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+        </section>
+      ) : errorState.showError ? (
+        <FetchErrorBanner state={errorState} title="Couldn't load members" />
+      ) : (
+        <p>Loading members</p>
+      );
+    }
+    // A gcTime that outlives the unmount-to-remount gap: gcTime 0 would drop the cached rows.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
+    const shell = (show: boolean) => (
+      <QueryClientProvider client={client}>
+        <main>{show ? <TanStackConsumer /> : null}</main>
+      </QueryClientProvider>
+    );
+    const { rerender, unmount } = render(shell(true));
+    try {
+      await screen.findByText('Ann');
+
+      const forbidden = new ApiError('x', 'forbidden', 403);
+      queryFn = () => Promise.reject(forbidden);
+      await act(async () => {
+        await refetchRef.current?.();
+      });
+      await waitFor(() => expect(alertHolding(getFetchErrorMessage(forbidden))).toBe(true));
+      expect(screen.queryByText('Ann')).toBeNull();
+
+      const internal = new ApiError('x', 'internal', 500);
+      queryFn = () => Promise.reject(internal);
+      await act(async () => {
+        await refetchRef.current?.();
+      });
+      await waitFor(() => expect(alertHolding(getFetchErrorMessage(internal))).toBe(true));
+      expect(screen.queryByText('Ann')).toBeNull();
+
+      // Unmount, then remount under the SAME client while the mount refetch is held.
+      rerender(shell(false));
+      const held = deferred<string[]>();
+      queryFn = () => held.promise;
+      rerender(shell(true));
+      // Not vacuous: the cache still holds the pre-403 rows and the 500.
+      expect(client.getQueryData(key)).toEqual(['Ann']);
+      expect((client.getQueryState(key)?.error as ApiError | null)?.code).toBe('internal');
+      await waitFor(() => expect(alertHolding(getFetchErrorMessage(internal))).toBe(true));
+      expect(screen.queryByText('Ann'), 'no pre-403 rows after the remount').toBeNull();
+      expect(screen.queryByText(RF1)).toBeNull();
+
+      // A success brings the rows back.
+      await act(async () => {
+        held.resolve(['Ann']);
+      });
+      await screen.findByText('Ann');
+    } finally {
+      unmount();
+      client.clear();
+    }
+  });
+
+  it('AG-14. a source whose queryKey is undefined is NO source: it keeps its own rows beside a withdrawn TanStack consumer', async () => {
+    const keyA = ['ag14-a'];
+    let queryFnA: () => Promise<string[]> = () => Promise.resolve(['Ann']);
+    const refetchRef: { current: (() => Promise<unknown>) | null } = { current: null };
+    function ConsumerA() {
+      const query = useQuery({ queryKey: keyA, queryFn: () => queryFnA() });
+      refetchRef.current = query.refetch;
+      const errorState = useFetchErrorState(query);
+      const retained = useRetainedContent(query.data !== undefined, errorState, { queryKey: keyA });
+      return (
+        <section data-testid="consumer-a">
+          {retained ? (
+            <ul>
+              {(query.data ?? []).map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          ) : errorState.showError ? (
+            <FetchErrorBanner state={errorState} title="Couldn't load A" />
+          ) : null}
+        </section>
+      );
+    }
+    const stateB: FetchErrorState = {
+      showError: true,
+      message: 'boom',
+      code: 'internal',
+      retry: () => Promise.resolve({ isError: true }),
+    };
+    function ConsumerB() {
+      // The shape a test mock that omits a hook's queryKey field produces.
+      const retained = useRetainedContent(true, stateB, { queryKey: undefined });
+      return (
+        <section data-testid="consumer-b">
+          {retained ? (
+            <>
+              <RefreshFailedNotice state={stateB} retained={retained} />
+              <ul>
+                <li>Cy</li>
+              </ul>
+            </>
+          ) : (
+            <FetchErrorBanner state={stateB} title="Couldn't load B" />
+          )}
+        </section>
+      );
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
+    const shell = (showB: boolean) => (
+      <QueryClientProvider client={client}>
+        <main>
+          <ConsumerA />
+          {showB ? <ConsumerB /> : null}
+        </main>
+      </QueryClientProvider>
+    );
+    const { rerender, unmount } = render(shell(false));
+    try {
+      await screen.findByText('Ann');
+      const forbidden = new ApiError('x', 'forbidden', 403);
+      queryFnA = () => Promise.reject(forbidden);
+      await act(async () => {
+        await refetchRef.current?.();
+      });
+      await waitFor(() => expect(alertHolding(getFetchErrorMessage(forbidden))).toBe(true));
+
+      rerender(shell(true));
+      const b = within(screen.getByTestId('consumer-b'));
+      expect(b.getByText('Cy')).toBeInTheDocument();
+      expect(b.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+      expect(b.queryByText("Couldn't load B")).toBeNull();
+      const a = within(screen.getByTestId('consumer-a'));
+      expect(a.queryByText('Ann')).toBeNull();
+      expect(a.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    } finally {
+      unmount();
+      client.clear();
+    }
+  });
+
+  it('AG-5. handed retained=true over a 403 anyway, the notice renders the house full banner, never RF1 and never silence', () => {
+    const err = new ApiError('x', 'forbidden', 403);
+    const state: FetchErrorState = {
+      showError: true,
+      message: getFetchErrorMessage(err),
+      code: 'forbidden',
+      retry: () => Promise.resolve({ isError: true }),
+    };
+    render(
+      <main>
+        <h1>Group page</h1>
+        <div data-testid="notice-slot">
+          <RefreshFailedNotice state={state} retained />
+        </div>
+        <ul>
+          <li>Ann</li>
+        </ul>
+      </main>
+    );
+    expect(screen.queryByText(RF1)).toBeNull();
+    const alert = within(slot()).getByRole('alert');
+    expect(alert.textContent).toContain('Something went wrong');
+    expect(alert.textContent).toContain(getFetchErrorMessage(err));
+    expect(slot().querySelectorAll('[role="status"][aria-live="polite"]'), 'one polite region, the banner one').toHaveLength(1);
+  });
+
+  it('AG-6. RF1 then a Retry answered 403: the retained branch leaves and focus lands on the heading (the notice own press arm)', async () => {
+    const user = userEvent.setup();
+    const { source } = await renderWithRf1Shown({ guard: false });
+    const heading = screen.getByRole('heading', { level: 2, name: 'Members' });
+    source.next = failLoad(new ApiError('x', 'forbidden', 403));
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Ann' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('AG-7. an UNPRESSED refresh answered 403 or 401 withdraws the rows while a row holds focus: focus lands on the heading', async () => {
+    for (const err of [new ApiError('x', 'forbidden', 403), new ApiError('x', 'unauthorized', 401)]) {
+      const { source } = await renderWithRf1Shown();
+      const heading = screen.getByRole('heading', { level: 2, name: 'Members' });
+      act(() => screen.getByRole('button', { name: 'Ann' }).focus());
+      source.next = failLoad(err);
+      // The tab-return re-attempt: nobody presses anything.
+      await act(async () => {
+        fireVisible();
+      });
+      await waitFor(() => expect(alertHolding(getFetchErrorMessage(err)), err.code).toBe(true));
+      expect(screen.queryByRole('button', { name: 'Ann' })).toBeNull();
+      await waitFor(() => expect(document.activeElement, err.code).toBe(heading));
+      cleanup();
+    }
+  });
+
+  it('AG-8. a user elsewhere when the withdrawal lands is never moved', async () => {
+    const { source } = await renderWithRf1Shown();
+    const heading = screen.getByRole('heading', { level: 2, name: 'Members' });
+    const headingFocus = vi.fn();
+    heading.addEventListener('focus', headingFocus);
+    const elsewhere = screen.getByRole('button', { name: 'Elsewhere' });
+    act(() => elsewhere.focus());
+    const err = new ApiError('x', 'forbidden', 403);
+    source.next = failLoad(err);
+    await act(async () => {
+      fireVisible();
+    });
+    await waitFor(() => expect(alertHolding(getFetchErrorMessage(err))).toBe(true));
+    await act(async () => {});
+    expect(document.activeElement).toBe(elsewhere);
+    expect(headingFocus).not.toHaveBeenCalled();
+  });
+
+  it('AG-9. inside a dialog with no focusTarget, a withdrawn focused row lands focus on the dialog title', async () => {
+    const { source } = await renderWithRf1Shown({ inDialog: true });
+    const title = screen.getByRole('heading', { name: 'Members' });
+    act(() => screen.getByRole('button', { name: 'Ann' }).focus());
+    const err = new ApiError('x', 'forbidden', 403);
+    source.next = failLoad(err);
+    await act(async () => {
+      fireVisible();
+    });
+    await waitFor(() => expect(alertHolding(getFetchErrorMessage(err))).toBe(true));
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
+  });
+
+  it('AG-10. a focusTarget that went with the content falls through to the floor: main h1', async () => {
+    const { source } = await renderWithRf1Shown({ targetInArm: true });
+    const pageHeading = screen.getByRole('heading', { level: 1, name: 'Group page' });
+    act(() => screen.getByRole('button', { name: 'Ann' }).focus());
+    const err = new ApiError('x', 'forbidden', 403);
+    source.next = failLoad(err);
+    await act(async () => {
+      fireVisible();
+    });
+    await waitFor(() => expect(alertHolding(getFetchErrorMessage(err))).toBe(true));
+    await waitFor(() => expect(document.activeElement).toBe(pageHeading));
+  });
+
+  it('AG-11. the position rule: one guard instance across two distinct returns swapped by the withdrawal', async () => {
+    const instances = new Set<RetainedContentFocusGuard>();
+    const trackGuard = (instance: RetainedContentFocusGuard | null) => {
+      if (instance) instances.add(instance);
+    };
+    function TwoReturnHost({ source, controls }: { source: LoadSource; controls: C10Controls }) {
+      const { rows, errorState, retained } = useC10Adapter(source, controls);
+      if (retained) {
+        return (
+          <div data-testid="retained-view">
+            <RetainedContentFocusGuard ref={trackGuard} retained={retained} />
+            <RefreshFailedNotice state={errorState} retained={retained} />
+            <ul>
+              {rows.map((name) => (
+                <li key={name}>
+                  <button type="button">{name}</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      }
+      return (
+        <div data-testid="banner-view">
+          <RetainedContentFocusGuard ref={trackGuard} retained={retained} />
+          {errorState.showError ? (
+            <FetchErrorBanner state={errorState} title="Couldn't load the event" />
+          ) : (
+            <p>Loading the event</p>
+          )}
+        </div>
+      );
+    }
+    const snapshot = vi.spyOn(RetainedContentFocusGuard.prototype, 'getSnapshotBeforeUpdate');
+    try {
+      const source: LoadSource = { next: okLoad(['Ann']) };
+      const controls: C10Controls = {};
+      render(
+        <main>
+          <h1>Event page</h1>
+          <TwoReturnHost source={source} controls={controls} />
+        </main>
+      );
+      const pageHeading = screen.getByRole('heading', { level: 1, name: 'Event page' });
+      await screen.findByRole('button', { name: 'Ann' });
+      source.next = failLoad(new ApiError('x', 'internal', 500));
+      await act(async () => {
+        await controls.load?.();
+      });
+      await waitFor(() => expect(screen.getAllByText(RF1).length).toBeGreaterThan(0));
+      const ann = screen.getByRole('button', { name: 'Ann' });
+      act(() => ann.focus());
+
+      source.next = failLoad(new ApiError('x', 'forbidden', 403));
+      await act(async () => {
+        fireVisible();
+      });
+      await screen.findByTestId('banner-view');
+      expect(screen.queryByTestId('retained-view')).toBeNull();
+      expect(instances.size, 'one guard instance, updated, never remounted').toBe(1);
+      expect(
+        snapshot.mock.results.some((result) => result.value === ann),
+        'the snapshot was taken before the DOM changed'
+      ).toBe(true);
+      await waitFor(() => expect(document.activeElement).toBe(pageHeading));
+    } finally {
+      snapshot.mockRestore();
+    }
+  });
+});
+
+describe('FetchErrorBanner — optional focusTarget (plan 88.6.1-70)', () => {
+  it('FT-1. full, caller-gated: a successful Try again lands focus on the host target, not main h1', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    function GatedHost() {
+      const [failed, setFailed] = React.useState(true);
+      const headingRef = React.useRef<HTMLHeadingElement>(null);
+      const state: FetchErrorState = {
+        showError: true,
+        message: 'boom',
+        code: 'internal',
+        retry: async () => {
+          const result = await retry();
+          setFailed(false);
+          return result;
+        },
+      };
+      return (
+        <main>
+          <h1>Page</h1>
+          <section>
+            <h2 ref={headingRef}>Members</h2>
+            {failed && <FetchErrorBanner state={state} title="Couldn't load" focusTarget={headingRef} />}
+          </section>
+        </main>
+      );
+    }
+    render(<GatedHost />);
+    const heading = screen.getByRole('heading', { level: 2, name: 'Members' });
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      pending[0].resolve({ isError: false });
+    });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('FT-2. compact, in-component: a successful Retry lands focus on the host target', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    function CompactTargetHost() {
+      const [failed, setFailed] = React.useState(true);
+      const headingRef = React.useRef<HTMLHeadingElement>(null);
+      const state: FetchErrorState = {
+        showError: failed,
+        message: 'boom',
+        code: 'internal',
+        retry: async () => {
+          const result = await retry();
+          setFailed(false);
+          return result;
+        },
+      };
+      return (
+        <main>
+          <h1>Page</h1>
+          <section>
+            <h2 ref={headingRef}>Members</h2>
+            <FetchErrorBanner compact state={state} focusTarget={headingRef} />
+          </section>
+        </main>
+      );
+    }
+    render(<CompactTargetHost />);
+    const heading = screen.getByRole('heading', { level: 2, name: 'Members' });
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => {
+      pending[0].resolve({ isError: false });
+    });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('FT-3. a focusTarget whose ref is null falls through to the floor: main h1, never <body>', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    function NullTargetHost() {
+      const [failed, setFailed] = React.useState(true);
+      // Never attached: the heading it would point at is not rendered.
+      const missingRef = React.useRef<HTMLHeadingElement>(null);
+      const state: FetchErrorState = {
+        showError: true,
+        message: 'boom',
+        code: 'internal',
+        retry: async () => {
+          const result = await retry();
+          setFailed(false);
+          return result;
+        },
+      };
+      return (
+        <main>
+          <h1>Page</h1>
+          {failed && <FetchErrorBanner state={state} title="Couldn't load" focusTarget={missingRef} />}
+        </main>
+      );
+    }
+    render(<NullTargetHost />);
+    const pageHeading = screen.getByRole('heading', { level: 1, name: 'Page' });
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      pending[0].resolve({ isError: false });
+    });
+    await waitFor(() => expect(document.activeElement).toBe(pageHeading));
   });
 });
