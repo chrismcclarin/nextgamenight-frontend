@@ -64,7 +64,8 @@ export function isDismissableTier(tier: ConfirmTier): boolean {
    "blocking semantics" is most likely to implement — trapping Escape on the typed tier so
    the dialog is truly un-exitable.
 
-   TWO REASONS IT LOSES. (1) `Modal.tsx:48` records a deliberate prior decision — "Esc is
+   TWO REASONS IT LOSES. (1) `Modal.tsx:48` (now `Modal.tsx:55-56`, "Esc is intentionally /
+   NOT routed through here", re-read 2026-10-16) records a deliberate prior decision — "Esc is
    intentionally NOT routed through here; the keyboard close path is never trapped" — and a
    dialog with no keyboard exit is WCAG 2.1.2 (No Keyboard Trap). (2) It buys nothing:
    Escape is an ABORT, and D-08 is about never reaching `onConfirm` without an explicit
@@ -89,7 +90,12 @@ export interface ConfirmDialogProps {
   tier: ConfirmTier;
   /** Controlled open state (the hook's `open`). */
   open: boolean;
-  /** True while the commit is in flight; the confirm control stays disabled. */
+  /**
+   * True while the commit is in flight. The confirm control turns `aria-disabled` and
+   * refuses presses while STAYING focusable (88.6.1-22, R123 / D-39), and the typed
+   * input turns read-only (D-26). Cancel, the close, Escape and the overlay stay live
+   * (owner ruling 3A, CT-2c).
+   */
   pending?: boolean;
   /** `{Verb} {specific object}?` */
   title: string;
@@ -115,7 +121,11 @@ export interface ConfirmDialogProps {
   onCancel: () => void;
   /** Commit. Receives the typed value on the `typed` tier. */
   onConfirm: (typedValue?: string) => void;
-  /** True while the confirm control must stay disabled (the hook's derivation). */
+  /**
+   * The VALIDITY gate (the hook's derivation): true while the confirm may not be used
+   * yet, e.g. an unmatched phrase. It drives native `disabled` ONLY while no commit is
+   * pending — the in-flight half is `pending`'s job (88.6.1-22, rule of KIND).
+   */
   confirmDisabled: (typedValue?: string) => boolean;
   className?: string;
 }
@@ -162,7 +172,12 @@ export function ConfirmDialog({
      the gate stays open (see useConfirmAction.runConfirm) with focus stranded — restore
      it to the input so retry/cancel stay keyboard-reachable. On SUCCESS `open` flips
      false in the same commit as `pending`, so this effect never refocuses a closing
-     dialog. */
+     dialog.
+     AMENDED Phase 88.6.1-22 (D-26 / R123): the premise above no longer holds — while
+     pending the typed input is read-only + aria-disabled and keeps focus, and the
+     confirm keeps focus too. The effect is KEPT on purpose: it is the deliberate
+     post-failure landing on the typed tier (the input is where a retry starts), and it
+     still recovers a commit started without focus in the dialog. */
   const prevPendingRef = React.useRef(pending);
   React.useEffect(() => {
     const wasPending = prevPendingRef.current;
@@ -227,9 +242,17 @@ export function ConfirmDialog({
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter') return;
                   event.preventDefault();
+                  if (pending) return;
                   if (!confirmDisabled(typed)) onConfirm(typed);
                 }}
-                disabled={pending}
+                // DECISION Phase 88.6.1-22 (D-26): while a commit is pending the field is
+                // read-only + aria-disabled and its Enter returns before the validity check.
+                // The field IS the activated control on the Enter path, so it keeps focus.
+                // REJECTED: native disabled (drops focus — the r3-triage defect the restore
+                // effect above exists to repair) and leaving the refusal to confirmDisabled
+                // (a caller-owned prop this component cannot rely on).
+                readOnly={pending}
+                aria-disabled={pending || undefined}
                 placeholder={expectedPhrase}
                 autoComplete="off"
                 // Destructive emphasis, re-authored from the reference
@@ -241,14 +264,45 @@ export function ConfirmDialog({
         </div>
       </Modal.Body>
       <Modal.Footer>
+        {/* DECISION Phase 88.6.1-22 (CT-2c, owner ruling 2026-10-16, "Follow all
+            recommendations" = answer 3A): Cancel, the header close, Escape and the overlay
+            stay LIVE while a commit is pending — chosen OVER gating them, because gating
+            without a client-side request bound can trap a keyboard user in the dialog (the
+            88-05 D-08 marker above rejects trapping Escape, WCAG 2.1.2) when the browser-to-BFF
+            leg stalls without ever rejecting (half-open socket, captive portal, device sleep).
+            Every server-side stall already ends in about 30s at the BFF's 504
+            (PROXY_TIMEOUT_MS), after which useConfirmAction's runConfirm finally lifts the
+            lock, so that leg is the whole risk. The account-deletion dialog could gate its
+            Cancel only because it carries its own 45-second client-side bound, which reaches
+            exactly that leg. ACCEPTED COST (owner): Cancel closes the dialog while the request
+            continues — the hook's cancel does not abort. Re-ask recorded beside Phase 93's
+            request-timeout residual (.planning/deferred/phase-93.md). Changing this is a
+            decision, not a cleanup. */}
         <Button ref={cancelRef} variant="secondary" onClick={onCancel}>
           {cancelLabel}
         </Button>
         {!blocked ? (
+          /* DECISION Phase 88.6.1-22 (R123 / D-39): while a commit is pending the confirm
+             carries aria-disabled and its onClick returns on its FIRST line; the VALIDITY half
+             (confirmDisabled, e.g. an unmatched phrase) stays native disabled (rule of KIND).
+             The pressed control keeps focus. REJECTED: (a) native disabled while pending — the
+             pressed control drops out of the focus order, the defect R123 rules out; (b) an
+             aria-disabled opacity utility at this site — Gate A test 53 (b2) forbids it and
+             88.8 measured 2.0974:1 on a composited label; the look comes from the gated
+             .btn-danger pair in globals.css, approved by the owner on 2026-10-16 (pair R);
+             (c) a ref latch inside this component — it cannot see when a caller's commit
+             starts; the refusal that stops a second REQUEST is the hook's pendingRef
+             (useConfirmAction.ts runConfirm, `if (pendingRef.current) return;`), and a caller
+             not using the hook must pass `pending`. Disclosed visible delta: while pending the
+             confirm shows the gated danger pair instead of the 50% wash. */
           <Button
             variant="danger"
-            onClick={() => onConfirm(committedValue)}
-            disabled={pending || confirmDisabled(committedValue)}
+            onClick={() => {
+              if (pending) return;
+              onConfirm(committedValue);
+            }}
+            disabled={!pending && confirmDisabled(committedValue)}
+            aria-disabled={pending || undefined}
           >
             {confirmLabel}
           </Button>
