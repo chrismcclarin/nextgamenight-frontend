@@ -13,7 +13,7 @@ import userEvent from '@testing-library/user-event';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { Modal } from '@/app/components/Modal';
 import { useFetchErrorState, getFetchErrorMessage } from './useFetchErrorState';
-import { FetchErrorBanner } from './FetchErrorBanner';
+import { FetchErrorBanner, REGION_EMPTY_DWELL_MS, RETRY_OUTCOME_WINDOW_MS } from './FetchErrorBanner';
 import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
@@ -1123,5 +1123,233 @@ describe('FetchErrorBanner — the full branch region and the retry outcome (pla
     expect(assertive, 'the refill already speaks the title').toHaveTextContent(HOST_TITLE);
     expect(assertive).toHaveTextContent('boom');
     expect(polite.textContent, 'so the polite region does not repeat it').toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-21 Task 3 — a failed COMPACT retry is told (owner ruling 2026-10-05, D-47, copy
+// row B1). The two sentences are written once here as test constants, each a copy-table row:
+// the first-failure notice is shipped copy (88.6-36), the second is copy row B1, ratified by the
+// owner on 2026-10-05 (D-47). The region is the compact branch's ONE polite region, captured
+// once per test and asserted with toBe afterwards (C-6).
+// ---------------------------------------------------------------------------
+
+const FIRST_FAILURE_NOTICE = 'Some personal controls are unavailable.';
+// Copy row B1, D-47 (owner-ratified 2026-10-05).
+const B1_NOTICE = 'Some personal controls are still unavailable.';
+
+interface CompactHostProps {
+  retry: () => Promise<unknown>;
+  atPress?: boolean;
+  onResolved?: 'fail' | 'clear' | 'none';
+  controls?: RetryHostControls;
+}
+
+// An UNCONDITIONAL compact mount (like groupPlanning's): the banner stays mounted and its
+// showError follows the host. `atPress` models the never-loaded TanStack query (pending, so
+// showError false, for the whole retry); `controls` lets the test commit the state later.
+function CompactHost({ retry, atPress = false, onResolved = 'none', controls }: CompactHostProps) {
+  const [failed, setFailed] = React.useState(true);
+  if (controls) controls.setFailed = setFailed;
+  const state: FetchErrorState = {
+    showError: failed,
+    message: 'boom',
+    code: 'unknown',
+    retry: async () => {
+      if (atPress) setFailed(false);
+      const result = await retry();
+      if (onResolved === 'fail') setFailed(true);
+      if (onResolved === 'clear') setFailed(false);
+      return result;
+    },
+  };
+  return (
+    <main>
+      <h1>Group page</h1>
+      <FetchErrorBanner compact state={state} />
+    </main>
+  );
+}
+
+/** The compact branch's one polite region. */
+const compactRegion = (container: HTMLElement) => container.querySelector('[role="status"]') as HTMLElement;
+/** The visible notice line: the first child of the visible wrapper beside the region. */
+const visibleLine = (region: HTMLElement) => region.nextElementSibling?.firstElementChild ?? null;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe('FetchErrorBanner — compact failed-retry outcome B1 (plan 88.6.1-21, D-47)', () => {
+  it('D1: a known failure empties the region in flight, then the SAME region and the line read B1', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    const { container } = render(<CompactHost retry={retry} />);
+    const region = compactRegion(container);
+    expect(region.textContent).toBe(FIRST_FAILURE_NOTICE);
+    expect(visibleLine(region)?.textContent).toBe(FIRST_FAILURE_NOTICE);
+    const button = screen.getByRole('button', { name: 'Retry' });
+
+    await user.click(button);
+    expect(region.textContent, 'the region is emptied from the press').toBe('');
+    expect(visibleLine(region)?.textContent, 'no visible flash').toBe(FIRST_FAILURE_NOTICE);
+    expect(button).toHaveTextContent('Retrying…');
+
+    await act(async () => {
+      pending[0].resolve({ isError: true });
+    });
+    await waitFor(() => expect(region.textContent).toBe(B1_NOTICE));
+    expect(compactRegion(container), 'the SAME region node').toBe(region);
+    expect(visibleLine(region)?.textContent).toBe(B1_NOTICE);
+    expect(screen.getAllByText(B1_NOTICE), 'one constant, two carriers').toHaveLength(2);
+    expect(screen.queryByText(FIRST_FAILURE_NOTICE)).toBeNull();
+    expect(document.activeElement).toBe(button);
+    expect(button).toHaveTextContent('Retry');
+  });
+
+  it('D2: every failed retry speaks — the region empties and refills with B1 three times in a row', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    const { container } = render(<CompactHost retry={retry} />);
+    const region = compactRegion(container);
+    const button = screen.getByRole('button', { name: 'Retry' });
+
+    for (const round of [0, 1, 2]) {
+      await user.click(button);
+      expect(region.textContent, `failure ${round + 1}: emptied in flight`).toBe('');
+      await act(async () => {
+        pending[round].resolve({ isError: true });
+      });
+      await waitFor(() => expect(region.textContent, `failure ${round + 1}: refilled`).toBe(B1_NOTICE));
+      expect(compactRegion(container)).toBe(region);
+    }
+  });
+
+  it('D3: the never-loaded shape — the line leaves at the press and B1 arrives once the failure commits', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    const controls: RetryHostControls = {};
+    const { container } = render(<CompactHost retry={retry} atPress controls={controls} />);
+    const region = compactRegion(container);
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(visibleLine(region), 'the visible line leaves at the press').toBeNull();
+    await act(async () => {
+      pending[0].resolve({ isError: true });
+    });
+    expect(region.textContent, 'settled, not yet committed: quiet').toBe('');
+
+    act(() => controls.setFailed?.(true));
+    await waitFor(() => expect(region.textContent).toBe(B1_NOTICE));
+    expect(compactRegion(container)).toBe(region);
+    expect(visibleLine(region)?.textContent).toBe(B1_NOTICE);
+  });
+
+  it('D4: no "still" before a success — the region stays quiet until the success commits', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    const controls: RetryHostControls = {};
+    const { container } = render(<CompactHost retry={retry} controls={controls} />);
+    const region = compactRegion(container);
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => {
+      pending[0].resolve({ isError: false });
+      // Past the dwell, so this checkpoint is about the outcome rule, not the dwell.
+      await sleep(REGION_EMPTY_DWELL_MS + 50);
+    });
+    // Settled as a success; the committed state still shows the failure (the TanStack lag).
+    expect(region.textContent, 'never refilled before the success commits').toBe('');
+    expect(visibleLine(region)?.textContent, 'and the line never becomes B1').toBe(FIRST_FAILURE_NOTICE);
+
+    act(() => controls.setFailed?.(false));
+    expect(region.textContent).toBe('');
+    expect(visibleLine(region)).toBeNull();
+    expect(screen.queryByText(B1_NOTICE)).toBeNull();
+  });
+
+  it('D5: an unknown outcome (resolved undefined, or rejected) re-speaks the first-failure sentence, never B1', async () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      for (const mode of ['undefined', 'reject'] as const) {
+        const { retry, pending } = pressableRetry();
+        const { container, unmount } = render(<CompactHost retry={retry} />);
+        const region = compactRegion(container);
+
+        await user.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(region.textContent, `${mode}: emptied in flight`).toBe('');
+        await act(async () => {
+          if (mode === 'reject') pending[0].reject(new Error('adapter bug'));
+          else pending[0].resolve(undefined);
+        });
+        await waitFor(() => expect(region.textContent, `${mode}: refilled`).toBe(FIRST_FAILURE_NOTICE));
+        expect(compactRegion(container)).toBe(region);
+        expect(screen.queryByText(B1_NOTICE), `${mode}: never B1`).toBeNull();
+        unmount();
+      }
+      expect(warn, 'the rejection is reported once').toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('D6: the region stays empty for at least REGION_EMPTY_DWELL_MS after the press, even when the failure is instant', async () => {
+    const { retry, pending } = pressableRetry();
+    const { container } = render(<CompactHost retry={retry} />);
+    const region = compactRegion(container);
+    const button = screen.getByRole('button', { name: 'Retry' });
+
+    const pressedAt = performance.now();
+    await act(async () => {
+      button.click();
+      pending[0].resolve({ isError: true });
+    });
+    expect(region.textContent, 'empty right after an instant failure').toBe('');
+    await waitFor(() => expect(region.textContent).toBe(B1_NOTICE));
+    expect(performance.now() - pressedAt).toBeGreaterThanOrEqual(REGION_EMPTY_DWELL_MS);
+  });
+
+  it('D7 (pin): when the failure episode ends with no press, B1 resets to the first-failure sentence', async () => {
+    // Green before this plan (always the first sentence); its teeth are a plant without the reset.
+    // Measured limit (round-2 review #306): this models an episode that genuinely ended. A
+    // BACKGROUND refetch of a never-loaded query looks identical at this seam (showError false
+    // while pending), so it also resets B1 and the next failure re-speaks the first-failure
+    // sentence — never a false "still", so Prohibition 2 holds; routed to Phase 92
+    // (.planning/deferred/phase-92.md:116).
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    const controls: RetryHostControls = {};
+    const { container } = render(<CompactHost retry={retry} controls={controls} />);
+    const region = compactRegion(container);
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => {
+      pending[0].resolve({ isError: true });
+    });
+    await waitFor(() => expect(region.textContent).toBe(B1_NOTICE));
+
+    act(() => controls.setFailed?.(false));
+    act(() => controls.setFailed?.(true));
+    expect(region.textContent).toBe(FIRST_FAILURE_NOTICE);
+    expect(visibleLine(region)?.textContent).toBe(FIRST_FAILURE_NOTICE);
+  });
+
+  it('D8: a failed outcome the state never confirms expires — a later failure reads the first sentence, never B1', async () => {
+    // Green before this plan (B1 did not exist); its teeth are a plant that disables the expiry.
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    const controls: RetryHostControls = {};
+    const { container } = render(<CompactHost retry={retry} atPress controls={controls} />);
+    const region = compactRegion(container);
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => {
+      pending[0].resolve({ isError: true });
+      await sleep(RETRY_OUTCOME_WINDOW_MS + 100);
+    });
+
+    act(() => controls.setFailed?.(true));
+    await waitFor(() => expect(region.textContent).toBe(FIRST_FAILURE_NOTICE));
+    expect(visibleLine(region)?.textContent).toBe(FIRST_FAILURE_NOTICE);
+    expect(screen.queryByText(B1_NOTICE)).toBeNull();
   });
 });
