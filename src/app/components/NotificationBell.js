@@ -27,7 +27,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      exactly THREE `aria-` attributes in 409 lines (`grep -n 'aria-'`, measured 2026-09-16), and
      both triggers were `onClick={() => setIsOpen(!isOpen)}` with an `aria-label` and nothing
      else. BOTH, not one: the ROW variant is rendered inside the phone hamburger
-     (`src/app/Header.js:287`), the phone-primary surface, which is why it was taken in scope at
+     (`src/app/Header.js:302`, `variant="row" label="Invites"`), the phone-primary surface, which is why it was taken in scope at
      all. The change is ATTRIBUTE-ONLY — no handler change, no markup restructuring, no role added
      to the panel, no visible behaviour — and that smallness is the argument that won the
      exception. The boundary it is an exception TO is a real CONSEQUENCE constraint, stated here
@@ -47,7 +47,16 @@ function NotificationBell({ user, variant = 'icon', label }) {
      it), and it left the phase with two contradictory disclosure-trigger rules. The owner's
      ruling above is SATISFIED, not reopened: `aria-expanded` is unchanged, and `aria-controls`
      still "points at this id" whenever the panel exists. Going back to the unconditional
-     attribute is a decision, not a cleanup. */
+     attribute is a decision, not a cleanup.
+
+     AMENDED 2026-10-15 — DECISION Phase 88.6.1-28 (D-18): the three items the REJECTED ARM above
+     routed onward (the missing Escape handler, the panel's missing role, the outside click that
+     was mousedown-only) are owned and closed by Phase 88.6.1 — register R128
+     (`.planning/deferred/phase-88.6.1.md:63`). The panel is a section named by its heading and
+     the bell dismisses through the shared `useDismissal` hook; see the two DECISION Phase
+     88.6.1-28 markers below. This exception's boundary did not widen: `aria-expanded` and the
+     conditional `aria-controls` are untouched, and the region and dismissal come from D-18, a
+     separate owner-listed decision. */
   const panelId = `${useId()}-notification-panel`;
   // The panel heading's id, derived from panelId (no second useId call): the section names itself
   // through it (DECISION Phase 88.6.1-28, D-18, D-33 row 21, at the panel below).
@@ -122,7 +131,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      no inline message and NO Sentry capture — a failed Accept left the row in place and the user
      reasonably concluded it worked. They are now `logger.error('<msg>', err)`, the message string
      kept VERBATIM, and THAT CALL IS THE ESCALATION the ruling asked for: `logger.error` routes to
-     `Sentry.captureException` (`logger.ts:28-30`), so a failed accept/decline now files a real
+     `Sentry.captureException` (`src/lib/logger.ts:45`, `Sentry.captureException(err ?? new Error(msg)`), so a failed accept/decline now files a real
      Sentry EVENT where before it was at most a console breadcrumb (there is no
      `captureConsoleIntegration` in `sentry.client.config.js`, and `QueryCache.onError` covers only
      query-cache errors). A console-only diagnostic is no longer an acceptable end state here.
@@ -285,7 +294,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // text-left so the label aligns with surrounding rows.
         // DECISION Phase 87.8 (D-12): pressed state is now an instant opacity dim.
         // DECISION Phase 87.8 — this supersedes the CONTEXT D-02 token-swap idiom (active:bg-surface-card-hover)
-        // previously recorded here: --theme-transition (globals.css:569) transitions
+        // previously recorded here: --theme-transition (src/app/globals.css:1780, `--theme-transition: background-color 0.25s ease`) transitions
         // background-color at 0.25s and does not list opacity, so a background swap
         // is swallowed on an ~80ms tap while an untransitioned opacity change fires
         // instantly. hover:bg-surface-card-hover stays — correct on desktop, inert
@@ -306,11 +315,11 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // DECISION Phase 88.3 (§10.1): this row hovers to `bg-surface-header-hover`
         // (warm-700), chosen OVER `bg-surface-hover` (warm-50) which the other 38 swept
         // sites took. Ground reason: this row renders inside the mobile menu panel on
-        // `bg-surface-header` (Header.js:192) under `text-white` — a warm-50 wash there
+        // `bg-surface-header` (src/app/Header.js:264, `md:hidden absolute top-16`) under `text-white` — a warm-50 wash there
         // measures 1.06:1, while warm-700 measures 10.48:1. The nav links beside it
-        // (Header.js:204, :212) were already on the header family and are the model this
+        // (src/app/Header.js:277, :285, each `bg-surface-header-hover`) were already on the header family and are the model this
         // row should have followed; it had drifted onto the card family.
-        // ThemeToggle.js:32 and FeedbackButton.js:84 are the same row idiom on the same
+        // src/app/components/ThemeToggle.js:37 and src/app/components/FeedbackButton.js:143 (each `bg-surface-header-hover`) are the same row idiom on the same
         // panel and moved with it — all three are cross-referenced back to this marker.
         // Converging these three onto `bg-surface-hover` "for consistency" with the other
         // 38 re-introduces a 1.06:1 hover state; `surfaceHoverSweep.test.ts` test 4b pins
