@@ -8,6 +8,7 @@
 // transferOwnership.
 import * as React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const OWNER_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -1103,5 +1104,123 @@ describe('ManageMembers W027 + honest failures (88.6.1-42)', () => {
       held.resolve(ROSTER);
     });
     expect(await screen.findByRole('heading', { name: 'Manage Group Members' })).toBeInTheDocument();
+  });
+});
+
+describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', () => {
+  const ROBIN = {
+    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    user_id: 'auth0|second',
+    username: 'Robin',
+    UserGroup: { role: 'member' },
+  };
+
+  const title = () => screen.getByRole('heading', { name: 'Manage Group Members' });
+
+  // Never `<body>`, never the dialog container.
+  function expectFocusNotLost() {
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.getAttribute('role')).not.toBe('dialog');
+  }
+
+  async function phoneRemoveTarget() {
+    const menu = await openKebabList('Member actions for Target');
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
+    fireEvent.click(removeItem);
+    fireEvent.click(removeItem);
+  }
+
+  it('F1: a phone remove lands on the NEXT row\'s member-actions trigger, only after the refresh commits (H1, R5 ordering backstop)', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], ROBIN]);
+    await openMembersModal();
+    await screen.findByText('Robin');
+    const next = screen.getByLabelText('Member actions for Robin');
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    await phoneRemoveTarget();
+    await waitFor(() =>
+      expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID)
+    );
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+    // The R5 ordering backstop: focus has not moved early; KebabMenu put it back on its trigger.
+    expect(document.activeElement).toBe(screen.getByLabelText('Member actions for Target'));
+    await act(async () => {
+      held.resolve([ROSTER[0], ROBIN]);
+    });
+    await waitFor(() => expect(document.activeElement).toBe(next));
+    expectFocusNotLost();
+  });
+
+  it('F5: when the only removable row is removed, focus lands on the dialog title', async () => {
+    await openMembersModal();
+    await screen.findByText('Target');
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    await phoneRemoveTarget();
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      held.resolve(ROSTER.filter((m) => m.id !== TARGET_UUID));
+    });
+    await waitFor(() => expect(document.activeElement).toBe(title()));
+    expectFocusNotLost();
+  });
+
+  it('F2: an approve pressed without focusing the button (the Safari click) lands on the title (H3; Phase 91.1 deletes this control)', async () => {
+    await openMembersModal();
+    const approve = await screen.findByText('Approve');
+    act(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+    // Radix ignores a focusout with a null relatedTarget, so the blur leaves focus on <body>.
+    expect(document.activeElement).toBe(document.body);
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce([
+      ROSTER[0],
+      ROSTER[1],
+      { ...ROSTER[2], UserGroup: { role: 'member' } },
+    ]);
+    fireEvent.click(approve);
+    await waitFor(() => expect(document.activeElement).toBe(title()));
+    expectFocusNotLost();
+  });
+
+  it('F3: a desktop dialog-tier remove lands on the still-open Manage Members title (H2, confirm-only on plan 20\'s floor)', async () => {
+    const user = userEvent.setup();
+    await openMembersModal();
+    await screen.findByText('Target');
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(
+      ROSTER.filter((m) => m.id !== TARGET_UUID)
+    );
+    const opener = screen.getAllByTitle('Remove from group')[0] as HTMLElement;
+    opener.focus();
+    await user.click(opener);
+    await screen.findByRole('dialog', { name: 'Remove Target from this group?' });
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    await waitFor(() => expect(document.activeElement).toBe(title()));
+    expect(
+      screen.getByRole('dialog', { name: 'Manage Group Members' }).contains(document.activeElement)
+    ).toBe(true);
+    expectFocusNotLost();
+  });
+
+  it('F4: a dialog-tier reject lands on the still-open Manage Members title (confirm-only; Phase 91.1 deletes this control)', async () => {
+    const user = userEvent.setup();
+    await openMembersModal();
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(
+      ROSTER.filter((m) => m.id !== PENDING_UUID)
+    );
+    const opener = (await screen.findByText('Reject')).closest('button') as HTMLElement;
+    opener.focus();
+    await user.click(opener);
+    await screen.findByRole('dialog', { name: 'Reject Pend?' });
+    await user.click(screen.getByRole('button', { name: 'Reject' }));
+    await waitFor(() =>
+      expect(groupsAPI.rejectMember as Mock).toHaveBeenCalledWith(GROUP_ID, PENDING_UUID)
+    );
+    await waitFor(() => expect(document.activeElement).toBe(title()));
+    expect(
+      screen.getByRole('dialog', { name: 'Manage Group Members' }).contains(document.activeElement)
+    ).toBe(true);
+    expectFocusNotLost();
   });
 });
