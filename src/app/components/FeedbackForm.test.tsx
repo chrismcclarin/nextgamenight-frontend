@@ -19,7 +19,8 @@
  * the unauthenticated POST handler).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
+import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 
 // Logged-out: no Auth0 user. Retained for the 87.6 transport proof below even
@@ -878,5 +879,232 @@ describe('FeedbackForm — Phase 88.6.1-34 task 2 (MEDLOW-32, AC-33 stars, D-22 
         if (outer !== inner) expect(outer.contains(inner)).toBe(false);
       });
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PHASE 88.6.1-34, TASK 3 — Submit while sending (D-35, AC-12, Edge R4), focus after a send
+// (Req 5, AC-14, Edge R5), copy row F2 on an unexplained failure (D-30, CP-2), the repeat
+// failure re-announce (Edge R8 idempotency, backstop) and the late send after a close (review
+// r1 #39). Cases labelled PRESERVATION or BACKSTOP were green before the change and pin what
+// must not move; every other case was run RED against the tree as task 2 left it.
+// ---------------------------------------------------------------------------
+
+describe('FeedbackForm — Phase 88.6.1-34 task 3 (D-35, Req 5, F2, R8 idempotency, late send #39)', () => {
+  const OK_RESPONSE = { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+  const PAYLOAD_TOO_LARGE = {
+    ok: false,
+    status: 413,
+    text: async () => JSON.stringify({ error: 'Payload Too Large' }),
+  };
+
+  // A fetch stub whose response the test releases by hand.
+  const deferredFetch = () => {
+    let release: (value: unknown) => void = () => {};
+    let fail: (reason: unknown) => void = () => {};
+    const pending = new Promise((resolve, reject) => {
+      release = resolve;
+      fail = reject;
+    });
+    const fn = vi.fn(() => pending);
+    return { fn, release: (v: unknown) => release(v), fail: (e: unknown) => fail(e) };
+  };
+
+  const fill = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description.');
+  };
+  const submitButton = () => screen.getByRole('button', { name: /^(Submit|Submitting\.\.\.)$/ });
+  const flushMacrotask = () => act(() => new Promise((r) => setTimeout(r, 0)));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = undefined;
+    h.query = {};
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  it('D-35 latch, Edge R4 idempotency — two submits in one act while the first send is pending file exactly ONE request, and the refused submit is defaultPrevented', async () => {
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    const form = submitButton().closest('form')!;
+    const second = new Event('submit', { bubbles: true, cancelable: true });
+    act(() => {
+      fireEvent.submit(form);
+      fireEvent(form, second);
+    });
+
+    await waitFor(() => expect(d.fn).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(d.fn).toHaveBeenCalledTimes(1);
+    expect(second.defaultPrevented).toBe(true);
+
+    d.fail(new TypeError('Failed to fetch'));
+    await waitFor(() => expect(submitButton()).toHaveTextContent('Submit'));
+  });
+
+  it('D-35 attributes, Edge R4 concurrency — while sending, the pressed Submit is aria-disabled (never natively), reads "Submitting...", keeps focus, and a second press sends nothing; all of it releases when the FIRST send settles', async () => {
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    await user.click(submitButton());
+    await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+    await user.click(submitButton());
+    await flushMacrotask();
+
+    const pressed = submitButton();
+    expect(pressed).toHaveAttribute('aria-disabled', 'true');
+    expect(pressed).not.toHaveAttribute('disabled');
+    expect(pressed).toHaveTextContent('Submitting...');
+    // CONFIRM-ONLY in jsdom (C-11: jsdom never blurs a disabled element); the phone spec's
+    // Test C proves the focus half in a real browser. The two attribute lines above are the red half.
+    expect(document.activeElement).toBe(pressed);
+    expect(d.fn).toHaveBeenCalledTimes(1);
+
+    d.fail(new TypeError('Failed to fetch'));
+    await waitFor(() => expect(submitButton()).toHaveTextContent('Submit'));
+    expect(submitButton()).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('PRESERVATION, D-35 rule of KIND and POSITION — an empty Subject keeps Submit natively disabled with no aria-disabled; while sending, the sibling Cancel stays natively disabled', async () => {
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    expect(submitButton()).toBeDisabled();
+    expect(submitButton()).not.toHaveAttribute('aria-disabled');
+
+    await fill(user);
+    await user.click(submitButton());
+    await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+
+    d.fail(new TypeError('Failed to fetch'));
+    await waitFor(() => expect(submitButton()).toHaveTextContent('Submit'));
+  });
+
+  it('Req 5, Edge R5 ordering (backstop) — focus stays on Submit while the send is pending, then lands on the success title "Thank You!", never <body> and never the dialog container', async () => {
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    const pressed = submitButton();
+    await user.click(pressed);
+    await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).toBe(pressed);
+
+    d.release(OK_RESPONSE);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Thank You!' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
+  });
+
+  it('F2 (D-30, CP-2) — an unexplained failure (a code-less 413 maps to unknown) shows exactly copy row F2 in the assertive error region', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => PAYLOAD_TOO_LARGE));
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+    await user.click(submitButton());
+
+    const box = regionByIdSuffix('-submit-error');
+    await waitFor(() => expect((box.textContent ?? '').length).toBeGreaterThan(0));
+    expect(box.textContent).toBe("We couldn't send your feedback. Please try again.");
+  });
+
+  it('BACKSTOP, Edge R8 idempotency — the same failure twice is a real clear-then-set on the SAME assertive node, so it is announced twice', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => PAYLOAD_TOO_LARGE));
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    const box = regionByIdSuffix('-submit-error');
+    await user.click(submitButton());
+    await waitFor(() => expect((box.textContent ?? '').length).toBeGreaterThan(0));
+    const firstText = box.textContent;
+
+    let removed = 0;
+    let added = 0;
+    const observer = new MutationObserver((records) => {
+      records.forEach((r) => {
+        removed += r.removedNodes.length;
+        added += r.addedNodes.length;
+      });
+    });
+    observer.observe(box, { childList: true, characterData: true, subtree: true });
+    await user.click(submitButton());
+    await waitFor(() => expect(added).toBeGreaterThan(0));
+    observer.disconnect();
+
+    expect(removed).toBeGreaterThan(0);
+    expect(regionByIdSuffix('-submit-error')).toBe(box);
+    expect(box.textContent).toBe(firstText);
+  });
+
+  it('review r1 #39 — a send that settles after its form was closed (Escape) never closes the re-opened form, and the new typed Subject survives', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const d = deferredFetch();
+      vi.stubGlobal('fetch', d.fn);
+      const hostOnClose = vi.fn();
+      // Both real mount sites render the form only while open, so a close UNMOUNTS it
+      // (Footer.js, the setShowFeedbackForm(false) arrow).
+      function Host() {
+        const [open, setOpen] = useState(true);
+        return (
+          <>
+            <button type="button" onClick={() => setOpen(true)}>
+              Reopen
+            </button>
+            {open && (
+              <FeedbackForm
+                onClose={() => {
+                  hostOnClose();
+                  setOpen(false);
+                }}
+              />
+            )}
+          </>
+        );
+      }
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<Host />);
+      await fill(user);
+      await user.click(submitButton());
+      await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+
+      // Close mid-send the way a person can (Cancel stays natively disabled while sending).
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByPlaceholderText(/Brief description/i)).toBeNull());
+      await user.click(screen.getByRole('button', { name: 'Reopen' }));
+      const newSubject = await screen.findByPlaceholderText(/Brief description/i);
+      await user.type(newSubject, 'Typed after reopening');
+      const closesAfterReopen = hostOnClose.mock.calls.length;
+
+      d.release(OK_RESPONSE);
+      await vi.advanceTimersByTimeAsync(2500);
+
+      // POSITIVE signal first: the re-opened form is still there, holding the typed text.
+      expect(screen.getByPlaceholderText(/Brief description/i)).toHaveValue('Typed after reopening');
+      expect(hostOnClose.mock.calls.length).toBe(closesAfterReopen);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
