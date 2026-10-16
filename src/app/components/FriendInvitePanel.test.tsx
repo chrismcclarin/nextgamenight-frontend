@@ -1032,3 +1032,125 @@ describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 });
+
+// Phase 88.6.1 plan 27 Task 3 — the friend-batch outcome is HEARD (Req 8; it was a
+// conditionally mounted block with no role), an all-failed code-less batch says R2 (D-32), and
+// the header row sits on the Modal header's phone-first scale (R7-M5).
+describe('FriendInvitePanel — the friend batch is heard, and the header scale (88.6.1-27)', () => {
+  const batchStatus = () => document.getElementById('invite-batch-status');
+  const batchError = () => document.getElementById('invite-batch-error');
+  const R2 = "We couldn't send those invites. Please try again.";
+  const NETWORK_LINE = "We couldn't reach the server. Check your connection and try again.";
+  const OTHER_UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const OTHER_FRIENDSHIP = { id: 'fr-3', friend: { id: OTHER_UUID, username: 'Eli' } };
+
+  async function inviteSelected() {
+    fireEvent.click(screen.getByRole('button', { name: /^Invite \d+ Friends?$/ }));
+  }
+
+  it('B1: an all-failed batch whose first failure has no code says R2 from the alert region (D-32 R2)', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(new Error('x'));
+    renderPanel();
+    await screen.findByText('Dana');
+    fireEvent.click(screen.getByRole('checkbox'));
+    await inviteSelected();
+
+    await waitFor(() => expect(batchError()?.textContent).toBe(R2));
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/refresh the page/i);
+    expect(batchStatus()?.textContent).toBe('');
+  });
+
+  it('B2: both batch regions are mounted EMPTY with the bulk block, and a success fills the SAME polite node with the success tint (Req 8, D-22)', async () => {
+    renderPanel();
+    await screen.findByText('Dana');
+    const status = batchStatus();
+    const error = batchError();
+    expect(status).not.toBeNull();
+    expect(error).not.toBeNull();
+    expect(status).toHaveAttribute('role', 'status');
+    expect(error).toHaveAttribute('role', 'alert');
+    expect(status?.textContent).toBe('');
+    expect(error?.textContent).toBe('');
+    expect(status).toHaveClass('sr-only');
+    expect(error).toHaveClass('sr-only');
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    await inviteSelected();
+
+    await waitFor(() => expect(batchStatus()?.textContent).toBe('Invited 1 friend!'));
+    const after = batchStatus();
+    expect(after).toBe(status);
+    expect(after).not.toHaveClass('sr-only');
+    for (const cls of ['p-3', 'rounded-lg', 'bg-status-success-subtle', 'text-content-status-success', 'border-status-success']) {
+      expect(after).toHaveClass(cls);
+    }
+  });
+
+  it('B3: a coded first failure keeps its register line in the alert region', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(new ApiError('Network down', 'network', 0));
+    renderPanel();
+    await screen.findByText('Dana');
+    fireEvent.click(screen.getByRole('checkbox'));
+    await inviteSelected();
+
+    await waitFor(() => expect(batchError()?.textContent).toBe(NETWORK_LINE));
+  });
+
+  it('B4: two identical successful batches in a row mutate the same polite node again (SPEC Edge R8 idempotency, backstop)', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendFriendInvite as Mock).mockResolvedValue({});
+    renderPanel();
+    await screen.findByText('Dana');
+    fireEvent.click(screen.getByRole('checkbox'));
+    await inviteSelected();
+    await waitFor(() => expect(batchStatus()?.textContent).toBe('Invited 1 friend!'));
+    const node = batchStatus()!;
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => records.push(...list));
+    observer.observe(node, { childList: true, characterData: true, subtree: true });
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    await inviteSelected();
+    await waitFor(() => expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(records.length).toBeGreaterThan(0));
+    await waitFor(() => expect(batchStatus()?.textContent).toBe('Invited 1 friend!'));
+    observer.disconnect();
+    expect(batchStatus()).toBe(node);
+  });
+
+  it('B5: a partial batch reads its sentence from the SAME polite node with the warning tint, and the alert region stays empty', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendFriendInvite as Mock).mockImplementation((_group: string, friendId: string) =>
+      friendId === FRIEND_UUID ? Promise.resolve({}) : Promise.reject(new Error('x'))
+    );
+    renderPanel({ friends: [FRIENDSHIP, OTHER_FRIENDSHIP] });
+    await screen.findByText('Eli');
+    const status = batchStatus();
+    for (const box of screen.getAllByRole('checkbox')) fireEvent.click(box);
+    await inviteSelected();
+
+    await waitFor(() => expect(batchStatus()?.textContent).toBe('Invited 1, 1 failed'));
+    const after = batchStatus();
+    expect(after).toBe(status);
+    expect(after).not.toHaveClass('sr-only');
+    for (const cls of ['bg-status-warning-subtle', 'text-content-status-warning', 'border-status-warning']) {
+      expect(after).toHaveClass(cls);
+    }
+    expect(batchError()?.textContent).toBe('');
+    expect(batchError()).toHaveClass('sr-only');
+  });
+
+  it('H: the header row is on the Modal header phone-first scale (R7-M5), keeping items-start and gap-3', async () => {
+    renderPanel();
+    const column = (await screen.findByRole('heading', { name: 'Invite Members' })).closest('div');
+    const tokens = column?.parentElement?.className.split(/\s+/) ?? [];
+    for (const cls of ['px-3', 'py-2', 'md:px-6', 'md:py-3', 'items-start', 'gap-3']) {
+      expect(tokens).toContain(cls);
+    }
+    expect(tokens).not.toContain('px-6');
+    expect(tokens).not.toContain('py-5');
+  });
+});
