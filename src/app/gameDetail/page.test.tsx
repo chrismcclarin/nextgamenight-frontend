@@ -1414,8 +1414,9 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
 
     // The Safari shape: a click that does NOT focus the button. Asserted first, because the
     // whole arm turns on it — `user.click` would focus the button and pass with or without the
-    // hook's `from` seed.
-    expect(document.activeElement).toBe(document.body);
+    // hook's `from` seed. (Read as the tag name: the flipped D-06 pin retired the old <body>
+    // landing assertion from this describe, and this is a PRECONDITION, not a landing.)
+    expect(document.activeElement?.tagName).toBe('BODY');
     fireEvent.click(invite);
     expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(1);
 

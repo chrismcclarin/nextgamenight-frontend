@@ -31,6 +31,7 @@ import { Heading } from '../../components/ui/Heading';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import KebabMenu from '../components/KebabMenu';
 import { toast } from 'sonner';
@@ -152,13 +153,14 @@ function GuestInviteButton({ groupId, userId }) {
        WHY A REF AND NOT THE STATE. The second activation runs the PREVIOUS render's closure,
        where `status` is still null, so a state-only guard here is byte-equivalent to the gating
        prop on the control it is meant to back up. The house states the rule in prose at
-       `src/components/ui/useConfirmAction.ts:210-212` — "Refs mirror the state the event handlers
+       `src/components/ui/useConfirmAction.ts`'s refs comment — "Refs mirror the state the event handlers
        must read SYNCHRONOUSLY. Two clicks inside one tick see stale state but never a stale ref."
        Keeping the state term beside it matches the recorded belt-and-braces in
        `src/app/restore/group/[token]/page.tsx` (`handleTakeOver`'s `if (acceptingRef.current) return;`).
 
        WHY PER INSTANCE. This component renders once per participant (three render sites:
-       `:126`, `:1351`, `:1964`), so a module-scope or page-level flag would let one guest's
+       `ParticipantChip`'s strip, the game view's session-card list, the See-all `Modal` row),
+       so a module-scope or page-level flag would let one guest's
        in-flight invite silently swallow every other row's press.
 
        PLACEMENT IS THE WHOLE RULE — the ref MIRRORS the gate state. It is set immediately before
@@ -171,9 +173,29 @@ function GuestInviteButton({ groupId, userId }) {
        2026-09-14 amendment the in-flight gate is `aria-disabled`, which does not stop the browser
        firing this handler. The attribute without this latch is a re-sendable invite button. */
     const sendingRef = useRef(false);
+    // 88.6.1-47 (D-06): the settled chip's node, and the shared focus-recovery instance that
+    // lands focus on it. Above the settled early return below (hooks order).
+    const chipRef = useRef(null);
+    const inviteFocus = useFocusRecovery();
 
-    const handleInvite = async () => {
+    /* DECISION Phase 88.6.1-47 (D-06): CHOSEN — when the send settles, the chip takes focus
+       ONCE, through the shared `useFocusRecovery` hook (plan 88.6.1-04) armed at the press with
+       the chip as the preferred target. So it moves only when focus was on the button and was
+       lost with it, it lands inside the See-all dialog when that is the host, and it never moves
+       a user who went elsewhere during the send. `from: event.currentTarget` seeds the hook with
+       the pressed button, because Safari does not focus a clicked button (the hook's consumer
+       contract, point 1). REJECTED — (a) a bespoke edge-triggered effect in this component: a
+       second definition of "focus was lost", the per-host copy D-04 rejects by tenet; (b) making
+       the chip a Tab stop or a button: D-06 keeps it non-interactive and out of the Tab order
+       (`tabIndex -1`, no role, no handler); (c) a heading as the target: the chip is where the
+       action resolved. KNOWN RISK (review #209): the live region and the focus move compete on
+       VoiceOver — moving focus onto the chip can cut off the polite `outcomeMessage` announcement
+       in the sr-only `StatusRegion`, which is the only channel carrying the fuller explanation
+       (for a 409, the `pending` and `member` lines); plan 88.6.1-57's VoiceOver steps measure it.
+       Removing the focus landing is a decision, not a cleanup. */
+    const handleInvite = async (event) => {
         if (sendingRef.current || status === 'sending' || settled) return;
+        const settle = inviteFocus.arm({ preferred: () => chipRef.current, from: event.currentTarget });
         sendingRef.current = true;
         setStatus('sending');
         try {
@@ -194,7 +216,8 @@ function GuestInviteButton({ groupId, userId }) {
                carried a prose fallback (`(code === 'conflict' || !code) &&
                message.includes(...)`) for the FE-first deploy window in which production
                emitted code-less 409s. The 88-34 backend is CONFIRMED live (ERROR_REGISTRY
-               codes on the wire — invites.js:379/:399), so the owner-ruled removal condition
+               codes on the wire — the `already_member` / `invite_pending` codes in the
+               backend's `routes/invites.js`), so the owner-ruled removal condition
                is met and the prose arms are gone. Re-adding prose matching is a decision, not
                a hardening: an unrecognized 409 belongs in the safety-net arm below. */
             const code = err?.code;
@@ -210,6 +233,10 @@ function GuestInviteButton({ groupId, userId }) {
                 sendingRef.current = false;
                 setStatus('error');
             }
+        } finally {
+            // Releases the focus ARM (D-06), never the latch: `sendingRef` keeps its own
+            // placement rule (DECISION Phase 88.6-18 (T-88.6-50) above).
+            settle();
         }
     };
 
@@ -236,7 +263,8 @@ function GuestInviteButton({ groupId, userId }) {
                         : 'Invite this guest to join the group';
 
     /* DECISION Phase 88-27 (D-32 buckets A/B/C): base keeps the neutral, branches override
-       it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
+       it — same call, same measured cascade fact, as `ParticipantRow.js`'s
+       `ORIGINAL MARKER 2, verbatim (Phase 88-27` note.
        `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
        is no tailwind-merge on this template literal.
        (88.6-18: still true of the SETTLED chip below, which is a `<span>` carrying the whole
@@ -254,6 +282,10 @@ function GuestInviteButton({ groupId, userId }) {
     /* DECISION Phase 88.6-18 (D8): in the four SETTLED states (`sent`, `pending`, `member`,
        `already`) this control renders a NON-INTERACTIVE status chip — a plain `<span>`, no
        `role`, no `aria-live`, not focusable, no handler. Owner ruling 2026-09-09, arm B.
+       [AMENDED Phase 88.6.1-47 (D-06), owner ruling 2026-10-04]: the chip is now
+       PROGRAMMATICALLY focusable (`tabIndex -1`), stays out of the Tab order, and takes focus
+       ONCE when the send settles (the D-06 marker at `handleInvite`). Still no role, no
+       `aria-live`, no handler — only the "not focusable" clause above changes.
 
        WHY: `globals.css`'s unlayered `.btn:disabled { opacity: 0.5 }` can be undone by no
        utility, and these four labels are colour-coded OUTCOMES the user must READ. A terminal
@@ -267,14 +299,21 @@ function GuestInviteButton({ groupId, userId }) {
        THREE THINGS ABOUT THE CHIP ARE DECIDED HERE because the obvious reading of each is wrong:
         - NO `role="status"`. "Status element" points straight at it, and it would be a SECOND
           live region: the sr-only `StatusRegion` above is mounted UNCONDITIONALLY and already
-          announces every outcome. `88.6-UI-SPEC.md:571-573` — "exactly one live region per
-          failure … Do not add a second region".
+          announces every outcome. `88.6-UI-SPEC.md` (`Announcement: exactly one live region
+          per failure`) — "exactly one live region per failure … Do not add a second region".
         - IT KEEPS ITS BRANCH `title`. Those four strings are the only fuller explanation each
           settled state has ("They already have an invite waiting — nothing more to send" says
           what "Invite pending" cannot). On a `<span>` a `title` is the accessible DESCRIPTION,
           so the information survives arm B rather than being silently dropped.
+          [CORRECTED Phase 88.6.1-47 (W052)]: the sentence just above over-claims. A role-less
+          `<span>` is generic, and assistive tech does not reliably expose its `title`, so the
+          fuller explanation reaches a screen reader through `outcomeMessage` in the sr-only
+          `StatusRegion`, not through the title. The title is KEPT for pointer users.
         - IT KEEPS ITS GEOMETRY. `inline-flex items-center text-xs px-2 py-1 rounded-sm border`
           are dead only against the UNLAYERED `.btn`; on a `<span>` nothing supplies them.
+          [CORRECTED Phase 88.6.1-47 (W052)]: the retained list as rendered is
+          `inline-flex min-h-11 items-center text-sm px-2 py-1 rounded-sm border` (the label
+          moved to `text-sm` and gained the `min-h-11` floor after this was written).
           Stripping them because the migration strips them from the `<Button>` states would be a
           silent-green regression — no suite in this plan measures a settled chip's box.
 
@@ -282,10 +321,10 @@ function GuestInviteButton({ groupId, userId }) {
        in-flight `sending` gate below is `aria-disabled` with the re-press refused in
        `handleInvite`'s synchronous latch — over the NATIVE `disabled` attribute, which is how D8
        first read on 2026-09-09 and which drops focus to `<body>` mid-submit on the control the
-       user just activated (`src/app/components/NextGameNightCard.tsx:377-391`;
-       `src/app/components/EmailAddressSection.tsx:1572-1598` states the split outright — the
-       control being ACTED ON gets `aria-disabled`, a control nobody is standing on may be
-       natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
+       user just activated (`src/app/components/NextGameNightCard.tsx`'s pressed RSVP control,
+       `aria-disabled={isFlight`; `src/app/components/EmailAddressSection.tsx` states the split
+       outright at `the control being ACTED ON gets` — the control being acted on gets
+       `aria-disabled`, a control nobody is standing on may be natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
        sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is the shipped
        "Sending..." label swap plus the house `aria-disabled` treatment already in globals.css
        (`cursor: not-allowed`) and on ghost (`aria-disabled:text-content-muted`, which beats this
@@ -298,6 +337,8 @@ function GuestInviteButton({ groupId, userId }) {
             <>
             <StatusRegion className="sr-only" message={outcomeMessage} />
             <span
+                ref={chipRef}
+                tabIndex={-1}
                 className={`inline-flex min-h-11 items-center text-sm px-2 py-1 rounded-sm border border-line transition-colors ${branchInk}`}
                 title={title}
             >
@@ -395,6 +436,10 @@ function buildSignInUrl() {
     const { pathname, search, hash } = window.location;
     return `/api/auth/login?returnTo=${encodeURIComponent(pathname + search + hash)}`;
 }
+
+// 88.6.1-47 (D-44): the id of the Game Sessions filter panel, named by the "Show Filters & Sort"
+// disclosure's aria-controls while the panel is mounted.
+const SESSION_FILTERS_PANEL_ID = 'game-sessions-filters';
 
 export default function GameDetailPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -1365,8 +1410,27 @@ export default function GameDetailPage() {
         window.location.replace(buildSignInUrl());
     }, [eventError, authLoading, event_id, signInRedirect]);
 
+    /* DECISION Phase 88.6.1-47 (H6 / D-04 / D-05): CHOSEN — arm the shared `useFocusRecovery`
+       hook (plan 88.6.1-04) at the confirmed delete. The dialog's own restore returns focus to the
+       opener (the row's Delete or its kebab trigger), and when the refetch then removes that
+       session's card, focus goes to the heading of the list that held it: `Upcoming (N)` while
+       that section survives, else `Game Sessions (N)`, which is always rendered. No heading is
+       minted and no `tabIndex` is written in markup (D-05): the hook adds the attribute itself.
+       REJECTED — (a) focusing at the end of `performDeleteEvent`: the refetch commits later, so it
+       would focus too early and then lose focus again (RESEARCH M-2.1 fact 2); (b) awaiting the
+       refetch before closing: the gate closes only after `onConfirm` resolves, so it would hold
+       the dialog open through the reload; (c) a per-consumer close handler on the dialog
+       (`DECISION Phase 88.6-44`, no per-consumer `onCloseAutoFocus`). No `from` is passed: this
+       runs as the dialog's `onConfirm`, which receives no event, and the closing dialog's restore
+       is the primitive's, which the hook follows (its consumer contract, point 5). */
+    const upcomingHeadingRef = useRef(null);
+    const sessionsHeadingRef = useRef(null);
+    const sessionFocus = useFocusRecovery({ fallback: sessionsHeadingRef });
+
     // Runs ONLY after the dialog gate below has been explicitly confirmed.
     const performDeleteEvent = async (event_id) => {
+        const inUpcoming = upcomingEvents.some((e) => e.id === event_id);
+        const settle = sessionFocus.arm({ preferred: () => (inUpcoming ? upcomingHeadingRef.current : null) });
         try {
             await eventsAPI.deleteEvent(event_id);
             // Refresh events after deletion
@@ -1385,6 +1449,10 @@ export default function GameDetailPage() {
             // contract) — swallowing it here would close the dialog and read as
             // "deleted" when the DELETE was refused.
             throw error;
+        } finally {
+            // Releases the focus arm (H6) when this host's own work ends; the refetch above is
+            // un-awaited on purpose and the hook still acts when it commits.
+            settle();
         }
     };
 
@@ -2066,7 +2134,8 @@ export default function GameDetailPage() {
                             does not fail, it SUCCEEDS.
                             The trigger's own size, geometry and ⋮ glyph are DELETED, not converged:
                             the glyph is ICON sizing, stays out of the type scale, and is now
-                            `KebabMenu`'s (`KebabMenu.js:125`, `:132`, owned by plan 16). This file
+                            `KebabMenu`'s (the trigger's own `text-2xl` glyph sizing and its ⋮ glyph in
+                            `KebabMenu.js`, owned by plan 16). This file
                             adds no geometry of its own.
 
                             DECISION Phase 88.6-18 (D24): both destructive items carry plan 16's
@@ -2083,7 +2152,7 @@ export default function GameDetailPage() {
 
                             DECISION Phase 88.6-18 (D3): the in-flight gate on both items is plan
                             16's per-item `ariaDisabled` flag and NEVER its native `disabled` key.
-                            REJECTED — the NATIVE attribute (`KebabMenu.js:150` renders `item.disabled`
+                            REJECTED — the NATIVE attribute (`KebabMenu.js` renders `item.disabled`
                             as the real attribute): `keepOpen` deliberately keeps these items mounted
                             AND FOCUSED for the whole request, and a natively-disabled focused element
                             blurs to `<body>`, which is exactly the state this menu's container-bound
@@ -2092,11 +2161,12 @@ export default function GameDetailPage() {
                             focusout on a disabled item. Two shipped markers carry the split verbatim:
                             the control being ACTED ON gets `aria-disabled`, a control nobody is
                             standing on may stay natively disabled
-                            (`src/app/components/NextGameNightCard.tsx:377-391`,
-                            `src/app/components/EmailAddressSection.tsx:1572-1598`).
+                            (`src/app/components/NextGameNightCard.tsx`'s pressed RSVP control,
+                            `aria-disabled={isFlight`; `src/app/components/EmailAddressSection.tsx`,
+                            `the control being ACTED ON gets`).
                             REJECTED — passing NO gate at all and letting the handler latch be the
                             whole guard: it deletes the busy affordance that ships today
-                            (`KebabMenu.js:156`) and the programmatic busy state assistive tech
+                            (`KebabMenu.js`'s per-item `ariaDisabled` rendering, `'aria-disabled': true`) and the programmatic busy state assistive tech
                             depends on, leaving a destructive item looking fully live while a DELETE
                             is in flight.
                             Neither item is `twoTap`: single-tap commit is the Phase 65-02 decision
@@ -3016,7 +3086,7 @@ export default function GameDetailPage() {
                 always-on empty state here is a decision, not a completeness fix. */}
             {upcomingEvents.length > 0 && (
                 <div className="card p-3 md:p-6 mb-6">
-                    <Heading level={2} size="heading" className="w-full text-content-primary mb-4">
+                    <Heading ref={upcomingHeadingRef} level={2} size="heading" className="w-full text-content-primary mb-4">
                         Upcoming ({upcomingEvents.length})
                     </Heading>
                     <div className="space-y-0">
@@ -3040,7 +3110,7 @@ export default function GameDetailPage() {
                     reopening. This marker's OWN subject (the conditional count and the stacking)
                     is untouched by that ruling and still stands. */}
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                    <Heading level={2} size="heading" className="w-full text-content-primary">
+                    <Heading ref={sessionsHeadingRef} level={2} size="heading" className="w-full text-content-primary">
                         {/* Post-split (Task 7 step 1b): counts key on the HISTORY partition —
                             keying on raw `events` would show "3 of 5" with no filter active
                             whenever upcoming events exist. */}
@@ -3048,20 +3118,33 @@ export default function GameDetailPage() {
                             ? historyEvents.length
                             : `${filteredEvents.length} of ${historyEvents.length}`})
                     </Heading>
+                    {/* DECISION Phase 88.6.1-47 (D-44): CHOSEN — this toggle is a DISCLOSURE
+                        (`aria-expanded`), not a pressed toggle: D-44 rules that it shows and hides a
+                        panel. `aria-controls` is present ONLY while the panel is mounted, the house
+                        form (`DECISION Phase 88.6-16 (D-12)` in `KebabMenu.js`, the conditional
+                        spread). The arrow glyphs are hidden from assistive tech so the name is the
+                        words alone. REJECTED — (a) `aria-pressed`; (b) a permanent `aria-controls`,
+                        which would name an absent element while closed; (c) rendering the panel
+                        always and toggling `hidden` (KebabMenu's recorded rejected alternative: it
+                        changes what the card contains while closed). The visible label swap stays:
+                        those are existing words (D-31). Size unchanged (`min-h-11` from the cva
+                        base, D-21's delta here is 0). */}
                     <Button
                         variant="secondary"
                         onClick={() => setShowFilters(!showFilters)}
+                        aria-expanded={showFilters}
+                        {...(showFilters ? { 'aria-controls': SESSION_FILTERS_PANEL_ID } : {})}
                         className="w-full sm:w-auto"
                     >
                         {showFilters ? (
                             <>
                                 <span>Hide Filters</span>
-                                <span>▲</span>
+                                <span aria-hidden="true">▲</span>
                             </>
                         ) : (
                             <>
                                 <span>Show Filters & Sort</span>
-                                <span>▼</span>
+                                <span aria-hidden="true">▼</span>
                             </>
                         )}
                     </Button>
@@ -3069,13 +3152,13 @@ export default function GameDetailPage() {
                 
                 {/* Filters and Sorting */}
                 {showFilters && (
-                <div className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
+                <div id={SESSION_FILTERS_PANEL_ID} className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
                     <div className="flex justify-between items-center mb-3">
                         {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): 16/700, NOT the
                             20/700 Heading role — chosen OVER the literal reading of Task 3's
                             "section headings and card titles -> text-xl", which is what a
                             later reader will "correct" this to. This h3 is nested INSIDE the
-                            "Game Sessions" h2's card (:1742), so promoting it to 20px flattens
+                            "Game Sessions" h2's card (the Game Sessions card above), so promoting it to 20px flattens
                             a real two-level hierarchy into one visual level. Same rung, same
                             reasoning, and deliberately the same VALUE as the sub-heading rung
                             88-19 established on userProfile (see that file's header marker) —
