@@ -12,7 +12,7 @@
 //
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only.
 import * as React from 'react';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'd'.repeat(48);
@@ -39,6 +39,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
   return {
     ...actual,
+    // D-24 (plan 88.6.1-35, A7): wraps the REAL predicate, so every arm — and
+    // getFetchErrorMessage, which imports the same mocked module — behaves exactly as before;
+    // vi.clearAllMocks() keeps the implementation and only clears the calls.
+    isCsrfRejection: vi.fn(actual.isCsrfRejection),
     invitesAPI: {
       acceptInviteByToken: vi.fn(),
       getInviteInfo: vi.fn(),
@@ -55,7 +59,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import InviteAcceptPage from './page';
-import { invitesAPI, ApiError, mapErrorToCode } from '@/lib/api';
+import { invitesAPI, ApiError, mapErrorToCode, isCsrfRejection } from '@/lib/api';
 import { logger } from '@/lib/logger';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -397,5 +401,116 @@ describe('invite/accept — W039 single-shot accept and the Req 8 page region (p
     expect(screen.queryByText('Accepting your invite...')).toBeNull();
     expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
     expect(region.textContent).toBe(spoken);
+  });
+});
+
+// Plan 88.6.1-35 Task 2 — the error and signed-out outcomes, copy row L1, D-24 and W054.
+const INVITE_INFO = { inviter_name: 'Alice', group_name: 'Tuesday Night Crew' };
+
+describe('invite/accept — outcomes announced, L1, D-24 and W054 (plan 88.6.1-35)', () => {
+  it('A1: a failed accept is spoken from the region, with no exposed glyph', async () => {
+    accept().mockRejectedValue(wireError(404, { error: 'Pending invite not found' }));
+
+    const { container } = render(<InviteAcceptPage />);
+
+    await screen.findByRole('heading', { name: /unable to accept invite/i });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      'Unable to accept invite This invite may have already been accepted or expired.'
+    );
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(container.querySelectorAll('svg:not([aria-hidden="true"])')).toHaveLength(0);
+  });
+
+  it('A2: signed out, the region stays empty until the invite info settles, then speaks once', async () => {
+    authState.user = undefined;
+    let resolveInfo: (v: unknown) => void = () => {};
+    inviteInfo().mockReturnValue(
+      new Promise((resolve) => {
+        resolveInfo = resolve;
+      })
+    );
+
+    render(<InviteAcceptPage />);
+
+    await screen.findByRole('heading', { name: "You're invited!" });
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(region.textContent).toBe('');
+
+    await act(async () => {
+      resolveInfo({ ...INVITE_INFO, member_count: 4 });
+    });
+
+    // Positive wait (CF-26).
+    await waitFor(() =>
+      expect(region.textContent).toBe(
+        "You're invited! Alice invited you to join Tuesday Night Crew on Next Game Night. The group has 4 members."
+      )
+    );
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+  });
+
+  it('A3: signed out with a failed info request, the region speaks the generic invitation', async () => {
+    authState.user = undefined;
+    inviteInfo().mockRejectedValue(wireError(500, { error: 'boom' }));
+
+    render(<InviteAcceptPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+        "You're invited! You've been invited to a group on Next Game Night."
+      )
+    );
+    expect(logger.info).toHaveBeenCalledTimes(1);
+  });
+
+  it('A4 (copy row L1): the loading line names what is loading', () => {
+    authState.isLoading = true;
+
+    render(<InviteAcceptPage />);
+
+    expect(screen.getByText('Checking your invitation...')).toBeInTheDocument();
+    expect(screen.queryByText('Loading...')).toBeNull();
+  });
+
+  it('A5 (W054): a success body carrying only the camelCase id renders no Go to Group link', async () => {
+    // The route's sole success body is snake_case only (routes/invites.js:779); the camelCase
+    // alias read was dead and is deleted.
+    accept().mockResolvedValue({ success: true, groupId: GROUP_ID });
+
+    render(<InviteAcceptPage />);
+
+    await screen.findByRole('heading', { name: /you've joined the group!/i });
+    expect(screen.queryByRole('link', { name: /go to group/i })).toBeNull();
+    expect(screen.getByRole('link', { name: /go home/i })).toBeInTheDocument();
+  });
+
+  it('A6: a member count of 0 prints no stray "0" and no count line', async () => {
+    authState.user = undefined;
+    inviteInfo().mockResolvedValue({ ...INVITE_INFO, member_count: 0 });
+
+    render(<InviteAcceptPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+        "You're invited! Alice invited you to join Tuesday Night Crew on Next Game Night."
+      )
+    );
+    expect(screen.queryByText(/the group has/i)).toBeNull();
+    expect(screen.getByText('Alice').closest('p')?.textContent).toBe(
+      'Alice invited you to join Tuesday Night Crew on Next Game Night.'
+    );
+  });
+
+  it('A7 (D-24): the wrong-email arm asks the shared isCsrfRejection predicate', async () => {
+    const err = BACKEND_403();
+    accept().mockRejectedValue(err);
+
+    render(<InviteAcceptPage />);
+
+    await screen.findByRole('heading', { name: /unable to accept invite/i });
+    expect(
+      screen.getByText('This invite was sent to a different email address.')
+    ).toBeInTheDocument();
+    expect(isCsrfRejection as unknown as Mock).toHaveBeenCalledWith(err);
   });
 });
