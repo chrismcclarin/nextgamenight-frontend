@@ -15,6 +15,10 @@ import type { EmailChangeResponse, User } from './schemas/users';
 import type { AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
 import { logger } from '@/lib/logger';
+// The repo-root scrubber (imports nothing, so no cycle). This module is its first `src/`
+// importer; the direction rule in src/lib/sentry.scrub.test.ts (the scrubber never imports a
+// `.ts` module) is kept. Used ONLY by `capErrorText` below (88.6.1-23, W063).
+import { scrubString } from '../../sentry.scrub.js';
 
 // Absolute backend origin. Used ONLY by PUBLIC/unauthenticated callers that must
 // bypass the BFF proxy (magic-link, invite-preview, public RSVP respond,
@@ -375,8 +379,12 @@ export function mapErrorToCode(body: any, status: number): ApiErrorCode {
 // NON-RENDERED `ApiError` field for Sentry. Both self-constructed non-JSON error
 // bodies (publicFetch and apiFetch) were reshaped onto `message` in the SAME
 // commit, so a proxy/gateway failure still surfaces its text here.
+// [AMENDED Phase 88.6.1-23 (W063): the same envelope-only value is now coerced with `String`
+// (exactly as `Error`'s constructor would coerce a non-string) and passed through
+// `capErrorText`, so a JSON envelope message is redacted and then capped at 200 characters
+// where it is BUILT, like the non-JSON text below. No alias arm is added.]
 function extractErrorMessage(body: any, status: number): string {
-  return body?.message ?? `HTTP error! status: ${status}`;
+  return capErrorText(String(body?.message ?? `HTTP error! status: ${status}`));
 }
 
 // DECISION Phase 88.6-42 (AC-4): the backend's own error string is retained on a
@@ -441,7 +449,7 @@ function fieldErrorText(err: any): string {
 }
 
 /* DECISION Phase 88.6-62 (review round 2 #3, T-84-01): a NON-JSON error body is capped at
-   NON_JSON_ERROR_TEXT_CAP characters WHERE IT IS RESHAPED, through this ONE helper, at BOTH
+   ERROR_TEXT_CAP characters WHERE IT IS RESHAPED, through this ONE helper, at BOTH
    reshape sites (publicFetch and apiFetch). Plan 42 keyed that text onto `message`
    (T-88.6-118) so a gateway failure still surfaces it — which made it `ApiError.message`, and
    that reaches TWO sinks: every `errCtx(err)` breadcrumb (logger.ts `errCtx`, name + message)
@@ -452,15 +460,56 @@ function fieldErrorText(err: any): string {
    28 files, comments included, measured 2026-09-29). REJECTED: capping only publicFetch's
    site, which the review first named — apiFetch carries nearly every errCtx consumer, so one
    site bounds neither sink for them. 200 keeps a gateway page's diagnostic first line.
-   Raising the cap or dropping a site is a decision, not a cleanup. */
-const NON_JSON_ERROR_TEXT_CAP = 200;
+   Raising the cap or dropping a site is a decision, not a cleanup.
+   [AMENDED Phase 88.6.1-23 (W063): the cap is now ONE exported helper, `capErrorText` below,
+   that REDACTS (scrubString) before it cuts, applied at every builder of a body-derived error
+   message in BOTH files: this module (the non-JSON reshape, the JSON envelope message through
+   `extractErrorMessage`, apiFetch's joined field errors, and the two prefill throws) and
+   AvailabilityForm.js's submit guard. The constant is renamed ERROR_TEXT_CAP, because it no
+   longer caps only non-JSON text (its former non-JSON-only name described only that). Every
+   other sentence above stands, the decline of an `errCtx` edit included.] */
+const ERROR_TEXT_CAP = 200;
+
+// DECISION Phase 88.6.1-23 (W063 / AC-34): CHOSEN — one cap where every body-derived error
+// message is BUILT. In this module: the non-JSON reshape, the JSON envelope message (apiFetch,
+// publicFetch and validateToken, through `extractErrorMessage`), the joined field errors, and
+// the two prefill throws (`prefillFromGcal`, `prefillFromSaved`; plain Errors, r2 #28). Outside
+// it: AvailabilityForm.js's submit guard (r2 #158), which is why this helper is exported. This
+// extends 88.6-62's own rule ("capping where the value is BUILT bounds both at once") to the
+// JSON path.
+// CHOSEN — redact-then-cut (r2 #108). `scrubString` runs on the whole text first, so an email
+// or a token is replaced whole, and only then is the text cut.
+// REJECTED (a): editing `errCtx`. It is owner-ruled (`R2-FIXNOW-SET-RULING`, 2026-09-29), and
+// on the merits it cannot tell a body-derived message from this module's own diagnostics.
+// REJECTED (b): capping in the ApiError constructor. That truncates this module's own long
+// hand-built diagnostics (the HTML-branch configuration message runs past 200 characters) and
+// every caller-built ApiError.
+// REJECTED (c): capping `details`. Consumers read structured fields off it, and it never
+// reaches `errCtx`.
+// REJECTED (d): capping `upstreamMessage`. Not this sink: it rides only to Sentry `extra` on an
+// event (the owner's AC-4 ruling), which the scrubber deep-walks.
+// REJECTED (e): the blind cut (cut, and leave redaction to `beforeSend`). The pattern scrubber
+// matches whole patterns only (EMAIL needs the TLD, JWT needs three segments), so a cut that
+// lands inside one leaves a fragment neither rule can match, and the fragment reaches
+// breadcrumbs and Sentry unredacted.
+// REJECTED (f): the whitespace back-off (cut at the last whitespace before character 200). It
+// would turn the #3 gateway text (`HUGE` in api.test.ts) into a marker-only string and lose the
+// gateway diagnostic the 88.6-62 cap keeps on purpose. Redact-then-cut leaves #3 and the W063
+// repeated-letter arms byte-unchanged, because they carry no PII.
+// ' [truncated]' is not user-facing: no surface renders `ApiError.message` (the tree-wide
+// "never displayed" test in fetchErrorTreatment.test.ts). Idempotent: an already-capped string
+// comes back identical.
+// Raising the cap, dropping a builder, or cutting before redacting is a decision, not a cleanup.
+export function capErrorText(text: string): string {
+  const scrubbed: string = scrubString(text);
+  return scrubbed.length > ERROR_TEXT_CAP
+    ? `${scrubbed.slice(0, ERROR_TEXT_CAP)} [truncated]`
+    : scrubbed;
+}
 
 /** The self-constructed error body for a non-JSON error response (keyed `message`, capped). */
 function nonJsonErrorBody(responseText: string, status: number): { message: string } {
-  const capped =
-    responseText.length > NON_JSON_ERROR_TEXT_CAP
-      ? `${responseText.slice(0, NON_JSON_ERROR_TEXT_CAP)} [truncated]`
-      : responseText;
+  const capped = capErrorText(responseText);
   return { message: capped || `HTTP error! status: ${status}` };
 }
 
@@ -601,10 +650,14 @@ export async function apiFetch<T = unknown>(
       // If there are validation errors, format them nicely for the message.
       const fieldErrors = extractFieldErrors(errorData);
       if (fieldErrors && fieldErrors.length > 0) {
-        const errorMessages = fieldErrors
-          .map(fieldErrorText)
-          .filter(Boolean)
-          .join('. ');
+        // 88.6.1-23 (W063): the joined text is a second builder of a body-derived message, so
+        // it is capped where it is built too; an empty join still falls through below.
+        const errorMessages = capErrorText(
+          fieldErrors
+            .map(fieldErrorText)
+            .filter(Boolean)
+            .join('. ')
+        );
         const msg = errorMessages || extractErrorMessage(errorData, response.status);
         throw new ApiError(
           msg,
@@ -659,6 +712,11 @@ export async function apiFetch<T = unknown>(
     // both reshape sites, which bounds the errCtx breadcrumbs every CONSUMER files and the
     // captured exception value. The decline of errCtx at THIS site STANDS: 200 characters
     // of a response body are still body text, and this breadcrumb needs none of it.]
+    // [AMENDED Phase 88.6.1-23 (W063): "bounds the errCtx breadcrumbs every CONSUMER files"
+    // was true only of NON-JSON text until this plan; a JSON envelope message and the joined
+    // field errors rode uncapped. From this plan on every body-derived message is redacted and
+    // then capped where it is built (`capErrorText`), so the sentence holds for both. The
+    // decline of errCtx at THIS site still STANDS.]
     //
     // AMENDED Phase 88.6-57 (CR-501, 88.6-REVIEW.md, 2026-09-28): "the full url is not
     // carried" was true of the ORIGIN and FALSE of the QUERY STRING until this plan --
@@ -748,6 +806,12 @@ export async function apiFetch<T = unknown>(
    helpers also keep their resolved shapes. Every transport failure out of all six is now an
    `ApiError('network')` and every unparseable body an `ApiError('internal')` (see
    `timedPublicFetch` / `guardedJson` below).]
+   [AMENDED Phase 88.6.1-23 (R3-M7/M9): "every non-OK status EXCEPT 400" and "400 is kept
+   resolving" now read by CODE: validateToken throws for every non-OK answer whose code
+   (`mapErrorToCode`) is not `token_invalid`, and resolves a `token_invalid` answer whatever its
+   status. The page's invalid-link branch still owns exactly the backend's `token_invalid`
+   answer; a second 400 on the route no longer renders as a dead link. See the DECISION Phase
+   88.6.1-23 (R3-M7/M9) marker in validateToken.]
 
    [AMENDED Phase 88.6.1-23 (R9 mechanism, owner ruling 2026-10-05): `respondViaToken` is a
    SECOND scoped exception, 5xx ONLY — a status of 500 or above rejects `ApiError('internal')`
@@ -1599,6 +1663,11 @@ export const magicAuthAPI = {
   // non-OK status except 400 a coded ApiError (429 → rate_limited, the raw 500 → internal),
   // while the 400 still RESOLVES into the page's invalid-link branch. See the DECISION Phase
   // 88.6-42 binding-constraint amendment for why this one helper may throw on status.]
+  // [AMENDED Phase 88.6.1-23 (R3-M7/M9): "while the 400 still RESOLVES" is now "while the
+  // `token_invalid` answer still RESOLVES": the discriminator is the backend's CODE, not the
+  // status. A non-OK answer resolves only when its code is `token_invalid` (whatever its
+  // status); every other non-OK answer, a 400 with any other code or none included, throws the
+  // coded ApiError. See the DECISION Phase 88.6.1-23 (R3-M7/M9) marker at the guard.]
   validateToken: async (token: string, formLoadedAt = null) => {
     const { res, text } = await timedPublicFetch(
       `${PUBLIC_API_BASE_URL}/magic-auth/validate`,
@@ -1610,19 +1679,38 @@ export const magicAuthAPI = {
       MAGIC_VALIDATE_TRANSPORT_FAILURE
     );
     const body = guardedJson(text, res.status, MAGIC_VALIDATE_TRANSPORT_FAILURE);
-    // The ONE scoped exception to the DECISION Phase 88.6-42 binding constraint (see its
-    // 2026-09-29 amendment): any non-OK status except the 400 `token_invalid` answer throws a
-    // coded ApiError, so a 429 / 5xx renders the register's rate_limited / internal line
-    // instead of the invalid-link copy. No new `.error` read: the upstream string rides on
+    // One of TWO scoped exceptions to the DECISION Phase 88.6-42 binding constraint (see its
+    // 2026-09-29 amendment and its 88.6.1-23 R9 bracket): validateToken throws on any non-OK
+    // answer whose code is not `token_invalid` (a 4xx included), and respondViaToken throws on a
+    // status of 500 or above only. Here, a coded ApiError means a 400 that is not a dead link, a
+    // 429 or a 5xx renders the register's validation / rate_limited / internal line instead of
+    // the invalid-link copy. No new `.error` read: the upstream string rides on
     // `extractUpstreamMessage`, the one sanctioned read (errorEnvelopeReads assertion 6).
-    if (!res.ok && res.status !== 400) {
-      throw new ApiError(
-        extractErrorMessage(body, res.status),
-        mapErrorToCode(body, res.status),
-        res.status,
-        body,
-        extractUpstreamMessage(body)
-      );
+    //
+    // DECISION Phase 88.6.1-23 (R3-M7/M9): CHOSEN — the backend's own code decides. A non-OK
+    // answer resolves only when its code is `token_invalid` (the fix text of
+    // `.planning/deferred/phase-88.6.1.md:225`).
+    // REJECTED (a): the HTTP status alone (the old rule). A future second 400 on the route would
+    // render as a dead link.
+    // REJECTED (b): status 400 AND the code. It keeps the other drift the register names: a
+    // `token_invalid` moved off 400 would render "Something went wrong" for a dead link.
+    // REJECTED (c): reading the code off the body directly. `mapErrorToCode` is the module's one
+    // code seam, and its value is the code the throw carries.
+    // No production behaviour changes today: the route's only 400s are `token_invalid` (BE
+    // `routes/magicAuth.js:98`, `:115`). Pair with Phase 93's consumer sweep when it touches
+    // `utils/errors.js`.
+    // Keying this on the status again is a decision, not a cleanup.
+    if (!res.ok) {
+      const code = mapErrorToCode(body, res.status);
+      if (code !== 'token_invalid') {
+        throw new ApiError(
+          extractErrorMessage(body, res.status),
+          code,
+          res.status,
+          body,
+          extractUpstreamMessage(body)
+        );
+      }
     }
     return body;
   },
@@ -1727,7 +1815,7 @@ export const availabilityFormAPI = {
       // :216, :241), so a mechanical conversion to body.code/body.message here produces an
       // EMPTY message. Phase 93 owns the backend code; this read goes when that lands.
       const err = objectBodyOrEmpty(text);
-      throw new Error(err.error || GCAL_PREFILL_FAILURE);
+      throw new Error(capErrorText(String(err.error || GCAL_PREFILL_FAILURE)));
     }
     // An unparseable 200 (a proxy or gateway HTML page) now surfaces the SAME failure the
     // error branch above produces, instead of an unhandled SyntaxError. The resolved SHAPE
@@ -1768,7 +1856,7 @@ export const availabilityFormAPI = {
     if (!res.ok) {
       // RETAINED under D62 branch B — see the twin comment in prefillFromGcal above.
       const err = objectBodyOrEmpty(text);
-      throw new Error(err.error || SAVED_PREFILL_FAILURE);
+      throw new Error(capErrorText(String(err.error || SAVED_PREFILL_FAILURE)));
     }
     // Same guard, same reason, same unchanged { slot_ids, count } shape.
     return guardedJson(text, res.status, SAVED_PREFILL_FAILURE);

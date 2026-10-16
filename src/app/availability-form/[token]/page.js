@@ -222,7 +222,10 @@ export default function AvailabilityFormPage() {
            200 with `valid: false`" was FALSE: the backend answers a bad token with a 400
            `token_invalid` envelope (Sonnet/routes/magicAuth.js `sendError(res, 'token_invalid',
            …)`), which `validateToken` RESOLVES — 400 is the one non-OK status it does not throw
-           on — into the `!validation.valid` branch above. The conclusion held; the mechanism was
+           on — into the `!validation.valid` branch above. [AMENDED Phase 88.6.1-23 (R3-M7/M9):
+           validateToken now resolves a non-OK answer only when its code is token_invalid; a 400
+           with any other code, or none, throws and renders FAILURE_HEADLINE over its register
+           line.] The conclusion held; the mechanism was
            wrong. (2) The transport / 429 / 5xx failures this marker says arrive as coded
            `ApiError`s now actually do (lib/api.ts `timedPublicFetch` / `guardedJson` /
            `validateToken`, plan 88.6-62 task 1); before, they were plain `Error`s and rendered

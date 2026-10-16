@@ -277,7 +277,9 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
   //      TRANSPORT (guarded success parse + mapped timeout) without touching the reads.
   //
   // GONE, and not coming back: the three apiFetch-path alias arms the SPEC called :300, :309
-  // and :316. `extractErrorMessage` is now `body?.message ?? "HTTP error! status: N"`,
+  // and :316. `extractErrorMessage` is now `body?.message ?? "HTTP error! status: N"`
+  // (AMENDED Phase 88.6.1-23 (W063): that same value, coerced with String and capped by
+  // capErrorText where it is built),
   // `mapErrorToCode`'s validation hint reads `body.details.errors`, and `extractFieldErrors`
   // has one arm. Both self-constructed non-JSON bodies were reshaped onto `message` in the
   // same commit.
@@ -631,7 +633,12 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
       withoutComments(fs.readFileSync(path.join(SRC, r), 'utf8')).includes('upstreamMessage'),
     );
     expect(carriers.sort()).toEqual(['lib/api.ts', 'lib/logger.ts', 'lib/queryClient.ts']);
-    expect(apiSrc).toMatch(/return body\?\.message \?\? `HTTP error! status: \$\{status\}`;/);
+    // AMENDED Phase 88.6.1-23 (W063): the same envelope-only value (body?.message, else the bare
+    // status template, no alias arm) is now coerced with String and capped by capErrorText where it
+    // is built. Pinned byte-exact so an alias arm cannot slip in under the wrap.
+    expect(apiSrc).toMatch(
+      /return capErrorText\(String\(body\?\.message \?\? `HTTP error! status: \$\{status\}`\)\);/,
+    );
   });
 
   it('7. T-88.6-117 — google-connect returns FIXED bodies, and exactly FOUR of them', () => {

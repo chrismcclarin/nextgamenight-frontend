@@ -9,7 +9,7 @@ import AvailabilityGrid from './AvailabilityGrid';
 // vite-tsconfig-paths only maps `@/` for files in the TS project (tsconfig
 // `include` is .ts/.tsx only), so `@/` aliases don't resolve from `.js`
 // importers in tests. Matches the sibling ScheduleForm's import style.
-import { ApiError, availabilityFormAPI } from '../../lib/api';
+import { ApiError, availabilityFormAPI, capErrorText } from '../../lib/api';
 import { useAppForm } from '../../lib/useAppForm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
@@ -187,7 +187,7 @@ export default function AvailabilityForm({
          `if (response.error)` is a decision, not a cleanup. */
       if (response?.success !== true) {
         throw new ApiError(
-          typeof response?.message === 'string' ? response.message : 'availability submit rejected',
+          typeof response?.message === 'string' ? capErrorText(response.message) : 'availability submit rejected',
           typeof response?.code === 'string' ? response.code : 'unknown',
           400,
           response,
