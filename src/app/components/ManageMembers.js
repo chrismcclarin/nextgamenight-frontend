@@ -17,6 +17,7 @@ import { Modal } from './Modal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { SelectControl } from '../../components/ui/Input';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -43,6 +44,56 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // The group the latest fetch asked for: a fetch for another group resets the previous
     // group's error, pending invites and role, and the banner shows an error only for this key.
     const [requestedGroupId, setRequestedGroupId] = useState(null);
+    /* DECISION Phase 88.6.1-42 (D-04, D-05, H1-H3): the three handlers whose refresh can remove
+       the row the user is on (the remove, the approve, the reject) arm the ONE shared hook
+       (plan 88.6.1-04) before any await and settle it in `finally`. A phone remove lands on the
+       neighbour row's member-actions trigger (the next row, else the previous one, captured at
+       arm time; a natively disabled trigger is skipped, an `aria-disabled` one is not, because
+       it can still take focus), and with no such neighbour on this dialog's title (the section
+       heading), reached through the hook's floor because this host sits inside a `Modal`.
+       Approve and reject land on the title.
+       REJECTED, each with its reason:
+       (a) a ref into the Modal header: `ModalHeader` takes no ref, so it would be an edit to the
+           shared primitive for the same element the floor already finds.
+       (b) always the title: D-05 as first written ("whole-list remounts -> the section heading")
+           assumed the whole roster remounted. After D-09a rows are keyed on the member id and
+           survive, so a single-row removal has a neighbour, and the title throws away the
+           user's place in a list they may be working through. D-05 is amended to "single-row
+           removal -> the neighbour row, else the heading" (D-57), the same reading plan
+           88.6.1-41 records for the home group list.
+       (c) arming the role change: after D-09a it removes nothing. Its refresh may MOVE the row
+           (the members GET has no order), and the shared hook cannot tell a moved node from a
+           blank-area click. No host-local re-focus is built either: MEASURED (T8b), React DOM's
+           commit re-focuses a moved node that held focus before the commit (`restoreSelection`,
+           the finding plan 88.6.1-41 recorded), so a re-focus written here could never act.
+       (d) a fallback prop on KebabMenu: its own marker, and D-04.
+       (e) the row's first control in DOM order: at phone width the desktop controls are hidden
+           and cannot take focus.
+       The dialog-tier remove and reject close their ConfirmDialog after the refresh, and the
+       hook defers to the primitive's restore, which floors to this title (D-07, plan 88.6.1-20;
+       `DECISION Phase 88.6-44`). Approve and reject go with Phase 91.1. Changing this is a
+       decision, not a cleanup. */
+    const rosterFocusRecovery = useFocusRecovery();
+    // The phone member-actions wrapper of each active row, by member id (callback refs below).
+    const memberActionsNodesRef = useRef(new Map());
+    // The arm-time neighbour resolver for a remove: the member-actions trigger of the active row
+    // directly after, else directly before, the removed one; null when neither has a usable one.
+    const neighbourMemberActions = (target_user_id) => {
+        const active = members.filter((m) => m.UserGroup?.role !== 'pending');
+        const index = active.findIndex((m) => m.id === target_user_id);
+        const neighbours = index === -1
+            ? []
+            : [active[index + 1], active[index - 1]].map(
+                (m) => (m ? memberActionsNodesRef.current.get(m.id) : undefined)
+            );
+        return () => {
+            for (const wrapper of neighbours) {
+                const trigger = wrapper?.querySelector('button');
+                if (trigger && trigger.isConnected && !trigger.hasAttribute('disabled')) return trigger;
+            }
+            return null;
+        };
+    };
     const [userRole, setUserRole] = useState(null);
     /* DECISION Phase 88.6-19 (R1 / UI-SPEC §6.2 arm 1): the members LOAD failure holds the
        ERROR OBJECT, not a flattened "Failed to load members" string, and renders through the
@@ -292,6 +343,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // this. See the AR-DEC-3 marker at the kebab item for why they differ.
     const handleRemoveMemberConfirmed = async (target_user_id) => {
         if (!group_id || !user?.sub) return false;
+        const settle = rosterFocusRecovery.arm({ preferred: neighbourMemberActions(target_user_id) });
         try {
             await groupsAPI.removeUserFromGroup(group_id, target_user_id);
             await fetchMembers(); // Refresh the list
@@ -309,6 +361,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             // `removeMemberGate.onConfirm` rethrows on `false` (`Remove failed`), which is
             // what keeps the confirm dialog OPEN after a failed remove.
             return false;
+        } finally {
+            settle();
         }
     };
 
@@ -330,8 +384,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         removeMemberGate.trigger(target_user_id);
     };
 
-    const handleApproveMember = async (target_user_id) => {
+    const handleApproveMember = async (target_user_id, event) => {
         if (!group_id) return;
+        const settle = rosterFocusRecovery.arm({ from: event?.currentTarget });
         try {
             await groupsAPI.approveMember(group_id, target_user_id);
             await fetchMembers();
@@ -342,10 +397,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         } catch (error) {
             logger.info('Error approving member:', errCtx(error));
             toast.error(getFetchErrorMessage(error));
+        } finally {
+            settle();
         }
     };
 
     const performRejectMember = async (target_user_id) => {
+        const settle = rosterFocusRecovery.arm();
         try {
             await groupsAPI.rejectMember(group_id, target_user_id);
             await fetchMembers();
@@ -359,6 +417,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             // `rejectMemberGate.onConfirm` rethrows on `false` (`Reject failed`) so a failed
             // reject leaves its dialog open.
             return false;
+        } finally {
+            settle();
         }
     };
 
@@ -605,7 +665,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <Button
                                                     variant="primary"
                                                     size="default"
-                                                    onClick={() => handleApproveMember(member.id)}
+                                                    onClick={(event) => handleApproveMember(member.id, event)}
                                                 >
                                                     Approve
                                                 </Button>
@@ -771,7 +831,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                             The desktop `ariaLabel` is byte-unchanged — two live
                                                             test queries key on that exact string. Collapsing these
                                                             two labels into one is a decision, not a cleanup. */}
-                                                        <div className="md:hidden">
+                                                        <div
+                                                            className="md:hidden"
+                                                            ref={(node) => {
+                                                                if (node) memberActionsNodesRef.current.set(member.id, node);
+                                                                else memberActionsNodesRef.current.delete(member.id);
+                                                            }}
+                                                        >
                                                             <KebabMenu
                                                                 ariaLabel={`Member actions for ${member.username || member.email}`}
                                                                 items={[
