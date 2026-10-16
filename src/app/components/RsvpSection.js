@@ -17,7 +17,7 @@ import { logger, errCtx } from '@/lib/logger';
 
 /* The ratified note-save success string (UI-SPEC §6.3, owner ruling 2026-09-16, the same
    sitting that ratified the hero's "Response saved"). Declared ONCE here for the same
-   reason `NextGameNightCard.tsx:94` declares its own: the clear-then-set rule below only
+   reason `NextGameNightCard.tsx:94` (`RSVP_SUCCESS_MESSAGE`) declares its own: the clear-then-set rule below only
    works against a FIXED string, and a second spelling of it is the duplication this phase
    exists to remove. Authoring a different string here is copy authorship, not a cleanup. */
 const NOTE_SAVED_MESSAGE = 'Note saved';
@@ -55,7 +55,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
   /* DECISION Phase 88.6-29 (W43): the note field's ids come from `useId`, chosen OVER the
      fixed `id="rsvp-note"` the deferred register entry suggested. gameDetail renders one
-     `RsvpSection` PER interactive upcoming-event card (`gameDetail/page.js:1533`), so a fixed
+     `RsvpSection` PER interactive upcoming-event card (in `gameDetail/page.js`, the
+     `RsvpSection` element under `{interactive && (`), so a fixed
      id would mint duplicate ids on the multi-event arm and `htmlFor` would resolve to whichever
      control the browser saw first — silently mislabelling every card after the first. This is
      the same call `ParticipantRow.js:7-12`'s DECISION Phase 88-21 marker records for the same
@@ -69,13 +70,14 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
      `aria-disabled` rather than the native attribute (see the marker on the trio below), and an
      `aria-disabled` control refuses nothing by itself — the refusal is these refs, read
      SYNCHRONOUSLY on the handler's first line and released in `finally`. Both halves land or
-     neither — `NextGameNightCard.tsx:468-479`, and UI-SPEC D52 at `88.6-UI-SPEC.md:1034`, row
-     A-31 (the plan's inherited `:1008` cite has drifted; re-derived by opening the file). */
+     neither — `NextGameNightCard.tsx:479-488` (`DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5,
+     narrowed)`), and UI-SPEC D52 at `88.6-UI-SPEC.md:1045`, row A-31 (`| A-31 | D52 |`; the
+     plan's inherited `:1008` cite has drifted; re-derived by opening the file). */
   const statusLatch = useRef(false);
   const saveNoteLatch = useRef(false);
 
   /* The group's accessible name, DERIVED from `eventDate` in the port's `RSVP for <when>` shape
-     (`NextGameNightCard.tsx:453`). `formatDateTime` returns '' for a null/undefined/unparseable
+     (`NextGameNightCard.tsx:464`, its `aria-label`). `formatDateTime` returns '' for a null/undefined/unparseable
      date (`src/lib/datetime.ts:287-296`), so the fallback below can never interpolate
      `undefined` or `Invalid Date` — the two shapes a naive template literal produces — and never
      reads the opaque `eventId` aloud.
@@ -123,8 +125,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
   const noteDraft = useRef('');
 
   /* THE PHASE'S ONE STALENESS IDIOM (W61), the same cancelled-generation guard shipped at
-     `NextGameNightCard.tsx:231`/`:236`/`:241`/`:248-250` and adopted by plan 88.6-32's
-     `ResponseDashboard.js:56`. It covers FOUR checkpoints: the success application, the catch,
+     `NextGameNightCard.tsx:231`/`:236`/`:241`/`:248-250` (`let cancelled`) and adopted by plan
+     88.6-32's `ResponseDashboard.js` (its `inFlightGenerationRef` paragraph). It covers FOUR checkpoints: the success application, the catch,
      the finally, AND unmount.
 
      THE COUNTER IS COMPONENT-SCOPE, AND THE PORT IS DELIBERATELY NOT LITERAL — this is the part
@@ -144,7 +146,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
      wrong here is a LATE response writing over a newer one — the guard has to hold for a request
      that has already resolved. It is also inert under test (`rsvpAPI` is `vi.fn()`-mocked in
      every suite covering this component), would force signature widenings on `getEventRsvps`
-     (`api.ts:721`) and, via plan 30, `getDeletionBlockers`, and `apiFetch` rethrows aborts raw
+     (`api.ts`, `getEventRsvps:`) and, via plan 30, `getDeletionBlockers`, and `apiFetch` rethrows aborts raw
      and logs twice per abort. No shipped component uses it. */
   const generationRef = useRef(0);
 
@@ -157,7 +159,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     /* Phase 88.6-29: the SAME instance switching events must not carry the previous event's
        outcome. A stale CONFIRMATION is the more urgent of the two — it claims a save the user
        never made for the event now on screen, where a stale error only mis-attributes a
-       failure (the reasoning `NextGameNightCard.tsx:220-225` records for the hero flip).
+       failure (the reasoning `NextGameNightCard.tsx:220-225`, `EXTENDED Phase 88.6-28
+       continuation`, records for the hero flip).
        Neither clear may be removed without removing the other's reason with it. Phase 88.6.1-38
        (AC-25): a limit reached on the previous event's draft must not stand on the new event's,
        so the E11 region is cleared here too. */
@@ -208,13 +211,13 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
       }
     } catch (err) {
       /* THE GENERATION GUARD IS CHECKED FIRST, ahead of the log and `setError` — this plan's
-         ruled ordering, and a deliberate divergence from plan 32's `ResponseDashboard.js:100-104`,
-         which logs BEFORE its guard because AC-16 requires a Sentry EVENT on that path. This call
+         ruled ordering, and a deliberate divergence from plan 32's `ResponseDashboard.js` (its
+         `catch` and the latched `logger.error` there), which logs BEFORE its guard because AC-16 requires a Sentry EVENT on that path. This call
          is `logger.info`, a breadcrumb: a superseded read is not a diagnostic, and an unguarded
          one would spend a breadcrumb slot per supersession out of a buffer of 100. */
       if (generation !== generationRef.current) return;
       // AC-2 WIDENED (owner 2026-09-09), LEVEL AMENDED (owner 2026-09-13, D2): `logger.info` is
-      // `Sentry.addBreadcrumb` (`logger.ts:34-36`) — a BREADCRUMB, not an event, so this creates
+      // `Sentry.addBreadcrumb` (`src/lib/logger.ts:52-54`, `info(msg, ctx)`) — a BREADCRUMB, not an event, so this creates
       // no new Sentry event and no new Session Replay egress. `logger.error`/`logger.warn` are
       // both captures and are the RECORDED REJECTED alternatives. `errCtx` (never a hand-written
       // `{ name, message }` literal) carries T-84-01's name-and-message-only payload: no RSVP
@@ -375,7 +378,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
         {/* Button group */}
         {!isPastEvent && (
-          /* W44, ported from the shipped sibling (`NextGameNightCard.tsx:446-455`): `role="group"`
+          /* W44, ported from the shipped sibling (`NextGameNightCard.tsx:458-466`, its
+             `role="group"` toggle): `role="group"`
              plus a label naming the EVENT is what distinguishes this trio from any other control
              pair on a page that renders several of them — gameDetail's multi-event arm mounts one
              `RsvpSection` per interactive card. */
@@ -392,13 +396,13 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               return (
                 /* DECISION Phase 88.6-29 (W44, D-07/D-08 · UI-SPEC A-5): the trio STAYS a bare
                    `<button>` — no `.btn`, no `<Button>` — and this is a CONSEQUENCE constraint,
-                   not bookkeeping. `.btn` (`globals.css:2194-2205` — the plan's inherited
-                   `:1955-1967` cite has drifted; re-derived by opening the file) is unlayered and
-                   declares `border-radius: 8px` (`:2199`), `font-weight: 600` (`:2200`) and
-                   `font-size: 0.875rem` (`:2201`); plan 05
+                   not bookkeeping. `.btn` (the unlayered `.btn {` rule in `globals.css` — the
+                   plan's inherited `:1955-1967` cite has drifted; re-derived by opening the file)
+                   is unlayered and declares `border-radius: 8px`, `font-weight: 600` and
+                   `font-size: 0.875rem`; plan 05
                    layers ONLY `border: none`. The radius would override
                    `first:rounded-l-[inherit] last:rounded-r-[inherit]` — which
-                   `NextGameNightCard.tsx:483-487` records as an owner UAT finding of 2026-09-01
+                   `NextGameNightCard.tsx:494-498` (`owner UAT finding`) records as an owner UAT finding of 2026-09-01
                    (without it the overflow clip shaves the selected 2px border off at the corner
                    arcs) — and the weight/size would silently defeat this same plan's type sweep.
                    The shipped port keeps the identical markup on a bare `<button>` under its own
@@ -406,7 +410,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                    overrides a shipped DECISION marker AND an owner UAT fix at once; it is not a
                    consistency cleanup, and it must not be "tidied" later either.
 
-                   THE SPLIT DISABLED TREATMENT, ported from `NextGameNightCard.tsx:466-479`: the
+                   THE SPLIT DISABLED TREATMENT, ported from `NextGameNightCard.tsx:479-488`
+                   (`DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5, narrowed)`): the
                    PRESSED / in-flight button gets `aria-disabled` and NEVER the native attribute —
                    a natively-disabled element leaves the focus order, so in a real browser focus
                    drops to `<body>` mid-submit and a keyboard or switch user is stranded. The
@@ -415,7 +420,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
                    44px FLOOR: `min-h-11`, and it is not optional. It REPLACES the `py-2` half of
                    the shipped `px-3 py-2` pairing, which is exactly what
-                   `NextGameNightCard.tsx:502-506`'s floor marker names as the thing not to
+                   `NextGameNightCard.tsx:513-517`'s floor marker (`44px FLOOR`) names as the thing not to
                    restore: `text-sm` (20px line) plus 16px of vertical padding computes to about
                    36px and fails the touch floor (D-07 constraint i). Disclosed as UI-SPEC §1.2
                    row V-19 and MEASURED by the phone-lane arm in `e2e/touch-targets.spec.ts` —
@@ -449,7 +454,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                       {/* The button deliberately KEEPS focus in flight (`aria-disabled` above), so
                           it must keep an accessible NAME too — otherwise the control the user just
                           activated announces as nothing for the whole round trip (WCAG 4.1.2;
-                          `NextGameNightCard.tsx:526-530`). The busy context is ADDITIONAL to the
+                          `NextGameNightCard.tsx:537-541`, its in-flight `sr-only` name). The busy context is ADDITIONAL to the
                           preserved status word, never a replacement for it: an `aria-label` on the
                           SPINNER is the natural wrong turn here and would leave the focused button
                           announcing as "loading" instead of "Going, saving". */}
@@ -536,9 +541,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   `aria-disabled` plus the synchronous `saveNoteLatch`, NEVER the native
                   `disabled` it carried. Fixing three buttons on one surface and leaving the
                   fourth would ship a third reading of ONE rule in one component. The split is
-                  already ratified twice: `NextGameNightCard.tsx:466-479`'s
+                  already ratified twice: `NextGameNightCard.tsx:479-488`'s
                   `DECISION Phase 88.5` marker for the trio, and D52 for the deletion modal's
-                  Cancel (`88.6-UI-SPEC.md:1034`, row A-31 — `aria-disabled` plus a first-line handler
+                  Cancel (`88.6-UI-SPEC.md:1045`, row A-31 (`| A-31 | D52 |`) —`aria-disabled` plus a first-line handler
                   guard, "**not** the native `disabled` attribute … the recorded rejected
                   alternative").
 
@@ -722,7 +727,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                       <div key={rsvp.id} className="flex flex-col">
                         {/* R2 / UI-SPEC §4.3: the respondent NAME is this row's ONE primary
                             string and takes Body 16 (V-4). The counter-argument recorded at
-                            `UpcomingEventsCard.js:265-281` — do NOT promote one span inside an
+                            `UpcomingEventsCard.js:265-283` (`DECISION Phase 88.6-28 (R2`) — do NOT promote one span inside an
                             inline run, because a 16px word beside 14px words on one baseline is
                             an unsanctioned visible delta — does NOT reach here: this row is a
                             `flex flex-col` STACK of a name line over a note line, so the
