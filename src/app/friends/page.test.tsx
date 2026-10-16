@@ -77,6 +77,8 @@ const providerCtx = vi.hoisted(() => ({
   declineRequest: vi.fn(),
   // 88.6.1-40: stands in for plan 88.6.1-66's read-only context fact (a request row in flight on any surface).
   isRequestActionPending: vi.fn((_id: string) => false),
+  // 88.6.1-40 carry-in: the provider's first-load flag (true until its first load settles).
+  loading: false,
 }));
 vi.mock('@/app/components/FriendshipStatusProvider', () => ({
   useFriendshipStatus: () => ({
@@ -84,7 +86,7 @@ vi.mock('@/app/components/FriendshipStatusProvider', () => ({
     acceptRequest: providerCtx.acceptRequest,
     declineRequest: providerCtx.declineRequest,
     isRequestActionPending: providerCtx.isRequestActionPending,
-    loading: false,
+    loading: providerCtx.loading,
     getStatus: () => 'none',
     refreshFriendships: providerCtx.refreshFriendships,
   }),
@@ -194,6 +196,7 @@ beforeEach(() => {
   providerCtx.acceptRequest.mockReset().mockResolvedValue({});
   providerCtx.declineRequest.mockReset().mockResolvedValue({});
   providerCtx.isRequestActionPending.mockImplementation(() => false);
+  providerCtx.loading = false;
   // 88.6.1-40: the API mocks too (reset first, so an unconsumed one-shot cannot leak), because one arm's admin group used to leak into every later render.
   (groupsAPI.getUserGroups as Mock).mockReset().mockResolvedValue([]);
   (groupsAPI.getGroupMembers as Mock).mockReset().mockResolvedValue([]);
@@ -1318,5 +1321,143 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     await act(async () => {
       held.resolve({});
     });
+  });
+});
+
+// Phase 88.6.1-40 Task 3 (AC-27 / AC-29's refresh half, Req 9) and the orchestrator-routed
+// carry-in (the email search offering Send Request before the page's own lists have loaded).
+const RILEY_FRIENDSHIP = {
+  id: 'fr-3',
+  friend: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', username: 'Riley' },
+};
+const ALEX_SENT = { id: 'sr-1', Addressee: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'Alex' } };
+const RILEY_SENT = { id: 'sr-2', Addressee: { id: RILEY_HIT.id, username: 'Riley' } };
+const MORGAN_SENT = { id: 'sr-3', Addressee: { id: MORGAN_HIT.id, username: 'Morgan' } };
+
+describe('friends — lists refresh in place (88.6.1-40, AC-29)', () => {
+  it('F1: a refresh after an accept keeps the friends rows on screen (no loading line)', async () => {
+    await openRequests([SAM_REQUEST]);
+    const refresh = deferred<unknown>();
+    (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(refresh.promise);
+    fireEvent.click(within(requestRow('Sam')).getByRole('button', { name: 'Accept' }));
+    // Positive signal: the post-accept refresh is in flight.
+    await waitFor(() => expect(friendshipsAPI.getFriends as Mock).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole('button', { name: /^Friends/ }));
+    expect(screen.getByText('Dana')).toBeInTheDocument();
+    expect(screen.queryByText('Loading friends...')).toBeNull();
+
+    await act(async () => {
+      refresh.resolve([FRIENDSHIP]);
+    });
+  });
+
+  it('F4: the newest friends response wins even when an older one lands last', async () => {
+    await openRequests([SAM_REQUEST, RILEY_REQUEST]);
+    const d1 = deferred<unknown>();
+    const d2 = deferred<unknown>();
+    (friendshipsAPI.getFriends as Mock)
+      .mockReturnValueOnce(d1.promise)
+      .mockReturnValueOnce(d2.promise);
+    fireEvent.click(within(requestRow('Riley')).getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(friendshipsAPI.getFriends as Mock).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(requestRow('Sam')).getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(friendshipsAPI.getFriends as Mock).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      d2.resolve([FRIENDSHIP, RILEY_FRIENDSHIP, FRIENDSHIP_2]);
+    });
+    await flushMacrotask();
+    await act(async () => {
+      d1.resolve([FRIENDSHIP, RILEY_FRIENDSHIP]);
+    });
+    await flushMacrotask();
+    fireEvent.click(screen.getByRole('button', { name: /^Friends/ }));
+    // Positive signal: the friends rows are rendered.
+    expect(await screen.findByRole('button', { name: 'Remove Riley' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Sam' })).toBeInTheDocument();
+  });
+
+  it('S5: a refresh after a send keeps the sent rows on screen (no loading line)', async () => {
+    renderFriends({ friends: [], sent: [ALEX_SENT] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    fireEvent.click(screen.getByRole('button', { name: /^Sent/ }));
+    await screen.findByText('Alex');
+    const send = await searchTo(RILEY_HIT, 'riley@example.com');
+    const refresh = deferred<unknown>();
+    (friendshipsAPI.getSentRequests as Mock).mockReturnValueOnce(refresh.promise);
+    fireEvent.click(send);
+    // Positive signal: the post-send refresh is in flight.
+    await waitFor(() => expect(friendshipsAPI.getSentRequests as Mock).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Alex')).toBeInTheDocument();
+    expect(screen.queryByText('Loading sent requests...')).toBeNull();
+
+    await act(async () => {
+      refresh.resolve([ALEX_SENT, RILEY_SENT]);
+    });
+  });
+
+  it('S7: the newest sent response wins even when an older one lands last', async () => {
+    renderFriends({ friends: [], sent: [ALEX_SENT] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const d1 = deferred<unknown>();
+    const d2 = deferred<unknown>();
+    (friendshipsAPI.getSentRequests as Mock)
+      .mockReturnValueOnce(d1.promise)
+      .mockReturnValueOnce(d2.promise);
+    fireEvent.click(await searchTo(RILEY_HIT, 'riley@example.com'));
+    await waitFor(() => expect(friendshipsAPI.getSentRequests as Mock).toHaveBeenCalledTimes(2));
+    fireEvent.click(await searchTo(MORGAN_HIT, 'morgan@example.com'));
+    await waitFor(() => expect(friendshipsAPI.getSentRequests as Mock).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      d2.resolve([ALEX_SENT, RILEY_SENT, MORGAN_SENT]);
+    });
+    await flushMacrotask();
+    await act(async () => {
+      d1.resolve([ALEX_SENT, RILEY_SENT]);
+    });
+    await flushMacrotask();
+    fireEvent.click(screen.getByRole('button', { name: /^Sent/ }));
+    // Positive signal: the sent rows are rendered; each row carries one Pending pill.
+    await screen.findByText('Alex');
+    expect(screen.getAllByText('Pending')).toHaveLength(3);
+  });
+
+  it('C1 (carry-in): a search that lands before the friends list does not offer Send Request to a friend', async () => {
+    const firstLoad = deferred<unknown>();
+    (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(firstLoad.promise);
+    renderFriends();
+    await screen.findByRole('heading', { name: 'Add Friend' });
+    await searchShows({ ...FRIENDSHIP.friend, email: 'dana@example.com' } as { username: string }, 'dana@example.com');
+    // Positive signal: the result card is shown (the list behind it is still loading).
+    expect(screen.getByText('dana@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send Request' })).toBeNull();
+
+    await act(async () => {
+      firstLoad.resolve([FRIENDSHIP]);
+    });
+    expect(await screen.findByText('Already friends')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send Request' })).toBeNull();
+  });
+
+  it('C2 (carry-in): while the provider\'s first load runs, a person who sent you a request is not offered Send Request', async () => {
+    providerCtx.loading = true;
+    const { rerender } = renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    await searchShows({ ...SAM_REQUEST.Requester, email: 'sam@example.com' } as { username: string }, 'sam@example.com');
+    expect(screen.getByText('sam@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send Request' })).toBeNull();
+
+    // The provider's first load lands, listing Sam's request to you.
+    providerCtx.receivedRequests = [SAM_REQUEST];
+    providerCtx.loading = false;
+    rerender(<FriendsPage />);
+    expect(await screen.findByText('Request pending')).toBeInTheDocument();
+  });
+
+  it('C3 (carry-in GUARD): a FAILED friends load does not hold the search action forever', async () => {
+    renderFriends({ loadError: new ApiError('boom', 'network', 500) });
+    await screen.findByText("Couldn't load your friends");
+    expect(await searchTo(RILEY_HIT, 'riley@example.com')).toBeInTheDocument();
   });
 });
