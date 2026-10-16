@@ -75,6 +75,8 @@ const h = vi.hoisted(() => ({
   // fresh vi.fn() per render, which nothing could observe.
   push: vi.fn(),
   selfRefetch: vi.fn(),
+  // 88.6.1-25 task 3: every CreateEvent render's props, newest last (AC-7, the edit modal).
+  createEventProps: [] as Array<Record<string, unknown>>,
 }));
 
 // 88.6.1-25 S2: the RsvpSection stub records its latest props so a test can fire
@@ -128,8 +130,28 @@ vi.mock('@/app/components/BringGamePicker', () => ({ default: () => null }));
 vi.mock('@/app/components/BringSummary', () => ({
   default: () => <div data-testid="bring-summary" />,
 }));
-vi.mock('@/app/components/createEvent', () => ({ default: () => null }));
-vi.mock('@/app/components/GameSuggestionCard', () => ({ default: () => null }));
+// 88.6.1-25 task 3: CreateEvent records its props (AC-7 asserts which group the edit modal gets)
+// and still renders nothing; GameSuggestionCard renders one button named for its game, so a test
+// can tap a Recommended Games card. Every older case resolves suggestions to [], so no card renders.
+vi.mock('@/app/components/createEvent', () => ({
+  default: (props: Record<string, unknown>) => {
+    h.createEventProps.push(props);
+    return null;
+  },
+}));
+vi.mock('@/app/components/GameSuggestionCard', () => ({
+  default: ({
+    game,
+    onClick,
+  }: {
+    game: { id: string; name: string };
+    onClick?: (game: { id: string; name: string }) => void;
+  }) => (
+    <button type="button" onClick={() => onClick?.(game)}>
+      {game.name}
+    </button>
+  ),
+}));
 vi.mock('@/app/components/QRCodeModal', () => ({ default: () => null }));
 vi.mock('@/app/components/TimezoneNudgeBanner', () => ({ default: () => null }));
 vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
@@ -406,6 +428,7 @@ beforeEach(() => {
   h.push.mockReset();
   h.selfRefetch.mockReset();
   rsvpProps.current = null;
+  h.createEventProps.length = 0;
   window.sessionStorage.clear();
 });
 
@@ -2524,5 +2547,73 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     } finally {
       delete (document as unknown as { visibilityState?: string }).visibilityState;
     }
+  });
+
+  // ---- Task 3: the event's own group wins (D-41, AC-7, D-03) ----
+
+  // The props the edit modal's CreateEvent received most recently.
+  function lastCreateEventGroupId() {
+    const last = h.createEventProps[h.createEventProps.length - 1];
+    return last?.group_id;
+  }
+
+  it('A1: from a link with no group_id, cancelling goes to the event\'s own group (AC-7)', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', urlGroupId: null });
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
+  });
+
+  it('A2: from a link with no group_id, the edit modal receives the event\'s own group (AC-7)', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', urlGroupId: null });
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
+    expect(lastCreateEventGroupId()).toBe(GROUP_ID);
+  });
+
+  it('A3: from a link with no group_id, a Recommended Games tap keeps the event\'s own group (D-03)', async () => {
+    const user = userEvent.setup();
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: 'g-azul', name: 'Azul' }]);
+    renderEventDetail({ role: 'owner', urlGroupId: null });
+    await user.click(await screen.findByRole('button', { name: 'Azul' }));
+    expect(h.push).toHaveBeenCalledWith(`/gameDetail?game_id=g-azul&group_id=${GROUP_ID}`);
+  });
+
+  it('A4: a DIFFERENT valid URL group_id loses to the event\'s own group at every site, and suggestions are fetched once (D-41, review r2 #140)', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', urlGroupId: URL_ONLY_GROUP_ID });
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(GROUP_ID));
+    expect(groupsAPI.getGroupMembers).not.toHaveBeenCalledWith(URL_ONLY_GROUP_ID);
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
+    expect(lastCreateEventGroupId()).toBe(GROUP_ID);
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
+    // getEventSuggestions is event-scoped: the group only decides WHETHER to ask, so the URL hint
+    // giving way to the event's group must not ask a second time.
+    await flushMacrotask();
+    expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(1);
+  });
+
+  it('A5 (control): a URL group_id equal to the event\'s group carries that group at every site', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: 'g-azul', name: 'Azul' }]);
+    renderEventDetail({ role: 'owner', urlGroupId: GROUP_ID });
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(GROUP_ID));
+    await user.click(await screen.findByRole('button', { name: 'Azul' }));
+    expect(h.push).toHaveBeenCalledWith(`/gameDetail?game_id=g-azul&group_id=${GROUP_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
+    expect(lastCreateEventGroupId()).toBe(GROUP_ID);
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
   });
 });
