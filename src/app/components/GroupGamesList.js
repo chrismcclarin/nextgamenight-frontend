@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
 import Link from 'next/link';
 import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
@@ -94,6 +94,9 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
     const [filterOpen, setFilterOpen] = useState(false);
     const [filterWinner, setFilterWinner] = useState('');
     const [filterPicker, setFilterPicker] = useState('');
+    // The Filter panel's id, for the toggle's open-only aria-controls (88.6.1-48, D-44). Called
+    // here, above both early returns, because hooks run in the same order on every render.
+    const filterPanelId = useId();
 
     const sortedGames = useMemo(() => {
         if (!games || games.length === 0) return [];
@@ -376,9 +379,23 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                         {sortOrder === 'asc' ? '\u2191' : '\u2193'}
                     </button>
                 </div>
+                {/* DECISION Phase 88.6.1-48 (D-21 / D-44): Filter is a DISCLOSURE — it shows and
+                    hides a panel — so it carries `aria-expanded` plus an `aria-controls` that is
+                    present ONLY while the panel exists, the house rule of DECISION Phase 88.6-16
+                    (D-12) and its amendment DECISION Phase 88.6-59. REJECTED: (a) `aria-pressed`,
+                    D-21's first wording, superseded by D-44 because "pressed" would misstate a
+                    control that opens a panel; (b) an always-present `aria-controls`, a dangling
+                    reference while the panel is closed (88.6-59 rejected it by name).
+                    The accent fill and the "Filter (n)" name report filters APPLIED;
+                    `aria-expanded` reports the panel OPEN. Two facts, kept apart on purpose.
+                    FLOOR phone-scoped `min-h-11 md:min-h-0`, in the static part of the className;
+                    no `min-w` because Filter is wider than 44px. Changing this is a decision, not
+                    a cleanup. */}
                 <button
+                    aria-expanded={filterOpen}
+                    {...(filterOpen ? { 'aria-controls': filterPanelId } : {})}
                     onClick={() => setFilterOpen(prev => !prev)}
-                    className={`px-3 py-2 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                    className={`px-3 py-2 min-h-11 md:min-h-0 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                         (filterWinner || filterPicker)
                             ? 'border-line-accent bg-surface-muted text-content-accent hover:bg-surface-elevated'
                             : 'border-line text-content-secondary hover:bg-surface-hover'
@@ -389,7 +406,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
             </div>
 
             {filterOpen && (
-                <div className="mb-6 bg-surface-page p-3 md:p-4 rounded-card border border-line -mt-3 rounded-t-none">
+                <div id={filterPanelId} className="mb-6 bg-surface-page p-3 md:p-4 rounded-card border border-line -mt-3 rounded-t-none">
                     <div className="flex flex-col sm:flex-row gap-3">
                         <label className="flex-1">
                             <span className="text-sm text-content-secondary block mb-1">Winner</span>
