@@ -48,6 +48,7 @@ import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testi
 
 import ClickableMemberName from './ClickableMemberName';
 import { FriendshipContext } from './FriendshipStatusProvider';
+import { Modal } from './Modal';
 
 type Status = 'none' | 'accepted' | 'pending_sent' | 'pending_received' | 'self' | 'unknown';
 
@@ -714,5 +715,66 @@ describe('Phase 88.6.1-37 — the popover outcome regions (D-22 / D-42)', () => 
     expect(region.isConnected).toBe(true);
     expect(within(region).getByText('Friend')).toBeInTheDocument();
     expect(screen.queryByText('Request sent')).toBeNull();
+  });
+});
+
+// Phase 88.6.1-37 Task 4 (Test D follow-up). CI Test D measured, in the phone project, that inside
+// the Manage Members dialog the popover's Add friend could not take focus and was not the hit target
+// at its own centre (run 38878098281). These pin the cause in jsdom with the REAL house Modal: a
+// popover portalled to the body sits outside the Radix focus scope, so the scope pulls focus back.
+function renderInModal(status: Status = 'none') {
+  const value = { getStatus: () => status, sendRequest };
+  return render(
+    <FriendshipContext.Provider value={value as never}>
+      <Modal open onClose={() => {}}>
+        <Modal.Header>Manage members</Modal.Header>
+        <Modal.Body>
+          <ClickableMemberName userId="u1" username="ada" />
+        </Modal.Body>
+      </Modal>
+    </FriendshipContext.Provider>,
+  );
+}
+
+async function openPopoverInModal() {
+  const dialog = screen.getByRole('dialog');
+  const name = within(dialog).getByRole('button', { name: 'ada' });
+  name.focus();
+  fireEvent.keyDown(name, { key: 'Enter' });
+  const addFriend = await screen.findByRole('button', { name: 'Add friend' });
+  return { dialog, addFriend };
+}
+
+describe('popover inside a dialog (Test D follow-up)', () => {
+  it('TD1. inside the house Modal the popover is a descendant of the dialog', async () => {
+    renderInModal('none');
+    const { dialog, addFriend } = await openPopoverInModal();
+    // A body portal leaves the popover outside the focus scope, the pointer-events layer and
+    // the aria-modal subtree all at once; inside the dialog it is inside all three.
+    expect(dialog.contains(addFriend)).toBe(true);
+    expect(addFriend.closest('[data-member-popover]')).not.toBeNull();
+  });
+
+  it('TD2. inside the house Modal a keyboard open puts focus on Add friend and it stays there', async () => {
+    renderInModal('none');
+    const { addFriend } = await openPopoverInModal();
+    // Positive wait: FloatingFocusManager moves focus to Add friend on a keyboard open; the Radix
+    // focus scope pulls back any focus that lands outside its content.
+    await waitFor(() => expect(addFriend).toHaveFocus());
+  });
+
+  it('TD3. guard: Add friend inside the dialog has no aria-hidden or inert ancestor', async () => {
+    renderInModal('none');
+    const { addFriend } = await openPopoverInModal();
+    expect(addFriend.closest('[aria-hidden="true"], [inert]')).toBeNull();
+  });
+
+  it('TD4. guard: with no dialog the popover still portals to document.body', async () => {
+    renderName('none');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'ada' }), { key: 'Enter' });
+    await screen.findByRole('button', { name: 'Add friend' });
+    const portal = document.querySelector('[data-floating-ui-portal]');
+    expect(portal).not.toBeNull();
+    expect(portal!.parentElement).toBe(document.body);
   });
 });
