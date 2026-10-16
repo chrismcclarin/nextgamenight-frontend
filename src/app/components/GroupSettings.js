@@ -24,6 +24,7 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { Modal } from './Modal';
 import { Input } from '../../components/ui/Input';
+import { useRadioGroup } from '../../components/ui/useRadioGroup';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -36,6 +37,9 @@ const DEFAULT_PROFILE_PICTURES = [
   { name: 'Fire', url: '🔥' },
   { name: 'Rocket', url: '🚀' },
 ];
+// Phase 88.6.1-43: the eight emoji, mapped once at module scope so the radio-group hook sees
+// one stable array of values in reading order.
+const DEFAULT_PICTURE_URLS = DEFAULT_PROFILE_PICTURES.map((pic) => pic.url);
 
 /*
  * Default background color options.
@@ -168,6 +172,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   // `ManageMembers.js`, where the same reasoning is recorded: this component can be mounted
   // more than once in a tree and a duplicate id would make the reference ambiguous.
   const leaveErrorId = useId();
+  // Phase 88.6.1-43: the id the default-icon radio group is named by (its visible
+  // "Choose a default icon:" paragraph). `useId` for the same reason as `leaveErrorId` above.
+  const iconChoiceLabelId = useId();
 
   // Plan 69-04: derive isOnlyMember from a one-time members fetch.
   // The Group object passed to GroupSettings doesn't reliably include
@@ -437,6 +444,16 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     setProfilePictureUrl(emoji);
     setCustomPictureUrl('');
   };
+
+  // Phase 88.6.1-43 (D-20 / D-43): the eight default-icon tiles are one radio group. Checking a
+  // tile only sets local form state, so selection-follows-focus is safe; Save Changes persists.
+  // The marker above the grid in the render below records the choice and what it rejected.
+  const iconRadio = useRadioGroup({
+    values: DEFAULT_PICTURE_URLS,
+    checked: profilePictureUrl,
+    onCheck: handleSelectDefaultPicture,
+    labelledBy: iconChoiceLabelId,
+  });
 
   /*
    * DECISION Phase 88.3.1 (D-06): TAPPING THE ALREADY-SELECTED SWATCH CLEARS IT.
@@ -774,12 +791,39 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
           {/* Default Options */}
           <div className="mb-4">
-            <p className="text-sm text-content-secondary mb-2">Choose a default icon:</p>
-            <div className="grid grid-cols-4 gap-2">
+            <p id={iconChoiceLabelId} className="text-sm text-content-secondary mb-2">Choose a default icon:</p>
+            {/* DECISION Phase 88.6.1-43 (D-20 / D-43, D-33 row 12): a radio group. Chosen: a
+                radiogroup named by the visible label above, each tile a radio with its checked
+                state, one roving tab stop, and arrow keys that move AND select. Selection
+                follows focus safely here because checking a tile only sets form state; nothing
+                persists until Save Changes.
+
+                Each tile's name is the shipped name string of its picture, carried by the
+                tile's EXISTING title attribute: the owner kept the desktop hover tooltip
+                (ruling 2026-10-05). The emoji sits in an aria-hidden span and the tile has no
+                aria-label, so the title is its ONLY name source. By HTML-AAM a button with no
+                aria-label, no label and a hidden subtree takes its name from its title, and a
+                title used as the name is not also the description. The swatch rule further down
+                (a title BESIDE an aria-label is read as a second name, round-3 #30) is honoured
+                because there is no aria-label here.
+
+                Rejected: aria-pressed (a set-only tile is a one-way toggle, the dishonesty
+                DECISION Phase 88.3.1 (D-06) names for the swatches); plain buttons with no state
+                (loses the per-tile state AC-19 requires); an aria-label with the title dropped
+                (AT-6's recommendation, which loses the tooltip the owner kept); and an
+                aria-label beside the kept title (two name sources, the swatch rule's double
+                read). The aria-hidden wrapper is load-bearing: remove it and the tile's name
+                becomes the emoji glyph.
+
+                Not yet heard on a device: if VoiceOver does not read a tile by its name, that
+                goes back to the owner; do not remove the tooltip to fix it. No visible change
+                at any width, and the tile size is untouched (D-21: no floor change). Changing
+                this is a decision, not a cleanup. */}
+            <div {...iconRadio.groupProps} className="grid grid-cols-4 gap-2">
               {DEFAULT_PROFILE_PICTURES.map((pic, index) => (
                 <button
                   key={index}
-                  onClick={() => handleSelectDefaultPicture(pic.url)}
+                  {...iconRadio.getRadioProps(index)}
                   /* DECISION Phase 88.6-20 (D-20 (iv)): this button GAINS the project focus
                      string. It is not scope creep — it is the first thing the ring scan found
                      when `GroupSettings.js` joined `RING_SCAN_FILES` in this same commit, and
@@ -801,13 +845,19 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                      such a site bare where a recorded geometry decision forbids `.btn`'s
                      padding; this is that case, recorded here. The ring is added as a utility
                      instead, byte-identical to the string the swatch below and the group-page
-                     header CTAs carry. */
+                     header CTAs carry.
+
+                     AMENDED Phase 88.6.1-43 (D-20 / D-43): the eight tiles are now one radio
+                     group from the shared useRadioGroup hook (role, checked state, roving tab
+                     stop and arrow keys come from it; its click handler calls the same
+                     handleSelectDefaultPicture this tile used to call itself). They stay bare
+                     buttons for this marker's reason, and the ring string is unchanged. */
                   className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                     profilePictureUrl === pic.url ? 'border-accent bg-surface-muted' : 'border-line'
                   }`}
                   title={pic.name}
                 >
-                  {pic.url}
+                  <span aria-hidden="true">{pic.url}</span>
                 </button>
               ))}
             </div>
