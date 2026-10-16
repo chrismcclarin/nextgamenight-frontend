@@ -5,12 +5,16 @@
 //   1. the failure region (W019, Req 8, D-22, D-42) — one assertive region, mounted EMPTY
 //      whenever the form renders, the SAME node carries the failure line afterwards, and an
 //      identical second failure is a real text change on that node (the R8 backstop).
+//   2. the pressed Submit (D-35, Req 4 and 5) — it stays focusable while it sends (aria-disabled
+//      plus a ref latch), refuses a second press, keeps native disabled for the validity half
+//      only, and a successful send hands focus to the thank-you line; the field states its own
+//      minimum to assistive technology.
 //
 // Comment rule for this file: line comments only. A block comment holding a backtick or the
 // closing token makes vite:oxc collect ZERO tests while reporting green (FE-TESTING-CONVENTIONS
 // CF-9). After every run, read this file's test count and treat 0 as a failure.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -87,6 +91,18 @@ function hasNestedLiveRegion(dialog: HTMLElement): boolean {
     const outer = parent ? parent.closest('[aria-live], [role="alert"], [role="status"]') : null;
     return outer !== null && dialog.contains(outer);
   });
+}
+
+// A send held open until the test settles it. Every test that creates one settles it before it
+// ends, so no request outlives its test.
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 const BOX_CLASSES = [
@@ -168,5 +184,105 @@ describe('FeedbackButton — the failure region (88.6.1-33, W019)', () => {
     expect(after).toBe(region);
     expect(after).toHaveTextContent(INTERNAL_LINE);
     expect(writer()).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)', () => {
+  const LONG_ENOUGH = 'A message that is long enough.';
+  const THANKS = 'Thanks! Your feedback has been submitted.';
+
+  it('G1a (R4 concurrency): while the send is pending, Submit reads Submitting..., is aria-disabled and NOT natively disabled, and stays so after a second press; it is released when the first send settles', async () => {
+    const held = deferred<unknown>();
+    writer().mockImplementationOnce(() => held.promise);
+    const { user, dialog } = await openDialog();
+    await user.type(textareaIn(dialog), LONG_ENOUGH);
+    await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
+
+    const busy = within(dialog).getByRole('button', { name: 'Submitting...' });
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
+    expect(busy).not.toHaveAttribute('disabled');
+
+    await user.click(busy);
+    const stillBusy = within(dialog).getByRole('button', { name: 'Submitting...' });
+    expect(stillBusy).toHaveAttribute('aria-disabled', 'true');
+    expect(stillBusy).not.toHaveAttribute('disabled');
+
+    await act(async () => {
+      held.reject(new ApiError('x', 'internal', 500, {}));
+    });
+    const released = await within(dialog).findByRole('button', { name: 'Submit' });
+    expect(released).not.toHaveAttribute('aria-disabled');
+    expect(released).toBeEnabled();
+    // CONFIRM-ONLY in jsdom (C-11: jsdom never blurs a disabled element, so this would also
+    // hold against the native attribute). The real-browser proof is e2e/feedback-submit.spec.ts.
+    expect(document.activeElement).toBe(released);
+  });
+
+  it('G1b (R4 idempotency, the latch): a forced form submit and a second press while pending send no second request', async () => {
+    const held = deferred<unknown>();
+    writer().mockImplementationOnce(() => held.promise);
+    const { user, dialog } = await openDialog();
+    await user.type(textareaIn(dialog), LONG_ENOUGH);
+    await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
+
+    const form = dialog.querySelector('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Submitting...' }));
+    expect(writer()).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      held.resolve({ success: true });
+    });
+    await within(dialog).findByText(THANKS);
+    expect(writer()).toHaveBeenCalledTimes(1);
+  });
+
+  it('G2 (rule of KIND, confirm-only): the validity half stays native — 9 characters disable Submit with no aria-disabled, the 10th enables it', async () => {
+    const { user, dialog } = await openDialog();
+    await user.type(textareaIn(dialog), '123456789');
+    const submit = within(dialog).getByRole('button', { name: 'Submit' });
+    expect(submit).toBeDisabled();
+    expect(submit).not.toHaveAttribute('aria-disabled');
+    await user.type(textareaIn(dialog), '0');
+    expect(within(dialog).getByRole('button', { name: 'Submit' })).toBeEnabled();
+  });
+
+  it('G3 (Req 5 / AC-14, R5 adjacency and the R5 ordering backstop): focus stays on Submit while the send is held, and moves to the thank-you line only after the success commits', async () => {
+    const held = deferred<unknown>();
+    writer().mockImplementationOnce(() => held.promise);
+    const { user, dialog } = await openDialog();
+    await user.type(textareaIn(dialog), LONG_ENOUGH);
+    await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
+
+    // Ordering: nothing moves before the outcome.
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Submitting...' }));
+
+    await act(async () => {
+      held.resolve({ success: true });
+    });
+    // POSITIVE signal: the thank-you line is in the DOM and holds focus.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText(THANKS)));
+    const target = screen.getByText(THANKS);
+    expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(target.tagName).toBe('P');
+  });
+
+  it('G4 (review r2 #189): the textarea is described by the character counter, so the minimum is heard on the field; Submit is not described by the counter', async () => {
+    const { dialog } = await openDialog();
+    const textarea = within(dialog).getByLabelText('Feedback');
+    expect(textarea).toBe(textareaIn(dialog));
+    expect(textarea).toHaveAccessibleDescription(/10 minimum/);
+    const describedBy = textarea.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    const counter = document.getElementById(describedBy as string);
+    expect(counter).not.toBeNull();
+    expect(counter).toHaveTextContent('0 characters (10 minimum)');
+    // With no failure shown Submit carries no description at all: the counter's id never lands
+    // on it (its description is the failure region's alone, and only while it holds a message).
+    expect(within(dialog).getByRole('button', { name: 'Submit' })).not.toHaveAttribute(
+      'aria-describedby'
+    );
   });
 });
