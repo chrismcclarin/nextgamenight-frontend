@@ -14,8 +14,11 @@ import { useAppForm } from '../../lib/useAppForm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Button } from '../../components/ui/Button';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
+
+const SAVED_PREFILL_LOADING_LABEL = 'Loading your availability…';
 
 /**
  * Zod schema with cross-field validation
@@ -87,14 +90,42 @@ export default function AvailabilityForm({
      own comment calls that window a heuristic that should red loudly, so the choice was between
      re-spelling a shipped gate's subject and leaving the conversion for a plan that owns it.
      ROUTED, not dropped: `.planning/deferred/phase-88.6.md` carries the entry, with the
-     spinner-arc collision named as the thing to solve first. Changing this is a decision. */
+     spinner-arc collision named as the thing to solve first. Changing this is a decision.
+     AMENDED Phase 88.6.1-26 (W001 / R3-M19): `useAppForm` now refuses a second submit before
+     react-hook-form runs, so a second click (or Enter) no longer enters `onSubmit` at all, and
+     `isSubmitting` holds `Submitting...` and `aria-disabled` until the first submit settles (the
+     second react-hook-form run used to drop it mid-request). This ref stays as a second, local
+     line. */
   const submitInFlightRef = useRef(false);
 
   // Phase 81 Plan 02 — shared pre-fill state (Plan 03 reuses both):
   //   prefillStatus: { source: 'gcal' | 'saved', count, failed? } | null
   //   isPrefilling: in-flight flag — disables both buttons during fetch
+  // AMENDED Phase 88.6.1-26 (D-35): the in-flight flag is now `prefillSource` ('gcal' | 'saved' |
+  // null), which says WHICH pre-fill runs. It no longer disables both buttons: the PRESSED button
+  // takes `aria-disabled` and keeps its place in the focus order, the other keeps native
+  // `disabled` (see the DECISION at `prefillInFlightRef`).
   const [prefillStatus, setPrefillStatus] = useState(null);
-  const [isPrefilling, setIsPrefilling] = useState(false);
+  const [prefillSource, setPrefillSource] = useState(null);
+  /* DECISION Phase 88.6.1-26 (D-35, rule of POSITION): the button whose pre-fill is running keeps
+     its place in the focus order (`aria-disabled` + this first-line REF latch, released in
+     `finally`), the other button keeps native `disabled`, and the validity gates
+     (`isUnavailable`, `!hasSavedAvailability`) stay native (rule of KIND). REJECTED: native
+     `disabled` on both (a natively disabled focused button drops a keyboard user to <body>
+     mid-load) and the shared state flag as the refusal (stale until React commits, so a fast
+     second press would start a second fetch). VISIBLE DELTA, disclosed: the pressed button no
+     longer washes to half opacity while it loads — these are raw buttons with no gated colour
+     pair, so its in-flight cue is the ratified label (A5 `Loading your availability…`, or
+     `Importing…`), SEEN on screen, and the button's accessible name (read when focus arrives or
+     the user re-reads it); whether a screen reader speaks the in-flight rename by itself is NOT
+     measured by this plan (plan 88.6.1-57's VoiceOver check measures it). Both buttons grow about
+     2px to the 44px floor (`min-h-11`). Restoring the native attribute on the pressed button is a
+     decision, not a cleanup. */
+  const prefillInFlightRef = useRef(false);
+  // ONE timer clears the outcome line: a second pre-fill clears the first one's pending timer, so
+  // the first can no longer wipe the second outcome early. Cleared on unmount too.
+  const prefillStatusTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(prefillStatusTimerRef.current), []);
 
   // Compute the window start once and share with both the prefill API call AND
   // the grid (research Pitfall 5 — without sharing this anchor, a midnight /
@@ -120,7 +151,7 @@ export default function AvailabilityForm({
     handleAppSubmit,
     watch,
     setValue,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, submitCount },
   } = useAppForm(schema, {
     defaultValues: {
       time_slots: defaultTimeSlots,
@@ -211,7 +242,7 @@ export default function AvailabilityForm({
          fallback yields the register's own generic line, so no copy is authored (P1).
 
          WHY THE GENERIC LINE IS WHAT LANDS, and it is a RECORDED RESIDUAL rather than an
-         oversight: `submitResponse` has no `res.ok` check (`lib/api.ts:1086-1091`), so the
+         oversight: `submitResponse` has no `res.ok` check (`lib/api.ts` `submitResponse: async`), so the
          value arriving here is the plain `Error` thrown two lines below `response.error` — no
          `ApiError`, no `code` — and `getFetchErrorMessage` therefore resolves `unknown`. Under
          the owner's D62 BRANCH-B ruling of 2026-09-09 the frontend does NOT learn a `code` for
@@ -269,7 +300,11 @@ export default function AvailabilityForm({
   // status message. The overwrite confirmation lives in `replaceGate` below.
   // Pitfall 6 mitigation: backend uses { consume: false } — token survives.
   const performGcalPrefill = useCallback(async () => {
-    setIsPrefilling(true);
+    if (prefillInFlightRef.current) return;
+    prefillInFlightRef.current = true;
+    setPrefillSource('gcal');
+    clearTimeout(prefillStatusTimerRef.current);
+    setPrefillStatus(null);
     try {
       const { slot_ids, count } = await availabilityFormAPI.prefillFromGcal({
         magicToken,
@@ -284,13 +319,14 @@ export default function AvailabilityForm({
         slot_ids.map((id) => ({ slotId: id, preference: 'preferred' }))
       );
       setPrefillStatus({ source: 'gcal', count });
-      setTimeout(() => setPrefillStatus(null), 2500);
+      prefillStatusTimerRef.current = setTimeout(() => setPrefillStatus(null), 2500);
     } catch (err) {
       logger.info('[AvailabilityForm] GCal prefill failed:', errCtx(err));
       setPrefillStatus({ source: 'gcal', count: 0, failed: true });
-      setTimeout(() => setPrefillStatus(null), 4000);
+      prefillStatusTimerRef.current = setTimeout(() => setPrefillStatus(null), 4000);
     } finally {
-      setIsPrefilling(false);
+      prefillInFlightRef.current = false;
+      setPrefillSource(null);
     }
   }, [magicToken, weekStartIsoDate, timezone, setValue]);
 
@@ -300,7 +336,11 @@ export default function AvailabilityForm({
   // gate. Backend filters source:'default' so users with zero saved patterns
   // get an empty result here, NOT the whole grid (research Pitfall 3).
   const performSavedPrefill = useCallback(async () => {
-    setIsPrefilling(true);
+    if (prefillInFlightRef.current) return;
+    prefillInFlightRef.current = true;
+    setPrefillSource('saved');
+    clearTimeout(prefillStatusTimerRef.current);
+    setPrefillStatus(null);
     try {
       const { slot_ids, count } = await availabilityFormAPI.prefillFromSaved({
         magicToken,
@@ -313,13 +353,14 @@ export default function AvailabilityForm({
         slot_ids.map((id) => ({ slotId: id, preference: 'preferred' }))
       );
       setPrefillStatus({ source: 'saved', count });
-      setTimeout(() => setPrefillStatus(null), 2500);
+      prefillStatusTimerRef.current = setTimeout(() => setPrefillStatus(null), 2500);
     } catch (err) {
       logger.info('[AvailabilityForm] Saved prefill failed:', errCtx(err));
       setPrefillStatus({ source: 'saved', count: 0, failed: true });
-      setTimeout(() => setPrefillStatus(null), 4000);
+      prefillStatusTimerRef.current = setTimeout(() => setPrefillStatus(null), 4000);
     } finally {
-      setIsPrefilling(false);
+      prefillInFlightRef.current = false;
+      setPrefillSource(null);
     }
   }, [magicToken, weekStartIsoDate, timezone, setValue]);
 
@@ -357,6 +398,8 @@ export default function AvailabilityForm({
   const triggerReplace = replaceGate.trigger;
 
   const handleImportGcal = useCallback(() => {
+    // A press on the busy button is refused here, so it never opens the replace dialog.
+    if (prefillInFlightRef.current) return;
     const currentSlots = watch('time_slots') || [];
     // Nothing painted yet means nothing to lose — no gate (unchanged behaviour).
     if (currentSlots.length > 0) {
@@ -367,6 +410,7 @@ export default function AvailabilityForm({
   }, [watch, performGcalPrefill, triggerReplace]);
 
   const handleUseSaved = useCallback(() => {
+    if (prefillInFlightRef.current) return;
     const currentSlots = watch('time_slots') || [];
     if (currentSlots.length > 0) {
       triggerReplace('saved');
@@ -374,6 +418,23 @@ export default function AvailabilityForm({
     }
     void performSavedPrefill();
   }, [watch, performSavedPrefill, triggerReplace]);
+
+  // The pre-fill outcome sentence, computed ONCE so the visible line and the sr-only region speak
+  // the same words. The branches are the shipped ternary, byte-unchanged and still keyed on
+  // `failed` (see DECISION Phase 88.6-25 at the status line: the flag is load-bearing).
+  const prefillStatusText = !prefillStatus
+    ? ''
+    : prefillStatus.failed
+      ? (prefillStatus.source === 'saved'
+          ? "Couldn't use saved availability."
+          : "Couldn't import from Google Calendar.")
+      : prefillStatus.source === 'gcal'
+        ? (prefillStatus.count > 0
+            ? `Filled ${prefillStatus.count} slots from Google Calendar.`
+            : 'No free slots found in Google Calendar for this week — paint manually below.')
+        : (prefillStatus.count > 0
+            ? `Filled ${prefillStatus.count} slots from your saved availability.`
+            : 'No saved availability matches this week — paint manually below.');
 
   return (
     <>
@@ -398,26 +459,38 @@ export default function AvailabilityForm({
             overlapping this week (a hidden button read as a bug — it should
             instead advertise that saving a schedule unlocks the shortcut). */}
       <div className="bg-surface-elevated border border-line rounded-card p-4 space-y-2">
+        {/* DECISION Phase 88.6.1-26 (Req 8, D-22): an always-mounted, initially EMPTY, sr-only-for-
+            life polite region that speaks the outcome sentence already on screen (no new words) —
+            chosen OVER the visible-when-set D-22 shape on the visible line (as the card's LAST
+            child an sr-only region leaves the previous sibling's 8px bottom margin as an idle gap,
+            a look change: ST-2's last-child caveat) and OVER `aria-hidden` on the visible line to
+            avoid the double reading (a sighted VoiceOver user would not find what they see; the
+            availability page's own heading + region pair is the precedent). FIRST child so it is
+            never the stack's last child. Not a D-22 site (sr-only for life). Moving it, or making
+            it conditional, is a decision, not a cleanup. */}
+        <StatusRegion politeness="polite" className="sr-only" data-testid="prefill-status" message={prefillStatusText} />
         <p className="text-sm font-bold text-content-primary">Start with:</p>
         <div className="flex flex-col sm:flex-row gap-2">
           {gcalConnected && (
             <button
               type="button"
               onClick={handleImportGcal}
-              disabled={isPrefilling || isUnavailable}
-              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              disabled={isUnavailable || prefillSource === 'saved'}
+              aria-disabled={prefillSource === 'gcal' ? 'true' : undefined}
+              className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
-              {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
+              {prefillSource === 'gcal' ? 'Importing…' : 'Import from Google Calendar'}
             </button>
           )}
           <button
             type="button"
             onClick={handleUseSaved}
-            disabled={!hasSavedAvailability || isPrefilling || isUnavailable}
+            disabled={!hasSavedAvailability || isUnavailable || prefillSource === 'gcal'}
+            aria-disabled={prefillSource === 'saved' ? 'true' : undefined}
             title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
-            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
-            {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
+            {prefillSource === 'saved' ? SAVED_PREFILL_LOADING_LABEL : 'Use my saved availability'}
           </button>
         </div>
         {!hasSavedAvailability && (
@@ -427,8 +500,10 @@ export default function AvailabilityForm({
         )}
         {/* DECISION Phase 88.6-25 (R1 / D-31 / T-88.6-66): the upstream string is GONE from this
             sentence, chosen OVER interpolating `prefillStatus.error` (which was `err.message`)
-            after the colon. That message is RAW BACKEND TEXT — `lib/api.ts:1126` and `:1159` both
-            do `const err = await res.json(); throw new Error(err.error || …)` — and this component
+            after the colon. That message is RAW BACKEND TEXT — `lib/api.ts` `prefillFromGcal: async` and `prefillFromSaved: async` both
+            do `const err = await res.json(); throw new Error(err.error || …)` (AMENDED Phase
+            88.6.1-26, cite sweep: since plan 88.6.1-23 that throw is built through `capErrorText`,
+            redacted and then capped; the upstream text still never renders here) — and this component
             renders on `app/availability-form/[token]/page.js`, the ANONYMOUS magic-link page, so
             the old form showed upstream text to a visitor with no session. Restoring "the detail"
             as a helpfulness improvement would reopen that disclosure. The `api.ts` side — throwing
@@ -449,17 +524,7 @@ export default function AvailabilityForm({
             `AvailabilityForm.test.tsx`. */}
         {prefillStatus && (
           <p className="text-sm text-content-secondary transition-opacity">
-            {prefillStatus.failed
-              ? (prefillStatus.source === 'saved'
-                  ? "Couldn't use saved availability."
-                  : "Couldn't import from Google Calendar.")
-              : prefillStatus.source === 'gcal'
-                ? (prefillStatus.count > 0
-                    ? `Filled ${prefillStatus.count} slots from Google Calendar.`
-                    : 'No free slots found in Google Calendar for this week — paint manually below.')
-                : (prefillStatus.count > 0
-                    ? `Filled ${prefillStatus.count} slots from your saved availability.`
-                    : 'No saved availability matches this week — paint manually below.')}
+            {prefillStatusText}
           </p>
         )}
       </div>
@@ -526,15 +591,30 @@ export default function AvailabilityForm({
       </div>
 
       {/* Validation Error Display */}
+      {/* DECISION Phase 88.6.1-26 (D-42, time-slot alert): a conditional `role="alert"` paragraph
+          keyed on react-hook-form's `submitCount` — this box had no role, so the page's one
+          validation failure was announced by nothing. AT-4: R1 a plain paragraph; R2 the page, no
+          dialog; R3 the key re-inserts the node on every failed submit (react-hook-form keeps the
+          error object, so without the key an identical second failure would be silent); R4
+          nothing takes focus (the grid's Controller attaches no ref, so `_focusError()` finds no
+          target); R5 absent at first render. Dropping the role or the key is a decision. */}
       {errors.time_slots && (
         <div className="bg-status-error-subtle border border-status-error rounded-btn p-3">
-          <p className="text-sm text-content-status-error">
+          <p key={submitCount} role="alert" className="text-sm text-content-status-error">
             {errors.time_slots.message}
           </p>
         </div>
       )}
 
       {/* Submission Error Display (inline submit-error UI) */}
+      {/* DECISION Phase 88.6.1-26 (D-42, ST-1 #6): the conditional alert below STAYS (an alert
+          inserted with its text is announced; D-23's always-mounted region is not adopted). R1 a
+          plain paragraph in a plain box; R2 the page, no dialog; R3 `setSubmitError(null)` at the
+          start of every accepted submit, with the request round trip between clear and set; R4
+          nothing moves focus on failure (the CTA keeps it, 88.6-42); R5 absent at first render.
+          Recorded, not changed here: a server failure followed by an invalid resubmit can leave
+          this alert beside the time-slot alert (two different outcomes; `onSubmit` never runs on
+          invalid values). */}
       {submitError && (
         <div className="bg-status-error-subtle border border-status-error rounded-btn p-3">
           <p role="alert" className="text-sm text-content-status-error">
@@ -564,7 +644,12 @@ export default function AvailabilityForm({
 
             The REFUSAL is the latch, not the attribute: `aria-disabled` is advisory, so a
             second click still enters `onSubmit`, where `submitInFlightRef` returns on the
-            first line and releases in `finally`. Removing either half is a decision. */}
+            first line and releases in `finally`. Removing either half is a decision.
+            AMENDED Phase 88.6.1-26 (W001 / R3-M19): the refusal now happens one step earlier, in
+            `useAppForm`'s `handleAppSubmit`, which refuses a second submit before react-hook-form
+            runs — so a second click no longer enters `onSubmit`, and `isSubmitting` holds the
+            `Submitting...` label and `aria-disabled` until the first submit settles.
+            `submitInFlightRef` stays as a second, local line. */}
         <Button
           type="submit"
           aria-disabled={isSubmitting}

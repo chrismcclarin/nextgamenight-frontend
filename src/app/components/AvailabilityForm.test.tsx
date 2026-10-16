@@ -23,7 +23,7 @@ vi.mock('@/lib/logger', async (importOriginal) => {
     logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
   };
 });
-// WIDENED by plan 88.6-25 task 2 to the `importOriginal` form FriendInvitePanel.test.tsx:72-80
+// WIDENED by plan 88.6-25 task 2 to the `importOriginal` form FriendInvitePanel.test.tsx (its `vi.mock('@/lib/api', async (importOriginal)` factory)
 // ships, and the reason is a REAL defect this suite would otherwise hide rather than a style
 // preference. The narrow factory replaced the WHOLE module, so `ApiError` came back undefined —
 // and `getFetchErrorMessage`'s `deriveCode` does `error instanceof ApiError`, which THROWS a
@@ -87,7 +87,7 @@ describe('AvailabilityForm submit-error path', () => {
     // proved nothing. It now names the ratified register line this path resolves to, so the
     // suite reds if an upstream string ever renders here again.
     //
-    // WHY THIS EXACT STRING: `submitResponse` performs no `res.ok` check (lib/api.ts:1086-1091),
+    // WHY THIS EXACT STRING: `submitResponse` performs no `res.ok` check (lib/api.ts `submitResponse: async`),
     // so what reaches the catch is a plain `Error` with no `code`; `getFetchErrorMessage` is
     // called with NO fallback, so it resolves `unknown` — MESSAGE_BY_CODE.unknown,
     // useFetchErrorState.ts. That genericness is the RULED RESIDUAL of D62 branch B
@@ -99,7 +99,7 @@ describe('AvailabilityForm submit-error path', () => {
     // `{ error, action }` token/validation arms (pinned confirm-only below). The CODED arms
     // (`prompt_closed`, `prompt_deadline_expired`, `rate_limited`) now reach the catch as an
     // `ApiError` and render their own register lines — the `it.each` cases below. The
-    // `lib/api.ts:1086-1091` cite above is stale; read `submitResponse: async` in lib/api.ts.
+    // cite above names `submitResponse: async` in lib/api.ts (re-pointed by anchor, plan 88.6.1-26).
     //
     // CORRECTED 2026-09-29 by plan 88.6-62 task 3 (review round 2 #12): the mocked plain `Error`
     // this case rejects with models a NON-ApiError throw only. A REAL transport failure no longer
@@ -501,7 +501,7 @@ describe('Phase 88.6-54 (R7 / SC-4, UI-SPEC §7.5) — composed axe audit of the
 // A collapse here would be T-88.6-79 (the empty-vs-failed defect plan 27 closes on
 // EventCalendar.js) newly created on the ANONYMOUS magic-link surface.
 describe('Phase 88.6-25 — prefill failure vs empty success, and no upstream text either way', () => {
-  // The literal a rejected prefill used to interpolate. lib/api.ts:1126/:1159 throw
+  // The literal a rejected prefill used to interpolate. lib/api.ts `prefillFromGcal: async` / `prefillFromSaved: async` throw
   // `new Error(err.error || …)`, i.e. the backend body's own field, so this stands in for
   // real upstream text on an unauthenticated page.
   const UPSTREAM = 'Calendar sync token revoked by upstream';
@@ -539,11 +539,15 @@ describe('Phase 88.6-25 — prefill failure vs empty success, and no upstream te
 
       // Settle on the FAILURE SENTENCE itself, never on the absence of something: an absence
       // assertion is satisfied on the first tick, before the catch has even run.
-      expect(await screen.findByText(a.failureSentence)).toBeTruthy();
+      // AMENDED Phase 88.6.1-26: the sentence now renders TWICE by design — the visible line and
+      // the always-mounted sr-only outcome region (data-testid prefill-status) — so the single-
+      // match queries became `All` queries with exact counts. The assertions are otherwise
+      // unchanged, and the count of 2 also proves the region speaks the same failed-keyed words.
+      expect(await screen.findAllByText(a.failureSentence)).toHaveLength(2);
       // The upstream message reaches NOTHING the user can read.
       expect(document.body.textContent).not.toMatch(/revoked by upstream/i);
       // ...and it is NOT relabelled as the empty-success outcome.
-      expect(screen.queryByText(a.emptySentence)).toBeNull();
+      expect(screen.queryAllByText(a.emptySentence)).toHaveLength(0);
       // AC-2 channel: the raw console call is gone and the house logger carries it, with the
       // error's name and message in the CTX object rather than the raw Error.
       expect(logger.info).toHaveBeenCalledWith(a.logMessage, {
@@ -558,10 +562,11 @@ describe('Phase 88.6-25 — prefill failure vs empty success, and no upstream te
 
       fireEvent.click(screen.getByRole('button', { name: a.trigger }));
 
-      expect(await screen.findByText(a.emptySentence)).toBeTruthy();
+      // Two nodes by design since plan 88.6.1-26 (the visible line + the sr-only region).
+      expect(await screen.findAllByText(a.emptySentence)).toHaveLength(2);
       // This is the half that catches a discriminant keyed on `count === 0`: with one, the
       // legitimate zero-result would paint the failure sentence at an anonymous visitor.
-      expect(screen.queryByText(a.failureSentence)).toBeNull();
+      expect(screen.queryAllByText(a.failureSentence)).toHaveLength(0);
       expect(logger.info).not.toHaveBeenCalled();
     });
   }
@@ -709,7 +714,13 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
   const SAVED = 'Use my saved availability';
   const GCAL = 'Import from Google Calendar';
 
-  beforeEach(() => vi.clearAllMocks());
+  // mockReset, not only clearAllMocks: earlier describes leave persistent and once-only
+  // implementations on the two pre-fill mocks, and an unconsumed once-value would leak across arms.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (availabilityFormAPI.prefillFromSaved as Mock).mockReset();
+    (availabilityFormAPI.prefillFromGcal as Mock).mockReset();
+  });
 
   function hold<T>(api: 'prefillFromSaved' | 'prefillFromGcal') {
     let release: (v: T) => void = () => {};
@@ -793,7 +804,8 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
 
       fireEvent.click(saved);
       await flush(0);
-      expect(screen.getByText(EMPTY)).toBeTruthy();
+      // Two nodes by design: the visible line and the sr-only region.
+      expect(screen.getAllByText(EMPTY)).toHaveLength(2);
 
       await flush(2000);
       fireEvent.click(saved);

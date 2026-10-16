@@ -165,7 +165,12 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // FULL `npm test` run is what surfaced it: the task-level verify lists did not name this
     // suite, and every targeted run had happened before the AvailabilityForm edit. Do not
     // "stabilise" this by anchoring on text alone — the line number is what makes a MOVE visible.
-    declaredAt: 96,
+    // RE-DERIVED by plan 88.6.1-26 (2026-10-16): 96 -> 108. Fourth move, and again not on its
+    // own: plan 26 added the StatusRegion import and the hoisted A5 constant (copy row A5) above
+    // the component, amended `DECISION Phase 88.6-25` above the declaration (the useAppForm
+    // refusal), and amended the pre-fill state comment directly above it. The receiver is
+    // unchanged — still set only by the perform* callbacks, still { source, count, failed? }.
+    declaredAt: 108,
     declaration: 'const [prefillStatus, setPrefillStatus] = useState(',
     why:
       'Local pre-fill banner state shaped { source, count, failed? } — set only by this ' +
