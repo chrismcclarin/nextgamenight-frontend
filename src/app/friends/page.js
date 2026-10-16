@@ -94,6 +94,11 @@ function FriendsPage() {
     // Loading state per tab
     const [loadingFriends, setLoadingFriends] = useState(true);
     const [loadingSent, setLoadingSent] = useState(true);
+    // Has each list loaded successfully at least once (see the AC-29 marker on fetchFriends)?
+    const [friendsLoaded, setFriendsLoaded] = useState(false);
+    const [sentLoaded, setSentLoaded] = useState(false);
+    const friendsFetchGenRef = useRef(0);
+    const sentFetchGenRef = useRef(0);
 
     // Search state
     const [searchEmail, setSearchEmail] = useState('');
@@ -172,8 +177,9 @@ function FriendsPage() {
     const requestsTabRef = useRef(null);
     const sentTabRef = useRef(null);
     const tabRefs = { friends: friendsTabRef, requests: requestsTabRef, sent: sentTabRef };
-    // The id of the search result shown now (kept current after each commit): a send that
-    // settles later reads it to decide whether its outcome still belongs on screen.
+    // The id of the search result shown now (written beside every write of the result, in
+    // handleSearch): a send that settles later reads it to decide whether its outcome still
+    // belongs on screen.
     const shownResultIdRef = useRef(null);
 
     /* DECISION Phase 88.6.1-40 (Req 5, D-04/D-05, D-06 shape): four controls now keep focus
@@ -277,15 +283,29 @@ function FriendsPage() {
         setUserGroups(adminGroups);
     }, [rawGroups, selfUuid]);
 
+    /* DECISION Phase 88.6.1-40 (AC-29, Req 9): the loading line replaces a list on its FIRST
+       load only, a has-loaded flag (friendsLoaded / sentLoaded) and never a length, because a
+       true zero would otherwise re-show the loading line (D-09a / D-37); a refresh after an
+       accept or a send keeps the rows on screen. The newest response wins: a generation bumped
+       at call start and checked before every state write (the phase's one staleness idiom, the
+       generation of QuickSuggestions.js), because two of the three callers are handlers with no
+       effect cleanup to cancel them. Every failure is still logged and reported once, before the
+       check. REJECTED: a visible "Updating" line or aria-busy on the list (D-09 gave that line
+       to Browse Games only). The failed-refresh treatment (rows kept beside a notice) is plan
+       88.6.1-72's. Changing this is a decision, not a cleanup. */
     const fetchFriends = async () => {
+        const gen = ++friendsFetchGenRef.current;
         setLoadingFriends(true);
         setFriendsLoadError(null);
         try {
             const data = await friendshipsAPI.getFriends();
+            if (gen !== friendsFetchGenRef.current) return;
             setFriends(Array.isArray(data) ? data : []);
+            setFriendsLoaded(true);
         } catch (err) {
             logger.info('Error fetching friends:', errCtx(err));
             queryCacheOnError(err, { queryKey: ['friendships', 'accepted'] });
+            if (gen !== friendsFetchGenRef.current) return;
             // Keep the ERROR, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
             // Wording matches the 88-18 register ("The X request didn't complete.") used by
@@ -296,7 +316,7 @@ function FriendsPage() {
                 err instanceof Error ? err : new Error("The friends request didn't complete.")
             );
         } finally {
-            setLoadingFriends(false);
+            if (gen === friendsFetchGenRef.current) setLoadingFriends(false);
         }
     };
 
@@ -312,7 +332,8 @@ function FriendsPage() {
        divergence Req 14 exists to remove; the identity gate a few lines up already uses the banner.
 
        The adapter is contract-backed, not a shim around a private API: `useFetchErrorState`
-       documents that it reads ONLY `isError`/`error`/`refetch` (useFetchErrorState.ts:89). */
+       documents that it reads ONLY `isError`/`error`/`refetch` (useFetchErrorState.ts:261, the
+       @param line ending "are read"; re-pointed 88.6.1-40). */
     const fetchFriendsRef = useRef(null);
     useEffect(() => {
         fetchFriendsRef.current = fetchFriends;
@@ -327,22 +348,27 @@ function FriendsPage() {
         refetch: retryFriends,
     });
 
+    // The same first-load-only line and newest-wins generation as fetchFriends (its marker).
     const fetchSentRequests = async () => {
+        const gen = ++sentFetchGenRef.current;
         setLoadingSent(true);
         setSentError(null);
         try {
             const data = await friendshipsAPI.getSentRequests();
+            if (gen !== sentFetchGenRef.current) return;
             setSentRequests(Array.isArray(data) ? data : []);
+            setSentLoaded(true);
         } catch (err) {
             logger.info('Error fetching sent requests:', errCtx(err));
             queryCacheOnError(err, { queryKey: ['friendships', 'sent'] });
+            if (gen !== sentFetchGenRef.current) return;
             // Keep the ERROR object, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
             setSentError(
                 err instanceof Error ? err : new Error("The sent-requests request didn't complete.")
             );
         } finally {
-            setLoadingSent(false);
+            if (gen === sentFetchGenRef.current) setLoadingSent(false);
         }
     };
 
@@ -698,6 +724,17 @@ function FriendsPage() {
         if (foundUser.id === selfUuid) {
             return { type: 'self', label: "That's you!" };
         }
+        // DECISION Phase 88.6.1-40 (carry-in from plan 88.6.1-66's planner): while a list this
+        // classification reads is still on its first load (this page's friends or sent list, or
+        // the provider's received requests), the result shows no action at all, the way plan
+        // 88.6.1-66's provider answers 'unknown' and the member "+" is withheld. Chosen OVER
+        // offering Send Request (a press on a friend earns the backend's 409), OVER a gated
+        // Send Request (a button that refuses with no reason given) and OVER a loading line
+        // (new words, D-31). A FAILED load does not hold it: the request's own 409 copy still
+        // answers that case, and a failure that held the action would block every request.
+        const friendsFirstLoadPending = !friendsLoaded && !friendsLoadError;
+        const sentFirstLoadPending = !sentLoaded && !sentError;
+        if (friendsFirstLoadPending || sentFirstLoadPending || friendshipCtxLoading) return null;
         if (isAlreadyFriend(foundUser.id)) {
             return { type: 'already-friends', label: 'Already friends' };
         }
@@ -746,8 +783,8 @@ function FriendsPage() {
                         because Radix `Slot` concatenates the child's className WITHOUT
                         tailwind-merge, so a utility left there cannot win a conflict. Here
                         nothing survives: `px-6 py-2` and `inline-block` are all dead under
-                        unlayered `.btn` (padding at `globals.css:2202`, `display: inline-flex`
-                        at `:2195`). */}
+                        unlayered `.btn` (padding at `globals.css:2349`, `padding: 0.5rem 1rem;`;
+                        `display: inline-flex` at `:2342`; re-pointed 88.6.1-40). */}
                     <Button asChild variant="primary" size="default">
                         <a href="/api/auth/login">Log In</a>
                     </Button>
@@ -849,9 +886,10 @@ function FriendsPage() {
                 {/* The remove-friend gate's live region. Mounted HERE — once, outside the
                     tab conditional and outside the row map — because a live region that
                     mounts with the armed row announces nothing (empty-first contract,
-                    StatusRegion.tsx:8-11). Moving it inside the Friends tab or into the
-                    row is a silent a11y regression, not a tidy-up. That premise holds because
-                    this gate's region is POLITE; an inserted alert would be announced (D-42). */}
+                    StatusRegion.tsx:9-17, its EMPTY-FIRST bullet). Moving it inside the
+                    Friends tab or into the row is a silent a11y regression, not a tidy-up. That
+                    premise holds because this gate's region is POLITE; an inserted alert would
+                    be announced (D-42). */}
                 {removeFriendGate.statusNode}
 
                 {/* Search Section */}
@@ -1066,7 +1104,7 @@ function FriendsPage() {
                             folds in. EmptyState means "nothing here yet" and nothing else; a fetch
                             failure gets the error banner with its retry. Collapsing these back into one
                             branch is a decision to re-introduce that lie, not a simplification. */}
-                        {loadingFriends ? (
+                        {loadingFriends && !friendsLoaded ? (
                             <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading friends...</span>
@@ -1109,11 +1147,13 @@ function FriendsPage() {
                                             </SelectControl>
                                             {/* Every utility this control used to carry was DEAD under
                                                 unlayered `.btn` and is deleted rather than moved: `px-4 py-2`
-                                                (padding, `globals.css:2202`), `text-sm` (font-size, `:2201`),
-                                                `font-medium` (font-weight 600, `:2200`), `flex items-center
+                                                (padding, `globals.css:2349`), `text-sm` (font-size, `:2348`),
+                                                `font-medium` (font-weight 600, `:2347`), `flex items-center
                                                 gap-2` (`display: inline-flex` / `align-items` / `gap`,
-                                                `:2195-2198`) and the `disabled:` pair (`.btn:disabled`,
-                                                `:2250-2253`). Re-adding any of them changes no pixel. */}
+                                                `:2342-2345`) and the `disabled:` pair (`.btn:disabled`,
+                                                `:2397-2400`). Re-adding any of them changes no pixel.
+                                                (Cites re-pointed 88.6.1-40 to the `.btn {` block
+                                                and its `.btn:disabled {` block.) */}
                                             <Button
                                                 variant="primary"
                                                 size="default"
@@ -1370,7 +1410,7 @@ function FriendsPage() {
                             that something went wrong and that they had sent nothing. The error branch
                             is checked BEFORE the empty branch and that order is load-bearing: an
                             errored fetch also has zero requests. */}
-                        {loadingSent ? (
+                        {loadingSent && !sentLoaded ? (
                             <div role="status" aria-label="Loading your sent requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading sent requests...</span>
