@@ -17,9 +17,12 @@ const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 // Round 5 #41: the two status sentences are module-level constants like every other
 // fixed string in this phase, because they are now set from an effect rather than
 // computed inline in the JSX and two spellings would be one edit away.
+// Phase 88.6.1-34: copy row F1 (D-30, ratified 2026-10-04) is hoisted here as a template
+// function, because the attach line carries the file name the person chose.
 const LOADING_DETAILS_COPY = 'Loading your details — one moment';
 const REPLY_TO_UNAVAILABLE_COPY =
   "We couldn't load your email address, so we won't be able to reply to this.";
+const screenshotAttachedCopy = (fileName) => `Screenshot attached: ${fileName}`;
 
 export default function FeedbackForm({ onClose, initialType = 'bug', initialSubject = '', initialDescription = '' }) {
   // Phase 88.8 plan 13 Task 3(b): the contact handle is the APP address off the
@@ -159,7 +162,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       return;
     }
     setScreenshot(file);
-    setAttachStatus(file.name);
+    setAttachStatus(screenshotAttachedCopy(file.name));
   };
 
   const removeScreenshot = () => {
@@ -594,26 +597,42 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 order).
 
                 VISIBLE WHEN SET, WITH NO IDLE DELTA (owner ruling 2026-09-14, ACCEPT §5, option
-                2; UI-SPEC §1.2 **V-18**). No `sr-only` is passed — `StatusRegion.tsx:43` is
-                `cn('text-sm', className)` and the primitive hides nothing, so the text renders on
-                screen. `sr-only` is the RECORDED REJECTED ARM for this region and the other two
-                new polite regions in this phase; do not "tidy" it back. While idle the className
-                is `undefined`, so the empty div carries no margin and no min-height and the idle
-                layout is byte-identical.
+                2; UI-SPEC §1.2 **V-18**). The house `srOnlyWhenEmpty` prop appends `sr-only` to
+                an EMPTY region only (`StatusRegion.tsx:102`, `className={cn(`, with the
+                append at `StatusRegion.tsx:105`, `isEmptyRegionContent(content) && 'sr-only'`),
+                so whenever the region holds text it renders on screen. An always-hidden `sr-only`
+                is the RECORDED REJECTED ARM for this region and the other two new polite regions
+                in this phase; do not "tidy" it back. AMENDED Phase 88.6.1-34 (D-22), 2026-10-16:
+                the region now takes the house `srOnlyWhenEmpty` prop. It is visually hidden ONLY
+                while empty and visible whenever it holds text, so the 2026-09-14 visible-when-set
+                ruling stands; what that sentence rejected was an always-hidden region, and that
+                stays rejected. The class list is now unconditional: while empty the region is out
+                of flow, so its `mt-1` costs no idle layout; when set it sits 4px below the block,
+                as before.
 
                 THE VISIBLE ARM IS BOUNDED, THE ANNOUNCED STRING IS NOT: `truncate` is the same
                 single-line idiom already applied to this very string at the filename `<span>`
                 above. It is visual only — the region's textContent keeps the FULL name, which is
                 what makes a second attach a real text CHANGE rather than silence.
 
-                COPY: UI-SPEC §6.3's ratified register holds NO attach-success entry (measured
-                2026-09-16), so this region carries the FILENAME ALONE and no prose is authored —
-                an executor never mints. Under the 2026-09-14 visible arm the owed string is an
-                UNRATIFIED VISIBLE STRING, not merely an unratified announcement; it is recorded
-                as owed in `88.6-31-SUMMARY.md`. */}
+                COPY: UI-SPEC §6.3's ratified register held NO attach-success entry (measured
+                2026-09-16), so this region carried the FILENAME ALONE and no prose was authored —
+                an executor never mints; the owed string was recorded in `88.6-31-SUMMARY.md`.
+                AMENDED Phase 88.6.1-34 (D-30 F1): copy row F1, "Screenshot attached: {file
+                name}", ratified 2026-10-04, discharges the owed string. A bare file name said
+                WHAT was attached but not that anything happened.
+
+                DECISION Phase 88.6.1-34 (D-22, D-30 F1): the house empty-region shape (the
+                `srOnlyWhenEmpty` prop and an unconditional class list) is chosen OVER the per-site
+                class ternary this region carried, which D-22 retires as duplication; and the F1
+                sentence (`screenshotAttachedCopy`) OVER the bare file name. The file name stays
+                inside the string, so a different file is still a different string and a
+                remove-then-reattach still clears and re-sets the text. Changing this is a
+                decision, not a cleanup. */}
             <StatusRegion
               id={attachStatusId}
-              className={attachStatus ? 'text-sm text-content-secondary mt-1 truncate' : undefined}
+              srOnlyWhenEmpty
+              className="text-sm text-content-secondary mt-1 truncate"
             >
               {attachStatus}
             </StatusRegion>
