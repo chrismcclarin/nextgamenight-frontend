@@ -1154,3 +1154,147 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     expect(tokens).not.toContain('py-5');
   });
 });
+
+// Phase 88.6.1 plan 27 Task 4 (owner ruling 2026-10-05, copy row X3 reused at Add Friend): the
+// already-pending answer (the request route's code-less 409, which the client maps to conflict)
+// keeps the sent line; every other failure shows X3 from its own alert lane and keeps the prompt.
+describe('FriendInvitePanel — Add Friend tells the truth when the request fails (88.6.1-27)', () => {
+  const lane = () => document.getElementById('invite-friend-request-error');
+  const sentLine = () => document.getElementById('invite-friend-request-status');
+  const X3 = "We couldn't send that request.";
+
+  async function openPrompt() {
+    const { friendshipsAPI: api, invitesAPI } = await import('@/lib/api');
+    (api.searchUserByEmail as Mock).mockResolvedValue({
+      id: FRIEND_UUID,
+      username: 'Dana',
+      email: 'dana@example.test',
+    });
+    (invitesAPI.sendInvite as Mock).mockResolvedValue({});
+    const utils = renderPanel({ friends: [] });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invite by Email' }), {
+      target: { value: 'dana@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const add = await screen.findByRole('button', { name: 'Add Friend' });
+    return { add, ...utils };
+  }
+
+  it('AF1: a network failure shows X3 from the SAME alert lane, keeps the prompt and focus on Add Friend, and claims no success', async () => {
+    const { friendshipsAPI: api, ApiError } = await import('@/lib/api');
+    (api.sendRequest as Mock).mockRejectedValueOnce(new ApiError('Network down', 'network', 0));
+    const user = userEvent.setup();
+    const { add } = await openPrompt();
+
+    const before = lane();
+    expect(before).not.toBeNull();
+    expect(before).toHaveAttribute('role', 'alert');
+    expect(before).toHaveAttribute('aria-live', 'assertive');
+    expect(before?.textContent).toBe('');
+    expect(before).toHaveClass('sr-only');
+
+    await user.click(add);
+
+    await waitFor(() => expect(lane()?.textContent).toBe(X3));
+    const after = lane();
+    expect(after).toBe(before);
+    expect(after).not.toHaveClass('sr-only');
+    expect(after).toHaveClass('mt-2');
+    expect(after).toHaveClass('text-content-status-error');
+    expect(sentLine()?.textContent).toBe('');
+    expect(screen.getByRole('dialog').textContent).not.toContain('Friend request sent!');
+
+    const again = screen.getByRole('button', { name: 'Add Friend' });
+    expect(again).toBe(add);
+    expect(again).not.toHaveAttribute('aria-disabled');
+    expect(again).toHaveAttribute('aria-describedby', 'invite-friend-request-error');
+    expect(document.activeElement).toBe(again);
+    expect(await axe(screen.getByRole('dialog'), WCAG_412)).toHaveNoViolations();
+  });
+
+  it('AF2: the already-pending answer (conflict) keeps "Friend request sent!" and leaves the lane empty', async () => {
+    const { friendshipsAPI: api, ApiError } = await import('@/lib/api');
+    (api.sendRequest as Mock).mockRejectedValueOnce(
+      new ApiError('HTTP error! status: 409', 'conflict', 409)
+    );
+    const user = userEvent.setup();
+    const { add } = await openPrompt();
+    const before = lane();
+
+    await user.click(add);
+
+    await waitFor(() => expect(sentLine()).toHaveTextContent('Friend request sent!'));
+    expect(lane()).not.toBeNull();
+    expect(lane()).toBe(before);
+    expect(lane()?.textContent).toBe('');
+    expect(lane()).toHaveClass('sr-only');
+    expect(screen.queryByRole('button', { name: 'Add Friend' })).toBeNull();
+  });
+
+  it('AF3: a code-less failure is X3 too, and a repeat failure mutates the same lane again (SPEC Edge R8, backstop)', async () => {
+    const { friendshipsAPI: api } = await import('@/lib/api');
+    (api.sendRequest as Mock)
+      .mockRejectedValueOnce(new Error('nope'))
+      .mockRejectedValueOnce(new Error('nope'));
+    const user = userEvent.setup();
+    const { add } = await openPrompt();
+
+    await user.click(add);
+    await waitFor(() => expect(lane()?.textContent).toBe(X3));
+    const node = lane()!;
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => records.push(...list));
+    observer.observe(node, { childList: true, characterData: true, subtree: true });
+
+    await user.click(screen.getByRole('button', { name: 'Add Friend' }));
+    await waitFor(() => expect(api.sendRequest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(records.length).toBeGreaterThan(0));
+    await waitFor(() => expect(lane()?.textContent).toBe(X3));
+    observer.disconnect();
+    expect(lane()).toBe(node);
+  });
+
+  it('AF4: a retry that succeeds clears the lane on the same node and lands focus on the heading', async () => {
+    const { friendshipsAPI: api, ApiError } = await import('@/lib/api');
+    (api.sendRequest as Mock)
+      .mockRejectedValueOnce(new ApiError('Network down', 'network', 0))
+      .mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    const { add } = await openPrompt();
+
+    await user.click(add);
+    await waitFor(() => expect(lane()?.textContent).toBe(X3));
+    const node = lane();
+
+    await user.click(screen.getByRole('button', { name: 'Add Friend' }));
+    await waitFor(() => expect(sentLine()).toHaveTextContent('Friend request sent!'));
+    expect(lane()).toBe(node);
+    expect(lane()?.textContent).toBe('');
+    expect(lane()).toHaveClass('sr-only');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Invite by Email' }))
+    );
+  });
+
+  it('AF5: closing the panel clears the lane and the prompt', async () => {
+    const { friendshipsAPI: api, ApiError } = await import('@/lib/api');
+    (api.sendRequest as Mock).mockRejectedValueOnce(new ApiError('Network down', 'network', 0));
+    const user = userEvent.setup();
+    const { add, rerender, onClose, onMemberAdded } = await openPrompt();
+
+    await user.click(add);
+    await waitFor(() => expect(lane()?.textContent).toBe(X3));
+
+    rerender(
+      <FriendInvitePanel group={GROUP} open={false} onClose={onClose} onMemberAdded={onMemberAdded} />
+    );
+    rerender(
+      <FriendInvitePanel group={GROUP} open onClose={onClose} onMemberAdded={onMemberAdded} />
+    );
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    expect(lane()?.textContent).toBe('');
+    expect(screen.queryByRole('button', { name: 'Add Friend' })).toBeNull();
+  });
+});
