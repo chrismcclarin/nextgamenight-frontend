@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL, ApiError } from '../../lib/api';
+import { isUuid } from '../../lib/isUuid';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
@@ -343,8 +344,46 @@ function GuestInviteButton({ groupId, userId }) {
     );
 }
 
+// 88.6.1-25 (Requirement 1): the event-link message screens and the shared loader. The not-found
+// words are today's, hoisted byte-unchanged; PAGE_LOADING_LABEL is copy row E4 (D-30, three ASCII
+// dots), the same sentence the route fallback already shows (gameDetail/loading.tsx).
+const EVENT_NOT_FOUND_TITLE = 'Event not found';
+const EVENT_NOT_FOUND_DETAIL = 'This event no longer exists or has been cancelled.';
+const PAGE_LOADING_LABEL = 'Loading game night...';
+
+// 88.6.1-25 (D-01): the per-event sign-in latch. The key follows the in-repo `ng<feature>:<purpose>`
+// convention (src/app/page.js, 'nggroups:refresh'). Every helper is FAIL-CLOSED: a storage call that
+// throws reads as "latch already set" (banner, never a redirect) and a write that throws reports
+// failure, so blocked storage can never produce a redirect loop (RESEARCH P-4). None of them logs.
+const SIGN_IN_LATCH_PREFIX = 'ngevent:signinRedirect:';
+
+function readSignInLatch(eventId) {
+    try {
+        return window.sessionStorage.getItem(SIGN_IN_LATCH_PREFIX + eventId) !== null;
+    } catch {
+        return true;
+    }
+}
+
+function writeSignInLatch(eventId) {
+    try {
+        window.sessionStorage.setItem(SIGN_IN_LATCH_PREFIX + eventId, '1');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// The return address is built from this page's own location (path + search + hash) and NEVER read
+// from the query string (SPEC Constraint, V5.1.5); the Auth0 SDK's same-origin check is the
+// server-side control. The hash rides inside returnTo because a fragment never reaches a server.
+function buildSignInUrl() {
+    const { pathname, search, hash } = window.location;
+    return `/api/auth/login?returnTo=${encodeURIComponent(pathname + search + hash)}`;
+}
+
 export default function GameDetailPage() {
-    const { user } = Auth();
+    const { user, isLoading: authLoading } = Auth();
     // Phase 87.3-04 (D-01/D-04): the caller's resolved Users.id UUID from the
     // shared self-identity hook. Every is-me/is-mine derive on this page keys on
     // this UUID vs the nested `User.id` (never the flat `user_id`/`user.sub`),
@@ -363,9 +402,28 @@ export default function GameDetailPage() {
     const { getStatus: getFriendshipStatus } = useFriendshipStatus();
     const searchParams = useSearchParams();
     const router = useRouter();
-    const game_id = searchParams.get('game_id');
-    const group_id = searchParams.get('group_id');
-    const event_id = searchParams.get('event_id');
+    // DECISION Phase 88.6.1-25 (D-03 / AC-6 / CSPT): all three URL ids are validated ONCE, here,
+    // where they are read, so no request path is ever built from them. The api helpers interpolate
+    // each id into the path unencoded, and an id that decodes to dot-segments (`..%2Fusers%2Fme`) was
+    // normalised into ANOTHER same-origin BFF GET whose reply rendered as an event or a game.
+    // CHOSEN: a rejected `event_id` (present but not a UUID; an empty value counts as present) is
+    // "Event not found" with ZERO requests and is checked first; a rejected `game_id` is "Game not
+    // found" with zero requests and wins over a valid `event_id`; a rejected `group_id` is treated
+    // as absent on both views.
+    // REJECTED (a): validating at each fetch site (eight call sites; the one forgotten is the hole).
+    // REJECTED (b): encodeURIComponent on the path (closes the traversal but still sends a request
+    // for garbage, and AC-6 requires zero). REJECTED (c): a third "invalid link" screen (no ratified
+    // words, D-31). REJECTED (d): treating a bad `game_id` as absent (it is the page's entity
+    // selector, not optional context like `group_id`; the page would load a different entity than
+    // the link named). Loosening this to accept non-UUID ids is a decision, not a cleanup.
+    const rawGameId = searchParams.get('game_id');
+    const rawGroupId = searchParams.get('group_id');
+    const rawEventId = searchParams.get('event_id');
+    const game_id = isUuid(rawGameId) ? rawGameId : null;
+    const group_id = isUuid(rawGroupId) ? rawGroupId : null;
+    const event_id = isUuid(rawEventId) ? rawEventId : null;
+    const eventIdRejected = rawEventId !== null && event_id === null;
+    const gameIdRejected = rawGameId !== null && game_id === null;
     // Phase 65-03 EVT-05: optional date prefill for the "Plan a game night
     // with this" CTA (e.g. /gameDetail?game_id=X&group_id=Y&date=2026-05-15
     // — used when the user lands here from a planning surface).
@@ -377,6 +435,12 @@ export default function GameDetailPage() {
     const [userReview, setUserReview] = useState(null);
     const [loading, setLoading] = useState(true);
     const [gameError, setGameError] = useState(null);
+    // 88.6.1-25 (D-01): the event fetch's error OBJECT (useFetchErrorState reads `ApiError.code` off
+    // it, as the game view's gameError does), and where the sign-in redirect stands for this event:
+    // 'idle' (none decided), 'redirecting' (replace called), 'declined' (the latch was already set or
+    // storage failed, so the 401 renders the banner instead).
+    const [eventError, setEventError] = useState(null);
+    const [signInRedirect, setSignInRedirect] = useState('idle');
     const [showReviewForm, setShowReviewForm] = useState(false);
     const [userRole, setUserRole] = useState(null);
     // Phase 71.1 GAMP-09: scope detection for two-QR model.
@@ -586,8 +650,18 @@ export default function GameDetailPage() {
     // param change (different game/event) still gets the full loading screen.
     const loadedEntityKeyRef = useRef(null);
     const entityKey = `${game_id}|${group_id}|${event_id}`;
+    // 88.6.1-25 (RESEARCH M-1.2): per-run generation for fetchEventOnly. The fetch effect below can
+    // run several times for one link (mount, user resolves, identity resolves, a new event id), so
+    // a run that is no longer the newest applies NOTHING: no state write after any await, no
+    // `loading` clear, no entity stamp. eventErrorGenRef records which run set `eventError`, so the
+    // sign-in redirect acts only on the newest run's answer.
+    const eventFetchGenRef = useRef(0);
+    const eventErrorGenRef = useRef(0);
 
     useEffect(() => {
+        // 88.6.1-25 (AC-6): a rejected event or game id makes no request at all. Without this,
+        // a rejected game id (nulled) beside a valid event id would fall into the event fetch.
+        if (eventIdRejected || gameIdRejected) return;
         if (game_id) {
             fetchGameData();
         } else if (event_id) {
@@ -596,13 +670,16 @@ export default function GameDetailPage() {
         // Phase 87.3-04: selfUuid is in the dep array so the is-me/scope derives
         // inside fetchGameData/fetchEventOnly re-run once identity resolves (they
         // are gated on selfUuid and skipped while it is still undefined).
-    }, [game_id, group_id, event_id, user?.sub, selfUuid]);
+    }, [game_id, group_id, event_id, user?.sub, selfUuid, eventIdRejected, gameIdRejected]);
 
     // Fetch game suggestions for event-only view.
     // Phase 71.1-02 Blocker 1 fix: gate on effectiveGroupId (URL-or-derived)
     // so game-only callers loading /gameDetail?event_id=X without a URL
     // group_id still get suggestions once the event response loads.
     useEffect(() => {
+        // 88.6.1-25 (AC-6): this effect reads event_id on its own, so a rejected game id beside a
+        // valid event id must stop it too, or that URL would still make a request.
+        if (gameIdRejected) return;
         if (!event_id || !effectiveGroupId) return;
         const fetchSuggestions = async () => {
             try {
@@ -620,7 +697,7 @@ export default function GameDetailPage() {
             }
         };
         fetchSuggestions();
-    }, [event_id, effectiveGroupId]);
+    }, [event_id, effectiveGroupId, gameIdRejected]);
 
     // Scroll to ballot section when #vote hash is in URL (from notification links)
     useEffect(() => {
@@ -641,29 +718,51 @@ export default function GameDetailPage() {
     // RSVP changes (backend hard-deletes EventBring rows when RSVP flips to
     // 'no' or 'maybe' — see routes/rsvp.js). Used both on initial mount and
     // from the RsvpSection onRsvpChange callback below.
+    // 88.6.1-25 (review r2 #29): the helper RETURNS the Set (an empty Set on failure; it never
+    // rejects) and writes nothing itself. Each caller writes the result: the initial event load only
+    // after its own current-generation check, so a superseded event's brings are never painted onto
+    // the next event's strip; every user-triggered caller chains `.then(` the state setter.
     const refreshBringersSet = async (eventId) => {
         try {
             const brings = await eventBringsAPI.getEventBrings(eventId);
+            const bSet = new Set();
             if (Array.isArray(brings)) {
-                const bSet = new Set();
                 for (const b of brings) {
                     if (b?.User?.id) bSet.add(b.User.id);
                 }
-                setBringersSet(bSet);
-            } else {
-                setBringersSet(new Set());
             }
+            return bSet;
         } catch {
-            setBringersSet(new Set());
+            return new Set();
         }
     };
 
     const fetchEventOnly = async () => {
+        // 88.6.1-25: this run's generation, taken before the first await (see eventFetchGenRef).
+        const gen = ++eventFetchGenRef.current;
+        const isCurrentRun = () => gen === eventFetchGenRef.current;
         // Identity-only re-run (selfUuid resolved after first load of the SAME
         // event): refresh in place — no full-page loading flash (#1/#18).
         if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
         try {
-            const eventData = await eventsAPI.getEvent(event_id);
+            // 88.6.1-25 (D-01, RESEARCH P-2): ONLY the getEvent rejection decides the page state, so it
+            // has its own try. The roster, RSVP and bring fetches below keep their own soft catches: a
+            // members 403 or 500 after a good event leaves the event rendered.
+            let eventData;
+            try {
+                eventData = await eventsAPI.getEvent(event_id);
+            } catch (error) {
+                logger.info('Error fetching event:', errCtx(error));
+                if (!isCurrentRun()) return;
+                eventErrorGenRef.current = gen;
+                setEventError(
+                    error instanceof Error ? error : new Error("The event request didn't complete.")
+                );
+                return;
+            }
+            if (!isCurrentRun()) return;
+            setEventError(null);
+            setSignInRedirect('idle');
             setSingleEvent(eventData);
 
             // Backend GET /events/:event_id flattens EventParticipations via
@@ -690,6 +789,7 @@ export default function GameDetailPage() {
                 // objects with id (UUID), user_id (Auth0 string), and
                 // UserGroup.role attached via the through-table.
                 const fetchedGroupMembers = await groupsAPI.getGroupMembers(derivedGroupId);
+                if (!isCurrentRun()) return;
                 if (Array.isArray(fetchedGroupMembers)) {
                     // Phase 71.1 GAMP-09: derive both userRole + userScope via
                     // unified resolver. Plan 71.1-01's caller-self-row contract
@@ -721,6 +821,7 @@ export default function GameDetailPage() {
                 // by the nested User.id UUID for the strip + See-all chips (D-04).
                 try {
                     const rsvpData = await rsvpAPI.getEventRsvps(event_id);
+                    if (!isCurrentRun()) return;
                     // Phase 87.3-04: my-RSVP derive gated on identity resolution
                     // (nested User.id vs selfUuid). Re-runs when selfUuid resolves.
                     if (selfUuid) {
@@ -736,19 +837,29 @@ export default function GameDetailPage() {
                     }
                     setRsvpByUserId(byUserId);
                 } catch {
-                    setEventRsvpStatuses({ [event_id]: null });
-                    setRsvpByUserId({});
+                    if (isCurrentRun()) {
+                        setEventRsvpStatuses({ [event_id]: null });
+                        setRsvpByUserId({});
+                    }
                 }
 
                 // Fetch event brings to flag participants who are bringing a
-                // game (small bringersSet of User.id UUIDs).
-                await refreshBringersSet(event_id);
+                // game (small bringersSet of User.id UUIDs). Written only by the
+                // current run (88.6.1-25, review r2 #29).
+                const bSet = await refreshBringersSet(event_id);
+                if (!isCurrentRun()) return;
+                setBringersSet(bSet);
             }
         } catch (error) {
-            logger.info('Error fetching event:', errCtx(error));
+            // 88.6.1-25 (P-2): only a side fetch (roster) can reach this catch now; the event
+            // stays rendered and the page state is not touched.
+            logger.info('Error fetching event members:', errCtx(error));
         } finally {
-            loadedEntityKeyRef.current = entityKey;
-            setLoading(false);
+            // A superseded run neither clears `loading` nor stamps the entity (RESEARCH M-1.2).
+            if (isCurrentRun()) {
+                loadedEntityKeyRef.current = entityKey;
+                setLoading(false);
+            }
         }
     };
 
@@ -1072,6 +1183,33 @@ export default function GameDetailPage() {
         refetch: retryGameData,
     });
 
+    // DECISION Phase 88.6.1-25 (D-01): CHOSEN — a latched `window.location.replace` to sign-in on ANY
+    // 401 from the event fetch, decided only after `useUser` has settled and only for the CURRENT
+    // fetch generation, with the per-event latch written BEFORE navigating and read fail-closed.
+    // REJECTED (a): redirect only when the app sees no session (a stale session would get a banner
+    // whose old remedy was false). REJECTED (b): `withPageAuthRequired` on the whole page (wider than
+    // the phase). REJECTED (c): assigning `window.location.href` (Back would return to a page that
+    // redirects again). REJECTED (d): a return address read from the query (an open redirect; SPEC
+    // Constraint). REJECTED (e): deciding inside the fetch's catch (it cannot wait for the session to
+    // settle; that is the SPEC's concurrency backstop race). PREMISE (RESEARCH MC-6): session storage
+    // belongs to the tab, so the latch survives the same-tab round trip through Auth0; the signed-out
+    // phone e2e (e2e/event-link-signed-out.spec.ts) measures it in Chromium and owner check A on iOS.
+    // Removing the latch or the auth-settled gate is a decision, not a cleanup.
+    useEffect(() => {
+        if (authLoading || !event_id) return;
+        if (!(eventError instanceof ApiError) || eventError.code !== 'unauthorized') return;
+        // A newer run is in flight: its answer, not this one, decides.
+        if (eventErrorGenRef.current !== eventFetchGenRef.current) return;
+        if (signInRedirect !== 'idle') return;
+        if (readSignInLatch(event_id) || !writeSignInLatch(event_id)) {
+            // Already redirected once for this event (or storage failed): the banner, never a loop.
+            setSignInRedirect('declined');
+            return;
+        }
+        setSignInRedirect('redirecting');
+        window.location.replace(buildSignInUrl());
+    }, [eventError, authLoading, event_id, signInRedirect]);
+
     // Runs ONLY after the dialog gate below has been explicitly confirmed.
     const performDeleteEvent = async (event_id) => {
         try {
@@ -1137,7 +1275,7 @@ export default function GameDetailPage() {
         setBallotRefreshKey(k => k + 1);
         setRsvpRefreshKey(k => k + 1);
         setBringRefreshKey(k => k + 1);
-        if (updatedEventId) refreshBringersSet(updatedEventId);
+        if (updatedEventId) refreshBringersSet(updatedEventId).then(setBringersSet);
     };
 
     const handleReviewSubmit = async (e) => {
@@ -1578,12 +1716,77 @@ export default function GameDetailPage() {
                             </div>
     );
 
+    // 88.6.1-25 (Requirement 1): the ONE layout for the event view's message screens ("Event not
+    // found" and, from task 2, no access), so the two cannot drift. Component-local because it renders
+    // a Link; declared above the first gate that calls it.
+    function renderEventMessageState(title, detail) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center max-w-md mx-auto px-6">
+                    <p className="text-content-primary text-xl font-bold mb-2">{title}</p>
+                    <p className="text-content-secondary mb-6">{detail}</p>
+                    <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                        ← Back to Home
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
+    // DECISION Phase 88.6.1-25 (SPEC phone-first floor): the five back links on this page's message
+    // screens (the event helper above, "No game selected", and the three below) carry the phone-scoped
+    // floor `min-h-11 md:min-h-0` and the house focus ring (Button.tsx, the same string).
+    // CHOSEN: the phone-scoped floor (plan 21's WR-503 choice, the UpcomingEventsCard.js idiom).
+    // CHOSEN: plan 21's Req 7 ring for recovery controls, because these five are recovery controls on
+    // dead-end screens and keyboard focus on them must be as visible as on the banner's Try again.
+    // REJECTED (a): an all-widths floor (a desktop look change this phase declined). REJECTED (b):
+    // negative-margin compensation (the 44px target would overlap the line above it). REJECTED (c):
+    // flooring only the event helper's link (four identical sibling links left under the floor, with
+    // no owner). The words are unchanged.
+    // The "Game not found" screen: a MOVE of the branch that sat after the 88-25 game gate, now also
+    // reached by a rejected game id (no request made, so `userScope` is still 'none' and the
+    // scope-aware link below reads Home).
+    function renderGameNotFound() {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center">
+                    <p className="text-content-status-error mb-4">Game not found</p>
+                    {/* Phase 71.1 GAMP-11: scope-aware fallback — game-only/none
+                        callers fall through to "← Back to Home" since the group
+                        page would 403. Group-member/pending see the group link
+                        as before. */}
+                    {group_id ? (
+                        (userScope === 'group-member' || userScope === 'pending') ? (
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                                ← Back to Group
+                            </Link>
+                        ) : (
+                            <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                                ← Back to Home
+                            </Link>
+                        )
+                    ) : (
+                        <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                            ← Back to Home
+                        </Link>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // 88.6.1-25 (AC-6): the rejected-id gates come FIRST, event then game, above "No game selected"
+    // (a rejected id is nulled, so that branch or the loader would otherwise catch it; `loading` starts
+    // true and nothing clears it once the fetch effect returns early).
+    if (eventIdRejected) return renderEventMessageState(EVENT_NOT_FOUND_TITLE, EVENT_NOT_FOUND_DETAIL);
+    if (gameIdRejected) return renderGameNotFound();
+
     if (!game_id && !event_id) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
                     <p className="text-content-secondary mb-4">No game selected</p>
-                    <Link href="/" className="text-content-link hover:underline">
+                    <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                         ← Back to Home
                     </Link>
                 </div>
@@ -1927,7 +2130,7 @@ export default function GameDetailPage() {
                             // indicator on the strip + See-all modal in sync.
                             // Backend deletes EventBring rows when RSVP flips
                             // to 'no'/'maybe', so the local set must refresh.
-                            refreshBringersSet(singleEvent.id);
+                            refreshBringersSet(singleEvent.id).then(setBringersSet);
                         }}
                     />
                     <BallotSection
@@ -1996,7 +2199,7 @@ export default function GameDetailPage() {
                             setBallotRefreshKey(k => k + 1);
                             setRsvpRefreshKey(k => k + 1);
                             setBringRefreshKey(k => k + 1);
-                            if (updatedEventId) refreshBringersSet(updatedEventId);
+                            if (updatedEventId) refreshBringersSet(updatedEventId).then(setBringersSet);
                         }}
                         editingEvent={editingEvent}
                         user={user}
@@ -2277,17 +2480,28 @@ export default function GameDetailPage() {
                         setBringRefreshKey(k => k + 1);
                         // Phase 65-02 EVT-02 followup: show 🎲 immediately
                         // after picking a game without waiting for a remount.
-                        if (bringPickerEventId) refreshBringersSet(bringPickerEventId);
+                        if (bringPickerEventId) refreshBringersSet(bringPickerEventId).then(setBringersSet);
                     }}
                 />
             </div>
         );
     }
 
-    if (loading) {
+    // 88.6.1-25 (D-01, RESEARCH P-5): an event 401 holds the loader while the sign-in decision is
+    // pending and while redirecting, so "Event not found" never paints for a frame before navigation.
+    // Only a declined redirect (latch already set, or storage failed) falls through to the banner.
+    const holdEventLoader =
+        !game_id &&
+        eventError instanceof ApiError &&
+        eventError.code === 'unauthorized' &&
+        signInRedirect !== 'declined';
+
+    // The shared loader (both views) reads copy row E4 and is a labelled status, RouteFallback's
+    // contract (role="status" + aria-label), so the loader that holds the redirect is announced.
+    if (loading || holdEventLoader) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <p className="text-content-secondary">Loading game details...</p>
+            <div className="flex items-center justify-center min-h-screen" role="status" aria-label={PAGE_LOADING_LABEL}>
+                <p className="text-content-secondary">{PAGE_LOADING_LABEL}</p>
             </div>
         );
     }
@@ -2298,17 +2512,7 @@ export default function GameDetailPage() {
     // arrived via /gameDetail?event_id=X expecting an event, so we tell
     // them the event is gone (not the game) and link back to userHome.
     if (event_id && !singleEvent) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center max-w-md mx-auto px-6">
-                    <p className="text-content-primary text-xl font-bold mb-2">Event not found</p>
-                    <p className="text-content-secondary mb-6">This event no longer exists or has been cancelled.</p>
-                    <Link href="/" className="text-content-link hover:underline">
-                        ← Back to Home
-                    </Link>
-                </div>
-            </div>
-        );
+        return renderEventMessageState(EVENT_NOT_FOUND_TITLE, EVENT_NOT_FOUND_DETAIL);
     }
 
     /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a FAILED game load is checked BEFORE the
@@ -2332,32 +2536,7 @@ export default function GameDetailPage() {
     }
 
     if (!game) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center">
-                    <p className="text-content-status-error mb-4">Game not found</p>
-                    {/* Phase 71.1 GAMP-11: scope-aware fallback — game-only/none
-                        callers fall through to "← Back to Home" since the group
-                        page would 403. Group-member/pending see the group link
-                        as before. */}
-                    {group_id ? (
-                        (userScope === 'group-member' || userScope === 'pending') ? (
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline">
-                                ← Back to Group
-                            </Link>
-                        ) : (
-                            <Link href="/" className="text-content-link hover:underline">
-                                ← Back to Home
-                            </Link>
-                        )
-                    ) : (
-                        <Link href="/" className="text-content-link hover:underline">
-                            ← Back to Home
-                        </Link>
-                    )}
-                </div>
-            </div>
-        );
+        return renderGameNotFound();
     }
 
     return (

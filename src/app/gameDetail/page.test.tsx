@@ -2067,7 +2067,7 @@ async function expectGameNotFoundWithZeroRequests(search: string) {
   expect(screen.queryByText('No game selected')).toBeNull();
   expect(screen.queryByText('Event not found')).toBeNull();
   expect(screen.queryByText('Loading game night...')).toBeNull();
-  expect(screen.queryByText('Loading game details...')).toBeNull();
+  expect(screen.queryByText(/^Loading game details/)).toBeNull();
   // Zero requests leave userScope at 'none', so the scope-aware link is the Home one.
   expect(screen.getByRole('link', { name: '← Back to Home' })).toHaveAttribute('href', '/');
   await flushMacrotask();
@@ -2258,7 +2258,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
   it('L1: the shared loader reads copy row E4 and is a labelled status', async () => {
     renderGameDetail();
     expect(screen.getByText('Loading game night...')).toBeInTheDocument();
-    expect(screen.queryByText('Loading game details...')).toBeNull();
+    expect(screen.queryByText(/^Loading game details/)).toBeNull();
     expect(screen.getByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
     // Settle, so the game's resolution does not land after cleanup.
     expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
