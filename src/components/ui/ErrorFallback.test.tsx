@@ -11,7 +11,7 @@
 //   5. the borders use `border-line-strong`, which actually resolves — the
 //      extracted-from source used `border-strong`, which is not a token
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -172,6 +172,27 @@ describe('ErrorFallback', () => {
       expect(btn.className).toMatch(/focus-visible:ring-2/);
       expect(btn.className).toMatch(/focus-visible:outline-hidden/);
     }
+  });
+
+  // Phase 88.6.1-21 (Req 5): resetting the boundary removes the pressed `Try again`; focus must
+  // land on the re-rendered page's heading, never on <body>.
+  it('E1: a successful Try again lands focus on the page heading, never <body>', async () => {
+    const user = userEvent.setup();
+    function BoundaryHost() {
+      const [failed, setFailed] = React.useState(true);
+      return (
+        <main>
+          <h1>Group page</h1>
+          {failed ? <ErrorFallback onRetry={() => setFailed(false)} /> : <p>content</p>}
+        </main>
+      );
+    }
+    render(<BoundaryHost />);
+    const heading = screen.getByRole('heading', { level: 1, name: 'Group page' });
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByText('content')).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
   it('passes an axe audit with no violations', async () => {

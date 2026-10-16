@@ -6,9 +6,12 @@
  * `refetchOnWindowFocus: false` default (the hook takes a plain query result,
  * so no global config is in play).
  */
+import * as React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, renderHook, screen, cleanup } from '@testing-library/react';
+import { act, render, renderHook, screen, cleanup, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { UseQueryResult } from '@tanstack/react-query';
+import { Modal } from '@/app/components/Modal';
 import { useFetchErrorState, getFetchErrorMessage } from './useFetchErrorState';
 import { FetchErrorBanner } from './FetchErrorBanner';
 import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
@@ -665,5 +668,282 @@ describe('getFetchErrorMessage — a proxy CSRF 403 never prints a role refusal 
       }, `details ${JSON.stringify(details)} must not throw`).not.toThrow();
       expect(out, `details ${JSON.stringify(details)}`).toBe(forbiddenLine);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-21 — the shared error surface's retries (R123 / W064, AC-9), the Req 5
+// success-retry focus floor, and (Tasks 2-3) the retry OUTCOME both branches share.
+//
+// Testing rules this block follows (FE-TESTING-CONVENTIONS): every RED half is an ATTRIBUTE, a
+// CALL COUNT or a removal-driven document.activeElement, never a blur (C-11: jsdom never blurs a
+// disabled element); focus is asserted against a NAMED node (C-5); waits are for a POSITIVE
+// signal (CF-26); comments are line comments only (CF-9).
+//
+// THE LATER COMMIT IS DRIVEN BY HAND. TanStack commits a query's outcome one macrotask after its
+// refetch promise resolves (notifyManager.js:3, systemSetTimeoutZero). The hosts below model that
+// with a commit the TEST releases (controls.setFailed) rather than a setTimeout(0), because
+// React's async act itself yields a macrotask while it drains, which would let a zero-delay timer
+// land inside the act and make the "after the settle, before the commit" checkpoint flaky. The
+// order the arms pin (settle first, commit after) is the same; the timing is deterministic.
+// ---------------------------------------------------------------------------
+
+/** A promise whose settlement the test drives. */
+function deferred<T = unknown>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+type Deferred = ReturnType<typeof deferred>;
+
+/** A whole opacity utility under any variant prefix (the 88.8 colour rule forbids it here). */
+const OPACITY_TOKEN = /(^|\s|:)opacity-\d/;
+
+/** A failed state whose retry is the given function. */
+const failingState = (retry: () => Promise<unknown>): FetchErrorState => ({
+  showError: true,
+  message: 'boom',
+  code: 'unknown',
+  retry,
+});
+
+const HOST_TITLE = "Couldn't load the plan";
+
+interface RetryHostControls {
+  setFailed?: (failed: boolean) => void;
+}
+
+interface RetryHostProps {
+  d: Deferred;
+  compact?: boolean;
+  // 'caller': the host mounts the banner only while failed (the 22 full / 6 compact caller-gated
+  // mounts); 'component': the banner is always mounted and its showError follows the host.
+  gate: 'caller' | 'component';
+  // What the host does to its failure flag. `atPress`: it clears the flag when the retry starts
+  // (a never-loaded TanStack query reports pending, so showError is false for the whole retry).
+  // `onResolved`: what it does once the retry's promise resolves, BEFORE the banner settles —
+  // 'clear' (success), 'fail' (the failure commits again), or 'none' (the test commits later by
+  // hand through `controls`).
+  atPress?: boolean;
+  onResolved?: 'clear' | 'fail' | 'none';
+  controls?: RetryHostControls;
+}
+
+function RetryHost({ d, compact = false, gate, atPress = false, onResolved = 'none', controls }: RetryHostProps) {
+  const [failed, setFailed] = React.useState(true);
+  if (controls) controls.setFailed = setFailed;
+  const retry = async () => {
+    if (atPress) setFailed(false);
+    const result = await d.promise;
+    if (onResolved === 'clear') setFailed(false);
+    if (onResolved === 'fail') setFailed(true);
+    return result;
+  };
+  const state: FetchErrorState = {
+    showError: gate === 'component' ? failed : true,
+    message: 'boom',
+    code: 'unknown',
+    retry,
+  };
+  const banner = <FetchErrorBanner compact={compact} title={HOST_TITLE} state={state} />;
+  return (
+    <main>
+      <h1>Game night</h1>
+      {gate === 'caller' ? failed && banner : banner}
+    </main>
+  );
+}
+
+describe('FetchErrorBanner — R123 retries and the success-retry focus floor (plan 88.6.1-21)', () => {
+  it('A1: the full Try again issues ONE retry for two presses in one tick and stays focusable with aria-disabled', async () => {
+    const d = deferred();
+    const retry = vi.fn(() => d.promise);
+    render(<FetchErrorBanner state={failingState(retry)} />);
+    const button = screen.getByRole('button', { name: 'Try again' });
+
+    // Two activations in one tick: a state-only guard reads stale state here; the ref latch does not.
+    act(() => {
+      button.click();
+      button.click();
+    });
+    expect(retry, 'two presses in one tick issue exactly ONE retry').toHaveBeenCalledTimes(1);
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button, 'never the native gate: it would drop focus from the pressed control').not.toHaveAttribute('disabled');
+    expect(button).toHaveTextContent('Retrying…');
+
+    await act(async () => {
+      d.resolve(undefined);
+    });
+    expect(button, 'at rest the attribute is ABSENT, not "false"').not.toHaveAttribute('aria-disabled');
+    expect(button).toHaveTextContent('Try again');
+  });
+
+  it('A2: the compact Retry issues ONE retry for two presses in one tick and stays focusable with aria-disabled', async () => {
+    const d = deferred();
+    const retry = vi.fn(() => d.promise);
+    render(<FetchErrorBanner compact state={failingState(retry)} />);
+    const button = screen.getByRole('button', { name: 'Retry' });
+
+    act(() => {
+      button.click();
+      button.click();
+    });
+    expect(retry, 'two presses in one tick issue exactly ONE retry').toHaveBeenCalledTimes(1);
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toHaveAttribute('disabled');
+    expect(button).toHaveTextContent('Retrying…');
+
+    await act(async () => {
+      d.resolve(undefined);
+    });
+    expect(button).not.toHaveAttribute('aria-disabled');
+    expect(button).toHaveTextContent('Retry');
+  });
+
+  it('A3: at rest neither retry carries aria-disabled, and each is colour-gated, never opacity-gated', () => {
+    const { unmount } = render(<FetchErrorBanner compact state={errorState('boom')} />);
+    const compactRetry = screen.getByRole('button', { name: 'Retry' });
+    expect(compactRetry).not.toHaveAttribute('aria-disabled');
+    expect(compactRetry.className.split(/\s+/)).toContain('aria-disabled:text-content-muted');
+    expect(compactRetry.className).not.toMatch(OPACITY_TOKEN);
+    unmount();
+
+    render(<FetchErrorBanner state={errorState('boom')} />);
+    const fullRetry = screen.getByRole('button', { name: 'Try again' });
+    expect(fullRetry).not.toHaveAttribute('aria-disabled');
+    expect(fullRetry.className.split(/\s+/)).toContain('aria-disabled:text-content-muted');
+    expect(fullRetry.className).not.toMatch(OPACITY_TOKEN);
+  });
+
+  it('B1: a successful full retry at a caller-gated mount lands focus on the page heading, never <body>', async () => {
+    const user = userEvent.setup();
+    const d = deferred();
+    render(<RetryHost d={d} gate="caller" onResolved="clear" />);
+    const heading = screen.getByRole('heading', { level: 1, name: 'Game night' });
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      d.resolve({ isError: false });
+    });
+    expect(screen.queryByRole('button', { name: /^(Try again|Retrying…)$/ })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('B2: a successful full retry at an in-component mount lands focus on the page heading, never <body>', async () => {
+    const user = userEvent.setup();
+    const d = deferred();
+    render(<RetryHost d={d} gate="component" onResolved="clear" />);
+    const heading = screen.getByRole('heading', { level: 1, name: 'Game night' });
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      d.resolve({ isError: false });
+    });
+    expect(screen.queryByRole('button', { name: /^(Try again|Retrying…)$/ })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('B3: a successful compact retry at a caller-gated mount lands focus on the page heading, never <body>', async () => {
+    const user = userEvent.setup();
+    const d = deferred();
+    render(<RetryHost d={d} compact gate="caller" onResolved="clear" />);
+    const heading = screen.getByRole('heading', { level: 1, name: 'Game night' });
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => {
+      d.resolve({ isError: false });
+    });
+    expect(screen.queryByRole('button', { name: /^(Retry|Retrying…)$/ })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('B4: a successful compact retry at an in-component mount lands focus on the page heading, never <body>', async () => {
+    const user = userEvent.setup();
+    const d = deferred();
+    render(<RetryHost d={d} compact gate="component" onResolved="clear" />);
+    const heading = screen.getByRole('heading', { level: 1, name: 'Game night' });
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => {
+      d.resolve({ isError: false });
+    });
+    expect(screen.queryByRole('button', { name: /^(Retry|Retrying…)$/ })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('B5 (R5 ordering backstop): focus moves only after the removal commits, not at the settle', async () => {
+    const user = userEvent.setup();
+    const d = deferred();
+    const controls: RetryHostControls = {};
+    render(<RetryHost d={d} gate="caller" onResolved="none" controls={controls} />);
+    const heading = screen.getByRole('heading', { level: 1, name: 'Game night' });
+    const button = screen.getByRole('button', { name: 'Try again' });
+
+    await user.click(button);
+    await act(async () => {
+      d.resolve({ isError: false });
+    });
+    // Settled, removal not yet committed (the TanStack shape): the pressed retry keeps focus.
+    expect(button.isConnected).toBe(true);
+    expect(document.activeElement).toBe(button);
+
+    act(() => controls.setFailed?.(false));
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(button.isConnected).toBe(false);
+  });
+
+  it('B6 (pin): a failed retry at a host that keeps the banner mounted leaves focus on the retry, back at rest', async () => {
+    // Green both ways: a pin, not a red half. What it does NOT cover: a caller that swaps the
+    // banner out DURING the retry (a never-loaded TanStack query reports pending, so showError is
+    // false from the press to the outcome; Routed finding 1, Phase 92) — there the floor catches
+    // focus at the press, and nothing hands it back to the retry after the failure.
+    const user = userEvent.setup();
+    const d = deferred();
+    render(<RetryHost d={d} gate="caller" onResolved="fail" />);
+    const button = screen.getByRole('button', { name: 'Try again' });
+
+    await user.click(button);
+    await act(async () => {
+      d.resolve({ isError: true });
+    });
+    expect(button.isConnected).toBe(true);
+    expect(document.activeElement).toBe(button);
+    expect(button).toHaveTextContent('Try again');
+  });
+
+  it('B7: a successful retry inside a Modal lands focus on the dialog title, never the container or <body>', async () => {
+    const user = userEvent.setup();
+    const d = deferred();
+    function DialogHost() {
+      const [failed, setFailed] = React.useState(true);
+      const state = failingState(async () => {
+        const result = await d.promise;
+        setFailed(false);
+        return result;
+      });
+      return (
+        <Modal open onClose={() => {}}>
+          <Modal.Header>Members</Modal.Header>
+          <Modal.Body>
+            {failed && <FetchErrorBanner title={HOST_TITLE} state={state} />}
+            <p>Member list</p>
+          </Modal.Body>
+        </Modal>
+      );
+    }
+    render(<DialogHost />);
+    const title = screen.getByRole('heading', { name: 'Members' });
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      d.resolve({ isError: false });
+    });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
+    expect(document.activeElement).not.toBe(document.body);
   });
 });
