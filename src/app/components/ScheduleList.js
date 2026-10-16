@@ -102,9 +102,13 @@ export default function ScheduleList({
     settle();
   };
 
-  // Empty state (Req 6 / UI-SPEC 9.2). This branch is "nothing here yet" ONLY —
-  // a failed settings fetch renders the shared error treatment in the parent
-  // (PromptScheduleManager) and never reaches this component.
+  // Empty state (Req 6 / UI-SPEC 9.2). This branch is "nothing here yet" ONLY: a successful
+  // settings fetch said empty. A failed FIRST load, and an access or gone answer, render the
+  // parent's full error banner and never reach this component. A failed REFRESH over a list
+  // that loaded earlier (an empty one included, owner ruling Y) DOES reach it, under the
+  // parent's copy row RF1 notice: `DECISION Phase 88.6.1-30 (AC-29 / RF1)` in
+  // PromptScheduleManager.js. (Corrected by 88.6.1-30; it used to say a failed fetch never
+  // reaches this component.)
   if (!schedules || schedules.length === 0) {
     return (
       <EmptyState
