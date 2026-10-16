@@ -52,8 +52,10 @@ describe('WeekGrid — CSS-grid geometry (88.1-02 C12)', () => {
     render(
       <WeekGrid variant="read" days={3} slots={2} getCell={readCell} ariaLabel="geometry" />
     );
+    // The default gutter is 28px since 88.6.1-24 (register owner item 66: the widest compact hour
+    // label, "12p", clipped at 24 - see the DECISION on `gutterPx` in WeekGrid.tsx).
     expect(screen.getByRole('grid')).toHaveStyle({
-      gridTemplateColumns: '24px repeat(3, 1fr)',
+      gridTemplateColumns: '28px repeat(3, 1fr)',
     });
   });
 
@@ -323,7 +325,8 @@ describe('WeekGrid — seam 5: keyboard commit on a read cell (SPEC Req 6)', () 
 // the per-coordinate callback cache instead of being handed to the cells directly. During a drag
 // the consumer re-renders WeekGrid on every pointermove with a fresh overlay and (typically) fresh
 // handler identities; if that reached the cells, React.memo on ~196 of them would be defeated —
-// "the smooth/janky boundary on a phone, not a micro-optimization" (AvailabilityGrid.js:368-373).
+// "the smooth/janky boundary on a phone, not a micro-optimization" (AvailabilityGrid.js, anchor
+// `smooth/janky boundary`).
 describe('WeekGrid — seams are memo-stable across a simulated drag', () => {
   it('re-rendering with NEW onCellSelect/gestureHandlers/overlay identities does not re-render cells', () => {
     const stableGetCell = (row: number, col: number) =>

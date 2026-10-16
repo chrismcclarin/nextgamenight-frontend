@@ -1675,6 +1675,54 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
 
 // =============================================================================
 
+test.describe('Phase 88.6.1-24 (SPEC Req 11, register owner item 66) — the scheduler hour gutter fits its labels (both projects)', () => {
+  // NO project skip, deliberately: the label is `text-xs sm:text-sm`, so it is WIDER at desktop
+  // width than on the phone - "12p" was measured at 20.14px at 375 and 23.05px at 1280 against the
+  // 20px content box a 24px gutter left (plan 88.6-26's measurement, in the register). The gutter is
+  // 28px since 88.6.1-24 (WeekGrid's `gutterPx` default); this runs at 375 (`phone`) and 1280
+  // (`journeys`) so a regression at either width is caught. The label cell is right-justified, so a
+  // label that no longer fits overflows to the LEFT, out of its own cell.
+  test('the hour gutter fits its widest label at this project\'s width', async ({ page }) => {
+    await openVisualScheduler(page);
+
+    const labels = await page.evaluate(() => {
+      const grid = document.querySelector('[role="dialog"] [role="grid"]');
+      const out: Array<{ text: string; textLeft: number; textRight: number; cellLeft: number; cellRight: number }> = [];
+      grid?.querySelectorAll('[role="row"]').forEach((row) => {
+        const cell = row.firstElementChild as HTMLElement | null;
+        const text = (cell?.textContent ?? '').trim();
+        if (!cell || text === '') return; // the header corner and the :30 rows carry no label
+        const range = document.createRange();
+        range.selectNodeContents(cell);
+        const textBox = range.getBoundingClientRect();
+        const cellBox = cell.getBoundingClientRect();
+        out.push({
+          text,
+          textLeft: textBox.left,
+          textRight: textBox.right,
+          cellLeft: cellBox.left,
+          cellRight: cellBox.right,
+        });
+      });
+      return out;
+    });
+
+    expect(
+      labels.length,
+      'fewer than 7 hour labels were measured (14 labelled hours exist) — the fit check would be vacuous',
+    ).toBeGreaterThanOrEqual(7);
+    const overflowing = labels.filter(
+      (l) => l.textLeft < l.cellLeft - 0.05 || l.textRight > l.cellRight + 0.05,
+    );
+    expect(
+      overflowing,
+      `these hour labels extend past their gutter cell — register owner item 66 has regressed; the gutter is WeekGrid's \`gutterPx\` (28px default since 88.6.1-24): ${JSON.stringify(overflowing)}`,
+    ).toEqual([]);
+  });
+});
+
+// =============================================================================
+
 test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop project)', () => {
   // INVERSE of the guard above. Mouse drag-select is the one capability the
   // removed calendar library supplied for free (`selectable` + `onSelectSlot`);
