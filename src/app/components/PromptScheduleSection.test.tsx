@@ -242,3 +242,22 @@ describe('Check-ins: ending a check-in keeps focus off <body> (H4, D-04, D-05)',
     expect(document.activeElement).toBe(triggerA);
   });
 });
+
+// Plan 88.6.1-29 task 3: W018 (Req 11, WR-205) and copy row G4 (Req 12).
+describe('Check-ins panel classes and loading badge (W018, G4)', () => {
+  it('W1. the expanded panel carries mt-3 alone; every animation-era class is gone', async () => {
+    renderSection({ defaultExpanded: true });
+    await screen.findByRole('button', { name: '+ Start a check-in' });
+    // useId ids contain colons, so the panel is resolved by id, never by a CSS selector.
+    const panel = document.getElementById(header().getAttribute('aria-controls') as string);
+    expect(panel, 'aria-controls must resolve to the panel').not.toBeNull();
+    expect((panel as HTMLElement).className).toBe('mt-3');
+  });
+
+  it('G1. while the open-polls query is pending, the badge says what is loading', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockImplementationOnce(() => new Promise(() => {}) as never);
+    renderSection({ defaultExpanded: false });
+    expect(within(header()).getByText('Loading check-ins...')).toBeInTheDocument();
+    expect(header()).toHaveAccessibleName(/Loading check-ins\.\.\./);
+  });
+});
