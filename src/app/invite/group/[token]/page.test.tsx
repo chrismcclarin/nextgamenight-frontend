@@ -1,7 +1,8 @@
 // Phase 88.6-23 task 1 — the guard net over the group-invite landing page.
 //
 // NOT IN THE PLAN'S FILE LIST, and here deliberately. The plan instructs AC-13's cancellation
-// idiom be copied "VERBATIM" from `invite/game/[token]/page.js:69,74,77,100` — a per-effect-run
+// idiom be copied "VERBATIM" from the `invite/game/[token]/page.js` preview effect (anchor
+// `let cancelled = false;`) — a per-effect-run
 // `let cancelled = false` with a cleanup that sets it true. Applied to THIS page's `autoJoin`
 // effect that idiom is a DEFECT, because this effect carries the BUG-02 single-shot
 // `joiningRef` latch and the sibling's preview effect does not:
