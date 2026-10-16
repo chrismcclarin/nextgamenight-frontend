@@ -46,6 +46,15 @@
 // cell above the time gutter, and it is only NOT a `columnheader` here because the rebuilt
 // scheduler opts out through WeekGrid's `gutterHeaderRole` seam. Had it not, every
 // `toHaveLength(7)` in this file and in the Layer-3 suite would have read 8.
+//
+// DECISION Phase 88.6.1-24 (D-12, owner-confirmed 2026-10-04): behaviour 4's three pin BODIES
+// were edited on 2026-10-15. The property they pin is unchanged - the count badge sits on the
+// LOCAL cell a UTC wire slot converts to. The NAME they locate that cell by moved to copy row C1
+// ("Monday, October 5 at 10:00 AM, 1 of 4 available"), because iOS VoiceOver never spoke the old
+// one (research AT-1, the WebKit leaf rule), and the two half-hours of one hour now carry two
+// names. Chosen OVER keeping the old name as a test anchor: that would have kept the defect to
+// spare a locator. The `columnHeaders()` / `toHaveLength(7)` pins the paragraph above protects
+// are untouched. Changing this is a decision, not a cleanup.
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -175,7 +184,31 @@ const WIRE_SLOT = {
   hour: LOCAL_TARGET.getUTCHours(),
 };
 const asLocal = new Date(`${WIRE_SLOT.date}T${pad(WIRE_SLOT.hour)}:00:00Z`);
-const EXPECTED_CELL_LABEL = `Availability for ${isoDay(asLocal)} hour ${asLocal.getHours()}`;
+
+// Plan 88.6.1-24 (D-12, copy row C1): the cell name is "{EEEE, MMMM d} at {h:mm a}" plus
+// ", {n} of {N} available" when the slot has availability. Re-derived here from PLAIN getters and
+// explicit English name tables - never date-fns (the component's own path, so a shared bug would
+// agree with itself) and never a locale-formatting call (its output depends on the runtime's ICU
+// data). The minute is written out (":00" / ":30") rather than read from `asLocal`, because the
+// keyed hour has two half-hour cells and each now carries its own name (AT correction 9).
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const c1PlainName = (d: Date, minute: '00' | '30') => {
+  const h24 = d.getHours();
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const meridiem = h24 < 12 ? 'AM' : 'PM';
+  return `${WEEKDAY_NAMES[d.getDay()]}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()} at ${h12}:${minute} ${meridiem}`;
+};
+const EXPECTED_PLAIN_LABEL = c1PlainName(asLocal, '00');
+const EXPECTED_CELL_LABEL = `${EXPECTED_PLAIN_LABEL}, 3 of 4 available`;
+const EXPECTED_HALF_HOUR_LABEL = `${c1PlainName(asLocal, '30')}, 3 of 4 available`;
+/** The plain C1 shape every cell without availability carries. */
+const PLAIN_NAME_SHAPE = /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2} at \d{1,2}:(00|30) (AM|PM)$/;
+/** The counted C1 suffix; only cells with availability end this way. */
+const COUNTED_NAME_SUFFIX = /, \d+ of \d+ available$/;
 
 const heatmapFixture = {
   totalMembers: 4,
@@ -275,25 +308,71 @@ describe('EventScheduler — availability is keyed on the LOCAL date+hour of a U
   it('puts the count badge on the local cell the UTC slot converts to', () => {
     render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
 
-    // One accessible name per addressable cell; the hour spans two half-hour groups, so the
-    // same name appears on both. Assert the name exists and carries the count.
-    const cells = screen.getAllByLabelText(EXPECTED_CELL_LABEL);
-    expect(cells.length).toBeGreaterThan(0);
-    expect(within(cells[0]).getByText('3')).toBeInTheDocument();
+    // The keyed hour spans two half-hour cells, and since 88.6.1-24 (AT correction 9) each has
+    // its OWN name - ":00" and ":30" - so each is found exactly once, and each carries the count.
+    expect(EXPECTED_HALF_HOUR_LABEL).not.toBe(EXPECTED_CELL_LABEL);
+    const top = screen.getByRole('gridcell', { name: EXPECTED_CELL_LABEL });
+    const half = screen.getByRole('gridcell', { name: EXPECTED_HALF_HOUR_LABEL });
+    expect(within(top).getByText('3')).toBeInTheDocument();
+    expect(within(half).getByText('3')).toBeInTheDocument();
   });
 
   it('leaves every OTHER cell unannotated (only slots with availability are described)', () => {
     render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
-    const described = screen.getAllByLabelText(/^Availability for /);
-    // Every described cell is the one keyed cell — a stray key would widen this set.
-    described.forEach((el) =>
-      expect(el.getAttribute('aria-label')).toBe(EXPECTED_CELL_LABEL)
-    );
+    const cells = screen.getAllByRole('gridcell');
+    const counted = cells
+      .map((el) => el.getAttribute('aria-label') ?? '')
+      .filter((name) => COUNTED_NAME_SUFFIX.test(name));
+    // Exactly the keyed hour's two half-hours - a stray key would widen this set.
+    expect(counted.sort()).toEqual([EXPECTED_CELL_LABEL, EXPECTED_HALF_HOUR_LABEL].sort());
+    cells
+      .map((el) => el.getAttribute('aria-label') ?? '')
+      .filter((name) => !COUNTED_NAME_SUFFIX.test(name))
+      .forEach((name) => expect(name).toMatch(PLAIN_NAME_SHAPE));
   });
 
   it('renders no availability annotations at all when there is no heatmap data', () => {
+    // CONFIRM-ONLY on the pre-88.6.1-24 tree: un-annotated cells already carried the plain shape,
+    // so this arm cannot go red there; the exactly-two arm above is the discriminating one.
     render(<EventScheduler initialDate={WEEK_N} />);
-    expect(screen.queryAllByLabelText(/^Availability for /)).toHaveLength(0);
+    const names = screen.getAllByRole('gridcell').map((el) => el.getAttribute('aria-label') ?? '');
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((name) => COUNTED_NAME_SUFFIX.test(name))).toHaveLength(0);
+    names.forEach((name) => expect(name).toMatch(PLAIN_NAME_SHAPE));
+  });
+});
+
+describe('EventScheduler — every gridcell is a LEAF to assistive tech (88.6.1-24, D-12 / research AT-1)', () => {
+  // iOS VoiceOver (WebKit) lands on a labelled gridcell only when it has NO accessible children;
+  // with one, it speaks the child instead - the owner heard "05 Mon, 1, row 2, column 1", the
+  // count, never the name. So every child of every cell must be hidden, and the name carries the
+  // count. The selected slot is placed ON the keyed cell so the cell holds BOTH children.
+  it('every child node of every gridcell is an aria-hidden element', () => {
+    const start = new Date(
+      asLocal.getFullYear(),
+      asLocal.getMonth(),
+      asLocal.getDate(),
+      asLocal.getHours(),
+      0,
+      0
+    );
+    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    render(
+      <EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} selectedSlot={{ start, end }} />
+    );
+
+    // Anti-vacuity: the keyed cell holds the selection block AND the count badge.
+    const keyed = screen.getByRole('gridcell', { name: EXPECTED_CELL_LABEL });
+    expect(keyed.childNodes).toHaveLength(2);
+
+    const cells = screen.getAllByRole('gridcell');
+    expect(cells.length).toBeGreaterThan(0);
+    cells.forEach((cell) =>
+      cell.childNodes.forEach((node) => {
+        expect(node.nodeType).toBe(Node.ELEMENT_NODE);
+        expect((node as Element).getAttribute('aria-hidden'), cell.getAttribute('aria-label') ?? '').toBe('true');
+      })
+    );
   });
 });
 
@@ -1558,8 +1637,8 @@ describe('EventScheduler — the per-slot conflict tooltip tells self from other
   const openTooltip = async () => {
     // HeatmapTooltip attaches useClick to the reference (HeatmapTooltip.js:223) as well as
     // useFocus (:227); click is the primary path.
-    const cell = screen.getAllByRole('gridcell', { name: EXPECTED_CELL_LABEL })[0];
-    expect(cell).toBeDefined();
+    // The name is unique since 88.6.1-24 (each half-hour has its own), so one getByRole.
+    const cell = screen.getByRole('gridcell', { name: EXPECTED_CELL_LABEL });
     fireEvent.click(cell);
   };
 
@@ -1591,6 +1670,27 @@ describe('EventScheduler — the per-slot conflict tooltip tells self from other
 
     expect(await screen.findByText(OTHER_LINE)).toBeInTheDocument();
     expect(screen.queryByText(SELF_LINE)).not.toBeInTheDocument();
+  });
+
+  it('names a cell annotated ONLY by my calendar conflict with the plain name, and its tooltip still opens (88.6.1-24, D-33 row 10)', async () => {
+    // No availability anywhere, one self-conflict on the keyed hour: the cell is still annotated
+    // (its tooltip opens), but it has no count, so it keeps C1's plain name - no new words.
+    render(
+      <EventScheduler
+        initialDate={WEEK_N}
+        heatmapData={{
+          ...heatmapFixture,
+          slots: [],
+          gcalConflicts: [{ ...WIRE_SLOT, user_id: SELF_UUID, username: 'Me' }],
+        }}
+      />
+    );
+    const cell = screen.getByRole('gridcell', { name: EXPECTED_PLAIN_LABEL });
+    const names = screen.getAllByRole('gridcell').map((el) => el.getAttribute('aria-label') ?? '');
+    expect(names.filter((name) => name.endsWith('available'))).toHaveLength(0);
+
+    fireEvent.click(cell);
+    expect(await screen.findByText(SELF_LINE)).toBeInTheDocument();
   });
 });
 
