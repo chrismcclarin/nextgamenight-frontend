@@ -276,7 +276,15 @@ export default function TutorialOverlay({ onComplete }) {
             Promoting these to `<Heading>` is a decision (it changes the document outline of
             every tutorial step), not a cleanup. */}
         {/* Main scene area — scrollable on small viewports */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 flex items-center justify-center">
+        {/* DECISION Phase 88.6.1-51 (#213, owner 2026-10-13): CHOSEN — safe centring on the
+            scene's scroll box, so content taller than the box falls back to start alignment and
+            its top line can be scrolled to. REJECTED: keeping plain centring under D-49's v2.1
+            accept — centred content taller than its scroll box sits above the scroll origin and
+            its top line cannot be reached (the phone schedule step is estimated taller than the
+            box at 375x667). D-49's accept still covers the dialog role, Escape and focus trap,
+            which stay struck. The overlay root above keeps plain centring: it is not a scroll
+            box. Going back to plain centring here is a decision, not a cleanup. */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 flex items-center-safe justify-center">
           {phase === 'welcome' && (
             <WelcomeSlide onStart={() => transitionTo('problem')} />
           )}
