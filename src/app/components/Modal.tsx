@@ -29,6 +29,8 @@ import {
   DialogClose,
   DialogContent,
   DialogTitle,
+  handleDialogCloseAutoFocus,
+  recordDialogOpener,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/cn';
 
@@ -70,11 +72,23 @@ export function preventNonDismissableClose(
  * control such as `GameComboInput`'s Clear button is a SIBLING inside the same root, so a
  * guard keyed on the input alone lets Escape from that button close the whole Modal while the
  * list is open.
+ *
+ * The SECOND owner (Phase 88.6.1-20, review r2 #198): a keydown that originates inside an open
+ * member pop-up — its floating element carries `data-member-popover` (plan 88.6.1-37) — is the
+ * pop-up's Escape. It is cancelled here the same way, scoped by `closest(...)` on the event
+ * target, so the pop-up's own floating-ui dismiss closes the pop-up and the dialog stays open.
+ * Escape from anywhere else in the dialog still closes it: this is never a blanket Escape block.
+ * The name stays `preventComboboxEscape` because `Combobox.tsx` cites it by name.
  */
 function preventComboboxEscape(event: Pick<KeyboardEvent, 'target' | 'preventDefault'>): void {
   const target = event.target;
-  const root = target instanceof Element ? target.closest('[data-combobox-root]') : null;
-  if (root?.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
+  if (!(target instanceof Element)) return;
+  const root = target.closest('[data-combobox-root]');
+  if (root?.querySelector('[role="combobox"][aria-expanded="true"]')) {
+    event.preventDefault();
+    return;
+  }
+  if (target.closest('[data-member-popover]')) event.preventDefault();
 }
 
 /**
@@ -129,6 +143,12 @@ export interface ModalProps {
    * 88.6-44, is a real restore to the element that held focus when the dialog
    * opened (see `handleCloseAutoFocus`). A caller that prevents default keeps
    * full control, exactly as before.
+   *
+   * Since Phase 88.6.1-20 the handler runs FIRST and there are three outcomes:
+   * a handler that prevents default keeps control; a handler that does NOT
+   * (FeedbackModalProvider's failure path, when its own focus did not land)
+   * falls through to the primitive's restore and floor; with no handler, the
+   * restore runs (opener, else the still-open dialog's title, `main h1`, `main`).
    */
   onCloseAutoFocus?: (event: Event) => void;
   /** Extra classes merged onto the dialog content surface. */
@@ -165,6 +185,13 @@ function ModalRoot({
   // listens on `document` in the capture phase, so the child's React handler runs too late
   // to stop the dialog — the host is the only place that sees the event first). Removing
   // the guard re-opens createEvent's form loss; it is a decision, not a cleanup.
+  //
+  // AMENDED IN PLACE Phase 88.6.1-20 (#198, review r2, routed from plan 88.6.1-37): "the ONE
+  // exception" above is now TWO — an expanded combobox, and an open member pop-up (an Escape
+  // whose target sits inside `data-member-popover`, the attribute plan 88.6.1-37 puts on the
+  // pop-up's floating element). Same reason, same REJECTED alternative: handling it in the
+  // pop-up is too late, because Radix listens on `document` in the capture phase. Every other
+  // Escape still closes the dialog.
   const preventOutsideDismiss = React.useCallback(
     (event: Event) => preventNonDismissableClose(dismissable, event),
     [dismissable]
@@ -190,7 +217,7 @@ function ModalRoot({
      the content, whereas a `useEffect` in this component runs AFTER the child scope has already
      focused the first tabbable (React runs child effects first) and would capture the header
      Close control. `onCloseAutoFocus` fires from a `setTimeout` after unmount, so the opener
-     may be gone by then — a detached node is skipped and the browser's own fallback stands.
+     may be gone by then — see the amendment below for what happens then.
 
      REJECTED: rendering a `Dialog.Trigger` per consumer (~37 call sites, and the opener is
      often not a single static button); REJECTED: each consumer passing its own
@@ -198,28 +225,31 @@ function ModalRoot({
      tenet forbids). A consumer that prevents default in its own handler still wins — checked
      BEFORE the restore. Pinned by `Modal.test.tsx` ("returns focus to the opener"); five
      surface suites (plan 88.6-44) assert it against a NAMED trigger. Removing this handler is a
-     decision, not a cleanup. */
+     decision, not a cleanup.
+
+     AMENDED IN PLACE Phase 88.6.1-20 (D-07, W014 / WR-201, AC-15): the restore is now
+     `restoreDialogFocus` in `components/ui/dialog.tsx`, SHARED with `BottomSheet` (one copy, so
+     the two primitives cannot drift again), reached through `handleDialogCloseAutoFocus`. It
+     acts only when focus is LOST (plan 04's `isFocusLost`, D-04's one definition), so a closing
+     dialog never moves focus off a live element — a dialog that opened after it keeps focus. It
+     checks the OUTCOME (`document.activeElement === opener` after `focus()`), so a removed,
+     disabled or hidden opener no longer leaves the user on `<body>`: it FLOORS to the still-open
+     dialog's title, then the page's `main h1`, then `main`. The opener ref is cleared on every
+     path. The capture stays in `onOpenAutoFocus` for the reason recorded above. A dialog whose
+     content holds an `autoFocus` descendant captures no opener (Radix skips its open event) and
+     floors by decision — REJECTED (f) in `DECISION Phase 88.6.1-20` in `dialog.tsx`. */
   const openerRef = React.useRef<HTMLElement | null>(null);
 
   const handleOpenAutoFocus = React.useCallback(
     (event: Event) => {
-      const active = document.activeElement;
-      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      recordDialogOpener(openerRef);
       applyInitialFocus(initialFocusRef, event);
     },
     [initialFocusRef]
   );
 
   const handleCloseAutoFocus = React.useCallback(
-    (event: Event) => {
-      onCloseAutoFocus?.(event);
-      if (event.defaultPrevented) return;
-      const opener = openerRef.current;
-      openerRef.current = null;
-      if (!opener || !opener.isConnected) return;
-      event.preventDefault();
-      opener.focus();
-    },
+    (event: Event) => handleDialogCloseAutoFocus(event, openerRef, onCloseAutoFocus),
     [onCloseAutoFocus]
   );
 

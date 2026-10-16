@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
+import { focusPageFloor, isFocusLost, isOpenDialog } from '@/components/ui/focusPageFloor';
 import { cn } from '@/lib/cn';
 
 /* DECISION Phase 88-05 (D-35 / E-26 — this IS "the shadcn pass" D-35 deferred to):
@@ -143,6 +144,94 @@ const DialogDescription = React.forwardRef<
   />
 ));
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
+
+/* DECISION Phase 88.6.1-20 (D-07, W014, N6): ONE close-restore, shared by `Modal`
+   (`app/components/Modal.tsx`) and `BottomSheet` (`components/ui/BottomSheet.tsx`). It returns
+   focus to the element that opened the dialog when that element can still take focus, acts ONLY
+   when focus is lost (plan 04's `isFocusLost`, D-04's one definition), and otherwise floors
+   (plan 04's `focusPageFloor`: the still-open dialog's title, then `main h1`, then `main`).
+   Closing a dialog therefore never leaves a keyboard or screen-reader user on `<body>` while any
+   of those exists, and never moves a user who is already somewhere live.
+
+   `restoreDialogFocus` runs these steps IN THIS ORDER:
+   (1) Focus is NOT lost (it sits on a live element: a dialog that opened after this one, or a
+       place a consumer chose) -> touch nothing.
+   (2) Focus sits on an OPEN dialog's container and the opener is not inside that dialog -> skip
+       the opener and floor FROM `document.activeElement`, so that dialog's title takes focus. This
+       step exists because a dialog that opened after this one with no tabbable child has its
+       container focused by Radix (react-focus-scope's mount effect, `focus(container)`), which
+       counts as lost; focusing the old opener there fires a `focus` event on it before that
+       dialog's trap pulls focus back (measured RED by `Modal.test.tsx` case D2). The closing
+       dialog itself carries `data-state="closed"`, so it never matches here.
+   (3) The opener is connected -> `focus()` it and keep it only when `document.activeElement`
+       is the opener afterwards (the OUTCOME, not presence: a disabled or hidden opener refuses).
+   (4) Otherwise -> `focusPageFloor(opener)`.
+
+   REJECTED, each kept here so it is not re-proposed as a tidy-up:
+   (a) two twin copies, one per primitive: they had already drifted (the sheet REPLACED its
+       restore whenever a consumer passed a handler; `Modal` composed it).
+   (b) a per-consumer `returnFocusRef` prop (WR-201's suggested remedy): `DECISION Phase
+       88.6-44` rejects per-consumer focus plumbing, and D-07 puts the floor in the primitive.
+   (c) restoring the opener through plan 04's `focusElement`: its tabindex retry makes jsdom
+       focus a disabled button that every browser refuses, so a unit test would pass while a
+       browser drops the user (jsdom `focusing.js` checks `tabindex` before `disabled`).
+   (d) an `isConnected`-only check: it misses a disabled opener (W014).
+   (e) restoring while focus is on a live element: it pulled focus out of a dialog that opened
+       after this one (the chained Settings -> Manage Members case, measured RED by case D).
+   (f) capturing the opener somewhere other than `onOpenAutoFocus` so that a dialog whose
+       content holds an `autoFocus` descendant returns focus to its opener. Radix skips its open
+       event when focus is already inside (react-focus-scope `hasFocusedCandidate`), so no
+       opener is captured and that case FLOORS, by decision: moving 88.6-44's measured capture
+       point on unmeasured Radix-portal timing is not worth it for zero consumers (no dialog
+       holds an `autoFocus` descendant today). A future dialog that adds one revisits this.
+   (g) flooring step (2) from the opener: in a stacked O -> A -> B chain the opener sits inside
+       O, so the floor would focus O's title behind B and B's trap would yank focus back
+       (review L-29, measured RED by case D3 against a throwaway).
+   No markup, no string and no logging live in this code. Removing or reordering these steps is
+   a decision, not a cleanup. */
+
+/** Record the element that holds focus as a dialog opens (call from `onOpenAutoFocus`). */
+export function recordDialogOpener(openerRef: React.MutableRefObject<HTMLElement | null>): void {
+  const active = document.activeElement;
+  openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+}
+
+/**
+ * Put focus back after a dialog closes: the opener when it can take focus, else the floor. Acts
+ * only when focus is lost. Returns the element focused, or null when it moved nothing (or found
+ * no target). The ordered steps and their reasons are in the marker above.
+ */
+export function restoreDialogFocus(opener: HTMLElement | null): HTMLElement | null {
+  if (!isFocusLost()) return null;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && isOpenDialog(active) && !(opener && active.contains(opener))) {
+    return focusPageFloor(active);
+  }
+  if (opener && opener.isConnected) {
+    opener.focus();
+    if (document.activeElement === opener) return opener;
+  }
+  return focusPageFloor(opener);
+}
+
+/**
+ * The primitives' `onCloseAutoFocus`: clear the recorded opener on EVERY path (a stale opener
+ * must not survive into the next open), run the consumer's handler FIRST, let a consumer that
+ * prevents default keep full control, and otherwise own the close (prevent Radix's fallback,
+ * which focuses a `Dialog.Trigger` neither primitive renders) and restore.
+ */
+export function handleDialogCloseAutoFocus(
+  event: Event,
+  openerRef: React.MutableRefObject<HTMLElement | null>,
+  consumer?: (event: Event) => void
+): void {
+  const opener = openerRef.current;
+  openerRef.current = null;
+  consumer?.(event);
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  restoreDialogFocus(opener);
+}
 
 export {
   Dialog,

@@ -30,8 +30,9 @@ import { usePathname } from 'next/navigation';
  * dialog cannot hit that. The split is still load-bearing for a SECOND, verified
  * reason, which is why it stays: the dropdown is rendered unconditionally and
  * hidden by class toggle, and its closed state carries `pointer-events-none`
- * (Header.js:176). The row tap closes the menu in the SAME transition that opens
- * the modal, so a modal rendered inside that subtree would open inert. Moving
+ * (the closed mobile menu's class list in `src/app/Header.js`). The row tap
+ * closes the menu in the SAME transition that opens the modal, so a modal
+ * rendered inside that subtree would open inert. Moving
  * the modal into the Header is a decision, not a cleanup.
  *
  * Deliberately does NOT own `text` / `error` / `submitted`: those stay LOCAL
@@ -157,6 +158,14 @@ export function FeedbackModalProvider({ children }: { children: ReactNode }) {
   // improvement on the FAB path too — the FAB is always focusable, so the guard
   // never fires there. Reordering these two lines, or dropping the
   // `document.activeElement` check, is a decision, not a cleanup.
+  //
+  // AMENDED Phase 88.6.1-20 (D-07): the unprevented path above is no longer
+  // Radix's fallback — since 88.6-44 it is `Modal`'s own restore, and since
+  // 88.6.1-20 that restore FLOORS (`restoreDialogFocus` in
+  // `components/ui/dialog.tsx`). So the tablet-rotation case now lands on the
+  // page's main heading (or `main`), not on <body>. The focus-first,
+  // prevent-only-if-landed order is still load-bearing, and now for a second
+  // reason: preventing early would skip the primitive's floor.
   const onCloseAutoFocus = useCallback((event: Event) => {
     const invoker = invokerRef.current;
     invokerRef.current = null;
