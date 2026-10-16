@@ -71,6 +71,7 @@ interface Ctx {
   refreshFriendships: () => Promise<unknown>;
   loading: boolean;
   error: unknown;
+  isRequestActionPending: (friendshipId: string) => boolean;
 }
 
 const REQ: Record<1 | 2 | 3, FriendRequestRow> = {
@@ -315,5 +316,213 @@ describe('friend-request accept / decline (Req 11, D-54 remove on confirm)', () 
     expect(c.error).toBe(errC);
     expect(errC).not.toHaveProperty('requestRowRemoved');
     expect(ids()).toEqual(['req-1', 'req-2']);
+  });
+
+  it('RA-4. a failed decline (network) keeps the row at its original index and rejects with the same error', async () => {
+    queueReceived(L(1, 2, 3), L(1, 2, 3));
+    const errNet = makeNet();
+    mockApi.declineRequest.mockRejectedValue(errNet);
+    await renderProvider();
+
+    const r = await capture(() => ctx.declineRequest('req-3'));
+
+    expect(r.error).toBe(errNet);
+    expect(ids()).toEqual(['req-1', 'req-2', 'req-3']);
+    expect(mockApi.getReceivedRequests).toHaveBeenCalledTimes(2);
+  });
+
+  it('RA-5. while a decline is in flight the row stays; success removes it after the confirm and pulls the newest load', async () => {
+    const refresh = deferred<FriendRequestRow[]>();
+    queueReceived(L(1, 2, 3), refresh);
+    const d = deferred<unknown>();
+    mockApi.declineRequest.mockReturnValueOnce(d.promise);
+    await renderProvider();
+
+    const running = start(() => ctx.declineRequest('req-1'));
+    expect(ids()).toEqual(['req-1', 'req-2', 'req-3']);
+
+    d.resolve({});
+    const r = await finish(running);
+    expect(r.value).toEqual({ alreadyDeclined: false });
+    // The refresh is still held: the removal does not wait for it.
+    expect(ids()).toEqual(['req-2', 'req-3']);
+    // The initial load, then the load the confirmed decline starts (so no load begun
+    // before the decline can land last and put the row back).
+    expect(mockApi.getReceivedRequests).toHaveBeenCalledTimes(2);
+
+    await settleHeld(() => refresh.resolve(L(2, 3)));
+    expect(ids()).toEqual(['req-2', 'req-3']);
+  });
+
+  it('RA-6. GUARD: the 404 "already handled" arms remove the row at once, pull a load and resolve already*', async () => {
+    // Arm (a): accept.
+    const heldA = deferred<FriendRequestRow[]>();
+    queueReceived(L(1, 2, 3), heldA);
+    mockApi.acceptRequest.mockRejectedValue(
+      new ApiError('Friendship not found', 'not_found', 404, {})
+    );
+    await renderProvider();
+    const a = await capture(() => ctx.acceptRequest('req-2'));
+    expect(a.value).toEqual({ alreadyAccepted: true });
+    // While the refresh is still held.
+    expect(ids()).toEqual(['req-1', 'req-3']);
+    expect(mockApi.getReceivedRequests).toHaveBeenCalledTimes(2);
+
+    // Arm (b): decline, detected through the message half of the unchanged line.
+    cleanup();
+    mockApi.getReceivedRequests.mockClear();
+    const heldB = deferred<FriendRequestRow[]>();
+    queueReceived(L(1, 2, 3), heldB);
+    mockApi.declineRequest.mockRejectedValue(new Error('HTTP error! status: 404'));
+    await renderProvider();
+    const b = await capture(() => ctx.declineRequest('req-1'));
+    expect(b.value).toEqual({ alreadyDeclined: true });
+    expect(ids()).toEqual(['req-2', 'req-3']);
+    expect(mockApi.getReceivedRequests).toHaveBeenCalledTimes(2);
+  });
+
+  it('RA-7. GUARD (SPEC Edge R11 ordering): a background refresh during the flight neither duplicates nor resurrects the row', async () => {
+    // Arm (a): the server still lists req-1 throughout.
+    queueReceived(L(1, 2), L(1, 2), L(1, 2));
+    const dA = deferred<unknown>();
+    mockApi.acceptRequest.mockReturnValueOnce(dA.promise);
+    await renderProvider();
+    const runningA = start(() => ctx.acceptRequest('req-1'));
+    await capture(() => ctx.refreshFriendships());
+    dA.reject(make500());
+    const a = await finish(runningA);
+    expect(a.error).toBeInstanceOf(ApiError);
+    expect(ids()).toEqual(['req-1', 'req-2']);
+
+    // Arm (b): the refresh shows the server dropped req-1; the failure must not bring it back.
+    cleanup();
+    queueReceived(L(1, 2), L(2), L(2));
+    const dB = deferred<unknown>();
+    mockApi.acceptRequest.mockReturnValueOnce(dB.promise);
+    await renderProvider();
+    const runningB = start(() => ctx.acceptRequest('req-1'));
+    await capture(() => ctx.refreshFriendships());
+    dB.reject(make500());
+    const b = await finish(runningB);
+    expect(b.error).toBeInstanceOf(ApiError);
+    expect(ids()).toEqual(['req-2']);
+  });
+
+  it('RA-8. SPEC Edge R11 concurrency: an accept on one row and a decline on another, both in flight', async () => {
+    // The accept's own refresh is held, so the assertion after its confirm reads the
+    // provider's write, not a later load that happens to list the same rows.
+    const acceptRefresh = deferred<FriendRequestRow[]>();
+    queueReceived(L(1, 2, 3), acceptRefresh, L(2, 3));
+    const dA = deferred<unknown>();
+    const dD = deferred<unknown>();
+    mockApi.acceptRequest.mockReturnValueOnce(dA.promise);
+    mockApi.declineRequest.mockReturnValueOnce(dD.promise);
+    await renderProvider();
+
+    const accepting = start(() => ctx.acceptRequest('req-1'));
+    const declining = start(() => ctx.declineRequest('req-3'));
+
+    dA.resolve({});
+    await finish(accepting);
+    // The accept removed only its row; the decline's row is still in flight, so it stays.
+    expect(ids()).toEqual(['req-2', 'req-3']);
+    await settleHeld(() => acceptRefresh.resolve(L(2, 3)));
+
+    const err500 = make500();
+    dD.reject(err500);
+    const r = await finish(declining);
+    expect(r.error).toBe(err500);
+    expect(ids()).toEqual(['req-2', 'req-3']);
+  });
+
+  it('RA-9. SPEC Edge R11 ordering: the reconcile touches only its own row and never resurrects another', async () => {
+    const R = deferred<FriendRequestRow[]>();
+    queueReceived(L(1, 2), R, L(1));
+    const err500 = make500();
+    mockApi.acceptRequest.mockImplementation((id: string) =>
+      id === 'req-1' ? Promise.reject(err500) : Promise.resolve({})
+    );
+    await renderProvider();
+
+    const first = start(() => ctx.acceptRequest('req-1'));
+    // Let req-1's failure reach its reconcile read (held on R).
+    await settleHeld(() => undefined);
+    expect(mockApi.getReceivedRequests).toHaveBeenCalledTimes(2);
+
+    const second = await capture(() => ctx.acceptRequest('req-2'));
+    expect(second.value).toEqual({ alreadyAccepted: false });
+    expect(ids()).toEqual(['req-1']);
+
+    // The reconcile's read was sent before req-2 was accepted, so it still lists req-2.
+    R.resolve(L(1, 2));
+    const r = await finish(first);
+    expect(r.error).toBe(err500);
+    expect(ids()).toEqual(['req-1']);
+  });
+
+  it('RA-10. a reconcile whose own read fails writes nothing: the row stays and the load-error flag stays unset', async () => {
+    queueReceived(L(1, 2), makeNet());
+    const err500 = make500();
+    mockApi.acceptRequest.mockRejectedValue(err500);
+    await renderProvider();
+
+    const r = await capture(() => ctx.acceptRequest('req-2'));
+
+    expect(r.error).toBe(err500);
+    expect(ids()).toEqual(['req-1', 'req-2']);
+    expect(screen.getByTestId('provider-error')).toHaveTextContent('none');
+    expect(ctx.error).toBeFalsy();
+  });
+
+  it('RA-12. one request per row at a time, whichever surface presses; the in-flight fact is exposed and released', async () => {
+    // Arm (a), the same kind twice: one request, one shared outcome.
+    queueReceived(L(1, 2), L(2));
+    const dA = deferred<unknown>();
+    mockApi.acceptRequest.mockReturnValueOnce(dA.promise);
+    await renderProvider();
+    const one = start(() => ctx.acceptRequest('req-1'));
+    const two = start(() => ctx.acceptRequest('req-1'));
+    expect(mockApi.acceptRequest).toHaveBeenCalledTimes(1);
+    dA.resolve({});
+    const r1 = await finish(one);
+    const r2 = await finish(two);
+    expect(r1.value).toEqual({ alreadyAccepted: false });
+    expect(r2.value).toEqual({ alreadyAccepted: false });
+    expect(r2.value).toBe(r1.value);
+
+    // Arm (b), the other kind while one is in flight: refused, never joined, no request.
+    cleanup();
+    mockApi.acceptRequest.mockReset();
+    queueReceived(L(1, 2), L(2));
+    const dB = deferred<unknown>();
+    mockApi.acceptRequest.mockReturnValueOnce(dB.promise);
+    await renderProvider();
+    const accepting = start(() => ctx.acceptRequest('req-1'));
+    const refused = await capture(() => ctx.declineRequest('req-1'));
+    expect(mockApi.declineRequest).not.toHaveBeenCalled();
+    expect(refused.error).toBeDefined();
+    expect(refused).not.toHaveProperty('value');
+    dB.resolve({});
+    const accepted = await finish(accepting);
+    expect(accepted.value).toEqual({ alreadyAccepted: false });
+
+    // Arm (c), the exposed fact and its release: a retry after a failure goes through.
+    cleanup();
+    mockApi.acceptRequest.mockReset();
+    mockApi.acceptRequest.mockResolvedValue({});
+    queueReceived(L(1, 2), L(1, 2), L(1, 2));
+    const dC = deferred<unknown>();
+    mockApi.acceptRequest.mockReturnValueOnce(dC.promise);
+    await renderProvider();
+    const failing = start(() => ctx.acceptRequest('req-1'));
+    expect(ctx.isRequestActionPending('req-1')).toBe(true);
+    expect(ctx.isRequestActionPending('req-2')).toBe(false);
+    dC.reject(make500());
+    const failed = await finish(failing);
+    expect(failed.error).toBeInstanceOf(ApiError);
+    expect(ctx.isRequestActionPending('req-1')).toBe(false);
+    const retried = await capture(() => ctx.acceptRequest('req-1'));
+    expect(retried.value).toEqual({ alreadyAccepted: false });
+    expect(mockApi.acceptRequest).toHaveBeenCalledTimes(2);
   });
 });
