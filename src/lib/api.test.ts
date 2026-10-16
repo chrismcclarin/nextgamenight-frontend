@@ -973,3 +973,73 @@ describe('88.6-62 — the magic-link transport contract (review round 2 cluster 
     });
   });
 });
+
+// ADDED by plan 88.6.1-23 task 1 (R3-M3, D-26; register `.planning/deferred/phase-88.6.1.md:230`).
+// getExistingResponse throws a non-OK body away (`if (!res.ok) return null;`), yet the
+// helper under it read that body inside its 20 s deadline first, so a 404 whose body
+// stalled held the magic-link page on "Validating your link..." for up to 20 s. G1 was
+// RED before the fix (unsettled at 0 ms, rejected at 20 000 ms). G2 is the control: the
+// opt-in is per caller, and respondViaToken still reads its 410 body (the page reads
+// the `event_cancelled` discriminant off it), so a stalled 410 still waits and rejects.
+describe('88.6.1-23 / R3-M3 (D-26) — a non-OK pre-fill lookup is not held by its body', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  // Headers arrive at once with `status`; the body read models real fetch: it settles only by
+  // rejecting when the request's signal aborts (the 88.6-62 describe's stalled-body double).
+  const stalledBody = (status: number) => {
+    const text = vi.fn();
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      text.mockImplementation(
+        () =>
+          new Promise<string>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            );
+          }),
+      );
+      return { ok: status >= 200 && status < 300, status, text };
+    });
+    return { fetchMock, text };
+  };
+
+  it('G1: a 404 whose body never ends resolves null at 0 ms, never reads the body and leaves no timer', async () => {
+    vi.useFakeTimers();
+    const { fetchMock, text } = stalledBody(404);
+    vi.stubGlobal('fetch', fetchMock);
+    const settled = vi.fn();
+    availabilityFormAPI.getExistingResponse('p1', 'tok').then(
+      (v) => settled('resolved', v),
+      (e) => settled('rejected', e),
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled, 'the lookup must settle at headers, not wait for the body').toHaveBeenCalledTimes(1);
+    expect(settled.mock.calls[0]).toEqual(['resolved', null]);
+    expect(text, 'a body nothing reads is never read').not.toHaveBeenCalled();
+    expect(vi.getTimerCount(), 'the deadline is cleared, not left armed').toBe(0);
+  });
+
+  it('G2 (CONFIRM-ONLY control): respondViaToken still reads a stalled 410 body and rejects network at 20 000 ms', async () => {
+    vi.useFakeTimers();
+    const { fetchMock, text } = stalledBody(410);
+    vi.stubGlobal('fetch', fetchMock);
+    const settled = vi.fn();
+    rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes').then(
+      (v) => settled('resolved', v),
+      (e) => settled('rejected', e),
+    );
+
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(settled).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toHaveBeenCalledTimes(1);
+    const [outcome, value] = settled.mock.calls[0];
+    expect(outcome).toBe('rejected');
+    expect(value).toBeInstanceOf(ApiError);
+    expect(value).toMatchObject({ code: 'network', status: 0 });
+    expect(text, 'the 410 body carries the page discriminant, so it is still read').toHaveBeenCalledTimes(1);
+  });
+});

@@ -430,3 +430,23 @@ describe('availability-form/[token] — the branch roots and the second region',
     expect(screen.getAllByRole('status')).toHaveLength(2);
   });
 });
+
+// ADDED by plan 88.6.1-23 task 1 (R3-M3, D-26, the tracer). The optional pre-fill lookup
+// used to read a non-OK body it then threw away, so a 404 whose body never ended held the
+// page on "Validating your link..." (up to the 20 s deadline). P1 was RED before the fix:
+// the form never rendered inside the default findBy window. No fake timers on purpose: the
+// RED run must fail on that window, not on a 20 s wait.
+describe('availability-form/[token] — 88.6.1-23 R3-M3: a stalled 404 body on the pre-fill lookup no longer holds the page', () => {
+  it('P1: the form renders at once, the 404 body is never read and no breadcrumb is filed', async () => {
+    validate().mockResolvedValue(VALID_TOKEN_BODY);
+    await useRealExisting();
+    const text = vi.fn(() => new Promise<string>(() => {}));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, text }));
+
+    render(<AvailabilityFormPage />);
+
+    await screen.findByRole('button', { name: /submit availability/i });
+    expect(text, 'a body the lookup throws away is never read').not.toHaveBeenCalled();
+    expect(logger.info, 'a 404 is the normal no-prior-response outcome').not.toHaveBeenCalled();
+  });
+});
