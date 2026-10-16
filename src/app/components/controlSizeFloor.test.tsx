@@ -387,13 +387,17 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
      *      below 44px, or a breakpoint-prefixed `md:min-h-*` that lowers it at desktop. Below
      *      48rem this shape is INERT: `.btn` is unlayered and its `@media (width < 48rem)`
      *      `min-height: 2.75rem` beats every `@layer utilities` rule regardless of specificity
-     *      (`globals.css:2666-2674`, re-derived 2026-09-15). So it is a DESKTOP-ONLY hole —
+     *      (`globals.css`, anchor `@media (width < 48rem)` `.btn { min-height: 2.75rem }`;
+     *      anchor-only since Phase 88.6.1-21, because plan 22 edits that file in the same wave).
+     *      So it is a DESKTOP-ONLY hole —
      *      which is exactly why this arm exists and why it is not redundant with the phone one.
      *
      *  (2) an UNLAYERED `min-height`-zeroing CLASS in the same className. Today that is
-     *      `.btn-compact { min-height: 0 }` (`globals.css:2727-2728`). This is the load-bearing
+     *      `.btn-compact { min-height: 0 }` (`globals.css`, anchor `.btn-compact { min-height: 0 }`).
+     *      This is the load-bearing
      *      half: an unlayered author rule beats EVERY `@layer utilities` rule regardless of
-     *      specificity (the shipped cascade statement at `globals.css:2666-2674`), so
+     *      specificity (the shipped cascade statement beside `globals.css`'s
+     *      `@media (width < 48rem)` `.btn` rule), so
      *      `btn-compact` beats the cva base's `min-h-11` UTILITY at every width — phone
      *      included. A `min-h-0` utility cannot do that; a `btn-compact` class can.
      *
@@ -411,7 +415,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
         if (base === 'btn-compact') {
           offenders.push(
             `${site.where} — carries \`${raw}\`, an UNLAYERED min-height:0 class that beats the ` +
-              '`Button` cva base\'s `min-h-11` utility at EVERY width (globals.css:2727-2728)',
+              '`Button` cva base\'s `min-h-11` utility at EVERY width (globals.css, `.btn-compact { min-height: 0 }`)',
           );
           continue;
         }
@@ -436,31 +440,82 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    *
    *  - the compact month event tile: the unique element whose opening tag contains
    *    `aria-label={tileLabel + rsvpLabel}`. Measured 2026-09-15, `grep -rn "tileLabel +
-   *    rsvpLabel" src` returns exactly ONE non-test hit (`CalendarMonthView.js:559`), and it
+   *    rsvpLabel" src` returns exactly ONE non-test hit (`CalendarMonthView.js:843`, anchor
+   *    `aria-label={tileLabel + rsvpLabel}`, re-measured 2026-10-15), and it
    *    distinguishes the COMPACT tile from the full-variant twin below it, whose label is the
    *    bare `tileLabel`.
    *  - the home-card cog: the unique element whose opening tag contains
-   *    `aria-label="Customize group"`. Exactly one non-test hit (`grouplist.js:813`).
+   *    `aria-label="Customize group"`. Exactly one non-test hit (`grouplist.js:996`, anchor
+   *    `aria-label="Customize group"`, re-measured 2026-10-15).
    *
    * THE COG SUBJECT WAS RE-DERIVED, NOT TAKEN FROM THE PLAN. `88.6-12-PLAN.md` named
    * `src/app/userHome/UserHomePage.js`; a `Cog|Gear|Settings` grep over that file returns no
-   * such control, because the home card is rendered by `<GroupList>` (`UserHomePage.js:372`)
+   * such control, because the home card is rendered by `<GroupList>` (`UserHomePage.js:502`,
+   * anchor `<GroupList`, re-measured 2026-10-15)
    * and the cog lives in `app/components/grouplist.js`. Recorded in `88.6-12-SUMMARY.md`.
    */
-  const NAMED_SUBJECTS = {
+  //
+  // GENERALISED, Phase 88.6.1-21 (CT-2d): every subject carries `expectedFile` and
+  // `expectedCount`, and the floor arm below loops over EVERY entry, so later plans (88.6.1-48,
+  // 88.6.1-54) register a subject here and nowhere else. The five recovery controls added here
+  // are located by their handler expression, scoped to their file — `onClick={handleRetry}` also
+  // appears in `invite/game/[token]/page.js`, which is why `expectedFile` filters, not just counts.
+  type NamedSubject = {
+    anchor: string;
+    expectedFile: string;
+    expectedCount: number;
+    floor: number;
+    dimensions: string[];
+    label: string;
+  };
+  const NAMED_SUBJECTS: Record<string, NamedSubject> = {
     compactMonthTile: {
       anchor: 'aria-label={tileLabel + rsvpLabel}',
       expectedFile: 'app/components/CalendarMonthView.js',
+      expectedCount: 1,
       floor: MIN_TARGET_24,
-      dimensions: ['min-h', 'h'] as string[],
+      dimensions: ['min-h', 'h'],
       label: 'the COMPACT month event tile',
     },
     homeCardCog: {
       anchor: 'aria-label="Customize group"',
       expectedFile: 'app/components/grouplist.js',
+      expectedCount: 1,
       floor: MIN_TARGET_44,
-      dimensions: ['min-h', 'h'] as string[],
+      dimensions: ['min-h', 'h'],
       label: 'the home-card settings cog',
+    },
+    bannerRetries: {
+      anchor: 'onClick={handleRetry}',
+      expectedFile: 'components/ui/FetchErrorBanner.tsx',
+      expectedCount: 2,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "FetchErrorBanner's two retries (compact `Retry`, full `Try again`)",
+    },
+    bannerReport: {
+      anchor: 'onClick={() => setShowReport(true)}',
+      expectedFile: 'components/ui/FetchErrorBanner.tsx',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "FetchErrorBanner's `Report this`",
+    },
+    fallbackRetry: {
+      anchor: 'onClick={handleRetry}',
+      expectedFile: 'components/ui/ErrorFallback.tsx',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "ErrorFallback's `Try again`",
+    },
+    fallbackReload: {
+      anchor: 'onClick={handleReload}',
+      expectedFile: 'components/ui/ErrorFallback.tsx',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "ErrorFallback's `Reload page`",
     },
   };
 
@@ -482,6 +537,15 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
   const compactTileSites = sitesCarrying(NAMED_SUBJECTS.compactMonthTile.anchor);
   const cogSites = sitesCarrying(NAMED_SUBJECTS.homeCardCog.anchor);
 
+  /** Per subject: the sites carrying its anchor INSIDE its `expectedFile`. Built once. */
+  const SUBJECT_SITES: Record<string, { where: string; rel: string; tag: string }[]> =
+    Object.fromEntries(
+      Object.entries(NAMED_SUBJECTS).map(([key, subject]) => [
+        key,
+        sitesCarrying(subject.anchor).filter((site) => site.rel === subject.expectedFile),
+      ]),
+    );
+
   it('finds the compact month event tile and the home-card cog (anti-vacuity companions)', () => {
     expect(
       compactTileSites.map((s) => s.where),
@@ -499,15 +563,38 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     expect(cogSites[0].rel).toBe(NAMED_SUBJECTS.homeCardCog.expectedFile);
   });
 
-  /** Does this tag declare an explicit vertical dimension at or above `floor`? */
+  it('finds every named subject exactly as often as its table entry expects (anti-vacuity, all subjects)', () => {
+    for (const [key, subject] of Object.entries(NAMED_SUBJECTS)) {
+      expect(
+        SUBJECT_SITES[key].map((s) => s.where),
+        `${subject.label} was located ${SUBJECT_SITES[key].length} time(s) by \`${subject.anchor}\` in ` +
+          `${subject.expectedFile}, expected ${subject.expectedCount}. Re-find it before trusting the ` +
+          'floor arm below — a floor that matches nothing passes vacuously.',
+      ).toHaveLength(subject.expectedCount);
+    }
+  });
+
+  /**
+   * True when a raw token's variant chain is gated ABOVE the phone — a min-width breakpoint
+   * (`sm:`, `md:`, `lg:`, `xl:`, `2xl:`) anywhere in it. Phase 88.6.1-21: such a token does not
+   * apply at 375px, so it can never satisfy a phone floor (`md:min-h-11` alone is a desktop
+   * floor, not a phone one).
+   */
+  function gatesAboveThePhone(raw: string): boolean {
+    const variants = raw.replace(/^!/, '').split(':').slice(0, -1);
+    return variants.some((v) => /^(sm|md|lg|xl|2xl)$/.test(v));
+  }
+
+  /** Does this tag declare an explicit vertical dimension at or above `floor`, at phone width? */
   function meetsFloor(tag: string, floor: number, dimensions: string[]): boolean {
-    return tagTokens(tag).some(({ base }) => {
+    return tagTokens(tag).some(({ raw, base }) => {
+      if (gatesAboveThePhone(raw)) return false;
       const px = utilityPx(base, dimensions);
       return px !== null && px >= floor;
     });
   }
 
-  it('gates the compact month event tile at >= 24px and the home-card cog at >= 44px (D-13 pattern)', () => {
+  it('gates every named subject at its floor: the compact month tile >= 24px, the cog and the five recovery controls >= 44px (D-13 pattern)', () => {
     /*
      * WHY 24 AND NOT 44 FOR THE TILE. WCAG 2.2 success criterion 2.5.8 (Target Size, Minimum)
      * sets 24x24 CSS px; 2.5.5's 44x44 is AAA. The month grid's DAY CELL (min-h-[80px]) is the
@@ -523,13 +610,16 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
      * THE COG takes 44 because it is a standalone card-header action with no larger enclosing
      * target — the same D-13 per-site `min-h-11` pattern the eight 87.8 floor markers record.
      * It is not a `.btn`, so D-36's phone floor does not reach it either.
+     *
+     * THE FIVE RECOVERY CONTROLS (Phase 88.6.1-21, AC-10 / WR-503) take 44 at phone width: the
+     * three FetchErrorBanner link-buttons and ErrorFallback's two raw buttons, none a `.btn`, each
+     * declaring the house phone-scoped `min-h-11 md:min-h-0` (`UpcomingEventsCard.js:263`).
      */
     const measured: Record<string, number> = {};
     const unmet: string[] = [];
 
-    for (const subject of [NAMED_SUBJECTS.compactMonthTile, NAMED_SUBJECTS.homeCardCog]) {
-      const sites = subject === NAMED_SUBJECTS.compactMonthTile ? compactTileSites : cogSites;
-      for (const site of sites) {
+    for (const [key, subject] of Object.entries(NAMED_SUBJECTS)) {
+      for (const site of SUBJECT_SITES[key]) {
         if (meetsFloor(site.tag, subject.floor, subject.dimensions)) continue;
         measured[site.rel] = (measured[site.rel] ?? 0) + 1;
         unmet.push(

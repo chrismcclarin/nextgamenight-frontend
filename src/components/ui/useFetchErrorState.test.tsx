@@ -449,6 +449,21 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
       expect(button, `${name}: and the underline`).toHaveClass('underline');
     }
   });
+
+  // Phase 88.6.1-21 (Req 7 ring): the house focus ring, byte-identical to its one home in the
+  // `.btn` family (Button.tsx:113) and to cascadeOrder.test.ts:68-69 (`HOUSE_RING_FULL`).
+  it('paints the byte-identical house focus ring on all three link-buttons', () => {
+    const HOUSE_RING =
+      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+    const { unmount } = render(<FetchErrorBanner compact state={errorState('boom')} />);
+    expect(screen.getByRole('button', { name: 'Retry' }).className, 'Retry').toContain(HOUSE_RING);
+    unmount();
+
+    render(<FetchErrorBanner state={errorState('boom')} />);
+    for (const name of ['Try again', 'Report this']) {
+      expect(screen.getByRole('button', { name }).className, name).toContain(HOUSE_RING);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
