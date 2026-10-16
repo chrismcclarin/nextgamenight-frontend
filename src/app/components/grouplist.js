@@ -20,6 +20,7 @@ import SafeImage from './SafeImage';
 import MemberChipStack from './MemberChipStack';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
@@ -80,6 +81,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // The identity whose cards are on screen. Written only by a SUCCESSFUL result (88.6.1-70
   // contract C3), never inferred from the row count.
   const [groupsLoadedFor, setGroupsLoadedFor] = useState(null);
+  // Req 5 (H7/H8): see the DECISION Phase 88.6.1-41 (D-04, D-05, H7/H8) marker at
+  // armIfFocusInList below. "Your Groups" is the fallback; each card and its title block are
+  // tracked by group id through callback refs (never by the group-card test id).
+  const groupsHeadingRef = useRef(null);
+  const cardNodesRef = useRef(new Map());
+  const cardTitleNodesRef = useRef(new Map());
+  const listFocus = useFocusRecovery({ fallback: groupsHeadingRef });
   const [settingsGroup, setSettingsGroup] = useState(null);
   const [userRoles, setUserRoles] = useState({});
   /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserGroups failure is tracked as its own
@@ -119,6 +127,61 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     setUserRoles(roles);
   }, [groups, selfUuid]);
 
+  /* DECISION Phase 88.6.1-41 (D-04, D-05, H7/H8): focus when a refresh removes the control a
+     keyboard or screen-reader user stands on.
+     CHOSEN:
+     - plan 88.6.1-04's ONE shared hook (`useFocusRecovery`), armed at the APPLY: synchronously,
+       immediately before the state writes that may remove the focused node, and only when focus
+       is inside one of this list's CARDS (#204); settled right after those writes;
+     - preferred = the title block of the card that held focus, when that card survives;
+       fallback = "Your Groups"; plan 04's page floor after that;
+     - a card the apply only MOVES (#46: the list GET has no ORDER BY, so a settings save can
+       reorder) keeps its focused control through React DOM's own commit-time restore: the commit
+       that moves a node re-focuses the element that held focus before it when that element is
+       still in the document (`restoreSelection`, called from `resetAfterCommit`, in react-dom and
+       in the copy Next bundles). Measured by grouplist.focus.test.tsx F8, green with no host code;
+     - H8 rides on plan 88.6.1-20's dialog close restore to the gear (D-07), which D-37 keeps
+       connected through the refresh.
+     REJECTED, each so it is not re-proposed as a tidy-up:
+     (a) arming at refresh start or in onUpdate / onGroupDeleted. Focus is then inside the closing
+         settings dialog, or on <body> because its Save is natively disabled (GroupSettings.js:1545)
+         while saving, and a watched-null arm disarms on the dialog's own removal. An arm held
+         across the network wait would also pull focus into
+         this list from an unrelated removal elsewhere (the bell's nggroups:refresh);
+     (b) "Your Groups" for every case: after D-37 a stack or gear removal leaves its card
+         standing, and jumping to the list head loses the user's place on a phone;
+     (c) an in-component restore in MemberChipStack: D-04, and it has no target left;
+     (d) a static tabIndex on the heading: plan 04's focusElement adds tabindex="-1" on first use,
+         so no markup edit is needed (how long it stays is plan 88.6.1-04's tabindex-lifetime
+         rule, not restated here);
+     (e) reading the group-card test id at runtime: DECISION Phase 88.6-47 keeps it inert;
+     (f) handling the reorder inside plan 04's hook: its still-connected rule cannot tell a moved
+         node from a blank-area click, so every host would get focus pulled back after a
+         deliberate click on blank space;
+     (g) arming on any focus inside the list root: the full banner's Try again would arm a second
+         hook beside plan 21's, and the landing would then rest on observer creation order;
+     (h) a host-local re-focus of the moved control after the commit (what the plan specified for
+         #46): React DOM has already re-focused it by the time any effect runs, so that code
+         could never act. Measured, not assumed: F8 is green on the tree before this marker.
+     Plan 04's contract (1) says "at the START of the action". For a refresh the action that
+     removes is the apply, and arming there keeps the contract's purpose: armed while the node is
+     live, before the removal commits. No `from` is passed: there is no event in hand, and the
+     arm runs only after a live focused element was found inside a card, which is the hook's
+     own seed. Changing this is a decision, not a cleanup. */
+  const armIfFocusInList = () => {
+    const active = document.activeElement;
+    if (!active) return null;
+    let focusedGroupId = null;
+    for (const [groupId, cardNode] of cardNodesRef.current) {
+      if (cardNode.contains(active)) {
+        focusedGroupId = groupId;
+        break;
+      }
+    }
+    if (focusedGroupId === null) return null;
+    return listFocus.arm({ preferred: () => cardTitleNodesRef.current.get(focusedGroupId) ?? null });
+  };
+
   const fetchGroups = async () => {
     // Mount-fire gate: wait for the caller's own Users.id UUID to resolve. This
     // guard IS the resolution gate (paired with selfUuid in the effect deps).
@@ -132,10 +195,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
       const groupsData = await groupsAPI.getUserGroups(selfUuid);
       if (generation !== generationRef.current) return;
+      // Req 5: armed at the APPLY, before the writes that may remove the focused node.
+      const settle = armIfFocusInList();
       setGroups(groupsData || []);
       setGroupsLoadedFor(requestedFor);
       // Cleared on SUCCESS, not at refresh start (88.6.1-70 contract C2).
       setGroupsError(null);
+      settle?.();
     } catch (error) {
       // A DEVELOPER log, deliberately NOT routed through `getFetchErrorMessage`: this line is
       // diagnostic only and never reaches a person. The user-facing copy for this failure comes
@@ -249,7 +315,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     // not a cleanup.
     <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-        <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
+        <Heading ref={groupsHeadingRef} level={2} size="heading" className="text-content-primary">Your Groups</Heading>
         {onCreateGroup && (
           /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
           <Button
@@ -497,6 +563,10 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  Owner ruling 2026-09-21, decision (1): default stands. */
               <div
                 key={group.id}
+                ref={(node) => {
+                  if (node) cardNodesRef.current.set(group.id, node);
+                  else cardNodesRef.current.delete(group.id);
+                }}
                 data-testid="group-card"
                 className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
@@ -586,6 +656,10 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           — the no-colour half of the fork already resolves to
                           `var(--color-content-primary)`. */}
                       <div
+                        ref={(node) => {
+                          if (node) cardTitleNodesRef.current.set(group.id, node);
+                          else cardTitleNodesRef.current.delete(group.id);
+                        }}
                         role="button"
                         tabIndex={0}
                         /* NO aria-label, deliberately — the EventDayModal remedy this applies
