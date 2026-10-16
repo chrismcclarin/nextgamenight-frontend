@@ -13,6 +13,7 @@ import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import QRCodeModal from '../components/QRCodeModal';
+import { SHARE_GAME_QR_LOADING_LABEL } from '../components/shareGameQrCopy';
 import { Modal } from '../components/Modal';
 import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -524,7 +525,14 @@ export default function GameDetailPage() {
        for the life of the mount. Mirroring is also the only release rule consistent with what
        these handlers already do: on success both `router.push` and deliberately do NOT reset their
        flag, and only the catch resets it. A `finally` release would re-open the handler during the
-       App Router transition while the page is still mounted. */
+       App Router transition while the page is still mounted.
+
+       [AMENDED Phase 88.6.1-47 (D-35)] The count is now FOUR: `qrLoadingRef` for Share Game QR
+       joins the three. The rule stated above is the MIRROR — set beside the gate's setter, clear
+       beside the setter that re-enables the control. Its "never in a `finally`" sentence describes
+       Cancel and Leave, whose success path navigates and never re-enables. Share Game QR re-enables
+       in its `finally` (success and failure alike), so its mirror release sits there, beside
+       `setQrLoading(false)`. */
     const cancellingRef = useRef(false);
     const leavingRef = useRef(false);
     const [participants, setParticipants] = useState([]);
@@ -539,6 +547,7 @@ export default function GameDetailPage() {
     const [showGameQR, setShowGameQR] = useState(false);
     const [gameInviteUrl, setGameInviteUrl] = useState('');
     const [qrLoading, setQrLoading] = useState(false);
+    const qrLoadingRef = useRef(false);
     // 88-33 Task 5 (fork 7): the hand-rolled removeConfirmingId/timer pair that lived here
     // is gone — the see-all Remove now rides `removeParticipantGate` (useConfirmAction,
     // two-tap tier) below, which owns the armed id, the 3s revert timer, and its cleanup.
@@ -1059,8 +1068,20 @@ export default function GameDetailPage() {
 
     // Phase 65-02: open the Share-Game-QR modal. Mirrors the EventDayModal
     // handleShowGameQR pattern (loading state + error swallow).
+    /* DECISION Phase 88.6.1-47 (D-35): CHOSEN — the pressed control stays focusable
+       (`aria-disabled`) and a synchronous ref latch (`qrLoadingRef`) refuses a second press,
+       released beside the loading reset in the `finally`; the in-flight label is copy row E6, read
+       from the one constant in `shareGameQrCopy.ts`. REJECTED — (a) the native attribute: it drops
+       focus off the control the user just pressed, and the QR dialog then records no opener to
+       return focus to (W014 case 1); (b) a state-only guard: a second press in the same tick reads
+       the previous render's `false` and sends a second request. The look follows the owner's
+       accent answer recorded by plan 88.6.1-22: answer 2Q (2026-10-16), the gated accent colour
+       pair on the accent rule's `aria-disabled` state — no colour, opacity or disabled utility at
+       this call site. Putting the native attribute back is a decision, not a cleanup. */
     const handleShowGameQR = async () => {
+        if (qrLoadingRef.current) return;
         if (!singleEvent?.id) return;
+        qrLoadingRef.current = true;
         setQrLoading(true);
         try {
             const data = await eventsAPI.getEventInviteToken(singleEvent.id);
@@ -1074,6 +1095,7 @@ export default function GameDetailPage() {
                 })
             );
         } finally {
+            qrLoadingRef.current = false;
             setQrLoading(false);
         }
     };
@@ -2141,11 +2163,11 @@ export default function GameDetailPage() {
                                 <Button
                                     variant="accent"
                                     onClick={handleShowGameQR}
-                                    disabled={qrLoading}
+                                    aria-disabled={qrLoading || undefined}
                                     /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 /
                                        11c(c), 2026-08-28): `btn-secondary` -> `btn-accent`, the
-                                       SAME treatment as the byte-identical twin at
-                                       `EventDayModal.js:289` — same recipe, same QR path, same
+                                       SAME treatment as the byte-identical twin in
+                                       `EventDayModal.js` (`handleShowGameQR(e, event)`) — same recipe, same QR path, same
                                        title, same label. The owner ruled on the modal instance;
                                        this one moved with it because shipping the SAME-NAMED
                                        control in two treatments is exactly the consistency debt
@@ -2159,7 +2181,7 @@ export default function GameDetailPage() {
                                        `shrink-0` is KEPT — it is flex-row sizing, not treatment;
                                        dropping it lets this button squeeze against the
                                        "Participants (N)" heading in its `justify-between` row.
-                                       Ground is the white `.card` at `:1592`, so 5.0216 as above.
+                                       Ground is the white `.card` that opens the Participants section, so 5.0216 as above.
                                        Full marker at the `.btn-accent` rule in `globals.css`.
                                        APPENDED 88.6-18 (D23): the amber treatment is unchanged and
                                        its spelling moved onto the `Button` primitive's accent
@@ -2179,12 +2201,12 @@ export default function GameDetailPage() {
                                     title="Share Game QR"
                                 >
                                     {/* Decorative — the visible label names the button. Same pair
-                                        as the twin at `EventDayModal.js:292`. */}
+                                        as the twin's decorative `<svg` in `EventDayModal.js`. */}
                                     <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                                     </svg>
-                                    {qrLoading ? 'Loading...' : 'Share Game QR'}
+                                    {qrLoading ? SHARE_GAME_QR_LOADING_LABEL : 'Share Game QR'}
                                 </Button>
                             )}
                         </div>
@@ -2604,7 +2626,6 @@ export default function GameDetailPage() {
                     onClose={() => setShowGameQR(false)}
                     url={gameInviteUrl}
                     title="Game Night Invite QR"
-                    showReset={false}
                 />
 
                 {/* Phase 65-02 EVT-07: BringGamePicker mount fix. Previously
