@@ -577,19 +577,21 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
 
   // ---- the attach-success region (V-18) ----
 
-  it('NODE IDENTITY — the attach region exists, is `status` (never `alert`), and is EMPTY before any attach; the SAME node carries the message after', async () => {
+  it('NODE IDENTITY, D-22 house shape — the attach region exists, is `status` (never `alert`), EMPTY and sr-only before any attach; the SAME node carries copy row F1, visible, after', async () => {
     const user = userEvent.setup();
     render(<FeedbackForm onClose={() => {}} />);
 
     const before = attachStatusRegion();
     expect(before).toHaveAttribute('role', 'status');
     expect(before).not.toHaveAttribute('role', 'alert');
-    expect(before).toHaveTextContent('');
-    // NO idle delta: no margin and no min-height while empty (V-18).
-    expect(before.className).not.toMatch(/\bmt-\d/);
+    expect(before.textContent).toBe('');
+    // AMENDED Phase 88.6.1-34 (D-22): the region takes the house srOnlyWhenEmpty prop. The prop
+    // hides an EMPTY region only, so the 2026-09-14 visible-when-set ruling (V-18) is kept: an
+    // empty region is out of flow, so its unconditional mt-1 costs no idle layout.
+    expect(before).toHaveClass('sr-only');
+    expect(before).toHaveClass('mt-1');
+    expect(before).toHaveClass('truncate');
     expect(before.className).not.toMatch(/\bmin-h-/);
-    // `sr-only` is the RECORDED REJECTED ARM — the line is VISIBLE when set.
-    expect(before.className).not.toContain('sr-only');
 
     await user.upload(fileInput(), goodFile('evidence.png'));
 
@@ -597,9 +599,22 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     // look-up of the SAME id must return the IDENTICAL node object.
     const after = attachStatusRegion();
     expect(after).toBe(before);
-    expect(after).toHaveTextContent('evidence.png');
-    // Bounded visually, unbounded in text content.
+    // Copy row F1 (D-30), exact bytes.
+    expect(after.textContent).toBe('Screenshot attached: evidence.png');
+    // Visible when set (V-18 kept); bounded visually, unbounded in text content.
+    expect(after).not.toHaveClass('sr-only');
     expect(after.className).toContain('truncate');
+  });
+
+  it('T-88.6.1-681 encoding — a file name that looks like markup is rendered as TEXT in the attach line (F1), never as an element', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    await user.upload(fileInput(), goodFile('<b>x</b>.png'));
+
+    const region = attachStatusRegion();
+    expect(region.textContent).toBe('Screenshot attached: <b>x</b>.png');
+    expect(region.querySelector('b')).toBeNull();
   });
 
   it('THE DISCRIMINATING ASSERTION — a REJECTED file leaves the attach region EMPTY while `screenshotError` populates (a `screenshot`-derived region cannot tell these apart)', async () => {
@@ -616,7 +631,9 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     await waitFor(() =>
       expect(document.querySelector('[id$="-screenshot-error"]')).toHaveTextContent(/too large/i)
     );
-    expect(attachStatusRegion()).toHaveTextContent('');
+    expect(attachStatusRegion().textContent).toBe('');
+    // D-22 (Phase 88.6.1-34): a rejected file leaves the attach region empty, so it stays hidden.
+    expect(attachStatusRegion()).toHaveClass('sr-only');
   });
 
   it('remove-then-reattach of the SAME file announces TWICE — the region clears on Remove and is re-set on the next attach', async () => {
@@ -624,15 +641,17 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     render(<FeedbackForm onClose={() => {}} />);
 
     await user.upload(fileInput(), goodFile('same.png'));
-    expect(attachStatusRegion()).toHaveTextContent('same.png');
+    expect(attachStatusRegion().textContent).toBe('Screenshot attached: same.png');
 
     await user.click(await screen.findByRole('button', { name: /remove screenshot/i }));
     await waitFor(() => expect(fileInput()).toBeInTheDocument());
     // CLEAR PATH 1 — a region still asserting an attachment after Remove is wrong, not stale.
-    expect(attachStatusRegion()).toHaveTextContent('');
+    expect(attachStatusRegion().textContent).toBe('');
+    // D-22: empty again, so visually hidden again (Phase 88.6.1-34).
+    expect(attachStatusRegion()).toHaveClass('sr-only');
 
     await user.upload(fileInput(), goodFile('same.png'));
-    expect(attachStatusRegion()).toHaveTextContent('same.png');
+    expect(attachStatusRegion().textContent).toBe('Screenshot attached: same.png');
   });
 
   // ---- the post-success reset ----
