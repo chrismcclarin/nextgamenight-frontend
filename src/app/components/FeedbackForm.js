@@ -101,6 +101,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   const errorId = `${reactId}-submit-error`;
   const fileInputId = `${reactId}-screenshot`;
   const screenshotErrorId = `${reactId}-screenshot-error`;
+  // Phase 88.6.1-34 (MEDLOW-32): the two visible texts that name the file input, in order.
+  const screenshotLabelId = `${reactId}-screenshot-label`;
+  const screenshotDropzoneId = `${reactId}-screenshot-dropzone`;
   /* DECISION Phase 88.6-31 (D-21, review finding D53): the attach success gets its OWN
      always-mounted polite region — chosen OVER reusing either region this file already has.
      `screenshotErrorId` (`aria-describedby`-linked only while `screenshotError` is truthy) would
@@ -430,10 +433,23 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             </SelectControl>
           </div>
 
-          {/* Subject */}
+          {/* Subject.
+              DECISION Phase 88.6.1-34 (AC-33 / W024): the two required stars are RATIFIED-
+              DECORATIVE. They are hidden from assistive tech, because both inputs carry
+              `required` and that is announced; the stars only repeated it as "star". The owner's
+              copy table ratified this ("Not changing": the red stars on Report Bug stop being read
+              aloud and look the same, 2026-10-04, D-30). THE MERITS, STATED: the house
+              status-error ink token would clear 4.5:1 where the current red shade measures 3.76:1;
+              the record keeps the look, because a colour change is a look decision and that is
+              Phase 88.9's charter. The raw-status-palette scan is NOT widened to the 500 shade:
+              its SCOPE note leaves 500 out for the header bell's filled badge dot, and a widened
+              scan would flag these two ratified stars; a gate change is Phase 88.6.2's charter.
+              W024's other sites (this form's error box and FeedbackButton's) were already on
+              status tokens before this phase (verified 2026-10-05, re-read 2026-10-16), so this record closes W024's
+              last part. Changing this is a decision, not a cleanup. */}
           <div>
             <label htmlFor="feedback-form-subject" className="block text-sm text-content-secondary mb-2">
-              Subject <span className="text-red-500">*</span>
+              Subject <span aria-hidden="true" className="text-red-500">*</span>
             </label>
             <Input
               ref={subjectInputRef}
@@ -450,7 +466,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
           {/* Description */}
           <div>
             <label htmlFor="feedback-form-description" className="block text-sm text-content-secondary mb-2">
-              Description <span className="text-red-500">*</span>
+              Description <span aria-hidden="true" className="text-red-500">*</span>
             </label>
             <Textarea
               id="feedback-form-description"
@@ -465,9 +481,20 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             <p className="text-xs text-content-muted mt-1">{description.length}/2000 characters</p>
           </div>
 
-          {/* Screenshot */}
+          {/* Screenshot.
+              DECISION Phase 88.6.1-34 (MEDLOW-32): AC-22, the file input is named by BOTH visible
+              texts through `aria-labelledby`, section label first, then the drop zone. The name
+              starts with the field's own label, so "(optional)" is finally heard, and keeps the
+              drop zone's clickable words (WCAG 2.5.3 label-in-name, for voice control).
+              Rejected (a): `htmlFor` on the section label. Two `for` labels concatenate in a
+              UA-dependent way (research ST-7 marks it ASSUMED), tapping the heading would newly
+              open the picker, and the `for` would dangle while a file is attached, because the
+              input is not rendered then. Rejected (b): `aria-describedby`. The field's own label
+              would be a description rather than its name, and the round 6 #31 pins on the
+              input's description would change for a worse result. Neither label gains or loses a
+              `for`. Changing this is a decision, not a cleanup. */}
           <div>
-            <label className="block text-sm text-content-secondary mb-2">
+            <label id={screenshotLabelId} className="block text-sm text-content-secondary mb-2">
               Screenshot <span className="text-content-muted font-normal">(optional)</span>
             </label>
             {screenshot ? (
@@ -551,10 +578,12 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                   type="file"
                   accept="image/*"
                   onChange={handleFileChange}
+                  aria-labelledby={`${screenshotLabelId} ${screenshotDropzoneId}`}
                   aria-describedby={screenshotError ? screenshotErrorId : undefined}
                   className="sr-only peer"
                 />
                 <label
+                  id={screenshotDropzoneId}
                   htmlFor={fileInputId}
                   className="flex flex-col items-center justify-center w-full p-4 border-2 border-dashed border-line rounded-md cursor-pointer hover:border-accent hover:bg-surface-hover transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-focus-ring peer-focus-visible:ring-offset-2 peer-focus-visible:border-accent"
                 >
@@ -570,13 +599,18 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 2 MB) was a red <p> with no role and nothing referencing it, so a
                 screen-reader user pressed Submit believing their screenshot was attached.
                 Same shape as the submit error above: the house StatusRegion, always
-                mounted so the message is a change rather than a mount, `text-xs` kept so
-                the visual is unchanged, and pointed at by the input's aria-describedby
-                only while it has something to say. */}
+                mounted so the SAME node is asserted before and after and so a cleared-then-set
+                repeat failure re-announces (an inserted `role="alert"` that arrives with its
+                text IS announced — corrected Phase 88.6.1-34 per D-42; the old "a change rather
+                than a mount" reason holds for polite regions only), `text-xs` kept so the
+                visual is unchanged, and pointed at by the input's aria-describedby only while
+                it has something to say. Phase 88.6.1-34 (D-22): `srOnlyWhenEmpty` with an
+                unconditional class list, so the empty region is out of flow. */}
             <StatusRegion
               id={screenshotErrorId}
               politeness="assertive"
-              className={screenshotError ? 'text-xs text-content-status-error mt-1' : undefined}
+              srOnlyWhenEmpty
+              className="text-xs text-content-status-error mt-1"
             >
               {screenshotError}
             </StatusRegion>
@@ -644,18 +678,20 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               screen-reader user pressed Submit, the POST to the public feedback writer
               failed, the red box painted, and assistive tech was told nothing — the
               report was silently lost. It is now the house StatusRegion, ASSERTIVE
-              (a failed submit is not a background update) and always mounted so the
-              message is a change rather than a mount, carrying its visual tone only when
-              it has something to say. `text-base` is passed deliberately: StatusRegion
-              defaults to `text-sm` and this box keeps the size it shipped with. */}
+              (a failed submit is not a background update) and always mounted so the SAME
+              node is asserted before and after and so a cleared-then-set repeat failure
+              re-announces (an inserted `role="alert"` that arrives with its text IS announced
+              — corrected Phase 88.6.1-34 per D-42; the old "a change rather than a mount"
+              reason holds for polite regions only), carrying its visual tone only when it has
+              something to say. `text-base` is passed deliberately: StatusRegion defaults to
+              `text-sm` and this box keeps the size it shipped with. Phase 88.6.1-34 (D-22):
+              the box's classes are now unconditional and `srOnlyWhenEmpty` hides the region
+              only while it is empty, so "only when it has something to say" holds by the prop. */}
           <StatusRegion
             id={errorId}
             politeness="assertive"
-            className={
-              error
-                ? 'text-base bg-status-error-subtle border border-status-error text-content-status-error px-4 py-3 rounded-sm'
-                : undefined
-            }
+            srOnlyWhenEmpty
+            className="text-base bg-status-error-subtle border border-status-error text-content-status-error px-4 py-3 rounded-sm"
           >
             {error}
           </StatusRegion>
@@ -665,7 +701,18 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
           {/* Round 4 #31 / round 5 #41: the reply-to disclosure rides the SAME live
               region, and the text is now set from an effect so its FIRST appearance is a
               change to a mounted-empty region rather than a mount that carries it. */}
-          <StatusRegion id={statusId} className="text-xs text-content-muted min-h-4">
+          {/* DECISION Phase 88.6.1-34 (D-22): the gate line takes the house `srOnlyWhenEmpty`
+              prop and drops its reserved one-line minimum height — chosen OVER keeping the
+              reservation. The reserved line plus its own `space-y-4` margin left an empty band
+              under the screenshot block on every signed-in open, a mobile bug by the phone
+              tenet. The reservation existed only so a briefly shown loading line would not move
+              the buttons, and that line appears only on a cold self-row cache, because the self
+              query never goes stale. The min-height was dead in both states anyway: `text-xs`
+              gives a 16px line when set, and `sr-only` takes the region out of flow when empty.
+              DISCLOSED COST: on a cold cache, the arrival and departure of the loading line
+              moves the buttons by one line while Submit is gated anyway. Changing this is a
+              decision, not a cleanup. */}
+          <StatusRegion id={statusId} srOnlyWhenEmpty className="text-xs text-content-muted">
             {statusLine}
           </StatusRegion>
 

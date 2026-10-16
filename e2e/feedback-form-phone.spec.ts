@@ -8,6 +8,11 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 //     "Screenshot attached: {name}", stays on ONE line (truncate) and inside the dialog; before
 //     the attach the empty region is out of flow (computed position absolute, the D-22
 //     srOnlyWhenEmpty house shape).
+//   Test B (task 2) — the idle form: the gap from the screenshot block to the button row equals
+//     the form's own space-y-4 gap (read in the same run as the description-to-screenshot gap),
+//     so the empty error region and gate line no longer leave a band; the file input is named
+//     "Screenshot (optional) …" and Subject is named without its star; a POSITIVE CONTROL (a
+//     rejected file's line, in flow, 4px below the drop zone) makes the idle reading non-vacuous.
 //
 // NOT RUN LOCALLY. The `phone` project depends on the `setup` project, which signs in through
 // Auth0 with credentials that are deliberately absent on a developer machine (there is no local
@@ -111,5 +116,99 @@ test.describe('Report Bug form at 375px (Phase 88.6.1-34)', () => {
       m.height,
       `attach line height ${m.height}px exceeds one line (${m.lineHeight}px + 1) — truncate should hold the long name to a single line`,
     ).toBeLessThanOrEqual(m.lineHeight + 1);
+  });
+
+  test("idle form at 375 — no band under the screenshot block; the field is named 'Screenshot (optional)'; the stars are silent; a rejected file's line sits 4px below the drop zone", async ({
+    page,
+  }) => {
+    const dialog = await openReportBug(page);
+    const submit = dialog.getByRole('button', { name: /^Submit$/ });
+    await guardResolved(submit, 'the Report Bug form Submit button');
+
+    // The gate must settle first, or the form is not idle.
+    await expect(
+      submit,
+      'Submit still aria-disabled — the self row never settled, so the form is not idle',
+    ).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(
+      dialog.locator('[id$="-submit-status"]'),
+      "FIXTURE failure, not a product failure: the gate line is not empty, so the e2e account's self row does not carry a real address (the reply-to line is shown) and the form is not idle",
+    ).toHaveText('');
+
+    // Names in a real browser (MEDLOW-32 and the silent stars, AC-33 clause 2).
+    await expect(
+      dialog.getByLabel(/^Screenshot \(optional\)/),
+      'the file input must be named starting "Screenshot (optional)" (aria-labelledby: section label, then drop zone)',
+    ).toHaveAttribute('type', 'file');
+    await expect(
+      dialog.getByRole('textbox', { name: 'Subject', exact: true }),
+      'the Subject input must be named exactly "Subject" — the required star is aria-hidden',
+    ).toBeVisible();
+
+    // Idle geometry, one read: blocks are the form's direct div children found from inside.
+    const idle = await submit.evaluate((btn) => {
+      const form = btn.closest('form');
+      if (!form) return null;
+      const textarea = form.querySelector('textarea');
+      const input = form.querySelector('input[type="file"]');
+      const descBlock = textarea?.closest('form > div');
+      const shotBlock = input?.closest('form > div');
+      const btnRow = btn.closest('form > div');
+      if (!descBlock || !shotBlock || !btnRow) return null;
+      const d = descBlock.getBoundingClientRect();
+      const s = shotBlock.getBoundingClientRect();
+      const b = btnRow.getBoundingClientRect();
+      return { cal: s.top - d.bottom, idle: b.top - s.bottom };
+    });
+    expect(idle, 'idle geometry read failed — the description, screenshot or button block was not found').not.toBeNull();
+    if (!idle) return;
+    expect(
+      Math.abs(idle.cal - 16),
+      `description-to-screenshot gap is ${idle.cal}px — expected the form's space-y-4 gap of 16px (+-1); this calibrates the next read`,
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(idle.idle - idle.cal),
+      `screenshot-to-buttons gap is ${idle.idle}px against the ${idle.cal}px stack gap — before plan 88.6.1-34 the empty error region's margin and the gate line's reserved line read larger (estimate about +32px); this is the first browser measurement`,
+    ).toBeLessThanOrEqual(1);
+
+    // Positive control: a rejected file's line IS in flow, 4px below the drop zone, inside the block.
+    await dialog.locator('input[type="file"]').setInputFiles({
+      name: 'too-big.png',
+      mimeType: 'image/png',
+      buffer: Buffer.alloc(2 * 1024 * 1024 + 1),
+    });
+    const errorRegion = dialog.locator('[id$="-screenshot-error"]');
+    await expect(errorRegion, 'the over-size rejection line must appear').toHaveText(/too large/i);
+
+    const ctl = await submit.evaluate((btn) => {
+      const form = btn.closest('form');
+      if (!form) return null;
+      const input = form.querySelector('input[type="file"]');
+      const err = form.querySelector('[id$="-screenshot-error"]');
+      if (!(input instanceof HTMLInputElement) || !err) return null;
+      const drop = form.querySelector('label[for="' + CSS.escape(input.id) + '"]');
+      const shotBlock = input.closest('form > div');
+      const btnRow = btn.closest('form > div');
+      if (!drop || !shotBlock || !btnRow) return null;
+      return {
+        position: getComputedStyle(err).position,
+        offset: err.getBoundingClientRect().top - drop.getBoundingClientRect().bottom,
+        gap: btnRow.getBoundingClientRect().top - shotBlock.getBoundingClientRect().bottom,
+      };
+    });
+    expect(ctl, 'positive-control read failed — the input, drop zone, error region or blocks were not found').not.toBeNull();
+    if (!ctl) return;
+    expect(
+      ctl.position,
+      `rejection line computed position is "${ctl.position}" — expected in flow when set (srOnlyWhenEmpty hides only an EMPTY region)`,
+    ).not.toBe('absolute');
+    expect(
+      Math.abs(ctl.offset - 4),
+      `rejection line sits ${ctl.offset}px below the drop zone — expected 4px (mt-1, +-1)`,
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(ctl.gap - idle.cal),
+      `with the rejection line shown the screenshot-to-buttons gap is ${ctl.gap}px against the ${idle.cal}px stack gap — the line must grow the screenshot block, not add a band below it`,
+    ).toBeLessThanOrEqual(1);
   });
 });
