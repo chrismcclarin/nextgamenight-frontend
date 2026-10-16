@@ -550,6 +550,46 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: 'the Days row `All` / `Clear` action, width (D-21; `All` is under 44px wide)',
     },
+    libraryOwnerChipAll: {
+      anchor: 'aria-pressed={selectedOwner === null}',
+      expectedFile: 'app/components/GroupLibrary.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "GroupLibrary's `All` owner chip, height (D-21)",
+    },
+    libraryOwnerChipAllWidth: {
+      anchor: 'aria-pressed={selectedOwner === null}',
+      expectedFile: 'app/components/GroupLibrary.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "GroupLibrary's `All` owner chip, width (D-21; `All` is under 44px wide)",
+    },
+    libraryOwnerChipMember: {
+      anchor: 'aria-pressed={selectedOwner === member.user_id}',
+      expectedFile: 'app/components/GroupLibrary.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "GroupLibrary's member owner chips, height (D-21)",
+    },
+    libraryOwnerChipMemberWidth: {
+      anchor: 'aria-pressed={selectedOwner === member.user_id}',
+      expectedFile: 'app/components/GroupLibrary.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "GroupLibrary's member owner chips, width (D-21; short usernames are under 44px wide)",
+    },
+    gamesFilterToggle: {
+      anchor: 'aria-expanded={filterOpen}',
+      expectedFile: 'app/components/GroupGamesList.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "GroupGamesList's `Filter` disclosure, height (D-21 / D-44)",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */

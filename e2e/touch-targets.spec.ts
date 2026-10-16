@@ -2206,6 +2206,65 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // Save Schedule is never pressed; nothing above may write.
     expect(writes, 'a toggle press sent a write to the API').toEqual([]);
   });
+
+  test('R4 (88.6.1-48, AC-19 / D-21): the group Library owner chips measure >= 44x44 at 375px and report pressed state', async ({ page }) => {
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await page.getByRole('button', { name: 'Library', exact: true }).click();
+
+    // The chip bar is a group named in the owner's ratified words (#210, 2026-10-13). Scoping to
+    // it keeps the game rows' own owner-name buttons out of the set.
+    const bar = page.getByRole('group', { name: 'Filter by owner' });
+    const allChip = bar.getByRole('button', { name: 'All', exact: true });
+    await guardResolved(allChip, 'the Library "All" owner chip');
+    const chips = bar.getByRole('button');
+    await guardResolved(chips, 'the Library owner chips (All plus at least one member)', 2);
+    for (const chip of await chips.all()) {
+      await assertMin44(chip, `owner chip "${(await chip.textContent())?.trim()}" (Library, 375px)`);
+    }
+    await expect(allChip).toHaveAttribute('aria-pressed', 'true');
+
+    const writes = recordApiWrites(page);
+    const member = chips.nth(1);
+    await member.click();
+    await expect(member).toHaveAttribute('aria-pressed', 'true');
+    await expect(allChip).toHaveAttribute('aria-pressed', 'false');
+    // A member chip is two-way: pressing it again returns to All.
+    await member.click();
+    await expect(allChip).toHaveAttribute('aria-pressed', 'true');
+
+    // The bar scrolls inside itself; the page must not.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      'the page scrolls sideways at 375px on the Library tab',
+    ).toBe(true);
+    expect(writes, 'an owner-chip press sent a write to the API').toEqual([]);
+  });
+
+  test('R4 (88.6.1-48, AC-19 / D-44): the group games Filter is a disclosure and measures >= 44x44 at 375px', async ({ page }) => {
+    // The Overview tab is the default and mounts the Group Games list.
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+
+    const filter = page.getByRole('button', { name: /^Filter( \(\d+\))?$/ });
+    await guardResolved(filter, 'the Group Games "Filter" toggle');
+    await assertMin44(filter, '"Filter" (Group Games, 375px)');
+    await expect(filter).toHaveAttribute('aria-expanded', 'false');
+    await expect(filter).not.toHaveAttribute('aria-controls');
+
+    const writes = recordApiWrites(page);
+    await filter.click();
+    await expect(filter).toHaveAttribute('aria-expanded', 'true');
+    const panelId = await filter.getAttribute('aria-controls');
+    expect(panelId, 'the open Filter names no panel').toBeTruthy();
+    // An attribute selector, because a React useId value contains colons.
+    const panel = page.locator(`[id="${panelId}"]`);
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText('Winner', { exact: true })).toBeVisible();
+
+    await filter.click();
+    await expect(filter).toHaveAttribute('aria-expanded', 'false');
+    await expect(filter).not.toHaveAttribute('aria-controls');
+    expect(writes, 'a Filter press sent a write to the API').toEqual([]);
+  });
 });
 
 /* ==========================================================================================
