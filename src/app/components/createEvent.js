@@ -1065,7 +1065,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   title (88-21). */}
               {/* DECISION Phase 88.6-25 (R2): this required-field asterisk stays EXPOSED to a
                   screen reader — chosen OVER the `aria-hidden="true"` the shipped house idiom
-                  puts on it (`app/components/form/FormField.tsx:110`,
+                  puts on it (`app/components/form/FormField.tsx:118`,
                   `{required && <span aria-hidden="true"> *</span>}`) and OVER the treatment this
                   same commit gave the Start-Date and Duration asterisks below.
 

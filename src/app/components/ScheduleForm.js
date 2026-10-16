@@ -72,6 +72,15 @@ export default function ScheduleForm({
   };
 
   // Initialize form with the shared rhf + Zod primitive (PRIM-06 / D-10)
+  /* DECISION Phase 88.6.1-26 (carry-in, FormField errorKey): every FormField below gets
+     `errorKey={submitCount}`, react-hook-form's per-attempt counter, so each failed submit
+     re-inserts the field alert even when the verdict is identical and focus is already inside
+     the field (a second Enter re-inserted nothing and moved nothing — silent). Chosen OVER a
+     hand-rolled per-field sequence writer (react-hook-form writes these verdicts, and
+     `submitCount` already moves exactly once per verdict; a refused second press, which
+     `useAppForm` stops before react-hook-form runs, is not a verdict and does not bump it) and
+     OVER a key that changes per render (it would re-announce on every unrelated re-render, e.g.
+     the `watch(...)` calls below). Removing it is a decision, not a cleanup. */
   const {
     register,
     handleAppSubmit,
@@ -79,7 +88,7 @@ export default function ScheduleForm({
     watch,
     setValue,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, submitCount },
   } = useAppForm(scheduleSchema, {
     defaultValues: existingSchedule
       ? {
@@ -285,7 +294,7 @@ export default function ScheduleForm({
       <Modal.Body>
         <form onSubmit={handleAppSubmit(onSubmit)}>
           {/* Day of Week */}
-          <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} className="mb-4">
+          <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} errorKey={submitCount} className="mb-4">
             <SelectControl
               {...dayOfWeekField}
               ref={(node) => {
@@ -302,7 +311,7 @@ export default function ScheduleForm({
           </FormField>
 
           {/* Time */}
-          <FormField label="Time" error={errors.schedule_time?.message} className="mb-4">
+          <FormField label="Time" error={errors.schedule_time?.message} errorKey={submitCount} className="mb-4">
             <Input type="time" {...register('schedule_time')} />
           </FormField>
 
@@ -310,6 +319,7 @@ export default function ScheduleForm({
           <FormField
             label="Timezone"
             error={errors.schedule_timezone?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -328,6 +338,7 @@ export default function ScheduleForm({
           <FormField
             label="Response Deadline"
             error={errors.default_deadline_hours?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -348,6 +359,7 @@ export default function ScheduleForm({
           <FormField
             label="Magic Link Expiry"
             error={errors.default_token_expiry_hours?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -410,6 +422,7 @@ export default function ScheduleForm({
           <FormField
             label="Minimum Participants (optional)"
             error={errors.min_participants?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -432,6 +445,7 @@ export default function ScheduleForm({
           <FormField
             label="Template Name"
             error={errors.template_name?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -481,7 +495,10 @@ export default function ScheduleForm({
               repeat failure while focus is already inside that field, which re-inserts nothing and
               moves nothing (a residual of the primitive, reported to the orchestrator). This form
               keeps ONE server-failure region (`serverError`); field validation alerts are per
-              field. */}
+              field.
+              AMENDED Phase 88.6.1-26 (carry-in): that residual is CLOSED for this form — each
+              FormField takes `errorKey={submitCount}` (see the DECISION at the `useAppForm` call),
+              so a repeat failure re-inserts the field alert (R3 now PASS for all 7 mounts). */}
           {serverError && (
             <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
               <p role="alert" className="text-content-status-error text-sm">{serverError}</p>

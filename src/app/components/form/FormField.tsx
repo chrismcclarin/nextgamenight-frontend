@@ -9,7 +9,7 @@
  *   - Error: 12px/400 (`text-xs`), `text-content-status-error`, `role="alert"`, wired to the
  *     control via `aria-describedby` only when present.
  *     CORRECTED Phase 88.6-37 (W66 / SPEC R8): this line named `--color-error`
- *     (`text-status-error`) — the token the error line (`:131`, `<p id={errorId} role=`) STOPPED
+ *     (`text-status-error`) — the token the error line (`:148`, `<p key={errorKey} id={errorId} role=`) STOPPED
  *     using when 88.3 swept it to `text-content-status-error`. Verified before editing: `text-status-
  *     error` appeared ONLY in this comment, nowhere in the component body. The old token is
  *     named here rather than silently dropped, because a docblock that quietly loses a
@@ -55,6 +55,13 @@ export interface FormFieldProps {
   label: string;
   /** Inline error message; when present renders a role="alert" node + flags the control invalid. */
   error?: string;
+  /**
+   * OPTIONAL per-verdict sequence for the error alert (Phase 88.6.1-26). Used ONLY as the `key`
+   * of the alert paragraph: a consumer that bumps it on every verdict gets a fresh alert node, so
+   * an IDENTICAL second verdict is inserted (and announced) again. Omitted = today's render,
+   * byte-identical. Bump it per verdict (a submit attempt, a client-gate press), never per render.
+   */
+  errorKey?: React.Key;
   /** Explicit control id; defaults to the child's own id, else an auto-generated id. */
   htmlFor?: string;
   /** Optional helper/hint content rendered between the control and the error. */
@@ -72,6 +79,7 @@ export interface FormFieldProps {
 export function FormField({
   label,
   error,
+  errorKey,
   htmlFor,
   hint,
   required,
@@ -127,8 +135,17 @@ export function FormField({
           primitive wires; ScheduleForm's and EmailAddressSection's own records are plans
           88.6.1-26 and 88.6.1-13. Converting this to an always-mounted region is a decision, not
           a cleanup. */}
+      {/* DECISION Phase 88.6.1-26 (carry-in, AT-4 R3): `key={errorKey}` re-mounts this paragraph
+          when a consumer bumps a per-verdict sequence, so an IDENTICAL second verdict is inserted
+          again — chosen OVER an internal key that changes on every render that carries an error
+          (plan 88.6.1-15 measured why: when a consumer re-sets the same string React skips the
+          render, so FormField never runs on that press; and keying per render would re-announce
+          the alert on every unrelated re-render of a form showing an error). The prop is
+          OPTIONAL: undefined renders exactly as before. Consumers: ScheduleForm.js passes
+          react-hook-form's `submitCount`; plan 88.6.1-79 wires EmailAddressSection.tsx's two
+          mounts. Removing the key is a decision, not a cleanup. */}
       {error && (
-        <p id={errorId} role="alert" className="text-content-status-error text-xs mt-1">
+        <p key={errorKey} id={errorId} role="alert" className="text-content-status-error text-xs mt-1">
           {error}
         </p>
       )}
