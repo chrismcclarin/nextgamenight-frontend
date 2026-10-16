@@ -282,6 +282,10 @@ describe('FriendInvitePanel — Req 9 migration proof', () => {
 // StatusRegion.test.tsx:20-29 already uses. Presence alone is satisfied by a
 // CONDITIONALLY-mounted region, which is precisely the bug: a screen reader
 // announces a CHANGE to a live region, never the conditional mount of a new one.
+// CORRECTED by 88.6.1-27 (D-42): that rule holds for polite / status regions; an
+// inserted alert region that arrives with its text IS announced. The regions here
+// stay always-mounted for node identity and the one house shape (D-22), and node
+// identity is what these arms pin.
 //
 // The description arm RESOLVES the description from the email <Input> — a
 // focusable element — and reads the text back. An `aria-describedby` attribute
@@ -296,35 +300,61 @@ describe('FriendInvitePanel — error and success are announced (88.6-22)', () =
   const sendButton = () => screen.getByRole('button', { name: 'Send' });
   const errorRegion = () => document.getElementById('invite-email-error');
   const statusRegion = () => document.getElementById('invite-email-status');
+  // 88.6.1-27: the send lane, the action region the Send button names (copy row G2, D-30).
+  const sendLane = () => document.getElementById('invite-email-send-error');
+  const G2 = "We couldn't send that invite. Please try again.";
+  const NETWORK_LINE = "We couldn't reach the server. Check your connection and try again.";
+  const INVALID_EMAIL = "That doesn't look like a valid email address. Check it and try again.";
 
-  it('mounts both live regions EMPTY before anything happens, with no margin', async () => {
+  // 88.6.1-27 arm F (D-22, the house empty shape) — rewritten in place over the 88.6-22 pin
+  // that asserted NO margin while empty. The four email-section regions now carry an
+  // unconditional mt-2 and are out of flow (sr-only) while empty, so the margin costs nothing.
+  it('mounts the four email-section regions EMPTY on the D-22 house shape (sr-only + mt-2), and a success fills the SAME node (88.6.1-27 arm F)', async () => {
     renderPanel();
     await screen.findByRole('heading', { name: 'Invite by Email' });
-    const err = errorRegion();
-    const ok = statusRegion();
-    expect(err).not.toBeNull();
-    expect(ok).not.toBeNull();
-    expect(err).toHaveAttribute('role', 'alert');
-    expect(err).toHaveAttribute('aria-live', 'assertive');
-    expect(err).toHaveAttribute('aria-atomic', 'true');
-    expect(ok).toHaveAttribute('role', 'status');
-    expect(ok).toHaveAttribute('aria-live', 'polite');
-    expect(err).toHaveTextContent('');
-    expect(ok).toHaveTextContent('');
-    // The always-mounted EMPTY region must add no visible space: `mt-2` applies
-    // only when filled (the shipped `<p>` carried it unconditionally).
-    expect(err).not.toHaveClass('mt-2');
-    expect(ok).not.toHaveClass('mt-2');
+    const ids = [
+      ['invite-email-error', 'alert', 'assertive'],
+      ['invite-email-send-error', 'alert', 'assertive'],
+      ['invite-email-status', 'status', 'polite'],
+      ['invite-friend-request-status', 'status', 'polite'],
+    ] as const;
+    for (const [id, role, live] of ids) {
+      const node = document.getElementById(id);
+      expect(node, id).not.toBeNull();
+      expect(node).toHaveAttribute('role', role);
+      expect(node).toHaveAttribute('aria-live', live);
+      expect(node).toHaveAttribute('aria-atomic', 'true');
+      expect(node?.textContent).toBe('');
+      expect(node).toHaveClass('sr-only');
+      expect(node).toHaveClass('mt-2');
+    }
+
+    const before = statusRegion();
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    fireEvent.click(sendButton());
+    await waitFor(() =>
+      expect(statusRegion()).toHaveTextContent('Invite sent to newcomer@example.test')
+    );
+    expect(statusRegion()).toBe(before);
+    expect(statusRegion()).not.toHaveClass('sr-only');
+    expect(statusRegion()).toHaveClass('mt-2');
   });
 
-  it('injects the failure into the SAME assertive node, and the email field resolves it', async () => {
+  // 88.6.1-27 arm A (tracer) — rewritten in place over the 88.6-22 arm that pinned the
+  // register's unknown line in the FIELD lane. A code-less failure is about the SEND, not the
+  // address: it now reads G2 from the send lane, the field stays valid and keeps the address.
+  it('a code-less failure lands G2 in the SEND lane on the same node, leaving the field valid and still holding the address (88.6.1-27 arm A)', async () => {
     const { invitesAPI } = await import('@/lib/api');
     (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(new Error('nope'));
     renderPanel();
     await screen.findByRole('heading', { name: 'Invite by Email' });
 
-    const before = errorRegion();
-    expect(before).toHaveTextContent('');
+    const before = sendLane();
+    expect(before).not.toBeNull();
+    expect(before).toHaveAttribute('role', 'alert');
+    expect(before).toHaveAttribute('aria-live', 'assertive');
+    expect(before?.textContent).toBe('');
+    expect(before).toHaveClass('sr-only');
     // The field carries NO description while there is no error (FormField's contract).
     expect(emailField()).not.toHaveAttribute('aria-describedby');
     expect(emailField()).not.toHaveAttribute('aria-invalid');
@@ -332,24 +362,111 @@ describe('FriendInvitePanel — error and success are announced (88.6-22)', () =
     fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
     fireEvent.click(sendButton());
 
-    await waitFor(() => expect(errorRegion()).not.toHaveTextContent(''));
-    const after = errorRegion();
+    await waitFor(() => expect(sendLane()?.textContent).toBe(G2));
+    const after = sendLane();
     expect(after).toBe(before); // node identity — the region was never remounted
+    expect(after).not.toHaveClass('sr-only');
     expect(after).toHaveClass('mt-2');
     expect(after).toHaveClass('text-content-status-error');
-    // The register's `unknown` line, not an authored 'Failed to …' string.
-    expect(after).toHaveTextContent('Something went wrong. Refresh the page to try again.');
 
-    // RESOLVE the description from the FOCUSABLE control, then read it back.
+    // The field is NOT marked invalid and still holds what was typed.
     const field = emailField();
-    expect(field).toHaveAttribute('aria-invalid', 'true');
-    const describedBy = field.getAttribute('aria-describedby');
-    expect(describedBy).toBe('invite-email-error');
+    expect(field).not.toHaveAttribute('aria-invalid');
+    expect(field).not.toHaveAttribute('aria-describedby');
+    expect(field).toHaveValue('newcomer@example.test');
+    expect(errorRegion()?.textContent).toBe('');
+
+    // RESOLVE the description from the Send button, then read it back.
+    const send = sendButton();
+    const describedBy = send.getAttribute('aria-describedby');
+    expect(describedBy).toBe('invite-email-send-error');
     const described = describedBy!
       .split(' ')
       .map((id) => document.getElementById(id)?.textContent)
       .join(' ');
-    expect(described).toContain('Something went wrong. Refresh the page to try again.');
+    expect(described).toBe(G2);
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/refresh the page/i);
+  });
+
+  // 88.6.1-27 arm B: a CODED non-field failure keeps its register line, in the send lane.
+  it('a coded non-field failure (network) reads its register line from the send lane, and the field stays valid (88.6.1-27 arm B)', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(new ApiError('Network down', 'network', 0));
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() => expect(sendLane()?.textContent).toBe(NETWORK_LINE));
+    expect(emailField()).not.toHaveAttribute('aria-invalid');
+    expect(errorRegion()?.textContent).toBe('');
+  });
+
+  // 88.6.1-27 arm C: a verdict about the typed ADDRESS stays on the field lane.
+  it('a `validation` rejection stays on the field lane and leaves the send lane empty (88.6.1-27 arm C)', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(
+      new ApiError('HTTP error! status: 400', 'validation', 400)
+    );
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    const lane = sendLane();
+
+    fireEvent.change(emailField(), { target: { value: 'bob@gmail' } });
+    fireEvent.click(sendButton());
+
+    // Positive wait first, then the absence synchronously (never inside a waitFor).
+    await waitFor(() => expect(errorRegion()?.textContent).toBe(INVALID_EMAIL));
+    expect(sendLane()).toBe(lane);
+    expect(sendLane()?.textContent).toBe('');
+    expect(sendLane()).toHaveClass('sr-only');
+    expect(emailField()).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  // 88.6.1-27 arm D: typing a new address clears the send lane on the same node.
+  it('typing clears the send lane back to its empty shape on the same node (88.6.1-27 arm D)', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(new Error('nope'));
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(sendLane()?.textContent).toBe(G2));
+    const lane = sendLane();
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer2@example.test' } });
+    expect(sendLane()).toBe(lane);
+    expect(sendLane()?.textContent).toBe('');
+    expect(sendLane()).toHaveClass('sr-only');
+  });
+
+  // 88.6.1-27 arm E (SPEC Edge R8 idempotency, backstop): the same failure twice is a change
+  // the send lane reports twice.
+  it('a repeat code-less failure mutates the same send-lane node again (88.6.1-27 arm E)', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock)
+      .mockRejectedValueOnce(new Error('nope'))
+      .mockRejectedValueOnce(new Error('nope'));
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(sendLane()?.textContent).toBe(G2));
+    const lane = sendLane()!;
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => records.push(...list));
+    observer.observe(lane, { childList: true, characterData: true, subtree: true });
+
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(invitesAPI.sendInvite).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(records.length).toBeGreaterThan(0));
+    await waitFor(() => expect(sendLane()?.textContent).toBe(G2));
+    observer.disconnect();
+    expect(sendLane()).toBe(lane);
   });
 
   // ADDED by plan 88.6-58 task 2 (2026-09-28, /code-adversarial-review 88.6 H3, owner rulings
@@ -426,9 +543,10 @@ describe('FriendInvitePanel — error and success are announced (88.6-22)', () =
     renderPanel();
     const copy = await screen.findByRole('button', { name: 'Copy Invite Link' });
     // Captured BEFORE the copy: the sr-only region is already mounted and empty.
-    const regions = Array.from(document.querySelectorAll('[role="status"].sr-only'));
-    expect(regions).toHaveLength(1);
-    const before = regions[0];
+    // 88.6.1-27: found by its id — the empty D-22 regions are sr-only too now, so the
+    // old sr-only status query no longer finds exactly one.
+    const before = document.getElementById('invite-link-copied-status');
+    expect(before).not.toBeNull();
     expect(before).toHaveTextContent('');
 
     await user.click(copy);
@@ -436,7 +554,7 @@ describe('FriendInvitePanel — error and success are announced (88.6-22)', () =
     await waitFor(() => expect(before).toHaveTextContent('Invite link copied to the clipboard.'));
     // The visible label swap is PRESERVED, not replaced by the announcement.
     expect(screen.getByRole('button', { name: 'Copied!' })).toBeInTheDocument();
-    expect(document.querySelectorAll('[role="status"].sr-only')[0]).toBe(before);
+    expect(document.getElementById('invite-link-copied-status')).toBe(before);
   });
 });
 
@@ -683,10 +801,30 @@ describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4
       target: { value: 'newcomer@example.test' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    // 88.6.1-27 arm G: a code-less failure fills the SEND lane now, not the field lane.
+    await waitFor(() =>
+      expect(document.getElementById('invite-email-send-error')).not.toHaveTextContent('')
+    );
+    let dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+    cleanup();
+
+    // ...and the FIELD lane's errored branch (a `validation` rejection) is audited too.
+    const { ApiError } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(
+      new ApiError('HTTP error! status: 400', 'validation', 400)
+    );
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invite by Email' }), {
+      target: { value: 'bob@gmail' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() =>
       expect(document.getElementById('invite-email-error')).not.toHaveTextContent('')
     );
-    const dialog = screen.getByRole('dialog');
+    dialog = screen.getByRole('dialog');
     expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
