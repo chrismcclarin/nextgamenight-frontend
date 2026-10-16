@@ -1984,6 +1984,21 @@ const REAL_LOCATION = window.location;
 const SECOND_EVENT_ID = '88888888-8888-4888-8888-888888888888';
 const SIGN_IN_LATCH = `ngevent:signinRedirect:${EVENT_ID}`;
 const UNAUTHORIZED = () => new ApiError('Unauthorized', 'unauthorized', 401);
+const FORBIDDEN = () => new ApiError('Access denied', 'forbidden', 403);
+const ACCOUNT_DELETED = () => new ApiError('gone', 'account_deleted', 410);
+// Copy rows E1-E3 (88.6.1-COPY-TABLE.html, straight apostrophes per D-32 R8) and X1, the
+// register's unauthorized line shipped by plan 88.6.1-07. Asserted byte-exactly.
+const NO_ACCESS_TITLE = "You don't have access to this event";
+const NO_ACCESS_DETAIL =
+  "You may be signed in with a different account, or you haven't been invited yet.";
+const EVENT_LOAD_FAILED = "We couldn't load this event";
+const X1_SENTENCE = 'Your session may have expired. Sign in again to continue.';
+
+// The useFetchErrorState.test.tsx idiom: set the document's visibility, then dispatch.
+function fireVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
 
 // C-4: jsdom cannot navigate, so window.location becomes a spy-able stub. Returns the
 // replace spy. The origin fields keep next/link's URL helpers on solid ground.
@@ -2306,5 +2321,208 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
       rsvpProps.current?.onRsvpChange?.('yes');
     });
     expect(await screen.findByLabelText('Bringing a game')).toBeInTheDocument();
+  });
+
+  // ---- Task 2: every other answer the event fetch can get has its own honest screen ----
+
+  it('C1: a 401 with the latch already set (back from sign-in) renders the E3 banner with X1, never a second redirect (AC-2)', async () => {
+    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByText(X1_SENTENCE)).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    // A 401 never clears the latch (review r2 #305): clearing it would rebuild the loop.
+    expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBe('1');
+  });
+
+  it('C2: a latch read that throws fails CLOSED: the banner, never a redirect (P-4)', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage blocked');
+    });
+    try {
+      const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+      renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+      expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+      expect(replace).not.toHaveBeenCalled();
+    } finally {
+      getItem.mockRestore();
+    }
+  });
+
+  it('C3: a latch write that throws fails CLOSED: the banner, never a redirect (P-4)', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage full');
+    });
+    try {
+      const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+      renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+      expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+      expect(replace).not.toHaveBeenCalled();
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
+  it('C4: a successful event load clears the latch', async () => {
+    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBeNull());
+  });
+
+  it('C5: a 403 renders the no-access screen (E1, E2) with Back to Home, no banner, no redirect (AC-3)', async () => {
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    expect(screen.getByText(NO_ACCESS_DETAIL)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Back to Home/ })).toHaveAttribute('href', '/');
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('C6: a 403 on the re-fetch of an event already on screen paints NO event detail (Prohibition 1)', async () => {
+    const { rerender } = renderEventDetail({ eventOverrides: { location: 'The Cafe' } });
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.getByText(/The Cafe/)).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockRejectedValue(FORBIDDEN());
+    h.userSub = 'auth0|other-sub';
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    const text = document.body.textContent ?? '';
+    for (const detail of ['Game Night', 'The Cafe', 'The Group', 'Someone Else']) {
+      expect(text, `"${detail}" must not be on the no-access screen`).not.toContain(detail);
+    }
+  });
+
+  it('C7: back from sign-in (latch set) and the answer is 403: the no-access screen, no second redirect (SPEC adjacency / R1)', async () => {
+    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('C7b: an answer that proves the session (403) clears the latch (review r2 #305)', async () => {
+    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    await waitFor(() => expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBeNull());
+  });
+
+  it('C8: a 404 keeps today\'s words, now as a heading, with the Back link, no banner and no redirect (AC-4)', async () => {
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    renderEventDetail({ getEventRejectsWith: new ApiError('Not found', 'not_found', 404) });
+    expect(await screen.findByText('This event no longer exists or has been cancelled.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Back to Home/ })).toHaveAttribute('href', '/');
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    // The heading half (review r2 #180): the title is found by its heading role.
+    expect(screen.getByRole('heading', { name: 'Event not found' })).toBeInTheDocument();
+  });
+
+  it('C9: a 500 renders the E3 banner with the register line, and Try again loads the event (AC-5)', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ getEventRejectsWith: new ApiError('Server error', 'internal', 500) });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(
+      screen.getByText('Something went wrong on our end. Please try again shortly.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    (eventsAPI.getEvent as Mock).mockResolvedValueOnce(eventFixture());
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(eventsAPI.getEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it('C10: a network failure renders the E3 banner with the register network line (AC-5)', async () => {
+    renderEventDetail({ getEventRejectsWith: new ApiError('Network error', 'network', 0) });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(
+      screen.getByText("We couldn't reach the server. Check your connection and try again.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+  });
+
+  it('C11: a 410 account_deleted holds the loader while the identity recheck is in flight (D-02)', async () => {
+    // The recheck never settles in this test: the goodbye route is under way.
+    h.selfRefetch.mockReturnValue(new Promise(() => {}));
+    renderEventDetail({ getEventRejectsWith: ACCOUNT_DELETED() });
+    await waitFor(() => expect(h.selfRefetch).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  it('C11b: a 410 whose identity recheck settles with no redirect falls through to the E3 banner, never a dead-end loader (review r2 #31)', async () => {
+    h.selfRefetch.mockResolvedValue({});
+    renderEventDetail({ getEventRejectsWith: ACCOUNT_DELETED() });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+  });
+
+  it('C12 (control, P-2): a roster 403 after a good event leaves the event rendered', async () => {
+    renderEventDetail();
+    // renderEventDetail arms getGroupMembers to resolve; the roster is fetched only after the
+    // event resolves, so re-arming it here (synchronously after render) is in time.
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(FORBIDDEN());
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(GROUP_ID));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  it('C13: a DIFFERENT event that fails starts from a clean slate: the banner, never the previous event', async () => {
+    const { rerender } = renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockRejectedValue(new ApiError('Server error', 'internal', 500));
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+  });
+
+  it('C14: a DIFFERENT event drops the previous event\'s role: no owner controls on a roster 403 (review r2 #30)', async () => {
+    const { rerender } = renderEventDetail({ role: 'owner' });
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Edit Event' })).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockResolvedValue(
+      eventFixture({ id: SECOND_EVENT_ID, title: 'Second Night' })
+    );
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(FORBIDDEN());
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledTimes(2));
+    await flushMacrotask();
+    expect(screen.queryByRole('button', { name: 'Edit Event' })).toBeNull();
+    // The kebab TRIGGER, not its Cancel item: an item is not in the DOM until the menu opens
+    // (review r3 L-12), so a Cancel query could never fail.
+    expect(screen.queryByRole('button', { name: 'Event actions' })).toBeNull();
+  });
+
+  it('C15: a final answer (404) does not refetch on refocus; a failure that can change (500) does (review r2 #139)', async () => {
+    try {
+      renderEventDetail({ getEventRejectsWith: new ApiError('Not found', 'not_found', 404) });
+      expect(await screen.findByText('Event not found')).toBeInTheDocument();
+      fireVisibility('visible');
+      await flushMacrotask();
+      expect(eventsAPI.getEvent, '404: refocus must not refetch').toHaveBeenCalledTimes(1);
+      cleanup();
+      vi.clearAllMocks();
+      // The armed side: without it, C15 could pass because no listener exists at all.
+      renderEventDetail({ getEventRejectsWith: new ApiError('Server error', 'internal', 500) });
+      expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+      fireVisibility('visible');
+      await waitFor(() => expect(eventsAPI.getEvent, '500: refocus refetches').toHaveBeenCalledTimes(2));
+    } finally {
+      delete (document as unknown as { visibilityState?: string }).visibilityState;
+    }
   });
 });
