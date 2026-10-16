@@ -168,10 +168,28 @@ export function FriendshipStatusProvider({ children }) {
   // the benign error instead of surfacing a "Failed to accept" toast.
   // Refetches friends afterward (async, non-blocking) to fold the new
   // friend into the friends list and accepted-state tooltips.
+  const reconcileFailedRequest = useCallback(async (friendshipId, err) => {
+    try {
+      const list = await friendshipsAPI.getReceivedRequests();
+      const stillListed = (list || []).some((r) => r.id === friendshipId);
+      if (stillListed) return;
+      setReceivedRequests((prev) => prev.filter((r) => r.id !== friendshipId));
+      loadFriendshipData();
+      // The provider's own record of what it did: the row is gone, whatever the status
+      // code (a 500 can follow a committed accept). The SAME object the handler rethrows
+      // carries it; plan 88.6.1-44's bell arms its focus recovery on it.
+      if (err && typeof err === 'object') err.requestRowRemoved = true;
+    } catch {
+      // Best-effort read: the caller has already received the request's own failure. A
+      // write here (the load-error flag included) would turn every friendship affordance
+      // in the app to 'unknown' because one background read failed, so nothing is written.
+    }
+  }, [loadFriendshipData]);
+
   const handleAcceptRequest = useCallback(async (friendshipId) => {
-    setReceivedRequests((prev) => prev.filter((r) => r.id !== friendshipId));
     try {
       await friendshipsAPI.acceptRequest(friendshipId);
+      setReceivedRequests((prev) => prev.filter((r) => r.id !== friendshipId));
       // Refresh full state in the background — picks up the new friend
       // row + clears any stale received entry on the server side.
       loadFriendshipData();
@@ -179,14 +197,16 @@ export function FriendshipStatusProvider({ children }) {
     } catch (err) {
       const is404 = err?.message?.includes('404') || err?.status === 404;
       if (is404) {
+        setReceivedRequests((prev) => prev.filter((r) => r.id !== friendshipId));
         // Benign stale click — the request was already resolved on another
         // surface. Pull fresh state to reconcile.
         loadFriendshipData();
         return { alreadyAccepted: true };
       }
+      await reconcileFailedRequest(friendshipId, err);
       throw err;
     }
-  }, [loadFriendshipData]);
+  }, [loadFriendshipData, reconcileFailedRequest]);
 
   // POLL-02: decline mirror of handleAcceptRequest. Same stale-404 silencing.
   const handleDeclineRequest = useCallback(async (friendshipId) => {
