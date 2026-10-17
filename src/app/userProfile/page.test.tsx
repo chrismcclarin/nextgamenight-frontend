@@ -567,7 +567,7 @@ describe('userProfile availability settings', () => {
   // The recurring DATE pair had NO client guard of any kind: the server rejects an
   // inverted range with a code-less 400 that renders the generic register copy and
   // discards the form (`routes/availability.js:137`). The TIME pair on the same form
-  // already refuses it with a ratified toast (`userProfile/page.js:1576`,
+  // already refuses it with a ratified toast (`userProfile/page.js:1714`,
   // 88-CODE-REVIEW MED#7) and is deliberately untouched.
   //
   // THIS ASSERTS THE DERIVATION, NOT A DATE. A test that pinned a literal would pass
@@ -586,7 +586,7 @@ describe('userProfile availability settings', () => {
     const endDate = screen.getByLabelText('End Date (Optional)') as HTMLInputElement;
 
     // THE EMPTY-SIBLING CASE, on the control that actually has one. `start_date` seeds to
-    // today (userProfile/page.js:217, HEAT-02 expansion 4) while `end_date` seeds to '', so
+    // today (userProfile/page.js:221, HEAT-02 expansion 4) while `end_date` seeds to '', so
     // it is the START control whose bound must be ABSENT here — not an empty string, which
     // would be a real bound of nothing on a field the user is entitled to leave blank.
     expect(
@@ -4940,5 +4940,194 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
     expect(document.activeElement).not.toBe(document.body);
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+  });
+});
+
+describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const AZUL_RESULT = { bgg_id: 230802, name: 'Azul', year_published: 2017 };
+  const BRASS_RESULT = { bgg_id: 224517, name: 'Brass: Birmingham', year_published: 2018 };
+  const AZUL_ROW = { id: 'game-azul', name: 'Azul', bgg_id: 230802, year_published: 2017, image_url: null };
+  // The pressed Add's name follows its visible label (P7), so a lookup matches both labels.
+  const ADD_NAME = /^(Add to Collection|Adding\.\.\.)$/;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  function addFromBgg() {
+    return screen.getByRole('button', { name: '+ Add from BGG' });
+  }
+
+  function searchFor(query: string) {
+    fireEvent.click(addFromBgg());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: query } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  }
+
+  // The result row's one button, found through the row that names the game (with its year, so a
+  // listed card's heading of the same name never matches).
+  function rowButton(name: RegExp) {
+    return within(screen.getByText(name).closest('div') as HTMLElement).getByRole('button');
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    // clearAllMocks keeps implementations and queued once-values, so reset to the harness defaults.
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    (gamesAPI.importFromBGG as Mock).mockReset().mockResolvedValue({ id: 'game-imported' });
+    (userGamesAPI.addOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+  });
+
+  it('A1: a burst of presses sends one import and one add; the pressed Add reads Adding... and stays aria-disabled', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const imported = deferred<unknown>();
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
+    (gamesAPI.importFromBGG as Mock).mockReturnValueOnce(imported.promise);
+    renderProfile();
+    await screen.findByRole('heading', { name: /^My Game Collection/ });
+
+    searchFor('azul');
+    const add = await screen.findByRole('button', { name: 'Add to Collection' });
+    fireEvent.click(add);
+    await waitFor(() => expect(add).toHaveAttribute('aria-disabled', 'true'));
+    expect(add).not.toBeDisabled();
+    expect(add.isConnected).toBe(true);
+    expect(add.textContent).toBe('Adding...');
+
+    fireEvent.click(add);
+    fireEvent.click(add);
+    expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(1);
+    expect(add).toHaveAttribute('aria-disabled', 'true');
+    expect(add.textContent).toBe('Adding...');
+
+    await act(async () => { imported.resolve({ id: 'game-azul' }); });
+    await waitFor(() => expect(userGamesAPI.addOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-azul'));
+    await act(async () => {});
+    expect(userGamesAPI.addOwnedGame).toHaveBeenCalledTimes(1);
+  });
+
+  it('A2: while an add is in flight its sibling Adds are natively disabled, and Already Owned stays native', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([
+      { id: 'game-catan', name: 'Catan', bgg_id: 13, year_published: 1995, image_url: null },
+    ]);
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT, BRASS_RESULT, { bgg_id: 13, name: 'Catan', year_published: 1995 }]);
+    (gamesAPI.importFromBGG as Mock).mockReturnValueOnce(new Promise(() => {}));
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    searchFor('a');
+    await screen.findByText(/^Brass: Birmingham/);
+    fireEvent.click(rowButton(/^Azul \(2017\)/));
+    await waitFor(() => expect(rowButton(/^Azul \(2017\)/)).toHaveAttribute('aria-disabled', 'true'));
+    const brass = rowButton(/^Brass: Birmingham/);
+    expect(brass).toHaveTextContent('Add to Collection');
+    expect(brass).toBeDisabled();
+    expect(brass).not.toHaveAttribute('aria-disabled');
+    // CONFIRM-ONLY half: the owned game's gate is native today and stays so (rule of KIND).
+    expect(screen.getByRole('button', { name: 'Already Owned' })).toBeDisabled();
+  });
+
+  it('A3: a successful add closes the panel before the refresh and lands focus on + Add from BGG', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValueOnce({ id: 'game-azul' });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    await user.click(addFromBgg());
+    await user.type(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), 'azul');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    await user.click(await screen.findByRole('button', { name: ADD_NAME }));
+
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2); // the refresh is still held
+    expect(toastMock().success).not.toHaveBeenCalledWith('Game added');
+
+    await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game added'));
+    expect(toastMock().success).toHaveBeenCalledTimes(1);
+  });
+
+  it('A4: a failed add releases the latch and the label; toast and diagnostic unchanged', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
+    (userGamesAPI.addOwnedGame as Mock).mockRejectedValueOnce(new Error('boom'));
+    renderProfile();
+    await screen.findByRole('heading', { name: /^My Game Collection/ });
+
+    searchFor('azul');
+    fireEvent.click(await screen.findByRole('button', { name: ADD_NAME }));
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith("We couldn't add that game. Please try again.")
+    );
+    expect(loggerMock().info).toHaveBeenCalledWith('Error adding game to collection:', expect.any(Object));
+    const add = screen.getByRole('button', { name: ADD_NAME });
+    await waitFor(() => expect(add.textContent).toBe('Add to Collection'));
+    expect(add).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('textbox', { name: 'Search BoardGameGeek' })).toBeInTheDocument();
+
+    fireEvent.click(add);
+    await waitFor(() => expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(2));
+  });
+
+  it('A5: one focus instance serves Remove and Add, the latch exists, and P7 ships with three ASCII full stops', async () => {
+    const src = await pageSource();
+    // CODE lines only: a comment that names the arm call is not a second call site.
+    const code = src
+      .split('\n')
+      .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+      .join('\n');
+    const count = (text: string, needle: string) => text.split(needle).length - 1;
+    expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current })')).toBe(2);
+    expect(src).toContain('addGameInFlightRef');
+    expect(count(src, "const ADDING_TO_COLLECTION_LABEL = 'Adding...';")).toBe(1);
+    expect(src).not.toContain('Adding…');
+  });
+
+  it('A6: the latch is released at the add\'s confirmation and the added game reads as owned before the refresh lands', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT, BRASS_RESULT]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValueOnce({ id: 'game-azul' });
+    (userGamesAPI.addOwnedGame as Mock).mockResolvedValueOnce({ message: 'Game added to your collection', game: AZUL_ROW });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    searchFor('azul');
+    await screen.findByText(/^Brass: Birmingham/);
+    const azulAdd = rowButton(/^Azul \(2017\)/);
+    act(() => { azulAdd.focus(); });
+    fireEvent.click(azulAdd);
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+
+    // The refresh is still held: reopen the search.
+    searchFor('azul');
+    await screen.findByText(/^Brass: Birmingham/);
+    const brass = rowButton(/^Brass: Birmingham/);
+    expect(brass).toHaveTextContent('Add to Collection');
+    expect(brass).not.toBeDisabled();
+    expect(brass).not.toHaveAttribute('aria-disabled');
+    const azul = rowButton(/^Azul \(2017\)/);
+    expect(azul).toHaveTextContent('Already Owned');
+    expect(azul).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Remove Azul' })).toBeInTheDocument();
+    expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2);
+
+    await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
+    expect(screen.getAllByRole('button', { name: 'Remove Azul' })).toHaveLength(1);
   });
 });

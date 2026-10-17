@@ -135,6 +135,8 @@ const DEFAULT_PREFERENCES = {
 const VERIFY_CODE_IN_FLIGHT_LABEL = 'Verifying...';
 // Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title.
 const COLLECTION_LOAD_FAILED_TITLE = "Couldn't load your collection";
+// Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; three ASCII full stops): the pressed Add to Collection's in-flight label.
+const ADDING_TO_COLLECTION_LABEL = 'Adding...';
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -351,6 +353,9 @@ function Profile(){
     // Plan 88.6.1-67 (Req 5): Remove and Add to Collection land focus on `+ Add from BGG`, else this
     // card's heading — plan 60's two refs, a second consumer of them, never a second ref.
     const collectionRecovery = useFocusRecovery({ fallback: collectionHeadingRef });
+    // Plan 88.6.1-67 (D-35): the Add to Collection latch and the `bgg_id` of the add in flight.
+    const addGameInFlightRef = useRef(false);
+    const [addingBggId, setAddingBggId] = useState(null);
     const bggUsernameFieldRef = useRef(null);
     const importPromptOpenRef = useRef(false);
     // D-44 (88.6.1-60): the search panel's id, named by its toggle's aria-controls while it exists.
@@ -1512,11 +1517,16 @@ function Profile(){
     };
 
     const addGameToCollection = async (game_id) => {
+        // D-35 (88.6.1-67): the in-flight refusal, synchronous and FIRST — see
+        // `DECISION Phase 88.6.1-67 (D-35, Add to Collection)` at the Add button.
+        if (addGameInFlightRef.current) return;
         if (!user?.sub) return;
         if (!selfUuid) {
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
+        addGameInFlightRef.current = true;
+        setAddingBggId(game_id);
         try {
             // If game_id is a BGG ID, import it first
             let gameId = game_id;
@@ -1526,14 +1536,43 @@ function Profile(){
                 gameId = importedGame.id;
             }
             
-            await userGamesAPI.addOwnedGame(selfUuid, gameId);
-            await fetchOwnedGames();
+            const added = await userGamesAPI.addOwnedGame(selfUuid, gameId);
+            const settle = collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current });
+            /* Part of `DECISION Phase 88.6.1-67 (D-35, Add to Collection)` (at the Add button).
+               At the add's CONFIRMATION, before the refresh:
+               - the answer's `game` row joins the list (D-54's rule, as Remove; finding #75), placed
+                 by name as the GET orders it, and skipped when that id is already listed (the BE
+                 answers the same shape for a game already in the collection); an answer with no row
+                 appends nothing and the refresh brings it. Without it the just-added game read
+                 addable again in a reopened search until the refresh landed, and was missing from
+                 the list kept under RF1 when that refresh failed (findings #75 / #74);
+               - the panel closes BEFORE the refresh, chosen OVER the old refresh-then-close: the
+                 refreshed list flips the pressed button to its native `isAlreadyOwned` disable, and
+                 in a real browser a natively disabled focused button loses focus while still in the
+                 document, which the shared hook reads as the user having moved on and does not
+                 recover (plan 88.6.1-04's consumer contract, item 3). Closing first removes the
+                 pressed button while it is still focusable — the one signal the hook acts on;
+               - the latch is released HERE, not after the refresh: holding it through the refresh
+                 left every Add in a reopened search natively disabled, with no reason given, for the
+                 length of a slow GET (finding #75). */
+            const addedRow = added?.game;
+            if (addedRow?.id) {
+                setOwnedGames((games) => (
+                    games.some((game) => game.id === addedRow.id)
+                        ? games
+                        : [...games, addedRow].sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
+                ));
+            }
             setShowBggSearch(false);
             setBggSearchQuery('');
             setBggSearchResults([]);
+            addGameInFlightRef.current = false;
+            setAddingBggId(null);
+            await fetchOwnedGames();
             // Req 12: this mutation closes the search panel it was started from, so
             // without a receipt the only feedback is a panel vanishing.
             toast.success('Game added');
+            settle();
         } catch (error) {
             logger.info('Error adding game to collection:', errCtx(error));
             toast.error(
@@ -1541,6 +1580,10 @@ function Profile(){
                     fallback: "We couldn't add that game. Please try again.",
                 })
             );
+        } finally {
+            // Released in `finally` too, so a FAILED add does not strand the control.
+            addGameInFlightRef.current = false;
+            setAddingBggId(null);
         }
     };
 
@@ -3351,7 +3394,7 @@ function Profile(){
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1576` (recurring) and `:1671`
+                                            `userProfile/page.js:1714` (recurring) and `:1809`
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
@@ -3888,19 +3931,45 @@ function Profile(){
                                 <div className="max-h-60 overflow-y-auto space-y-2">
                                     {bggSearchResults.map((result) => {
                                         const isAlreadyOwned = ownedGames.some(g => g.bgg_id === result.bgg_id);
+                                        const isAddingThis = addingBggId === result.bgg_id;
                                         return (
                                             <div key={result.bgg_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-surface-card border border-line rounded-btn">
                                                 <span className="text-base text-content-primary wrap-break-word flex-1 min-w-0">
                                                     {result.name} {result.year_published ? `(${result.year_published})` : ''}
                                                 </span>
+                                                {/* DECISION Phase 88.6.1-67 (D-35, Add to Collection):
+                                                    CHOSEN: rule of POSITION (`DECISION Phase 88.6-22`; the
+                                                    in-house list shape in BallotSection.js) — the pressed Add
+                                                    carries aria-disabled plus ONE `addGameInFlightRef` refusal
+                                                    as `addGameToCollection`'s first statement; sibling Adds are
+                                                    natively disabled until the add is confirmed (nobody is
+                                                    standing on them); the latch is released at that
+                                                    confirmation, not after the refresh (finding #75);
+                                                    `isAlreadyOwned` stays native (rule of KIND — a validity gate
+                                                    on a control nobody pressed).
+                                                    WHY: there was no in-flight guard at all; a double tap sent
+                                                    two imports and two adds and toasted twice.
+                                                    LABEL: `Adding...` while in flight (copy row P7,
+                                                    owner-ratified 2026-10-05); the name follows the visible
+                                                    label. Swept: no unit test or e2e spec looked this button up
+                                                    by name before this plan.
+                                                    REJECTED: (a) native `disabled` on the pressed button (it
+                                                    drops focus in a real browser); (b) a per-game latch letting
+                                                    two different adds race (the panel closes on the first
+                                                    success, so a second press lands on a list about to vanish).
+                                                    DISCLOSED visible delta: the pressed Add shows the gated
+                                                    primary pair, its siblings the 50% wash, for the length of an
+                                                    add. Dropping either half of the pair, or restoring
+                                                    refresh-then-close, is a decision, not a cleanup. */}
                                                 <Button
                                                     variant="primary"
                                                     type="button"
                                                     onClick={() => addGameToCollection(result.bgg_id)}
-                                                    disabled={isAlreadyOwned}
+                                                    disabled={isAlreadyOwned || (addingBggId !== null && !isAddingThis)}
+                                                    aria-disabled={isAddingThis ? 'true' : undefined}
                                                     className="whitespace-nowrap shrink-0"
                                                 >
-                                                    {isAlreadyOwned ? 'Already Owned' : 'Add to Collection'}
+                                                    {isAlreadyOwned ? 'Already Owned' : isAddingThis ? ADDING_TO_COLLECTION_LABEL : 'Add to Collection'}
                                                 </Button>
                                             </div>
                                         );

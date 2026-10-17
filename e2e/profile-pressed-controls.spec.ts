@@ -52,7 +52,7 @@ import { expectFocusRingClearOfText } from './support/ringGeometry';
 
 // In the 555-01xx fictional range, so it is never a real person's phone, and it still passes the
 // page's own check (`parsePhoneNumber(value, 'US')` then `isValid()`,
-// `src/app/userProfile/page.js:653-654`; `isValid()` is true for this value, run 2026-10-11 and
+// `src/app/userProfile/page.js:670-671`; `isValid()` is true for this value, run 2026-10-11 and
 // again 2026-10-15).
 const FAKE_PHONE = '(201) 555-0123';
 const FAKE_CODE = '123456';
@@ -1214,5 +1214,56 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await expect(collection.getByText(RF1)).toHaveCount(0, { timeout: 15_000 });
     await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
     await expect(collection.getByRole('heading', { level: 2, name: 'My Game Collection (1)' })).toBeFocused();
+  });
+  test('Add to Collection reads Adding..., refuses a second press, then lands on + Add from BGG', async ({ page }) => {
+    const THREE = { id: 'e2e-game-three', name: 'E2E Meeple Three', bgg_id: 990201, year_published: 2003, image_url: null };
+    let owned: unknown[] = [ONE];
+    // The owned-games read and the BGG search are answered in the browser (CI never calls
+    // BoardGameGeek); both POSTs are held by the shared hold and answered in the browser.
+    const hold = await holdWrites(page, {
+      answerGet: (url) => {
+        if (OWNED_GAMES_PATH.test(url.pathname)) return owned;
+        if (SEARCH_PATH.test(url.pathname)) return [{ bgg_id: 990201, name: 'E2E Meeple Three', year_published: 2003 }];
+        return undefined;
+      },
+    });
+    backstop = hold;
+    const imp = await holdUntilReleased(page, 'POST', /\/games\/import-bgg\/990201$/);
+    const add = await holdUntilReleased(page, 'POST', /\/user-games\/user\/[^/]+\/game\/e2e-game-three$/);
+    await page.goto('/userProfile');
+
+    const toggle = page.getByRole('button', { name: '+ Add from BGG' });
+    await expect(toggle).toBeVisible({ timeout: 15_000 });
+    await toggle.click();
+    const field = page.getByRole('textbox', { name: 'Search BoardGameGeek' });
+    await field.fill('meeple');
+    await field.press('Enter');
+    await expect(page.getByText('E2E Meeple Three (2003)')).toBeVisible({ timeout: 15_000 });
+
+    const addBtn = page.getByRole('button', { name: /^(Add to Collection|Adding\.\.\.)$/ });
+    await focusByKeyboard(page, addBtn);
+    await page.keyboard.press('Enter');
+    await imp.arrived;
+    await expect(addBtn).toBeFocused();
+    await expect(addBtn).toHaveAttribute('aria-disabled', 'true');
+    await expect(addBtn).not.toHaveAttribute('disabled');
+    await expect(addBtn).toHaveText('Adding...');
+    await expectGatedPair(page, addBtn, 'primary', 'dark');
+
+    await page.keyboard.press('Enter');
+    await twoFrames(page);
+    expect(imp.count()).toBe(1);
+
+    await imp.release({ id: 'e2e-game-three', name: 'E2E Meeple Three', bgg_id: 990201 });
+    await add.arrived;
+    expect(add.count()).toBe(1);
+    owned = [ONE, THREE];
+    // The BE's answer shape (`{ message, game }`), so the confirmation append runs in the browser too.
+    await add.release({ message: 'Game added to your collection', game: THREE });
+
+    await expect(toggle).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Remove E2E Meeple Three' })).toBeVisible({ timeout: 15_000 });
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow on the collection card').toBe(true);
   });
 });
