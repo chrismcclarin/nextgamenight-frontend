@@ -38,6 +38,11 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   }),
 }));
 
+// Plan 88.6.1-81: the two toast channels createEvent.js calls (success and error), spied so an arm
+// can count receipts. The EventDayModal.test.tsx idiom (hoisted spies, a factory that returns them).
+const toastSpies = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { success: toastSpies.success, error: toastSpies.error } }));
+
 vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York', browserTimezone: 'America/New_York' }),
 }));
@@ -71,7 +76,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import CreateEventDefault from './createEvent';
-import { eventsAPI } from '@/lib/api';
+import { eventsAPI, groupsAPI } from '@/lib/api';
 import { toast } from 'sonner';
 
 // createEvent is a JS component whose inferred prop types come from its defaults
@@ -95,18 +100,22 @@ function rowCount(): number {
   return screen.getAllByLabelText('Score').length;
 }
 
-async function renderModal() {
-  const view = render(
-    <CreateEvent
-      group_id="group-1"
-      modal
-      modaltoggle={vi.fn()}
-      onEventCreated={vi.fn()}
-      user={{ sub: 'auth0|self' }}
-      hideVisualCalendar
-      userRole="owner"
-    />
-  );
+/** The props every arm renders with. One object per test, so a rerender passes the SAME
+ *  `modaltoggle` and `onEventCreated` spies (plan 88.6.1-81). */
+function baseProps(): Record<string, unknown> {
+  return {
+    group_id: 'group-1',
+    modal: true,
+    modaltoggle: vi.fn(),
+    onEventCreated: vi.fn(),
+    user: { sub: 'auth0|self' },
+    hideVisualCalendar: true,
+    userRole: 'owner',
+  };
+}
+
+async function renderModal(override: Record<string, unknown> = {}) {
+  const view = render(<CreateEvent {...baseProps()} {...override} />);
   // The member rows arrive with the group-members fetch.
   await screen.findByText('Alice');
   return view;
@@ -385,5 +394,151 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     release({});
     await waitFor(() => expect(submitButton()).toHaveAccessibleName('Update Event'));
     expect(submitButton()).not.toHaveAttribute('aria-disabled');
+  });
+});
+
+// Plan 88.6.1-81. A create can outlive its dialog: the dialog stays closable mid-create (owner
+// ruling, D-55 (b)), so the person can close it and open it again while the first request is still
+// running. These arms pin what createEvent.js does then. groupHomePage and groupPlanning keep the
+// SAME instance mounted (closing only hides it), so S1-S3 close and reopen through a rerender; the
+// gameDetail hosts mount a FRESH instance per open, which F1-F4 drive with an unmount and a second
+// render. Every held request is settled before its test ends, because a held entry would otherwise
+// outlive the test.
+describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog session, one payload in flight)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  type View = ReturnType<typeof render>;
+
+  function holdOnce(fn: unknown) {
+    let settle: { resolve: (v: unknown) => void; reject: (e: unknown) => void } = {
+      resolve: () => {},
+      reject: () => {},
+    };
+    (fn as Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve, reject) => {
+          settle = { resolve, reject };
+        })
+    );
+    return {
+      resolve: (v: unknown = {}) => settle.resolve(v),
+      reject: (e: unknown) => settle.reject(e),
+    };
+  }
+
+  function submitButton(): HTMLElement {
+    return screen.getByTestId('create-event-submit');
+  }
+
+  function submitForm() {
+    fireEvent.submit(submitButton().closest('form') as HTMLFormElement);
+  }
+
+  function comments(): HTMLTextAreaElement {
+    return screen.getByLabelText('Comments') as HTMLTextAreaElement;
+  }
+
+  // Let every pending promise continuation and the React commit it schedules run.
+  async function flush() {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
+
+  // Close the dialog, then open it again, as an always-mounted host does (`modal` false, then true).
+  // The reopen re-runs the members fetch, which rebuilds the create form; wait for that rebuild to
+  // land before typing, or it would overwrite what the arm types.
+  async function closeAndReopen(view: View, props: Record<string, unknown>) {
+    const fetchesBefore = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    view.rerender(<CreateEvent {...props} modal={false} />);
+    view.rerender(<CreateEvent {...props} modal />);
+    await waitFor(() =>
+      expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(fetchesBefore + 1)
+    );
+    await screen.findByText('Alice');
+    await flush();
+  }
+
+  function expectLiveCreate() {
+    expect(submitButton()).toHaveAccessibleName('Create Event');
+    expect(submitButton()).not.toHaveAttribute('aria-disabled');
+  }
+
+  it('S1: a create that settles after a close and a reopen leaves the reopened dialog, its typed text and its button alone', async () => {
+    const first = holdOnce(eventsAPI.createEvent);
+    const props = baseProps();
+    const view = await renderModal(props);
+    submitForm();
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
+
+    await closeAndReopen(view, props);
+    // A fresh session: the reopened button carries no press it never had.
+    expectLiveCreate();
+    fireEvent.change(comments(), { target: { value: 'second session' } });
+
+    first.resolve({ id: 'evt-1' });
+    // Positive signals first: the host refresh and the receipt still happen for the late create.
+    await waitFor(() => expect(props.onEventCreated).toHaveBeenCalledTimes(1));
+    expect(props.onEventCreated).toHaveBeenCalledWith({ id: 'evt-1' });
+    expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    expect(toastSpies.success).toHaveBeenCalledWith('Event created');
+    await flush();
+    // Then the absences: the reopened dialog is not closed, wiped or latched.
+    expect(props.modaltoggle).not.toHaveBeenCalled();
+    expect(comments().value).toBe('second session');
+    expectLiveCreate();
+  });
+
+  it('S2: a create that settles after the dialog closed (and was not reopened) does not close it a second time; a later open starts live', async () => {
+    const first = holdOnce(eventsAPI.createEvent);
+    const props = baseProps();
+    const view = await renderModal(props);
+    submitForm();
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
+
+    view.rerender(<CreateEvent {...props} modal={false} />);
+    first.resolve({ id: 'evt-1' });
+    await waitFor(() => expect(props.onEventCreated).toHaveBeenCalledTimes(1));
+    expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    await flush();
+    // The person's own close already ran the host's close; a second call is what closes a
+    // reopened dialog.
+    expect(props.modaltoggle).not.toHaveBeenCalled();
+
+    view.rerender(<CreateEvent {...props} modal />);
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledTimes(2));
+    await screen.findByText('Alice');
+    await flush();
+    expectLiveCreate();
+  });
+
+  it('S3: a different event created from the reopened dialog is sent; the old request neither releases nor closes the new one', async () => {
+    const first = holdOnce(eventsAPI.createEvent);
+    const props = baseProps();
+    const view = await renderModal(props);
+    submitForm();
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
+
+    await closeAndReopen(view, props);
+    fireEvent.change(comments(), { target: { value: 'second session' } });
+    const second = holdOnce(eventsAPI.createEvent);
+    submitForm();
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
+    // Session 2's own press.
+    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
+
+    first.resolve({ id: 'evt-1' });
+    await waitFor(() => expect(props.onEventCreated).toHaveBeenCalledTimes(1));
+    await flush();
+    // The stale request released nothing and closed nothing.
+    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(props.modaltoggle).not.toHaveBeenCalled();
+
+    second.resolve({ id: 'evt-2' });
+    // Session 2's own success closes its own dialog.
+    await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
+    expect(toastSpies.success).toHaveBeenCalledTimes(2);
+    expect(props.onEventCreated).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,5 +1,7 @@
 import { test, expect, type Locator, type Route, type Page } from '@playwright/test';
 
+import { settleAnimations } from './support/inFlight';
+
 // Phase 88.6.1 plan 26 — a second press while a form is working changes nothing, proven in a real
 // browser at the phone project's 375 x 667 (and in journeys).
 //
@@ -58,6 +60,24 @@ async function expectPhoneBox(page: Page, locator: Locator, what: string) {
   expect(box!.height).toBeGreaterThanOrEqual(44);
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+}
+
+/**
+ * Fill an already-open Create Event dialog with the existing journey's values
+ * (e2e/create-event.spec.ts), so no new game is minted. The ONE copy of these steps in this spec
+ * (plan 88.6.1-81 factored them out of plan 26's E2E C1; R1 fills with them twice). The dialog keeps
+ * its date-entry mode across a close and a reopen of the same instance, so the switch to manual
+ * entry is pressed only while the toggle still offers it.
+ */
+async function fillCreateEvent(page: Page) {
+  const gameName = process.env.E2E_GAME_NAME ?? 'Catan';
+  await page.getByPlaceholder('Search for a game or type a name').fill(gameName);
+  const modeToggle = page.getByRole('button', { name: /switch to (manual entry|visual calendar)/i });
+  await expect(modeToggle).toBeVisible();
+  if (/manual entry/i.test((await modeToggle.textContent()) ?? '')) await modeToggle.click();
+  const start = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  await page.getByLabel(/start date & time/i).fill(`${start.toISOString().slice(0, 10)}T19:00`);
+  await page.getByPlaceholder(/enter duration in minutes/i).fill('120');
 }
 
 test.describe('Availability form — a second press while submitting changes nothing (AC-12)', () => {
@@ -178,14 +198,7 @@ test.describe('Create Event — a second press while creating changes nothing (D
     await page.goto(`/groupHomePage?id=${groupId}`);
     await page.getByRole('button', { name: /add new game event/i }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
-
-    // The existing journey's values (e2e/create-event.spec.ts), so no new game is minted.
-    const gameName = process.env.E2E_GAME_NAME ?? 'Catan';
-    await page.getByPlaceholder('Search for a game or type a name').fill(gameName);
-    await page.getByRole('button', { name: /switch to manual entry/i }).click();
-    const start = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-    await page.getByLabel(/start date & time/i).fill(`${start.toISOString().slice(0, 10)}T19:00`);
-    await page.getByPlaceholder(/enter duration in minutes/i).fill('120');
+    await fillCreateEvent(page);
 
     // Found by test id: the accessible name changes mid-flight (copy row C7), the test id does not.
     const submit = page.getByTestId('create-event-submit');
@@ -210,6 +223,67 @@ test.describe('Create Event — a second press while creating changes nothing (D
     await expect(submit).toHaveAccessibleName('Create Event');
     await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
     await expect(submit).toBeFocused();
+    expect(create.count()).toBe(1);
+  });
+});
+
+// Plan 88.6.1-81 (E2E R1, Edge R11 concurrency, the real-browser half). groupHomePage keeps the SAME
+// Create Event instance mounted, so a close and a reopen bring back that instance. A create is
+// held mid-flight, the dialog is closed with Escape (closable mid-create, D-55 (b)) and opened
+// again: the reopened submit is live, and the held request's later FAILURE leaves the reopened
+// dialog open. NOTHING IS WRITTEN: the only POST to /api/events is held and then aborted. The
+// SUCCESS path is not driven here (groupHomePage's refresh is plan 88.6.1-55's; plan 88.6.1-68's
+// E2E R3 drives it); the jsdom arms S1-S3 pin it.
+test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', () => {
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('closing mid-create and reopening gives a live submit, and the held create failing later leaves the reopened dialog open', async ({
+    page,
+  }) => {
+    const groupId = process.env.E2E_GROUP_ID ?? '1';
+    // `POST /api/events` exactly, as in C1; everything else continues.
+    const create = await holdRequests(page, (url) => url.pathname === '/api/events', 'POST');
+
+    await page.goto(`/groupHomePage?id=${groupId}`);
+    const openDialog = page.getByRole('button', { name: /add new game event/i });
+    const heading = page.getByRole('heading', { name: /create event/i });
+    await openDialog.click();
+    await expect(heading).toBeVisible();
+    await fillCreateEvent(page);
+
+    const submit = page.getByTestId('create-event-submit');
+    await submit.click();
+    await create.firstSeen;
+    await expect(submit).toHaveAccessibleName('Creating...');
+
+    // Close mid-create, then reopen. The reopen re-runs the members read (`GET /api/groups/<id>/users`),
+    // which rebuilds the form; wait for it so nothing below races that rebuild.
+    await page.keyboard.press('Escape');
+    await expect(heading).toBeHidden();
+    const membersReloaded = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && /^\/api\/groups\/[^/]+\/users$/.test(new URL(response.url()).pathname),
+    );
+    await openDialog.click();
+    await expect(heading).toBeVisible();
+    await membersReloaded;
+    await settleAnimations(page.getByRole('dialog'));
+
+    // A fresh session: no press it never had.
+    await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(submit).toHaveAccessibleName('Create Event');
+    await expectPhoneBox(page, submit, 'the reopened Create Event submit');
+
+    // The held create fails. Positive signal first (the request failed), then the absences.
+    const createFailed = page.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/api/events');
+    await create.abortAll();
+    await createFailed;
+    await page.waitForTimeout(500);
+    await expect(heading).toBeVisible();
+    await expect(submit).toHaveAccessibleName('Create Event');
+    await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
     expect(create.count()).toBe(1);
   });
 });
