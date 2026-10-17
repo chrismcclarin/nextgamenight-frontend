@@ -1276,6 +1276,8 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // itself is BYTE-UNCHANGED — `headingLevel={rowHeadingLevel}` is the same expression on
       // the same `EventRow` call site. What moved it is this plan's marker appends higher up
       // the file, not an edit to the seam.
+      // Re-pointed again by plan 88.6.1-62: `:1064` -> `:1069`; the seam is byte-unchanged, and
+      // the five lines above it are that plan's optional `busy` prop and its scroll-region attribute.
       //
       // SECOND ENTRY ADDED by plan 88.6-36 task 1 (wave 7, 2026-09-16), and it is a SEEN
       // consequence rather than an absorbed one — the docblock's own instruction. `EmptyState`'s
@@ -1299,7 +1301,7 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // Raising the floor by two would have RED the floor assertion, which is the honest outcome — do
       // not "fix" that by resolving the expression (see `PROP_SEAM_EXPRESSION`).
     ).toEqual([
-      'app/components/CalendarListView.js:1064',
+      'app/components/CalendarListView.js:1069',
       'components/ui/EmptyState.tsx:179',
     ]);
   });

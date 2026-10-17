@@ -1,4 +1,4 @@
-import { test, expect, type Route } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Request, type Route } from '@playwright/test';
 
 import { E2E_GROUP_ID } from './support/groupSettings';
 import { expectNoApiWrites, holdWrites, settleAnimations } from './support/inFlight';
@@ -40,6 +40,41 @@ import { expectNoApiWrites, holdWrites, settleAnimations } from './support/inFli
 const isGroupsListRead = (url: URL) => url.pathname.includes('/groups/user/');
 const isSettingsWrite = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/settings`);
 
+/**
+ * Plan 88.6.1-41's drive, extracted by plan 88.6.1-62 so its phone test reuses it (no second
+ * copy). The seeded owner's group card (Weekend Warriors, the group the fixture emits as
+ * E2E_GROUP_ID) and its gear, each with a count-1 vacuity guard.
+ */
+async function homeGroupGear(page: Page): Promise<{ card: Locator; gear: Locator }> {
+  const card = page
+    .getByTestId('group-card')
+    .filter({ has: page.getByText('Weekend Warriors', { exact: true }) });
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  // Vacuity guards: exactly one card and one gear, or every later assertion is about nothing.
+  await expect(card).toHaveCount(1);
+  const gear = card.getByRole('button', { name: /^Customize\b/ });
+  await expect(gear).toHaveCount(1);
+  return { card, gear };
+}
+
+/**
+ * Saves the group's settings through the gear, keyboard-first. The PUT is fulfilled IN THE
+ * BROWSER with a minimal body and never leaves it (the save reads only `color_preset`).
+ */
+async function saveSettingsVia(page: Page, gear: Locator): Promise<void> {
+  await page.route(isSettingsWrite, async (route) => {
+    if (route.request().method() !== 'PUT') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({ status: 200, json: { id: E2E_GROUP_ID, color_preset: null } });
+  });
+  await gear.focus();
+  await gear.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Customize Group' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save Changes' }).click();
+}
+
 test.describe('Phase 88.6.1-41 — the home group list refreshes in place (phone project)', () => {
   // Same phone-only guard idiom as group-settings-danger.spec.ts: both projects match every
   // spec, and this is a phone-tenet proof measured at 375px.
@@ -50,25 +85,9 @@ test.describe('Phase 88.6.1-41 — the home group list refreshes in place (phone
   }) => {
     await page.goto('/');
 
-    // The seeded owner's group (Weekend Warriors, the group the fixture emits as E2E_GROUP_ID).
-    const card = page
-      .getByTestId('group-card')
-      .filter({ has: page.getByText('Weekend Warriors', { exact: true }) });
-    await expect(card).toBeVisible({ timeout: 15_000 });
-    // Vacuity guards: exactly one card and one gear, or every later assertion is about nothing.
-    await expect(card).toHaveCount(1);
-    const gear = card.getByRole('button', { name: /^Customize\b/ });
-    await expect(gear).toHaveCount(1);
+    const { card, gear } = await homeGroupGear(page);
 
     // Installed only now, so the first load is never held.
-    await page.route(isSettingsWrite, async (route) => {
-      if (route.request().method() !== 'PUT') {
-        await route.continue();
-        return;
-      }
-      // Fulfilled in the browser: the save reads only `color_preset` from the response.
-      await route.fulfill({ status: 200, json: { id: E2E_GROUP_ID, color_preset: null } });
-    });
     const held: Route[] = [];
     let released = false;
     await page.route(isGroupsListRead, async (route) => {
@@ -82,11 +101,8 @@ test.describe('Phase 88.6.1-41 — the home group list refreshes in place (phone
       isGroupsListRead(new URL(request.url())),
     );
 
-    await gear.focus();
-    await gear.press('Enter');
+    await saveSettingsVia(page, gear);
     const settingsHeading = page.getByRole('heading', { name: 'Customize Group' });
-    await expect(settingsHeading).toBeVisible();
-    await page.getByRole('button', { name: 'Save Changes' }).click();
 
     // POSITIVE signal: the refresh after the save has started (and is held).
     await listReadStarted;
@@ -210,6 +226,187 @@ test.describe('Phase 88.6.1-41 — the home group list refreshes in place (phone
       await expect(card).toBeVisible();
       expectNoApiWrites(hold);
     } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
+
+  /**
+   * Phase 88.6.1-62 (Req 9, D-09a / D-37 / D-41; RF1 / D-51; 88.6.1-70 contract C8 d and f1 / C12)
+   * — the home page's upcoming events through a real settings save, at 375px.
+   *
+   * WHAT IT PROVES, in a real browser at phone width:
+   * - D-09a / D-37: while the refresh after a save is held, the Calendar button keeps its count
+   *   (`Calendar, 1 upcoming game this week`) instead of dropping to the bare `Calendar`;
+   * - after a failed refresh (a synthetic 500) the button makes no count claim, and — owner ruling
+   *   #229, accepted limitation — no status region outside the CLOSED sheet carries the RF1
+   *   sentence (CONFIRM-ONLY: green before this plan and after it);
+   * - C8 d: in the Calendar sheet the RF1 notice sits ABOVE the retained event, its Retry is inside
+   *   the viewport and at least 44 by 44, the full banner and the hero are absent, and nothing
+   *   scrolls sideways;
+   * - C8 f1 / C12 (step 7): with the event's row focused, an automatic re-attempt nobody pressed
+   *   (the tab-return `visibilitychange`) is answered 403 — the event is withdrawn behind
+   *   `We couldn't load your calendar` and focus lands on the sheet's `Calendar` title, never
+   *   `<body>` (the card's heading is display:none here, and the guard passes no target while the
+   *   sheet is open, r2 #225).
+   *
+   * NO WRITE LEAVES THE BROWSER: the settings PUT is fulfilled by `saveSettingsVia`, and every
+   * upcoming-events GET this page makes is answered by the test (a 200 with one synthetic event,
+   * then synthetic 500s, then 403s). The desktop calendar's own read (`include_rsvp_summary`) and
+   * the group-list reads are handed on untouched. No screenshot or attachment (DECISION 88.6-59),
+   * and no response body is printed.
+   *
+   * CI-RUN ONLY (no local `.auth`, FE-TESTING-CONVENTIONS C-14): typechecked and listed locally.
+   * A failed layout assertion (step 6) is a STOP for the owner's mockup, never a restyle; a red in
+   * step 7 is a defect in the guard path, never a restyle.
+   */
+  test('a settings save keeps the upcoming count, and a failed refresh keeps the event under the RF1 notice (88.6.1-62)', async ({
+    page,
+  }) => {
+    // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE), written once here (contract C7).
+    const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+    const GAME = 'Refresh Check Game';
+    const isPageEventsRead = (url: URL) =>
+      url.pathname.includes('/events/user/') && !url.searchParams.has('include_rsvp_summary');
+
+    // Step 1: every page upcoming-events GET is answered here. Before the save: a 200 with one
+    // synthetic in-window event. After it: each GET signals "refresh seen", waits for the
+    // release, then answers 500 — until `withdraw` (step 7), from when every GET answers 403.
+    let saving = false;
+    let withdraw = false;
+    let signalRefreshSeen: () => void = () => {};
+    const refreshSeen = new Promise<void>((resolve) => {
+      signalRefreshSeen = resolve;
+    });
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(isPageEventsRead, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      if (withdraw) {
+        await route.fulfill({ status: 403, json: { error: 'synthetic' } });
+        return;
+      }
+      if (!saving) {
+        await route.fulfill({
+          status: 200,
+          json: [
+            {
+              id: '6f2c1d4e-62aa-4c62-9e62-000000000062',
+              group_id: E2E_GROUP_ID,
+              start_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+              status: 'scheduled',
+              duration_minutes: 120,
+              Game: { name: GAME },
+              Group: { name: 'Weekend Warriors' },
+              EventParticipations: [],
+            },
+          ],
+        });
+        return;
+      }
+      signalRefreshSeen();
+      await released;
+      await route.fulfill({ status: 500, json: { error: 'synthetic' } });
+    });
+
+    try {
+      // Step 2.
+      await page.goto('/');
+      const calendarButton = page.getByRole('button', { name: /^calendar\b/i });
+      await expect(calendarButton).toHaveAccessibleName('Calendar, 1 upcoming game this week', {
+        timeout: 15_000,
+      });
+
+      // Step 3: the group-list reads the save triggers are not routed here; track them so a
+      // failed one (its own RF1 notice) is never blamed on #229 below.
+      const { gear } = await homeGroupGear(page);
+      let groupGetsInFlight = 0;
+      const groupGetStatuses: Array<number | 'failed'> = [];
+      const isGroupGet = (req: Request) =>
+        req.method() === 'GET' && isGroupsListRead(new URL(req.url()));
+      page.on('request', (req) => {
+        if (isGroupGet(req)) groupGetsInFlight += 1;
+      });
+      page.on('requestfinished', async (req) => {
+        if (!isGroupGet(req)) return;
+        groupGetStatuses.push((await req.response())?.status() ?? 'failed');
+        groupGetsInFlight -= 1;
+      });
+      page.on('requestfailed', (req) => {
+        if (!isGroupGet(req)) return;
+        groupGetStatuses.push('failed');
+        groupGetsInFlight -= 1;
+      });
+      saving = true;
+      await saveSettingsVia(page, gear);
+
+      // Step 4: the refresh is held; the count stays.
+      await refreshSeen;
+      await expect(calendarButton).toHaveAccessibleName('Calendar, 1 upcoming game this week');
+
+      // Step 5: the refresh fails; no count claim while the error shows (the shipped rule).
+      const failed = page.waitForResponse(
+        (response) => isPageEventsRead(new URL(response.url())) && response.status() === 500,
+      );
+      release();
+      await failed;
+      await expect(calendarButton).toHaveAccessibleName('Calendar');
+      await expect.poll(() => groupGetsInFlight).toBe(0);
+      expect(
+        groupGetStatuses.every((st) => typeof st === 'number' && st < 400),
+        'a group list refresh failed in this run, so its own RF1 notice may be showing — not a #229 regression',
+      ).toBe(true);
+      expect(groupGetStatuses.length, 'the save refreshed the group list').toBeGreaterThan(0);
+      // Owner ruling #229 (2026-10-13, option 1; 88.6.1-PLAN-REVIEW-work/RULINGS.md): with the
+      // sheet CLOSED a failed refresh is announced nowhere outside it — the button drops to the
+      // bare `Calendar`. REJECTED: an sr-only announcement a sighted phone user never sees
+      // (option 2) and a visible line about content not on screen (option 3). CONFIRM-ONLY: a
+      // status region outside the sheet carrying RF1 turns this red.
+      await expect(page.getByRole('status').filter({ hasText: RF1 })).toHaveCount(0);
+
+      // Step 6: the sheet keeps the event under the RF1 notice (contract C8 d).
+      await calendarButton.click();
+      const dialog = page.getByRole('dialog', { name: 'Calendar' });
+      await expect(dialog).toBeVisible();
+      const row = dialog.getByRole('button', { name: new RegExp(GAME) });
+      await expect(row).toBeVisible();
+      const line = dialog.getByText(RF1, { exact: true }).and(page.locator('span'));
+      await expect(line).toBeVisible();
+      await expect(dialog.getByText("We couldn't load your calendar")).toHaveCount(0);
+      await expect(dialog.getByText('Next game night')).toHaveCount(0);
+      const retry = dialog.getByRole('button', { name: 'Retry', exact: true });
+      await expect(retry).toHaveCount(1);
+      await settleAnimations(dialog);
+      await expect(retry).toBeInViewport({ ratio: 1 });
+      const retryBox = await retry.boundingBox();
+      const rowBox = await row.boundingBox();
+      expect(retryBox, 'Retry has a box').not.toBeNull();
+      expect(rowBox, 'the event row has a box').not.toBeNull();
+      expect(retryBox!.width, 'STOP (owner mockup): Retry is narrower than 44px').toBeGreaterThanOrEqual(44);
+      expect(retryBox!.height, 'STOP (owner mockup): Retry is shorter than 44px').toBeGreaterThanOrEqual(44);
+      expect(retryBox!.y, 'STOP (owner mockup): the notice must sit above the event').toBeLessThan(rowBox!.y);
+      const noSideways = await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      );
+      expect(noSideways, 'STOP (owner mockup): the page scrolls sideways').toBe(true);
+
+      // Step 7 (C8 f1 / C12 at 375px): the focused event is withdrawn by a 403 to the re-attempt
+      // nobody pressed; focus lands on the sheet's title.
+      await row.focus();
+      await expect(row).toBeFocused();
+      withdraw = true;
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await expect(dialog.getByText("We couldn't load your calendar")).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByText(GAME)).toHaveCount(0);
+      await expect(dialog.getByText(RF1, { exact: true }).and(page.locator('span'))).toHaveCount(0);
+      await expect(dialog.getByRole('heading', { name: 'Calendar', exact: true })).toBeFocused();
+      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+    } finally {
+      release();
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     }
   });

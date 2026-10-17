@@ -1304,6 +1304,8 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
   const waitForRf1 = (scope: () => HTMLElement) =>
     waitFor(() => expect(within(scope()).getAllByText(RF1)).toHaveLength(2));
 
+  // A string `name` in a Testing Library role query is already an exact, whole-name match, so the
+  // notice's `Retry` never collides with the full banner's `Try again`.
   // The house idiom (useFetchErrorState.test.tsx, function fireVisibility): the hook's tab-return
   // re-attempt — the refresh nobody pressed. It listens only while the error shows.
   function fireVisibility(state: 'visible' | 'hidden') {
@@ -1424,7 +1426,7 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     await waitForRf1(card);
     const held = deferred<unknown[]>();
     fn.mockImplementationOnce(() => held.promise);
-    const retry = within(card()).getByRole('button', { name: 'Retry', exact: true });
+    const retry = within(card()).getByRole('button', { name: 'Retry' });
 
     await user.click(retry);
 
@@ -1522,6 +1524,30 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
       expect(document.activeElement).not.toBe(document.body);
     }
 
+    // The guard ALONE (plan 62's own teeth, found at execution): focus reaches the row only AFTER
+    // the re-attempt started, so plan 04's run-start recovery (r2 #226) was never armed and the
+    // C12 guard is the one mover. Without the guard this case ends on `<body>`.
+    {
+      await freshTree();
+      const { fn } = await loadPairThenFail(err500());
+      await waitForRf1(card);
+      const held = deferred<unknown[]>();
+      fn.mockImplementationOnce(() => held.promise.then(() => Promise.reject(new ApiError('Forbidden', 'forbidden', 403))));
+      await act(async () => fireVisibility('visible'));
+      expect(fn, 'the re-attempt is in flight (vacuity guard)').toHaveBeenCalledTimes(3);
+      act(() => within(card()).getByRole('button', { name: /Catan/ }).focus());
+
+      await act(async () => {
+        held.resolve([]);
+      });
+
+      await waitFor(() =>
+        expect(within(card()).queryByRole('button', { name: /Catan/ })).toBeNull()
+      );
+      await waitFor(() => expect(document.activeElement).toBe(cardHeading()));
+      expect(document.activeElement).not.toBe(document.body);
+    }
+
     // r2 #225: the sheet open (possible at any width) — the guard passes no target, so the
     // floor lands on the open sheet's title, never the card heading behind the modal.
     await freshTree();
@@ -1546,7 +1572,7 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     {
       const { fn } = await loadPairThenFail(err500());
       await waitForRf1(card);
-      act(() => within(card()).getByRole('button', { name: 'Retry', exact: true }).focus());
+      act(() => within(card()).getByRole('button', { name: 'Retry' }).focus());
       fn.mockResolvedValueOnce([FUTURE_LATER]);
 
       await act(async () => fireVisibility('visible'));
@@ -1562,7 +1588,7 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     await waitForRf1(card);
     const dialog = await openCalendarSheet(user);
     await waitForRf1(() => dialog);
-    act(() => within(dialog).getByRole('button', { name: 'Retry', exact: true }).focus());
+    act(() => within(dialog).getByRole('button', { name: 'Retry' }).focus());
     fn.mockResolvedValueOnce([FUTURE_LATER]);
 
     await act(async () => fireVisibility('visible'));
