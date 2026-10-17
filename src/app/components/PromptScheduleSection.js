@@ -59,6 +59,7 @@ export default function PromptScheduleSection({
   const panelId = `prompt-schedule-panel-${useId()}`;
   // H4 focus fallback for Check-ins (D-05): the section has no heading, so its own expand control
   // is the target and none is minted. See DECISION Phase 88.6.1-29 (D-04, D-05, H4) in OpenPollsList.js.
+  // AMENDED Phase 88.6.1-79: the Check-ins banner's `Got it` uses the same target.
   const expandControlRef = useRef(null);
 
   const isAdmin = userRole === 'owner' || userRole === 'admin';
@@ -323,7 +324,7 @@ export default function PromptScheduleSection({
             localStorage. Shown to all active members (manual-poll users still
             benefit from understanding consensus-close even if they don't own
             a recurring schedule). */}
-        <AutoPromptBehaviorBanner />
+        <AutoPromptBehaviorBanner focusFallbackRef={expandControlRef} />
 
         {/* Unified open polls + Start-a-poll button. Renders for all active
             members regardless of role. */}

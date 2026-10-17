@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Banner } from '../../components/ui/Banner';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 
 /**
  * AutoPromptBehaviorBanner — Phase 71.2 (D-ADAPT-03 / D-ADAPT-04)
@@ -22,7 +23,13 @@ import { Banner } from '../../components/ui/Banner';
  */
 const STORAGE_KEY = 'auto-prompt-behavior-banner-dismissed-v1';
 
-export default function AutoPromptBehaviorBanner() {
+/**
+ * @param {object} props
+ * @param {import('react').RefObject<HTMLElement | null>} [props.focusFallbackRef] where focus goes
+ *   when `Got it` removes the banner (the host's target; on the one mount, the Check-ins expand
+ *   control). Absent, plan 88.6.1-04's floor (dialog title, `main h1`, `main`).
+ */
+export default function AutoPromptBehaviorBanner({ focusFallbackRef } = {}) {
     /* DECISION Phase 88-25 (Req 14 / F-761): the storage check starts HIDDEN and reveals, chosen
        OVER the `useState(false)`-for-`dismissed` shape that shipped here (initial render VISIBLE,
        effect hides it) and OVER a `useState` initialiser that reads localStorage.
@@ -53,11 +60,30 @@ export default function AutoPromptBehaviorBanner() {
         }
     }, []);
 
+    /* DECISION Phase 88.6.1-79 (Req 5, D-04 / D-05): `Got it` removes the banner together with
+       the focused button, so it arms the shared focus recovery first. CHOSEN: the host's target —
+       on the banner's only mount, the Check-ins expand control (D-05's named target for that
+       heading-less section; the same ref plan 88.6.1-29 hands `OpenPollsList`) — else plan
+       88.6.1-04's floor. REJECTED: (a) the floor alone — on the planning page it is the page's
+       `h1` at the top, so a mid-page dismissal would carry the reader away from the section;
+       (b) keeping the banner mounted after `Got it` — a dismissal removes it, and the
+       `DECISION Phase 88-25` hidden-start shape above stands; (c) a `preferred` resolver reaching
+       for the next control in the panel by DOM query — a cross-component reach the host's ref
+       makes unnecessary.
+       The same marker records the button's NAME: CHOSEN — its accessible name is its visible text
+       (WCAG 2.5.3 Label in Name, review #241); REJECTED — (d) a separate screen-reader name, which
+       a voice-control user saying the visible words cannot reach (banner context in the name would
+       be new screen-reader wording, an owner copy ruling, D-31).
+       Changing this is a decision, not a cleanup. */
+    const dismissRecovery = useFocusRecovery({ fallback: focusFallbackRef });
+
     const handleDismiss = () => {
+        const settle = dismissRecovery.arm();
         if (typeof window !== 'undefined') {
             localStorage.setItem(STORAGE_KEY, '1');
         }
         setVisible(false);
+        settle();
     };
 
     if (!visible) return null;
@@ -101,7 +127,6 @@ export default function AutoPromptBehaviorBanner() {
                        actionable label. `min-h-11` STAYS — it is this control's per-CTA 44px
                        floor, and it is not supplied by anything else here. */
                     className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm text-content-link underline transition-colors hover:no-underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                    aria-label="Dismiss banner"
                 >
                     Got it
                 </button>
