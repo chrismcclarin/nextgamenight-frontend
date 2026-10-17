@@ -536,6 +536,8 @@ export default function GameDetailPage() {
     // screen. Set ONLY when the current run's primary read succeeds; cleared at the start of a run
     // for a new key and by every access or gone answer (C10). Not `loadedEntityKeyRef`, which is
     // stamped after ANY settle and only drives the loading flash.
+    // AMENDED Phase 88.6.1-74 (wave 8 CI gate): the event view ALSO stamps `loadedEntityKeyRef` at
+    // its primary's success (see the DECISION at that stamp in fetchEventOnly).
     const [loadedFor, setLoadedFor] = useState(null);
     // 88.6.1-74 (review r1 D12): one entry per SIDE read, each the `entityKey` that read last
     // loaded for in a current-generation run of the fetch function. Whether a side read's failure
@@ -784,6 +786,10 @@ export default function GameDetailPage() {
     // re-run below (identity resolving AFTER the first fetch) refreshes data
     // WITHOUT flashing the whole page back to the full loading state. A real
     // param change (different game/event) still gets the full loading screen.
+    // AMENDED Phase 88.6.1-74 (wave 8 CI gate): "finished loading" reads "settled, or (event view)
+    // its primary record is on screen" — the event view stamps it at the primary's success too. The
+    // key derivation below is unchanged: the CI trail's second navigation was Next's hydration
+    // replaceState of the same URL, never a search-params rewrite.
     const loadedEntityKeyRef = useRef(null);
     const entityKey = `${game_id}|${group_id}|${event_id}`;
     // 88.6.1-74: the event view's <h1> (RF1's focusTarget) and the replacement screen's title (the
@@ -1105,6 +1111,21 @@ export default function GameDetailPage() {
             clearSignInLatch(event_id);
             setSingleEvent(eventData);
             setLoadedFor(entityKey);
+            // DECISION Phase 88.6.1-74 (wave 8 CI gate, run 39026336968): the event view stamps the
+            // settled key HERE, at the primary's success, as well as in the finally — CHOSEN OVER
+            // stamping only at the run's end. The event view renders its record from this point (the
+            // `!game_id && singleEvent` branch sits BEFORE the loader gate), so a same-key re-run that
+            // starts while this run's side reads are still out (identity resolving after the first
+            // load, the most common real refresh) must refresh in place; with the end-only stamp it
+            // found no settled run, took the new-key reset below and cleared the event on screen, and a
+            // failed refresh then showed the full banner instead of RF1. REJECTED: re-keying on the
+            // raw URL instead of the validated ids (the CI trail's second same-document navigation was
+            // Next's own hydration replaceState of the SAME URL, not a rewrite — nothing re-keyed);
+            // gating the reset on the `loadedFor` state (a render-time closure value; this ref is
+            // written synchronously). The game view keeps the end-only stamp: its record renders only
+            // after the loader gate, i.e. after the run's finally. Moving this back to the finally
+            // alone is a regression, not a tidy-up.
+            loadedEntityKeyRef.current = entityKey;
 
             // Backend GET /events/:event_id flattens EventParticipations via
             // formatEventWithCustomParticipants — each row is { user_id (UUID),
