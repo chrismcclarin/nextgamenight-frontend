@@ -611,3 +611,135 @@ describe('88.6.1-39 (D-14 / D-45, AC-24) — the count is spoken ONCE, when a ge
     }
   });
 });
+
+// Plan 88.6.1-39 (D-16 / D-33 rows 11 and 17, copy rows A1 / A3 / A4). A local media stub for
+// the phone arm, modelled on EventScheduler.test.tsx's stubMatchMedia (FE-TESTING-CONVENTIONS
+// C-2): it answers any query naming max-width 767px with `matches`, every other query false,
+// captures the change handler the shared phone hook registers, and must be installed BEFORE
+// render and restored in a finally.
+function stubPhoneMedia(matches: boolean) {
+  const original = window.matchMedia;
+  let handler: ((event: { matches: boolean }) => void) | null = null;
+  window.matchMedia = ((query: string) =>
+    ({
+      matches: query.includes('max-width: 767px') ? matches : false,
+      media: query,
+      onchange: null,
+      addEventListener: (_type: string, cb: (event: { matches: boolean }) => void) => {
+        if (query.includes('max-width: 767px')) handler = cb;
+      },
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList) as typeof window.matchMedia;
+  return {
+    restore: () => {
+      window.matchMedia = original;
+    },
+    flip: (next: boolean) => {
+      if (!handler) throw new Error('the phone hook registered no change handler');
+      handler({ matches: next });
+    },
+  };
+}
+
+const DESKTOP_HINT = 'Click and drag to select your available times';
+const PHONE_HINT = 'Tap a time to select it. Press and hold, then drag, to select several.';
+const ALL_CLEARED = 'All times cleared.';
+const SUMMARY_ZERO = '0 preferred, 0 if need be slots selected';
+const summaryLine = () => screen.getByTestId('availability-grid-summary-line');
+
+describe('88.6.1-39 (D-16 / D-33 rows 11 and 17, copy rows A1 / A3 / A4) — what the line says and what is spoken', () => {
+  it('C39-1: Clear All shows and speaks A4 until the next paint; an un-paint to empty brings the instruction back, not A4', () => {
+    renderHarness(2);
+    const region = screen.getByRole('status');
+    mouseTap(slotCellsAt(0));
+    expect(region.textContent).toBe(SUMMARY_ONE);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear All' }));
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent, 'Clear All must say what happened').toBe(ALL_CLEARED);
+    expect(summaryLine().textContent).toBe(ALL_CLEARED);
+
+    mouseTap(slotCellsAt(0));
+    expect(summaryLine().textContent).toBe(SUMMARY_ONE);
+    expect(region.textContent).toBe(SUMMARY_ONE);
+
+    mouseTap(slotCellsAt(0)); // un-paint: the grid is empty again, but no Clear All just happened
+    expect(region.textContent, 'D-33 row 11: zero is spoken as a count').toBe(SUMMARY_ZERO);
+    expect(summaryLine().textContent).toBe(DESKTOP_HINT);
+  });
+
+  it('C39-2: a day checkbox and the All checkbox each speak the count once; unchecking All shows the instruction, not A4', () => {
+    renderHarness(2);
+    const region = screen.getByRole('status');
+    const [allBox, day0] = screen.getAllByRole('checkbox');
+
+    fireEvent.click(day0);
+    expect(region.textContent).toBe('28 preferred, 0 if need be slots selected');
+    fireEvent.click(allBox);
+    expect(region.textContent).toBe('56 preferred, 0 if need be slots selected');
+    fireEvent.click(allBox); // uncheck: clears everything
+    expect(region.textContent).toBe(SUMMARY_ZERO);
+    expect(summaryLine().textContent).toBe(DESKTOP_HINT);
+    expect(screen.getByRole('status')).toBe(region);
+  });
+
+  it('C39-3: on a phone the line gives the tap and press-and-hold instruction (A1), and nothing is spoken', () => {
+    const media = stubPhoneMedia(true);
+    try {
+      renderHarness(1);
+      expect(summaryLine().textContent).toBe(PHONE_HINT);
+      expect(screen.queryByText(DESKTOP_HINT)).toBeNull();
+      expect(screen.getByRole('status').textContent).toBe('');
+    } finally {
+      media.restore();
+    }
+  });
+
+  it('C39-4: the phone hook flipping after mount changes the line and is NOT announced (CP-5)', () => {
+    const media = stubPhoneMedia(false);
+    try {
+      renderHarness(1);
+      const region = screen.getByRole('status');
+      expect(summaryLine().textContent).toBe(DESKTOP_HINT);
+      expect(region.textContent).toBe('');
+
+      act(() => media.flip(true));
+      expect(summaryLine().textContent).toBe(PHONE_HINT);
+      expect(region.textContent, 'the viewport flip was announced').toBe('');
+    } finally {
+      media.restore();
+    }
+  });
+
+  it('C39-5: the same summary twice in a row is injected again, as a new span inside the same region (Edge R8)', () => {
+    renderHarness(1);
+    mouseTap(slotCellsAt(0));
+    const region = screen.getByRole('status');
+    expect(region.textContent).toBe(SUMMARY_ONE);
+    const firstSpan = region.firstElementChild;
+    expect(firstSpan).not.toBeNull();
+
+    fireEvent.pointerDown(slotCellsAt(0)); // un-paints cell 0
+    fireEvent.pointerEnter(slotCellsAt(1)); // paints cell 1
+    fireEvent.pointerUp(document);
+
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe(SUMMARY_ONE);
+    expect(region.firstElementChild, 'an identical summary kept the old text node, so it is not re-announced').not.toBe(firstSpan);
+  });
+
+  it('C39-6: a touch that moves past the slop (a scroll) and ends in pointercancel paints nothing and speaks nothing', () => {
+    renderHarness(1);
+    const region = screen.getByRole('status');
+    const cell = slotCellsAt(0);
+    fireEvent.pointerDown(cell, { pointerId: 2, pointerType: 'touch', clientX: 5, clientY: 5 });
+    fireEvent.pointerMove(cell, { pointerId: 2, pointerType: 'touch', clientX: 5, clientY: 40 });
+    fireEvent.pointerCancel(document, { pointerId: 2, pointerType: 'touch' });
+
+    expect(document.querySelectorAll('[data-slot-id][aria-pressed="true"]')).toHaveLength(0);
+    expect(region.textContent, 'a scroll was announced').toBe('');
+  });
+});
