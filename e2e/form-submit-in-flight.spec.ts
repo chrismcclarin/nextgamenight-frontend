@@ -276,6 +276,16 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     await expect(submit).toHaveAccessibleName('Create Event');
     await expectPhoneBox(page, submit, 'the reopened Create Event submit');
 
+    // The join leg: the SAME details pressed again, seconds after the first POST and well inside
+    // createEvent.js's 30-second join window, join the held create. The submit shows its own press
+    // and no second POST is sent.
+    await fillCreateEvent(page);
+    await submit.click();
+    await expect(submit).toHaveAccessibleName('Creating...');
+    await expect(submit).toHaveAttribute('aria-disabled', 'true');
+    await page.waitForTimeout(500);
+    expect(create.count()).toBe(1);
+
     // The held create fails. Positive signal first (the request failed), then the absences.
     const createFailed = page.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/api/events');
     await create.abortAll();

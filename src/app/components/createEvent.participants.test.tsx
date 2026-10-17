@@ -541,4 +541,104 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     expect(toastSpies.success).toHaveBeenCalledTimes(2);
     expect(props.onEventCreated).toHaveBeenCalledTimes(2);
   });
+
+  it('F1: a fresh instance pressing the SAME details while the first create runs joins it: one request, its own refresh, one receipt', async () => {
+    const first = holdOnce(eventsAPI.createEvent);
+    const props = baseProps();
+    const viewA = await renderModal(props);
+    submitForm();
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
+
+    // A conditional host unmounts the dialog on close and mounts a fresh one on the next open.
+    viewA.unmount();
+    // B's OWN refresh spy is load-bearing: with one shared spy the joiner's call reads 2 and this
+    // arm fails. Never "fix" that by going back to the shared factory spy.
+    const onEventCreatedB = vi.fn();
+    await renderModal({ ...props, onEventCreated: onEventCreatedB });
+    submitForm();
+    // B's own press shows at once (copy row C7)...
+    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
+    // ...and inside the join window no second request is sent.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
+
+    first.resolve({ id: 'evt-1' });
+    // B ends its own session with the shared outcome.
+    await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
+    expect(props.onEventCreated).toHaveBeenCalledTimes(1);
+    expect(onEventCreatedB).toHaveBeenCalledTimes(1);
+    expect(onEventCreatedB).toHaveBeenCalledWith({ id: 'evt-1' });
+    // The 88-16 order for the joiner: its own refresh, then its close.
+    expect(onEventCreatedB.mock.invocationCallOrder[0]).toBeLessThan(
+      (props.modaltoggle as Mock).mock.invocationCallOrder[0]
+    );
+    // One write, one receipt: the originator's.
+    expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    await waitFor(() => expectLiveCreate());
+  });
+
+  it('F3: a joined create that FAILS gives one error toast (the originator\'s); the joiner keeps its form and a retry sends', async () => {
+    const first = holdOnce(eventsAPI.createEvent);
+    const props = baseProps();
+    const viewA = await renderModal(props);
+    submitForm();
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
+
+    viewA.unmount();
+    await renderModal(props);
+    submitForm();
+    expect(submitButton()).toHaveAccessibleName('Creating...');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
+
+    first.reject(new Error('boom'));
+    // Positive signals first: the originator's notice, and the joiner's release.
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    await waitFor(() => expectLiveCreate());
+    await flush();
+    expect(toastSpies.error).toHaveBeenCalledTimes(1);
+    expect(props.modaltoggle).not.toHaveBeenCalled();
+    expect(props.onEventCreated).not.toHaveBeenCalled();
+
+    // The key was freed when the first request settled, so the retry sends.
+    submitForm();
+    await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
+    // Let the retry settle before the test ends.
+    await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
+  });
+
+  it('F4: past the 30-second join window an identical press sends again, so a hung create never blocks the retry', async () => {
+    // Only Date is faked: the window compares start times read with Date.now(). setTimeout stays
+    // real, because renderModal awaits findByText and waitFor polls on real timers.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-17T19:00:00Z'));
+      const first = holdOnce(eventsAPI.createEvent);
+      const props = baseProps();
+      const viewA = await renderModal(props);
+      submitForm();
+      await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
+
+      viewA.unmount();
+      // 31 seconds later: past createEvent.js's JOIN_WINDOW_MS (30 seconds).
+      vi.setSystemTime(new Date('2026-10-17T19:00:31Z'));
+      const second = holdOnce(eventsAPI.createEvent);
+      await renderModal(props);
+      submitForm();
+      // A new originator: it sends, and shows its own press.
+      await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
+      expect(submitButton()).toHaveAccessibleName('Creating...');
+      expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
+
+      // Settle both before the test ends: the newer first, then the hung one.
+      second.resolve({ id: 'evt-2' });
+      await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
+      first.resolve({ id: 'evt-1' });
+      await waitFor(() => expect(props.onEventCreated).toHaveBeenCalledTimes(2));
+      await flush();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
