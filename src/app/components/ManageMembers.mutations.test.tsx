@@ -1426,3 +1426,147 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     expect(screen.getByRole('button', { name: 'Reset invite link' })).not.toHaveAttribute('aria-disabled');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-78: the shared RF1 notice over the roster plan 42 keeps through a failed refresh.
+// The suite renders the REAL banner module and the real useFetchErrorState (contract C9 is not
+// engaged here: neither is mocked).
+// ---------------------------------------------------------------------------
+
+// Copy row RF1 / D-47 (plan 88.6.1-70's notice sentence): written once in this file, expected
+// TWICE while the notice shows (its visible line and its polite region).
+const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+const ERR_500 = new ApiError('Internal error', 'internal', 500);
+const ERR_NETWORK = new ApiError('Network error', 'network', 0);
+
+describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 contract C2-C10)', () => {
+  const title = () => screen.getByRole('heading', { name: 'Manage Group Members' });
+
+  // The un-awaited fifth refresh (plan 42's `h.invitePanelProps`): no dialog in the way.
+  function triggerRefresh() {
+    act(() => {
+      h.invitePanelProps?.onMemberAdded?.();
+    });
+  }
+
+  async function rf1Shown() {
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+  }
+
+  // The visible RF1 line (outside any status region) and the polite region carrying RF1.
+  function rf1Line(): HTMLElement {
+    const line = screen.getAllByText(RF1).find((el) => el.closest('[role="status"]') === null);
+    expect(line, 'no visible RF1 line').toBeTruthy();
+    return line as HTMLElement;
+  }
+  function rf1Region(): HTMLElement {
+    const region = screen
+      .getAllByRole('status')
+      .find((el) => el.textContent === RF1);
+    expect(region, 'no polite region carrying RF1').toBeTruthy();
+    return region as HTMLElement;
+  }
+
+  function precedes(a: Node, b: Node) {
+    return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }
+
+  // The viewer's own row marker, `(You)` — never `Owner`, which matches two nodes.
+  async function loadRoster() {
+    await openMembersModal();
+    await screen.findByText('Target');
+    return screen.getByText('(You)');
+  }
+
+  it('RF-1. a failed refresh keeps the rows and shows RF1 + Retry in a region that was already there, pinned outside the scrolling body (C8 a + b, C6, #242)', async () => {
+    const ownerName = await loadRoster();
+    const regionsBefore = screen.getAllByRole('status');
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
+    triggerRefresh();
+    await rf1Shown();
+
+    expect(regionsBefore).toContain(rf1Region());
+    expect(screen.getByText('(You)')).toBe(ownerName);
+    expect(ownerName.isConnected).toBe(true);
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+    expect(screen.queryByText('No members found.')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    const line = rf1Line();
+    expect(precedes(line, ownerName)).toBe(true);
+
+    // Placement (owner ruling #242, 2026-10-14): the dialog's scroll container is Modal.Body
+    // (`flex-1 overflow-y-auto`); the notice and its region sit outside it, inside the dialog.
+    const scrollBody = ownerName.closest('.overflow-y-auto');
+    expect(scrollBody).not.toBeNull();
+    expect((scrollBody as HTMLElement).contains(line)).toBe(false);
+    expect((scrollBody as HTMLElement).contains(rf1Region())).toBe(false);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.contains(line)).toBe(true);
+    expect(dialog.contains(rf1Region())).toBe(true);
+  });
+
+  it('RF-2. Retry holds Retrying… while the GET is held, then lands focus on the dialog title (C8 c, C2, C4; Req 5)', async () => {
+    await loadRoster();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
+    triggerRefresh();
+    await rf1Shown();
+    const heading = title();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    const user = userEvent.setup();
+    await user.click(retry);
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(3));
+
+    expect(retry).toHaveAttribute('aria-disabled', 'true');
+    expect(retry).not.toHaveAttribute('disabled');
+    expect(retry).toHaveTextContent('Retrying…');
+    expect(document.activeElement).toBe(retry);
+    expect(rf1Line()).toBeTruthy();
+    expect(screen.getByText('(You)')).toBeInTheDocument();
+
+    await act(async () => {
+      held.resolve(ROSTER);
+    });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.getAttribute('role')).not.toBe('dialog');
+  });
+
+  it('RF-3. a refresh that answers with something other than a list is a failure: RF1 over the kept rows (W4)', async () => {
+    const ownerName = await loadRoster();
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce({ members: [] });
+    triggerRefresh();
+    await rf1Shown();
+    expect(screen.getByText('(You)')).toBe(ownerName);
+    expect(screen.queryByText('No members found.')).toBeNull();
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+  });
+
+  it('RF-4. a network failure on a refresh keeps the rows under RF1 (C8 e, the network half)', async () => {
+    const ownerName = await loadRoster();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_NETWORK);
+    triggerRefresh();
+    await rf1Shown();
+    expect(screen.getByText('(You)')).toBe(ownerName);
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+  });
+
+  it('RF-5. a roster that loaded EMPTY keeps its sentence under RF1 through a failed refresh (D-50, ruling Y)', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce([]);
+    // Not openMembersModal: with no row for the viewer the title reads `Members`.
+    renderManageMembers();
+    const sentence = await screen.findByText('No members found.');
+    const regionsBefore = screen.getAllByRole('status');
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
+    triggerRefresh();
+    await rf1Shown();
+
+    expect(regionsBefore).toContain(rf1Region());
+    expect(screen.getByText('No members found.')).toBe(sentence);
+    expect(sentence.isConnected).toBe(true);
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+    expect(precedes(rf1Line(), sentence)).toBe(true);
+  });
+});
