@@ -331,6 +331,33 @@ describe('BrowseMoreModal refresh keeps the list (88.6.1-32, D-09, D-41, AC-27, 
     expect(screen.getByRole('button', { name: 'Catan' })).toBe(catan);
   });
 
+  it('M: both slot regions are sr-only while empty and visible once they hold a line (D-22, routed by plan 64)', async () => {
+    // The reserved line is the wrapper's min-h-5, so an empty region costs nothing by
+    // being sr-only; the node, role and live attributes stay the same in both states.
+    const user = userEvent.setup();
+    await renderSettled([CATAN, AZUL]);
+    const { polite, assertive } = slotRegions();
+    expect(polite).toHaveClass('sr-only');
+    expect(assertive).toHaveClass('sr-only');
+    expect(screen.getByTestId('browse-more-status')).toHaveClass('min-h-5');
+    // E8 in flight: the polite region shows, the empty alert stays hidden.
+    const d2 = holdNext();
+    await user.click(screen.getByRole('button', { name: 'Increase player count' }));
+    await waitFor(() => expect(polite.textContent).toBe(UPDATING));
+    expect(polite).not.toHaveClass('sr-only');
+    expect(assertive).toHaveClass('sr-only');
+    // A failed refresh: the alert shows its line, the emptied polite region hides again.
+    const err = networkError();
+    await act(async () => {
+      d2.reject(err);
+    });
+    await waitFor(() => expect(assertive.textContent).toBe(getFetchErrorMessage(err)));
+    expect(assertive).not.toHaveClass('sr-only');
+    expect(polite).toHaveClass('sr-only');
+    expect(slotRegions().polite).toBe(polite);
+    expect(slotRegions().assertive).toBe(assertive);
+  });
+
   it('D2: a failed refresh over an EMPTY result shows the body alert only, no empty state (owner ruling D11 (b))', async () => {
     const user = userEvent.setup();
     await renderSettled([]);
