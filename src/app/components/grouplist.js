@@ -21,7 +21,7 @@ import MemberChipStack from './MemberChipStack';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
@@ -66,6 +66,10 @@ const inviteMemberLabel = (name) => {
   const n = groupNameForLabel(name);
   return n ? `Invite member to ${n}` : INVITE_MEMBER_FALLBACK;
 };
+
+// The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
+const LOAD_OK = Object.freeze({ isError: false });
+const LOAD_FAILED = Object.freeze({ isError: true });
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -242,6 +246,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       // Cleared on SUCCESS, not at refresh start (88.6.1-70 contract C2).
       setGroupsError(null);
       settle?.();
+      return LOAD_OK;
     } catch (error) {
       // A DEVELOPER log, deliberately NOT routed through `getFetchErrorMessage`: this line is
       // diagnostic only and never reaches a person. The user-facing copy for this failure comes
@@ -258,6 +263,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       setGroupsError(
         error instanceof Error ? error : new Error("The groups request didn't complete.")
       );
+      return LOAD_FAILED;
     } finally {
       // Only the latest request clears the busy flag and records the settle.
       if (generation === generationRef.current) {
@@ -374,6 +380,28 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
           affordances (Invite / settings) silently vanish — surface a compact,
           non-blocking degrade notice instead of failing silently (D-11). */}
       <FetchErrorBanner state={selfIdentityErrorState} compact />
+
+      {/* DECISION Phase 88.6.1-77 (AC-29 / RF1, owner ruling 2026-10-05): a failed REFRESH of
+          the home list says so with plan 88.6.1-70's shared notice.
+          CHOSEN: a failed REFRESH keeps what loaded — the cards, or the "No groups yet" of a list
+          that loaded empty (D-50, ruling Y) — and shows the shared RefreshFailedNotice and its
+          Retry, gated by `groupsRetained` (a has-loaded flag, never a row count). It sits between
+          the header block and the scrolling list: OUTSIDE the scroll area (on a phone that area
+          is capped at 60vh, and a notice inside it scrolls away with the card the user acted on)
+          and OUTSIDE the cards wrapper that carries `aria-busy` (a busy element must not contain
+          a live region, RESEARCH M-3.1 A3). Focus after a successful Retry goes to "Your Groups"
+          through plan 70's retry recovery on the notice (`focusTarget={groupsHeadingRef}`)
+          ALONE — plan 41's apply-time arm covers only a card that holds focus and never fires
+          for the notice's Retry, which sits in no card.
+          REJECTED: (a) the full banner above retained content (the earlier D-09a / D-37
+          arrangement) — D-51, ratified 2026-10-05; (b) the notice inside the scroll area, above
+          the cards — it scrolls out of view on a phone; (c) inside the `aria-busy` wrapper (A3);
+          (d) a sentence or notice written in this file — one constant ships everywhere (contract
+          C7); (e) the floor (`main`) as the Retry landing — the home page has no h1, and `main`
+          is the top of the page, far from the list on a phone; (f) the full banner over a list
+          that loaded empty — D-50: the owner ruled a loaded-empty list is retained content.
+          Changing this is a decision, not a cleanup. */}
+      <RefreshFailedNotice state={groupsErrorState} retained={groupsRetained} focusTarget={groupsHeadingRef} className="mb-4" />
 
       <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
         {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary

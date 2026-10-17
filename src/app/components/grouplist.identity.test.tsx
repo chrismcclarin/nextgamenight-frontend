@@ -45,11 +45,14 @@ vi.mock('@/components/ui/useFetchErrorState', () => ({
 // groups-fetch failure (which used to be flattened into `setGroups([])` and shown
 // as "No groups yet"). The stub renders the `title` so the two are tellable apart;
 // the testid is kept for the pre-existing WR-03 assertions.
-vi.mock('@/components/ui/FetchErrorBanner', () => ({
+// 88.6.1-70 contract C9: keep the real module so useRetainedContent and isAccessOrGoneError stay real; the notice itself is proven in grouplist.refresh.test.tsx against the real module.
+vi.mock('@/components/ui/FetchErrorBanner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/ui/FetchErrorBanner')>()),
   FetchErrorBanner: ({ state, title }: { state: { showError: boolean }; title?: string }) =>
     state.showError ? (
       <div data-testid="identity-degrade-banner">{title ?? 'degraded'}</div>
     ) : null,
+  RefreshFailedNotice: () => null,
 }));
 
 vi.mock('next/navigation', () => ({
