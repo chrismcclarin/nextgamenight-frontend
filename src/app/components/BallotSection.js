@@ -101,6 +101,26 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   const [loadError, setLoadError] = useState(null);
   const [votingOptionId, setVotingOptionId] = useState(null);
   const [resolvingOptionId, setResolvingOptionId] = useState(null);
+  /* DECISION Phase 88.6.1-82 (carry-in, the register entry "BallotSection shows the PREVIOUS
+     event's ballot"): when the `eventId` prop changes, the previous event's ballot is dropped and
+     the first-load loader shows IN THE SAME RENDER (React's adjust-state-on-a-prop-change pattern,
+     a set during render that re-renders before anything commits), so no frame ever shows the old
+     event's picks under the new eventId, where a press would send the NEW eventId with an OLD
+     option id. A same-event refresh (a post-action refetch, E15's retry) never takes this branch,
+     so plan 31's keep-last-good and its two supersede guards are unchanged. REJECTED: (a) a reset
+     in an effect, which commits one frame of the old ballot under the new eventId first; (b)
+     rendering only a ballot whose loaded eventId matches the prop while keeping the old one in
+     state, which leaves a stale ballot for every setBallot updater to edit; (c) keeping the old
+     card until the new GET answers (the bug). Accepted: a pick focused at the moment of a switch
+     is removed with the card, and the switch is a navigation the user started elsewhere.
+     Changing this is a decision, not a cleanup. */
+  const [ballotEventId, setBallotEventId] = useState(eventId);
+  if (ballotEventId !== eventId) {
+    setBallotEventId(eventId);
+    setBallot(null);
+    setError(null);
+    setLoading(true);
+  }
   const resolveInFlightRef = useRef(false);
   const voteInFlightRef = useRef(false);
   const gameVoteHeadingRef = useRef(null);
