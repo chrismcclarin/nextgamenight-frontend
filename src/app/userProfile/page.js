@@ -1092,32 +1092,65 @@ function Profile(){
         }
     };
 
-    // D-02: initialize editable state from the shared self row exactly ONCE. The
-    // self cache is staleTime Infinity, and mutation handlers below own their own
-    // optimistic local-state updates + cache writes, so a reactive re-init on
-    // every `self` change would risk clobbering an in-progress edit. A one-shot
-    // guard keeps the mount-time population without that hazard.
+    /* DECISION Phase 88.6.1-61 (Req 11, identity init): initialize editable state from the
+       identity row the FIRST time one is available, whether or not the query is in error. The
+       no-row fallback below is a placeholder that runs at most once and never counts as that once.
+       The one-shot rule this replaces, kept verbatim (D-02): "initialize editable state from the
+       shared self row exactly ONCE. The self cache is staleTime Infinity, and mutation handlers
+       below own their own optimistic local-state updates + cache writes, so a reactive re-init on
+       every `self` change would risk clobbering an in-progress edit. A one-shot guard keeps the
+       mount-time population without that hazard."
+
+       THE DEFECT, two triggers. (A) A refetch that fails KEEPS the row and reports an error
+       (TanStack's `isRefetchError`); the old head tested `selfQuery.isError` first and treated
+       that as "no identity": default settings over a real row, with the save path open
+       (`selfUuid` is the row's id). (B) A first load that failed closed the one-shot guard, so a
+       row arriving later by Retry or a tab return never initialized the page: defaults again,
+       save path open. Either way one notification toggle saved the defaults over the user's own
+       settings.
+
+       CHOSEN: the row init runs once per visit, from the first row. ONE named corner: the
+       fallback opens the paint gate, so the user can open the username editor before the row
+       arrives; the row init then skips its username write while that editor is open (the typed
+       name survives, and Cancel restores the row's name from `userData`), and `editingUsername`
+       is listed in the dependency array for that read (chosen over a mirror ref: every re-run it
+       causes is a no-op behind the two early returns). The phone writes need no such guard while
+       the phone surface renders only from the row (`userData?.sms_enabled`).
+       CHOSEN (owner ruling 2026-10-05): with no row the fallback writes NO notification settings,
+       so the card stays hidden through its existing `preferences` guard (the same state the page
+       shows while identity is still resolving) and appears with the user's own settings when the
+       row arrives. REJECTED for that half: (i) the defaults as before (they read as the user's
+       settings, a false statement); (ii) a notice in the card's place (new words, D-31); (iii) a
+       second condition on the card such as the row's presence (two sources of truth for one fact).
+       REJECTED for the init: (a) testing TanStack's `isLoadingError` instead of `self` (the same
+       condition, but every writer's guard keys on the row, `selfUuid`, so the effect tests what
+       the guards test); (b) re-initializing on every `self` change (the clobbering hazard above);
+       (c) blocking the writers until a "fresh" row (a second mechanism; the kept row is the last
+       server-confirmed one, and every successful save patches it).
+       Restoring the error-first head, letting the fallback close the guard, writing defaults in
+       the fallback, or dropping the open-editor guard is a decision, not a cleanup. */
     const profileInitRef = useRef(false);
+    const profileFallbackRef = useRef(false);
     useEffect(() => {
         if (profileInitRef.current) return;
-        // Terminal identity-resolution failure — fall back to Auth0 user data and
-        // unblock the paint gate (D-PAINT-01) so the user doesn't stare at a
-        // skeleton forever. Mirrors the old fetchUserData catch branch.
-        if (selfQuery.isError) {
-            profileInitRef.current = true;
-            setUsername(user?.name || user?.email?.split('@')[0] || 'User');
-            setPreferences(DEFAULT_PREFERENCES);
-            setProfileLoaded(true);
-            // WR-03: the owned-games + calendar-status fetchers never run when
-            // identity fails terminally (they gate on selfUuid), so their loading
-            // flags would stay true forever ("Loading your collection..." /
-            // "Checking your calendar..."). Clear them here so those zones render their
-            // degrade banner instead of an indefinite spinner.
-            setLoadingGames(false);
-            setCheckingCalendarStatus(false);
+        if (!self) {
+            // Identity failed with NO row — fall back to Auth0 user data and unblock the paint
+            // gate (D-PAINT-01) and the two zones below, so the user doesn't stare at a skeleton
+            // forever. Deliberately writes no notification settings (see the marker above).
+            if (selfQuery.isError && !profileFallbackRef.current) {
+                profileFallbackRef.current = true;
+                setUsername(user?.name || user?.email?.split('@')[0] || 'User');
+                setProfileLoaded(true);
+                // WR-03: the owned-games + calendar-status fetchers never run when
+                // identity fails terminally (they gate on selfUuid), so their loading
+                // flags would stay true forever ("Loading your collection..." /
+                // "Checking your calendar..."). Clear them here so those zones render their
+                // degrade banner instead of an indefinite spinner.
+                setLoadingGames(false);
+                setCheckingCalendarStatus(false);
+            }
             return;
         }
-        if (!self) return;
         profileInitRef.current = true;
         setUserData(self);
         /* DECISION Phase 88.8 (plan 13 Task 3(d)): the THREE username-fallback
@@ -1132,6 +1165,10 @@ function Profile(){
            - The terminal-arm chain runs inside `selfQuery.isError`, where `self`
              is unavailable BY DEFINITION. There is no app address to use there;
              it is not fixable, only removable.
+             AMENDED Phase 88.6.1-61 (Req 11): that premise was false until this
+             phase — a failed refetch keeps `self` and the arm ran over it; the
+             fallback now sits inside the no-row branch, so the sentence holds by
+             construction. The non-change itself is untouched.
            - This chain and the header's sit behind `self.username ||` and
              `userData?.username ||`. After this phase provisioning always writes
              a non-empty username (`models/User.js` `username` is NOT NULL with a
@@ -1153,7 +1190,12 @@ function Profile(){
 
            This is a RECORDED NON-CHANGE under the milestone-tenet rule, not
            deferred debt. */
-        setUsername(self.username || user?.name || user?.email?.split('@')[0] || '');
+        // Review 66 (88.6.1-61): skipped while the username editor is open, so a name typed
+        // during the no-row fallback survives a late row — see `DECISION Phase 88.6.1-61 (Req 11,
+        // identity init)` above.
+        if (!editingUsername) {
+            setUsername(self.username || user?.name || user?.email?.split('@')[0] || '');
+        }
         // Initialize phone state
         if (self.phone && self.phone_verified) {
             setPhoneState('verified');
@@ -1166,7 +1208,7 @@ function Profile(){
         setPreferences(self.notification_preferences || DEFAULT_PREFERENCES);
         // Paint gate (D-PAINT-01): unblock username/avatar zone after backend resolves.
         setProfileLoaded(true);
-    }, [self, selfQuery.isError, user?.name, user?.email]);
+    }, [self, selfQuery.isError, user?.name, user?.email, editingUsername]);
 
     const handleSaveUsername = async (event) => {
         // D-35 (88.6.1-59): the in-flight refusal, synchronous and FIRST — see
@@ -2791,7 +2833,8 @@ function Profile(){
                     />
                 </div>
 
-                {/* Notification Preferences Section */}
+                {/* Notification Preferences Section — absent while identity has no row, on purpose:
+                    see `DECISION Phase 88.6.1-61 (Req 11, identity init)`. */}
                 {preferences && (
                 <div className="card p-3 md:p-6 mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-1">Notification Preferences</Heading>

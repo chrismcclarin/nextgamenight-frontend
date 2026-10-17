@@ -4287,7 +4287,7 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
     const view = render(<Profile />);
     await screen.findAllByRole('button', { name: 'Retry' });
     fireEvent.click(screen.getByRole('button', { name: 'Edit username' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Username', exact: true }), { target: { value: 'Typed Name' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Username' }), { target: { value: 'Typed Name' } });
 
     h.selfError = null;
     h.self = harnessSelfRow({ username: 'RealName', notification_preferences: REAL_PREFS });
@@ -4295,7 +4295,7 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
     // Positive signal: the row init ran (the card only mounts from it).
     await screen.findByRole('heading', { name: 'Notification Preferences' });
 
-    expect(screen.getByRole('textbox', { name: 'Username', exact: true })).toHaveValue('Typed Name');
+    expect(screen.getByRole('textbox', { name: 'Username' })).toHaveValue('Typed Name');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
   });

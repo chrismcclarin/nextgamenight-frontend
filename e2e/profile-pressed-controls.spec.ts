@@ -129,10 +129,12 @@ function decodedSegment(segment: string): string {
 // The self lookup: /users/<one segment> where the decoded segment is an Auth0 sub (has a pipe).
 // The real body is fetched and answered with `fields` merged over it; the last merged body is kept,
 // so a later write can be answered with the row the page would get back (plan 88.6.1-53 moved the
-// fixed fields to a parameter; one function, no copy).
+// fixed fields to a parameter; one function, no copy). Plan 88.6.1-61: while `failWhile` returns
+// true, the lookup is answered in the browser with a 500 and is NOT fetched; otherwise unchanged.
 async function patchSelfRow(
   page: Page,
   fields: Record<string, unknown>,
+  options: { failWhile?: () => boolean } = {},
 ): Promise<{ lastBody: () => Record<string, unknown> | null }> {
   let last: Record<string, unknown> | null = null;
   await page.route(
@@ -143,6 +145,10 @@ async function patchSelfRow(
     async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
+        return;
+      }
+      if (options.failWhile?.()) {
+        await route.fulfill({ status: 500, json: { error: 'boom' } });
         return;
       }
       const response = await route.fetch();
@@ -953,5 +959,101 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(fits, 'horizontal overflow around the search panel').toBe(true);
     expect(s.count()).toBe(1);
+  });
+});
+
+// Phase 88.6.1 plan 61 (Req 11, owner ruling 2026-10-05): when the account lookup fails with no
+// row, the Notification Preferences card is HIDDEN rather than filled with the app's defaults, and
+// the hidden card leaves no hole in the card rhythm. After Retry the row arrives and the card
+// appears with the user's own settings, and a toggle sends those settings plus the one change.
+// The jsdom cases (page.test.tsx, `identity row kept or late (88.6.1-61: Req 11, AC-29)`) pin the
+// page's half; this proves the Retry path and the layout in a real browser at 375px.
+//
+// Trigger A (a refetch that fails over a kept row) is NOT scripted here: reaching it in a browser
+// runs through EmailAddressSection's internal failure arms, which another plan restructures; its
+// library half is pinned by `src/lib/hooks/useSelfIdentity.retainedOnError.test.tsx`.
+//
+// Fixture-account protection (T-88.6.1-1225): `holdWrites` is registered FIRST, so the
+// notification PATCH is held in the browser and never sent; the test asserts it is the only
+// held request. This describe has no `expectNoApiWrites` afterEach because the one held PATCH is
+// the point of the test.
+const REAL_PREFS = {
+  event_created: { email: true, sms: false },
+  reminder: { email: true, sms: false, window_hours: 24 },
+  event_updated: { email: false, sms: false },
+  event_cancelled: { email: true, sms: false },
+};
+
+test.describe('Profile account lookup failure and the notification card (plan 88.6.1-61)', () => {
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test("with no account row the notification card is hidden, and after Retry it shows the user's own settings", async ({ page }, testInfo) => {
+    const hold = await holdWrites(page);
+    let failing = true;
+    await patchSelfRow(
+      page,
+      { username: 'E2E Real Name', notification_preferences: REAL_PREFS },
+      { failWhile: () => failing },
+    );
+    await page.goto('/userProfile');
+
+    // A missing control is a failure, never a skip.
+    const retry = page.getByRole('button', { name: /^Retry/ }).first();
+    await expect(retry).toBeVisible({ timeout: 15_000 });
+
+    // No card: no heading, no switch.
+    await expect(page.getByRole('heading', { name: 'Notification Preferences' })).toHaveCount(0);
+    await expect(page.getByRole('switch')).toHaveCount(0);
+
+    // No hole: Theme -> Timezone and Timezone -> Availability Settings keep the same gap.
+    const cardWith = (name: string) =>
+      page.locator('div.card').filter({ has: page.getByRole('heading', { level: 2, name, exact: true }) }).last();
+    const availability = page.locator('#availability-settings');
+    await settleAnimations(page.locator('main'));
+    const theme = await cardWith('Theme').boundingBox();
+    const timezone = await cardWith('Timezone').boundingBox();
+    const avail = await availability.boundingBox();
+    expect(theme && timezone && avail, 'the three cards render').toBeTruthy();
+    if (theme && timezone && avail) {
+      const above = timezone.y - (theme.y + theme.height);
+      const below = avail.y - (timezone.y + timezone.height);
+      expect(Math.abs(above - below), `card gaps ${above}px and ${below}px`).toBeLessThanOrEqual(1);
+    }
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    let fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow with the card hidden').toBe(true);
+
+    // The lookup recovers; Retry brings the row, and the card appears with the user's settings.
+    failing = false;
+    await retry.click();
+    await expect(page.getByRole('heading', { name: 'Notification Preferences' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('switch', { name: 'Event Updates email notifications' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+      { timeout: 15_000 },
+    );
+    await expect(page.getByRole('heading', { level: 1, name: 'E2E Real Name' })).toBeVisible({ timeout: 15_000 });
+
+    // A toggle sends the real settings plus the one change (held, never sent).
+    const patch = page.waitForRequest(
+      (request) => request.method() === 'PATCH' && new URL(request.url()).pathname.endsWith('/notification-preferences'),
+    );
+    await page.getByRole('switch', { name: 'New Event email notifications' }).click();
+    const request = await patch;
+    expect(request.postDataJSON()).toEqual({
+      preferences: { ...REAL_PREFS, event_created: { email: false, sms: false } },
+    });
+
+    expect(hold.count('PATCH', /\/notification-preferences$/)).toBe(1);
+    // The house rule (expectNoApiWrites): a non-/api request (a telemetry beacon) may be held too
+    // and is not a write to the backend, so "nothing else" is read over /api writes.
+    const apiWrites = hold.held.filter((held) => new URL(held.url).pathname.startsWith('/api/'));
+    expect(apiWrites, 'only the notification PATCH was held').toHaveLength(1);
+    fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow with the card shown').toBe(true);
   });
 });
