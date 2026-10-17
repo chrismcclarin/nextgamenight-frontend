@@ -56,6 +56,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupList from './grouplist';
 import { ApiError } from '@/lib/api';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 // GroupList is untyped JS; a typed-any props bag keeps JSX from demanding unrelated props (the
 // grouplist.identity.test.tsx shape).
@@ -226,5 +227,84 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     expect(cardOf(titleBlock('Alpha Crew'))).toBe(card);
     expect(card.isConnected).toBe(true);
     expect(screen.queryByText(LOAD_TITLE)).toBeNull();
+  });
+
+  // C8 (e): every expected register line is read through getFetchErrorMessage on the SAME error
+  // object, never typed here.
+  it('RF-6. a refresh answered 401 withdraws the cards for the full banner and its register line, never RF1 (C10, C8 e)', async () => {
+    const err = new ApiError('Session expired', 'unauthorized', 401);
+    const { card } = await loadCardsThenFail(err);
+    expect((await screen.findAllByText(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
+    expect(screen.getByText(LOAD_TITLE)).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
+    expect(card.isConnected).toBe(false);
+    expect(screen.queryByRole('heading', { name: 'No groups yet' })).toBeNull();
+  });
+
+  it('RF-7. the notice\'s own Retry answered 403 withdraws the cards and lands focus on "Your Groups" (C10, C8 e, Req 5)', async () => {
+    await loadCardsThenFail(ERR_500);
+    await waitForRf1();
+
+    const err = new ApiError('Forbidden', 'forbidden', 403);
+    h.getUserGroups.mockRejectedValueOnce(err);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    expect((await screen.findAllByText(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
+    await waitFor(() => expect(document.activeElement).toBe(yourGroups()));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  // The house idiom (useFetchErrorState.test.tsx, function fireVisibility): the hook's tab-return
+  // re-attempt, the refresh nobody pressed. It listens only while the error shows, so each case
+  // below first puts RF1 up with a 500.
+  function fireVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  async function withdrawWhileCardFocused(err: unknown) {
+    await loadCardsThenFail(ERR_500);
+    await waitForRf1();
+    const cardTitle = titleBlock('Alpha Crew');
+    act(() => cardTitle.focus());
+    expect(document.activeElement).toBe(cardTitle);
+
+    h.getUserGroups.mockRejectedValueOnce(err);
+    // No press and no rerender: the tab-return re-attempt is the only refresh.
+    act(() => fireVisibility('visible'));
+    expect((await screen.findAllByText(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
+    await waitFor(() => expect(document.activeElement).toBe(yourGroups()));
+    expect(cardTitle.isConnected).toBe(false);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(h.getUserGroups).toHaveBeenCalledTimes(3);
+  }
+
+  it('RF-8. an UNPRESSED refresh answered 403 or 401 withdraws the cards while a card holds focus: focus lands on "Your Groups", never body (C12 a, C8 f1)', async () => {
+    // The 403 leg.
+    await withdrawWhileCardFocused(new ApiError('Forbidden', 'forbidden', 403));
+    cleanup();
+    h.getUserGroups.mockReset();
+    // The 401 leg, from a FRESH render.
+    await withdrawWhileCardFocused(new ApiError('Session expired', 'unauthorized', 401));
+  });
+
+  it('RF-9. an UNPRESSED refresh that SUCCEEDS while Retry holds focus lands on "Your Groups" (C12 b, C8 f2)', async () => {
+    await loadCardsThenFail(ERR_500);
+    await waitForRf1();
+    const retry = screen.getByRole('button', { name: 'Retry', exact: true });
+    // Focused, never clicked.
+    act(() => retry.focus());
+    expect(document.activeElement).toBe(retry);
+
+    h.getUserGroups.mockResolvedValueOnce([ALPHA, BETA]);
+    act(() => fireVisibility('visible'));
+    await waitFor(() => expect(document.activeElement).toBe(yourGroups()));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(titleBlock('Beta Crew')).toBeInTheDocument();
+    expect(retry.isConnected).toBe(false);
+    expect(document.activeElement).not.toBe(document.body);
   });
 });
