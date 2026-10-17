@@ -5,6 +5,8 @@
 // off their own group page. This test mounts the page with a pending identity
 // query and asserts no removed-redirect fires (loading is shown instead), plus
 // the positive path where a resolved member passes the gate without redirect.
+import fs from 'node:fs';
+import path from 'node:path';
 import * as React from 'react';
 import { render, screen, waitFor, cleanup, within, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -97,6 +99,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import GroupHomePage from './page';
 import { groupsAPI, eventsAPI, listsAPI, ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
+import { readOpeningTag, withoutComments } from '../../test-utils/sourceScan';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -317,7 +320,7 @@ describe('groupHomePage group-settings entry is owner/admin (88.6-21 D-31, owner
 
     // The POSITIVE half first, so the two absences below are not absence-by-nothing-rendered:
     // an active member still gets the Manage Members opener, which is where Leave Group lives
-    // (ManageMembers.js:641-647). This gate strands nobody.
+    // (ManageMembers.js, anchor `{isCurrentUser && !isOwner && (`). This gate strands nobody.
     expect(screen.getByRole('button', { name: 'Manage Members' })).toBeInTheDocument();
 
     expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
@@ -480,5 +483,31 @@ describe('groupHomePage games refresh keeps the page (88.6.1-55: Req 9, D-09a / 
     expect(h.gamesListProps!.errorState.showError).toBe(false);
     expect(infoSpy.mock.calls.some(([msg]) => msg === 'Error fetching games:')).toBe(true);
     infoSpy.mockRestore();
+  });
+});
+
+// 88.6.1-55 Task 4 (W051 / AC-35, LATENT-AND-DEAD-RULING item 1, owner 2026-10-03: TIDY). The
+// kebab asks the owner/admin question ONCE: the wrapper. The role variable's name is read from the
+// page's own declaration rather than spelled here, so no suite names it (AC-35: it occurs in no
+// file but the page). The three role tests above stay the behaviour pins.
+describe('groupHomePage kebab — one role check (88.6.1-55: W051 / AC-35)', () => {
+  it('KB-1. the KebabMenu items are an array literal with no role check, inside the one owner/admin wrapper', () => {
+    const src = withoutComments(fs.readFileSync(path.join(__dirname, 'page.js'), 'utf8'));
+    const decl = /const\s+([A-Za-z_$][\w$]*)\s*=\s*userRole === 'owner' \|\| userRole === 'admin';/.exec(src);
+    expect(decl).not.toBeNull();
+    const roleVar = decl![1];
+
+    const opens = [...src.matchAll(/<KebabMenu(?=[\s>/])/g)];
+    expect(opens).toHaveLength(1);
+    const tag = readOpeningTag(src, opens[0].index ?? 0);
+    expect(tag).not.toBeNull();
+    expect(tag!).toContain('ariaLabel="Group actions"');
+    expect(tag!).toMatch(/items=\{\s*\[/);
+    expect(tag!).not.toContain(roleVar);
+
+    // The wrapper still encloses the trigger's div: the role variable, then the div, then the menu.
+    expect(src).toMatch(
+      new RegExp(`\\{\\s*${roleVar}\\s*&&\\s*\\(\\s*<div className="shrink-0 relative z-20">\\s*<KebabMenu\\b`),
+    );
   });
 });

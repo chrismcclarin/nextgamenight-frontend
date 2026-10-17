@@ -103,7 +103,7 @@ function GroupHomePage(){
         const status = error?.status || error?.response?.status;
         if (status === 403 || status === 404) return true;
         // CONTROL FLOW, not a user-facing read, and rostered as such in
-        // `fetchErrorTreatment.test.ts`'s `CONTROL_FLOW_ALLOWED` (`:314-318`), whose `why` reads:
+        // `fetchErrorTreatment.test.ts`'s `CONTROL_FLOW_ALLOWED` (its `app/groupHomePage/page.js` entry), whose `why` reads:
         // "isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed."
         // This line is DELIBERATELY byte-unchanged. A later R1 sweep that "completes" the work by
         // routing it through `getFetchErrorMessage` would turn a deliberate control-flow read into
@@ -160,7 +160,7 @@ function GroupHomePage(){
                    logger egresses its ctx to Sentry, so re-channelling it unchanged would have
                    sent that payload out of the browser. A SHAPE DESCRIPTOR goes instead; the
                    payload never does. `logger.warn` is NOT the matching level: it is
-                   `Sentry.captureMessage` (`logger.ts:31-32`), an EVENT, and AC-2's amended level
+                   `Sentry.captureMessage` (`logger.ts`, anchor `Sentry.captureMessage(msg, { level: 'warning'`), an EVENT, and AC-2's amended level
                    (owner 2026-09-13) is `info` — a breadcrumb. Restoring `data` here is one
                    keystroke and is exactly what T-84-01 forbids. */
                 logger.info('Group members data is not an array:', {
@@ -234,7 +234,7 @@ function GroupHomePage(){
        Changing any of these is a decision, not a cleanup. */
     const getGamesForGroup = useCallback(async () => {
         // 87.4 Plan 10 (SPEC Req 5 + T-874-10-RACE): gate the games fetch on
-        // selfUuid resolution the same way getGroupMembers is (L109-115). selfUuid
+        // selfUuid resolution the same way getGroupMembers is (its identity guard, anchor `!selfUuid) return;`). selfUuid
         // resolves ASYNC (after an Auth0-session-load round-trip), so a callback
         // keyed only on user?.sub would close over an unresolved selfUuid on a hard
         // load, send it as undefined, get a 403 from the self-gated lists endpoint,
@@ -503,7 +503,7 @@ function GroupHomePage(){
 
     // 88.6-21 (D-31, owner ruling 2026-08-27): the group-settings entry gate. Spelled as the
     // SAME expression `grouplist.js` already ships for the same decision, rather than a second
-    // formulation of it. PRESENTATION ONLY — the backend 403 (`routes/groups.js:1521`) is the
+    // formulation of it. PRESENTATION ONLY — the backend 403 (`routes/groups.js`, anchor `Only owners and admins can update group settings`) is the
     // authorization control; see the marker on the kebab below.
     const canEditGroup = userRole === 'owner' || userRole === 'admin';
 
@@ -804,7 +804,8 @@ function GroupHomePage(){
                             second type scale — the same reasoning 88-19 recorded when it
                             removed the md:-prefixed heading sizes from userProfile. This is a
                             visible +6px on phone, and it is the intended direction: userProfile
-                            (:1268) and gameDetail (:1036) both already render their h1 at 30px
+                            (its `<Heading ref={profileHeadingRef} level={1} size="display"` title) and
+                            gameDetail (its `level={1}` `size="display"` titles) both already render their h1 at 30px
                             unconditionally, so this surface was the last outlier. `wrap-break-word`
                             is what keeps a long group name safe at 375px and must stay. */}
                         <Heading
@@ -843,7 +844,7 @@ function GroupHomePage(){
                         "Active members only" IS SUPERSEDED, not contradicted: the entry is now
                         OWNER/ADMIN only. Owner ruling 2026-08-27, phone UAT test 6, option 1. The
                         single item is "Group settings", whose SAVE the backend 403s for anyone
-                        else (`routes/groups.js:1507-1521`, the refusal at `:1521`), so an active
+                        else (`routes/groups.js`'s `router.put('/:group_id/settings'` handler, the refusal at anchor `Only owners and admins can update group settings`), so an active
                         member was being offered an action that could only end in a failure toast.
                         The expression matches the one `grouplist.js` already ships for the same
                         decision (`canEdit = userRole === 'owner' || userRole === 'admin'`).
@@ -852,12 +853,12 @@ function GroupHomePage(){
                         control and must never be "simplified away" on the strength of this line —
                         a UI gate mistaken for authorization is a real privilege defect
                         (T-88.6-54). The 403's user-facing copy is `MESSAGE_BY_CODE.forbidden`
-                        (`useFetchErrorState.ts:50`, already ratified — no new string), routed and
+                        (`useFetchErrorState.ts`, anchor `forbidden: "You don't have access to this.`, already ratified — no new string), routed and
                         asserted by plan 88.6-20 at `GroupSettings.js`'s settings-save catch, not
                         here. That path stays reachable: the role can change after the modal
                         renders (SPEC Edge Coverage, `ordering / R1`).
 
-                        BOTH the wrapper AND the item are gated, deliberately. Plan 16's
+                        The WRAPPER is the gate, deliberately. Plan 16's
                         zero-items-renders-no-trigger rule still holds as a rule (UI-SPEC §9 / §7.3)
                         but is NOT what is relied on here — in plan 18's own words, so this phase
                         ships one posture on the question, "that rule is a TEST CONTRACT, not an
@@ -865,24 +866,28 @@ function GroupHomePage(){
                         it".
 
                         IT STRANDS NOBODY. Leave Group lives in Manage Members
-                        (`ManageMembers.js:641-647`, rendered for `isCurrentUser && !isOwner`),
+                        (`ManageMembers.js`, anchor `{isCurrentUser && !isOwner && (`, rendered for `isCurrentUser && !isOwner`),
                         whose opener sits under the same active-member gate in the CTA row below
                         and is reachable by every active member.
 
                         The TRIGGER stays swappable — Phase 88.9 owns replacing it with a gear
                         glyph, and this phase changes only what plan 16's component change brings.
-                        Widening this gate back to any active member is a decision, not a cleanup. */}
+                        Widening this gate back to any active member is a decision, not a cleanup.
+
+                        AMENDED Phase 88.6.1-55 (W051, LATENT-AND-DEAD-RULING): until this phase the
+                        item list repeated the owner/admin check inside the wrapper. Under the
+                        wrapper that inner check could never be false, so it was deleted as dead code
+                        (owner ruling 2026-10-03, TIDY). The wrapper stays, because dropping it too
+                        would lean on KebabMenu's zero-items rule, which this marker refuses to treat
+                        as a gate. REJECTED: leaving the dead arm in place (the 88.6 review's "none
+                        needed") — it read as a half-finished refactor. */}
                     {canEditGroup && (
                         <div className="shrink-0 relative z-20">
                             <KebabMenu
                                 ariaLabel="Group actions"
-                                items={
-                                    canEditGroup
-                                        ? [
-                                              { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
-                                          ]
-                                        : []
-                                }
+                                items={[
+                                    { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
+                                ]}
                             />
                         </div>
                     )}
@@ -1062,7 +1067,7 @@ function GroupHomePage(){
                            Phase 88.6's `Button` migration still owns the real border/ring MODEL;
                            this is an interim per-site edge. Changing it is a decision, not a
                            cleanup. */
-                        /* ——— AMENDED Phase 88.6-21 (task 2, UI-SPEC §3.2 `:208`), everything
+                        /* ——— AMENDED Phase 88.6-21 (task 2, UI-SPEC §3.2's `btn`-alone-with-token-utilities row), everything
                            above KEPT AS HISTORY ———
 
                            THIS CONTROL IS NOW A `<Button variant="ghost">`, AND EVERY EDGE
@@ -1076,7 +1081,7 @@ function GroupHomePage(){
                            alternative is the RECORDED NEXT STEP priced at 1.1330 in the bullet
                            above, i.e. a WEAKER cue than the ring, and taking it here would have
                            been the rejected arm of ruling 2. `variant="primary"` is forbidden for
-                           a bare `.btn` outright (§3.2 `:214`).
+                           a bare `.btn` outright (§3.2, "A bare `.btn` NEVER maps to `variant="primary"`").
 
                            FOUR MECHANICAL CHANGES, each of which touches something this marker
                            states, so each is recorded rather than left to be discovered:
@@ -1102,11 +1107,11 @@ function GroupHomePage(){
                                 keeps the half-migration (class string kept, ring dropped) red.
                              4. `px-4 py-2 md:px-6 md:py-3`, `rounded-btn` and `transition-all`
                                 are DELETED as dead: `.btn` declares `padding`, `border-radius`
-                                and `transition` UNLAYERED (`globals.css:2194-2205`), so no
+                                and `transition` UNLAYERED (`globals.css`, the unlayered `.btn {` block), so no
                                 `@layer utilities` class of any of the three ever painted here.
                                 `transition-all` in particular is worth naming: the hover fill
                                 DOES transition, from `.btn`'s own
-                                `transition: var(--theme-transition)` (`:1684` —
+                                `transition: var(--theme-transition)` (the same `.btn {` block —
                                 background-color, color, border-color, box-shadow), never from
                                 this class.
 
@@ -1135,7 +1140,7 @@ function GroupHomePage(){
                             Manage Members
                         </Button>
                     )}
-                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
+                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css`, the `.btn { min-height: 2.75rem; }` rule inside it, reasoning in the D-36 marker above it), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
                     {/* DECISION Phase 88.6-21 (task 2, UI-SPEC §3.2 asChild row / §13 correction 4):
                         this is the PURPLE `btn btn-primary` CTA, not the amber one — the SPEC's
                         own §13 correction 4 exists because an earlier reading swapped the two. It
@@ -1190,8 +1195,8 @@ function GroupHomePage(){
                            amber Create-Event CTA converges onto `<Button variant="accent">` and
                            its inline `style` is DELETED. That inline pair was the SECOND
                            expression of one design decision — the first is `.btn-accent`
-                           (`globals.css:2478-2481`) — which is exactly the routed duplication the
-                           `DECISION Phase 88.3-18` marker at `globals.css:2389` exists to prevent.
+                           (`globals.css`, the `.btn-accent {` rule) — which is exactly the routed duplication the
+                           `DECISION Phase 88.3-18` marker above `.btn-accent` in `globals.css` (the Share Game QR one) exists to prevent.
                            The OI-6 reasoning the deleted comment carried is KEPT here rather than
                            lost: the fill was `var(--amber-600)`, white on it 3.19:1, a pre-existing
                            AA failure in both themes; `--amber-700` is 5.0216:1; `amber-800` (7.09)
@@ -1199,21 +1204,21 @@ function GroupHomePage(){
 
                            BYTE-EQUAL AT REST, MEASURED AT EXECUTION ACROSS ALL THREE TOKENS, not
                            two: `--color-btn-accent-bg` is `var(--amber-700)` in both theme blocks
-                           (`globals.css:1390`, `:1827`), `--color-btn-accent-text` is `#ffffff` in
-                           both (`:1392`, `:1829`), and `--color-btn-accent-hover` is
-                           `var(--amber-800)` in both (`:1391`, `:1828`).
+                           (`globals.css`, `--color-btn-accent-bg: var(--amber-700);` in the light and the `.dark` block), `--color-btn-accent-text` is `#ffffff` in
+                           both (anchor `--color-btn-accent-text: #ffffff;`), and `--color-btn-accent-hover` is
+                           `var(--amber-800)` in both (anchor `--color-btn-accent-hover: var(--amber-800);`).
 
                            THE HOVER STATE IS NOT BYTE-EQUAL, AND THAT IS DISCLOSED RATHER THAN
                            SUPPRESSED. Today the amber is an INLINE declaration, which beats every
                            class rule, so the fill is INVARIANT under hover — `.btn` declares no
                            background of its own. After this migration
                            `.btn-accent:hover:not(:disabled):not([aria-disabled='true'])`
-                           (`globals.css:2483-2484`) applies `--color-btn-accent-hover`, and
-                           `.btn`'s own unlayered `transition: var(--theme-transition)` (`:1684`)
+                           (`globals.css`, that rule) applies `--color-btn-accent-hover`, and
+                           `.btn`'s own unlayered `transition: var(--theme-transition)` (its `.btn {` block)
                            covers background-color — so the control now visibly DARKENS on hover
                            where it previously did not move. It is an ADDED state, not a changed
                            one, and the added state is STRONGER than the rest state it lifts from:
-                           white on amber-800 measures 7.0900 (`tokenContrast.test.ts:1257`) against
+                           white on amber-800 measures 7.0900 (`tokenContrast.test.ts`, anchor `white on amber-800 hover (7.0900)`) against
                            the rest state's 5.0216. Recorded in `88.6-21-SUMMARY.md` for
                            `/gsd-ui-review`. Re-adding an inline fill to suppress it is a decision,
                            not a cleanup.
