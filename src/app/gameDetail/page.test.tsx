@@ -3386,6 +3386,20 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     });
   });
 
+  // Wave 7 CI gate (run 39020174955): the e2e arm's own sequence (gamedetail-refresh-failed.spec.ts,
+  // event): the first load lands while identity is still pending, identity then resolves and that
+  // same-key re-run's event read answers 500. In jsdom the event stays under RF1; the browser
+  // withdrew it to the full banner, so the cause is outside this page's state machine as jsdom runs it.
+  it('EV-20. identity resolving after the first load, then a failed re-run, keeps the event under RF1', async () => {
+    const r = renderEventDetail({ identityPending: true });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    h.selfUuid = SELF_UUID;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
   it('EV-1. a failed refresh keeps the event and shows RF1 with one Retry (C8 a)', async () => {
     await reachEventRf1();
     expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();

@@ -174,6 +174,19 @@ test('event page: a failed background refresh keeps the event and shows the noti
   await page.unrouteAll({ behavior: 'ignoreErrors' });
 
   // Part B — the refresh failure.
+  // DIAGNOSTIC ONLY (wave 7 CI gate, run 39020174955): this arm withdrew the event to the full
+  // "We couldn't load this event" banner in both attempts, which the page does only on a different
+  // entity key, an access answer, or a fresh mount, and the same sequence keeps the event under RF1
+  // in jsdom. The trail below (request order and answers, main-frame navigations, page errors, and
+  // the loader / h1 timeline after the release) is printed ONLY when the RF1 wait fails, so the
+  // next CI run names the mechanism. It asserts nothing and changes nothing the page sees.
+  const startedAt = Date.now();
+  const trail: string[] = [];
+  const mark = (entry: string) => trail.push(`${Date.now() - startedAt}ms ${entry}`);
+  page.on('pageerror', (error) => mark(`pageerror ${error.name}: ${error.message.slice(0, 160)}`));
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) mark(`navigated ${new URL(frame.url()).pathname}`);
+  });
   const identity = await holdIdentityReads(page);
   let failNext = false;
   let issued = 0;
@@ -182,6 +195,7 @@ test('event page: a failed background refresh keeps the event and shows the noti
     const request = route.request();
     if (request.method() === 'GET' && EVENT_GET_PATH.test(new URL(request.url()).pathname)) {
       issued += 1;
+      mark(`event GET #${issued}${failNext ? ' (answered 500)' : ''}`);
       if (failNext) {
         failNext = false;
         await route.fulfill({ status: 500, json: { error: 'e2e refresh failure' } });
@@ -204,10 +218,36 @@ test('event page: a failed background refresh keeps the event and shows the noti
   // The card: the <h1>'s header row, then that row's parent (the card holding title, date, RSVP).
   const card = heading.locator('xpath=../..');
 
+  await page.evaluate((loaderLabel) => {
+    const w = window as unknown as { __rf1Trail?: string[] };
+    const trailInPage: string[] = [];
+    w.__rf1Trail = trailInPage;
+    const t0 = performance.now();
+    const sample = () => {
+      const loader = Boolean(document.querySelector(`[role="status"][aria-label="${loaderLabel}"]`));
+      const h1 = Boolean(document.querySelector('main h1'));
+      const state = `loader=${loader} h1=${h1}`;
+      if (!trailInPage.length || !trailInPage[trailInPage.length - 1].endsWith(state)) {
+        trailInPage.push(`${Math.round(performance.now() - t0)}ms ${state}`);
+      }
+    };
+    sample();
+    new MutationObserver(sample).observe(document.body, { subtree: true, childList: true });
+  }, 'Loading game night...');
+
   failNext = true;
+  mark(`releasing ${identity.heldCount()} held identity read(s)`);
   await identity.release();
   const { retry, line } = rf1Line(page);
-  await expect(line).toContainText(RF1, { timeout: 15_000 });
+  try {
+    await expect(line).toContainText(RF1, { timeout: 15_000 });
+  } catch (error) {
+    const inPage = await page
+      .evaluate(() => (window as unknown as { __rf1Trail?: string[] }).__rf1Trail ?? ['no trail: a new document'])
+      .catch(() => ['evaluate failed']);
+    console.log(`[DIAG gamedetail-refresh-event] ${JSON.stringify({ trail, inPage })}`);
+    throw error;
+  }
 
   await expect(page.getByText("We couldn't load this event")).toHaveCount(0);
   await expect(heading).toBeVisible();
