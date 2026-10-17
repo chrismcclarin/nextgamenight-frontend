@@ -429,7 +429,10 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     const toggle = page.getByRole('button', { name: '+ Add Schedule' });
     await expect(toggle).toBeVisible({ timeout: 15_000 });
     await toggle.click();
-    await page.getByRole('button', { name: 'Mon' }).click();
+    // `exact`: a bare 'Mon' is a substring match and also finds a seeded row's `Delete Monday
+    // schedule` (wave 7 CI gate, run 39020174955: strict-mode, 2 elements); the day toggle's whole
+    // name is `Mon`.
+    await page.getByRole('button', { name: 'Mon', exact: true }).click();
 
     const save = page.getByRole('button', { name: /^(Save Schedule|Saving\.\.\.)$/ });
     await focusByKeyboard(page, save);
