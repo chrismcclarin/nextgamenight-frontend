@@ -15,7 +15,7 @@
 //
 // Comments in this file are line comments only (FE-TESTING-CONVENTIONS CF-9).
 import * as React from 'react';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api';
@@ -111,6 +111,7 @@ function queue(key: QueueKey, ...entries: Entry[]) {
 // Copy row N7 (D-47, owner-ratified 2026-10-05), straight apostrophe (D-32 R8).
 const N7 = "Couldn't load your notifications";
 const EMPTY_LINE = 'No pending notifications';
+const REPORT_DIALOG = 'Report Bug or Suggest Feature';
 
 const make500 = () => new ApiError('HTTP error! status: 500', 'internal', 500, {});
 
@@ -385,5 +386,69 @@ describe('NotificationBell — load failure banner N7 (plan 88.6.1-80)', () => {
     expect(await within(panel).findByText(N7)).toBeInTheDocument();
     expect(within(panel).getByText(getFetchErrorMessage(err401))).toBeInTheDocument();
     expect(within(panel).queryByText(getFetchErrorMessage(new Error('x')))).toBeNull();
+  });
+
+  it('NL-7. Report this opens the form over a panel that stays open: presses in it or on its overlay keep the panel; one Escape closes one layer', async () => {
+    queue('invites', make500(), make500());
+    const user = userEvent.setup();
+    renderTree();
+    const panel = await openBell(user);
+    await click(user, await within(panel).findByRole('button', { name: 'Try again' }));
+    await click(user, await within(panel).findByRole('button', { name: 'Report this' }));
+
+    const dialog = await screen.findByRole('dialog', { name: REPORT_DIALOG });
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    expect(region()).toBeInTheDocument();
+
+    fireEvent.mouseDown(within(dialog).getByRole('textbox', { name: 'Subject' }));
+    expect(region()).toBeInTheDocument();
+
+    const overlay = dialog.previousElementSibling as HTMLElement;
+    expect(overlay).not.toBeNull();
+    expect(overlay.contains(dialog)).toBe(false);
+    fireEvent.mouseDown(overlay);
+    expect(region()).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: REPORT_DIALOG })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: REPORT_DIALOG })).toBeNull());
+    expect(region()).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(region()).getByRole('button', { name: 'Report this' })),
+    );
+
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Notifications' })),
+    );
+    expect(screen.queryByRole('region', { name: 'Notifications', hidden: true })).toBeNull();
+  });
+
+  it('NL-10. the data recovers while the form is open: the panel shows the empty line, and closing the form lands focus on the panel heading', async () => {
+    // Two failures, then the exhausted queue answers [] (the recovery).
+    queue('invites', make500(), make500());
+    const user = userEvent.setup();
+    renderTree();
+    const panel = await openBell(user);
+    await click(user, await within(panel).findByRole('button', { name: 'Try again' }));
+    await click(user, await within(panel).findByRole('button', { name: 'Report this' }));
+    const dialog = await screen.findByRole('dialog', { name: REPORT_DIALOG });
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+    await act(async () => {
+      fireVisibility('visible');
+    });
+    expect(await within(region()).findByText(EMPTY_LINE)).toBeInTheDocument();
+    expect(within(region()).queryByText(N7)).toBeNull();
+    expect(screen.getByRole('dialog', { name: REPORT_DIALOG })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: REPORT_DIALOG })).toBeNull());
+    expect(region()).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(region()).getByRole('heading', { name: 'Notifications' })),
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).not.toBe(screen.getByRole('heading', { name: 'Home' }));
   });
 });

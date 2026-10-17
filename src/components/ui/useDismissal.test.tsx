@@ -351,3 +351,123 @@ describe('useDismissal restoreFocusToTrigger — focuses the trigger only while 
     expect(() => result.current.restoreFocusToTrigger()).not.toThrow();
   });
 });
+
+// Imports for the plan 88.6.1-80 describe, kept with it so plan 05's arms above stay byte-unchanged
+// (ES imports are hoisted, so their position does not change evaluation order).
+import { act, waitFor, within } from '@testing-library/react';
+import { Modal } from '@/app/components/Modal';
+
+// Plan 88.6.1-80 (D-18): a modal dialog that is open and does NOT contain the container is a layer
+// ABOVE the surface. The dialog here is the REAL house Modal, rendered as a SIBLING of the host
+// (outside its component tree), the shape of the report form that FeedbackModalProvider hosts at
+// the layout root (plan 88.6.1-69). A test-controlled flag opens it.
+const layerControls: { openDialog: () => void } = { openDialog: () => undefined };
+
+function LayerHarness({ onDismiss }: { onDismiss: () => void }) {
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  layerControls.openDialog = () => setDialogOpen(true);
+  return (
+    <>
+      <Harness onDismiss={onDismiss} />
+      <Modal open={dialogOpen} onClose={() => setDialogOpen(false)}>
+        <Modal.Header>Form</Modal.Header>
+        <Modal.Body>
+          <label>
+            First field
+            <input type="text" />
+          </label>
+          <label>
+            Second field
+            <input type="text" />
+          </label>
+        </Modal.Body>
+      </Modal>
+    </>
+  );
+}
+
+// The host INSIDE an open dialog (the kebab-in-a-dialog shape): that dialog CONTAINS the container,
+// so it is below the host, not above it.
+function HostInsideDialog({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <Modal open onClose={() => undefined}>
+      <Modal.Header>Holder</Modal.Header>
+      <Modal.Body>
+        <Harness onDismiss={onDismiss} />
+        <button type="button">Other control in the dialog</button>
+      </Modal.Body>
+    </Modal>
+  );
+}
+
+async function nextMacrotask() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+function overlayOf(dialog: HTMLElement) {
+  const overlay = dialog.previousElementSibling as HTMLElement | null;
+  expect(overlay, 'the dimmed overlay renders just before the dialog content').not.toBeNull();
+  expect(overlay!.contains(dialog)).toBe(false);
+  return overlay as HTMLElement;
+}
+
+describe('useDismissal — a modal dialog above the surface (plan 88.6.1-80, D-18)', () => {
+  it('L6. focus moving into an open dialog above, and a press inside it, never dismiss the surface', async () => {
+    const onDismiss = vi.fn();
+    render(<LayerHarness onDismiss={onDismiss} />);
+    openHarness();
+
+    act(() => layerControls.openDialog());
+    const dialog = await screen.findByRole('dialog', { name: 'Form' });
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(within(dialog).getByRole('textbox', { name: 'First field' }));
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByTestId('panel')).toBeInTheDocument();
+  });
+
+  it('L7. the boundary: a dialog that CONTAINS the host is below it, so focus leaving the host for another control in it still dismisses', async () => {
+    const onDismiss = vi.fn();
+    render(<HostInsideDialog onDismiss={onDismiss} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Holder' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Trigger' }));
+    const inside = within(dialog).getByRole('button', { name: 'Inside' });
+    inside.focus();
+    expect(inside).toHaveFocus();
+
+    within(dialog).getByRole('button', { name: 'Other control in the dialog' }).focus();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('L8. a press on the dialog overlay belongs to the dialog: the real primary-button sequence closes the dialog alone, and the rule ends with the dialog', async () => {
+    const onDismiss = vi.fn();
+    render(<LayerHarness onDismiss={onDismiss} />);
+    openHarness();
+    act(() => layerControls.openDialog());
+    const dialog = await screen.findByRole('dialog', { name: 'Form' });
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    const overlay = overlayOf(dialog);
+
+    // First half: the hook's press handler alone, on the overlay.
+    fireEvent.mouseDown(overlay);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    // The real press sequence (review #92), once Radix's outside-press listener is registered (it
+    // is added one macrotask after the layer mounts). A primary press is deferred by Radix to the
+    // click, so the hook's mousedown still finds the dialog open.
+    await nextMacrotask();
+    fireEvent.pointerDown(overlay, { button: 0 });
+    fireEvent.mouseDown(overlay, { button: 0 });
+    fireEvent.click(overlay, { button: 0 });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Form' })).toBeNull());
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByTestId('panel')).toBeInTheDocument();
+
+    // The dialog is gone: an ordinary outside press dismisses again.
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Outside' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
