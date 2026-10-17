@@ -459,6 +459,28 @@ describe('BallotSection — one pick per press, the heard in-flight name, and fo
     expect(option).not.toBeInTheDocument();
   });
 
+  it('T1h: a pick pressed by a click that does not focus it (Safari) still lands focus on the winner card (contract (1), from: the pressed control)', async () => {
+    // fireEvent.click dispatches the click WITHOUT focusing the button, as Safari does for a
+    // mouse click. The arm is seeded from the pressed control itself, so the removal is still
+    // recovered. Without that seed the hook watches nothing and focus stays on <body>.
+    const refetch = deferred();
+    (ballotAPI.resolveTie as Mock).mockResolvedValueOnce({ winner: { game_id: 'g1', game_name: 'Catan' } });
+    renderBallotSequence([TIE_BREAK, refetch.promise]);
+    const catan = await screen.findByRole('button', { name: 'Catan' });
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.click(catan);
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      refetch.resolve(WINNER);
+    });
+    await waitFor(() => {
+      const active = document.activeElement;
+      expect(active).not.toBe(document.body);
+      expect(active?.textContent).toContain('Winner');
+    });
+  });
+
   it('T1g: a game name holding quotes and an emoji is NAMED exactly "{name}, saving" while in flight, and its visible text is unchanged', async () => {
     const fancy = { id: 'opt-3', game_id: 'g3', game_name: 'Ticket to Ride: "Europe" 🚂', user_voted: false };
     const hold = deferred();

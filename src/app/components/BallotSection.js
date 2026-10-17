@@ -1,13 +1,20 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ballotAPI } from '../../lib/api';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '@/lib/logger';
 
 /**
  * BallotSection - Game voting ballot for an event
  */
+
+// Copy row E14 (D-30, ratified 2026-10-04): the heard in-flight name of a pick while it saves.
+// ONE template, so the whole ratified string lives in one source line for the AC-33 scan.
+function savingPickLabel(gameName) {
+  return `${gameName}, saving`;
+}
 
 /* DECISION Phase 88.6-22 (R3 #146): the three action-failure messages announce through the
    shared `StatusRegion` primitive, mounted UNCONDITIONALLY and fed an empty string when there is
@@ -48,6 +55,25 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [votingOptionId, setVotingOptionId] = useState(null);
+  const [resolvingOptionId, setResolvingOptionId] = useState(null);
+  const resolveInFlightRef = useRef(false);
+  const voteInFlightRef = useRef(false);
+  const gameVoteHeadingRef = useRef(null);
+  const winnerCardRef = useRef(null);
+
+  /* DECISION Phase 88.6.1-31 (Req 5 / D-04, D-05): a successful pick swaps the tie-break or
+     fallback branch for the winner card, and a vote whose refetch shows the ballot closed swaps
+     the open branch for another one; both REMOVE the control the user pressed. The shared
+     `useFocusRecovery` is armed synchronously at the press and settled in `finally`, with
+     `preferred` = the winner card (it reads "Winner" and the game, which is what the pick
+     produced) and `fallback` = the "Game Vote" heading (D-05), else the page floor; never
+     `<body>`. Each arm also passes `from` = the pressed control, per the hook's consumer
+     contract (1) (`useFocusRecovery.ts`, CONSUMER CONTRACT (1), anchor `event.currentTarget`):
+     Safari does not focus a clicked button, so the activeElement seed alone would watch nothing.
+     REJECTED: (a) per-host inline focus code (D-04, tenet); (b) focusing at settle time, which
+     runs before the branch swap commits; (c) minting a heading or a status line to land on.
+     Changing this is a decision, not a cleanup. */
+  const recovery = useFocusRecovery({ fallback: gameVoteHeadingRef });
 
   const isOrganizer = userRole === 'owner' || userRole === 'admin';
   const canVote = userRsvpStatus === 'yes' || userRsvpStatus === 'maybe';
@@ -69,8 +95,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     fetchBallot();
   }, [fetchBallot]);
 
-  const handleToggleVote = async (optionId) => {
-    if (votingOptionId || !canVote) return;
+  const handleToggleVote = async (optionId, from) => {
+    if (voteInFlightRef.current || !canVote) return;
+    voteInFlightRef.current = true;
+    const settle = recovery.arm({ preferred: () => winnerCardRef.current, from });
     setVotingOptionId(optionId);
     setError(null);
 
@@ -102,12 +130,32 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       await fetchBallot();
       setError('Could not save your vote. Please try again.');
     } finally {
+      voteInFlightRef.current = false;
       setVotingOptionId(null);
+      settle();
     }
   };
 
-  const handleResolveTie = async (optionId) => {
-    if (!isOrganizer) return;
+  /* DECISION Phase 88.6.1-31 (W013 / D-35): ONE synchronous first-line REF latch,
+     `resolveInFlightRef`, for BOTH pick lists (the tie-break picks and the fallback picks both
+     call this handler), released in `finally`, plus a `resolvingOptionId` state that drives the
+     attributes: the pressed pick takes `aria-disabled` and stays in the focus order, its siblings
+     take native `disabled` (the rule of POSITION, `DECISION Phase 88.6-22`, FriendInvitePanel.js
+     anchor `The latch is a REF`; the in-file twin is the vote options below).
+     REJECTED: (a) the review's state-only first-line check (IN-106): two presses dispatched before
+     a re-render both run the same stale closure, so the second is not refused (T1c pins it);
+     (b) native `disabled` on the pressed pick, which drops it from the focus order and strands a
+     keyboard or switch user mid-pick; (c) a separate latch per list, because both lists share
+     this one handler and the two lists never render together.
+     STATED EDGE: the latch is per instance, not per event. If the single-event mount switches
+     `eventId` while a pick is saving, the new event's picks stay gated until that request
+     settles (about one round trip).
+     Changing this is a decision, not a cleanup. */
+  const handleResolveTie = async (optionId, from) => {
+    if (!isOrganizer || resolveInFlightRef.current) return;
+    resolveInFlightRef.current = true;
+    setResolvingOptionId(optionId);
+    const settle = recovery.arm({ preferred: () => winnerCardRef.current, from });
     setError(null);
     try {
       await ballotAPI.resolveTie(eventId, optionId);
@@ -115,6 +163,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     } catch (err) {
       logger.info('Error resolving tie:', errCtx(err));
       setError('Could not set the winner. Please try again.');
+    } finally {
+      resolveInFlightRef.current = false;
+      setResolvingOptionId(null);
+      settle();
     }
   };
 
@@ -152,10 +204,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       return (
         <div className="mt-4 border border-line rounded-card overflow-hidden">
           <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
+            <Heading ref={gameVoteHeadingRef} level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
-            <div className="bg-status-success-subtle border border-status-success rounded-card p-4 mb-3">
+            <div ref={winnerCardRef} className="bg-status-success-subtle border border-status-success rounded-card p-4 mb-3">
               <div className="flex items-center gap-2">
                 {/* UI-SPEC §4.3: non-heading `text-lg` residue. Resolves to `text-xl` (20) under rule
                     R2's primary-string clause. NOT a `<Heading>` — P4 forbids inventing a semantic
@@ -194,7 +246,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
            siblings' `bg-surface-elevated`, which is where the state difference belongs. */
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
           <div className="bg-status-warning-subtle px-4 py-3 border-b border-line">
-            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
+            <Heading ref={gameVoteHeadingRef} level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
             {/* UI-SPEC §4.5 EMPHASIS outcome: `font-medium` deleted, the emphasis carried by
@@ -208,11 +260,31 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
               className={`text-content-status-error${error ? ' mb-2' : ''}`}
             />
             <div className="space-y-2">
+              {/* DECISION Phase 88.6.1-31 (E14): while a pick saves, its accessible NAME is
+                  `{game name}, saving`, set as an `aria-label` only while saving, from the ONE
+                  hoisted template `savingPickLabel` (copy row E14, D-30, ratified heard-only).
+                  At rest the pick has no `aria-label` and its name is the game name. The name
+                  keeps the visible label at its start (WCAG 2.5.3). WHAT IS PROVEN (review #191):
+                  this is the name a screen reader reads when focus arrives on the pick or the
+                  user re-reads it. Whether a screen reader speaks the rename UNPROMPTED while focus
+                  already sits on the pick is not measured by this plan's tests; if plan 88.6.1-57's
+                  VoiceOver walk finds it silent, the owner rules on placing the ratified E14 text
+                  in this branch's existing polite region (no new words). A region is never added
+                  here without that ruling.
+                  REJECTED: (a) an sr-only suffix span, which splits the template across a JSX text
+                  node and a constant and puts an extra node inside the control; (b) a visible
+                  "Saving" label, because E14 is ratified heard-only (the missing visible cue is
+                  routed to Phase 88.9); (c) `aria-busy`, which is not a name.
+                  The fallback pick list below takes the same three attributes for the same
+                  reasons. Changing this is a decision, not a cleanup. */}
               {(tied_options || []).map(opt => (
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => handleResolveTie(opt.id)}
+                  onClick={(event) => handleResolveTie(opt.id, event.currentTarget)}
+                  disabled={!!resolvingOptionId && resolvingOptionId !== opt.id}
+                  aria-disabled={resolvingOptionId === opt.id ? 'true' : undefined}
+                  aria-label={resolvingOptionId === opt.id ? savingPickLabel(opt.game_name) : undefined}
                   aria-describedby={error ? 'ballot-tiebreak-error' : undefined}
                   className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 >
@@ -229,7 +301,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       return (
         <div className="mt-4 border border-line rounded-card overflow-hidden">
           <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
+            <Heading ref={gameVoteHeadingRef} level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
             <p className="text-sm text-content-secondary">
@@ -246,7 +318,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
            same reasons as the tie-break branch ~50 lines above — see that marker. */
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
           <div className="bg-status-warning-subtle px-4 py-3 border-b border-line">
-            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
+            <Heading ref={gameVoteHeadingRef} level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
             {/* UI-SPEC §4.5 EMPHASIS outcome, same call as the tie-break branch above. */}
@@ -263,7 +335,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => handleResolveTie(opt.id)}
+                  onClick={(event) => handleResolveTie(opt.id, event.currentTarget)}
+                  disabled={!!resolvingOptionId && resolvingOptionId !== opt.id}
+                  aria-disabled={resolvingOptionId === opt.id ? 'true' : undefined}
+                  aria-label={resolvingOptionId === opt.id ? savingPickLabel(opt.game_name) : undefined}
                   aria-describedby={error ? 'ballot-fallback-error' : undefined}
                   className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 >
@@ -280,7 +355,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       return (
         <div className="mt-4 border border-line rounded-card overflow-hidden">
           <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
+            <Heading ref={gameVoteHeadingRef} level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
             <p className="text-sm text-content-secondary">
@@ -298,7 +373,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   return (
     <div id="vote" className="mt-4 border border-line rounded-card overflow-hidden">
       <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-        <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
+        <Heading ref={gameVoteHeadingRef} level={3} size="label" className="text-content-primary">Game Vote</Heading>
         <p className="text-xs text-content-muted mt-0.5">Tap games you'd enjoy playing</p>
       </div>
 
@@ -322,7 +397,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => handleToggleVote(opt.id)}
+                  onClick={(event) => handleToggleVote(opt.id, event.currentTarget)}
                   /* DECISION Phase 88.6-22 (the rule of POSITION, stated in full at
                      FriendInvitePanel.js's latch marker): while a vote is in flight the PRESSED
                      option exposes `aria-disabled` and keeps its place in the focus order, while
@@ -333,7 +408,13 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                      the re-press SYNCHRONOUSLY at its first line (`if (votingOptionId || !canVote)
                      return;`), and the in-flight and gated cues are call-site utilities on a
                      non-`.btn` element, so no `.btn:disabled` wash is involved and the visual
-                     result is unchanged. Collapsing this back to one `disabled` is a decision. */
+                     result is unchanged. Collapsing this back to one `disabled` is a decision.
+                     AMENDED Phase 88.6.1-31 (2026-10-16, T1d): the first-line refusal is now the
+                     `voteInFlightRef` REF latch (`if (voteInFlightRef.current || !canVote)
+                     return;`), released in `finally`. The state check quoted above read the stale
+                     closure on a second press dispatched before a re-render, so two `toggleVote`
+                     requests went out (T1d was RED on it) — the house rule's own reason for a ref.
+                     `votingOptionId` stays the attribute source; the attribute split is unchanged. */
                   disabled={!!votingOptionId && !isToggling}
                   aria-disabled={isToggling ? 'true' : undefined}
                   aria-describedby={error ? 'ballot-vote-error' : undefined}
