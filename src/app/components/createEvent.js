@@ -28,6 +28,33 @@ import { logger, errCtx } from '@/lib/logger';
 const REQUIRED_SR_LABEL = '(required)';
 const CREATING_EVENT_LABEL = 'Creating...';
 const UPDATING_EVENT_LABEL = 'Updating...';
+/* DECISION Phase 88.6.1-81 (one payload in flight): a module-level map from a write's key (the
+   mode, the event id when editing, and the serialised payload it sends, plus the trimmed ballot
+   list an update saves after it) to that write's in-flight promise and the time it started. A
+   submit whose key is in flight and younger than JOIN_WINDOW_MS JOINS it: it sends nothing, shows
+   its own press, on success calls its OWN `onEventCreated` and ends only its own dialog session
+   with the shared outcome, and on failure calls nothing. The originator alone toasts, so one write
+   gives one receipt. Past the window a submit sends as a new originator and replaces the entry;
+   an originator's `finally` frees only an entry that is still its own, so a hung request can never
+   free a newer one's key. The window is a start-time comparison made at submit (both reads are
+   `Date.now()`), never a timer that rejects or aborts the first request. MODULE scope because a
+   conditional host (gameDetail) mounts a fresh instance per open, which no per-instance latch can
+   see across. CHOSEN over: a per-instance latch alone (blind across instances); blocking every
+   write while any is in flight (a different event would wait with no words to say why); comparing
+   what is on screen (the payload is what the server receives); a key-sorting serialiser (each mode
+   builds its payload through one code path, createEventForm then prepareEventData, so key order is
+   fixed; a second payload shape would need one); an unbounded join (a hung request disabled the
+   close-reopen-retry recovery until a reload, because `apiFetch` has no timeout); a window that
+   rejects or aborts the first request (it would report a failure for a write that may still
+   succeed); and a joiner that skips its own `onEventCreated` (the originator's may belong to a page
+   that has since unmounted, since this map outlives a page instance on a client-side navigation,
+   leaving the visible page stale). The key holds participant names and comments: it is never
+   logged, sent or kept past its request. Removing the join or its window is a decision, not a
+   cleanup. */
+// 30 seconds: longer than a healthy create on slow game-night wifi, short enough that a hung one
+// stops blocking an identical retry.
+const JOIN_WINDOW_MS = 30 * 1000;
+const pendingEventWrites = new Map();
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
   // GameComboInput userId props below), not the Auth0 sub (87.5 BINT-02). searchAll
@@ -743,6 +770,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     const session = dialogSessionRef.current;
     const sessionIsCurrent = () => dialogSessionRef.current === session;
     const noNewerSessionOpen = () => sessionIsCurrent() || !dialogOpenRef.current;
+    // Plan 88.6.1-81 (one payload in flight): set when this press joins a write already in flight.
+    let joinedWrite = null;
     eventSubmitInFlightRef.current = true;
     setEventSubmitting(true);
     try {
@@ -821,17 +850,62 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           eventDataToSubmit.rsvp_deadline = null;
         }
 
-        if (editingEvent) {
-          // Update existing event
-          await eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit);
+        // The ballot options this write carries: in create mode they ride in the event creation
+        // payload for atomic creation (so the ballot exists BEFORE notifications fire and the
+        // ballot link is included); in edit mode the update saves them after the event PUT.
+        const trimmedBallotOptions = validBallotOptions.length >= 2
+          ? validBallotOptions.map(o => ({
+            game_id: o.game_id || null,
+            game_name: o.game_name.trim()
+          }))
+          : null;
+        if (!editingEvent && trimmedBallotOptions) {
+          eventDataToSubmit.ballot_options = trimmedBallotOptions;
+        }
 
-          // Update ballot options if we have valid ones
-          if (validBallotOptions.length >= 2) {
+        // Plan 88.6.1-81 (one payload in flight; the reasoning is the DECISION marker at
+        // `pendingEventWrites`): the key is the mode, the event id when editing, and everything
+        // this write sends. It stays in memory for one request and is never logged or sent.
+        const writeKey = (editingEvent ? 'update:' + editingEvent.id : 'create')
+          + JSON.stringify(editingEvent ? [eventDataToSubmit, trimmedBallotOptions] : eventDataToSubmit);
+        const inFlight = pendingEventWrites.get(writeKey);
+        if (inFlight && Date.now() - inFlight.startedAt < JOIN_WINDOW_MS) {
+          joinedWrite = inFlight;
+        }
+
+        let data;
+        if (joinedWrite) {
+          // A JOINER: the same write is already in flight, so this press sends nothing.
+          try {
+            data = await joinedWrite.promise;
+          } catch {
+            // A joined write that fails calls nothing: its originator shows the one error notice,
+            // and this press only releases (the finally below) and keeps its form.
+            return;
+          }
+        } else {
+          // The ORIGINATOR: send, and keep the request in flight under its key (replacing an entry
+          // past the join window) until it settles. Only an entry that is still its own is freed.
+          const writePromise = editingEvent
+            ? eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit)
+            : eventsAPI.createEvent(eventDataToSubmit);
+          const entry = { promise: writePromise, startedAt: Date.now() };
+          pendingEventWrites.set(writeKey, entry);
+          try {
+            data = await writePromise;
+          } finally {
+            if (pendingEventWrites.get(writeKey) === entry) {
+              pendingEventWrites.delete(writeKey);
+            }
+          }
+        }
+
+        if (editingEvent) {
+          // Update ballot options if we have valid ones (the originator only; a joiner's write is
+          // its originator's, ballot update included)
+          if (!joinedWrite && trimmedBallotOptions) {
             try {
-              await ballotAPI.updateBallotOptions(editingEvent.id, validBallotOptions.map(o => ({
-                game_id: o.game_id || null,
-                game_name: o.game_name.trim()
-              })));
+              await ballotAPI.updateBallotOptions(editingEvent.id, trimmedBallotOptions);
             } catch (ballotErr) {
               logger.info('Error updating ballot options:', errCtx(ballotErr));
               if (noNewerSessionOpen()) {
@@ -843,22 +917,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           if (onEventCreated) {
             onEventCreated(null); // Signal that event was updated
           }
-        } else {
-          // Include ballot options in the event creation payload for atomic creation
-          // This ensures ballot exists BEFORE notifications fire (so ballot link is included)
-          if (validBallotOptions.length >= 2) {
-            eventDataToSubmit.ballot_options = validBallotOptions.map(o => ({
-              game_id: o.game_id || null,
-              game_name: o.game_name.trim()
-            }));
-          }
-
-          // Create new event (with ballot options atomically if provided)
-          const data = await eventsAPI.createEvent(eventDataToSubmit);
-
-          if (onEventCreated) {
-            onEventCreated(data);
-          }
+        } else if (onEventCreated) {
+          // Created (with ballot options atomically if provided)
+          onEventCreated(data);
         }
 
         /* DECISION Phase 88-16 (CONTEXT D-13, Req 12): the receipt fires HERE —
@@ -887,8 +948,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
            closed, or unmounted at a conditional host) the toast still fires here, `modaltoggle()` is
            skipped (the person's own close already ran it; a second call is what closed a REOPENED
            dialog) and the resets run only if no newer session is open. See
-           DECISION Phase 88.6.1-81 (dialog session) at the refs. */
-        toast.success(editingEvent ? 'Event updated' : 'Event created');
+           DECISION Phase 88.6.1-81 (dialog session) at the refs. A joined write's receipt is its
+           originator's toast: the joiner adds none, but on success calls its own `onEventCreated`
+           (above) so its own page refreshes. See DECISION Phase 88.6.1-81 (one payload in flight). */
+        if (!joinedWrite) {
+          toast.success(editingEvent ? 'Event updated' : 'Event created');
+        }
         if (sessionIsCurrent()) {
           modaltoggle();
         }
@@ -903,7 +968,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         }
       } catch (error) {
         logger.info(`Error ${editingEvent ? 'updating' : 'creating'} event:`, errCtx(error));
-        toast.error(getFetchErrorMessage(error));
+        // Plan 88.6.1-81: one write, one notice. A joiner's failed write is its originator's to report.
+        if (!joinedWrite) {
+          toast.error(getFetchErrorMessage(error));
+        }
       }
     } finally {
       // Plan 88.6.1-81: release only the session this press belongs to. After a close the cleanup
@@ -1524,7 +1592,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 dialog was open). Gating any close path here is a decision, not a cleanup.
                 AMENDED Phase 88.6.1-81: a request that outlives its dialog never closes, resets or
                 latches a reopened one — see DECISION Phase 88.6.1-81 (dialog session); the hosts'
-                own `onEventCreated` closes are the hosts'. */}
+                own `onEventCreated` closes are the hosts'. And the same payload in flight is sent
+                once — see DECISION Phase 88.6.1-81 (one payload in flight). */}
             <Button variant="secondary" onClick={modaltoggle}>
               Cancel
             </Button>
