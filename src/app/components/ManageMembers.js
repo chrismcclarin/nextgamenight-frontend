@@ -126,6 +126,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // canonical copy + inline error UX rather than window.confirm.
     const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
     const [leaving, setLeaving] = useState(false);
+    // The pressed Confirm Leave's latch: see DECISION Phase 88.6.1-50 at the transfer footer.
+    const leaveInFlightRef = useRef(false);
     const [leaveError, setLeaveError] = useState('');
     // Stable id for the leave-confirm failure's live region, so the Confirm control can
     // name it with `aria-describedby`. `useId` and not a literal: this component can be
@@ -496,7 +498,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     };
 
     const handleLeaveGroupConfirmed = async () => {
+        if (leaveInFlightRef.current) return;
         if (!group_id) return;
+        leaveInFlightRef.current = true;
         setLeaving(true);
         setLeaveError('');
         try {
@@ -508,6 +512,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             logger.info('Error leaving group:', errCtx(error));
             setLeaveError(getFetchErrorMessage(error));
         } finally {
+            leaveInFlightRef.current = false;
             setLeaving(false);
         }
     };
@@ -987,7 +992,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </p>
             </Modal.Body>
             <Modal.Footer>
-                {/* DECISION Phase 88.6.1-50 (W016 rows 12-13 / D-35): the pressed control stays
+                {/* DECISION Phase 88.6.1-50 (W016 rows 12-15 / D-35, D-39): the pressed control stays
                     focusable. Chosen: aria-disabled plus a synchronous first-line REF refusal
                     (transferInFlightRef) on the control the user pressed, Transfer ownership,
                     released only in its handler's finally. The sibling Cancel KEEPS its native
@@ -1005,8 +1010,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     .btn-primary aria-disabled rule in globals.css). Disclosed visible delta:
                     while working the button shows the gated primary pair instead of the old 50%
                     wash. MATCHED PAIR: GroupSettings' DECISION Phase 88.6.1-43 (W016 rows 10-11,
-                    18-19), same ref shape, same release. Changing this is a decision, not a
-                    cleanup. */}
+                    18-19), same ref shape, same release.
+
+                    Confirm Leave (rows 14-15, the leave dialog below) is the same shape: the
+                    pressed control carries aria-disabled with a first-line refusal through
+                    leaveInFlightRef, released in handleLeaveGroupConfirmed's finally, and its
+                    sibling Cancel stays native. Its busy look is plan 88.6.1-22's owner-approved
+                    gated danger pair (D-39), never an opacity utility. Changing this is a
+                    decision, not a cleanup. */}
                 <Modal.Action
                     variant="secondary"
                     disabled={transferring}
@@ -1069,25 +1080,42 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                           this line is its only failure surface, so a toast would leave the
                           person looking at a dialog that gives no reason — on the one path
                           here that cannot be undone.
-                      (b) `{leaveError && <StatusRegion …>}`. A conditionally-mounted live
-                          region announces NOTHING (`StatusRegion.tsx:9-12`); the mount and the
-                          text would enter the DOM together. The empty-first mount IS the
-                          mechanism.
+                      (b) `{leaveError && <StatusRegion …>}`. A conditionally-mounted POLITE
+                          live region announces NOTHING (the EMPTY-FIRST bullet of
+                          `StatusRegion.tsx`'s docblock); the mount and the text would enter the
+                          DOM together. The empty-first mount IS the mechanism. This holds for
+                          this polite region and is not a rule for alerts: an inserted
+                          `role="alert"` that arrives with its text IS announced (ARIA 1.2, D-42).
 
                     Hand-rolling an `aria-live` div instead is also rejected: the primitive
                     supplies `role`, `aria-live` AND `aria-atomic` in one contract. This arm is
-                    written identically for `GroupSettings.js:481` (plan 20) and for the
-                    structurally identical bare error `<p>`s plan 22 owns — one phase must not
-                    ship two standards for one markup shape. Re-conditioning the mount, or
-                    dropping the `aria-describedby`, is a decision, not a cleanup. */}
+                    written identically for GroupSettings' leave-failure region (plan 88.6-20;
+                    now on the same prop under `DECISION Phase 88.6.1-43`) and for the
+                    structurally identical bare error `<p>`s plan 88.6-22 owns — one phase must
+                    not ship two standards for one markup shape.
+
+                    AMENDED Phase 88.6.1-50 (D-22, D-42): the region now takes the house
+                    `srOnlyWhenEmpty` prop. It is hidden only while it is empty, it is the same
+                    node in both states, and it is visible the moment it holds text (the owner's
+                    visible-when-set ruling, 2026-09-14). The conditional margin it carried is
+                    retired for the one house shape (AC-26), which is exactly what this marker's
+                    own "one standard for one markup shape" asks for: the margin is now
+                    unconditional, costs nothing while the empty region is out of flow, and is
+                    today's 16px gap once a message shows. The empty region's containing block is
+                    the dialog's fixed, overflow-clipped content, so it extends no scroll area
+                    (the adopter caveat on the prop). D-42 is the qualification in (b) above.
+                    Re-conditioning the mount, or dropping the `aria-describedby`, is a decision,
+                    not a cleanup. */}
                 <StatusRegion
                     id={leaveErrorId}
                     politeness="polite"
                     message={leaveError}
-                    className={`text-content-status-error${leaveError ? ' mt-4' : ''}`}
+                    className="mt-4 text-content-status-error"
+                    srOnlyWhenEmpty
                 />
             </Modal.Body>
             <Modal.Footer>
+                {/* W016 rows 14-15 follow DECISION Phase 88.6.1-50 at the transfer footer; the danger look is plan 88.6.1-22's owner-approved gated pair (D-39). */}
                 <Modal.Action
                     variant="secondary"
                     disabled={leaving}
@@ -1097,7 +1125,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </Modal.Action>
                 <Modal.Action
                     variant="danger"
-                    disabled={leaving}
+                    aria-disabled={leaving || undefined}
                     aria-describedby={leaveErrorId}
                     onClick={handleLeaveGroupConfirmed}
                 >
@@ -1108,8 +1136,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
         {/* Req 11 tiered gates. Each is rendered UNCONDITIONALLY and exactly ONCE for the
             whole roster — the hook owns which member is targeted, so a per-row copy would
-            mount one dialog per member. `statusNode` is likewise mounted once and always: a
-            conditionally-mounted live region announces nothing. All four are `dialog` tier
+            mount one dialog per member. `statusNode` is likewise mounted once and always: it
+            is a POLITE region (`useConfirmAction` gives it no politeness), and a
+            conditionally-mounted polite region announces nothing. An inserted `role="alert"`
+            that arrives with its text IS announced (ARIA 1.2, D-42), so this is not a rule for
+            alerts. All four are `dialog` tier
             today, which renders `statusNode` silent — it is still mounted so that
             retiering any of them to `two-tap` stays the one-word edit the primitive
             promises. */}
