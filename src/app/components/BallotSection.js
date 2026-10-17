@@ -55,11 +55,13 @@ function toggleOptionVote(ballot, optionId, voted) {
    clear-then-set re-announces a repeat.
 
    WHY THE PRIMITIVE and not a div: `88.6-UI-SPEC.md:189` (§2's StatusRegion row) and §14 A-29
-   ratify "No new hand-rolled `role=\"status\"` / `aria-live` markup in 88.6" — the three ad-hoc
-   sites that survive (`ThresholdSlider.js:71-72`, `StarRatingPicker.js:134`,
+   ratify "No new hand-rolled `role=\"status\"` / `aria-live` markup in 88.6" — the ad-hoc
+   sites that survive (`StarRatingPicker.js:134`,
    `ErrorFallback.tsx:109-110`) are a CLOSED residual (the UI-SPEC row itself still carries its
    2026-09-13 line numbers; these are re-read 2026-10-16). A hand-rolled div also silently drops
    `aria-atomic="true"` (StatusRegion.tsx:101).
+   AMENDED Phase 88.6.1-82: the third site this paragraph named was dead code and was deleted; the
+   full live-region count is the R3-A29 census (plan 88.6.1-64, CENSUS.md §4).
 
    NO `aria-invalid` ANYWHERE HERE, and the reason is NOT an attribute-support limit. These
    controls are native `<button type="button">` elements and `aria-invalid` is a GLOBAL ARIA

@@ -2518,6 +2518,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // (700) with a `DECISION Phase 88.6-25` marker at the site: it carries the SAME colour token as
   // that label, so the emphasis outcome would have left the live value typographically identical
   // to the static label naming it. Entry DELETED, not zeroed.
+  // The file itself was deleted by plan 88.6.1-82 task 2 (dead code, zero importers); its `DECISION Phase 88.6-25` marker went with it.
   // DELETED by plan 88.6-26 task 3 (wave 7, 2026-09-16): 'app/components/TimezoneNudgeBanner.js'
   // carried sites: 2, and the entry's own two leads were right — they resolved opposite ways. The
   // "Set your timezone" LINK took EMPHASIS (utility deleted): it already carries `underline`,

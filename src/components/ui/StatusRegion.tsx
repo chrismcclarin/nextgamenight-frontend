@@ -3,8 +3,8 @@
 /**
  * StatusRegion — shared aria-live region (PRIM-04 / D-05).
  *
- * Codifies the ad-hoc `aria-live` scattered across the codebase
- * (ThresholdSlider.js:71-72, StarRatingPicker.js:134) into ONE contract:
+ * Codifies the ad-hoc `aria-live` scattered across the codebase (StarRatingPicker.js:134; ThresholdSlider.js,
+ * deleted as dead code in Phase 88.6.1-82 — AMENDED Phase 88.6.1-82) into ONE contract:
  *
  *   - EMPTY-FIRST: the live container is always mounted; text is injected on
  *     change. For polite / status regions, screen readers announce *changes* to
