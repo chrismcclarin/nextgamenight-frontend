@@ -40,7 +40,7 @@ import { QueryClientContext, type QueryKey } from '@tanstack/react-query';
 
 import { Banner } from './Banner';
 import { Icon } from './Icon';
-import { StatusRegion } from './StatusRegion';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
 import { logger, errCtx } from '@/lib/logger';
 import type { FetchErrorCode, FetchErrorState } from './useFetchErrorState';
@@ -102,15 +102,7 @@ const COMPACT_NOTICE = 'Some personal controls are unavailable.';
 const COMPACT_NOTICE_AFTER_FAILED_RETRY = 'Some personal controls are still unavailable.';
 const REFRESH_FAILED_NOTICE = "Couldn't refresh. Showing what loaded earlier.";
 
-/**
- * How long the compact region stays EMPTY after a press before it may refill. AT-4
- * (`research/APPENDIX-AT.md:316-326`, failure condition 4, "The same message twice"): WebKit's
- * live-region manager re-announces text identical to the last announcement only after the region
- * has stayed empty for `emptyRegionSettleDelay { 100_ms }`, and a synchronous clear-then-set is
- * dropped. The value is the engine's constant, not a guess. `RETRY_OUTCOME_WINDOW_MS` (1000) is
- * at least this value, so an outcome never expires inside the dwell.
- */
-export const REGION_EMPTY_DWELL_MS = 100;
+// REGION_EMPTY_DWELL_MS (the compact region's empty dwell, AT-4) is imported from `./StatusRegion` (moved there by plan 88.6.1-82); RETRY_OUTCOME_WINDOW_MS below is at least that value.
 
 /**
  * How long a retry's outcome may wait for the COMMITTED state to agree with it before it is

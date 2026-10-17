@@ -7,7 +7,7 @@ import { eventsAPI } from '../../../../lib/api';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
-import { StatusRegion } from '@/components/ui/StatusRegion';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 
 // Copy row L1 (D-30, owner-ratified 2026-10-04), byte-equal to this route's own `loading.tsx` label.
@@ -29,13 +29,12 @@ const EXPIRED_DETAIL =
 const TRANSIENT_HEADLINE = "Couldn't join game night";
 const PERMANENT_HEADLINE = 'This invite is no longer valid';
 
-// How long the page region stays EMPTY after a Retry press before it may be filled again. Source:
-// AT-4, `research/APPENDIX-AT.md:316-326` (`emptyRegionSettleDelay { 100_ms }`, failure condition 4):
-// WebKit re-announces IDENTICAL text only after the region has stayed empty for about 100 ms — a
-// synchronous clear-then-set is not announced. Same name and same source as plan 88.6.1-21's
-// module-private constant in `FetchErrorBanner.tsx`; declared here, never imported (the two files
-// share no dependency), so both cite the one appendix line and cannot drift silently.
-const REGION_EMPTY_DWELL_MS = 100;
+// How long the page region stays EMPTY after a Retry press before it may be filled again:
+// `REGION_EMPTY_DWELL_MS`, imported with `StatusRegion` above. Source: AT-4,
+// `research/APPENDIX-AT.md:316-326` (`emptyRegionSettleDelay { 100_ms }`, failure condition 4).
+// AMENDED Phase 88.6.1-82: plan 88.6.1-19 declared a second copy here because this page and
+// `FetchErrorBanner.tsx` shared no dependency; the constant now lives on `StatusRegion`, which this
+// page already imports, so that reason is gone and the one declaration is imported, not repeated.
 
 /** Join the non-empty parts of an announcement with one space (never a trailing space). */
 function joinParts(...parts) {

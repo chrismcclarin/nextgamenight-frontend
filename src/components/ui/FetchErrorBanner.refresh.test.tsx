@@ -23,11 +23,11 @@ import {
   FetchErrorBanner,
   RefreshFailedNotice,
   SectionLoadFailedNotice,
-  REGION_EMPTY_DWELL_MS,
   RetainedContentFocusGuard,
   useRetainedContent,
   isAccessOrGoneError,
 } from './FetchErrorBanner';
+import { REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { getFetchErrorMessage, useFetchErrorState } from './useFetchErrorState';
 import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
