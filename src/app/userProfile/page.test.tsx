@@ -544,7 +544,7 @@ describe('userProfile availability settings', () => {
   // The recurring DATE pair had NO client guard of any kind: the server rejects an
   // inverted range with a code-less 400 that renders the generic register copy and
   // discards the form (`routes/availability.js:137`). The TIME pair on the same form
-  // already refuses it with a ratified toast (`userProfile/page.js:1451`,
+  // already refuses it with a ratified toast (`userProfile/page.js:1528`,
   // 88-CODE-REVIEW MED#7) and is deliberately untouched.
   //
   // THIS ASSERTS THE DERIVATION, NOT A DATE. A test that pinned a literal would pass
@@ -563,7 +563,7 @@ describe('userProfile availability settings', () => {
     const endDate = screen.getByLabelText('End Date (Optional)') as HTMLInputElement;
 
     // THE EMPTY-SIBLING CASE, on the control that actually has one. `start_date` seeds to
-    // today (userProfile/page.js:213, HEAT-02 expansion 4) while `end_date` seeds to '', so
+    // today (userProfile/page.js:217, HEAT-02 expansion 4) while `end_date` seeds to '', so
     // it is the START control whose bound must be ABSENT here — not an empty string, which
     // would be a real bound of nothing on a field the user is entitled to leave blank.
     expect(

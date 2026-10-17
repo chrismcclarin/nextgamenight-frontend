@@ -48,6 +48,7 @@ import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import { focusElement, focusPageFloor } from '../../components/ui/focusPageFloor';
 // AC-2 convert-on-touch (owner ruling 2026-09-09; LEVEL AMENDED 2026-09-13). This file's
 // 20 raw console calls route through the house logger at `info`, which is
 // Sentry.addBreadcrumb (logger.ts:52-53) — a BREADCRUMB, not an event. `errCtx` is the
@@ -327,6 +328,25 @@ function Profile(){
     // Review 221 (88.6.1-60): the screen-reader-only result count. See `DECISION Phase 88.6.1-60 (review 221,
     // owner 2026-10-13)` in `searchBGG`.
     const [bggFoundAnnouncement, setBggFoundAnnouncement] = useState('');
+    // Req 11 / Req 5 (88.6.1-60): the import's 5-second result timer, and what its callback reads to
+    // decide whether to empty the username and where focus goes first. `addFromBggToggleRef` and
+    // `collectionHeadingRef` are SHARED: plan 88.6.1-67 lands Remove and Add on the same two
+    // elements and reuses these refs (an element takes one ref). See `DECISION Phase 88.6.1-60
+    // (Req 11 / Req 5, import result timer)` in `importBGGCollection`.
+    const importClearTimerRef = useRef(null);
+    const importButtonRef = useRef(null);
+    const addFromBggToggleRef = useRef(null);
+    const collectionHeadingRef = useRef(null);
+    const bggUsernameFieldRef = useRef(null);
+    const importPromptOpenRef = useRef(false);
+    // D-44 (88.6.1-60): the search panel's id, named by its toggle's aria-controls while it exists.
+    const bggSearchPanelId = useId();
+    // The import dialog's open state, readable from the timer. One effect rather than a write beside
+    // each of the four open-state setter calls (four sites to keep in step; one effect cannot drift),
+    // and not a document query for an open dialog (any dialog would match, not just this one).
+    useEffect(() => {
+        importPromptOpenRef.current = bggImportPromptOpen;
+    }, [bggImportPromptOpen]);
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -866,9 +886,13 @@ function Profile(){
     // Cleanup the two-tap revert timer on unmount (mirrors KebabMenu lines 64-71).
     // R2 #29: the resend cooldown ticker is cleared HERE too — an ADDITION to this effect's
     // body, deliberately not a second unmount effect. 88.6.1-60: so is the BGG import outcome's
-    // hold observer.
+    // hold observer, and the BGG import's result timer is cleared HERE too.
     useEffect(() => {
         return () => {
+            if (importClearTimerRef.current) {
+                clearTimeout(importClearTimerRef.current);
+                importClearTimerRef.current = null;
+            }
             if (importHoldObserverRef.current) {
                 importHoldObserverRef.current.disconnect();
                 importHoldObserverRef.current = null;
@@ -1734,13 +1758,20 @@ function Profile(){
         if (importInFlightRef.current) return;
         setBggImportPromptOpen(false);
         if (!user?.sub || !bggUsername.trim() || !selfUuid) return;
+        // The exact name sent, so the result timer compares against what was imported (Req 11).
+        const importedName = bggUsername.trim();
 
         importInFlightRef.current = true;
         setImportingCollection(true);
+        // A new import is never touched by an earlier import's result timer (Req 11).
+        if (importClearTimerRef.current) {
+            clearTimeout(importClearTimerRef.current);
+            importClearTimerRef.current = null;
+        }
         try {
             writeImportProgress({ status: 'fetching', message: 'Fetching your BGG collection...' });
 
-            const result = await userGamesAPI.importBGGCollection(selfUuid, bggUsername.trim());
+            const result = await userGamesAPI.importBGGCollection(selfUuid, importedName);
             
             writeImportProgress({
                 status: 'complete',
@@ -1751,9 +1782,66 @@ function Profile(){
             // Refresh the owned games list
             await fetchOwnedGames();
             
-            // Clear the username after successful import
-            setTimeout(() => {
-                setBggUsername('');
+            /* DECISION Phase 88.6.1-60 (Req 11 / Req 5, import result timer).
+               Defects fixed: (1) the handle was never held, so a second import inside the window had
+               its progress line wiped mid-import by the first timer, and nothing cancelled it on
+               unmount. Now it is cleared when a new import starts, and a timer PENDING at unmount is
+               cancelled in the page's one unmount effect. A timer scheduled AFTER unmount (the import
+               or its refresh was still running) runs once and does nothing: the username field ref is
+               null, so the name is not cleared and focus is not moved, and the progress write on an
+               unmounted page is a no-op (review 67). (2) The callback emptied the username, which
+               natively disabled the still-focused Import Collection (its blank-name half) and dropped
+               keyboard focus to the top of the page five seconds after success.
+               CHOSEN, the owner's own design (2026-10-05), which replaced this plan's options K and C:
+               the box still empties after five seconds and the result line still goes, because a
+               second press re-imports and every import makes two BoardGameGeek calls
+               (periodictabletopbackend_v2/Sonnet/routes/userGames.js:173-174) the owner does not want
+               made by accident; but if focus is still on Import Collection at that moment it first
+               moves to + Add from BGG beside it (the same button reads Hide Search while the search is
+               open), else the My Game Collection heading, else the page floor: D-05's order through
+               plan 04's outcome-checked primitives, the same target and fallback plan 67 uses after
+               Remove and Add. Focus anywhere else is left alone.
+               Never wipes what the user is using (orchestrator decision 2026-10-05; the owner's intent
+               was only "no leftover name"): the name is cleared only when the box still holds the
+               imported name (`importedName`) and the import dialog is closed. A newly typed name
+               stays; a second Import Collection press inside the window keeps the dialog's name, so
+               Continue re-imports it (it used to close silently on a blank name). The result line goes
+               on schedule either way, and the focus move happens only when the name is cleared.
+               Why the order inside the callback is load-bearing: the move runs while Import Collection
+               is still ENABLED, so the native disable the emptied name causes lands on a button that no
+               longer holds focus. A check after the commit cannot work: by then the browser has
+               already moved focus to the body and nothing can tell where the user was.
+               REJECTED: (a) keep the username (option K: a press then re-imports; the owner's reason
+               above); (b) focus the emptied username field (option C: superseded by the owner's
+               design; a jump into a text box); (c) make the blank-name half aria-disabled so the
+               button keeps focus (reverses D-35's rule of KIND, DECISION Phase 88.6-22, and leaves the
+               user on a dead control); (d) plan 04's useFocusRecovery (it acts only on a removed
+               element and reads a native disable as the user moving on); (e) a second unmount effect
+               (the file's rule); (f) skipping the clear whenever the box is non-empty (the imported
+               name is non-empty too, so the box would never clear); (g) a functional username updater
+               that decides inside React (the focus move needs the decision synchronously, before the
+               write, and an updater must stay free of side effects).
+               Restoring the old callback, moving the focus step after the state writes, or dropping
+               either skip condition is a decision, not a cleanup. */
+            importClearTimerRef.current = setTimeout(() => {
+                importClearTimerRef.current = null;
+                const usernameField = bggUsernameFieldRef.current;
+                const clearName = !importPromptOpenRef.current
+                    && usernameField !== null
+                    && usernameField.value.trim() === importedName;
+                if (clearName) {
+                    const importButton = importButtonRef.current;
+                    if (importButton && document.activeElement === importButton) {
+                        if (!focusElement(addFromBggToggleRef.current)
+                            && !focusElement(collectionHeadingRef.current)) {
+                            focusPageFloor(importButton);
+                        }
+                    }
+                    setBggUsername('');
+                }
+                // Any write still held (a hiding that outlasted the window) predates this emptying
+                // and must not land after it.
+                heldImportWritesRef.current = [];
                 setImportProgress(null);
             }, 5000);
         } catch (error) {
@@ -3114,7 +3202,7 @@ function Profile(){
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1451` (recurring) and `:1542`
+                                            `userProfile/page.js:1528` (recurring) and `:1619`
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
@@ -3471,13 +3559,16 @@ function Profile(){
                         {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
                             owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
                             conflation on the count itself; an em-dash holds the slot meanwhile. */}
-                        <Heading level={2} size="heading" className="text-content-primary">
+                        <Heading ref={collectionHeadingRef} level={2} size="heading" className="text-content-primary">
                             My Game Collection ({loadingGames ? '—' : ownedGames.length})
                         </Heading>
                         <div className="flex gap-2">
                             <Button
+                                ref={addFromBggToggleRef}
                                 variant="primary"
                                 onClick={() => setShowBggSearch(!showBggSearch)}
+                                aria-expanded={showBggSearch}
+                                {...(showBggSearch ? { 'aria-controls': bggSearchPanelId } : {})}
                                 className="whitespace-nowrap"
                             >
                                 {showBggSearch ? 'Hide Search' : '+ Add from BGG'}
@@ -3501,6 +3592,7 @@ function Profile(){
                                 (Spelled out in words rather than the utility itself so a
                                 grep-based gate does not match this comment.) */}
                             <Input
+                                ref={bggUsernameFieldRef}
                                 id="bgg-username"
                                 name="bgg-username"
                                 aria-label="BoardGameGeek username"
@@ -3532,6 +3624,7 @@ function Profile(){
                                 shows the gated primary pair instead of the 50% wash. Dropping either half of
                                 the pair is a decision, not a cleanup. */}
                             <Button
+                                ref={importButtonRef}
                                 variant="primary"
                                 onClick={handleImportCollectionClick}
                                 disabled={!bggUsername.trim()}
@@ -3596,7 +3689,7 @@ function Profile(){
 
                     {/* BGG Search */}
                     {showBggSearch && (
-                        <div className="mb-6 p-3 md:p-4 border border-line rounded-sm bg-surface-page">
+                        <div id={bggSearchPanelId} className="mb-6 p-3 md:p-4 border border-line rounded-sm bg-surface-page">
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
                                 <Input
                                     id="bgg-search"

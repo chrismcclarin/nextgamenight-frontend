@@ -52,7 +52,7 @@ import { expectFocusRingClearOfText } from './support/ringGeometry';
 
 // In the 555-01xx fictional range, so it is never a real person's phone, and it still passes the
 // page's own check (`parsePhoneNumber(value, 'US')` then `isValid()`,
-// `src/app/userProfile/page.js:613-614`; `isValid()` is true for this value, run 2026-10-11 and
+// `src/app/userProfile/page.js:651-652`; `isValid()` is true for this value, run 2026-10-11 and
 // again 2026-10-15).
 const FAKE_PHONE = '(201) 555-0123';
 const FAKE_CODE = '123456';
@@ -753,11 +753,105 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     expect(hiddenFlags.length, 'the outcome region never changed').toBeGreaterThan(0);
     expect(hiddenFlags.filter(Boolean), 'a write landed while the page was aria-hidden').toEqual([]);
 
+    // Requirement 5 (the owner's design of 2026-10-05): the 5-second result timer still empties
+    // the username, and focus still on Import Collection moves first to + Add from BGG, never to
+    // the body. A positive wait for the timer: the region is emptied and hidden again.
+    await expect(region).toHaveClass(/(^|\s)sr-only(\s|$)/, { timeout: 10_000 });
+    const toggle = page.getByRole('button', { name: /^(\+ Add from BGG|Hide Search)$/ });
+    await expect(toggle).toBeFocused();
+    await expect(field).toHaveValue('');
+    await expect(importBtn).toBeDisabled();
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+
     if (testInfo.project.name === 'phone') {
       expect(page.viewportSize()?.width).toBe(375);
     }
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(fits, 'horizontal overflow around the import block').toBe(true);
+    expect(imp.count()).toBe(1);
+  });
+
+  test('the import result timer keeps a newly typed name and leaves focus where the user put it', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const imp = await holdUntilReleased(page, 'POST', IMPORT_PATH);
+    await page.goto('/userProfile');
+
+    const field = page.getByRole('textbox', { name: 'BoardGameGeek username' });
+    await expect(field).toBeVisible({ timeout: 15_000 });
+    await field.fill('e2e-meeple');
+    const region = page.locator('#bgg-import-status');
+    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    await focusByKeyboard(page, importBtn);
+    await page.keyboard.press('Enter');
+    await focusByKeyboard(page, page.getByRole('dialog').getByRole('button', { name: 'Continue' }));
+    await page.keyboard.press('Enter');
+    await imp.arrived;
+    await imp.release({ imported: 2, skipped: 1, total: 3 });
+    await expect(region).toContainText('Imported 2 games');
+
+    // Inside the 5-second window the user moves to the field and types another name.
+    await focusByKeyboard(page, field);
+    await field.fill('e2e-meeple-two');
+    await expect(field).toBeFocused();
+
+    // The result line goes on schedule; the typed name and the user's focus stay.
+    await expect(region).toHaveClass(/(^|\s)sr-only(\s|$)/, { timeout: 10_000 });
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue('e2e-meeple-two');
+    await expect(importBtn).toBeEnabled();
+    await expect(page.getByRole('button', { name: /^(\+ Add from BGG|Hide Search)$/ })).not.toBeFocused();
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow around the import block').toBe(true);
+    expect(imp.count()).toBe(1);
+  });
+
+  test('the import result timer keeps the name while the import dialog is open', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const imp = await holdUntilReleased(page, 'POST', IMPORT_PATH);
+    await page.goto('/userProfile');
+
+    const field = page.getByRole('textbox', { name: 'BoardGameGeek username' });
+    await expect(field).toBeVisible({ timeout: 15_000 });
+    await field.fill('e2e-meeple');
+    const region = page.locator('#bgg-import-status');
+    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    const dialog = page.getByRole('dialog');
+    await focusByKeyboard(page, importBtn);
+    await page.keyboard.press('Enter');
+    await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
+    await page.keyboard.press('Enter');
+    await imp.arrived;
+    await imp.release({ imported: 2, skipped: 1, total: 3 });
+    await expect(region).toContainText('Imported 2 games');
+
+    // Inside the window: Import Collection again, so the dialog is open when the timer runs.
+    await focusByKeyboard(page, importBtn);
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeVisible();
+
+    // The result line went behind the dialog; the dialog still names the user.
+    await expect(region).toHaveClass(/(^|\s)sr-only(\s|$)/, { timeout: 10_000 });
+    await expect(dialog).toContainText('e2e-meeple');
+
+    // Cancel: the name stays, and the close restore lands on an ENABLED Import Collection.
+    await focusByKeyboard(page, dialog.getByRole('button', { name: 'Cancel' }));
+    await page.keyboard.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    await expect(field).toHaveValue('e2e-meeple');
+    await expect(importBtn).toBeEnabled();
+    await expect(importBtn).toBeFocused();
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow around the import block').toBe(true);
+    // Continue is pinned in the unit suite (T3-D); no second import is sent here.
     expect(imp.count()).toBe(1);
   });
 
