@@ -301,7 +301,10 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
     await waitFor(() => expect(lastRole()).toBe('admin'));
   });
 
-  it('R4: identity AND role failing at once print ONE notice with ONE Retry, which retries identity', async () => {
+  // AMENDED Phase 88.6.1-63 (AC-29): with a held identity row (`selfUuid` defined) identity is not the
+  // failed request, so the one notice is the ROLE failure and its Retry re-reads the role, never the
+  // identity (was the reverse). The original guard's teeth (a second compact mount reds it) still hold.
+  it('R4: identity AND role failing at once print ONE notice with ONE Retry, which retries the role while an identity row is held (88.6.1-63)', async () => {
     // Guard arm, green on arrival by design; its teeth (a second compact mount reds it) are
     // recorded in the plan SUMMARY.
     const user = userEvent.setup();
@@ -322,8 +325,10 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
 
     const before = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
     await user.click(retries[0]);
-    expect(identityRefetch).toHaveBeenCalledTimes(1);
-    expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(before);
+    await waitFor(() =>
+      expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(before + 1),
+    );
+    expect(identityRefetch).not.toHaveBeenCalled();
   });
 
   it('R5: the role Retry resolves its outcome — failed, failed again, succeeded; a skipped read resolves nothing', async () => {

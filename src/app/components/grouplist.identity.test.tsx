@@ -350,7 +350,10 @@ describe('D-37 — the home list refreshes in place (Req 9)', () => {
     expect(screen.queryByText(BANNER_TEXT)).toBeNull();
   });
 
-  it('R6. AC-29: a failed self-identity refetch with a RETAINED id keeps the working list, and the compact notice carries the failure', async () => {
+  // AMENDED Phase 88.6.1-63 (AC-29): the compact sentence is false with a held row (every control
+  // works from it), so this case flips from one notice to none; an access answer is told by the
+  // list's own request. The no-row rule lives in selfIdentityErrorSource.ts.
+  it('R6. AC-29: a failed self-identity refetch with a RETAINED id keeps the working list, and no compact notice shows (88.6.1-63)', async () => {
     h.selfUuid = SELF_UUID;
     h.isError = true;
     getUserGroups().mockResolvedValueOnce([ALPHA]);
@@ -358,8 +361,8 @@ describe('D-37 — the home list refreshes in place (Req 9)', () => {
 
     expect(await screen.findByRole('button', { name: 'Alpha Crew' })).toBeInTheDocument();
     // The file's banner stub renders this test id for every mounted banner whose state shows an
-    // error: exactly one here, the in-list compact identity notice (the groups request succeeded).
-    expect(screen.getAllByTestId('identity-degrade-banner')).toHaveLength(1);
+    // error: none here (the groups request succeeded, and a held row is not an identity failure).
+    expect(screen.queryAllByTestId('identity-degrade-banner')).toHaveLength(0);
   });
 
   it('R7. a change of signed-in identity is a FIRST load again: the previous identity cards never paint (88.6.1-70 contract C3)', async () => {
