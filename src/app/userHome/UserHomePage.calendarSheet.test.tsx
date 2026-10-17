@@ -29,7 +29,7 @@
 // than deleted (each says so at its site); both were asserting that a past row is on
 // screen the instant the sheet opens, which Req 12 makes false by design.
 import * as React from 'react';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, screen, cleanup, within, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -295,6 +295,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import UserHome from './UserHomePage';
+import { ApiError } from '@/lib/api';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 /** UserHomePage is `.js`, so its inferred prop type has every prop REQUIRED. */
 function renderHome() {
@@ -884,8 +886,15 @@ describe('Phase 88.5 — the "Next game night" hero in the sheet', () => {
     // priority over them, not follow the array.
     expect(await within(dialog).findByText('Catan')).toBeInTheDocument();
     expect(within(dialog).queryByText('Next game night')).toBeNull();
-    // And no count claim is made while pending (the `null`-is-not-`0` rule).
-    expect(calendarButton()).toHaveAccessibleName('Calendar');
+    // AMENDED Phase 88.6.1-62 (D-09a / D-37): this assertion used to read the bare `Calendar`
+    // (no count claim while ANY fetch was pending). A refresh of a list this identity already
+    // loaded is the owner's D-09a / D-37 window: the rows and the count stay, and the sheet's
+    // list is marked busy in place. The hero above stays withheld (gate (c) is unchanged).
+    expect(within(dialog).getByText('Catan').closest('[aria-busy]')).toHaveAttribute(
+      'aria-busy',
+      'true'
+    );
+    expect(calendarButton()).toHaveAccessibleName('Calendar, 2 upcoming games this week');
   });
 
   it('shows the eyebrow, the when-line and the group name — and no "hosted by" anywhere (D-14)', async () => {
@@ -1260,5 +1269,359 @@ describe('Phase 88.6-27 — W58 + W59: the sheet has ONE time boundary', () => {
     expect(within(dialog).getAllByText('Dune')).toHaveLength(1);
     // and the count followed it: nothing is being removed from the past bucket any more.
     expect(pastToggle(dialog)).toHaveAccessibleName(/past events \(4\)/i);
+  });
+});
+
+describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, RF1)', () => {
+  // Copy row RF1 / D-47 (plan 88.6.1-70's REFRESH_FAILED_NOTICE), written once here (contract
+  // C7). While the notice shows it is in the DOM twice: the visible line and its polite region.
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  const CARD_LOAD_TITLE = "We couldn't load your upcoming events";
+  const SHEET_LOAD_TITLE = "We couldn't load your calendar";
+  const PAIR = [FUTURE_EVENT, FUTURE_LATER];
+  const err500 = () => new ApiError('Server error', 'internal', 500);
+
+  function deferred<T = unknown>() {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+
+  // The desktop card, found through its own heading (the heading is the card's first child).
+  // `hidden: true` because an open sheet aria-hides the rest of the page.
+  const cardHeading = () =>
+    screen.getByRole('heading', { name: 'Upcoming Events', hidden: true });
+  const card = () => cardHeading().parentElement as HTMLElement;
+  const refreshButton = () => screen.getByRole('button', { name: /force a group refresh/i });
+  // The visible RF1 line: the RF1 text node that sits in no status region.
+  const rf1Line = (scope: HTMLElement) =>
+    within(scope)
+      .getAllByText(RF1)
+      .find((n) => !n.closest('[role="status"]')) as HTMLElement;
+  // The positive RF1 signal waits for BOTH copies (plan 88.6.1-30's lesson).
+  const waitForRf1 = (scope: () => HTMLElement) =>
+    waitFor(() => expect(within(scope()).getAllByText(RF1)).toHaveLength(2));
+
+  // The house idiom (useFetchErrorState.test.tsx, function fireVisibility): the hook's tab-return
+  // re-attempt — the refresh nobody pressed. It listens only while the error shows.
+  function fireVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  afterEach(() => {
+    delete (document as unknown as { visibilityState?: string }).visibilityState;
+  });
+
+  /** Between renders inside one `it(`: a clean tree and the never-settling default again. */
+  async function freshTree() {
+    cleanup();
+    const fn = await getEventsMock();
+    fn.mockReset();
+    fn.mockImplementation(() => new Promise(() => {}));
+  }
+
+  /** First load [Catan, Gloomhaven]; then a settings-save refresh that rejects with `failure`. */
+  async function loadPairThenFail(failure: unknown) {
+    const fn = await getEventsMock();
+    fn.mockResolvedValueOnce(PAIR).mockRejectedValueOnce(failure);
+    const user = userEvent.setup();
+    renderHome();
+    await within(card()).findByRole('button', { name: /Catan/ });
+    await user.click(refreshButton());
+    return { fn, user };
+  }
+
+  it('S1 (R9 adjacency): a refresh keeps the SAME row node, marks it busy, shows no loader and keeps the count', async () => {
+    const fn = await getEventsMock();
+    fn.mockResolvedValueOnce(PAIR);
+    const user = userEvent.setup();
+    renderHome();
+    const row = await within(card()).findByRole('button', { name: /Catan/ });
+
+    await user.click(refreshButton());
+    await act(async () => {});
+
+    expect(fn, 'the refresh started (vacuity guard)').toHaveBeenCalledTimes(2);
+    expect(row.isConnected).toBe(true);
+    expect(within(card()).getByRole('button', { name: /Catan/ })).toBe(row);
+    expect(screen.queryByRole('status', { name: /Loading your upcoming events/i })).toBeNull();
+    expect(row.parentElement).toHaveAttribute('aria-busy', 'true');
+    expect(calendarButton()).toHaveAccessibleName('Calendar, 2 upcoming games this week');
+  });
+
+  it('S2 (C8 a, C8 e 500): a failed refresh keeps the rows under RF1 on the card AND in the sheet', async () => {
+    const { user } = await loadPairThenFail(err500());
+    await waitForRf1(card);
+
+    const catan = within(card()).getByRole('button', { name: /Catan/ });
+    expect(precedes(rf1Line(card()), catan)).toBe(true);
+    expect(within(card()).queryByText(CARD_LOAD_TITLE)).toBeNull();
+    // No count claim while the error shows (the shipped SUPPRESSION rule).
+    expect(calendarButton()).toHaveAccessibleName('Calendar');
+
+    const dialog = await openCalendarSheet(user);
+    await waitForRf1(() => dialog);
+    const sheetRow = within(dialog).getByText('Catan');
+    expect(precedes(rf1Line(dialog), sheetRow)).toBe(true);
+    expect(within(dialog).queryByText(SHEET_LOAD_TITLE)).toBeNull();
+    expect(within(dialog).queryByText('Next game night')).toBeNull();
+    expect(within(dialog).queryByText(/^no (upcoming )?events$/i)).toBeNull();
+  });
+
+  it('S3 (has-LOADED, r2 #69): a Try again after a failed FIRST load keeps the full banner, its pressed button mounted, gated and focused', async () => {
+    const fn = await getEventsMock();
+    fn.mockRejectedValueOnce(err500());
+    const user = userEvent.setup();
+    renderHome();
+    expect(await within(card()).findByText(CARD_LOAD_TITLE)).toBeInTheDocument();
+    // Captured BEFORE the press and never re-queried by name: in flight it reads `Retrying…`.
+    const tryAgain = within(card()).getByRole('button', { name: 'Try again' });
+    act(() => tryAgain.focus());
+
+    await user.click(tryAgain);
+    await act(async () => {});
+
+    expect(fn, 'the retry started (vacuity guard)').toHaveBeenCalledTimes(2);
+    expect(within(card()).queryByText(CARD_LOAD_TITLE)).not.toBeNull();
+    expect(tryAgain.isConnected).toBe(true);
+    expect(tryAgain).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).toBe(tryAgain);
+    expect(within(card()).queryByText('Nothing on the calendar')).toBeNull();
+    expect(screen.queryByRole('status', { name: /Loading your upcoming events/i })).toBeNull();
+    expect(within(card()).queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('S5 (R9 ordering): the latest refresh wins when an older one answers last', async () => {
+    const fn = await getEventsMock();
+    const second = deferred<unknown[]>();
+    const third = deferred<unknown[]>();
+    fn.mockResolvedValueOnce(PAIR)
+      .mockImplementationOnce(() => second.promise)
+      .mockImplementationOnce(() => third.promise);
+    const user = userEvent.setup();
+    renderHome();
+    await within(card()).findByRole('button', { name: /Catan/ });
+
+    await user.click(refreshButton());
+    await user.click(refreshButton());
+    expect(fn).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      third.resolve([FUTURE_LATER]);
+    });
+    await act(async () => {
+      second.resolve(PAIR);
+    });
+
+    expect(await within(card()).findByRole('button', { name: /Gloomhaven/ })).toBeInTheDocument();
+    expect(within(card()).queryByRole('button', { name: /Catan/ })).toBeNull();
+  });
+
+  it('S6 (C8 c, C2, C4): Retry keeps RF1 while its run is held, then recovers onto the card heading', async () => {
+    const { fn, user } = await loadPairThenFail(err500());
+    await waitForRf1(card);
+    const held = deferred<unknown[]>();
+    fn.mockImplementationOnce(() => held.promise);
+    const retry = within(card()).getByRole('button', { name: 'Retry', exact: true });
+
+    await user.click(retry);
+
+    // C2: the error is not cleared at the press, so the notice stays; plan 21's in-flight gate.
+    expect(rf1Line(card()), 'the visible RF1 line stays while the run is held').toBeDefined();
+    expect(retry).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      held.resolve([FUTURE_LATER]);
+    });
+
+    await waitFor(() => expect(within(card()).queryAllByText(RF1)).toHaveLength(0));
+    expect(
+      within(card())
+        .getAllByRole('status')
+        .some((n) => n.textContent === ''),
+      'the notice region stays, empty'
+    ).toBe(true);
+    expect(within(card()).getByRole('button', { name: /Gloomhaven/ })).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(cardHeading()));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('S7 (C3, D-50 ruling Y): an earlier EMPTY answer stays under RF1 on the card and in the sheet', async () => {
+    const fn = await getEventsMock();
+    fn.mockResolvedValueOnce([]).mockRejectedValueOnce(err500());
+    const user = userEvent.setup();
+    renderHome();
+    await within(card()).findByText('Nothing on the calendar');
+    await user.click(refreshButton());
+
+    await waitForRf1(card);
+    expect(precedes(rf1Line(card()), within(card()).getByText('Nothing on the calendar'))).toBe(true);
+    expect(within(card()).queryByText(CARD_LOAD_TITLE)).toBeNull();
+
+    const dialog = await openCalendarSheet(user);
+    await waitForRf1(() => dialog);
+    const emptyLine = within(dialog).getByText(/^no (upcoming )?events$/i);
+    expect(precedes(rf1Line(dialog), emptyLine)).toBe(true);
+    expect(within(dialog).queryByText(SHEET_LOAD_TITLE)).toBeNull();
+  });
+
+  it('S8 (C8 e, C10 401): a refresh answered 401 withdraws the rows behind the full banner and its register line', async () => {
+    const err = new ApiError('Unauthorized', 'unauthorized', 401);
+    await loadPairThenFail(err);
+
+    expect(await within(card()).findByText(getFetchErrorMessage(err))).toBeInTheDocument();
+    expect(within(card()).getByText(CARD_LOAD_TITLE)).toBeInTheDocument();
+    expect(within(card()).queryByRole('button', { name: /Catan/ })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('S9 (C8 e, C10 403): a refresh answered 403 withdraws the rows on the card AND in the sheet', async () => {
+    const err = new ApiError('Forbidden', 'forbidden', 403);
+    const { user } = await loadPairThenFail(err);
+
+    expect(await within(card()).findByText(getFetchErrorMessage(err))).toBeInTheDocument();
+    expect(within(card()).getByText(CARD_LOAD_TITLE)).toBeInTheDocument();
+    expect(within(card()).queryByRole('button', { name: /Catan/ })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    const dialog = await openCalendarSheet(user);
+    expect(within(dialog).getByText(SHEET_LOAD_TITLE)).toBeInTheDocument();
+    expect(within(dialog).getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+    expect(within(dialog).queryByText('Catan')).toBeNull();
+    expect(within(dialog).queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('S10 (C8 e, network): a refresh that never reached the server keeps the rows under RF1', async () => {
+    await loadPairThenFail(new ApiError('Network error', 'network', 0));
+
+    await waitForRf1(card);
+    expect(within(card()).getByRole('button', { name: /Catan/ })).toBeInTheDocument();
+    expect(within(card()).queryByText(CARD_LOAD_TITLE)).toBeNull();
+  });
+
+  it('S11 (C8 f1, C12 a): an access answer to an unpressed re-attempt withdraws the focused row — focus lands on the card heading, or the sheet title while the sheet is open', async () => {
+    for (const err of [
+      new ApiError('Forbidden', 'forbidden', 403),
+      new ApiError('Unauthorized', 'unauthorized', 401),
+    ]) {
+      await freshTree();
+      const { fn } = await loadPairThenFail(err500());
+      await waitForRf1(card);
+      act(() => within(card()).getByRole('button', { name: /Catan/ }).focus());
+      fn.mockRejectedValueOnce(err);
+
+      await act(async () => fireVisibility('visible'));
+
+      await waitFor(() =>
+        expect(within(card()).queryByRole('button', { name: /Catan/ })).toBeNull()
+      );
+      expect(within(card()).getByText(CARD_LOAD_TITLE)).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(cardHeading()));
+      expect(document.activeElement).not.toBe(document.body);
+    }
+
+    // r2 #225: the sheet open (possible at any width) — the guard passes no target, so the
+    // floor lands on the open sheet's title, never the card heading behind the modal.
+    await freshTree();
+    const { fn, user } = await loadPairThenFail(err500());
+    await waitForRf1(card);
+    const dialog = await openCalendarSheet(user);
+    act(() => within(dialog).getByRole('button', { name: /Catan/ }).focus());
+    fn.mockRejectedValueOnce(new ApiError('Forbidden', 'forbidden', 403));
+
+    await act(async () => fireVisibility('visible'));
+
+    expect(await within(dialog).findByText(SHEET_LOAD_TITLE)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Catan')).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(dialog).getByRole('heading', { name: 'Calendar' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).not.toBe(dialog);
+  });
+
+  it('S12 (C8 f2, C12 b): an unpressed re-attempt that succeeds while Retry holds focus lands on the card heading, or the sheet title', async () => {
+    {
+      const { fn } = await loadPairThenFail(err500());
+      await waitForRf1(card);
+      act(() => within(card()).getByRole('button', { name: 'Retry', exact: true }).focus());
+      fn.mockResolvedValueOnce([FUTURE_LATER]);
+
+      await act(async () => fireVisibility('visible'));
+
+      await waitFor(() => expect(within(card()).queryAllByText(RF1)).toHaveLength(0));
+      expect(within(card()).getByRole('button', { name: /Gloomhaven/ })).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(cardHeading()));
+      expect(document.activeElement).not.toBe(document.body);
+    }
+
+    await freshTree();
+    const { fn, user } = await loadPairThenFail(err500());
+    await waitForRf1(card);
+    const dialog = await openCalendarSheet(user);
+    await waitForRf1(() => dialog);
+    act(() => within(dialog).getByRole('button', { name: 'Retry', exact: true }).focus());
+    fn.mockResolvedValueOnce([FUTURE_LATER]);
+
+    await act(async () => fireVisibility('visible'));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(dialog).getByRole('heading', { name: 'Calendar' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).not.toBe(dialog);
+  });
+
+  it('S13 (r2 #226, Req 5): a SUCCESSFUL refresh that removes the focused row lands on the card heading, or the sheet title', async () => {
+    {
+      const { fn } = await loadPairThenFail(err500());
+      await waitForRf1(card);
+      act(() => within(card()).getByRole('button', { name: /Catan/ }).focus());
+      fn.mockResolvedValueOnce([FUTURE_LATER]);
+
+      await act(async () => fireVisibility('visible'));
+
+      expect(await within(card()).findByRole('button', { name: /Gloomhaven/ })).toBeInTheDocument();
+      await waitFor(() =>
+        expect(within(card()).queryByRole('button', { name: /Catan/ })).toBeNull()
+      );
+      await waitFor(() => expect(document.activeElement).toBe(cardHeading()));
+      expect(document.activeElement).not.toBe(document.body);
+    }
+
+    await freshTree();
+    const { fn, user } = await loadPairThenFail(err500());
+    await waitForRf1(card);
+    const dialog = await openCalendarSheet(user);
+    act(() => within(dialog).getByRole('button', { name: /Catan/ }).focus());
+    fn.mockResolvedValueOnce([FUTURE_LATER]);
+
+    await act(async () => fireVisibility('visible'));
+
+    await waitFor(() => expect(within(dialog).queryByText('Catan')).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(dialog).getByRole('heading', { name: 'Calendar' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).not.toBe(dialog);
+  });
+
+  it('S14 (r2 #148): a second re-attempt while a run is in flight joins it — exactly one more request', async () => {
+    const fn = await getEventsMock();
+    fn.mockResolvedValueOnce(PAIR).mockRejectedValueOnce(err500());
+    const user = userEvent.setup();
+    renderHome();
+    await within(card()).findByRole('button', { name: /Catan/ });
+    await user.click(refreshButton());
+    await waitFor(() => expect(fn).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    const callsBefore = fn.mock.calls.length;
+
+    await act(async () => fireVisibility('visible'));
+    await act(async () => fireVisibility('visible'));
+
+    expect(fn.mock.calls.length).toBe(callsBefore + 1);
   });
 });
