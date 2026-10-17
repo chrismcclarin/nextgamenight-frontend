@@ -37,6 +37,9 @@ import { usersAPI, ApiError } from '@/lib/api';
 import { useSelfIdentity } from './useSelfIdentity';
 import { invalidateSelfCache } from './selfIdentityCache';
 import { selfIdentityErrorSource, selfIdentityFailedWithNoRow } from './selfIdentityErrorSource';
+import * as fs from 'fs';
+import * as path from 'path';
+import { sourceFiles, withoutComments } from '../../test-utils/sourceScan';
 
 const mockGetUser = usersAPI.getUser as ReturnType<typeof vi.fn>;
 
@@ -135,5 +138,65 @@ describe('selfIdentityErrorSource — failed AND no row (88.6.1-79, AC-29)', () 
     );
     // The row is still held: the 410 routing reads the RAW error, never the no-row rule.
     expect(result.current.selfUuid).toBe(SELF_UUID);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Census (Phase 88.6.1-63, AC-29): every self-identity site decides "identity failed" through
+// the one rule above. Eight hosts wrap their error state in the no-row source; one site keeps
+// its state raw ON PURPOSE and converges on the boolean rule instead; no file carries its own
+// hand-written copy of the rule. Source is read with comments blanked, so a comment that names
+// a pattern in words never counts.
+// ---------------------------------------------------------------------------------------------
+
+// The sites whose identity error state stays RAW, each with the reason. Adding a key here is a
+// decision, not a cleanup.
+const RAW_SELF_IDENTITY_SITES: Record<string, string> = {
+  'app/userProfile/page.js':
+    'the kept-row RF1 notice reads the raw state (plan 88.6.1-79 Task 3, D-51) - wrapping it silences that notice; its no-row half reads selfIdentityFailedWithNoRow',
+};
+
+const WRAPPED_SELF_IDENTITY_SITES = [
+  'app/components/EventCalendar.js',
+  'app/components/ManageMembers.js',
+  'app/components/grouplist.js',
+  'app/friends/page.js',
+  'app/gameDetail/page.js',
+  'app/groupHomePage/page.js',
+  'app/groupPlanning/page.js',
+  'app/userHome/UserHomePage.js',
+];
+
+const CENSUS_SRC = path.resolve(__dirname, '../..');
+const censusCode: Array<{ rel: string; code: string }> = sourceFiles(CENSUS_SRC).map((full) => ({
+  rel: path.relative(CENSUS_SRC, full).split(path.sep).join('/'),
+  code: withoutComments(fs.readFileSync(full, 'utf8')),
+}));
+
+const WRAPPED_STATE = /useFetchErrorState\(\s*selfIdentityErrorSource\(\s*self(?:Identity)?Query\b/;
+const RAW_STATE = /useFetchErrorState\(\s*self(?:Identity)?Query\s*\)/;
+const HAND_WRITTEN_RULE = /selfIdentityErrorState\.showError\s*&&\s*(?:!selfUuid\b|self\s*===\s*undefined)/;
+
+describe('self-identity census (88.6.1-63, AC-29)', () => {
+  it('(a) eight sites wrap their identity state in the no-row source; only the rostered site stays raw', () => {
+    const wrapped = censusCode.filter((f) => WRAPPED_STATE.test(f.code)).map((f) => f.rel).sort();
+    const raw = censusCode.filter((f) => RAW_STATE.test(f.code)).map((f) => f.rel).sort();
+    expect(wrapped).toEqual([...WRAPPED_SELF_IDENTITY_SITES].sort());
+    expect(raw).toEqual(Object.keys(RAW_SELF_IDENTITY_SITES).sort());
+    // Anti-vacuity: the census saw every identity site there is.
+    expect(wrapped.length + raw.length).toBe(9);
+  });
+
+  it('(b) a site that keeps its state raw still decides "no row" through the one rule', () => {
+    for (const rel of Object.keys(RAW_SELF_IDENTITY_SITES)) {
+      const site = censusCode.find((f) => f.rel === rel);
+      expect(site, rel).toBeDefined();
+      expect(site!.code.includes('selfIdentityFailedWithNoRow('), rel).toBe(true);
+    }
+  });
+
+  it('(c) no file carries a hand-written copy of the no-row rule', () => {
+    const copies = censusCode.filter((f) => HAND_WRITTEN_RULE.test(f.code)).map((f) => f.rel).sort();
+    expect(copies).toEqual([]);
   });
 });
