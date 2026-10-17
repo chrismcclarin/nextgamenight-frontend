@@ -10,10 +10,28 @@ import { logger, errCtx } from '@/lib/logger';
  * BallotSection - Game voting ballot for an event
  */
 
-// Copy row E14 (D-30, ratified 2026-10-04): the heard in-flight name of a pick while it saves.
-// ONE template, so the whole ratified string lives in one source line for the AC-33 scan.
+// Copy rows E12, E13 and E14 (D-30, ratified by the owner 2026-10-04), hoisted so each
+// ratified string lives in ONE source line for the AC-33 scan. E12 and E13 ship with the
+// straight apostrophe (D-32 R8). E13 serves both pick lists. E14 is heard only: the pick's
+// accessible name while it saves.
+const VOTE_SAVE_FAILED_MESSAGE = "We couldn't save your vote. Please try again.";
+const WINNER_SAVE_FAILED_MESSAGE = "We couldn't set the winner. Please try again.";
 function savingPickLabel(gameName) {
   return `${gameName}, saving`;
+}
+
+// The ballot with one option's `user_voted` set: flipped when `voted` is omitted (the
+// optimistic flip and its local reversal), or set to the server's own boolean answer.
+function toggleOptionVote(ballot, optionId, voted) {
+  if (!ballot) return ballot;
+  return {
+    ...ballot,
+    options: (ballot.options || []).map(opt =>
+      opt.id === optionId
+        ? { ...opt, user_voted: typeof voted === 'boolean' ? voted : !opt.user_voted }
+        : opt
+    ),
+  };
 }
 
 /* DECISION Phase 88.6-22 (R3 #146): the three action-failure messages announce through the
@@ -24,12 +42,19 @@ function savingPickLabel(gameName) {
    WHY ALWAYS-MOUNTED: a screen reader announces a CHANGE to a live region, not the conditional
    mount of a new one. `{error && <StatusRegion …>}` would pass a presence check and announce
    nothing.
+   AMENDED Phase 88.6.1-31 (D-42): that reason holds HERE because all three regions are polite
+   (`role="status"`). An inserted `role="alert"` that arrives with its text IS announced (ARIA
+   1.2; corrected in StatusRegion.tsx's EMPTY-FIRST bullet, `StatusRegion.tsx:9`, by Phase
+   88.6.1-06), so the reason does not carry over to an assertive alert. The always-mounted shape
+   still earns its place there for two other reasons: node identity stays assertable, and a
+   clear-then-set re-announces a repeat.
 
-   WHY THE PRIMITIVE and not a div: `88.6-UI-SPEC.md:165` (§2's StatusRegion row) and §14 A-29
+   WHY THE PRIMITIVE and not a div: `88.6-UI-SPEC.md:189` (§2's StatusRegion row) and §14 A-29
    ratify "No new hand-rolled `role=\"status\"` / `aria-live` markup in 88.6" — the three ad-hoc
-   sites that survive (`ThresholdSlider.js:57`, `StarRatingPicker.js:95`, `ErrorFallback.tsx:73`)
-   are a CLOSED residual. A hand-rolled div also silently drops `aria-atomic="true"`
-   (StatusRegion.tsx:42).
+   sites that survive (`ThresholdSlider.js:71-72`, `StarRatingPicker.js:134`,
+   `ErrorFallback.tsx:109-110`) are a CLOSED residual (the UI-SPEC row itself still carries its
+   2026-09-13 line numbers; these are re-read 2026-10-16). A hand-rolled div also silently drops
+   `aria-atomic="true"` (StatusRegion.tsx:101).
 
    NO `aria-invalid` ANYWHERE HERE, and the reason is NOT an attribute-support limit. These
    controls are native `<button type="button">` elements and `aria-invalid` is a GLOBAL ARIA
@@ -46,10 +71,17 @@ function savingPickLabel(gameName) {
    with a name drawn from the prompt copy: it works, but it mints a container role on a plain
    list of buttons to carry one description, where the buttons can carry it themselves.
 
-   VISIBLE-SPACE RULE: `mb-2`/`mb-3` apply ONLY when the region is filled, so the empty region
-   adds no space. At the open-ballot branch the region was additionally hoisted OUT of the
-   `space-y-3` container, because an always-mounted first child would have given the block below
-   it a 12px `margin-top` it does not have today. */
+   VISIBLE-SPACE RULE, AMENDED Phase 88.6.1-31 (D-22): the margins are now UNCONDITIONAL
+   (`mb-2`, `mb-2`, `mb-3`). While a region is empty it takes plan 88.6.1-06's
+   `srOnlyWhenEmpty`, so it is out of flow and still adds no space; once it holds a message it is
+   visible on the same node with the same 8px and 12px gaps as before. The per-site class
+   ternary this replaced is the duplication D-22 retires. The open-ballot region stays hoisted OUT
+   of the `space-y-3` container: Tailwind 4.3.3's `space-y-3` is `:where(& > :not(:last-child))`
+   setting `margin-block-end`, so an empty FIRST child inside the stack would itself have carried
+   a 12px bottom margin (the v4 mechanism; the v3 one this paragraph first named, a top margin on
+   the next sibling, is not what this build emits). Each region's containing block was checked
+   for the plan 06 caveat: its static position is ABOVE the picks inside the card body, so the
+   1px `sr-only` box can never extend the page's scrollable overflow. */
 export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus }) {
   const [ballot, setBallot] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -75,19 +107,66 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
      Changing this is a decision, not a cleanup. */
   const recovery = useFocusRecovery({ fallback: gameVoteHeadingRef });
 
+  // W005 bookkeeping (see the DECISION marker at `fetchBallot`). `currentEventIdRef` holds the
+  // committed `eventId` prop; it is assigned in the render body so it is current before any
+  // awaited answer for the previous event can land.
+  const currentEventIdRef = useRef(eventId);
+  currentEventIdRef.current = eventId;
+  const loadSeqRef = useRef(0);
+  const loadedEventIdRef = useRef(null);
+  const loadedStatusRef = useRef(null);
+
   const isOrganizer = userRole === 'owner' || userRole === 'admin';
   const canVote = userRsvpStatus === 'yes' || userRsvpStatus === 'maybe';
 
+  /* DECISION Phase 88.6.1-31 (W005 / D-26): `fetchBallot` resolves one of THREE outcomes —
+     'loaded', 'failed' (a still-current request genuinely failed) or 'superseded' (a newer load
+     started, or its eventId is no longer current) — and a superseded request touches no state at
+     all, success or failure. A failed load keeps the ballot already on screen ONLY when it was
+     loaded for the SAME eventId (`loadedEventIdRef`); otherwise it clears it. Two guards make that
+     safe: a request-sequence counter (`loadSeqRef`, review #141: an older request settling last
+     neither wipes nor replaces the current ballot) and the current-eventId ref (review r3 M-23:
+     the counter alone is latest-request-wins, and a handler's refetch from the closure of an
+     earlier event would become the latest and write that event's ballot under the new one; a call
+     issued for a non-current eventId sends no GET and bumps no counter). When a post-pick refetch
+     FAILS, the server's returned winner is applied only when its `game_id` is non-null — the only
+     case `routes/ballot.js` stores (anchor `if (option.game_id) {`); a free-text winner is
+     answered 200 but stored nowhere (`.planning/deferred/phase-91.md`, owned by Phase 91), so the
+     picks stay (review #129).
+     REJECTED: (a) the review's keep-any-previous-value one-liner (WR-105): the single-event mount
+     can keep one instance across eventId changes (`gameDetail/page.js`, anchor
+     `key={ballotRefreshKey}`) and would show the previous event's ballot; (b) refetch-only
+     rollback, which is the bug this replaces (a phone with no network fails the refetch too, and
+     the whole card vanished); (c) keep-last-good without the sequence guard, because a late answer
+     for the previous event would then wipe or replace the current one; (d) painting any returned
+     winner, because it shows a free-text winner the server never kept; (e) one boolean `false`
+     for both "failed" and "superseded", because the handlers would read it as a failed refetch and
+     paint a fallback onto whatever ballot is now on screen.
+     Changing this is a decision, not a cleanup. */
   const fetchBallot = useCallback(async () => {
-    if (!eventId) return;
+    if (!eventId) return 'failed';
+    if (currentEventIdRef.current !== eventId) return 'superseded';
+    loadSeqRef.current += 1;
+    const seq = loadSeqRef.current;
+    const isSuperseded = () => seq !== loadSeqRef.current || currentEventIdRef.current !== eventId;
+    setError(null);
     try {
-      setError(null);
       const data = await ballotAPI.getBallot(eventId);
+      if (isSuperseded()) return 'superseded';
+      loadedEventIdRef.current = eventId;
+      loadedStatusRef.current = data?.ballot_status ?? null;
       setBallot(data);
+      return 'loaded';
     } catch (err) {
-      setBallot(null);
+      if (isSuperseded()) return 'superseded';
+      if (loadedEventIdRef.current !== eventId) {
+        loadedEventIdRef.current = null;
+        loadedStatusRef.current = null;
+        setBallot(null);
+      }
+      return 'failed';
     } finally {
-      setLoading(false);
+      if (!isSuperseded()) setLoading(false);
     }
   }, [eventId]);
 
@@ -101,22 +180,20 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     const settle = recovery.arm({ preferred: () => winnerCardRef.current, from });
     setVotingOptionId(optionId);
     setError(null);
+    // Every write after an await runs only while this press's event is still current (r3 H2-02).
+    const voteEventId = eventId;
+    const stillCurrent = () => currentEventIdRef.current === voteEventId;
 
-    setBallot(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        options: prev.options.map(opt =>
-          opt.id === optionId
-            ? { ...opt, user_voted: !opt.user_voted }
-            : opt
-        )
-      };
-    });
+    setBallot(prev => toggleOptionVote(prev, optionId));
 
     try {
-      await ballotAPI.toggleVote(eventId, optionId);
-      await fetchBallot();
+      const result = await ballotAPI.toggleVote(eventId, optionId);
+      const outcome = await fetchBallot();
+      // Review #131: the vote saved but the refetch failed. Show the vote the SERVER took, never
+      // the optimistic guess; a body with no boolean `voted` keeps the optimistic flip (r3 M-24).
+      if (outcome === 'failed' && stillCurrent() && typeof result?.voted === 'boolean') {
+        setBallot(prev => toggleOptionVote(prev, optionId, result.voted));
+      }
     } catch (err) {
       logger.info('Error toggling vote:', errCtx(err));
       /* FIXED Phase 88.6-22 (deviation, Rule 1): the `setError` and the rollback refetch were
@@ -126,9 +203,25 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
          the announcement assertion this plan commissions, not by re-reading: the message the
          plan asks to associate and announce was unreachable.
          Restoring the old order is a decision, not a cleanup — the rollback must still happen,
-         and it must happen BEFORE the message is set, not after. */
-      await fetchBallot();
-      setError('Could not save your vote. Please try again.');
+         and it must happen BEFORE the message is set, not after.
+         AMENDED Phase 88.6.1-31 (W005, D-26), 2026-10-16: the order stands, and the optimistic
+         flip is now ALSO reversed LOCALLY before the refetch, because on a phone the refetch
+         fails too (no network) and a failed refetch now keeps the card, which would otherwise
+         show the failed vote as cast. E12 is now set only while the ballot on screen after the
+         refetch is still the OPEN ballot (review #193): when the refetch shows it closed, the
+         branch change is itself the outcome, and E12 would land in the tie-break region and
+         describe its picks. */
+      if (!stillCurrent()) return;
+      setBallot(prev => toggleOptionVote(prev, optionId));
+      const outcome = await fetchBallot();
+      if (
+        outcome !== 'superseded' &&
+        stillCurrent() &&
+        loadedEventIdRef.current === voteEventId &&
+        loadedStatusRef.current === 'open'
+      ) {
+        setError(VOTE_SAVE_FAILED_MESSAGE);
+      }
     } finally {
       voteInFlightRef.current = false;
       setVotingOptionId(null);
@@ -149,7 +242,8 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
      this one handler and the two lists never render together.
      STATED EDGE: the latch is per instance, not per event. If the single-event mount switches
      `eventId` while a pick is saving, the new event's picks stay gated until that request
-     settles (about one round trip).
+     settles (about one round trip); the old pick's outcome never paints onto the new event (the
+     still-current checks in this handler, T2i).
      Changing this is a decision, not a cleanup. */
   const handleResolveTie = async (optionId, from) => {
     if (!isOrganizer || resolveInFlightRef.current) return;
@@ -157,12 +251,23 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     setResolvingOptionId(optionId);
     const settle = recovery.arm({ preferred: () => winnerCardRef.current, from });
     setError(null);
+    const pickEventId = eventId;
+    const stillCurrent = () => currentEventIdRef.current === pickEventId;
     try {
-      await ballotAPI.resolveTie(eventId, optionId);
-      await fetchBallot();
+      const result = await ballotAPI.resolveTie(eventId, optionId);
+      const outcome = await fetchBallot();
+      // Review #129: the pick saved but the refetch failed. Show the winner the server STORED
+      // (non-null `game_id`); a free-text winner was stored nowhere, so the picks stay and no
+      // error is claimed for a request that succeeded. Never on 'superseded' (T2i).
+      const winner = result?.winner;
+      if (outcome === 'failed' && stillCurrent() && winner && winner.game_id != null) {
+        setBallot(prev =>
+          prev ? { ...prev, winner, needs_tie_break: false, needs_fallback_pick: false } : prev
+        );
+      }
     } catch (err) {
       logger.info('Error resolving tie:', errCtx(err));
-      setError('Could not set the winner. Please try again.');
+      if (stillCurrent()) setError(WINNER_SAVE_FAILED_MESSAGE);
     } finally {
       resolveInFlightRef.current = false;
       setResolvingOptionId(null);
@@ -257,7 +362,8 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             <StatusRegion
               id="ballot-tiebreak-error"
               message={error ?? ''}
-              className={`text-content-status-error${error ? ' mb-2' : ''}`}
+              srOnlyWhenEmpty
+              className="mb-2 text-content-status-error"
             />
             <div className="space-y-2">
               {/* DECISION Phase 88.6.1-31 (E14): while a pick saves, its accessible NAME is
@@ -328,7 +434,8 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             <StatusRegion
               id="ballot-fallback-error"
               message={error ?? ''}
-              className={`text-content-status-error${error ? ' mb-2' : ''}`}
+              srOnlyWhenEmpty
+              className="mb-2 text-content-status-error"
             />
             <div className="space-y-2">
               {(options || []).map(opt => (
@@ -378,14 +485,19 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       </div>
 
       <div className="p-4">
-        {/* HOISTED OUT of the `space-y-3` container below. An always-mounted first child inside
-            it would have given the voting block a 12px `margin-top` it does not have today —
-            the empty region must cost no visible space. The `mb-3` it takes when FILLED is the
-            same 12px the `space-y-3` gap used to supply. */}
+        {/* HOISTED OUT of the `space-y-3` container below. Tailwind 4.3.3's `space-y-3` is
+            `:where(& > :not(:last-child))` setting `margin-block-end`, so an always-mounted first
+            child inside it would itself have carried a 12px bottom margin (corrected Phase
+            88.6.1-31: the v3 top-margin mechanism this first named is not what v4 emits) — the
+            empty region must cost no visible space. AMENDED Phase 88.6.1-31 (D-22): the region
+            now takes `srOnlyWhenEmpty`, so while empty it is out of flow; its now-unconditional
+            `mb-3` is the same 12px the `space-y-3` gap used to supply, shown only once it holds
+            a message. */}
         <StatusRegion
           id="ballot-vote-error"
           message={error ?? ''}
-          className={`text-content-status-error${error ? ' mb-3' : ''}`}
+          srOnlyWhenEmpty
+          className="mb-3 text-content-status-error"
         />
         <div className="space-y-3">
         {canVote ? (
@@ -442,7 +554,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
           </div>
         ) : (
           // POLL-06 (D-BALLOT-07): defense-in-depth gated state.
-          // The backend gate at routes/ballot.js:325-348 also rejects
+          // The backend gate at routes/ballot.js:385-394 also rejects
           // votes from non-yes/maybe-RSVPed users; this UI prevents the
           // user from bouncing off a 403 by hiding vote buttons entirely.
           <div role="region" aria-label="Vote gated until RSVP">
