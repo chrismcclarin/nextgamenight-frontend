@@ -7,9 +7,10 @@
  * 87.8-08 censused every non-`.btn` tappable and scored each on three columns. Two rows came
  * back "NO" in the Kbd column and were deferred to this phase:
  *
- *   `PromptScheduleSection.js:147` — the "Check-ins" expand header, a `div` with an `onClick`
- *     and no role, no tabIndex and no key handler. On groupPlanning it is the ONLY way to open
- *     the check-ins body, so a keyboard-only user could not reach polls at all.
+ *   `PromptScheduleSection.js` (the census row gave line 147 at the time; today the header is
+ *     the element whose onClick toggles setIsExpanded) — the "Check-ins" expand header, a `div`
+ *     with an `onClick` and no role, no tabIndex and no key handler. On groupPlanning it is the
+ *     ONLY way to open the check-ins body, so a keyboard-only user could not reach polls at all.
  *   `ClickableMemberName.js` — the username span. Its popover is opened by HOVER
  *     (`useHover`, `mouseOnly: true`) or by tap, and the mobile "+" shortcut is `md:hidden`.
  *     A keyboard user therefore had no path to the friend-request flow on any surface.
@@ -312,6 +313,9 @@ describe('ClickableMemberName username is keyboard-operable (87.8-08 -> 88-28)',
  * (`.planning/deferred/phase-88.6.md`), and 88.5 makes it worse by adding descendants to it.
  * These tests pin the per-descendant floor that phase committed to instead; they are not a
  * substitute for the structural fix, and they must NOT be read as closing that item.
+ * AMENDED Phase 88.6.1-54: that structural defect was closed by plan 88.6-21 (W42); the card is
+ * no longer a role=button, and the GL describe below mounts the real card under an axe
+ * nested-interactive pin. These tests still pin the per-descendant floor.
  * ========================================================================================== */
 
 const CHIP_MEMBERS = [
@@ -323,9 +327,12 @@ const CHIP_MEMBERS = [
 const CHIP_STACK_NAME = 'Members: ada, grace. Show all members.';
 
 /**
- * Mirrors `grouplist.js:359-370`: the stack renders inside a `role="button"` card carrying its
- * own click AND key handler. One spy behind both, because "expanding also navigated to the
- * group" is the same defect whichever handler fired.
+ * Mirrors the `grouplist.js` card shape from BEFORE plan 88.6-21: the stack renders inside a
+ * `role="button"` card carrying its own click AND key handler. Since DECISION Phase 88.6-21 in
+ * grouplist.js the card keeps only a pointer onClick and the keyboard target is its title block;
+ * this synthetic wrapper is kept on purpose, because it isolates the per-descendant
+ * stopPropagation floor, and the real card is pinned by the GL describe. One spy behind both,
+ * because "expanding also navigated to the group" is the same defect whichever handler fired.
  */
 function renderChipStack() {
   const onCardActivate = vi.fn();
@@ -1218,7 +1225,7 @@ async function renderGroupCards(groups: Array<Record<string, unknown>>) {
   const utils = render(
     <FriendshipContext.Provider value={friendshipValue as never}>
       {/* GroupList is untyped JS; a typed-any bag keeps JSX from demanding unrelated props —
-          the same shape `grouplist.identity.test.tsx:87` uses.
+          the same shape `grouplist.identity.test.tsx:87` (the listProps bag) uses.
 
           [Rule 3 fix, plan 88.6-40] The `eslint-disable-next-line
           @typescript-eslint/no-explicit-any` line that used to sit here named a rule this
@@ -1226,7 +1233,7 @@ async function renderGroupCards(groups: Array<Record<string, unknown>>) {
           `@typescript-eslint` plugin, so ESLint raised `Definition for rule … was not found`
           as an ERROR and `npm run lint` — and therefore `npm run build` — exited 1 TREE-WIDE.
           The comment suppressed nothing, because the rule it named was never running. Deleted
-          rather than replaced: `grouplist.identity.test.tsx:87` writes the identical `any` cast
+          rather than replaced: `grouplist.identity.test.tsx:87` (the listProps bag) writes the identical `any` cast
           with no disable comment at all, which is the house shape here. */}
       <GroupList {...({ user: { sub: 'auth0|self' }, onGroupSelect } as any)} />
     </FriendshipContext.Provider>,
@@ -1356,7 +1363,8 @@ describe('grouplist row — the card and every control inside it are independent
     await renderGroupCard({ id: 'g2', name: quoted });
 
     // By ROLE plus NAME, never by reading an attribute — the name is COMPUTED from the subtree
-    // and there is deliberately no `aria-label` to read (EventDayModal.js:343-347).
+    // and there is deliberately no `aria-label` to read (EventDayModal.js, the note beginning
+    // "NO aria-label, deliberately (88.3 code-adversarial-review run 4").
     const block = screen.getByRole('button', { name: quoted });
     expect(block).not.toHaveAttribute('aria-label');
     expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(quoted);
