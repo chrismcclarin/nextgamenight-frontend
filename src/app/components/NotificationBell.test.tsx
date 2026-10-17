@@ -11,7 +11,8 @@
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`, and the
 // config's jsx-in-js transform hook handles the `.js` component under test.
 import * as React from 'react';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -122,7 +123,7 @@ describe('L-8 — a dead-group 410 on the pending invite', () => {
     renderBell();
     await openBell();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: `Accept invite to ${GROUP_NAME}` }));
 
     const notice = await screen.findByText(`${GROUP_NAME} is no longer available.`);
     /* The tone half of the refactor: a dead group is NOT a success, so it must never render
@@ -167,7 +168,7 @@ describe('L-8 — a dead-group 410 on the pending invite', () => {
     renderBell();
     await openBell();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: `Accept invite to ${GROUP_NAME}` }));
 
     await waitFor(() => expect(logger.error as unknown as Mock).toHaveBeenCalled());
     // A transient failure must NOT eat the row — the user can retry.
@@ -182,7 +183,7 @@ describe('the { text, tone } confirmation shape', () => {
     renderBell();
     await openBell();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: `Accept invite to ${GROUP_NAME}` }));
 
     // A revert to the bare-string confirmation renders an empty banner here —
     // `confirmation.text` is undefined — so this line is the shape pin.
@@ -221,7 +222,7 @@ describe('Phase 88.6-31 — AC-16 (a) telemetry: the four accept/decline failure
     renderBell();
     await openBell();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: `Accept invite to ${GROUP_NAME}` }));
 
     await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
     const [msg, err] = loggerError().mock.calls[0] as [string, unknown];
@@ -251,7 +252,7 @@ describe('Phase 88.6-31 — AC-16 (a) telemetry: the four accept/decline failure
     renderBell();
     await openBell();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: `Accept invite to ${GROUP_NAME}` }));
 
     /* POSITIVE SETTLE SIGNAL FIRST. An absence claim asserted on the first tick observes nothing
        and would pass against a hoisted conversion. Wait for the DESIGNED outcome to land — the
@@ -577,5 +578,240 @@ describe('Phase 88.6.1-28 — the panel dismisses through the shared hook (D-18,
     const spinner = panel.querySelector('.animate-spin');
     expect(spinner).not.toBeNull();
     expect(spinner).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+// Phase 88.6.1-44 (W016, N8, H9, W026, MEDLOW-28): the bell's four row controls. Every control is
+// found by its copy row N8 name (Accept invite to {group}, and its three siblings). In-flight pins
+// follow FE-TESTING-CONVENTIONS C-11: the RED half is the attributes and the request count, and a
+// focus claim on the pressed control is CONFIRM-ONLY in jsdom (jsdom never blurs a disabled
+// element); the real-browser proof is e2e/notification-bell-actions.spec.ts. Focus-after-removal
+// pins wait for a POSITIVE signal (the target has focus) and only then assert absences (CF-26).
+describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, focus after a row leaves, outcomes (W016, N8, H9, W026, MEDLOW-28)", () => {
+  const INVITE_A = { id: 'inv-a', Group: { name: 'Alpha Crew' }, Inviter: { username: 'Ann' } };
+  const INVITE_B = { id: 'inv-b', Group: { name: 'Beta Crew' }, Inviter: { username: 'Bo' } };
+
+  function deferred<T = unknown>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  // The row an invite or a friend request renders in, found by the name it shows.
+  function rowFor(name: string) {
+    const row = screen.getByText(name).closest('li');
+    expect(row).not.toBeNull();
+    return row as HTMLElement;
+  }
+
+  const bellElement = () => <NotificationBell user={{ sub: 'auth0|me' }} label={undefined} />;
+
+  function seedInvites(invites: Array<Record<string, unknown>>) {
+    unreadState.invites = invites;
+    unreadState.friendRequests = [];
+    unreadState.totalCount = invites.length;
+  }
+
+  it('NA-1. invite Accept (AC-12, SPEC Edge R4 idempotency + concurrency, N2 + N8): named for its group at rest; in flight it reads Accepting..., is aria-disabled not disabled, its sibling is natively disabled, other rows are untouched, two more presses send nothing; the gate clears when the request settles', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A, INVITE_B]);
+    const d = deferred();
+    acceptInvite().mockReturnValue(d.promise);
+    renderBell();
+    await openBell();
+
+    const rowA = rowFor('Alpha Crew');
+    const rowB = rowFor('Beta Crew');
+    const acceptA = within(rowA).getByRole('button', { name: 'Accept invite to Alpha Crew' });
+    expect(acceptA).toHaveAccessibleName('Accept invite to Alpha Crew');
+    expect(acceptA).toHaveTextContent(/^Accept$/);
+
+    await user.click(acceptA);
+
+    // The SAME node, now in flight.
+    expect(acceptA).toHaveAccessibleName('Accepting...');
+    expect(acceptA).toHaveTextContent(/^Accepting\.\.\.$/);
+    expect(acceptA).not.toHaveAttribute('aria-label');
+    expect(acceptA).toHaveAttribute('aria-disabled', 'true');
+    expect(acceptA).not.toHaveAttribute('disabled');
+    // CONFIRM-ONLY in jsdom (C-11): jsdom never blurs a disabled element.
+    expect(document.activeElement).toBe(acceptA);
+
+    const declineA = within(rowA).getByRole('button', { name: /^Decline/ });
+    expect(declineA).toBeDisabled();
+    expect(declineA).not.toHaveAttribute('aria-disabled');
+    for (const button of within(rowB).getAllByRole('button')) {
+      expect(button).toBeEnabled();
+      expect(button).not.toHaveAttribute('aria-disabled');
+    }
+
+    fireEvent.click(acceptA);
+    fireEvent.click(acceptA);
+    expect(acceptInvite()).toHaveBeenCalledTimes(1);
+    expect(acceptA).toHaveAccessibleName('Accepting...');
+
+    await act(async () => {
+      d.resolve({ success: true });
+    });
+    expect(acceptA).not.toHaveAttribute('aria-disabled');
+    expect(acceptA).toHaveAccessibleName('Accept invite to Alpha Crew');
+  });
+
+  it('NA-2. AC-14 adjacency + the R5 ordering backstop: focus stays on the pressed Accept until the row leaves, then lands on the next row\'s Accept inside the open panel; also from the Safari / iOS tap shape (focus on body for the whole flight)', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A, INVITE_B]);
+    const d = deferred();
+    acceptInvite().mockReturnValue(d.promise);
+    const { rerender } = renderBell();
+    await openBell();
+
+    const acceptA = within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' });
+    await user.click(acceptA);
+    await act(async () => {
+      d.resolve({ success: true });
+    });
+
+    // ORDERING HALF: the request settled but the removal has not committed, so focus is still
+    // on the pressed control. Focusing the next row inside the handler would fail here.
+    expect(document.activeElement).toBe(acceptA);
+
+    // Commit the removal the way the provider would.
+    unreadState.invites = applyLastUpdater(unreadState.invites);
+    unreadState.totalCount = 1;
+    rerender(bellElement());
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Accept invite to Beta Crew' })),
+    );
+    expect(screen.getByRole('region', { name: 'Notifications' })).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+
+    // Arm (b): the Safari / iOS tap shape. fireEvent.click does not focus the button, so focus
+    // sits on body for the whole flight; the pressed control is handed over as the watched node.
+    cleanup();
+    seedInvites([INVITE_A, INVITE_B]);
+    const d2 = deferred();
+    acceptInvite().mockReturnValue(d2.promise);
+    const second = renderBell();
+    await openBell();
+    const acceptA2 = within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' });
+    fireEvent.click(acceptA2);
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      d2.resolve({ success: true });
+    });
+    expect(document.activeElement).toBe(document.body);
+
+    unreadState.invites = applyLastUpdater(unreadState.invites);
+    unreadState.totalCount = 1;
+    second.rerender(bellElement());
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Accept invite to Beta Crew' })),
+    );
+  });
+
+  it('NA-3. AC-14 empty: when the removed row was the last one, focus lands on the panel\'s own Notifications heading inside the still-open panel, and no heading is minted', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A]);
+    acceptInvite().mockResolvedValue({ success: true });
+    const { rerender } = renderBell();
+    await openBell();
+
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    await waitFor(() => expect(setInvitesMock).toHaveBeenCalled());
+
+    unreadState.invites = applyLastUpdater(unreadState.invites);
+    unreadState.totalCount = 0;
+    rerender(bellElement());
+    expect(await screen.findByText('No pending notifications')).toBeInTheDocument();
+
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(region).getByRole('heading', { name: 'Notifications' })),
+    );
+    expect(screen.getByRole('region', { name: 'Notifications' })).toBe(region);
+    expect(within(region).getAllByRole('heading')).toHaveLength(1);
+  });
+
+  it('NA-4. two rows in flight: one row\'s settle never clears another row\'s record; two presses in ONE batch both keep their gate', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A, INVITE_B]);
+    const dA = deferred();
+    const dB = deferred();
+    acceptInvite().mockImplementation((id: string) => (id === INVITE_A.id ? dA.promise : dB.promise));
+    renderBell();
+    await openBell();
+
+    const acceptA = within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' });
+    const acceptB = within(rowFor('Beta Crew')).getByRole('button', { name: 'Accept invite to Beta Crew' });
+    await user.click(acceptA);
+    await user.click(acceptB);
+    for (const pressed of [acceptA, acceptB]) {
+      expect(pressed).toHaveAccessibleName('Accepting...');
+      expect(pressed).toHaveAttribute('aria-disabled', 'true');
+    }
+
+    await act(async () => {
+      dA.resolve({ success: true });
+    });
+    expect(acceptA).toHaveAccessibleName('Accept invite to Alpha Crew');
+    expect(acceptA).not.toHaveAttribute('aria-disabled');
+    expect(acceptB).toHaveAccessibleName('Accepting...');
+    expect(acceptB).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      dB.resolve({ success: true });
+    });
+    expect(acceptB).toHaveAccessibleName('Accept invite to Beta Crew');
+    expect(acceptB).not.toHaveAttribute('aria-disabled');
+
+    // Arm (b): both presses inside ONE act, so the second handler is the same render's closure.
+    cleanup();
+    seedInvites([INVITE_A, INVITE_B]);
+    acceptInvite().mockImplementation(() => new Promise(() => {}));
+    renderBell();
+    await openBell();
+    const batchA = within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' });
+    const batchB = within(rowFor('Beta Crew')).getByRole('button', { name: 'Accept invite to Beta Crew' });
+    act(() => {
+      fireEvent.click(batchA);
+      fireEvent.click(batchB);
+    });
+    for (const pressed of [batchA, batchB]) {
+      expect(pressed).toHaveAccessibleName('Accepting...');
+      expect(pressed).toHaveAttribute('aria-disabled', 'true');
+    }
+  });
+
+  it('NA-5. no lingering arm (the recorded deviation from plan 88.6.1-04 item 1): a failed Accept removes nothing, and a later outside press that closes the panel moves nobody to the page heading', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A, INVITE_B]);
+    acceptInvite().mockRejectedValue(new ApiError('teapot', 'unknown', 418, {}));
+    render(
+      <main>
+        <h1>Home</h1>
+        {bellElement()}
+        <p>Outside</p>
+      </main>,
+    );
+    await openBell();
+
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    // Positive settle signal: the failure reached the escalation.
+    await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
+
+    fireEvent.mouseDown(screen.getByText('Outside'));
+    await act(async () => {});
+
+    expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull();
+    const h1 = screen.getByRole('heading', { level: 1, name: 'Home' });
+    expect(document.activeElement).not.toBe(h1);
+    expect(h1).not.toHaveAttribute('tabindex');
   });
 });
