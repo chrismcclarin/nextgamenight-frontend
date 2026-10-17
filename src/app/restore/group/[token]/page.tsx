@@ -39,7 +39,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
-import { groupsAPI, ApiError, type RestorePreview } from '@/lib/api';
+import { groupsAPI, ApiError, isCsrfRejection, type RestorePreview } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
@@ -90,6 +90,9 @@ const SESSION_EXPIRED =
  */
 const PREVIEW_UNAVAILABLE =
   "We couldn't check this link. It may be a connection problem — please try again.";
+
+/** D-30 copy row L2: the loading line, which names what is loading (was a bare "Loading..."). */
+const CHECKING_LINK = 'Checking your restore link...';
 
 /**
  * Read the live group's id off a raw error body.
@@ -232,6 +235,29 @@ function RestoreGroupPage() {
   // comment-inflates-the-grep trap this phase hit five times.)
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    // DECISION Phase 88.6.1-36 (R112): CHOSEN — the per-run flag, COPIED inline from the house
+    // idiom (`invite/game/[token]/page.js`, its preview effect's per-run flag), in keeping with
+    // `DECISION Phase 88.2 D-02` at the top of this file (the guards on this page are copied,
+    // not extracted into a shared hook). It stops a superseded run's late answer from
+    // overwriting the live run (a StrictMode double-run, or a token change): before it, a late
+    // 404 from the superseded run replaced a valid preview with "no longer valid".
+    // THE RSVP PAGE DIFFERS ON PURPOSE — do not "harmonize" the two: its effect is a latched
+    // single-shot MUTATION (a submit latch plus an unmount-scoped ref, plan 88.6.1-36 #40),
+    // while this one is a GET that a Try again must be able to re-run.
+    // REJECTED (a): gating the writes on `unmountedRef` — it is page-lifetime, so a superseded
+    // run on a live page would still write.
+    // REJECTED (b): the same flag on Effect 2 — its one async continuation, `routeToLiveGroup`,
+    // is issued once per page load behind `redirectRef`, so cancelling it when Effect 2 re-runs
+    // on a new `user` identity would leave the hand-off on "One moment..." for good (the re-run
+    // returns at the latch); its late writes are already safe (`scheduleRedirect` refuses after
+    // unmount, R-1).
+    // REJECTED (c): an abort signal — `publicFetch` takes none, and ignoring the late answer is
+    // all the page needs.
+    // REJECTED (d): the RSVP page's latch-plus-unmount-ref shape — this effect re-runs on
+    // `[token, attempt]` and `retryPreview` bumps `attempt`, so a latch would refuse the very
+    // retry M-6 offers.
+    let cancelled = false;
+
     if (!token) {
       setStatus('error');
       setError(LINK_DEAD);
@@ -241,6 +267,7 @@ function RestoreGroupPage() {
     async function fetchPreview() {
       try {
         const data = await groupsAPI.getRestorePreview(token);
+        if (cancelled) return;
 
         // F-190 guard, copied verbatim in intent from the invite page: a 2xx
         // with a falsy body leaves the preview state falsy forever, the accept
@@ -264,6 +291,7 @@ function RestoreGroupPage() {
           setStatus('already-restored');
         }
       } catch (err) {
+        if (cancelled) return;
         // M-6: only an actual REJECTION gets the terminal LINK_DEAD copy. The
         // backend returns one byte-identical 404 for expired / invalid / purged
         // so the endpoint cannot be used to probe which tokens ever existed;
@@ -282,6 +310,9 @@ function RestoreGroupPage() {
     }
 
     fetchPreview();
+    return () => {
+      cancelled = true;
+    };
   }, [token, attempt]);
 
   /** M-6: re-run the preview fetch after a retryable failure. */
@@ -303,6 +334,8 @@ function RestoreGroupPage() {
   // Effect 2 -- resolve which surface the visitor gets once auth has settled and
   // a preview exists. Since M-3 this effect never fires the acceptance POST --
   // that lives in handleTakeOver, behind an explicit tap.
+  // It deliberately carries NO per-run flag: see `DECISION Phase 88.6.1-36 (R112)`
+  // at Effect 1, REJECTED (b), before "completing" the pair.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (authLoading || !preview) return;
@@ -391,7 +424,17 @@ function RestoreGroupPage() {
           setRecovery('sign-in');
           return;
         }
-        if (err.status === 403) {
+        // DECISION Phase 88.6.1-36 (D-24): CHOSEN — the proxy's CSRF refusal is not a
+        // membership verdict; it falls through to this page's own retryable failure line below
+        // (GENERIC_FAILURE plus Try again). A retry is safe because the same-origin proxy
+        // refused the unsafe-method request BEFORE forwarding it (`api/[...path]/route.ts`,
+        // anchor `UNSAFE_METHODS`), so no acceptance happened and the one-shot nonce is
+        // untouched. The predicate is plan 88.6.1-07's one structural read of the proxy body;
+        // `DECISION Phase 88.6-23` stands (the proxy body is unchanged).
+        // REJECTED (a): a new sentence for the case (D-31; copy row X2 says no new sentence).
+        // REJECTED (b): matching the proxy's prose. REJECTED (c): dropping the arm — a real
+        // 403 still means the visitor was not a member, and stays terminal and latched.
+        if (err.status === 403 && !isCsrfRejection(err)) {
           setStatus('error');
           setError(NOT_A_MEMBER);
           return;
@@ -410,6 +453,8 @@ function RestoreGroupPage() {
       // copy promised a retry the stuck state machine could never deliver.
       // Unlatch on the retryable failures only (network, 5xx, and the 401
       // above); the 403/409/410 arms stay terminal and latched.
+      // [AMENDED Phase 88.6.1-36 (D-24): a CSRF-flagged 403 is not a refusal and
+      // reaches this arm, retryable.]
       acceptingRef.current = false;
       setStatus('error');
       setError(GENERIC_FAILURE);
@@ -423,15 +468,18 @@ function RestoreGroupPage() {
   const returnTo = `/api/auth/login?returnTo=${encodeURIComponent(`/restore/group/${token}`)}`;
 
   if (authLoading || status === 'loading') {
+    // DECISION Phase 88.6.1-36 (L2): the spinner's label and the visible line come from ONE
+    // constant, so the two cannot drift. The accepting spinner is not named by it (its own
+    // R3-A29 verdict, plan 88.6.1-36).
     return (
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-6 sm:p-8 max-w-md w-full mx-4 text-center">
           <div
             role="status"
-            aria-label="Loading"
+            aria-label={CHECKING_LINK}
             className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4"
           />
-          <p className="text-content-secondary">Loading...</p>
+          <p className="text-content-secondary">{CHECKING_LINK}</p>
         </div>
       </div>
     );
