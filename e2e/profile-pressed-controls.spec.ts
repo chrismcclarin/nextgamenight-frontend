@@ -1,5 +1,9 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 
+import { focusByKeyboard } from './support/contrast';
+import { expectNoApiWrites, holdUntilReleased, holdWrites, type WriteHold } from './support/inFlight';
+import { expectFocusRingClearOfText } from './support/ringGeometry';
+
 // Phase 88.6.1 plan 18 (Requirement 4 / D-35, Requirement 5): the Profile page's two pressed
 // controls, the phone Verify button and Replay Tutorial, seen in a real browser.
 //
@@ -28,10 +32,15 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 //   - PUT .../tutorial (complete): answered at once, a safety net so an auto-advancing tutorial
 //     step never writes the fixture user's tutorial state.
 // These write handlers only ever answer; none hands a request on in any form.
-//   - The self lookup (Verify test only) is the ONE handler that reads the real response: a GET
-//     of /users/<Auth0 sub> is answered with the real body plus `sms_enabled: true`,
-//     `phone: null`, `phone_verified: false`, so the phone block renders in its first state.
-//     Any other method on that path is passed on untouched.
+//   - The self lookup (patchSelfRow) is the ONE handler that reads the real response: a GET
+//     of /users/<Auth0 sub> is answered with the real body plus the test's own fields (the Verify
+//     test: `sms_enabled: true`, `phone: null`, `phone_verified: false`, so the phone block renders
+//     in its first state). Any other method on that path is passed on untouched.
+//
+// Phase 88.6.1 plan 53 appends a second describe (Requirement 5 / Requirement 4): Change number
+// lands focus on the Phone number field; Remove keeps focus and refuses a second press while its
+// removal is held, then lands focus on the banner statement; the banner's Dismiss ring is measured
+// (confirm-only) and its press lands focus on the field. Its own intercepts are listed there.
 
 // In the 555-01xx fictional range, so it is never a real person's phone, and it still passes the
 // page's own check (`parsePhoneNumber(value, 'US')` then `isValid()`,
@@ -152,7 +161,14 @@ function decodedSegment(segment: string): string {
 }
 
 // The self lookup: /users/<one segment> where the decoded segment is an Auth0 sub (has a pipe).
-async function patchSelfForPhoneFlow(page: Page): Promise<void> {
+// The real body is fetched and answered with `fields` merged over it; the last merged body is kept,
+// so a later write can be answered with the row the page would get back (plan 88.6.1-53 moved the
+// fixed fields to a parameter; one function, no copy).
+async function patchSelfRow(
+  page: Page,
+  fields: Record<string, unknown>,
+): Promise<{ lastBody: () => Record<string, unknown> | null }> {
+  let last: Record<string, unknown> | null = null;
   await page.route(
     (url) => {
       const match = /\/users\/([^/]+)$/.exec(url.pathname);
@@ -175,18 +191,17 @@ async function patchSelfForPhoneFlow(page: Page): Promise<void> {
         await route.fulfill({ response });
         return;
       }
-      await route.fulfill({
-        response,
-        json: { ...(body as Record<string, unknown>), sms_enabled: true, phone: null, phone_verified: false },
-      });
+      last = { ...(body as Record<string, unknown>), ...fields };
+      await route.fulfill({ response, json: last });
     },
   );
+  return { lastBody: () => last };
 }
 
 test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
   test('phone Verify: the pressed button keeps focus and reads "Verifying..." in flight, a second Enter sends nothing, and focus lands on "Phone verified" after success', async ({ page }, testInfo) => {
     const mocks = await interceptWrites(page);
-    await patchSelfForPhoneFlow(page);
+    await patchSelfRow(page, { sms_enabled: true, phone: null, phone_verified: false });
     await page.goto('/userProfile');
 
     await page.getByRole('textbox', { name: 'Phone number' }).fill(FAKE_PHONE);
@@ -265,5 +280,128 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     // struck), so nothing is asserted about it and the tour is left as it is.
     await expect(page.getByRole('button', { name: 'Skip tutorial' })).toBeVisible({ timeout: 15_000 });
     expect(mocks.reset.count()).toBe(1);
+  });
+});
+
+// Phase 88.6.1 plan 53. A verified number on the fixture row, so the verified row (Change number,
+// Remove) renders. A real, fictional-range number; it is never sent anywhere.
+const VERIFIED_PHONE = '+14155552671';
+const BANNER = 'SMS disabled — add a phone number to re-enable.';
+
+// The write ledger (T-88.6.1-1062), complete by construction: every write the page can send is
+// either answered by one of interceptWrites' COUNTING handlers or the Remove test's counting
+// DELETE hold, or it falls through to the holdWrites backstop, which keeps it in the browser and
+// fails the test in afterEach. So "these counters read zero and the backstop is empty" means no
+// write left the browser. DECISION Phase 88.6.1-53 (Req 4 / T-88.6.1-1062): this ledger is used
+// OVER a page.on('request') recorder — that recorder already exists, describe-scoped, in
+// e2e/touch-targets.spec.ts, and a second copy here is the duplication the milestone's tenet
+// rejects. Changing this is a decision, not a cleanup.
+function expectNoMockedWrites(mocks: WriteMocks): void {
+  expect(mocks.savePosts(), 'a phone save was sent').toBe(0);
+  expect(mocks.verify.count(), 'a verification check was sent').toBe(0);
+  expect(mocks.reset.count(), 'a tutorial reset was sent').toBe(0);
+  expect(mocks.completePuts(), 'a tutorial completion was sent').toBe(0);
+}
+
+// Intercepts, newest first (Playwright runs the newest matching handler first):
+//   - DELETE .../phone (Remove test only): holdUntilReleased, answered on release with the last
+//     self body merged with the cascade's fields (routes/users.js clears phone, phone_verified and
+//     the SMS preferences and returns the self row, sms_enabled still set). NOT holdWrites for this
+//     one: holdWrites never answers a held write, and this test must release the DELETE to see
+//     where focus lands — do not "consolidate" it into the net.
+//   - the self GET (patchSelfRow): the real body plus a verified number.
+//   - interceptWrites: the phone / verify / tutorial writes, answered in the browser.
+//   - holdWrites: the backstop net under all of them, so any write nobody mocked is held in the
+//     browser and fails the test in afterEach rather than reaching the fixture account.
+// Every intercept is registered BEFORE page.goto.
+test.describe('Profile phone block focus and Remove in flight (plan 88.6.1-53)', () => {
+  let backstop: WriteHold | undefined;
+
+  test.afterEach(async ({ page }) => {
+    expectNoApiWrites(backstop);
+    backstop = undefined;
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('Change number lands focus on the phone field', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const mocks = await interceptWrites(page);
+    await patchSelfRow(page, { sms_enabled: true, phone: VERIFIED_PHONE, phone_verified: true });
+    await page.goto('/userProfile');
+
+    // The verified row has exactly one Change number. A missing control is a failure, never a skip.
+    const change = page.getByRole('button', { name: 'Change number' });
+    await expect(change).toBeVisible({ timeout: 15_000 });
+    await focusByKeyboard(page, change);
+    await page.keyboard.press('Enter');
+
+    // Requirement 5: the pressed link is gone; focus is on the field it was pressed to reach.
+    await expect(page.getByRole('textbox', { name: 'Phone number' })).toBeFocused();
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+      const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      expect(fits, 'horizontal overflow at 375px after Change number').toBe(true);
+    }
+    // Nothing was written (the backstop's half is checked in afterEach).
+    expectNoMockedWrites(mocks);
+  });
+
+  test('Remove keeps focus, refuses a second press, then lands on the banner', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const mocks = await interceptWrites(page);
+    const self = await patchSelfRow(page, { sms_enabled: true, phone: VERIFIED_PHONE, phone_verified: true });
+    const removal = await holdUntilReleased(page, 'DELETE', /\/phone$/);
+    await page.goto('/userProfile');
+
+    // Its name changes while armed, so the locator follows both labels of the one control.
+    const remove = page.getByRole('button', { name: /^(Remove|Tap again to remove)$/ });
+    await expect(remove).toBeVisible({ timeout: 15_000 });
+    await expect(remove).toHaveText('Remove');
+    await focusByKeyboard(page, remove);
+    await page.keyboard.press('Enter');
+    await expect(remove).toHaveText('Tap again to remove');
+    await page.keyboard.press('Enter');
+    await removal.arrived;
+
+    // While the removal is held: the pressed control keeps focus and is aria-disabled (Req 4).
+    await expect(remove).toBeFocused();
+    await expect(remove).toHaveAttribute('aria-disabled', 'true');
+    await expect(remove).toHaveText('Remove');
+
+    // The latch refuses further presses: no re-arm, no second request.
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await expect(remove).toHaveText('Remove');
+    expect(removal.count()).toBe(1);
+
+    const body = self.lastBody();
+    expect(body, 'the self row was never fetched, so the DELETE has nothing to answer with').not.toBeNull();
+    await removal.release({ ...body, phone: null, phone_verified: false, sms_enabled: true });
+
+    // Requirement 5: the success removes the button; focus lands on the settled statement.
+    const statement = page.getByText(BANNER, { exact: true });
+    await expect(statement).toBeFocused();
+
+    // CONFIRM-ONLY: the Dismiss ring keeps its outset form because, by class arithmetic, it stops
+    // at the banner text's box edge (DECISION Phase 88.6.1-53 (V-1a / AC-23) in the page). Measured
+    // here with the shared helper; it leaves Dismiss focused by keyboard.
+    const dismiss = page.getByRole('button', { name: 'Dismiss' });
+    await expectFocusRingClearOfText(page, dismiss, statement, 'SMS banner dismiss');
+
+    // Review 214: dismissing unmounts the banner with the pressed button; focus lands on the field
+    // the sentence named.
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('textbox', { name: 'Phone number' })).toBeFocused();
+    await expect(statement).toHaveCount(0);
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+      const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      expect(fits, 'horizontal overflow at 375px after Remove and Dismiss').toBe(true);
+    }
+    // Exactly the one held DELETE; Dismiss writes nothing (the backstop's half is in afterEach).
+    expect(removal.count()).toBe(1);
+    expectNoMockedWrites(mocks);
   });
 });

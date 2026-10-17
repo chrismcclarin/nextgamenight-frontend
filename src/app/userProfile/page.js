@@ -262,6 +262,9 @@ function Profile(){
     const verifyInFlightRef = useRef(false);
     // W016 / D-35 (88.6.1-18): Replay Tutorial's synchronous latch — see its marker at the button.
     const replayInFlightRef = useRef(false);
+    // Req 4 (88.6.1-53): Remove's synchronous latch, the same pair as the three senders above —
+    // see `DECISION Phase 88.6.1-53 (Req 4)` at the Remove button.
+    const removeInFlightRef = useRef(false);
     /* R2 #29, second defect: the cooldown ticker used to be a LOCAL `const timer`, cleared only
        by its own tick — nothing cancelled it on unmount. Held in a ref and cleared in the
        existing unmount effect below, alongside removeArmedTimerRef. */
@@ -272,10 +275,22 @@ function Profile(){
     const phoneVerifiedRef = useRef(null);
     const profileHeadingRef = useRef(null);
     const phoneVerifyRecovery = useFocusRecovery({ fallback: profileHeadingRef });
+    // Req 5 (88.6.1-53): Change number and the banner's Dismiss land on the Phone number FIELD (the
+    // wrapper div below keeps `phoneInputRef`); a successful Remove lands on the banner statement.
+    // Both re-arm the SAME `phoneVerifyRecovery`, so its <h1> fallback is shared.
+    const phoneNumberFieldRef = useRef(null);
+    const smsDisabledBannerTextRef = useRef(null);
+    // Review 61 / M-32 (88.6.1-53): two counters that let `handleVerifyCode` recognise a stale
+    // answer — bumped by Change number and by the start of a phone save. See the marker above
+    // `handleChangeNumber`.
+    const phoneFlowGenerationRef = useRef(0);
+    const phoneSaveGenerationRef = useRef(0);
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
     const [removeArmed, setRemoveArmed] = useState(false);
+    // True while a removal is in flight (Req 4, 88.6.1-53): drives Remove's `aria-disabled`.
+    const [removingPhone, setRemovingPhone] = useState(false);
     const removeArmedTimerRef = useRef(null);
 
     // Phone-removal banner state (REVISION):
@@ -606,6 +621,9 @@ function Profile(){
             return;
         }
         saveInFlightRef.current = true;
+        // M-32 (88.6.1-53): a phone save has started, so an older verify answer still in flight
+        // must not write its number as verified over this one.
+        phoneSaveGenerationRef.current += 1;
         try {
             setPhoneState('saving');
             setPhoneError(null);
@@ -641,6 +659,12 @@ function Profile(){
         }
         verifyInFlightRef.current = true;
         setCheckingCode(true);
+        // Review 61 / M-32 (88.6.1-53): captured BEFORE the await. If either moves while the check
+        // is in flight, the answer is stale for the screen — see the marker above
+        // `handleChangeNumber`.
+        const flowGeneration = phoneFlowGenerationRef.current;
+        const saveGeneration = phoneSaveGenerationRef.current;
+        const isStale = () => phoneFlowGenerationRef.current !== flowGeneration;
         try {
             setPhoneError(null);
             // 88-CODE-REVIEW H1: the wrong-code outcome is a 200 { verified: false }
@@ -650,6 +674,19 @@ function Profile(){
             // code: phone_verified true in local state + the immortal self cache while
             // the DB row stayed false — SMS toggles enabled, SMS never sending.
             const result = await usersAPI.verifyPhone(selfUuid, verificationCode);
+            if (isStale()) {
+                // The person pressed Change number while this check was in flight: the row they
+                // are now typing in must not be swapped for the verified row, and no error line
+                // belongs to it. The server DID verify the number the code was sent to (the
+                // closure's `phoneInput`), so that truth is applied — but only while no phone save
+                // has started since this check was sent; after one, a newer number is on file and
+                // writing this one as verified would unlock the SMS toggles for it.
+                if (result?.verified && phoneSaveGenerationRef.current === saveGeneration) {
+                    setUserData(prev => (prev ? { ...prev, phone: phoneInput, phone_verified: true } : prev));
+                    patchSelfCache(queryClient, { phone: phoneInput, phone_verified: true });
+                }
+                return;
+            }
             if (!result?.verified) {
                 setPhoneError("That code didn't match. Check it and try again.");
                 return;
@@ -669,7 +706,10 @@ function Profile(){
                heading or any text (D-05, D-31).
                Named residual: Safari does not focus a clicked button, so a mouse press there
                seeds nothing and focus is left where Safari put it. It is a decision, not a
-               cleanup. */
+               cleanup.
+               AMENDED Phase 88.6.1-53 (Req 5, review 61): this arm runs for a CURRENT answer only;
+               an answer that lands after Change number takes the stale branch above (the
+               generation check, see the marker above `handleChangeNumber`). */
             const settle = phoneVerifyRecovery.arm({ preferred: () => phoneVerifiedRef.current });
             setPhoneState('verified');
             setVerificationCode('');
@@ -682,6 +722,8 @@ function Profile(){
             settle();
         } catch (error) {
             logger.info('Error verifying code:', errCtx(error));
+            // A stale failure has no row to speak to (review 61): the diagnostic above still runs.
+            if (isStale()) return;
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't check that code. Please try again.",
@@ -699,10 +741,44 @@ function Profile(){
         }
     };
 
-    const handleChangeNumber = () => {
+    /* DECISION Phase 88.6.1-53 (Req 5): Change number — in the code-entry row and in the verified
+       row — unmounts the link the person pressed (the row is swapped for the input row), so focus
+       used to fall to <body>. CHOSEN: arm plan 18's shared `phoneVerifyRecovery` at the press with
+       the Phone number FIELD as the preferred target: it is the control the action exists to
+       reach, and it mounts in the same commit that removes the link. The shared instance supplies
+       the profile <h1> fallback. `from` is the pressed link, because Safari does not focus a
+       clicked button (plan 04's consumer contract). REJECTED: (a) per-host inline focus code
+       (D-04, by tenet); (b) the "Code sent to" line — it is gone after the change; (c) leaving
+       focus to fall to <body>, which is the defect. UNVERIFIED: whether iOS raises the on-screen
+       keyboard for this programmatic focus; either way focus lands on the field.
+
+       A LATE VERIFY ANSWER (review 61). CHOSEN: the person's later Change number wins over an
+       older verify answer — this handler bumps `phoneFlowGenerationRef`, `handleVerifyCode`
+       captures it before its await, and an answer that finds it moved skips the verified row,
+       both error lines and the success focus arm. REJECTED: refusing Change number while a verify
+       is in flight (it would need its own `aria-disabled` state too); plan 18's latch blocks only
+       a second Verify, so it does not cover this.
+
+       AND A NEWER SAVE (review M-32, SPEC Edge R11 ordering). CHOSEN: a stale answer writes the
+       server truth (the old number, verified) only when no phone save has started since it was
+       sent — a SEPARATE counter, `phoneSaveGenerationRef`, bumped by `handleSaveAndVerify`, so a
+       Change number with no save still lands the verified number. REJECTED: (a) always writing it
+       — that writes an old number as verified over a newer save, unlocks the SMS toggles for a
+       number no longer on file, and the immortal self cache would re-derive `verified` from it on a
+       remount; (b) never writing it — a Change number the person then abandons would show a
+       verified number as unverified. STATED LIMIT: a save that starts and then fails also
+       suppresses the write, so the page under-reports a number the server verified until the
+       self row is next read; under-reporting is the safe direction (the toggles stay off). A
+       current answer cannot have a save between it and its send — the save control only mounts
+       after Change number moves the row off code entry — so the save check sits in the stale
+       branch only. Dropping either counter is a decision, not a cleanup. */
+    const handleChangeNumber = (event) => {
+        const settle = phoneVerifyRecovery.arm({ preferred: () => phoneNumberFieldRef.current, from: event?.currentTarget });
+        phoneFlowGenerationRef.current += 1;
         setPhoneState('editing');
         setVerificationCode('');
         setPhoneError(null);
+        settle();
     };
 
     const handleResendCode = async () => {
@@ -765,7 +841,14 @@ function Profile(){
     // label to "Tap again to remove" (red). Second tap within 3s commits the removal
     // via the cascade endpoint (Plan 70-01). Optimistically clears local state from
     // the cascaded response and sets phoneJustRemoved so the amber banner fires.
-    const handleRemovePhone = async () => {
+    const handleRemovePhone = async (event) => {
+        // Req 4 (88.6.1-53): the in-flight refusal, synchronous and FIRST — before the identity
+        // guards and the arm branch, so a tap mid-removal neither re-arms nor commits. The same
+        // pair as the senders' latches (see the `saveInFlightRef` marker, DECISION Phase 88.6-17).
+        if (removeInFlightRef.current) return;
+        // The pressed Remove, captured before any await (React clears `currentTarget` once the
+        // handler returns): it seeds the focus arm at success (Safari, plan 04's contract).
+        const pressed = event?.currentTarget ?? null;
         if (!user?.sub) return;
         if (!selfUuid) {
             setPhoneError('Still loading your account — please try again in a moment.');
@@ -785,8 +868,13 @@ function Profile(){
         clearTimeout(removeArmedTimerRef.current);
         removeArmedTimerRef.current = null;
         setRemoveArmed(false);
+        removeInFlightRef.current = true;
+        setRemovingPhone(true);
         try {
             const updatedUser = await usersAPI.removePhone(selfUuid);
+            // Req 5 (88.6.1-53): armed at SUCCESS, before the writes that remove this button (the
+            // plan 18 / plan 11 precedent) — see `DECISION Phase 88.6.1-53 (Req 4)` at the button.
+            const settle = phoneVerifyRecovery.arm({ preferred: () => smsDisabledBannerTextRef.current, from: pressed });
             setUserData(updatedUser);
             // Cache-coherence: PATCH only the fields the cascade changed. The
             // DELETE response is a DEFAULT-scope row (no phone/email), while the
@@ -804,6 +892,7 @@ function Profile(){
             setPhoneError(null);
             setPhoneJustRemoved(true); // Session flag — gates the amber banner.
             setSmsDisabledBannerDismissed(false); // Reset dismissal so banner shows fresh.
+            settle();
         } catch (error) {
             logger.info('Error removing phone:', errCtx(error));
             setPhoneError(
@@ -812,6 +901,10 @@ function Profile(){
                 })
             );
             // NOTE: do NOT set phoneJustRemoved on failure — banner only fires on success.
+        } finally {
+            // Released in `finally` so a FAILED removal does not strand the control.
+            removeInFlightRef.current = false;
+            setRemovingPhone(false);
         }
     };
 
@@ -1564,7 +1657,7 @@ function Profile(){
                     re-adds a phone. Tokens mirror Phase 62-02 TimezoneNudgeBanner. */}
                 {userData?.sms_enabled && phoneJustRemoved && !userData?.phone && !smsDisabledBannerDismissed && (
                     <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 flex items-start gap-3">
-                        <p className="flex-1 text-sm text-amber-900 dark:text-amber-100">
+                        <p ref={smsDisabledBannerTextRef} className="flex-1 text-sm text-amber-900 dark:text-amber-100">
                             SMS disabled — add a phone number to re-enable.
                         </p>
                         {/* DECISION Phase 88.6-17 (A10 / T-88.6-43 + R3 finding 144): this dismiss stays a
@@ -1580,9 +1673,29 @@ function Profile(){
                             The focus ring is the house string `globals.css` states verbatim, added
                             PER-SITE under the rule recorded there — this control carried none, so a
                             keyboard or switch user got only whatever the UA supplies. */}
+                        {/* DECISION Phase 88.6.1-53 (Req 5, review item 214): pressing Dismiss unmounts the
+                            whole banner with this button inside it, so focus used to fall to <body>.
+                            CHOSEN: arm plan 18's shared `phoneVerifyRecovery` with the Phone number
+                            field as the preferred target — the control the dismissed sentence pointed
+                            at. While the banner shows, the field is mounted in the idle / editing /
+                            saving rows; in the code-entry state it is not (a save moves the row to code
+                            entry without touching `userData`, so the banner can still show), and there
+                            the shared instance's <h1> fallback takes focus. REJECTED: (a) the <h1> as
+                            the PREFERRED target — it skips past the control the sentence names; (b)
+                            leaving focus to fall to <body>, the defect. This differs from the Remove
+                            marker's rejected (b) on purpose: after a destructive Remove the empty field
+                            says nothing about what just happened, so focus goes to this sentence; here
+                            the person has read the sentence and dismissed it, and it named the field.
+                            UNVERIFIED, as for Change number: whether iOS raises the keyboard for this
+                            programmatic focus. Only the onClick changed; the A10 marker above, the raw
+                            button and its classes are untouched. */}
                         <button
                             type="button"
-                            onClick={() => setSmsDisabledBannerDismissed(true)}
+                            onClick={(event) => {
+                                const settle = phoneVerifyRecovery.arm({ preferred: () => phoneNumberFieldRef.current, from: event.currentTarget });
+                                setSmsDisabledBannerDismissed(true);
+                                settle();
+                            }}
                             className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                             aria-label="Dismiss"
                         >
@@ -1876,6 +1989,7 @@ function Profile(){
                                                     login, so username would invite password managers and
                                                     QuickType to offer the login email there. */}
                                                 <Input
+                                                    ref={phoneNumberFieldRef}
                                                     id="profile-phone"
                                                     name="profile-phone"
                                                     autoComplete="tel"
@@ -1910,22 +2024,30 @@ function Profile(){
                                                         </svg>
                                                     </span>
                                                 )}
-                                                {/* Same DEF-88-19-04 gap, client-side half: this
-                                                    format message was equally silent to a screen
-                                                    reader. It types as you go, so it is POLITE
-                                                    (role="status") rather than assertive — an
-                                                    alert on every keystroke would talk over the
-                                                    person mid-entry. The submit-time failure
-                                                    above is the one that interrupts. */}
-                                                {phoneValidation.error && (
-                                                    <p
-                                                        id="phone-format-error"
-                                                        role="status"
-                                                        className="text-content-status-error text-xs mt-1"
-                                                    >
-                                                        {phoneValidation.error}
-                                                    </p>
-                                                )}
+                                                {/* DECISION Phase 88.6.1-53 (D-22 / D-42, R3-A29): the
+                                                    format hint is the house ALWAYS-MOUNTED polite region.
+                                                    KEPT: POLITE, for the existing reason (the DEF-88-19-04
+                                                    gap, client-side half) — it types as you go, so an alert
+                                                    on every keystroke would talk over the person mid-entry;
+                                                    the submit-time failure below is the one that interrupts.
+                                                    CHANGED: the mount. D-42 confirms that a conditionally
+                                                    mounted POLITE region is unreliably announced, which is
+                                                    exactly what the old status paragraph was, so its message
+                                                    could go unheard. The region is now mounted with the
+                                                    input row and its text is injected, in the one house
+                                                    empty-region shape (`srOnlyWhenEmpty`, D-22): identical
+                                                    output when set, no footprint when empty. The field's
+                                                    `aria-describedby` names it only while it holds text.
+                                                    REJECTED: (a) the conditional status node (the defect);
+                                                    (b) assertive (it types as you go); (c) a hand-rolled
+                                                    empty-state ternary (D-22: one house shape). Restoring
+                                                    the conditional mount is a decision, not a cleanup. */}
+                                                <StatusRegion
+                                                    id="phone-format-error"
+                                                    srOnlyWhenEmpty
+                                                    className="text-content-status-error text-xs mt-1"
+                                                    message={phoneValidation.error}
+                                                />
                                             </div>
                                             {/* The in-flight cue is the LABEL SWAP plus the muted input
                                                 ground, stated rather than inherited: the retired
@@ -2080,8 +2202,28 @@ function Profile(){
                                                 this marker and by the rendered 375px measurement recorded
                                                 in `88.6-17-SUMMARY.md`, not by a class-list pin. Removing
                                                 `min-h-11` is a decision, not a cleanup. */}
+                                            {/* DECISION Phase 88.6.1-53 (Req 4): while a removal is in flight
+                                                Remove carries `aria-disabled` and `handleRemovePhone`'s first
+                                                line refuses every tap (`removeInFlightRef`, released in
+                                                `finally`). CHOSEN: the rule of POSITION (`DECISION
+                                                Phase 88.6-22`) on the control the person just pressed. This
+                                                is an ADDED guard: there was no gate at all, so a tap
+                                                mid-removal re-armed the control ("Tap again to remove" while
+                                                the removal was still running) and the next tap sent a second
+                                                removal. The label stays "Remove" — no in-flight label is
+                                                ratified (D-31). No gated look: this raw link-style control has
+                                                no `.btn` gated arm, and the A10 marker above keeps it raw.
+                                                On success focus moves to the banner statement ("SMS disabled
+                                                …", D-06's settled-text precedent), else the profile <h1>
+                                                (Req 5). REJECTED: (a) native `disabled` — it drops focus in a
+                                                real browser; (b) focusing the now-empty Phone number field —
+                                                on a phone it raises the keyboard after a destructive action
+                                                and says nothing about what happened; (c) minting a heading or
+                                                text (D-05, D-31). Dropping either half of the pair is a
+                                                decision, not a cleanup. */}
                                             <button
                                                 onClick={handleRemovePhone}
+                                                aria-disabled={removingPhone ? 'true' : undefined}
                                                 className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                                                     removeArmed
                                                         ? 'text-content-status-error font-semibold'
@@ -2112,12 +2254,20 @@ function Profile(){
                                         a screen-reader user is told when their submission fails —
                                         is delivered in full here.
 
-                                        `role="alert"` is on a CONDITIONALLY-MOUNTED node, which
-                                        is normally the anti-pattern StatusRegion exists to stop.
-                                        It is correct in this one case: assertive alerts DO
-                                        announce on insertion, and the message must interrupt.
-                                        Do not "fix" this into a StatusRegion — that would make it
-                                        polite and it would be missed. */}
+                                        `role="alert"` is on a CONDITIONALLY-MOUNTED node, and
+                                        that is correct for an assertive alert: an alert inserted
+                                        with its text is announced reliably, and this message must
+                                        interrupt. The mount-then-inject rule in StatusRegion's
+                                        docblock holds for POLITE regions only.
+                                        Do not convert this node to an always-mounted region: it
+                                        would add a standing empty assertive region to this block
+                                        and announce nothing more than today.
+                                        AMENDED Phase 88.6.1-53 (D-42, which supersedes D-23; ST-1
+                                        site #10): the decision stands; the two sentences above were
+                                        rewritten because their premise did not hold — they called
+                                        this conditional assertive mount an anti-pattern, and they
+                                        said a StatusRegion would make the node polite, while the
+                                        primitive has an assertive variant. */}
                                     {phoneError && (
                                         <p
                                             id="phone-flow-error"
@@ -2745,7 +2895,7 @@ function Profile(){
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1308` (recurring) and `:1355`
+                                            `userProfile/page.js:1401` (recurring) and `:1448`
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
