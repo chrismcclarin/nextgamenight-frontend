@@ -3672,3 +3672,213 @@ describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
     expect(document.activeElement).toBe(importBtn);
   });
 });
+
+describe('BGG import outcome region (88.6.1-60: Req 8, D-22)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  async function startImport() {
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+  });
+
+  it('R1: one always-mounted polite region, empty and sr-only first, carries the progress line and then the result on the same node', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    const field = await screen.findByRole('textbox', { name: 'BoardGameGeek username' });
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region.textContent).toBe('');
+    expect(region.classList).toContain('sr-only');
+
+    fireEvent.change(field, { target: { value: 'someone' } });
+    await startImport();
+
+    await waitFor(() => expect(region).toHaveTextContent('Fetching your BGG collection...'));
+    expect(document.getElementById('bgg-import-status')).toBe(region);
+    expect(region.classList).not.toContain('sr-only');
+    for (const cls of ['mt-3', 'p-3', 'rounded-btn', 'bg-surface-muted', 'text-content-secondary', 'text-base']) {
+      expect(region.classList).toContain(cls);
+    }
+
+    await act(async () => { pending.resolve({ imported: 3, skipped: 1, total: 4 }); });
+    await waitFor(() => expect(region).toHaveTextContent('Imported 3 games'));
+    expect(document.getElementById('bgg-import-status')).toBe(region);
+    expect(region).toHaveTextContent('Total: 4');
+    expect(region.classList).toContain('bg-status-success-subtle');
+  });
+
+  it('R2: a failed import writes the failure line on the same node', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockRejectedValueOnce(new Error('boom'));
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    expect(region).not.toBeNull();
+    await startImport();
+
+    await waitFor(() =>
+      expect(region).toHaveTextContent("We couldn't import that collection. Check the username and try again.")
+    );
+    expect(document.getElementById('bgg-import-status')).toBe(region);
+    expect(region.classList).toContain('bg-status-error-subtle');
+  });
+
+  // Held-out backstop for the R8 idempotency edge: a second identical result is still a text
+  // change on the node, because the region passes through the progress line between them.
+  it('R3: two consecutive imports with the same result each mutate the same node', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    await startImport();
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    await waitFor(() => expect(region).toHaveTextContent('Imported 0 games'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Import Collection' })).not.toHaveAttribute('aria-disabled'));
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => { records.push(...list); });
+    observer.observe(region, { childList: true, characterData: true, subtree: true });
+
+    await startImport();
+    await waitFor(() => expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Import Collection' })).not.toHaveAttribute('aria-disabled'));
+    await waitFor(() => expect(records.length).toBeGreaterThan(0));
+    await waitFor(() => expect(region).toHaveTextContent('Imported 0 games'));
+    observer.disconnect();
+    expect(document.getElementById('bgg-import-status')).toBe(region);
+  });
+});
+
+describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  async function openSearch(query: string) {
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add from BGG' }));
+    const field = screen.getByRole('textbox', { name: 'Search BoardGameGeek' });
+    fireEvent.change(field, { target: { value: query } });
+    return { field, search: screen.getByRole('button', { name: 'Search' }) };
+  }
+
+  afterEach(async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([]);
+  });
+
+  it('S1: Search keeps its node under aria-disabled and two presses plus a field Enter send one request', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (gamesAPI.searchBGG as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    const { field, search } = await openSearch('catan');
+    fireEvent.click(search);
+
+    await waitFor(() => expect(search).toHaveAttribute('aria-disabled', 'true'));
+    expect(search).not.toBeDisabled();
+    expect(search.isConnected).toBe(true);
+    expect(search.textContent).toBe('Searching...');
+
+    fireEvent.click(search);
+    fireEvent.click(search);
+    fireEvent.keyPress(field, { key: 'Enter', code: 'Enter', charCode: 13 });
+    expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(1);
+    expect(search).toHaveAttribute('aria-disabled', 'true');
+    expect(search.textContent).toBe('Searching...');
+
+    await act(async () => { pending.resolve([]); });
+  });
+
+  // CONFIRM-ONLY (green before this plan): the blank-query half stays a native disable.
+  it('S2: a blank or whitespace query keeps Search natively disabled, with no aria-disabled (rule of KIND)', async () => {
+    renderProfile();
+    const { field, search } = await openSearch('');
+    expect(search).toBeDisabled();
+    expect(search).not.toHaveAttribute('aria-disabled');
+    fireEvent.change(field, { target: { value: '   ' } });
+    expect(search).toBeDisabled();
+    expect(search).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('S3: a failed search releases the latch; its toast and diagnostic are unchanged', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockRejectedValueOnce(new Error('boom')).mockResolvedValue([]);
+    renderProfile();
+
+    const { search } = await openSearch('catan');
+    fireEvent.click(search);
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith(
+        "We couldn't reach BoardGameGeek. Please try again in a few moments."
+      )
+    );
+    expect(loggerMock().info).toHaveBeenCalledWith('Error searching BGG:', expect.any(Object));
+    await waitFor(() => expect(search.textContent).toBe('Search'));
+    expect(search).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(search);
+    await waitFor(() => expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(2));
+  });
+
+  it('S4: a search with results is announced once, screen-reader only; a zero result keeps the toast alone', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([
+      { bgg_id: 1, name: 'Azul', year_published: 2017 },
+      { bgg_id: 2, name: 'Catan', year_published: 1995 },
+    ]);
+    renderProfile();
+
+    const { search } = await openSearch('azul');
+    fireEvent.click(search);
+
+    const line = await screen.findByText('Found 2 games.');
+    const region = line.closest('[role="status"]') as HTMLElement;
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region.classList).toContain('sr-only');
+    expect(toastMock()).not.toHaveBeenCalledWith('No games found. Try a different search term.');
+
+    await waitFor(() => expect(search.textContent).toBe('Search'));
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 3, name: 'Azul: Summer', year_published: 2019 }]);
+    fireEvent.click(search);
+    await screen.findByText('Found 1 game.');
+    expect(screen.queryByText('Found 2 games.')).toBeNull();
+
+    await waitFor(() => expect(search.textContent).toBe('Search'));
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([]);
+    fireEvent.click(search);
+    await waitFor(() =>
+      expect(toastMock()).toHaveBeenCalledWith('No games found. Try a different search term.')
+    );
+    expect(screen.queryByText(/^Found \d+ games?\.$/)).toBeNull();
+  });
+});
