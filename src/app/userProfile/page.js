@@ -1595,9 +1595,22 @@ function Profile(){
                     tree carries an accessible NAME, so it does not announce as one more unnamed
                     navigation landmark beside the page's others. This plan owns one of the five;
                     plans 18 and 21 own the other four. */}
-                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
-                    <span className="text-content-muted mx-2">{'>'}</span>
+                {/* DECISION Phase 88.6.1-53 (D-46 / R7-M7): this breadcrumb reaches the house
+                    standard groupPlanning's and gameDetail's two already meet (plans 88.6.1-16 and
+                    88.6.1-52). CHOSEN (a): the
+                    house focus ring on the Home link, per site (`DECISION Phase 88.3-17`, which chose
+                    per-site OVER a global `a:focus-visible` rule); D-46 counted five unringed
+                    breadcrumb links and this is the last of them. CHOSEN (b): `aria-hidden` on the
+                    `>` separator — it is decoration, a screen reader read "greater than" between the
+                    crumbs, and it looks the same. CHOSEN (c): `min-w-0` on the nav — inert under
+                    today's block parent, kept so a future flex parent cannot let `min-width: auto`
+                    beat `max-w-full` and re-open UAT3-D1. This DEPARTS FROM the UAT3-D1 close-out
+                    marker in `groupHomePage/page.js` ("deliberately NOT added"); SPEC Requirement 11
+                    (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place.
+                    Dropping any of the three is a decision, not a cleanup. */}
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+                    <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
                         takes 400 plus a colour token, and gains `aria-current="page"` in the SAME
                         edit — chosen OVER the colour token alone. Its `font-semibold` was the only
@@ -1699,22 +1712,49 @@ function Profile(){
                                             {userData?.username || user.name}
                                         </Heading>
                                         {/* §7.3: an icon-only control needs a real accessible
-                                            name; the pencil glyph is the whole content, so
-                                            without this the name announced was the emoji, and
-                                            a `title` does not count. */}
-                                        {/* UI review 2026-09-30 (Top Fix 2, WINDOWS #33): the bare emoji measured
+                                            name. While the pencil glyph was the whole content the
+                                            name announced was the emoji, and a `title` did not
+                                            count. AMENDED Phase 88.6.1-53 (review item 215, the D-52 /
+                                            D-53 shape): the glyph is now `aria-hidden`, so the
+                                            `title` IS the name, and it is the ONE name source.
+                                            CHOSEN: the title as the single name, the shape the
+                                            owner ruled for the home gear and the group icon tiles.
+                                            REJECTED: an `aria-label` beside an identical `title`,
+                                            which reads the name twice (the title becomes the
+                                            description; the double-read `GroupSettings.js` records
+                                            beside its colour swatches). If VoiceOver does not read
+                                            the title, that goes back to the owner (D-53's rule).
+                                            Re-adding an `aria-label` here is a decision, not a
+                                            cleanup. */}
+                                        {/* DECISION Phase 88.6.1-53 (V-1a / AC-23): the pencil's focus ring is INSET.
+                                            UI review 2026-09-30 (Top Fix 2, WINDOWS #33): the bare emoji measured
                                             ~20x24 — below the 44px floor. Same negative-margin idiom as the
                                             banner dismiss above (`-m-2 inline-flex min-h-11 min-w-11`): the
                                             target grows; the glyph shifts ~4px right (the -8px margin consumes the row's gap-2).
                                             The focus ring is the house string, per-site as `globals.css` records; the bare
-                                            emoji button carried none (UI re-audit 2026-09-30, N-2). */}
+                                            emoji button carried none (UI re-audit 2026-09-30, N-2).
+                                            DEFECT: the `-m-2` box's left edge sits on the heading's right edge
+                                            (the row's 8px gap minus the 8px margin), so the house ring with its
+                                            2px offset painted 4px outside that box, over the last letter of the
+                                            name. The owner confirmed it on 2026-09-30 ("the tabbed border covers
+                                            the last letter of the name").
+                                            CHOSEN: the inset ring. The ring box is now the button box, which
+                                            touches the heading and never overlaps the text, and nothing changes
+                                            at rest. Precedent: the `groupHomePage/page.js` tab strip.
+                                            REJECTED: (a) trading the left negative margin for clearance — it
+                                            moves the glyph the owner passed ("Pencil is good"), so it is a look
+                                            change for Phase 88.9; (b) keeping the outset ring, which is the defect.
+                                            Inconsistent with the banner dismiss ON PURPOSE: the dismiss keeps the
+                                            outset ring, because its ring stops at the banner text's box edge
+                                            (measured in `e2e/profile-pressed-controls.spec.ts`). This one is
+                                            measured by `e2e/profile-pencil-ring.spec.ts`. Restoring the offset is
+                                            a decision, not a cleanup. */}
                                         <button
                                             onClick={() => setEditingUsername(true)}
-                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                                            aria-label="Edit username"
+                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             title="Edit username"
                                         >
-                                            ✏️
+                                            <span aria-hidden="true">✏️</span>
                                         </button>
                                     </div>
                                 )}
