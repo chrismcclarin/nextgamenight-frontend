@@ -742,4 +742,43 @@ describe('88.6.1-39 (D-16 / D-33 rows 11 and 17, copy rows A1 / A3 / A4) — wha
     expect(document.querySelectorAll('[data-slot-id][aria-pressed="true"]')).toHaveLength(0);
     expect(region.textContent, 'a scroll was announced').toBe('');
   });
+
+  // Wave 6 CI gate (e2e arm (8), run 38993406485): the phone arm taps, presses Clear All, then
+  // taps again, and the line stayed on A4. This pins that sequence on the TOUCH path the phone
+  // uses (pointerdown pointerType touch arms the 300 ms long-press timer, a pointerup on the
+  // document 60 ms later commits the tap), on the phone instruction branch. It was GREEN on the
+  // tree the run failed on: the component brings the count back; the e2e arm's second tap landed
+  // off the grid (see the arm's own note). It fails if the A4 branch ever outranks a non-empty
+  // selection or if the touch commit stops reaching the parent.
+  it('C39-7: on a phone, a touch tap after Clear All brings the count back on the line and in the region', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const media = stubPhoneMedia(true);
+    const touchTap = (cell: HTMLElement, pointerId: number) => {
+      fireEvent.pointerDown(cell, { pointerId, pointerType: 'touch', clientX: 5, clientY: 5 });
+      act(() => {
+        vi.advanceTimersByTime(60); // the arm's tap(): start, 60 ms, end — under the 300 ms timer
+      });
+      fireEvent.pointerUp(document, { pointerId, pointerType: 'touch' });
+    };
+    try {
+      renderHarness(1);
+      const region = screen.getByRole('status');
+      expect(summaryLine().textContent).toBe(PHONE_HINT);
+
+      touchTap(slotCellsAt(0), 2);
+      expect(summaryLine().textContent).toBe(SUMMARY_ONE);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear All' }));
+      expect(summaryLine().textContent).toBe(ALL_CLEARED);
+      expect(region.textContent).toBe(ALL_CLEARED);
+
+      touchTap(slotCellsAt(0), 3);
+      expect(slotCellsAt(0)).toHaveAttribute('aria-pressed', 'true');
+      expect(summaryLine().textContent, 'the counts did not come back after the next tap').toBe(SUMMARY_ONE);
+      expect(region.textContent).toBe(SUMMARY_ONE);
+    } finally {
+      media.restore();
+      vi.useRealTimers();
+    }
+  });
 });
