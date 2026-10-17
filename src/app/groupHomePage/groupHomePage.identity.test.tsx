@@ -26,9 +26,20 @@ const h = vi.hoisted(() => ({
   createEventProps: null as null | { onEventCreated: (event: unknown) => Promise<void> },
   gamesListProps: null as null | {
     games: unknown[];
+    groupId?: string;
     members?: unknown[] | null;
     errorState: { showError: boolean; retry: () => Promise<unknown> };
+    retained?: boolean;
+    focusRef?: { current: unknown } | null;
   },
+  // Every GroupGamesList render, in order (88.6.1-56's GP describe reads the sequence; it clears
+  // this in its own hooks).
+  gamesListLog: [] as Array<{
+    groupId?: string;
+    errorState: { showError: boolean };
+    retained?: boolean;
+    focusRef?: { current: unknown } | null;
+  }>,
   calendarProps: null as null | {
     events: unknown[];
     title?: string;
@@ -96,6 +107,7 @@ vi.mock('@/app/components/ManageMembers', async () => {
 vi.mock('@/app/components/GroupGamesList', () => ({
   default: (props: NonNullable<typeof h.gamesListProps>) => {
     h.gamesListProps = props;
+    h.gamesListLog.push(props);
     return null;
   },
 }));
@@ -1090,5 +1102,126 @@ describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-
     });
     expect(rf1Region()).toBe(region);
     expect(screen.getByText(/2 members/)).toBeInTheDocument();
+  });
+});
+
+describe('groupHomePage games retention (88.6.1-56: C3 + C10)', () => {
+  const GAME = { id: 'game-1', name: 'Wingspan' };
+  const err = (code: 'internal' | 'network' | 'unauthorized' | 'forbidden', status: number) =>
+    new ApiError('Request failed', code, status);
+  const refreshVia = async () => {
+    await act(async () => {
+      await h.createEventProps!.onEventCreated({ id: 'e-new' });
+    });
+  };
+
+  beforeEach(() => {
+    h.gamesListLog = [];
+  });
+  afterEach(() => {
+    h.gamesListLog = [];
+    h.search = 'id=GROUP1';
+  });
+
+  it('GP-1. a first load sets retained, one page-owned focusRef; a 500 or network refresh keeps the games retained', async () => {
+    (listsAPI.getGroupGames as Mock).mockResolvedValue([GAME]);
+    await renderHeaderAt('owner');
+    await waitFor(() => expect(h.gamesListProps!.retained).toBe(true));
+    const ref = h.gamesListProps!.focusRef;
+    expect(ref).toBeTruthy();
+    expect(ref).toHaveProperty('current');
+    for (const props of h.gamesListLog) expect(props.focusRef).toBe(ref);
+
+    for (const error of [err('internal', 500), err('network', 0)]) {
+      (listsAPI.getGroupGames as Mock).mockRejectedValueOnce(error);
+      await refreshVia();
+      expect(h.gamesListProps!.retained).toBe(true);
+      expect(h.gamesListProps!.errorState.showError).toBe(true);
+      expect(h.gamesListProps!.games).toEqual([GAME]);
+    }
+    for (const props of h.gamesListLog) expect(props.focusRef).toBe(ref);
+  });
+
+  it('GP-2. a 401 withdraws until the next success; a 403 is still the removal redirect', async () => {
+    (listsAPI.getGroupGames as Mock).mockResolvedValue([GAME]);
+    await renderHeaderAt('owner');
+    await waitFor(() => expect(h.gamesListProps!.retained).toBe(true));
+
+    (listsAPI.getGroupGames as Mock).mockRejectedValueOnce(err('unauthorized', 401));
+    await refreshVia();
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(h.gamesListProps!.retained).toBe(false);
+    expect(h.gamesListProps!.errorState.showError).toBe(true);
+
+    (listsAPI.getGroupGames as Mock).mockRejectedValueOnce(err('internal', 500));
+    await act(async () => {
+      await h.gamesListProps!.errorState.retry();
+    });
+    expect(h.gamesListProps!.errorState.showError).toBe(true);
+    expect(h.gamesListProps!.retained).toBe(false);
+
+    (listsAPI.getGroupGames as Mock).mockResolvedValueOnce([GAME]);
+    await act(async () => {
+      await h.gamesListProps!.errorState.retry();
+    });
+    expect(h.gamesListProps!.retained).toBe(true);
+    expect(h.gamesListProps!.errorState.showError).toBe(false);
+
+    (listsAPI.getGroupGames as Mock).mockRejectedValueOnce(err('forbidden', 403));
+    await refreshVia();
+    expect(pushSpy).toHaveBeenCalledWith(expect.stringMatching(/^\/\?removedFrom=/));
+    expect(h.gamesListProps!.errorState.showError).toBe(false);
+  });
+
+  it('GP-3. a group switch never renders the previous group’s kept error under the new id, and never retains its list', async () => {
+    (listsAPI.getGroupGames as Mock).mockResolvedValue([GAME]);
+    const { rerender } = await renderHeaderAt('owner');
+    await waitFor(() => expect(h.gamesListProps!.retained).toBe(true));
+    (listsAPI.getGroupGames as Mock).mockRejectedValueOnce(err('internal', 500));
+    await refreshVia();
+    expect(h.gamesListProps!.errorState.showError).toBe(true);
+    expect(h.gamesListProps!.retained).toBe(true);
+
+    const second = deferred<unknown[]>();
+    (listsAPI.getGroupGames as Mock).mockReturnValueOnce(second.promise);
+    const mark = h.gamesListLog.length;
+    h.search = 'id=GROUP2';
+    rerender(<GroupHomePage />);
+    expect(await screen.findByText('Loading games...')).toBeInTheDocument();
+    const duringSwitch = h.gamesListLog.slice(mark);
+    expect(
+      duringSwitch.filter((p) => p.groupId === 'GROUP2' && p.errorState.showError === true)
+    ).toHaveLength(0);
+
+    await act(async () => {
+      second.reject(err('internal', 500));
+    });
+    await waitFor(() => expect(screen.queryByText('Loading games...')).toBeNull());
+    expect(h.gamesListProps!.groupId).toBe('GROUP2');
+    expect(h.gamesListProps!.errorState.showError).toBe(true);
+    expect(h.gamesListProps!.retained).toBe(false);
+  });
+
+  it('GP-4. a games retry joins the pending tab-return run instead of starting another', async () => {
+    (listsAPI.getGroupGames as Mock).mockRejectedValueOnce(err('internal', 500));
+    await renderHeaderAt('owner');
+    await waitFor(() => expect(h.gamesListProps!.errorState.showError).toBe(true));
+    const calls = (listsAPI.getGroupGames as Mock).mock.calls.length;
+
+    const held = deferred<unknown[]>();
+    (listsAPI.getGroupGames as Mock).mockReturnValueOnce(held.promise);
+    act(() => fireVisibility('visible'));
+    expect((listsAPI.getGroupGames as Mock).mock.calls.length).toBe(calls + 1);
+
+    act(() => {
+      void h.gamesListProps!.errorState.retry();
+    });
+    expect((listsAPI.getGroupGames as Mock).mock.calls.length).toBe(calls + 1);
+
+    await act(async () => {
+      held.resolve([GAME]);
+    });
+    await waitFor(() => expect(h.gamesListProps!.games).toEqual([GAME]));
+    expect(h.gamesListProps!.errorState.showError).toBe(false);
   });
 });
