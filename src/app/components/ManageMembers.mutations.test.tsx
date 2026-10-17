@@ -94,6 +94,7 @@ import ManageMembers from './ManageMembers';
 // exercises the REAL code-to-copy derivation in `useFetchErrorState` rather than a fixture.
 import { ApiError, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
+import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -1222,5 +1223,93 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
       screen.getByRole('dialog', { name: 'Manage Group Members' }).contains(document.activeElement)
     ).toBe(true);
     expectFocusNotLost();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-50 (W016 rows 12-13; D-35): the pressed Transfer ownership stays focusable.
+// ---------------------------------------------------------------------------
+
+describe('ManageMembers 88.6.1-50 — the pressed Transfer ownership stays focusable (W016 rows 12-13; D-35)', () => {
+  const TRANSFER_DIALOG = /Transfer ownership to Target\?/;
+
+  // The owner-only desktop kebab is the transfer path jsdom can reach (no CSS, so both
+  // breakpoint trees render; the desktop one is the one the existing pins use).
+  async function openTransferConfirm() {
+    fireEvent.click(await screen.findByLabelText('More actions for Target'));
+    fireEvent.click(await screen.findByText('Transfer ownership to this member'));
+    const dialog = await screen.findByRole('dialog', { name: TRANSFER_DIALOG });
+    const confirm = await screen.findByRole('button', { name: 'Transfer ownership' });
+    return { dialog, confirm };
+  }
+
+  it('TR1: two presses send one transfer; the pressed confirm stays aria-disabled and focusable until it settles (R4 idempotency + concurrency)', async () => {
+    const held = deferred<unknown>();
+    (groupsAPI.transferOwnership as Mock).mockReturnValue(held.promise);
+    renderManageMembers();
+    const { dialog, confirm } = await openTransferConfirm();
+
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    // RED halves are the attributes and the request count (C-11): jsdom never blurs a natively
+    // disabled element, so focus is CONFIRM-ONLY here and is proven in the phone spec.
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(confirm).not.toHaveAttribute('disabled');
+    expect(confirm).toHaveClass('btn-primary');
+    expect(confirm).toHaveTextContent('Transferring…');
+    // The sibling Cancel nobody pressed keeps its native gate (rule of POSITION).
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    expect(cancel).toBeDisabled();
+    expect(cancel).not.toHaveAttribute('aria-disabled');
+    expect(groupsAPI.transferOwnership as Mock).toHaveBeenCalledTimes(1);
+    expect(groupsAPI.transferOwnership as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID);
+    expect(screen.getByRole('dialog', { name: TRANSFER_DIALOG })).toBeInTheDocument();
+
+    await act(async () => {
+      held.resolve({});
+    });
+    // The dialog was asserted present above, so this absence follows a positive state.
+    expect(screen.queryByRole('dialog', { name: TRANSFER_DIALOG })).toBeNull();
+    expect(groupsAPI.transferOwnership as Mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('TR2: a failed transfer releases the latch, so the same confirm sends a second request', async () => {
+    (groupsAPI.transferOwnership as Mock)
+      .mockRejectedValueOnce(new Error('HTTP error! status: 500'))
+      .mockResolvedValueOnce({});
+    renderManageMembers();
+    const { confirm } = await openTransferConfirm();
+
+    fireEvent.click(confirm);
+    // Positive signal first (CF-26): the failure landed.
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(confirm).toHaveTextContent('Transfer ownership');
+    expect(confirm).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('dialog', { name: TRANSFER_DIALOG })).toBeInTheDocument();
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(groupsAPI.transferOwnership as Mock).toHaveBeenCalledTimes(2));
+  });
+
+  // TR3 pins the wave 5 CI gate fix (Modal.tsx, preventStackedDialogDismiss) at this surface:
+  // the roster Modal has seven React-sibling dialogs stacked on it, and before that fix a Cancel
+  // press in any of them also dismissed the roster in production (Next's vendored React). A
+  // plain fireEvent.click is green on both trees; pressInStackedDialog replays production's
+  // commit order (its header says why). The roster Modal is open by prop, so a dismissal shows
+  // as a call to modaltoggle, not as the dialog leaving the DOM.
+  it('TR3: a pointer press on the transfer Cancel closes ONLY the transfer dialog, and focus returns to the kebab that opened it', async () => {
+    const modaltoggle = vi.fn();
+    renderWithRerender({ modaltoggle });
+    const trigger = await screen.findByLabelText('More actions for Target');
+    const { dialog } = await openTransferConfirm();
+
+    pressInStackedDialog(within(dialog).getByRole('button', { name: 'Cancel' }));
+    // Positive signals first (CF-26): the transfer dialog closed and focus reached its opener.
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: TRANSFER_DIALOG })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(modaltoggle).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Manage Group Members' })).toBeInTheDocument();
+    expect(groupsAPI.transferOwnership as Mock).not.toHaveBeenCalled();
   });
 });
