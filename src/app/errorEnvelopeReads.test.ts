@@ -192,7 +192,10 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // hoisted #221 copy constants (`BGG_FOUND_ONE_LABEL`, `bggFoundManyLabel`, copy row F8) above it.
     // RE-DERIVED by plan 88.6.1-60 (Task 3, 2026-10-17): 234 -> 235. One import line above it, plan
     // 04's `focusElement` / `focusPageFloor` (the import result timer's focus move).
-    declaredAt: 235,
+    // RE-DERIVED by plan 88.6.1-67 (Task 1, 2026-10-17): 235 -> 237. Again not on its own: a
+    // hoisted copy constant with its comment line (`COLLECTION_LOAD_FAILED_TITLE`, copy row P8)
+    // landed above it and pushed it down. Kept as a line number, not a text anchor.
+    declaredAt: 237,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +

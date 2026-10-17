@@ -133,6 +133,8 @@ const DEFAULT_PREFERENCES = {
 };
 // Copy row P1 (88.6.1 D-30, ratified 2026-10-04): the pressed Verify's in-flight label.
 const VERIFY_CODE_IN_FLIGHT_LABEL = 'Verifying...';
+// Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title.
+const COLLECTION_LOAD_FAILED_TITLE = "Couldn't load your collection";
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -339,6 +341,13 @@ function Profile(){
     const importButtonRef = useRef(null);
     const addFromBggToggleRef = useRef(null);
     const collectionHeadingRef = useRef(null);
+    // Plan 88.6.1-67 (88.6.1-70 contracts C2 / C3): the `selfUuid` whose collection last loaded
+    // successfully (a has-loaded key, never a row count), the newest failed run's error (cleared only
+    // by the newest success), and the request generation (only the newest run writes).
+    const [ownedGamesLoadedFor, setOwnedGamesLoadedFor] = useState(null);
+    const [ownedGamesError, setOwnedGamesError] = useState(null);
+    const ownedGamesRequestRef = useRef(0);
+    const collectionLoadedForSelf = Boolean(selfUuid) && ownedGamesLoadedFor === selfUuid;
     const bggUsernameFieldRef = useRef(null);
     const importPromptOpenRef = useRef(false);
     // D-44 (88.6.1-60): the search panel's id, named by its toggle's aria-controls while it exists.
@@ -1147,7 +1156,9 @@ function Profile(){
                 // identity fails terminally (they gate on selfUuid), so their loading
                 // flags would stay true forever ("Loading your collection..." /
                 // "Checking your calendar..."). Clear them here so those zones render their
-                // degrade banner instead of an indefinite spinner.
+                // degrade banner instead of an indefinite spinner. (88.6.1-67: the collection
+                // zone no longer reads this flag for its loader — it keys on the loaded-for
+                // state — and the write stays so the flag still means "no request in flight".)
                 setLoadingGames(false);
                 setCheckingCalendarStatus(false);
             }
@@ -1378,22 +1389,57 @@ function Profile(){
         disconnectCalendarGate.trigger();
     };
 
+    /* DECISION Phase 88.6.1-67 (D-09a / D-37, collection refresh):
+       DEFECTS: every call replaced the grid with the loading line and the count with an em-dash,
+       after every add, remove and import; a failed load emptied the list into the empty-collection
+       sentence (a false statement); an older answer could overwrite a newer list.
+       CHOSEN: the 88.6.1-70 contract — the rows are never written on a failure (C1); the error
+       clears only on the newest success (C2) and is the thrown error itself, never a wrapped one
+       (C10: a wrapped error loses its code and would read as a transient failure); a loaded-for
+       STATE keyed on the requested `selfUuid` is the has-loaded input (C3), never
+       `ownedGames.length` (D-09a's reason), and plan 70's `useRetainedContent` turns it into the
+       zone's `retained` (C10: an access or gone answer never keeps the rows); `{ isError }`
+       results through a stable retry (C4, C5); `loadingGames` keeps its name and now means only
+       "a collection request is in flight", read by the render solely for `aria-busy` on the grid
+       (plan 88.6.1-41's rule); only the newest run (the generation ref) writes anything.
+       REJECTED: (a) a length-keyed flag (it would also send a loaded EMPTY list to the banner — the
+       owner's ruling Y, 2026-10-05, says that list is retained content); (b) a visible updating
+       line (new words, D-31 — D-09 gave one to Browse Games only); (c) `aria-busy` on the card (it
+       contains plan 60's live region); (d) clearing the error at the start of a run (C2: the banner
+       or notice would vanish at the press and focus would leave its control); (e) an empty write
+       on failure (C1); (f) a list of error codes of this page's own (C10: one predicate, plan
+       70's, behind one hook).
+       Restoring the per-call loader or the empty write is a decision, not a cleanup. */
     const fetchOwnedGames = useCallback(async () => {
         // 87.5 Plan 09: mount-fire sender — gate on the resolved self UUID (NOT
         // user?.sub) and depend on selfUuid so the callback re-creates and the
         // calling mount effect re-runs (firing the send) once identity resolves.
-        if (!selfUuid) return;
+        if (!selfUuid) return undefined;
+        const generation = ++ownedGamesRequestRef.current;
         try {
             setLoadingGames(true);
             const games = await userGamesAPI.getOwnedGames(selfUuid);
+            if (generation !== ownedGamesRequestRef.current) return undefined;
             setOwnedGames(games || []);
+            setOwnedGamesLoadedFor(selfUuid);
+            setOwnedGamesError(null);
+            return { isError: false };
         } catch (error) {
             logger.info('Error fetching owned games:', errCtx(error));
-            setOwnedGames([]);
+            if (generation !== ownedGamesRequestRef.current) return undefined;
+            setOwnedGamesError(error);
+            return { isError: true };
         } finally {
-            setLoadingGames(false);
+            if (generation === ownedGamesRequestRef.current) setLoadingGames(false);
         }
     }, [selfUuid]);
+    // C5: a STABLE retry (the render-time ref idiom of UserHomePage.js's `upcomingRetryRef`), so the
+    // adapter's `refetch` never changes identity; the hook's tab-return re-attempt calls it too.
+    const fetchOwnedGamesRef = useRef(fetchOwnedGames);
+    fetchOwnedGamesRef.current = fetchOwnedGames;
+    const retryOwnedGames = useCallback(() => fetchOwnedGamesRef.current(), []);
+    const collectionErrorState = useFetchErrorState({ isError: Boolean(ownedGamesError), error: ownedGamesError, refetch: retryOwnedGames });
+    const collectionRetained = useRetainedContent(collectionLoadedForSelf, collectionErrorState);
 
     const searchBGG = async () => {
         // D-35: the button AND the field's Enter call this, so one refusal covers both entry points.
@@ -1495,14 +1541,36 @@ function Profile(){
         }
     };
 
+    /* DECISION Phase 88.6.1-67 (D-54, remove on confirm):
+       CHOSEN: the row leaves the list when the server confirms the removal, or answers 404, not
+       when the next read lands; both paths then refresh, so a 404 for a gone identity withdraws
+       the rest of the list through C10 (orchestrator D-r3-8). This is D-54's rule for friend
+       requests (`88.6.1-CONTEXT.md`, anchor `D-54 [owner] Friend request rows`), applied to the
+       collection. The drop runs BEFORE this action's own refresh starts, so that refresh
+       supersedes any older read still in flight (the generation ref), and a failed refresh writes
+       no rows (C1): the drop holds.
+       REJECTED: (a) waiting for the refresh — under a failed refresh the deleted game stayed listed
+       under "Showing what loaded earlier", still read `Already Owned` in the search, and a second
+       Remove on it answered 404 (finding #74); (b) removing before the server answers and
+       restoring on failure (D-54 rejected remove-then-restore); (c) no refresh on the 404 path
+       (this plan's r2 shape) — a 404 for a gone identity (the BE's `User not found`, checked
+       before `Game not found in your collection`) then dropped one row and left the rest
+       presented as current, and an older read in flight could restore the dropped game; reading
+       the BE's 404 prose to tell the two 404s apart was rejected too (prose is not a contract).
+       Putting the removal back behind the refresh is a decision, not a cleanup. */
     const removeGameFromCollection = async (game_id) => {
         if (!user?.sub) return;
         if (!selfUuid) {
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
+        // ONE shared step for both confirmed paths (the resolved DELETE and its 404).
+        const dropRemovedGame = () => {
+            setOwnedGames((games) => games.filter((game) => game.id !== game_id));
+        };
         try {
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
+            dropRemovedGame();
             await fetchOwnedGames();
             toast.success('Game removed');
         } catch (error) {
@@ -1512,6 +1580,10 @@ function Profile(){
                     fallback: "We couldn't remove that game. Please try again.",
                 })
             );
+            if (error?.status === 404) {
+                dropRemovedGame();
+                await fetchOwnedGames();
+            }
         }
     };
 
@@ -3618,9 +3690,12 @@ function Profile(){
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
                         {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
                             owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
-                            conflation on the count itself; an em-dash holds the slot meanwhile. */}
+                            conflation on the count itself; an em-dash holds the slot meanwhile.
+                            Extended by 88.6.1-67: the em-dash holds the slot until the collection has
+                            loaded for this identity (mid-fetch, after a failed first load, or with no
+                            identity row), and a refresh keeps the previous count, like the rows. */}
                         <Heading ref={collectionHeadingRef} level={2} size="heading" className="text-content-primary">
-                            My Game Collection ({loadingGames ? '—' : ownedGames.length})
+                            My Game Collection ({collectionRetained ? ownedGames.length : '—'})
                         </Heading>
                         <div className="flex gap-2">
                             <Button
@@ -3851,10 +3926,32 @@ function Profile(){
                         // fetch never ran; surface the degrade notice instead of
                         // a permanent "Loading your collection...".
                         <FetchErrorBanner state={selfIdentityErrorState} compact focusTarget={collectionHeadingRef} />
-                    ) : loadingGames ? (
-                        <p className="text-content-secondary">Loading your collection...</p>
+                    ) : !collectionRetained ? (
+                        /* DECISION Phase 88.6.1-67 (Req 9 / P8 / RF1, collection situations):
+                           CHOSEN: the 88.6.1-70 situation table — nothing loaded and failed -> the
+                           full banner titled with copy row P8 (owner-ratified 2026-10-05) and
+                           `focusTarget` on the `My Game Collection` heading; nothing loaded -> the
+                           loader; loaded -> the content with plan 70's `RefreshFailedNotice` above
+                           it (RF1 after a failed refresh) — a load that returned zero rows included,
+                           so its empty sentence stays under the notice (owner ruling Y,
+                           2026-10-05); an access or gone answer -> the full banner in the content's
+                           place, never RF1 (C10, through `useRetainedContent`). The banner's arm
+                           sits before the loader and the empty sentence, and the error is kept
+                           through a retry, so the banner stays during it and a failed FIRST load
+                           never reaches the empty sentence; the count shows the em-dash.
+                           REJECTED: (a) the compact notice (its fixed sentence is about personal
+                           controls, not the collection); (b) a `reportContext` / `reportSubject`
+                           literal (unratified words, D-31 — the D-32 R5 precedent ratified each
+                           one); (c) the full banner above retained rows (the owner's 2026-10-05
+                           ruling gives a failed refresh the small RF1 notice).
+                           Changing this order is a decision, not a cleanup. */
+                        ownedGamesError ? (
+                            <FetchErrorBanner state={collectionErrorState} title={COLLECTION_LOAD_FAILED_TITLE} focusTarget={collectionHeadingRef} />
+                        ) : (
+                            <p className="text-content-secondary">Loading your collection...</p>
+                        )
                     ) : ownedGames.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div aria-busy={loadingGames || undefined} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
                                 // D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` here was
                                 // Tailwind's INLINED built-in scale, not the theme tier, so it snaps to

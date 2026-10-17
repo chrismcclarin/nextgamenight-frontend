@@ -86,8 +86,10 @@ const h = vi.hoisted(() => ({
    * The Auth0 row, held as ONE object rather than rebuilt inside the mock factory.
    * Identity matters: the page's owned-games / calendar-status effect depends on
    * `user`, so a mock that returns a fresh object literal per render re-runs that
-   * effect on EVERY render — which flips `loadingGames` back to true and unmounts
-   * the collection grid mid-interaction. The real `useUser` returns a stable
+   * effect on EVERY render and refetches the collection each time (before plan
+   * 88.6.1-67 each of those refetches also blanked the grid mid-interaction; it now
+   * keeps the cards, but a refetch per render is still not what the page does in
+   * a browser). The real `useUser` returns a stable
    * context value, so the loop is a mock artefact, not page behaviour. Making this
    * stable is a decision, not a tidy-up: reverting it makes any test that clicks a
    * row in the collection non-deterministic.
@@ -214,6 +216,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     gamesAPI: {
       ...actual.gamesAPI,
       searchBGG: vi.fn().mockResolvedValue([]),
+      importFromBGG: vi.fn().mockResolvedValue({ id: 'game-imported' }),
     },
     googleCalendarAPI: {
       ...actual.googleCalendarAPI,
@@ -4410,5 +4413,248 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(await screen.findByText('Found 2 games.')).toBeInTheDocument();
+  });
+});
+
+describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  // Copy row P8 (owner-ratified 2026-10-05), straight apostrophe.
+  const P8 = "Couldn't load your collection";
+  const AZUL_ROW = { id: 'game-azul', name: 'Azul', bgg_id: 230802, year_published: 2017, image_url: null };
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  function collectionHeading() {
+    return screen.getByRole('heading', { name: /^My Game Collection/ });
+  }
+
+  // The collection Remove is a two-tap gate: the glyph arms into the labelled verb `Remove`.
+  async function twoTapRemove(name: string) {
+    fireEvent.click(await screen.findByRole('button', { name: `Remove ${name}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps implementations (and queued once-values), so reset.
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    (userGamesAPI.addOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    (gamesAPI.importFromBGG as Mock).mockReset().mockResolvedValue({ id: 'game-imported' });
+  });
+
+  it('R2: a refresh after a removal keeps the remaining cards on screen, the same nodes, marked busy', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    renderProfile();
+    const brass = await screen.findByRole('button', { name: 'Remove Brass' });
+
+    await twoTapRemove('Catan');
+    // Positive signal: the refresh is in flight and the grid that holds Brass says so.
+    await waitFor(() => expect(brass.closest('[aria-busy="true"]')).not.toBeNull());
+    expect(brass.isConnected).toBe(true);
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBe(brass);
+    expect(screen.queryByText('Loading your collection...')).toBeNull();
+    // D-54: Catan left at the server's confirmation, before the held refresh answered.
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+
+    await act(async () => { refresh.resolve([OWNED_GAMES[1]]); });
+    await waitFor(() => expect(document.querySelector('[aria-busy]')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBe(brass);
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+  });
+
+  it('R3: a failed refresh after a removal keeps the remaining rows, never the empty sentence', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new Error('boom'));
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+
+    await twoTapRemove('Catan');
+    await waitFor(() =>
+      expect(loggerMock().info).toHaveBeenCalledWith('Error fetching owned games:', expect.any(Object))
+    );
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
+    expect(screen.queryByText(/You don't have any games in your collection yet/)).toBeNull();
+    expect(screen.queryByText(P8)).toBeNull();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+    expect(document.querySelector('[aria-busy]')).toBeNull();
+  });
+
+  it('R7: a Remove answered 404 drops the row and refreshes; a transient refresh failure keeps the rest', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    (userGamesAPI.removeOwnedGame as Mock).mockRejectedValueOnce(
+      new ApiError('Game not found in your collection', 'not_found', 404)
+    );
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+
+    await twoTapRemove('Catan');
+    await waitFor(() => {
+      expect(loggerMock().info).toHaveBeenCalledWith('Error removing game from collection:', expect.any(Object));
+      expect(loggerMock().info).toHaveBeenCalledWith('Error fetching owned games:', expect.any(Object));
+      expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+    expect(screen.queryByText(P8)).toBeNull();
+    expect(toastMock().error).toHaveBeenCalledTimes(1);
+  });
+
+  it('R7b: a Remove answered 404 for a gone account withdraws the rest of the list behind the banner', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const err = new ApiError('User not found', 'not_found', 404);
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockReset()
+      .mockRejectedValue(err)
+      .mockResolvedValueOnce(OWNED_GAMES);
+    (userGamesAPI.removeOwnedGame as Mock).mockRejectedValueOnce(
+      new ApiError('User not found', 'not_found', 404)
+    );
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+
+    await twoTapRemove('Catan');
+    // Positive signal first: the P8 banner replaced the list.
+    await screen.findByText(P8);
+    expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove Brass' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    const text = collectionHeading().textContent ?? '';
+    expect(text).toContain('—');
+    expect(text).not.toContain('(1)');
+    expect(text).not.toContain('(2)');
+  });
+
+  it('R4: an older collection answer never overwrites a newer one (latest wins)', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const refreshA = deferred<unknown>();
+    const refreshB = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refreshA.promise)
+      .mockReturnValueOnce(refreshB.promise);
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 230802, name: 'Azul', year_published: 2017 }]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValueOnce({ id: 'game-azul' });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    const add = await screen.findByRole('button', { name: /^(Add to Collection|Adding\.\.\.)$/ });
+    fireEvent.click(add);
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2)); // refresh A held
+
+    await twoTapRemove('Catan');
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(3)); // refresh B held
+
+    await act(async () => { refreshB.resolve([OWNED_GAMES[1], AZUL_ROW]); });
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await act(async () => { refreshA.resolve([...OWNED_GAMES, AZUL_ROW]); });
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Azul' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (2)' })).toBeInTheDocument();
+  });
+
+  it('R5: a new identity never shows the previous identity\'s rows (CONFIRM-ONLY; pins the C3 key)', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(new Promise(() => {}));
+    const { rerender } = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    h.self = { ...(h.self as Record<string, unknown>), id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' };
+    rerender(<Profile />);
+    await screen.findByText('Loading your collection...');
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+  });
+
+  it('F1: a failed first load shows the P8 banner, never the empty sentence and never (0)', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockRejectedValueOnce(new Error('boom'));
+    renderProfile();
+
+    await screen.findByText(P8);
+    expect(screen.queryByText(/You don't have any games in your collection yet/)).toBeNull();
+    const text = collectionHeading().textContent ?? '';
+    expect(text).toContain('—');
+    expect(text).not.toContain('(0)');
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    expect(screen.queryByText('Loading your collection...')).toBeNull();
+  });
+
+  it('F2: Try again after a failed first load brings the games and lands focus on the collection heading', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    const retry = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockReturnValueOnce(retry.promise);
+    renderProfile();
+
+    await screen.findByText(P8);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2));
+    // C2: the error is kept through the run, so the banner stays and the loader never swaps in.
+    expect(screen.getByText(P8)).toBeInTheDocument();
+    expect(screen.queryByText('Loading your collection...')).toBeNull();
+
+    await act(async () => { retry.resolve(OWNED_GAMES); });
+    await screen.findByRole('button', { name: 'Remove Catan' });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My Game Collection (2)' }))
+    );
+    expect(screen.queryByText(P8)).toBeNull();
+  });
+
+  it('F3: a failed Try again keeps the banner and its polite region says the title', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockRejectedValueOnce(new Error('boom again'));
+    renderProfile();
+
+    await screen.findByText(P8);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(screen.getAllByText(P8).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/You don't have any games in your collection yet/)).toBeNull();
+    const card = collectionHeading().closest('.card') as HTMLElement;
+    await waitFor(() =>
+      expect(within(card).getAllByRole('status').some((node) => node.textContent === P8)).toBe(true)
+    );
+  });
+
+  it('F4: with no identity row the collection count is an em-dash, never (0)', async () => {
+    h.self = undefined;
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+    const text = collectionHeading().textContent ?? '';
+    expect(text).toContain('—');
+    expect(text).not.toContain('(0)');
   });
 });

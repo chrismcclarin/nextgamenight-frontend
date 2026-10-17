@@ -1057,3 +1057,69 @@ test.describe('Profile account lookup failure and the notification card (plan 88
     expect(fits, 'horizontal overflow with the card shown').toBe(true);
   });
 });
+
+// Phase 88.6.1 plan 67 (Requirement 9, copy row P8; Requirement 5): the game collection. Every
+// owned-games read below is answered in the browser by the shared release-capable hold (a later
+// registration takes precedence for the same request), behind plan 43's holdWrites net, so no read
+// of the fixture account's real list decides a test and no write reaches the backend.
+const OWNED_GAMES_PATH = /\/user-games\/user\/[^/]+$/;
+const ONE = { id: 'e2e-game-one', name: 'E2E Meeple One', bgg_id: 990101, year_published: 2001, image_url: null };
+const TWO = { id: 'e2e-game-two', name: 'E2E Meeple Two', bgg_id: 990102, year_published: 2002, image_url: null };
+// Copy row P8 (owner-ratified 2026-10-05), straight apostrophe.
+const COLLECTION_P8 = "Couldn't load your collection";
+
+function collectionCard(page: Page) {
+  return page.locator('div.card').filter({ has: page.getByRole('heading', { level: 2, name: /^My Game Collection/ }) });
+}
+
+test.describe('Profile game collection (plan 88.6.1-67)', () => {
+  let backstop: WriteHold | undefined;
+
+  test.afterEach(async ({ page }) => {
+    expectNoApiWrites(backstop);
+    backstop = undefined;
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('a failed first collection load shows the banner, and Try again brings the games back', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const first = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
+    await page.goto('/userProfile');
+    await first.arrived;
+    await first.release({ error: 'boom' }, 500);
+
+    const collection = collectionCard(page);
+    const heading = collection.getByRole('heading', { level: 2, name: /^My Game Collection/ });
+    const banner = collection.getByText(COLLECTION_P8).first();
+    await expect(banner).toBeVisible({ timeout: 15_000 });
+    await expect(collection.getByText(/You don't have any games in your collection yet/)).toHaveCount(0);
+    await expect(heading).toContainText('—');
+    await expect(heading).not.toContainText('(0)');
+    const cardBox = await collection.boundingBox();
+    const bannerBox = await banner.boundingBox();
+    expect(cardBox && bannerBox, 'card and banner have boxes').toBeTruthy();
+    if (cardBox && bannerBox) {
+      expect(bannerBox.x, 'banner left edge').toBeGreaterThanOrEqual(cardBox.x);
+      expect(bannerBox.x + bannerBox.width, 'banner right edge').toBeLessThanOrEqual(cardBox.x + cardBox.width);
+    }
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow with the collection banner showing').toBe(true);
+
+    // The retry's read, held: the banner stays through it (the error is kept, C2), no loader.
+    const second = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
+    await collection.getByRole('button', { name: /^(Try again|Retrying…)$/ }).click();
+    await second.arrived;
+    await expect(banner).toBeVisible();
+    await expect(collection.getByText('Loading your collection...')).toHaveCount(0);
+
+    await second.release([ONE]);
+    await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toBeVisible({ timeout: 15_000 });
+    await expect(collection.getByText(COLLECTION_P8)).toHaveCount(0);
+    const loaded = collection.getByRole('heading', { level: 2, name: 'My Game Collection (1)' });
+    await expect(loaded).toBeVisible();
+    await expect(loaded).toBeFocused();
+  });
+});
