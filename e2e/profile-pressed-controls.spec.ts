@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 
 import { focusByKeyboard } from './support/contrast';
 import {
@@ -699,6 +699,20 @@ async function twoFrames(page: Page): Promise<void> {
   );
 }
 
+// Carry-in hardening (plan 88.6.1-67; CI runs 39022953930 and 39026336968, each passed on retry):
+// in three of these tests the first press on Import Collection sometimes opened no dialog, so the
+// next step timed out waiting for it. Positive signals before the press, never a fixed delay: the
+// typed name has reached the page's state (the button is enabled only then — it is natively
+// disabled while the name is blank) and focus is on the button; after it, the dialog is shown.
+async function openImportDialog(page: Page, field: Locator, importBtn: Locator, name: string): Promise<void> {
+  await expect(field).toHaveValue(name);
+  await expect(importBtn).toBeEnabled();
+  await focusByKeyboard(page, importBtn);
+  await expect(importBtn).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toBeVisible();
+}
+
 test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => {
   let backstop: WriteHold | undefined;
 
@@ -797,8 +811,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await field.fill('e2e-meeple');
     const region = page.locator('#bgg-import-status');
     const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
-    await focusByKeyboard(page, importBtn);
-    await page.keyboard.press('Enter');
+    await openImportDialog(page, field, importBtn, 'e2e-meeple');
     await focusByKeyboard(page, page.getByRole('dialog').getByRole('button', { name: 'Continue' }));
     await page.keyboard.press('Enter');
     await imp.arrived;
@@ -837,8 +850,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     const region = page.locator('#bgg-import-status');
     const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
     const dialog = page.getByRole('dialog');
-    await focusByKeyboard(page, importBtn);
-    await page.keyboard.press('Enter');
+    await openImportDialog(page, field, importBtn, 'e2e-meeple');
     await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
     await page.keyboard.press('Enter');
     await imp.arrived;
@@ -882,8 +894,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
 
     const region = page.locator('#bgg-import-status');
     const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
-    await focusByKeyboard(page, importBtn);
-    await page.keyboard.press('Enter');
+    await openImportDialog(page, field, importBtn, 'e2e-meeple');
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
