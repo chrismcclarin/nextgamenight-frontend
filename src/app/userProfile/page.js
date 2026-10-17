@@ -1639,6 +1639,9 @@ function Profile(){
                                             Re-styling this to match the heading again is a
                                             decision, not a cleanup. */}
                                         <Input
+                                            id="profile-username"
+                                            name="profile-username"
+                                            autoComplete="nickname"
                                             aria-label="Username"
                                             value={username}
                                             onChange={(e) => setUsername(e.target.value)}
@@ -1823,7 +1826,19 @@ function Profile(){
                                                 {/* Named explicitly: this control has no visible
                                                     label of any kind (a placeholder is not a
                                                     name — axe `label`, WCAG 4.1.2 A). */}
+                                                {/* W065 (88.6-REVIEW WR-504, fixed in 88.6.1-53): browser
+                                                    autofill reads id, name and autocomplete, never ARIA, so
+                                                    every field here carries all three. tel offers the saved
+                                                    number; on the code field, one-time-code lets iOS and
+                                                    Android offer the texted code and numeric brings up the
+                                                    number pad. The Username field takes nickname, not
+                                                    username: it is the public display name and Auth0 owns
+                                                    login, so username would invite password managers and
+                                                    QuickType to offer the login email there. */}
                                                 <Input
+                                                    id="profile-phone"
+                                                    name="profile-phone"
+                                                    autoComplete="tel"
                                                     type="tel"
                                                     aria-label="Phone number"
                                                     value={phoneInput}
@@ -1901,6 +1916,10 @@ function Profile(){
                                             </p>
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                                 <Input
+                                                    id="profile-verification-code"
+                                                    name="profile-verification-code"
+                                                    autoComplete="one-time-code"
+                                                    inputMode="numeric"
                                                     aria-label="Verification code"
                                                     value={verificationCode}
                                                     onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -2654,6 +2673,7 @@ function Profile(){
                                                 <label htmlFor="recurring-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
                                                     id="recurring-start-time"
+                                                    name="recurring-start-time"
                                                     type="time"
                                                     value={recurringForm.startTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, startTime: e.target.value })}
@@ -2664,6 +2684,7 @@ function Profile(){
                                                 <label htmlFor="recurring-end-time" className="block text-sm text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <Input
                                                     id="recurring-end-time"
+                                                    name="recurring-end-time"
                                                     type="time"
                                                     value={recurringForm.endTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, endTime: e.target.value })}
@@ -2705,6 +2726,7 @@ function Profile(){
                                                 <label htmlFor="recurring-start-date" className="block text-sm text-content-secondary mb-1">Start Date</label>
                                                 <Input
                                                     id="recurring-start-date"
+                                                    name="recurring-start-date"
                                                     type="date"
                                                     value={recurringForm.start_date}
                                                     max={recurringForm.end_date || undefined}
@@ -2715,6 +2737,7 @@ function Profile(){
                                                 <label htmlFor="recurring-end-date" className="block text-sm text-content-secondary mb-1">End Date (Optional)</label>
                                                 <Input
                                                     id="recurring-end-date"
+                                                    name="recurring-end-date"
                                                     type="date"
                                                     value={recurringForm.end_date}
                                                     min={recurringForm.start_date || undefined}
@@ -2812,6 +2835,7 @@ function Profile(){
                                             <label htmlFor="specific-date" className="block text-sm text-content-secondary mb-1">Date</label>
                                             <Input
                                                 id="specific-date"
+                                                name="specific-date"
                                                 type="date"
                                                 value={specificForm.date}
                                                 onChange={(e) => setSpecificForm({ ...specificForm, date: e.target.value })}
@@ -2824,6 +2848,7 @@ function Profile(){
                                                 <label htmlFor="specific-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
                                                     id="specific-start-time"
+                                                    name="specific-start-time"
                                                     type="time"
                                                     value={specificForm.startTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, startTime: e.target.value })}
@@ -2834,6 +2859,7 @@ function Profile(){
                                                 <label htmlFor="specific-end-time" className="block text-sm text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <Input
                                                     id="specific-end-time"
+                                                    name="specific-end-time"
                                                     type="time"
                                                     value={specificForm.endTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, endTime: e.target.value })}
@@ -2854,6 +2880,8 @@ function Profile(){
                                                     checkbox (88-20). The Req 1 test pin excludes it
                                                     BY TYPE, so adding it here would fail. */}
                                                 <input
+                                                    id="specific-is-available"
+                                                    name="specific-is-available"
                                                     type="checkbox"
                                                     checked={specificForm.isAvailable}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, isAvailable: e.target.checked })}
@@ -3046,6 +3074,8 @@ function Profile(){
                         <div className="mb-6 p-3 md:p-4 border border-line rounded-sm bg-surface-page">
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
                                 <Input
+                                    id="bgg-search"
+                                    name="bgg-search"
                                     aria-label="Search BoardGameGeek"
                                     value={bggSearchQuery}
                                     onChange={(e) => setBggSearchQuery(e.target.value)}
