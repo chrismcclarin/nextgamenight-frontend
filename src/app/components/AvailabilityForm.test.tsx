@@ -868,3 +868,37 @@ describe('88.6.1-26 — the time-slot validation error is an alert (D-42)', () =
     expect(availabilityFormAPI.submitResponse).not.toHaveBeenCalled();
   });
 });
+
+// Carry-in to plan 88.6.1-39 (deferred-items "AvailabilityForm stale server alert", found by plan
+// 88.6.1-26). A server failure followed by an invalid resubmit used to leave the OLD server
+// failure line on screen beside the NEW time-slot line: the server line was cleared only inside
+// the accepted submit, and react-hook-form never runs that on invalid values. A new submit attempt
+// now clears it before validation runs, so at most one failure line is on screen at a time.
+describe('88.6.1-39 carry-in — a new submit attempt clears the previous server failure line', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('S1: server failure, then an invalid resubmit: only the time-slot alert is on screen', async () => {
+    const SERVER_LINE = 'Something went wrong. Refresh the page to try again.';
+    const SLOT_LINE = 'Please select at least one time slot, or mark yourself as unavailable';
+    const user = userEvent.setup();
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    const unavailable = screen.getByRole('checkbox', { name: /unavailable this week/i });
+
+    // A valid submit (unavailable this week) that the server refuses.
+    await user.click(unavailable);
+    await user.click(screen.getByRole('button', { name: /submit availability/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(SERVER_LINE));
+
+    // Now invalid (no slots, not unavailable), and pressed again.
+    await user.click(unavailable);
+    await user.click(screen.getByRole('button', { name: /submit availability/i }));
+
+    // Positive signal first: the time-slot alert has arrived (CF-26).
+    await screen.findByText(SLOT_LINE);
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts, 'two failure lines from two different attempts are on screen').toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent(SLOT_LINE);
+    expect(screen.queryByText(SERVER_LINE), 'the previous attempt\'s server failure is still shown').toBeNull();
+    expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
+  });
+});
