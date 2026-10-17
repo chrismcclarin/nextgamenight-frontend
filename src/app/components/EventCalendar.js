@@ -17,6 +17,20 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
 
+/* DECISION Phase 88.6.1-73 (headingRef) [orchestrator request 2026-10-05, for plan 88.6.1-71]:
+   CHOSEN — a NAMED optional object-ref prop, `headingRef` (`React.RefObject<HTMLElement | null>`),
+   attached to the calendar's title heading in EVERY branch that renders one (the identity-failure
+   card, the first-load failure card and the calendar itself, in self-fetch AND external-events
+   mode; the loading card renders no heading, so there it is null). React 18 gives a function
+   component no `ref` prop (`package.json`, react ^18.2.0), hence a named prop. The calendar's own
+   RF1 notice, banner and focus guard use the same resolved ref (`calendarHeadingRef`), so a host
+   and the calendar agree on one element. Its consumers: plan 88.6.1-71's group-page events
+   banner, notice and focus guard.
+   REJECTED — (a) wrapping the component in `React.forwardRef`: a component-level `ref`
+   conventionally means the root element, not the heading, so a host would be misled; (b) the host
+   finding the heading by its text in the DOM (breaks when `title` changes, and the heading is
+   absent in the loading branch with nothing to say so); (c) a callback ref (the consumers are
+   `focusTarget` props, which take object refs). Changing this is a decision, not a cleanup. */
 export default function EventCalendar({
   refreshKey = 0,
   events: externalEvents = null,   // If provided, use these instead of fetching
@@ -26,7 +40,13 @@ export default function EventCalendar({
   title = 'Game Sessions Calendar', // Configurable header title
   showListView = true,             // Whether to show list view toggle
   scope = 'home',                  // CAL-03: persistence scope key (e.g. 'home', 'group:<id>')
+  // An optional object ref the calendar attaches to its title heading in every branch that renders
+  // one, so a host can pass it as a `focusTarget` (marker above).
+  headingRef = null,
 }) {
+  // Called unconditionally (rules of hooks); the host's ref wins when one is passed.
+  const ownHeadingRef = useRef(null);
+  const calendarHeadingRef = headingRef ?? ownHeadingRef;
   const { user } = Auth();
   const { timezone } = useTimezone();
   const router = useRouter();
@@ -302,7 +322,7 @@ export default function EventCalendar({
   if (externalEvents === null && selfIdentityErrorState.showError && !selfUuid) {
     return (
       <div className="card p-3 md:p-6">
-        <Heading level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
+        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
         <FetchErrorBanner
           state={selfIdentityErrorState}
           title="Couldn't load your calendar"
@@ -322,7 +342,7 @@ export default function EventCalendar({
   if (externalEvents === null && fetchErrorState.showError) {
     return (
       <div className="card p-3 md:p-6">
-        <Heading level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
+        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
         <FetchErrorBanner
           state={fetchErrorState}
           title="Couldn't load your calendar"
@@ -343,7 +363,7 @@ export default function EventCalendar({
   return (
     <div className="card p-3 md:p-6">
       <div className="flex justify-between items-center mb-6">
-        <Heading level={2} size="heading" className="text-content-primary">{title}</Heading>
+        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary">{title}</Heading>
         {showListView && (
           <div className="flex gap-2">
             {/* DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
