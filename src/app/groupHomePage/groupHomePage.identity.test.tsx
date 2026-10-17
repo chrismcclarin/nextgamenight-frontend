@@ -6,7 +6,7 @@
 // query and asserts no removed-redirect fires (loading is shown instead), plus
 // the positive path where a resolved member passes the gate without redirect.
 import * as React from 'react';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -288,5 +288,33 @@ describe('groupHomePage group-settings entry is owner/admin (88.6-21 D-31, owner
 
     expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Group settings' })).toBeNull();
+  });
+});
+
+// 88.6.1-55 Task 1 (D-46 / AC-23, R7-M7). The separator is read by TEXT, not by accessible
+// name: an aria-hidden separator is still in the DOM, so a role-based "no > in the name" check
+// would pass whether or not the attribute exists (the groupPlanning page test's reasoning).
+describe('groupHomePage breadcrumb — hidden separator, min-w-0, ring (88.6.1-55: D-46 / R7-M7)', () => {
+  it('BH-1. the separator is aria-hidden, the nav carries min-w-0 beside its overflow tokens, and the Home link keeps the house ring', async () => {
+    await renderHeaderAt('member');
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+
+    expect(within(nav).getByText('>')).toHaveAttribute('aria-hidden', 'true');
+
+    const navTokens = nav.className.split(/\s+/);
+    for (const token of ['inline-block', 'max-w-full', 'wrap-break-word', 'min-w-0']) {
+      expect(navTokens).toContain(token);
+    }
+
+    // The preservation half: the Home link already carried the ring (DECISION Phase 88.3-17).
+    const homeTokens = within(nav).getByRole('link', { name: 'Home' }).className.split(/\s+/);
+    for (const token of [
+      'focus:outline-hidden',
+      'focus-visible:ring-2',
+      'focus-visible:ring-focus-ring',
+      'focus-visible:ring-offset-2',
+    ]) {
+      expect(homeTokens).toContain(token);
+    }
   });
 });

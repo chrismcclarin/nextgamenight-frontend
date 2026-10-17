@@ -553,13 +553,24 @@ function GroupHomePage(){
                 below was inert — the owner's name ran off a 375px screen). `wrap-break-word` sits on
                 the nav because overflow-wrap inherits (groupPlanning's group link additionally
                 carries `max-w-[200px] truncate`, so it truncates rather than wraps — by design).
-                `min-w-0` is deliberately NOT added: no breadcrumb nav is a flex item (every parent is
-                a block div), so it would be inert; add it if one ever becomes one. Pinned on all five
-                navs by `breadcrumbNavOverflow.test.ts`; "tidying" to `block` or dropping `max-w-full`
-                is a decision, not a cleanup. */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                `min-w-0` is on the nav and KEPT on purpose: it is inert today, because no breadcrumb
+                nav is a flex item (every parent is a block div), and it is there so a future flex
+                parent cannot let `min-width: auto` beat `max-w-full` and re-open UAT3-D1. Pinned on
+                all five navs by `breadcrumbNavOverflow.test.ts` — the overflow tokens (now including
+                `min-w-0`), every breadcrumb link's house ring and every separator's `aria-hidden`;
+                "tidying" to `block`, dropping `max-w-full` or dropping `min-w-0` is a decision, not a
+                cleanup.
+                AMENDED Phase 88.6.1-55 (R7-M7): until this phase this marker left `min-w-0` out on
+                purpose, as inert, and asked for it to be added if a breadcrumb nav ever became a flex
+                item. Nothing guarded that condition (register R7-M7), so the trap is removed instead
+                of waited for. Plans 88.6.1-16, -52 and -53 added the token to the other four navs and
+                each names this marker as the decision it departs from; this amendment makes the
+                record match the code. The separator below is hidden from assistive tech in the same
+                plan (D-46), so a screen reader no longer reads "greater than" between the crumbs; it
+                looks the same. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
-                <span className="text-content-muted mx-2">{'>'}</span>
+                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || 'Group'}</span>
             </nav>
 

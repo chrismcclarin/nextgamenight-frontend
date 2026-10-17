@@ -38,7 +38,7 @@ import { readOpeningTag, sourceFiles, withoutComments } from '../test-utils/sour
 const SRC = path.resolve(__dirname, '..');
 const NAV_OPEN = /<nav(?=[\s>])/g;
 const BREADCRUMB_LABEL = /aria-label\s*=\s*(?:"Breadcrumb"|'Breadcrumb'|\{\s*['"`]Breadcrumb['"`]\s*\})/;
-const REQUIRED = ['inline-block', 'max-w-full', 'wrap-break-word'];
+const REQUIRED = ['inline-block', 'max-w-full', 'wrap-break-word', 'min-w-0'];
 
 /** The breadcrumb navs at FE 98bd003 (2026-09-30), by site file. Adding or moving one is a decision: update this. */
 const EXPECTED_SITES = [
@@ -121,7 +121,7 @@ describe('breadcrumb pills cap at their container (UAT3-D1, 2026-09-30)', () => 
     expect(navs.filter((n) => !n.labelled).map((n) => n.site)).toEqual([]);
   });
 
-  it('every breadcrumb nav has a literal className that is an inline-block pill capped by max-w-full with wrap-break-word', () => {
+  it('every breadcrumb nav has a literal className that is an inline-block pill capped by max-w-full with wrap-break-word and min-w-0', () => {
     const failing = crumbs
       .filter((n) => n.className === null || !REQUIRED.every((token) => n.className!.split(/\s+/).includes(token)))
       .map((n) => `${n.site} — ${n.className === null ? '(non-literal className)' : `"${n.className}"`}`);
