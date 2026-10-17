@@ -77,6 +77,9 @@ const h = vi.hoisted(() => ({
   selfRefetch: vi.fn(),
   // 88.6.1-25 task 3: every CreateEvent render's props, newest last (AC-7, the edit modal).
   createEventProps: [] as Array<Record<string, unknown>>,
+  // 88.6.1-68: how many CreateEvent instances are mounted right now (a mount effect counts up, its
+  // cleanup counts down), so an arm can tell whether the host closed (unmounted) its dialog.
+  createEventMounts: 0,
 }));
 
 // 88.6.1-25 S2: the RsvpSection stub records its latest props so a test can fire
@@ -136,12 +139,22 @@ vi.mock('@/app/components/BringSummary', () => ({
 // 88.6.1-25 task 3: CreateEvent records its props (AC-7 asserts which group the edit modal gets)
 // and still renders nothing; GameSuggestionCard renders one button named for its game, so a test
 // can tap a Recommended Games card. Every older case resolves suggestions to [], so no card renders.
-vi.mock('@/app/components/createEvent', () => ({
-  default: (props: Record<string, unknown>) => {
-    h.createEventProps.push(props);
-    return null;
-  },
-}));
+vi.mock('@/app/components/createEvent', async () => {
+  const { useEffect } = await import('react');
+  return {
+    default: (props: Record<string, unknown>) => {
+      h.createEventProps.push(props);
+      // 88.6.1-68: the mount counter (see `h.createEventMounts`).
+      useEffect(() => {
+        h.createEventMounts += 1;
+        return () => {
+          h.createEventMounts -= 1;
+        };
+      }, []);
+      return null;
+    },
+  };
+});
 vi.mock('@/app/components/GameSuggestionCard', () => ({
   default: ({
     game,
@@ -460,6 +473,7 @@ beforeEach(() => {
   h.selfRefetch.mockReset();
   rsvpProps.current = null;
   h.createEventProps.length = 0;
+  h.createEventMounts = 0;
   window.sessionStorage.clear();
 });
 
@@ -4453,5 +4467,68 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     await flushMacrotask();
     expect(screen.getAllByLabelText(BRINGING)).toHaveLength(count);
     expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0);
+  });
+});
+
+// Plan 88.6.1-68: a host's created-callback only refreshes; the one close after a success is
+// CreateEvent's own `modaltoggle()`, which plan 88.6.1-81 calls only while the press's dialog
+// session is still open. The stub records each render's props, so an arm can call the callbacks
+// the host handed the dialog while it was open. See DECISION Phase 88.6.1-68 (one close owner).
+describe("gameDetail hosts leave the dialog's close to CreateEvent (88.6.1-68)", () => {
+  type CreateEventProps = {
+    modal: boolean;
+    editingEvent: { id: string } | null;
+    onEventCreated: (data: unknown) => void;
+    modaltoggle: () => void;
+  };
+
+  it('GD-1: event view — a late update success refreshes the page and leaves the (reopened) Edit dialog open', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner' });
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventMounts).toBe(1));
+    const p = h.createEventProps.at(-1) as CreateEventProps;
+    expect(p.modal).toBe(true);
+    expect(p.editingEvent?.id).toBe(EVENT_ID);
+    const reads = (eventsAPI.getEvent as Mock).mock.calls.length;
+    const brings = (eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === EVENT_ID).length;
+
+    await act(async () => {
+      p.onEventCreated(null);
+    });
+    await waitFor(() => expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(reads + 1));
+    await waitFor(() =>
+      // Greater than, not "+1": the refresh reads the brings twice (refreshBringersSet and the
+      // brings refresh-key bump), measured 2026-10-17.
+      expect((eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === EVENT_ID).length).toBeGreaterThan(
+        brings
+      )
+    );
+    expect(h.createEventMounts).toBe(1);
+  });
+
+  it('GD-1o: event view, ordinary path (confirm-only) — callback then modaltoggle refreshes and closes', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner' });
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventMounts).toBe(1));
+    const p = h.createEventProps.at(-1) as CreateEventProps;
+    const reads = (eventsAPI.getEvent as Mock).mock.calls.length;
+    const brings = (eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === EVENT_ID).length;
+
+    await act(async () => {
+      p.onEventCreated(null);
+      p.modaltoggle();
+    });
+    await waitFor(() => expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(reads + 1));
+    await waitFor(() =>
+      // Greater than, not "+1": the refresh reads the brings twice (refreshBringersSet and the
+      // brings refresh-key bump), measured 2026-10-17.
+      expect((eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === EVENT_ID).length).toBeGreaterThan(
+        brings
+      )
+    );
+    expect(h.createEventMounts).toBe(0);
+    expect(screen.getByRole('button', { name: 'Edit Event' })).toBeInTheDocument();
   });
 });

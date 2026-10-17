@@ -24,7 +24,7 @@
 // are on the API SPY, which is implementation-independent by construction. Plan 88.1-09
 // swaps react-big-calendar for WeekGrid underneath this file; it must stay green unedited.
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addDays, addMinutes, addWeeks, format, parseISO, startOfWeek, subDays } from 'date-fns';
 
@@ -63,6 +63,7 @@ const api = vi.hoisted(() => ({
   getGroupMembers: vi.fn(),
   searchAll: vi.fn(),
   createEvent: vi.fn(),
+  getEvent: vi.fn(),
   getBallot: vi.fn(),
   getGroupHeatmap: vi.fn(),
   getPromptHeatmap: vi.fn(),
@@ -153,7 +154,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     groupsAPI: { ...actual.groupsAPI, getGroupMembers: api.getGroupMembers },
     gamesAPI: { ...actual.gamesAPI, searchAll: api.searchAll },
-    eventsAPI: { ...actual.eventsAPI, createEvent: api.createEvent },
+    eventsAPI: { ...actual.eventsAPI, createEvent: api.createEvent, getEvent: api.getEvent },
     ballotAPI: { ...actual.ballotAPI, getBallot: api.getBallot },
     availabilityAPI: { ...actual.availabilityAPI, getGroupHeatmap: api.getGroupHeatmap },
     promptAPI: { ...actual.promptAPI, getPromptHeatmap: api.getPromptHeatmap },
@@ -892,30 +893,85 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
     expect(dialog.querySelector('label[for="event-game-name"]')).toHaveTextContent('Game');
   });
 
-  it('4. focus: on OPEN the header Close control (the recorded fallback while members load); on CLOSE the NAMED trigger', async () => {
+  it('4. focus: on a cold open the header Close holds focus while the members load and the waiting region is marked busy; when the form arrives focus moves to the game input; on CLOSE the NAMED trigger', async () => {
     const user = userEvent.setup();
+    // Hold the members read so the wait is observable.
+    let releaseMembers: (v: unknown) => void = () => {};
+    api.getGroupMembers.mockReturnValueOnce(
+      new Promise((r) => {
+        releaseMembers = r;
+      })
+    );
     render(<AuditHost />);
     const trigger = screen.getByRole('button', { name: 'Plan Game Session' });
     trigger.focus();
     await user.click(trigger);
     const dialog = await screen.findByRole('dialog');
     // DERIVED BEFORE WRITING, from the site itself: `createEvent.js` passes
-    // `initialFocusRef={gameInputRef}`, but its own marker (the 88-33 Task 4 paragraph above
-    // the `return`) records that while the members fetch is pending the game input is NOT
-    // mounted, `applyInitialFocus` declines, and Radix's default stands — the header Close
-    // control. That is the target on a cold open, NAMED. Initial focus is applied once, on
-    // open, so it does not move when the input mounts a tick later (recorded, accepted:
-    // 88.6-44-SUMMARY.md).
+    // `initialFocusRef={gameInputRef}`, but while the members fetch is pending the game input is
+    // NOT mounted, `applyInitialFocus` declines, and Radix's default stands — the header Close
+    // control, NAMED. AMENDED Phase 88.6.1-68 (#233): this arm used to pin that focus STAYS on
+    // Close once the form arrives (the 88.6-44 "accepted by record" fallback, 88.6-44-SUMMARY.md).
+    // Plan 88.6.1-68 overrides that acceptance: the region the gate swaps is marked busy while it
+    // waits, and when the form arrives focus moves to the game input if it is still where the
+    // dialog put it. This arm is the create-mode twin of ED7 below.
     const close = screen.getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
-    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
+
+    await act(async () => {
+      releaseMembers(fixtures.members);
+    });
     await screen.findByText('Alice');
-    expect(document.activeElement).toBe(close);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Game')));
+    expect(dialog.querySelector('[aria-busy]')).toBeNull();
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // NAMED identity, never "not body".
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('ED7 (88.6.1-68, #233): in EDIT mode the wait for the fresh read is marked busy, and focus reaches the game input when the form arrives', async () => {
+    const editFixture = {
+      id: '77777777-7777-4777-8777-777777777777',
+      group_id: GROUP_ID,
+      game_id: '66666666-6666-4666-8666-666666666666',
+      Game: { name: 'Catan' },
+      EventParticipations: [],
+      duration_minutes: 120,
+      comments: 'v1 notes',
+    };
+    let releaseRead: (v: unknown) => void = () => {};
+    api.getEvent.mockReturnValueOnce(
+      new Promise((r) => {
+        releaseRead = r;
+      })
+    );
+    // Not `renderModal`: it awaits `Alice`, which an edit-mode opening hides until the populate ran.
+    render(
+      <CreateEvent
+        group_id={GROUP_ID}
+        modal
+        modaltoggle={vi.fn()}
+        onEventCreated={vi.fn()}
+        user={{ sub: 'auth0|self' }}
+        userRole="owner"
+        editingEvent={editFixture}
+      />
+    );
+    const dialog = await screen.findByRole('dialog');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }));
+
+    await act(async () => {
+      releaseRead(editFixture);
+    });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Game')));
+    expect(dialog.querySelector('[aria-busy]')).toBeNull();
   });
 });
 

@@ -65,7 +65,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
       getGroupMembers: vi.fn().mockResolvedValue(fixtures.members),
     },
     gamesAPI: { ...actual.gamesAPI, searchAll: vi.fn().mockResolvedValue([]) },
-    eventsAPI: { ...actual.eventsAPI, createEvent: vi.fn().mockResolvedValue({}), updateEvent: vi.fn().mockResolvedValue({}) },
+    eventsAPI: { ...actual.eventsAPI, createEvent: vi.fn().mockResolvedValue({}), updateEvent: vi.fn().mockResolvedValue({}), getEvent: vi.fn() },
     ballotAPI: { ...actual.ballotAPI, getBallot: vi.fn().mockResolvedValue(null) },
     availabilityAPI: {
       ...actual.availabilityAPI,
@@ -78,6 +78,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import CreateEventDefault from './createEvent';
 import { eventsAPI, groupsAPI } from '@/lib/api';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 // createEvent is a JS component whose inferred prop types come from its defaults
 // (`editingEvent = null` infers `null`); cast to a permissive type so the edit-mode arm can pass
@@ -357,6 +359,16 @@ describe('createEvent — the submit refuses a second press, stays focusable and
 
   it('C4: in EDIT mode the submit reads Updating... while it works, then Update Event again', async () => {
     const release = holdOnce(eventsAPI.updateEvent);
+    // Plan 88.6.1-68: the Edit dialog now reads the event fresh when it opens, so the arm hands
+    // that read the same event it passes as `editingEvent`.
+    vi.mocked(eventsAPI.getEvent).mockResolvedValue({
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      group_id: 'group-1',
+      game_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      Game: { name: 'Catan' },
+      EventParticipations: [],
+      duration_minutes: 120,
+    } as never);
     render(
       <CreateEvent
         group_id="group-1"
@@ -640,5 +652,162 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// Plan 88.6.1-68. The Edit dialog builds its form from the event AS THE SERVER HOLDS IT, read when
+// the dialog opens and only after every update this device still has in flight for that event has
+// settled — never from the host's pre-update copy. The gameDetail hosts mount a FRESH instance per
+// open, so these arms close with an unmount and reopen with a second render that still passes the
+// host's old copy (`v1`), exactly as the host would. See DECISION Phase 88.6.1-68 (edit reads the
+// event fresh) in createEvent.js.
+describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edit dialog never shows or sends the pre-update copy)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const EV = '99999999-9999-4999-8999-999999999999';
+  const OTHER_EV = '88888888-8888-4888-8888-888888888888';
+  const v1 = {
+    id: EV,
+    group_id: 'group-1',
+    // A game_id, so onSubmit never reaches the unmocked gamesAPI.resolveGame.
+    game_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    Game: { name: 'Catan' },
+    EventParticipations: [],
+    duration_minutes: 120,
+    comments: 'v1 notes',
+  };
+
+  function deferred<T>() {
+    let resolve: (v: T) => void = () => {};
+    let reject: (e: unknown) => void = () => {};
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  function comments(): HTMLTextAreaElement {
+    return screen.getByLabelText('Comments') as HTMLTextAreaElement;
+  }
+
+  async function settle(ms = 50) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, ms));
+    });
+  }
+
+  afterEach(() => {
+    vi.mocked(eventsAPI.getEvent).mockReset();
+  });
+
+  it('ED0: create mode keeps its own loading line, Loading group members... (confirm-only)', async () => {
+    const members = deferred<unknown>();
+    vi.mocked(groupsAPI.getGroupMembers).mockReturnValueOnce(members.promise as never);
+    render(<CreateEvent {...baseProps()} />);
+    expect(await screen.findByText('Loading group members...')).toBeInTheDocument();
+    expect(screen.queryByText('Loading game night...')).toBeNull();
+    await act(async () => {
+      members.resolve(fixtures.members);
+    });
+    await screen.findByText('Alice');
+  });
+
+  it('ED1: reopened while the first update is still in flight, it waits on Loading game night..., then shows and sends the saved values', async () => {
+    let server: Record<string, unknown> = v1;
+    vi.mocked(eventsAPI.getEvent).mockImplementation((async () => server) as never);
+    const A = render(<CreateEvent {...baseProps()} editingEvent={v1} />);
+    await screen.findByRole('button', { name: 'Update Event' });
+    fireEvent.change(comments(), { target: { value: 'v2 notes' } });
+    const put = deferred<unknown>();
+    (eventsAPI.updateEvent as Mock).mockImplementationOnce(() => put.promise);
+    fireEvent.submit(screen.getByTestId('create-event-submit').closest('form') as HTMLFormElement);
+    await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(1));
+    server = { ...v1, comments: 'v2 notes' };
+    A.unmount();
+
+    const readsBefore = vi.mocked(eventsAPI.getEvent).mock.calls.length;
+    render(<CreateEvent {...baseProps()} editingEvent={v1} />);
+    await settle();
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Loading group members...')).toBeNull();
+    expect(screen.queryByTestId('create-event-submit')).toBeNull();
+    expect(vi.mocked(eventsAPI.getEvent).mock.calls.length).toBe(readsBefore);
+
+    await act(async () => {
+      put.resolve({});
+    });
+    await waitFor(() => expect(comments().value).toBe('v2 notes'));
+    const submit = screen.getByTestId('create-event-submit');
+    expect(submit).toHaveAccessibleName('Update Event');
+    expect(submit).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.submit(submit.closest('form') as HTMLFormElement);
+    await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(2));
+    expect((eventsAPI.updateEvent as Mock).mock.calls[1][1]).toMatchObject({ comments: 'v2 notes' });
+  });
+
+  it('ED2: reopened after the update landed but before the host refreshed, it shows the saved values', async () => {
+    let server: Record<string, unknown> = v1;
+    vi.mocked(eventsAPI.getEvent).mockImplementation((async () => server) as never);
+    const propsA = baseProps();
+    const A = render(<CreateEvent {...propsA} editingEvent={v1} />);
+    await screen.findByRole('button', { name: 'Update Event' });
+    fireEvent.change(comments(), { target: { value: 'v2 notes' } });
+    fireEvent.submit(screen.getByTestId('create-event-submit').closest('form') as HTMLFormElement);
+    await waitFor(() => expect(propsA.modaltoggle).toHaveBeenCalledTimes(1));
+    server = { ...v1, comments: 'v2 notes' };
+    A.unmount();
+
+    render(<CreateEvent {...baseProps()} editingEvent={v1} />);
+    await waitFor(() => expect(comments().value).toBe('v2 notes'));
+  });
+
+  it('ED3: a failed re-read shows the register line and closes, and never builds a form', async () => {
+    const error = new ApiError('Request failed', 'internal', 500);
+    vi.mocked(eventsAPI.getEvent).mockRejectedValue(error);
+    const props = baseProps();
+    render(<CreateEvent {...props} editingEvent={v1} />);
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    expect(toastSpies.error).toHaveBeenCalledWith(getFetchErrorMessage(error));
+    await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('create-event-submit')).toBeNull();
+  });
+
+  it('ED3b: a re-read that answers for a different event is treated as a failed read', async () => {
+    vi.mocked(eventsAPI.getEvent).mockResolvedValue({ ...v1, id: OTHER_EV } as never);
+    const props = baseProps();
+    render(<CreateEvent {...props} editingEvent={v1} />);
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    expect(toastSpies.error).toHaveBeenCalledWith(getFetchErrorMessage(new Error('x')));
+    await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('create-event-submit')).toBeNull();
+  });
+
+  it('ED6: a failed members read in edit mode shows the register line and closes, with no blank form', async () => {
+    const error = new ApiError('Request failed', 'internal', 500);
+    vi.mocked(groupsAPI.getGroupMembers).mockRejectedValueOnce(error);
+    vi.mocked(eventsAPI.getEvent).mockResolvedValue(v1 as never);
+    const props = baseProps();
+    render(<CreateEvent {...props} editingEvent={v1} />);
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    expect(toastSpies.error).toHaveBeenCalledWith(getFetchErrorMessage(error));
+    await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(screen.queryByTestId('create-event-submit')).toBeNull();
+    expect(screen.queryByLabelText('Comments')).toBeNull();
+  });
+
+  it('ED6b: when both reads fail, one opening shows ONE toast and closes ONCE', async () => {
+    vi.mocked(groupsAPI.getGroupMembers).mockRejectedValueOnce(new ApiError('Request failed', 'internal', 500));
+    vi.mocked(eventsAPI.getEvent).mockRejectedValue(new ApiError('Request failed', 'internal', 500));
+    const props = baseProps();
+    render(<CreateEvent {...props} editingEvent={v1} />);
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalled());
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalled());
+    await settle();
+    expect(toastSpies.error).toHaveBeenCalledTimes(1);
+    expect(props.modaltoggle).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('create-event-submit')).toBeNull();
   });
 });
