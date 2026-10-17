@@ -8,7 +8,7 @@ import FriendInvitePanel from './FriendInvitePanel';
 import { toast } from 'sonner';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
@@ -41,13 +41,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // `group_id`, never `members.length` — a roster that loaded empty and one never loaded differ.
     const [loadedGroupId, setLoadedGroupId] = useState(null);
     const hasLoaded = loadedGroupId === group_id;
-    // Retained content for the RF1 convergence (D-51, D-50): this group's roster loaded, a
-    // loaded-EMPTY one included. A has-loaded flag, never a row count. Plan 88.6.1-78 moves it
-    // below the members error adapter and re-derives it through `useRetainedContent` (C10).
-    const rosterRetained = hasLoaded;
     // W027: bumped at the start of every fetchMembers call; a run that is no longer the latest
     // writes nothing after its awaits (see the W027 marker above fetchMembers).
     const fetchGenerationRef = useRef(0);
+    // Mirrors `rosterWithheld` (loaded, but withheld by `useRetainedContent`) after each commit;
+    // the close reset reads it (see the C10 marker below the members error adapter).
+    const rosterWithheldRef = useRef(false);
     // The group the latest fetch asked for: a fetch for another group resets the previous
     // group's error, pending invites and role, and the banner shows an error only for this key.
     const [requestedGroupId, setRequestedGroupId] = useState(null);
@@ -160,6 +159,16 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         // the resolved UUID instead of sticking at a wrong "no role".
     }, [modal, group_id, user?.sub, selfUuid]);
 
+    // The close reset (R8 empty at a dialog host; C10 memory): see DECISION Phase 88.6.1-78
+    // (C10 access or gone, close reset) below the members error adapter. A run still in flight
+    // writes nothing; a transient error is cleared so a reopen mounts the notice's region empty;
+    // a withheld roster keeps its error. The roster itself is untouched (D-09a).
+    useEffect(() => {
+        if (modal) return;
+        fetchGenerationRef.current += 1;
+        if (!rosterWithheldRef.current) setError(null);
+    }, [modal]);
+
     /* DECISION Phase 88.6.1-42 (W027 / IN-208): a generation counter (`fetchGenerationRef`)
        bumped at CALL START and checked after every await (the members GET, the pending-invites
        GET, the catch, each finally), so a superseded run writes nothing. It is the house idiom of
@@ -185,7 +194,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
          Prohibition 2). Its breadcrumb below is byte-unchanged.
        Changing any of this is a decision, not a cleanup. */
     const fetchMembers = async () => {
-        if (!group_id || !user?.sub) return;
+        if (!modal || !group_id || !user?.sub) return;
         const generation = ++fetchGenerationRef.current;
         const isCurrent = () => generation === fetchGenerationRef.current;
         if (requestedGroupId !== group_id) {
@@ -277,6 +286,38 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         isError: Boolean(error) && requestedGroupId === group_id,
         error,
         refetch: retryMembers,
+    });
+    /* DECISION Phase 88.6.1-78 (C10 access or gone, close reset):
+       CHOSEN: (1) `rosterRetained` comes from plan 88.6.1-70's `useRetainedContent` on plan
+       88.6.1-42's has-loaded flag for this group (a has-loaded flag, never a row count: a roster
+       that loaded EMPTY is retained content, D-50) — the one predicate for every 401 / 403 / 404 /
+       410 form, remembered until the next success — so an answer saying the viewer lost access or
+       the group is gone withholds the rows, the empty sentence, the pending invites and the Invite /
+       Reset action row for the full banner's register line, and the RF1 notice never offers a Retry
+       for it; (2) closing the dialog supersedes any in-flight run and clears a TRANSIENT error, so a
+       reopen mounts the notice's region empty and speaks only about the reopen's own refresh;
+       (3) while the roster is withheld the error is KEPT across the close (`rosterWithheldRef`), so
+       the hook's memory survives and a reopen never paints a withdrawn roster; (4) `fetchMembers`
+       returns at once while the dialog is closed, so the kept error arms no background refetch while
+       the dialog is closed — the work is gated, never the error (gating the error state on `modal`
+       would end the hook's memory at the close).
+       REJECTED: (a) the notice over an access answer: its Retry cannot succeed and it keeps
+       presenting content the viewer has lost; (b) writing an empty roster on access loss: contract
+       C1 forbids writing the data, the hook withholds it; (c) clearing the error at the START of a
+       run instead of on close: contract C2 forbids it (it unmounts a pressed Retry); (d) a local list
+       of codes: contract C10 (this plan's earlier forbidden / not-found set missed 401 and the 410
+       family); (e) clearing every error on close: it ends the hook's memory and paints the withdrawn
+       roster for the length of the reopen's GET; (f) keeping only a stored access or gone code across
+       the close: after a failed Try again the stored code is transient while the roster is still
+       withheld; (g) keeping every error across the close: the reopen would announce a failure from
+       before the close, moments before its own refresh may succeed; (h) leaving the Invite / Reset
+       action row up on a withdrawn role: its controls act on authorization the latest answer
+       revoked.
+       Changing this is a decision, not a cleanup. */
+    const rosterRetained = useRetainedContent(hasLoaded, membersErrorState);
+    const rosterWithheld = hasLoaded && !rosterRetained;
+    useEffect(() => {
+        rosterWithheldRef.current = rosterWithheld;
     });
 
     // Runs ONLY after the escalation gate below has been confirmed, or directly for
@@ -610,9 +651,22 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 88.6.1-77, its notice outside its scrolling list). Mockup
                 https://claude.ai/artifact/JMvFMJXD1M6GkDt6xGBuYi (v2, frame 3).
                 Moving this back into the scrolling body is a decision, not a cleanup. */}
+            {/* DECISION Phase 88.6.1-78 (C12, focus when the roster is withdrawn):
+                CHOSEN: plan 88.6.1-70's shared guard beside the RF1 notice, outside the roster block
+                and the scrolling body, with no target — so when an access or gone answer withdraws
+                the rows while a row control holds focus, pressed or not (the hook's tab-return
+                re-attempt presses nothing), focus lands on this dialog's title through plan
+                88.6.1-04's floor.
+                REJECTED: (a) the guard inside the roster block: it would unmount with the rows it
+                watches and never act; (b) relying on plan 88.6.1-42's three press arms: a refresh
+                nobody pressed arms nothing; (c) leaving it to Radix's focus scope: its removal
+                handler focuses the dialog container, which names nothing; (d) focus code written in
+                this file (D-04).
+                Changing this is a decision, not a cleanup. */}
+            <RetainedContentFocusGuard retained={rosterRetained} />
             <RefreshFailedNotice state={membersErrorState} retained={rosterRetained} className="px-3 pt-3 md:px-6" />
             <Modal.Body>
-                {userRole && userRole !== 'pending' && (
+                {userRole && userRole !== 'pending' && !rosterWithheld && (
                     <div className="mb-4 pb-4 border-b border-line flex flex-wrap gap-2">
                         <Button
                             variant="primary"
@@ -958,7 +1012,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 )}
 
                 {/* Pending Invites Section */}
-                {pendingInvites.length > 0 && (
+                {pendingInvites.length > 0 && rosterRetained && (
                     <div className="mt-6">
                         <div className="flex items-center gap-2 mb-3">
                             <Heading level={3} size="heading" className="text-content-primary">Pending Invites</Heading>
