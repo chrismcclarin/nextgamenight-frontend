@@ -525,9 +525,7 @@ export default function BrowseMoreModal({
               appears and clears without moving the dialog.
               REJECTED, each with its reason: the slot in the scrolling body (it scrolls out of
               view when the user has scrolled down the grid — exactly when they change a sort);
-              D-22's srOnlyWhenEmpty prop (it collapses an empty region to zero height, so the
-              dialog would move the instant E8 appears — the defect D-09 rules out; AC-26 records
-              this site as keep-with-reason); dimming old rows (a look option, Phase 88.9 per
+              dimming old rows (a look option, Phase 88.9 per
               D-09); a spinner (no house spinner primitive, SPEC amendment row 3); aria-busy on a
               live region (RESEARCH A3 — it sits on the results wrapper only); reserving two
               lines for a wrapped failure line (20px more permanent blank space on a 667px phone;
@@ -542,16 +540,27 @@ export default function BrowseMoreModal({
               without them React reuses the first-load node and switches its role and text in
               place, which is not an inserted alert (r1 A3). In every state at most one alert
               element contains the failure line; whenever the body carries it, the assertive
-              region here is empty (r1 D9). Changing any of this is a decision, not a cleanup. */}
+              region here is empty (r1 D9).
+              AMENDED Phase 88.6.1-64 (D-22): plan 32 first REJECTED D-22's srOnlyWhenEmpty prop
+              here, believing it collapses an empty region to zero height so the dialog would move
+              the instant E8 appears. The code shows otherwise: the reserved line is THIS wrapper's
+              min-h-5, and StatusRegion adds only text-sm plus caller classes, so an sr-only empty
+              region costs the line nothing and E8 / the failure line still appear without moving
+              the dialog. Both regions now take the prop (AC-26 census findings AC26c-09/10, D-22's
+              one empty-region shape). Containing block for the sr-only regions: the sticky
+              (positioned) toolbar, inside the dialog's own clip. Changing any of this is a
+              decision, not a cleanup. */}
           <div data-testid="browse-more-status" className="mt-2 min-h-5">
             <StatusRegion
               message={refreshing ? UPDATING_SUGGESTIONS : ''}
               className="text-content-muted"
+              srOnlyWhenEmpty
             />
             <StatusRegion
               politeness="assertive"
               message={refreshError || ''}
               className="text-content-status-error"
+              srOnlyWhenEmpty
             />
           </div>
         </div>
