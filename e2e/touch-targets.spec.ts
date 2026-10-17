@@ -600,7 +600,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
     // Census row 5: "Invite Member" — one per group card; the fixture user owns at
     // least one group, so at least one must render (guard asserts, no silent skip).
-    const inviteMember = page.getByRole('button', { name: /invite member to group/i });
+    // The name is per card since 88.6.1-54 (D-19, copy row H2); this prefix matches every card
+    // and the nameless-group fallback, and guardResolved / assertMin44 read .first().
+    const inviteMember = page.getByRole('button', { name: /^invite member to /i });
     await guardResolved(inviteMember, 'the per-card "Invite Member" CTA (grouplist.js census row 5)');
     await assertMin44(inviteMember, '"Invite Member"');
 

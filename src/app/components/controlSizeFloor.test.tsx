@@ -445,8 +445,10 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    *    distinguishes the COMPACT tile from the full-variant twin below it, whose label is the
    *    bare `tileLabel`.
    *  - the home-card cog: the unique element whose opening tag contains
-   *    `aria-label="Customize group"`. Exactly one non-test hit (`grouplist.js:996`, anchor
-   *    `aria-label="Customize group"`, re-measured 2026-10-15).
+   *    `title={customizeGroupLabel(group.name)}`. Re-anchored by 88.6.1-54 for D-19 and D-52,
+   *    because the name is now computed per card and the title is its only name source. Exactly
+   *    one non-test hit, in grouplist.js (anchor customizeGroupLabel), with no line number
+   *    because that file moves every wave.
    *
    * THE COG SUBJECT WAS RE-DERIVED, NOT TAKEN FROM THE PLAN. `88.6-12-PLAN.md` named
    * `src/app/userHome/UserHomePage.js`; a `Cog|Gear|Settings` grep over that file returns no
@@ -478,7 +480,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       label: 'the COMPACT month event tile',
     },
     homeCardCog: {
-      anchor: 'aria-label="Customize group"',
+      anchor: 'title={customizeGroupLabel(group.name)}',
       expectedFile: 'app/components/grouplist.js',
       expectedCount: 1,
       floor: MIN_TARGET_44,

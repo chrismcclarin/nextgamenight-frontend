@@ -27,6 +27,46 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
 
+/* DECISION Phase 88.6.1-54 (D-19, D-52, copy rows H1/H2, D-33 row 13): each group card's
+   gear and Invite button are named after THAT card's group, so a screen-reader or Voice
+   Control user hears N different controls instead of N identical ones.
+   CHOSEN:
+   - the names are built per card from `group.name` by the two functions below: "Customize
+     {group}" (copy row H1) and "Invite member to {group}" (copy row H2). The name is trimmed at
+     both ends and is never truncated or escaped by hand; React writes the attribute as text.
+   - an empty, whitespace-only or non-string name falls back to today's words, "Customize group"
+     and "Invite member to group" (D-33 row 13: no new words, D-31).
+   - the gear's ONLY name source is its `title` (owner ruling 2026-10-05, D-52: the desktop hover
+     tooltip stays and now shows the name), with its glyph in an `aria-hidden` span so the title
+     is what names it. Invite has visible text and is named by its `aria-label` alone.
+   REJECTED:
+   (a) `aria-describedby` pointing at the card heading: a skippable hint, and the names would
+       stay identical in the rotor and in Voice Control (D-19);
+   (b) naming the gear by `aria-label` and dropping its `title` (this plan's first draft): the
+       owner kept the hover tooltip (D-52);
+   (c) `aria-label` AND `title` together: the title becomes the description and the name can be
+       read twice (the swatch rule in GroupSettings.js, round-3 #30);
+   (d) leaving the glyph exposed: the emoji, not the title, becomes the gear's name;
+   (e) truncating long names (SPEC edge R6 encoding: untruncated);
+   (f) the copy table's alternate "Settings for {group}" (H1 was ratified as proposed, D-30);
+   (g) bare template literals at the two sites with no fallback, which give an empty name the
+       bare word "Customize".
+   NOTE: Sentry's click selector strings copy a clicked control's `aria-label` / `title`. Plan
+   88.6.1-76's scrubber keeps only the static prefix ("Customize ", "Invite member to ") and
+   redacts the rest, so its prefix list must follow any change to these two templates.
+   Changing this is a decision, not a cleanup. */
+const CUSTOMIZE_GROUP_FALLBACK = 'Customize group';
+const INVITE_MEMBER_FALLBACK = 'Invite member to group';
+const groupNameForLabel = (name) => (typeof name === 'string' ? name.trim() : '');
+const customizeGroupLabel = (name) => {
+  const n = groupNameForLabel(name);
+  return n ? `Customize ${n}` : CUSTOMIZE_GROUP_FALLBACK;
+};
+const inviteMemberLabel = (name) => {
+  const n = groupNameForLabel(name);
+  return n ? `Invite member to ${n}` : INVITE_MEMBER_FALLBACK;
+};
+
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
   const { user: authUser } = Auth();
@@ -980,7 +1020,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                             onGroupSelect(group);
                           }
                         }}
-                        aria-label="Invite member to group"
+                        aria-label={inviteMemberLabel(group.name)}
                       >
                         Invite Member
                       </Button>
@@ -1135,6 +1175,21 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                          88.6 D-09. It is the base, not the size variant, that holds the sibling
                          at 44px.)
 
+                         AMENDED Phase 88.6.1-54 (D-19, D-52), everything above KEPT AS HISTORY:
+                         the anchor named in (a) moved WITH the label, by decision. The gear's
+                         name is now computed per card (copy row H1) and carried by its `title`
+                         alone (D-52: the owner kept the hover tooltip; no `aria-label`), so
+                         `groupColourRendering.test.ts` test 19 and `controlSizeFloor.test.tsx`'s
+                         `homeCardCog` subject both anchor on the opening-tag text
+                         `title={customizeGroupLabel(group.name)}`. Both were re-anchored in the
+                         same commit as the label change, with no assertion weakened. The glyph
+                         sits in an `aria-hidden` span so the title is the name; unwrapping it
+                         makes the emoji the gear's name, and any later glyph (88.9's SVG item)
+                         must stay hidden the same way. The rule that a red class pin means the
+                         ELEMENT is wrong, never the assertion, still stands. Renaming
+                         `customizeGroupLabel` or its argument, or moving the name back to an
+                         `aria-label`, reds both scans, and that is intended.
+
                          Any of this is a decision, not a cleanup. */
                       <button
                         className="min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
@@ -1142,10 +1197,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           e.stopPropagation();
                           setSettingsGroup(group);
                         }}
-                        aria-label="Customize group"
-                        title="Customize group"
+                        title={customizeGroupLabel(group.name)}
                       >
-                        ⚙️
+                        <span aria-hidden="true">⚙️</span>
                       </button>
                     )}
                   </div>

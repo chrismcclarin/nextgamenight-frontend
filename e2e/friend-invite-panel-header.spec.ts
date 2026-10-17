@@ -23,8 +23,8 @@ test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 test('R7-M5: the Invite Members header row is 12px/8px at phone and 24px/12px at desktop', async ({ page, isMobile }) => {
   await page.goto('/');
 
-  // grouplist.js names each card's invite button "Invite member to group" (plan 88.6.1-54 may
-  // add the group's name after "to"), so the match stops at "to".
+  // grouplist.js names each card's invite button "Invite member to {group}" (plan 88.6.1-54,
+  // D-19; "Invite member to group" when a group has no name), so the match stops at "to".
   const invite = page.getByRole('button', { name: /invite member to/i }).first();
   await expect(invite, 'at least 1 invite button renders for the fixture group').toBeVisible({ timeout: 15_000 });
   await invite.click();

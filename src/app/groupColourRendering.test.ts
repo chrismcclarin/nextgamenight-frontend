@@ -1409,12 +1409,13 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     }
 
     // (b) the home-card cog — NOT a `.btn`, so it takes a real border. Located
-    // by its aria-label, which follows the className on the same opening tag.
+    // by its title, which follows the className on the same opening tag.
     const gl = code('app/components/grouplist.js');
-    const at = gl.indexOf('aria-label="Customize group"');
-    expect(at, 'the cog lost its aria-label — re-anchor this assertion').toBeGreaterThan(-1);
+    // Re-anchored 88.6.1-54 (D-19, D-52): the name is computed per card and carried by the title alone, so the anchor is the title expression.
+    const at = gl.indexOf('title={customizeGroupLabel(group.name)}');
+    expect(at, 'the cog lost its title — re-anchor this assertion').toBeGreaterThan(-1);
     const cog = attrExprs(gl, 'className').filter((e) => e.end < at).pop();
-    expect(cog, 'no className expression precedes the cog aria-label').toBeDefined();
+    expect(cog, 'no className expression precedes the cog title').toBeDefined();
 
     for (const util of ['bg-btn-secondary', 'dark:bg-surface-elevated', 'border border-line-control']) {
       expect(cog!.text, `the cog lost its ${util}`).toContain(util);
