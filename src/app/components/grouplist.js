@@ -21,7 +21,7 @@ import MemberChipStack from './MemberChipStack';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
-import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
@@ -289,9 +289,23 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   });
   // D-37 / D-50 / D-51: something loaded for the CURRENT identity, success only. A has-loaded
   // flag and never a row count (88.6.1-70 contract C3), so a list that loaded EMPTY is retained
-  // content too. Plan 88.6.1-77 swaps this right-hand side for its retained-content hook
-  // (contract C10); the render below reads only these two names.
-  const groupsRetained = groupsLoadedFor === selfUuid;
+  // content too. The flag goes through plan 70's retained-content hook (contract C10, the marker
+  // below); the render below reads only these two names.
+  /* DECISION Phase 88.6.1-77 (C10, access or gone): an answer saying the viewer may no longer
+     see the list, or that it is gone, is never a refresh failure.
+     CHOSEN: `retained` comes from plan 70's `useRetainedContent` on plan 41's has-loaded flag —
+     the one predicate for every 401 / 403 / 404 / 410 form, remembered until the next success —
+     so such an answer withdraws the cards (and a loaded-empty list's sentence) for the full
+     banner's register line, and the RF1 notice never offers a Retry for it.
+     REJECTED: (a) plan 41's bare has-loaded flag here — a 401 after a session expired mid-visit
+     would keep the cards under the notice's "showing what loaded earlier" with a Retry that
+     cannot fix a sign-in, while the register line names the remedy; (b) a local list of codes
+     (contract C10: one predicate in plan 70's module; a local list drifts the day a code is
+     added — plan 70's map fails the build instead); (c) special-casing only 401 because the list
+     route answers 403 only for another user's id — the predicate is phase-wide and a narrower
+     local rule is a second standard.
+     Changing this is a decision, not a cleanup. */
+  const groupsRetained = useRetainedContent(groupsLoadedFor === selfUuid, groupsErrorState);
   // The full groups banner holds the list's place only while nothing is retained (contract C6).
   const groupsBannerShown = groupsErrorState.showError && !groupsRetained;
 
@@ -380,6 +394,26 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
           affordances (Invite / settings) silently vanish — surface a compact,
           non-blocking degrade notice instead of failing silently (D-11). */}
       <FetchErrorBanner state={selfIdentityErrorState} compact />
+
+      {/* DECISION Phase 88.6.1-77 (C12, focus when the list is withdrawn): focus never falls to
+          the page body when an access or gone answer withdraws the cards.
+          CHOSEN: plan 70's shared guard, placed beside the RF1 notice outside the scroll area,
+          handed "Your Groups" — so when an access or gone answer withdraws the cards while a card
+          control holds focus, pressed or not (the hook's tab-return re-attempt presses nothing),
+          focus lands on the heading the notice and plan 41's apply-time arm also land on; never
+          the page body. ONE guard, in the main return only: contract C12's position rule (2) is
+          met because the only flip that switches this component to another return (the
+          first-load return, or the identity shell) is a change of signed-in identity, and that is
+          a different identity query (`useSelfIdentity` keys it per Auth0 subject), which this app
+          reaches only through a page load; within a session every flip (access or gone, by Retry
+          or by tab return) keeps the main return, so the guard is one instance.
+          REJECTED: (a) the guard inside the scroll area or the cards wrapper — it would unmount
+          with the cards it watches; (b) relying on plan 41's apply-time arm — it arms in the
+          success path only, and a withdrawal is a failure; (c) focus code written in this file
+          (D-04: one shared mechanism; plan 70 owns it); (d) the floor as the landing — the home
+          page has no h1, and `main` is the top of the page, far from the list on a phone.
+          Changing this is a decision, not a cleanup. */}
+      <RetainedContentFocusGuard retained={groupsRetained} focusTarget={groupsHeadingRef} />
 
       {/* DECISION Phase 88.6.1-77 (AC-29 / RF1, owner ruling 2026-10-05): a failed REFRESH of
           the home list says so with plan 88.6.1-70's shared notice.

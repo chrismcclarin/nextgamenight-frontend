@@ -249,7 +249,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     const err = new ApiError('Forbidden', 'forbidden', 403);
     h.getUserGroups.mockRejectedValueOnce(err);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect((await screen.findAllByText(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
     await waitFor(() => expect(document.activeElement).toBe(yourGroups()));
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -294,7 +294,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
   it('RF-9. an UNPRESSED refresh that SUCCEEDS while Retry holds focus lands on "Your Groups" (C12 b, C8 f2)', async () => {
     await loadCardsThenFail(ERR_500);
     await waitForRf1();
-    const retry = screen.getByRole('button', { name: 'Retry', exact: true });
+    const retry = screen.getByRole('button', { name: 'Retry' });
     // Focused, never clicked.
     act(() => retry.focus());
     expect(document.activeElement).toBe(retry);
