@@ -270,8 +270,11 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
       const self = dialog.getByText('(You)', { exact: true });
       await expect(self).toBeVisible({ timeout: 15_000 });
 
-      // A real close, with the dialog's own Close control.
-      await dialog.getByRole('button', { name: 'Close' }).tap();
+      // A real close, with the dialog's own footer Close (ManageMembers' Modal.Footer action). Two
+      // buttons are NAMED Close: the Modal header's x (aria-label="Close", text "x") and this one, so
+      // the role locator is narrowed by its visible text (wave 7 CI gate, run 39020174955:
+      // strict-mode, 2 elements).
+      await dialog.getByRole('button', { name: 'Close', exact: true }).filter({ hasText: 'Close' }).tap();
       await expect(dialog).toHaveCount(0);
 
       // Installed only now, so the first load is never touched. The backstop holds any write; the
