@@ -8,8 +8,9 @@
 //   - "never appears when dismissed" alone passes for a banner that never
 //     renders at all;
 //   - "appears when not dismissed" alone passes for the old flashing shape.
+import * as React from 'react';
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import AutoPromptBehaviorBanner from './AutoPromptBehaviorBanner';
 
@@ -36,7 +37,7 @@ describe('AutoPromptBehaviorBanner storage-read flash (Phase 88-25 / F-761)', ()
     render(<AutoPromptBehaviorBanner />);
 
     expect(screen.getByText(/recurring poll behavior changed/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /dismiss banner/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Got it' })).toBeInTheDocument();
   });
 
   it('the FIRST render paints nothing — server HTML is empty, so the reveal is effect-driven', () => {
@@ -56,7 +57,7 @@ describe('AutoPromptBehaviorBanner storage-read flash (Phase 88-25 / F-761)', ()
     const { getByRole } = render(<AutoPromptBehaviorBanner />);
 
     await act(async () => {
-      getByRole('button', { name: /dismiss banner/i }).click();
+      getByRole('button', { name: 'Got it' }).click();
     });
 
     expect(localStorage.getItem(STORAGE_KEY)).toBe('1');
@@ -80,14 +81,78 @@ describe('AutoPromptBehaviorBanner info treatment (D-33)', () => {
     // families, no fifth). A `text-status-info` class therefore emits no rule
     // at all, which is how this button shipped uncoloured.
     render(<AutoPromptBehaviorBanner />);
-    const btn = screen.getByRole('button', { name: /dismiss banner/i });
+    const btn = screen.getByRole('button', { name: 'Got it' });
     expect(btn.className).not.toContain('status-info');
     expect(btn.className).toContain('text-content-link');
   });
 
   it('the dismiss control clears the 44px phone touch floor', () => {
     render(<AutoPromptBehaviorBanner />);
-    const btn = screen.getByRole('button', { name: /dismiss banner/i });
+    const btn = screen.getByRole('button', { name: 'Got it' });
     expect(btn.className).toContain('min-h-11');
+  });
+});
+
+// Phase 88.6.1-79 (Req 5, D-04 / D-05 / D-07): `Got it` removes the banner together with the
+// focused button. Focus must land on the host's target (on its one mount, the Check-ins expand
+// control), else plan 04's floor — never `<body>`. The button's accessible name is its visible
+// text (WCAG 2.5.3, review #241). Testing Library string names are exact by default.
+describe('Got it keeps focus (88.6.1-79, Req 5)', () => {
+  function Host() {
+    const ref = React.useRef<HTMLButtonElement | null>(null);
+    return (
+      <div>
+        <button type="button" ref={ref}>
+          Check-ins
+        </button>
+        <AutoPromptBehaviorBanner focusFallbackRef={ref} />
+      </div>
+    );
+  }
+
+  it('AB1: with the host target, focus lands on the Check-ins control after Got it', async () => {
+    render(<Host />);
+    const gotIt = await screen.findByRole('button', { name: 'Got it' });
+    act(() => gotIt.focus());
+    await act(async () => {
+      gotIt.click();
+    });
+
+    expect(screen.queryByRole('button', { name: 'Got it' })).not.toBeInTheDocument();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('1');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Check-ins' }))
+    );
+  });
+
+  it('AB2: with no host target, focus lands on the page floor (main h1), never body', async () => {
+    render(
+      <main>
+        <h1>Plan the next game</h1>
+        <AutoPromptBehaviorBanner />
+      </main>
+    );
+    const gotIt = await screen.findByRole('button', { name: 'Got it' });
+    act(() => gotIt.focus());
+    await act(async () => {
+      gotIt.click();
+    });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('AB3: the button is named by its own visible text (WCAG 2.5.3 Label in Name)', () => {
+    render(<AutoPromptBehaviorBanner />);
+    const byText = screen.getByText('Got it').closest('button');
+    expect(byText).not.toBeNull();
+    const text = (byText?.textContent ?? '').trim().toLowerCase();
+    // The computed name, lower-cased, starts with the visible text, lower-cased.
+    const named = screen.getByRole('button', {
+      name: (accessibleName) => accessibleName.toLowerCase().startsWith(text),
+    });
+    expect(named).toBe(byText);
   });
 });
