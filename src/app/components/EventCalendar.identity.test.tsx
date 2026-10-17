@@ -49,7 +49,14 @@ vi.mock('@/components/ui/useFetchErrorState', () => ({
 // this component now — identity resolution and the events fetch — and they render the SAME
 // banner in the SAME card frame, so a single `data-testid` could not tell them apart. The
 // context string is what each branch names itself by.
-vi.mock('@/components/ui/FetchErrorBanner', () => ({
+// Phase 88.6.1-73, plan 88.6.1-70 contract C9: the importOriginal spread keeps the REAL module, so
+// useRetainedContent, isAccessOrGoneError and RetainedContentFocusGuard stay real (a stubbed
+// predicate would change which branch this suite renders); only the banner stub below and
+// RefreshFailedNotice (rendering nothing, so the identity-banner assertions can never match it)
+// are overridden.
+vi.mock('@/components/ui/FetchErrorBanner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/ui/FetchErrorBanner')>()),
+  RefreshFailedNotice: () => null,
   FetchErrorBanner: ({
     state,
     reportContext,
