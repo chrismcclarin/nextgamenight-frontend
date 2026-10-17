@@ -11,6 +11,7 @@ import EventDayModal from './EventDayModal';
 import { useTimezone } from './TimezoneProvider';
 import { formatWithTzAbbr } from '../../lib/datetime';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
@@ -53,7 +54,8 @@ export default function EventCalendar({
   // Resolve the caller's own Users.id UUID; getUserEvents sends it instead of
   // the Auth0 sub. It resolves ASYNC after mount, so the fetch effect keys on it.
   const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-  const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+  // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+  const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
   const [internalEvents, setInternalEvents] = useState([]);
   const [loading, setLoading] = useState(externalEvents === null);
   /* DECISION Phase 88.6-27 (UI-SPEC §6.2, the error-branch-before-empty-branch rule): the
@@ -422,7 +424,10 @@ export default function EventCalendar({
   // and did. REJECTED: (a) gating on the error flag alone (that lie); (b) a compact identity
   // notice beside the calendar (a visible addition, and identity is not the calendar's data).
   // It is a decision, not a cleanup.
-  if (externalEvents === null && selfIdentityErrorState.showError && !selfUuid) {
+  // AMENDED Phase 88.6.1-63 (AC-29): the no-row test moved from this branch's own conjunct into
+  // `selfIdentityErrorSource` (one rule for every identity host), so the state above is already
+  // false over a held row; the choice recorded here stands.
+  if (externalEvents === null && selfIdentityErrorState.showError) {
     return (
       <>
         <div className="card p-3 md:p-6">

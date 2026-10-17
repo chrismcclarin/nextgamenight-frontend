@@ -197,7 +197,8 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // landed above it and pushed it down. Kept as a line number, not a text anchor.
     // RE-DERIVED by plan 88.6.1-67 (Task 3, 2026-10-17): 237 -> 239. A second hoisted copy constant
     // with its comment line (`ADDING_TO_COLLECTION_LABEL`, copy row P7) landed above it.
-    declaredAt: 239,
+    // RE-DERIVED by plan 88.6.1-63 (task 3): 239 -> 240, pushed down by one import line (selfIdentityFailedWithNoRow).
+    declaredAt: 240,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +
@@ -206,16 +207,18 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
   {
     // ADDED at the Phase 88.6.1 wave 3 gate (orchestrator, 2026-10-15): plan 88.6.1-16's role
     // read stamps the caller's role with the group it was read for, so `roleError` can be
-    // DERIVED at render (`roleRecord.error` at page.js:67). The full `npm test` run at the wave
+    // DERIVED at render (`roleRecord.error` at page.js:69). The full `npm test` run at the wave
     // gate is what surfaced it — plan 16's task-level verify lists did not name this suite.
     file: 'app/groupPlanning/page.js',
     receiver: 'roleRecord',
-    declaredAt: 65,
+    // RE-DERIVED by plan 88.6.1-63 (task 2's wiring, caught at the task 3 gate): 65 -> 67, pushed down by
+    // one import line and one pointer line (selfIdentityErrorSource).
+    declaredAt: 67,
     declaration: 'const [roleRecord, setRoleRecord] = useState(',
     why:
       'Local role-read state { groupId, role, error } written only by the page\'s own ' +
       'loadUserRole callback: `error` holds the CAUGHT Error object (or a locally minted one), ' +
-      'never a field of a response body. The read at :67 is a render-time derive off that state.',
+      'never a field of a response body. The read at :69 is a render-time derive off that state.',
   },
 ];
 

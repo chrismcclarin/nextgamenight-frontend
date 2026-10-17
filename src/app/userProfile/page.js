@@ -13,6 +13,7 @@ import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } 
 // post-mutation data (SELF_IDENTITY_KEY invalidation contract).
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { patchSelfCache } from '../../lib/hooks/selfIdentityCache';
+import { selfIdentityFailedWithNoRow } from '../../lib/hooks/selfIdentityErrorSource';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import Link from 'next/link';
 import { formatDate, toLocalDateString } from '../../lib/dateUtils';
@@ -155,7 +156,7 @@ function Profile(){
     // the owned-games + Google-calendar-status zones init their loading flags to true and clear
     // them only inside selfUuid-gated fetchers. On a TERMINAL identity failure those fetchers
     // early-return, so the flags never clear and both zones spin forever. Derive the shared
-    // error state here and render the compact degrade banner in those two zones.
+    // error state here (kept RAW on purpose: DECISION Phase 88.6.1-79, identity kept row) and render the compact degrade banner in those two zones.
     const selfIdentityErrorState = useFetchErrorState(selfQuery);
     const [ownedGames, setOwnedGames] = useState([]);
     const [loadingGames, setLoadingGames] = useState(true);
@@ -312,7 +313,7 @@ function Profile(){
     const patternsRetained = useRetainedContent(patternsQuery.data !== undefined, patternsError, { queryKey: availabilityKeys.patterns(self?.id) });
     const patternsFailedWithNothingCached = patternsError.showError && !patternsRetained;
     // No-row half (88.6.1-61); selfIdentityErrorState stays RAW: plan 88.6.1-79 reads it over a kept row.
-    const selfFailedWithNothingCached = selfIdentityErrorState.showError && self === undefined;
+    const selfFailedWithNothingCached = selfIdentityFailedWithNoRow(selfQuery, self?.id);
     /* DECISION Phase 88.6.1-79 (AC-29 / D-51, identity kept row): CHOSEN — Profile is the one host
        that DISPLAYS the identity row as content (the header's name and address line), so a failed
        identity refresh over a held row is retained data: ONE RF1 notice at the top of the header
@@ -3454,7 +3455,7 @@ function Profile(){
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1759` (recurring) and `:1854`
+                                            `userProfile/page.js:1760` (recurring) and `:1855`
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
@@ -4049,6 +4050,7 @@ function Profile(){
                         shape). With a kept row the calendar zone and this collection render their
                         normal content and no notice shows: its sentence would be false, since every
                         control works from the kept row. Plan 88.6.1-67 reads the same boolean.
+                        AMENDED Phase 88.6.1-63 (AC-29): the boolean now reads the shared `selfIdentityFailedWithNoRow` (the one rule every identity host uses); `selfIdentityErrorState` stays raw because the header's RF1 notice reads it (plan 88.6.1-79).
                         CHOSEN (review 65): with no row the same notice also takes the place of each
                         availability panel's list (the patterns query never runs, so the list's empty
                         sentence would state as fact that the user has no schedules or overrides), and
