@@ -32,6 +32,27 @@ function writeCellName(prefix, preference) {
   return prefix + ', ' + word;
 }
 
+// Copy row A3 — the count line under the grid and the spoken summary, one producer for both
+// (see DECISION Phase 88.6.1-39 (D-14 / D-45, R3-M20) at the summary effect below). The words
+// reuse plan 88.6.1-17's state words, so the cell names and the summary speak one spelling.
+const SELECTION_SUMMARY_TAIL = 'slots selected';
+const GESTURE_HINT_DESKTOP = 'Click and drag to select your available times';
+// Test handles, not user-facing (the tests re-declare these literals; not exported, the
+// magic-link page's own house style for its region handle).
+const GRID_SUMMARY_STATUS_TESTID = 'availability-grid-summary-status';
+const GRID_SUMMARY_LINE_TESTID = 'availability-grid-summary-line';
+
+// "{n} preferred, {m} if need be slots selected", for every count including zero. The count
+// filters on the stored wire enum (unchanged); only the shown and spoken word has spaces.
+function selectionSummaryText(selection) {
+  const preferredCount = selection.filter((s) => s.preference === 'preferred').length;
+  const ifNeedBeCount = selection.filter((s) => s.preference === 'if-need-be').length;
+  return (
+    preferredCount + ' ' + PREFERENCE_WORD_PREFERRED + ', ' +
+    ifNeedBeCount + ' ' + PREFERENCE_WORD_IF_NEED_BE + ' ' + SELECTION_SUMMARY_TAIL
+  );
+}
+
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
  *
@@ -61,6 +82,24 @@ export default function AvailabilityGrid({
   const isDraggingRef = useRef(false);
   const [paintMode, setPaintMode] = useState('preferred'); // 'preferred' | 'if-need-be'
   const gridRef = useRef(null);
+
+  // Plan 88.6.1-39: what the grid's one sr-only summary region says, and when. Declared here, at
+  // the top, so every handler below can use it with no declaration-order hazard. `seq` keys the
+  // rendered text span, so every utterance replaces it; every utterance goes through `announce`,
+  // never through the setter directly (a same-string set is a React bail-out and speaks nothing).
+  // See DECISION Phase 88.6.1-39 (D-14 / D-45, R3-M20) at the summary effect.
+  const [announcement, setAnnouncement] = useState({ seq: 0, text: '' });
+  const announce = useCallback(
+    (text) => setAnnouncement((prev) => ({ seq: prev.seq + 1, text })),
+    []
+  );
+  // A request to speak the summary from the NEXT committed render's value (bumped at gesture
+  // end and after each discrete action); the effect speaks once per bump.
+  const [summaryRequest, setSummaryRequest] = useState(0);
+  // Set where a gesture commits a change; read and reset at gesture end.
+  const gestureChangedRef = useRef(false);
+  // The last request the summary effect has spoken.
+  const handledSummaryRef = useRef(0);
 
   // ARIA grid roving tabindex (84-10 / F-803/809): AvailabilityGrid is one of
   // the three roving keyboard INPUT grids. The nav-key + select state machine
@@ -380,8 +419,10 @@ export default function AvailabilityGrid({
     const { value, slotMap, paintMode, onChange } = modelRef.current;
     if (slotMap.get(slotId)) {
       onChange?.(value.filter((s) => s.slotId !== slotId));
+      gestureChangedRef.current = true;
     } else {
       onChange?.([...value, { slotId, preference: paintMode }]);
+      gestureChangedRef.current = true;
     }
   }, []);
 
@@ -390,6 +431,7 @@ export default function AvailabilityGrid({
     const { value, slotMap, paintMode, onChange } = modelRef.current;
     if (!slotMap.has(slotId)) {
       onChange?.([...value, { slotId, preference: paintMode }]);
+      gestureChangedRef.current = true;
     }
   }, []);
 
@@ -592,6 +634,19 @@ export default function AvailabilityGrid({
     if (!slotId) return;
     const without = value.filter((s) => s.slotId !== slotId);
     onChange?.(next === null ? without : [...without, { slotId, preference: next }]);
+    // A discrete action: speak the summary once, from the render this change commits in. The
+    // setter is stable, so this handler keeps its empty deps and its identity (87.8 TOUCH).
+    setSummaryRequest((n) => n + 1);
+  }, []);
+
+  // Plan 88.6.1-39: the gesture has ended. If it changed the selection, request ONE summary from
+  // the next committed render; a gesture that changed nothing (a scroll, a slop-cancelled touch,
+  // a click on empty space) speaks nothing. Called only by the document release listeners below,
+  // and only for the event that ends the active gesture.
+  const settleGestureSummary = useCallback(() => {
+    if (!gestureChangedRef.current) return;
+    gestureChangedRef.current = false;
+    setSummaryRequest((n) => n + 1);
   }, []);
 
   // Global pointer up/cancel listeners: end the mouse drag, and settle the
@@ -604,6 +659,7 @@ export default function AvailabilityGrid({
     const handleGlobalPointerUp = (e) => {
       isDraggingRef.current = false;
       const st = touchRef.current;
+      const endsGesture = !st || e.pointerId === st.pointerId;
       if (st && e.pointerId === st.pointerId) {
         if (!st.painting && st.timer) {
           clearTimeout(st.timer);
@@ -612,13 +668,16 @@ export default function AvailabilityGrid({
         }
         clearTouchGesture();
       }
+      if (endsGesture) settleGestureSummary();
     };
     const handleGlobalPointerCancel = (e) => {
       isDraggingRef.current = false;
       const st = touchRef.current;
+      const endsGesture = !st || e.pointerId === st.pointerId;
       if (st && e.pointerId === st.pointerId) {
         clearTouchGesture();
       }
+      if (endsGesture) settleGestureSummary();
     };
 
     document.addEventListener('pointerup', handleGlobalPointerUp);
@@ -628,7 +687,7 @@ export default function AvailabilityGrid({
       document.removeEventListener('pointerup', handleGlobalPointerUp);
       document.removeEventListener('pointercancel', handleGlobalPointerCancel);
     };
-  }, [clearTouchGesture, handleToggleSlot]);
+  }, [clearTouchGesture, handleToggleSlot, settleGestureSummary]);
 
   // NON-PASSIVE touchmove listener — the conditional scroll suppressor. While
   // paint mode is active (and ONLY then) preventDefault stops the native pan so
@@ -647,6 +706,43 @@ export default function AvailabilityGrid({
 
   // Unmount safety: never leave a live timer or rAF loop behind.
   useEffect(() => () => clearTouchGesture(), [clearTouchGesture]);
+
+  // DECISION Phase 88.6.1-39 (D-14 / D-45, R3-M20): how the check-in grid tells a screen reader
+  // what is selected. Before this plan the visible count line WAS the live region, so a screen
+  // reader heard every painted cell while the finger was still moving (register R3-M20).
+  // (a) The visible line under the grid is plain text, NOT aria-hidden: browse mode keeps it (the
+  //     Combobox precedent, DECISION Phase 88.6-37 (W38)). CHOSEN OVER keeping it live beside a
+  //     second region (every paint spoken twice) and OVER hiding it from assistive technology.
+  // (b) ONE always-mounted sr-only polite region, EMPTY at mount, its text in a span keyed on a
+  //     sequence number (the scheduler's 88.6-52 idiom, EventScheduler.tsx anchor
+  //     `key={announcement.seq}`). CHOSEN OVER making the visible line speak only at gesture end:
+  //     the line must update per paint for sighted users, and its phone/desktop instruction flip
+  //     would be announced.
+  // (c) It speaks ONCE per gesture, at the document pointer-up or pointer-cancel the gesture
+  //     machine already listens on, and only for the event that ends the active gesture (a second
+  //     finger lifting mid-paint settles nothing) — CHOSEN OVER settling on any document release,
+  //     which speaks a partial count while the first finger still paints. Once per discrete action
+  //     (keyboard select, a day box, All). And only when the gesture changed the selection —
+  //     CHOSEN OVER a debounce on value changes (timing-based: it speaks mid-drag when a finger
+  //     pauses, and cannot tell a scroll from a paint) and OVER per-cell announcements (R3-M20).
+  // (d) The text is read from the value of the render in which the request landed — the
+  //     committed selection — CHOSEN OVER computing it inside the release listener (a tap's own
+  //     commit has not reached the prop yet, research AT-3) and OVER computing it from the array
+  //     the grid emits (it would disagree with the screen if the parent ever rewrote the
+  //     selection).
+  // (e) The gesture machine's commit logic is untouched: only a changed flag where a gesture
+  //     commits and one gesture-end request were added (DECISION Phase 88.1-03, two touch
+  //     machines until Phase 92).
+  // (f) Always sr-only, so D-22's opt-in prop (srOnlyWhenEmpty) is not adopted: it is for regions
+  //     that show their text.
+  // (g) REJECTED: a shared announcement hook. The idiom is two statements and a keyed span, used
+  //     inline as the house shape (the scheduler, the QR dialog of plan 88.6.1-12).
+  // Changing this is a decision, not a cleanup.
+  useEffect(() => {
+    if (summaryRequest === handledSummaryRef.current) return;
+    handledSummaryRef.current = summaryRequest;
+    announce(selectionSummaryText(value));
+  }, [summaryRequest, value, announce]);
 
   // Toggle paint mode
   const togglePaintMode = useCallback(() => {
@@ -960,16 +1056,23 @@ export default function AvailabilityGrid({
 
       {/* Selection summary — ONE always-mounted polite StatusRegion (plan 88.6-63, review round 2
           #23): only its CONTENT swaps, because a live region mounted together with its content
-          announces nothing. `text-sm` comes from the primitive's base. */}
-      <StatusRegion className="mt-3 text-content-secondary">
-        {value.length === 0 ? (
-          <span>Click and drag to select your available times</span>
-        ) : (
-          <span>
-            {value.filter((s) => s.preference === 'preferred').length} preferred,{' '}
-            {value.filter((s) => s.preference === 'if-need-be').length} if-need-be slots selected
-          </span>
-        )}
+          announces nothing. `text-sm` comes from the primitive's base.
+          [AMENDED Phase 88.6.1-39 (D-14 / D-45): the visible line below is no longer the live
+          region — it announced on every painted cell (register R3-M20). It is plain text in the
+          same box and type (its own small-type class now, since the primitive no longer supplies
+          it). The always-mounted, content-swapping region this note describes is now the
+          separate sr-only summary after it, which starts empty and speaks once per gesture end
+          (DECISION Phase 88.6.1-39 at the summary effect). The note's premise — a polite region
+          mounted with its content announces nothing — stands (D-42).] */}
+      <div data-testid={GRID_SUMMARY_LINE_TESTID} className="mt-3 text-sm text-content-secondary">
+        {value.length > 0 ? selectionSummaryText(value) : GESTURE_HINT_DESKTOP}
+      </div>
+      <StatusRegion
+        politeness="polite"
+        className="sr-only"
+        data-testid={GRID_SUMMARY_STATUS_TESTID}
+      >
+        <span key={announcement.seq}>{announcement.text}</span>
       </StatusRegion>
     </div>
   );
