@@ -10,6 +10,11 @@ import { test, expect, type Locator, type Page, type Route } from '@playwright/t
 //   answers 200 with something that is not JSON (the parse-failure route), and the backend's own
 //   JSON 500 (plan 88.6.1-23's status guard). Neither ever shows the advice to tap the link again,
 //   and each fits the viewport with no horizontal scroll.
+// - Group restore page (`/restore/group/[token]`): the loading line names what is loading (copy
+//   row L2) and fits; a failed preview shows the retryable error state, which fits; and a keyboard
+//   Try again keeps focus on the loading line while the retry is in flight, then lands it on the
+//   settled <h1> (Requirement 5), with the outcome in the page's status region (Requirement 8).
+//   Signed out, the restore page renders no take-over button, so nothing here can POST.
 //
 // Every test runs SIGNED OUT (an emailed link is opened by someone who may have no session).
 // Every intercepted request is either ABORTED or answered by a synthesized `route.fulfill` built
@@ -25,6 +30,10 @@ const R3_DETAIL =
   "We couldn't confirm your RSVP — the connection timed out. Sign in and open the event to check your answer.";
 const R9_DETAIL = "We couldn't confirm your RSVP. Sign in and open the event to check your answer.";
 const RSVP_PATH = '/rsvp/e2e-not-a-real-rsvp-token?e=e2e-event&u=e2e-user&s=yes';
+const CHECKING_LINK = 'Checking your restore link...';
+const RESTORE_ERROR_HEADING = 'Unable to restore this group';
+const PREVIEW_UNAVAILABLE =
+  "We couldn't check this link. It may be a connection problem — please try again.";
 
 // CI serves the backend on another origin (`.github/workflows/ci.yml` sets
 // `NEXT_PUBLIC_API_URL: http://localhost:4000/api` against the app's port 3000 in
@@ -57,6 +66,15 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
     innerWidth: window.innerWidth,
   }));
   expect(widths.scrollWidth, 'the page scrolls horizontally').toBeLessThanOrEqual(widths.innerWidth);
+}
+
+/** A promise the test releases by hand, to hold a response while the page shows its loading state. */
+function gate() {
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { released, release };
 }
 
 /** Route the RSVP respond call to `handler`; every other request is untouched. */
@@ -145,5 +163,57 @@ test.describe('RSVP and restore token pages — failure states at phone width (8
     await expectR9(page);
     // Backend prose is never the display string.
     await expect(page.getByText('Something went wrong processing your RSVP.')).toHaveCount(0);
+  });
+
+  test('B. restore: the L2 loading line and the error state fit, and a keyboard Try again lands focus on the settled heading (88.6.1-36)', async ({
+    page,
+  }) => {
+    // One held gate per preview call; each call is ABORTED once its gate is released (a
+    // transport failure, so the page offers its retryable error and Try again).
+    const gates = [gate(), gate()];
+    let calls = 0;
+    await page.route(
+      (url) => url.pathname.includes('/groups/restore-preview/'),
+      async (route) => {
+        const held = gates[calls];
+        calls += 1;
+        if (held) await held.released;
+        await route.abort('failed');
+      },
+    );
+
+    await page.goto('/restore/group/' + '0123456789abcdef'.repeat(4));
+
+    // Call 1 held: the loading view.
+    const loading = page.getByText(CHECKING_LINK, { exact: true });
+    await expect(loading).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('status', { name: CHECKING_LINK })).toHaveCount(1);
+    await expectInsideViewport(page, loading);
+    await expectNoHorizontalScroll(page);
+
+    gates[0].release();
+
+    await expect(page.getByRole('heading', { level: 1, name: RESTORE_ERROR_HEADING })).toBeVisible();
+    const detail = page.getByText(PREVIEW_UNAVAILABLE, { exact: true });
+    await expect(detail).toBeVisible();
+    await expectInsideViewport(page, detail);
+    const tryAgain = page.getByRole('button', { name: 'Try again' });
+    const tryAgainBox = await tryAgain.boundingBox();
+    expect(tryAgainBox, 'the Try again button has no layout box').not.toBeNull();
+    expect(tryAgainBox!.height, 'the Try again button is shorter than 44px').toBeGreaterThanOrEqual(44);
+
+    // Keyboard, not a pointer: Try again is focused and activated with Enter. Call 2 is held, so
+    // the loading line is on screen and holds focus while the retry is in flight.
+    await tryAgain.focus();
+    await page.keyboard.press('Enter');
+    await expect(loading).toBeVisible();
+    await expect(loading).toBeFocused();
+
+    gates[1].release();
+
+    await expect(page.getByRole('heading', { level: 1, name: RESTORE_ERROR_HEADING })).toBeFocused();
+    // `toContainText`, never `toBeVisible`: the region is sr-only.
+    await expect(page.getByTestId('restore-page-status')).toContainText(RESTORE_ERROR_HEADING);
+    await expectNoHorizontalScroll(page);
   });
 });
