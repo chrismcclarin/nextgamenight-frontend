@@ -43,6 +43,11 @@ const isEventsRead = (url: URL) => url.pathname.includes(`/events/group/${E2E_GR
 // The writes tests 3-4 fulfil: `PUT /api/groups/<id>/settings` and `POST /api/events`.
 const isSettingsWrite = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/settings`);
 const isEventsCollection = (url: URL) => url.pathname.endsWith('/events');
+// Wave 9 gate: Create Event resolves a TYPED game name before it posts the event
+// (`createEvent.js` submit, `gamesAPI.resolveGame` -> `POST /api/games/resolve`).
+const isGameResolve = (url: URL) => url.pathname.endsWith('/games/resolve');
+// A synthetic game id: it only ever reaches the fulfilled POST /api/events below.
+const RESOLVED_GAME = { id: '00000000-0000-4000-8000-0000000088e2', name: 'E2E resolved game' };
 
 /** Fulfil ONE method on a route in the browser and count it; GETs continue; any other method
  *  falls back into the hold (where the afterEach catches it). */
@@ -84,6 +89,8 @@ type Mode = 'fail' | 'pass';
 /** A GET-only route: in `fail` every GET gets a synthetic 500 (a message no removal phrase
  *  matches), in `pass` it continues to the backend. Any other method falls back into the hold. */
 async function failGets(page: Page, matches: (url: URL) => boolean, mode: () => Mode, what: string) {
+  // Wave 9 gate: counts the GETs answered 500, so a test can wait on the failed refresh itself.
+  const failed = { count: 0 };
   await page.route(matches, async (route: Route) => {
     if (route.request().method() !== 'GET') {
       await route.fallback();
@@ -91,10 +98,12 @@ async function failGets(page: Page, matches: (url: URL) => boolean, mode: () => 
     }
     if (mode() === 'fail') {
       await route.fulfill({ status: 500, json: { code: 'internal', message: `Simulated ${what} failure` } });
+      failed.count += 1;
       return;
     }
     await route.continue();
   });
+  return failed;
 }
 
 async function expectNoSidewaysScroll(page: Page) {
@@ -221,8 +230,14 @@ test.describe('group home load failures — phone', () => {
 
   test('an events refresh failure keeps the calendar and shows the notice', async ({ page }) => {
     let mode: Mode = 'pass';
-    await failGets(page, isEventsRead, () => mode, 'events');
+    const eventsFailed = await failGets(page, isEventsRead, () => mode, 'events');
     const posts = await fulfillWrite(page, isEventsCollection, 'POST', 201, {});
+    // DECISION Phase 88.6.1-71 (wave 9 gate, orchestrator-routed 2026-10-17, CI run 39026336968):
+    // the typed game name's resolve write is FULFILLED here, OVER leaving it to the write hold. The
+    // first attempt held `POST /api/games/resolve` (the afterEach backstop named it), so the submit
+    // never reached POST /api/events and the dialog stayed open (`toBeHidden` timed out). Its count
+    // is not asserted: this arm is about the events refresh, not about how the game is picked.
+    await fulfillWrite(page, isGameResolve, 'POST', 200, RESOLVED_GAME);
 
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await expect(page.locator('html')).toHaveClass(/dark/);
@@ -234,7 +249,13 @@ test.describe('group home load failures — phone', () => {
     await fillCreateEventManualEntry(page);
     mode = 'fail';
     await page.getByTestId('create-event-submit').click();
+    // Wave 9 gate: positive signals before the hidden / visible reads — the event write was
+    // answered, then the refresh it triggers was answered 500.
+    await expect.poll(() => posts.count, { message: 'POST /api/events answered', timeout: 15_000 }).toBe(1);
     await expect(page.getByRole('heading', { name: /create event/i })).toBeHidden({ timeout: 15_000 });
+    await expect
+      .poll(() => eventsFailed.count, { message: 'the events refresh was answered 500', timeout: 15_000 })
+      .toBeGreaterThan(0);
     const line = rf1Line(page);
     await expect(line).toBeVisible({ timeout: 15_000 });
     await expect(heading).toBeVisible();
