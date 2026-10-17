@@ -862,7 +862,7 @@ describe('restore/group/[token] — slot-0 region and outcome focus (plan 88.6.1
 
     expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
     expect(region.textContent).toBe(
-      'Bring this group back Tuesday Night Crew It was deleted, but you can restore it and take over as owner until August 25, 2026.'
+      'Bring this group back Tuesday Night Crew It was deleted, but you can restore it and take over as owner until Tuesday, August 25, 2026.'
     );
     expect(screen.getAllByRole('status')).toHaveLength(1);
   });
