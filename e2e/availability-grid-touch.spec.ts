@@ -412,10 +412,17 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
     const ONE = '1 preferred, 0 if need be slots selected';
 
     let hold: WriteHold | undefined;
-    test.beforeEach(async ({ page }) => {
+    test.beforeEach(() => {
       hold = undefined;
-      hold = await holdWrites(page);
     });
+    // The hold is installed AFTER the grid renders (through gotoCleanGrid's afterLoad), never before
+    // the navigation: the token page validates its link with a POST (magicAuthAPI.validateToken ->
+    // timedPublicFetch, method POST), and a hold installed first held that request, so the grid
+    // never appeared (CI run 38990638408, arms (6)-(8) all timed out on the Select All landmark).
+    // Every write the arms press comes after this point, so the backstop still covers them.
+    const installHold = async (page: Page): Promise<void> => {
+      hold = await holdWrites(page);
+    };
     test.afterEach(async ({ page }) => {
       expectNoApiWrites(hold);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -433,6 +440,7 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
       const line = page.getByTestId(SUMMARY_LINE);
 
       await gotoCleanGrid(page, async () => {
+        await installHold(page);
         await guardResolved(region, 'the grid summary region');
         // Before ANY interaction: the phone hook flips after mount, and that flip must be silent.
         await expect(
@@ -471,7 +479,7 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
     });
 
     test('(7) a long-press drag of 9 slots speaks ONE summary, after the finger lifts', async ({ page }) => {
-      await gotoCleanGrid(page);
+      await gotoCleanGrid(page, () => installHold(page));
       const { xDay0, yTenAm } = await positionTenAmNearTop(page);
       const cdp = await page.context().newCDPSession(page);
       const region = page.getByTestId(SUMMARY_STATUS);
@@ -514,7 +522,7 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
     });
 
     test('(8) Clear All says it cleared (A4); the next tap brings the counts back', async ({ page }) => {
-      await gotoCleanGrid(page);
+      await gotoCleanGrid(page, () => installHold(page));
       const { xDay0, yTenAm } = await positionTenAmNearTop(page);
       const cdp = await page.context().newCDPSession(page);
       const region = page.getByTestId(SUMMARY_STATUS);
