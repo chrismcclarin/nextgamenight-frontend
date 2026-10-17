@@ -1212,8 +1212,8 @@ const GL_GROUP = {
   Events: [],
 };
 
-async function renderGroupCard(overrides?: Record<string, unknown>) {
-  gl.getUserGroups.mockResolvedValue([{ ...GL_GROUP, ...overrides }]);
+async function renderGroupCards(groups: Array<Record<string, unknown>>) {
+  gl.getUserGroups.mockResolvedValue(groups);
   const onGroupSelect = vi.fn();
   const utils = render(
     <FriendshipContext.Provider value={friendshipValue as never}>
@@ -1233,13 +1233,22 @@ async function renderGroupCard(overrides?: Record<string, unknown>) {
   );
   // Settle on a BRANCH-SPECIFIC element, never on chrome: the "Your Groups" header renders above
   // every branch including the loading one (88.6-15's recipe, trap 1).
-  await screen.findByRole('button', { name: 'Invite member to group' });
+  // 88.6.1-54 (D-19): a PREFIX, because the name is per card now — GL-9 and NM-3/NM-4 render
+  // other names, and the empty-name fallback starts with the same words.
+  await screen.findAllByRole('button', { name: /^Invite member to / });
   return { ...utils, onGroupSelect };
 }
 
+async function renderGroupCard(overrides?: Record<string, unknown>) {
+  return renderGroupCards([{ ...GL_GROUP, ...overrides }]);
+}
+
 const glTitleBlock = () => screen.getByRole('button', { name: GL_GROUP.name });
-const glInvite = () => screen.getByRole('button', { name: 'Invite member to group' });
-const glCog = () => screen.getByRole('button', { name: 'Customize group' });
+// 88.6.1-54 (D-19, copy rows H1/H2): exact per-card names, so GL-1..GL-8 also pin the new names.
+// Both are role + COMPUTED-name queries: the gear is found through its title because its glyph
+// is aria-hidden (D-52).
+const glInvite = () => screen.getByRole('button', { name: `Invite member to ${GL_GROUP.name}` });
+const glCog = () => screen.getByRole('button', { name: `Customize ${GL_GROUP.name}` });
 const glChipStack = () =>
   screen.getByRole('button', { name: 'Members: ada. Show all members.' });
 
@@ -1351,6 +1360,78 @@ describe('grouplist row — the card and every control inside it are independent
     const block = screen.getByRole('button', { name: quoted });
     expect(block).not.toHaveAttribute('aria-label');
     expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(quoted);
+  });
+});
+
+// 88.6.1-54 (D-19, D-52, AC-20, SPEC edge R6): every card's gear and Invite are named after
+// THAT card's group (copy rows H1 "Customize {group}" and H2 "Invite member to {group}"), with
+// today's words as the fallback for a nameless group (D-33 row 13). The gear's ONLY name source
+// is its title (D-52), so its glyph must be aria-hidden. No case here asserts the gear's
+// accessible DESCRIPTION: both dom-accessibility-api copies report the title again as the
+// description even when it was the name, so that read cannot tell right from wrong. How a
+// screen reader speaks it is plan 88.6.1-57's VoiceOver step.
+function nmGroup(id: string, name?: string): Record<string, unknown> {
+  // An owner self-member, so canEdit is true and BOTH buttons render on every card. A
+  // missing name argument leaves the key out entirely (NM-3's no-name card).
+  const group: Record<string, unknown> = {
+    id,
+    Users: [{ id: GL_SELF, username: 'me', UserGroup: { role: 'owner' } }],
+    Events: [],
+  };
+  if (name !== undefined) group.name = name;
+  return group;
+}
+
+const escapeForRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+describe('grouplist card button names carry the group name (88.6.1-54 — D-19, AC-20, edge R6)', () => {
+  beforeEach(() => {
+    gl.push.mockClear();
+    gl.getUserGroups.mockReset();
+  });
+
+  it('NM-1. three cards expose three distinct gear names and three distinct Invite names, each inside its own card (AC-20, edge R6 adjacency)', async () => {
+    const names = ['Alpha Crew', 'Beta Crew', 'Gamma Crew'];
+    await renderGroupCards([nmGroup('nm-a', names[0]), nmGroup('nm-b', names[1]), nmGroup('nm-c', names[2])]);
+
+    for (const name of names) {
+      // The title block (DECISION Phase 88.6-47's test id is on the card root above it).
+      const card = screen.getByRole('button', { name }).closest('[data-testid="group-card"]');
+      expect(card, `the "${name}" title block sits inside a group card`).not.toBeNull();
+      const scoped = within(card as HTMLElement);
+      expect(scoped.getByRole('button', { name: 'Customize ' + name })).toBeInTheDocument();
+      expect(scoped.getByRole('button', { name: 'Invite member to ' + name })).toBeInTheDocument();
+    }
+
+    const gears = screen.getAllByRole('button', { name: /^Customize / });
+    expect(gears).toHaveLength(3);
+    expect(new Set(gears.map((g) => g.getAttribute('title'))).size).toBe(3);
+
+    const invites = screen.getAllByRole('button', { name: /^Invite member to / });
+    expect(invites).toHaveLength(3);
+    expect(new Set(invites.map((b) => b.getAttribute('aria-label'))).size).toBe(3);
+    for (const invite of invites) {
+      // WCAG 2.5.3 (label in name): the computed name begins with the visible text.
+      const visible = (invite.textContent ?? '').trim();
+      expect(visible.length).toBeGreaterThan(0);
+      expect(invite).toHaveAccessibleName(new RegExp('^' + escapeForRegExp(visible), 'i'));
+    }
+  });
+
+  it('NM-2. the gear is named by its title ALONE: no aria-label, all of its text aria-hidden; Invite has no title (D-52)', async () => {
+    await renderGroupCard();
+
+    const gear = glCog();
+    expect(gear).toHaveAttribute('title', 'Customize Alpha Crew');
+    expect(gear).not.toHaveAttribute('aria-label');
+    const hidden = gear.querySelector('[aria-hidden="true"]');
+    expect(hidden, 'the gear glyph sits in an aria-hidden wrapper').not.toBeNull();
+    // ALL of the button's text is hidden, so the content contributes nothing to the name and
+    // the title is what names it (accname 1.2 steps 2F then 2I).
+    expect(hidden?.textContent).toBe(gear.textContent);
+
+    // One name source on Invite too: its aria-label, and no title beside it.
+    expect(glInvite()).not.toHaveAttribute('title');
   });
 });
 
