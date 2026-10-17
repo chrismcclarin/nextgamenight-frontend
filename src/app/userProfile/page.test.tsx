@@ -2823,3 +2823,207 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
     expect(document.getElementById('phone-flow-error')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 88.6.1-59 Task 1 (D-35, Req 4, Req 5; D-44, Req 6): Save Schedule and Save Override are
+// PRESSED controls. While a save runs each keeps its node, reads Saving..., carries
+// aria-disabled (never native disabled) and refuses every further press through one shared
+// first-line latch; a success closes the form and focus lands on the form's own toggle. The two
+// toggles are disclosures: aria-expanded always, aria-controls only while the form exists.
+describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // The Specific Dates tab, reached the way the end-before-start case reaches it.
+  async function openSpecificDates(user: ReturnType<typeof userEvent.setup>) {
+    (await screen.findByRole('tab', { name: 'Specific Dates' })).focus();
+    await user.keyboard('{Enter}');
+  }
+
+  // Each case sets its own implementation; vi.clearAllMocks keeps implementations, so a held one
+  // would leak into a later suite (the implementation-persistence trap).
+  afterEach(async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    (availabilityAPI.createRecurringPattern as Mock).mockResolvedValue({});
+    (availabilityAPI.createOverride as Mock).mockResolvedValue({});
+  });
+
+  it('S1: Save Schedule keeps its node, reads Saving... under aria-disabled, and three presses send one request', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (availabilityAPI.createRecurringPattern as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mon' }));
+    const save = screen.getByRole('button', { name: 'Save Schedule' });
+    fireEvent.click(save);
+
+    // Positive signal on the SAME node.
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(save).not.toBeDisabled();
+    expect(save.isConnected).toBe(true);
+    expect(save.textContent).toBe('Saving...');
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(availabilityAPI.createRecurringPattern).toHaveBeenCalledTimes(1);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save.textContent).toBe('Saving...');
+
+    await act(async () => { pending.resolve({}); });
+  });
+
+  it('S2: Save Override keeps its node, reads Saving... under aria-disabled, and three presses send one request', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (availabilityAPI.createOverride as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    await openSpecificDates(user);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Override' }));
+    const save = screen.getByRole('button', { name: 'Save Override' });
+    fireEvent.click(save);
+
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(save).not.toBeDisabled();
+    expect(save.isConnected).toBe(true);
+    expect(save.textContent).toBe('Saving...');
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(availabilityAPI.createOverride).toHaveBeenCalledTimes(1);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save.textContent).toBe('Saving...');
+
+    await act(async () => { pending.resolve({}); });
+  });
+
+  it('S3: a successful Save Schedule closes the form and focus lands on + Add Schedule, after the removal', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (availabilityAPI.createRecurringPattern as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    await user.click(screen.getByRole('button', { name: 'Mon' }));
+    const save = screen.getByRole('button', { name: 'Save Schedule' });
+    await user.click(save);
+    // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, C-11): the pressed control
+    // still holds focus while the create is held. The real-browser proof is the phone e2e arm.
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(document.activeElement).toBe(save);
+
+    await act(async () => { pending.resolve({}); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Schedule' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(save.isConnected).toBe(false);
+  });
+
+  it('S4: a successful Save Override closes the form and focus lands on + Add Override', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (availabilityAPI.createOverride as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    await openSpecificDates(user);
+    await user.click(await screen.findByRole('button', { name: '+ Add Override' }));
+    const save = screen.getByRole('button', { name: 'Save Override' });
+    await user.click(save);
+    // CONFIRM-ONLY in jsdom (C-11), as in S3.
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(document.activeElement).toBe(save);
+
+    await act(async () => { pending.resolve({}); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Override' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('S5: a failed Save Schedule releases the latch, keeps the form, and logs the unchanged diagnostic', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    (availabilityAPI.createRecurringPattern as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({});
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Schedule' }));
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith("We couldn't save that schedule. Please try again.")
+    );
+    expect(loggerMock().info).toHaveBeenCalledWith('Error creating schedule:', expect.any(Object));
+    const save = await screen.findByRole('button', { name: 'Save Schedule' });
+    expect(save).not.toHaveAttribute('aria-disabled');
+    expect(save).not.toBeDisabled();
+    expect(screen.getByRole('heading', { name: 'New Schedule' })).toBeInTheDocument();
+
+    fireEvent.click(save);
+    await waitFor(() => expect(availabilityAPI.createRecurringPattern).toHaveBeenCalledTimes(2));
+  });
+
+  it('S6: the availability recovery is wired to the heading fallback and both toggles (R5 empty)', async () => {
+    const source = await pageSource();
+    expect(source).toContain('useFocusRecovery({ fallback: availabilityHeadingRef })');
+    expect(source).toContain('ref={availabilityHeadingRef}');
+    expect(source).toContain('ref={addScheduleToggleRef}');
+    expect(source).toContain('ref={addOverrideToggleRef}');
+  });
+
+  it('S7: + Add Schedule is a disclosure, aria-controls only while its form exists (D-44)', async () => {
+    renderProfile();
+    const toggle = await screen.findByRole('button', { name: '+ Add Schedule' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.textContent).toBe('Cancel'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(panel).not.toBeNull();
+    expect(within(panel as HTMLElement).getByRole('heading', { name: 'New Schedule' })).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.textContent).toBe('+ Add Schedule'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+
+  it('S8: + Add Override is a disclosure, aria-controls only while its form exists (D-44)', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+    await openSpecificDates(user);
+    const toggle = await screen.findByRole('button', { name: '+ Add Override' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.textContent).toBe('Cancel'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(panel).not.toBeNull();
+    expect(
+      within(panel as HTMLElement).getByRole('heading', { name: 'New Specific Override' })
+    ).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.textContent).toBe('+ Add Override'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+});
