@@ -496,7 +496,8 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       label: "FetchErrorBanner's two retries (compact `Retry`, full `Try again`)",
     },
     bannerReport: {
-      anchor: 'onClick={() => setShowReport(true)}',
+      // Re-anchored by plan 88.6.1-69 (the report form moved to the app-level host).
+      anchor: 'onClick={handleReportPress}',
       expectedFile: 'components/ui/FetchErrorBanner.tsx',
       expectedCount: 1,
       floor: MIN_TARGET_44,

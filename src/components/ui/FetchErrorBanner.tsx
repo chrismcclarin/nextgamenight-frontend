@@ -18,8 +18,9 @@
  * polite live region EMPTY and nothing else, so the notice arrives as a CHANGE to a mounted
  * region (plan 88.6-36 — see the DECISION marker at that branch); after a retry KNOWN to have
  * failed, the notice reads copy row B1 (`COMPACT_NOTICE_AFTER_FAILED_RETRY`; Phase 88.6.1-21,
- * D-47). The "Report this" CTA
- * opens the existing `FeedbackForm` prefilled with `initialType='bug'`, a derived
+ * D-47). The "Report this" CTA appears only after a retry has failed (owner ruling 2026-10-05,
+ * `state.retryFailed`, Phase 88.6.1-69) and opens the app-level report form
+ * (`FeedbackModalProvider`'s `openReport`) prefilled with `initialType='bug'`, a derived
  * `initialSubject`, and an `initialDescription` carrying the error `code`/message
  * (no token/PII — T-86-10). The message is rendered as auto-escaped React
  * children (T-86-09): no `dangerouslySetInnerHTML`.
@@ -40,7 +41,7 @@ import { QueryClientContext, type QueryKey } from '@tanstack/react-query';
 import { Banner } from './Banner';
 import { Icon } from './Icon';
 import { StatusRegion } from './StatusRegion';
-import FeedbackForm from '@/app/components/FeedbackForm';
+import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
 import { logger, errCtx } from '@/lib/logger';
 import type { FetchErrorCode, FetchErrorState } from './useFetchErrorState';
 import { useFocusRecovery } from './useFocusRecovery';
@@ -58,7 +59,7 @@ export interface FetchErrorBannerProps {
   /**
    * Compact one-line non-blocking degrade notice (D-08). When true, on a
    * PERMANENT failure (`state.showError` — retries exhausted) render a single
-   * line plus the retry button, skipping the full Banner/FeedbackForm scaffold.
+   * line plus the retry button, skipping the full Banner and its report link.
    * Used by identity-resolution consumers so a failed `useSelfIdentity` degrades
    * loudly-but-small instead of silently (D-11). The notice carries NO identity
    * value (Security: PII-in-notice mitigation, T-873-02-01).
@@ -321,6 +322,18 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
     const settle = arm();
     settle();
   }, [arm]);
+  // The same watch with plan 04's `preferred` target (Phase 88.6.1-69, review #235): the full
+  // branch's `Report this` prefers the adjacent `Try again`, so a link withdrawn beside a live
+  // `Try again` lands there; a disconnected `preferred` falls through to `focusTarget`, else the
+  // floor (plan 04's order).
+  const watchFocusPreferring = React.useCallback(
+    (preferred: () => HTMLElement | null | undefined) => {
+      if (retryInFlightRef.current) return;
+      const settle = arm({ preferred });
+      settle();
+    },
+    [arm]
+  );
 
   return {
     retrying,
@@ -330,6 +343,7 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
     handleRetry,
     assertiveChangedRef,
     watchFocus,
+    watchFocusPreferring,
   };
 }
 
@@ -414,7 +428,10 @@ export function FetchErrorBanner({
   compact = false,
   focusTarget,
 }: FetchErrorBannerProps) {
-  const [showReport, setShowReport] = React.useState(false);
+  // Never the feedback context: its value changes on every feedback-button open / close and route
+  // change, and this banner would re-render on each (review #150). Null outside the host.
+  const openReport = useFeedbackReport();
+  const tryAgainRef = React.useRef<HTMLButtonElement>(null);
   const {
     retrying,
     retryOutcome,
@@ -423,6 +440,7 @@ export function FetchErrorBanner({
     handleRetry,
     assertiveChangedRef,
     watchFocus,
+    watchFocusPreferring,
   } = useRetryEpisode({
     state,
     failureShown: state.showError,
@@ -572,6 +590,11 @@ export function FetchErrorBanner({
     (reportContext ? `Where: ${reportContext}\n\n` : '') +
     'What I was doing when this happened:\n\n' +
     'Anything else worth noting:\n';
+  // The explicit invoker is the provider's own precedent: Safari does not focus a clicked button.
+  const handleReportPress = (event: React.MouseEvent<HTMLButtonElement>) => {
+    openReport?.({ subject, description, invoker: event.currentTarget, fallback: focusTarget });
+  };
+  const watchReportFocus = () => watchFocusPreferring(() => tryAgainRef.current);
 
   /* DECISION Phase 88.6.1-21 (AC-11 / D-42): the full branch keeps its Banner MOUNTED in both
      states, inside a wrapper that is `sr-only` while `state.showError` is false — chosen over the
@@ -636,6 +659,7 @@ export function FetchErrorBanner({
           stylesheet, so `getComputedStyle().fontWeight` reads the UA default identically
           before and after and would prove nothing (the D28 rule). The pins are class-level. */}
       <button
+        ref={tryAgainRef}
         type="button"
         onClick={handleRetry}
         onFocus={watchFocus}
@@ -660,12 +684,17 @@ export function FetchErrorBanner({
           already speaks a failed retry; a second message would be new words, D-31). The report
           button's opening tag, plan 70's focus watch, its classes and label are unchanged inside
           the condition. AMENDS Phase 86 D-02's CTA (`86-CONTEXT.md:35`). Showing it from the
-          start again is a decision, not a cleanup. */}
-      {state.retryFailed ? (
+          start again is a decision, not a cleanup.
+          AMENDED Phase 88.6.1-69 (Task 3): the link opens the app-level report host
+          (`FeedbackModalProvider`'s `openReport`, read through its own report context) and is
+          not rendered without one (no host, no dead link). Its focus watch (plan 70's C12 b)
+          stays and now prefers the adjacent `Try again` (plan 04's `preferred`, review #235), so
+          a link withdrawn beside a live `Try again` lands there, never a heading a screen away. */}
+      {state.retryFailed && openReport ? (
         <button
           type="button"
-          onClick={() => setShowReport(true)}
-          onFocus={watchFocus}
+          onClick={handleReportPress}
+          onFocus={watchReportFocus}
           className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         >
           <Icon name="Flag" size={14} />
@@ -690,15 +719,6 @@ export function FetchErrorBanner({
       <StatusRegion politeness="polite" className="sr-only">
         {politeText ? <span key={politeText}>{politeText}</span> : null}
       </StatusRegion>
-
-      {showReport && (
-        <FeedbackForm
-          onClose={() => setShowReport(false)}
-          initialType="bug"
-          initialSubject={subject}
-          initialDescription={description}
-        />
-      )}
     </div>
   );
 }

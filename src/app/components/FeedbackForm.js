@@ -31,14 +31,16 @@ const screenshotAttachedCopy = (fileName) => `Screenshot attached: ${fileName}`;
 // occurs once in this file. Declaring a second copy is a decision, not a cleanup.
 export const FEEDBACK_SEND_FAILED_COPY = "We couldn't send your feedback. Please try again.";
 
-export default function FeedbackForm({ onClose, initialType = 'bug', initialSubject = '', initialDescription = '' }) {
+export default function FeedbackForm({ onClose, initialType = 'bug', initialSubject = '', initialDescription = '', onCloseAutoFocus = /** @type {((event: Event) => void) | undefined} */ (undefined) }) {
   // Phase 88.8 plan 13 Task 3(b): the contact handle is the APP address off the
   // shared self row, never the Auth0 SESSION claim. The Auth0 hook that used to
   // live here had exactly ONE consumer (the `user_email` line below) and was
   // removed with it — re-verified by grep before deleting, not taken on trust.
   // This component is mounted only while the modal is open (`Footer.js:187`, anchor
-  // `{showFeedbackForm && (`; the second mount is `FetchErrorBanner.tsx:507`, anchor
-  // `showReport &&`),
+  // `{showFeedbackForm && (`; the second mount is
+  // `src/app/components/FeedbackModalProvider.tsx:260`, anchor `key={report.key}` —
+  // AMENDED Phase 88.6.1-69: the report form a banner opens is hosted there, one instance
+  // for every banner),
   // so the hook costs one already-deduplicated query at most; logged out it does
   // not fire at all (`enabled: Boolean(user?.sub)`).
   const { self, query: selfQuery } = useSelfIdentity();
@@ -49,6 +51,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      anywhere. It matters most at the SECOND mount site the original change did not
      enumerate: `FetchErrorBanner.tsx` opens this form on a failed fetch, and on
      that path the self row is by definition not resolved.
+     AMENDED Phase 88.6.1-69: the second mount site is now `FeedbackModalProvider.tsx`,
+     which hosts the form a banner's Report this opens; the reasoning is unchanged.
      THE PREDICATE IS `isFetching`, NOT `isPending`, and that distinction is the
      whole correctness of this guard: in react-query v5 a DISABLED query still
      reports `isPending: true` (pending means "no data", not "working"), so keying
@@ -138,7 +142,10 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      `FetchErrorBanner.tsx`, which can itself appear more than once — so the hard-coded
      `feedback-submit-status` produced duplicate ids and an `aria-describedby` that
      resolved to whichever node the browser found first, reading another form's status.
-     `useId()` is the idiom the sibling EmailAddressSection uses throughout. */
+     `useId()` is the idiom the sibling EmailAddressSection uses throughout.
+     AMENDED Phase 88.6.1-69: the second site is now `FeedbackModalProvider.tsx`, one instance
+     for every banner (the Footer's own instance is unchanged); two sites can still be open in one
+     document, so the reason for `useId()` stands. */
   const reactId = useId();
   const statusId = `${reactId}-submit-status`;
   const errorId = `${reactId}-submit-error`;
@@ -473,7 +480,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      because e2e/feedback-stacking.spec.ts looks it up by exact text. */
   if (submitted) {
     return (
-      <Modal open onClose={onClose} className="max-w-md">
+      <Modal open onClose={onClose} onCloseAutoFocus={onCloseAutoFocus} className="max-w-md">
         <Modal.Body>
           <div className="text-center">
             <div className="text-content-status-success text-5xl mb-4">✓</div>
@@ -490,7 +497,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
        opens on the SUBJECT input, not the Type select above it: the select ships
        pre-defaulted ("Bug Report") and describing the issue is the form's task, so the
        typing surface is the first MEANINGFUL input here. */
-    <Modal open onClose={onClose} className="max-w-md" initialFocusRef={subjectInputRef}>
+    <Modal open onClose={onClose} onCloseAutoFocus={onCloseAutoFocus} className="max-w-md" initialFocusRef={subjectInputRef}>
       <Modal.Header>Report Bug or Suggest Feature</Modal.Header>
       <Modal.Body>
         <form onSubmit={handleSubmit} className="space-y-4">

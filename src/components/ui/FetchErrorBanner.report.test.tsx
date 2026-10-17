@@ -130,6 +130,15 @@ async function openReport(user: ReturnType<typeof userEvent.setup>, index = 0) {
   return screen.findByRole('dialog', { name: DIALOG_NAME });
 }
 
+// Between legs of one arm: let a torn-down banner's queued unmount final check (plan 04's hook
+// runs it in a microtask) land BEFORE the next leg renders, then put focus back on the body. Without
+// it, a leg that ended with focus on Try again (whose own focus watch re-arms) floors focus onto
+// the NEXT leg's freshly rendered page heading.
+async function settleBetweenLegs() {
+  await act(async () => {});
+  (document.activeElement as HTMLElement | null)?.blur();
+}
+
 /** Dispatch a visibilitychange with the document visible (the hook's tab-return re-attempt). */
 function fireVisible() {
   Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
@@ -209,6 +218,7 @@ describe('the report form outlives the banner (plan 88.6.1-69)', () => {
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(screen.queryByRole('dialog', { name: DIALOG_NAME })).toBeNull();
     unmount();
+    await settleBetweenLegs();
 
     // No focusTarget: plan 20's floor, the page h1.
     const second = render(hosted(<Harness failed state={state} withTarget={false} />));
@@ -311,6 +321,7 @@ describe('the report form outlives the banner (plan 88.6.1-69)', () => {
     await waitFor(() => expect(document.activeElement, '(i)').toBe(heading));
     expect(screen.queryByRole('dialog')).toBeNull();
     first.unmount();
+    await settleBetweenLegs();
 
     // (ii) the banner stays; only the link leaves (retryFailed falls while showError stays).
     const second = render(hosted(<Harness failed state={state} />));
@@ -319,6 +330,7 @@ describe('the report form outlives the banner (plan 88.6.1-69)', () => {
     const again = screen.getByRole('button', { name: 'Try again' });
     await waitFor(() => expect(document.activeElement, '(ii)').toBe(again));
     second.unmount();
+    await settleBetweenLegs();
 
     // (iii) the same with no focusTarget: Try again, never main h1.
     const third = render(hosted(<Harness failed state={state} withTarget={false} />));
