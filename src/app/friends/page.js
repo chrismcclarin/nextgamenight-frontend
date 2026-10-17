@@ -5,6 +5,7 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import {
     FetchErrorBanner,
@@ -87,7 +88,8 @@ function FriendsPage() {
     // whole page waits on `selfUuid` (full loading) and shows a standard error
     // state on permanent failure — it never degrades to a mixed-keyspace render.
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+    // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
 
     // POLL-02: receivedRequests + accept/decline mutators come from the
     // shared FriendshipStatusProvider (mounted at root). NotificationBell
