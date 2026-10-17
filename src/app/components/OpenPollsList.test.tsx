@@ -341,7 +341,9 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     const before = screen.queryAllByRole('status');
 
     await failRefetchOverRows(client, e500());
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    // Wait until BOTH copies are in (a region inserted mid-failure fills only after plan 70's
+    // dwell), so the identity check below is what decides this test.
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
 
     const region = screen.getAllByRole('status').find((n) => n.textContent === RF1);
     expect(region, 'a status region carries the RF1 sentence').toBeDefined();

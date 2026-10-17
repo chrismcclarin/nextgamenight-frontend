@@ -15,7 +15,7 @@ import StartPollModal from './StartPollModal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { toast } from 'sonner';
 
@@ -66,14 +66,22 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
   const { data, isPending } = openPollsQuery;
   const loading = isPending;
   const prompts = data?.prompts || [];
+  // 88.6.1-70 contract C3: DATA PRESENCE, never a count (the Section badge's `hasRetainedOpenData`
+  // rule) — a list that loaded EMPTY is retained content too (owner ruling Y, D-50).
+  const hasRetainedPollsData = data !== undefined;
 
   /* DECISION Phase 88-18 (Req 6 / T-88-18-01, UI-SPEC 9.2): a HARD fetch failure now renders the
      shared fetch-error treatment instead of falling through to the empty state. `softFailPromptQueryFn`
      only soft-fails a PARSE failure to EMPTY_OPEN_PROMPTS — a network/4xx/5xx rejection still rejects,
      leaving `data` undefined and `prompts` at [], which used to print "no active check-ins" at someone
      whose request had failed. Empty and failed are different facts and get different surfaces; do not
-     re-merge these two branches. */
+     re-merge these two branches.
+     AMENDED Phase 88.6.1-75 (AC-29): a failure with data RETAINED now renders plan 88.6.1-70's RF1
+     notice above that data, and the full banner only when nothing is retained (a first load, or an
+     access or gone answer — plan 70's C10, through `useRetainedContent`). Empty and failed are still
+     never merged: the empty state renders only when a SUCCESSFUL fetch returned zero. */
   const pollsErrorState = useFetchErrorState(openPollsQuery);
+  const pollsRetained = useRetainedContent(hasRetainedPollsData, pollsErrorState, { queryKey: promptKeys.openPolls(groupId) });
   const focusRecovery = useFocusRecovery({ fallback: focusFallbackRef });
 
   // Post-write cache invalidation replaces the old loadPrompts() refetch — keeps
@@ -172,7 +180,9 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
     }
   };
 
-  const showEmptyState = !loading && !pollsErrorState.showError && prompts.length === 0;
+  // A retained EMPTY list under the RF1 notice is still the empty state, so the 88-18 header-CTA rule
+  // below keeps exactly one start-a-check-in CTA (header or empty state) in every state.
+  const showEmptyState = !loading && (!pollsErrorState.showError || pollsRetained) && prompts.length === 0;
 
   return (
     <div>
@@ -194,50 +204,87 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
         </Button>
       )}
 
+      {/* DECISION Phase 88.6.1-75 (AC-29 / RF1): a failed REFRESH over check-ins that loaded keeps
+          them on screen under plan 88.6.1-70's shared RefreshFailedNotice (copy row RF1, its
+          REFRESH_FAILED_NOTICE constant, plus a Retry) — owner ruling 2026-10-05 (D-47) and the
+          orchestrator's consistency decision that every retained-content site uses it. Three arms,
+          one failure surface per state: loading; the FULL banner only when nothing is retained (a
+          first load, or an access or gone answer), checked before the empty state; otherwise the
+          notice, mounted unconditionally in that arm, above the list or above the empty state a
+          SUCCESSFUL fetch returned.
+          REJECTED: (a) the FULL banner above the retained list — plan 88.6.1-29's earlier-lap choice
+          (the D-09a / D-41 shape): its title says the check-ins could not be loaded above check-ins
+          that did load, which contradicts the screen; (b) the compact banner — both of its sentences
+          (plan 21's compact notice and its after-failed-retry line) are about personal controls and
+          are false for a list refresh; (c) the banner REPLACING the list (what shipped before this),
+          which hid rows the Section's badge still counts; (d) retention keyed on a non-zero count —
+          the r3 #14 trap, a successful empty list would blank (owner ruling Y: a list that loaded
+          empty is retained content); (e) the notice over rows after a 401 / 403 refetch, or a local
+          list of access codes — plan 70's useRetainedContent decides (C10), so the full banner says
+          why and the rows are withdrawn until a success.
+          Retention is DATA PRESENCE (`hasRetainedPollsData`, the Section badge's rule) passed through
+          plan 70's useRetainedContent with this query's own key (`pollsRetained`, so the access memory
+          outlives a remount); the notice's focus target is the Section's expand control
+          (`focusFallbackRef`, D-05 — no heading is minted).
+          C12: plan 70's RetainedContentFocusGuard sits right here, before the ternary and outside
+          every arm, with the same target, so a row control that held focus when an access answer
+          withdrew the rows hands it to the expand control, never the page body; the notice's own
+          Retry is plan 70's. Changing this is a decision, not a cleanup. */}
+      <RetainedContentFocusGuard retained={pollsRetained} focusTarget={focusFallbackRef} />
       {loading ? (
         <p className="text-content-muted text-sm py-4 text-center">Loading check-ins...</p>
-      ) : pollsErrorState.showError ? (
+      ) : pollsErrorState.showError && !pollsRetained ? (
         <FetchErrorBanner
           state={pollsErrorState}
           title="We couldn't load the check-ins"
           reportContext="Open availability check-ins list (group page)"
         />
-      ) : prompts.length === 0 ? (
-        // D-UI-03: unified empty-state COPY for ALL roles (admin/member alike);
-        // only the CTA is role-gated, and that gate stays here at the call site.
-        <EmptyState
-          icon="Vote"
-          heading="No check-ins running"
-          body="Start one and everyone picks the nights that work — you'll see the overlap."
-          action={
-            canCreate ? (
-              /* The per-CTA `min-h-11` this used to carry is DROPPED, in the same commit as
-                 the header button's `<Button>` migration above — the D-36 marker's own last
-                 clause says that is when it becomes correct, because the cva base now supplies
-                 the 44px floor at EVERY viewport (88.6-06 D-09). Both CTAs are the same action
-                 and still the same touch target; what changed is where the floor comes from.
-                 The floor itself is NOT optional here — see that marker. */
-              <Button
-                variant="primary"
-                onClick={() => setShowStartPoll(true)}
-              >
-                + Start a check-in
-              </Button>
-            ) : undefined
-          }
-        />
       ) : (
-        <ul className="space-y-2">
-          {prompts.map((p) => (
-            <OpenPollCard
-              key={p.id}
-              prompt={p}
-              group={group}
-              closing={closingPromptIds.has(p.id)}
-              onClose={handleClose}
+        <>
+          <RefreshFailedNotice
+            state={pollsErrorState}
+            retained={pollsRetained}
+            focusTarget={focusFallbackRef}
+            className="mb-4"
+          />
+          {prompts.length === 0 ? (
+            // D-UI-03: unified empty-state COPY for ALL roles (admin/member alike);
+            // only the CTA is role-gated, and that gate stays here at the call site.
+            <EmptyState
+              icon="Vote"
+              heading="No check-ins running"
+              body="Start one and everyone picks the nights that work — you'll see the overlap."
+              action={
+                canCreate ? (
+                  /* The per-CTA `min-h-11` this used to carry is DROPPED, in the same commit as
+                     the header button's `<Button>` migration above — the D-36 marker's own last
+                     clause says that is when it becomes correct, because the cva base now supplies
+                     the 44px floor at EVERY viewport (88.6-06 D-09). Both CTAs are the same action
+                     and still the same touch target; what changed is where the floor comes from.
+                     The floor itself is NOT optional here — see that marker. */
+                  <Button
+                    variant="primary"
+                    onClick={() => setShowStartPoll(true)}
+                  >
+                    + Start a check-in
+                  </Button>
+                ) : undefined
+              }
             />
-          ))}
-        </ul>
+          ) : (
+            <ul className="space-y-2">
+              {prompts.map((p) => (
+                <OpenPollCard
+                  key={p.id}
+                  prompt={p}
+                  group={group}
+                  closing={closingPromptIds.has(p.id)}
+                  onClose={handleClose}
+                />
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       <StartPollModal
