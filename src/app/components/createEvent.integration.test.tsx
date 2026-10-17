@@ -957,7 +957,7 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
         onEventCreated={vi.fn()}
         user={{ sub: 'auth0|self' }}
         userRole="owner"
-        editingEvent={editFixture}
+        editingEvent={editFixture as never}
       />
     );
     const dialog = await screen.findByRole('dialog');

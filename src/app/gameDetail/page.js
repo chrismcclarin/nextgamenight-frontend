@@ -3052,6 +3052,14 @@ export default function GameDetailPage() {
                         group_id={effectiveGroupId}
                         modal={editEventModal}
                         modaltoggle={() => { setEditEventModal(false); setEditingEvent(null); }}
+                        // DECISION Phase 88.6.1-68 (one close owner): this host's created-callback only
+                        // refreshes; the close after a success is CreateEvent's own modaltoggle(), which
+                        // plan 88.6.1-81 calls only while the press's dialog session is still open.
+                        // REJECTED: the host closing here too (what shipped: an older update's late
+                        // success closed, and at this conditional mount unmounted, an Edit dialog the
+                        // person had reopened, with whatever they had typed). The ordinary path is
+                        // unchanged (the callback refreshes, then CreateEvent toasts and closes).
+                        // Re-adding a close here is a decision, not a cleanup.
                         onEventCreated={() => {
                             // Phase 71.1-02: bump RSVP / brings refresh signals in
                             // addition to the existing ballot bump so the cascade
@@ -3059,8 +3067,6 @@ export default function GameDetailPage() {
                             // RSVP / EventBring / EventBallotVote rows on the
                             // backend) is visible without a manual page refresh.
                             const updatedEventId = singleEvent?.id;
-                            setEditEventModal(false);
-                            setEditingEvent(null);
                             fetchEventOnly();
                             setBallotRefreshKey(k => k + 1);
                             setRsvpRefreshKey(k => k + 1);

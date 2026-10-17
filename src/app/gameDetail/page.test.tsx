@@ -141,19 +141,18 @@ vi.mock('@/app/components/BringSummary', () => ({
 // can tap a Recommended Games card. Every older case resolves suggestions to [], so no card renders.
 vi.mock('@/app/components/createEvent', async () => {
   const { useEffect } = await import('react');
-  return {
-    default: (props: Record<string, unknown>) => {
-      h.createEventProps.push(props);
-      // 88.6.1-68: the mount counter (see `h.createEventMounts`).
-      useEffect(() => {
-        h.createEventMounts += 1;
-        return () => {
-          h.createEventMounts -= 1;
-        };
-      }, []);
-      return null;
-    },
-  };
+  function CreateEventStub(props: Record<string, unknown>) {
+    h.createEventProps.push(props);
+    // 88.6.1-68: the mount counter (see `h.createEventMounts`).
+    useEffect(() => {
+      h.createEventMounts += 1;
+      return () => {
+        h.createEventMounts -= 1;
+      };
+    }, []);
+    return null;
+  }
+  return { default: CreateEventStub };
 });
 vi.mock('@/app/components/GameSuggestionCard', () => ({
   default: ({

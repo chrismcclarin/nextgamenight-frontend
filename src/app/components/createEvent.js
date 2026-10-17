@@ -28,6 +28,8 @@ import { logger, errCtx } from '@/lib/logger';
 const REQUIRED_SR_LABEL = '(required)';
 const CREATING_EVENT_LABEL = 'Creating...';
 const UPDATING_EVENT_LABEL = 'Updating...';
+// Copy row E4 (ratified, D-30), reused for the Edit dialog's loading line — owner ruling 2026-10-05; see DECISION Phase 88.6.1-68 (edit reads the event fresh).
+const LOADING_GAME_NIGHT_LABEL = 'Loading game night...';
 /* DECISION Phase 88.6.1-81 (one payload in flight): a module-level map from a write's key (the
    mode, the event id when editing, and the serialised payload it sends, plus the trimmed ballot
    list an update saves after it) to that write's in-flight promise and the time it started. A
@@ -55,6 +57,57 @@ const UPDATING_EVENT_LABEL = 'Updating...';
 // stops blocking an identical retry.
 const JOIN_WINDOW_MS = 30 * 1000;
 const pendingEventWrites = new Map();
+/* DECISION Phase 88.6.1-68 (edit reads the event fresh): in edit mode the form is built from the
+   event AS THE SERVER HOLDS IT, read when the dialog opens and only after every edit write this
+   device still has in flight for that event has settled. The host's copy of the event gives only
+   its id (and tells the dialog it is in edit mode). The loading line shows until the read lands,
+   and in edit mode it reads copy row E4 through LOADING_GAME_NIGHT_LABEL (owner ruling 2026-10-05:
+   the dialog is waiting on the game night itself, not only the members); create mode keeps its
+   members line. Rejected for the line: keeping the members line in edit mode (it no longer names
+   what is loading) and any new sentence (D-31). A failed or mismatched read shows the register
+   line as an error toast and closes the dialog if its session is still open — no form is ever
+   built from an older copy. And no edit form opens until the populate has filled it from that
+   read: a failed members read in edit mode ends the opening the same way (once per opening),
+   because a blank edit form's Update sends an empty participant list, which the server takes as
+   the new set and cascades to every removed participant's RSVP, brought games and ballot votes
+   (the Phase 71.1-02 comment at gameDetail's event-view Edit mount records that cascade).
+   REJECTED: the host's copy (what shipped: closing an Edit dialog mid-update and reopening it, or
+   reopening before the host's refresh landed, showed the pre-update values, and an unchanged
+   Update silently reverted the person's own edit, which plan 88.6.1-81's payload join cannot catch
+   because the payload differs); disabling Edit while an update runs (a silent dead button with no
+   ratified words; misses the window between a success and the host's refresh; the host cannot see
+   these writes); populating from the in-flight payload (covers only the in-flight window, needs a
+   payload-to-form mapping, and a second, different update would race the first on the server);
+   the host refreshing an open dialog (overwrites what the person is typing); falling back to the
+   host's copy on a failed read (the one path that could still revert a just-made edit). NOTE: an
+   edit made on ANOTHER device between this read and the Update is not detected; a server-side
+   version check is the complete answer and is outside this frontend phase. The map holds settle
+   promises keyed by event id, never a payload, and is never logged or sent. Removing the wait or
+   the read is a decision, not a cleanup. */
+const eventWritesInFlight = new Map();
+// Resolves once every edit write this device has in flight for the event right now has settled
+// (each entry is a promise that only ever resolves).
+function whenEventWritesSettle(eventId) {
+  const writes = eventWritesInFlight.get(eventId);
+  if (!writes || writes.size === 0) return Promise.resolve();
+  return Promise.all([...writes]).then(() => undefined);
+}
+// Registers one edit write for the event and returns the function that settles and removes it.
+function registerEventWrite(eventId) {
+  let settle = () => {};
+  const written = new Promise((resolve) => {
+    settle = resolve;
+  });
+  if (!eventWritesInFlight.has(eventId)) eventWritesInFlight.set(eventId, new Set());
+  eventWritesInFlight.get(eventId).add(written);
+  return () => {
+    settle();
+    const writes = eventWritesInFlight.get(eventId);
+    if (!writes) return;
+    writes.delete(written);
+    if (writes.size === 0) eventWritesInFlight.delete(eventId);
+  };
+}
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
   // GameComboInput userId props below), not the Auth0 sub (87.5 BINT-02). searchAll
@@ -104,6 +157,49 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       setEventSubmitting(false);
     };
   }, [modal]);
+  // Plan 88.6.1-68 (see DECISION Phase 88.6.1-68 (edit reads the event fresh)): the event as the
+  // server holds it, the id the populate last built the form for, and the per-opening record that
+  // a failed read already ended this opening (one toast, one close, whichever read fails first).
+  const editId = editingEvent ? editingEvent.id : null;
+  const [editSourceEvent, setEditSourceEvent] = useState(null);
+  const [populatedEditId, setPopulatedEditId] = useState(null);
+  const editOpeningEndedRef = useRef(-1);
+  const endEditOpening = (error, session) => {
+    if (dialogSessionRef.current !== session || editOpeningEndedRef.current === session) return;
+    editOpeningEndedRef.current = session;
+    toast.error(getFetchErrorMessage(error));
+    modaltoggle();
+  };
+  // see DECISION Phase 88.6.1-68 (edit reads the event fresh)
+  useEffect(() => {
+    setEditSourceEvent(null);
+    setPopulatedEditId(null);
+    if (!modal || !editId) return undefined;
+    const session = dialogSessionRef.current;
+    let cancelled = false;
+    (async () => {
+      try {
+        await whenEventWritesSettle(editId);
+        if (cancelled) return;
+        const answer = await eventsAPI.getEvent(editId);
+        if (cancelled) return;
+        if (!answer || typeof answer !== 'object' || answer.id !== editId) {
+          throw new Error('The event read answered for a different event');
+        }
+        setEditSourceEvent(answer);
+      } catch (error) {
+        if (cancelled) return;
+        logger.info('Error reading event for edit:', errCtx(error));
+        endEditOpening(error, session);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // `endEditOpening` is a fresh closure every render; listing it would re-read on every render.
+    // The run's own session check is what keeps a stale closure from closing a newer opening.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modal, editId]);
   /* DECISION Phase 88.1-21 (H1): the fetched week anchor is stored as ONE object,
      `{ monday, fromNavigation }`, chosen OVER a bare `Date` plus reading `currentWeekStart`
      back out at the consumer. The two facts — WHICH week landed, and whether it landed because
@@ -247,14 +343,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
   // Populate form when editingEvent changes
   useEffect(() => {
-    if (editingEvent && groupMembers.length > 0) {
+    if (editingEvent && editSourceEvent && groupMembers.length > 0) {
+      // Plan 88.6.1-68: every field comes from the event as the server holds it, never the host's
+      // copy (see DECISION Phase 88.6.1-68 (edit reads the event fresh)).
       // Format start_date for datetime-local input (YYYY-MM-DDTHH:mm) using
       // the viewer's PROFILE timezone (not browser TZ). This is the headline
       // TZ-01 fix — see Phase 62-02. utcToWallClock returns wall-clock parts
       // in `timezone`, never in browser-local.
-      const startDate = editingEvent.start_date
+      const startDate = editSourceEvent.start_date
         ? (() => {
-            const wc = utcToWallClock(editingEvent.start_date, timezone);
+            const wc = utcToWallClock(editSourceEvent.start_date, timezone);
             if (!wc) return '';
             const pad = (n) => String(n).padStart(2, '0');
             return `${wc.year}-${pad(wc.month)}-${pad(wc.day)}T${pad(wc.hours)}:${pad(wc.minutes)}`;
@@ -263,7 +361,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       
       // Map EventParticipations to participants format
       // Handle both regular participants (with user_id) and custom participants (is_custom: true)
-      const participants = editingEvent.EventParticipations?.map(ep => {
+      const participants = editSourceEvent.EventParticipations?.map(ep => {
         // Check if this is explicitly marked as a custom participant
         // Custom participants have is_custom: true OR (no user_id AND username exists)
         const isCustom = ep.is_custom === true || (ep.user_id === null || ep.user_id === '' || !ep.user_id);
@@ -314,35 +412,35 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       let winner_id = null;
       let picked_by_id = null;
       
-      if (editingEvent.Winner) {
-        if (editingEvent.Winner.is_custom || (!editingEvent.Winner.id && editingEvent.Winner.username)) {
+      if (editSourceEvent.Winner) {
+        if (editSourceEvent.Winner.is_custom || (!editSourceEvent.Winner.id && editSourceEvent.Winner.username)) {
           // Custom winner - create a custom identifier
-          const winnerIndex = finalParticipants.findIndex(p => p.username === editingEvent.Winner.username && !p.user_id);
+          const winnerIndex = finalParticipants.findIndex(p => p.username === editSourceEvent.Winner.username && !p.user_id);
           if (winnerIndex >= 0) {
-            winner_id = `custom_${winnerIndex}_${editingEvent.Winner.username}`;
+            winner_id = `custom_${winnerIndex}_${editSourceEvent.Winner.username}`;
           }
         } else {
-          winner_id = editingEvent.Winner.id || null;
+          winner_id = editSourceEvent.Winner.id || null;
         }
       }
       
-      if (editingEvent.PickedBy) {
-        if (editingEvent.PickedBy.is_custom || (!editingEvent.PickedBy.id && editingEvent.PickedBy.username)) {
+      if (editSourceEvent.PickedBy) {
+        if (editSourceEvent.PickedBy.is_custom || (!editSourceEvent.PickedBy.id && editSourceEvent.PickedBy.username)) {
           // Custom picked_by - create a custom identifier
-          const pickedByIndex = finalParticipants.findIndex(p => p.username === editingEvent.PickedBy.username && !p.user_id);
+          const pickedByIndex = finalParticipants.findIndex(p => p.username === editSourceEvent.PickedBy.username && !p.user_id);
           if (pickedByIndex >= 0) {
-            picked_by_id = `custom_${pickedByIndex}_${editingEvent.PickedBy.username}`;
+            picked_by_id = `custom_${pickedByIndex}_${editSourceEvent.PickedBy.username}`;
           }
         } else {
-          picked_by_id = editingEvent.PickedBy.id || null;
+          picked_by_id = editSourceEvent.PickedBy.id || null;
         }
       }
 
       // Format rsvp_deadline for datetime-local input using the viewer's
       // PROFILE timezone — same TZ-01 fix as start_date above.
-      const rsvpDeadline = editingEvent.rsvp_deadline
+      const rsvpDeadline = editSourceEvent.rsvp_deadline
         ? (() => {
-            const wc = utcToWallClock(editingEvent.rsvp_deadline, timezone);
+            const wc = utcToWallClock(editSourceEvent.rsvp_deadline, timezone);
             if (!wc) return '';
             const pad = (n) => String(n).padStart(2, '0');
             return `${wc.year}-${pad(wc.month)}-${pad(wc.day)}T${pad(wc.hours)}:${pad(wc.minutes)}`;
@@ -350,18 +448,20 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         : '';
 
       setNewEvent({
-        group_id: editingEvent.group_id,
-        game_id: editingEvent.game_id,
-        game_name: editingEvent.Game?.name || '',
+        group_id: editSourceEvent.group_id,
+        game_id: editSourceEvent.game_id,
+        game_name: editSourceEvent.Game?.name || '',
         start_date: startDate,
-        duration_minutes: editingEvent.duration_minutes || null,
+        duration_minutes: editSourceEvent.duration_minutes || null,
         rsvp_deadline: rsvpDeadline,
         winner_id: winner_id,
         picked_by_id: picked_by_id,
-        is_group_win: editingEvent.is_group_win || false,
-        comments: editingEvent.comments || '',
+        is_group_win: editSourceEvent.is_group_win || false,
+        comments: editSourceEvent.comments || '',
         participants: finalParticipants
       });
+      // Plan 88.6.1-68: the form is now built from the read for THIS event; the body gate opens on it.
+      setPopulatedEditId(editSourceEvent.id);
 
       // Phase 66-01: visual-calendar slot highlight is now derived from
       // newEvent.start_date + duration_minutes via `derivedSelectedSlot`
@@ -393,7 +493,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       }
       setNewEvent(form);
     }
-  }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime, prefillDuration, prefillGameId, prefillGameName, timezone]);
+  }, [editingEvent, editSourceEvent, groupMembers, group_id, prefillDate, prefillTime, prefillDuration, prefillGameId, prefillGameName, timezone]);
 
   // Fetch heatmap data when modal opens or effective timezone changes.
   // HEAT-01: week-start MUST be Monday-of-week as observed in the user's
@@ -533,6 +633,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   });
 
   const fetchGroupMembers = async () => {
+    const session = dialogSessionRef.current;
     try {
       setLoading(true);
       // Use groupsAPI.getGroupMembers which automatically includes Authorization header
@@ -562,6 +663,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       }
     } catch (error) {
       logger.info('Error fetching group members:', errCtx(error));
+      // Plan 88.6.1-68 (#79): in edit mode a failed members read ends the opening like a failed
+      // event read — a blank edit form's Update would send an empty participant list. Create mode
+      // only logs (a blank create form loses nothing). See DECISION Phase 88.6.1-68 (edit reads
+      // the event fresh).
+      if (editingEvent) endEditOpening(error, session);
     } finally {
       setLoading(false);
     }
@@ -772,6 +878,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     const noNewerSessionOpen = () => sessionIsCurrent() || !dialogOpenRef.current;
     // Plan 88.6.1-81 (one payload in flight): set when this press joins a write already in flight.
     let joinedWrite = null;
+    // Plan 88.6.1-68: settles this press's edit write in `eventWritesInFlight` (the originator only).
+    let releaseEditWrite = null;
     eventSubmitInFlightRef.current = true;
     setEventSubmitting(true);
     try {
@@ -886,6 +994,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         } else {
           // The ORIGINATOR: send, and keep the request in flight under its key (replacing an entry
           // past the join window) until it settles. Only an entry that is still its own is freed.
+          // Plan 88.6.1-68: register the update (its PUT and the ballot step after it) so a reopened
+          // Edit dialog reads the event only after it settles. See DECISION Phase 88.6.1-68 (edit
+          // reads the event fresh). A create registers nothing.
+          if (editingEvent) releaseEditWrite = registerEventWrite(editingEvent.id);
           const writePromise = editingEvent
             ? eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit)
             : eventsAPI.createEvent(eventDataToSubmit);
@@ -950,7 +1062,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
            dialog) and the resets run only if no newer session is open. See
            DECISION Phase 88.6.1-81 (dialog session) at the refs. A joined write's receipt is its
            originator's toast: the joiner adds none, but on success calls its own `onEventCreated`
-           (above) so its own page refreshes. See DECISION Phase 88.6.1-81 (one payload in flight). */
+           (above) so its own page refreshes. See DECISION Phase 88.6.1-81 (one payload in flight).
+           ——— AMENDED Phase 88.6.1-68 (one close owner), original reasoning above KEPT AS HISTORY:
+           every host's created-callback now only refreshes (gameDetail's three, groupHomePage's) and
+           groupPlanning passes none, so the close after a success is this component's
+           `modaltoggle()` alone. "Refetch or unmount; none navigates" is still true. */
         if (!joinedWrite) {
           toast.success(editingEvent ? 'Event updated' : 'Event created');
         }
@@ -974,6 +1090,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         }
       }
     } finally {
+      // Plan 88.6.1-68: settle this press's edit write. Everything between the ballot step and here
+      // runs synchronously, so this finally is the one that wraps the PUT and the ballot step.
+      if (releaseEditWrite) releaseEditWrite();
       // Plan 88.6.1-81: release only the session this press belongs to. After a close the cleanup
       // already released it, and a newer session may hold its own press.
       if (sessionIsCurrent()) {
@@ -1070,6 +1189,29 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     heatmapWeekAnchor,
   ]);
 
+  // Plan 88.6.1-68: the body gate. Edit mode waits until the populate has built the form from the
+  // fresh read for THIS event (#79), never on the read's arrival alone.
+  const bodyGateOpen = !loading && (!editingEvent || populatedEditId === editId);
+  // Plan 88.6.1-68 (#233): once per opening, when the gate opens, move focus to the game input if
+  // it is still on the dialog's default target (the header Close or the dialog surface). Focus a
+  // person put anywhere else is never taken. See the AMENDED 88-33 Task 4 note at the return.
+  const gateFocusDoneRef = useRef(false);
+  useEffect(() => {
+    if (!modal) {
+      gateFocusDoneRef.current = false;
+      return;
+    }
+    if (!bodyGateOpen || gateFocusDoneRef.current) return;
+    gateFocusDoneRef.current = true;
+    const input = gameInputRef.current;
+    const dialog = input ? input.closest('[role="dialog"]') : null;
+    if (!input || !dialog) return;
+    const active = document.activeElement;
+    const onDefaultTarget =
+      active === dialog || (dialog.contains(active) && active.getAttribute('aria-label') === 'Close');
+    if (onDefaultTarget) input.focus();
+  }, [modal, bodyGateOpen]);
+
   if (!modal) return null;
 
   /* DECISION Phase 88-16 (SPEC Req 9 / Req 4): this component's TWO legacy
@@ -1100,7 +1242,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): the game field is this
      form's first meaningful input — focus lands there on open so the person can just
      start typing. While the members fetch is still loading the input is not mounted;
-     applyInitialFocus then declines and Radix's default stands (graceful, recorded). */
+     applyInitialFocus then declines and Radix's default stands (graceful, recorded).
+     AMENDED Phase 88.6.1-68: the dialog now also waits on a network read in edit mode (this
+     device's update, then the fresh event read) as well as the members, so when the body gate
+     opens the same target is focused late, if focus is still where the dialog put it (the header
+     Close or the dialog surface), and the waiting region is marked busy while it waits. This
+     overrides the 88.6-44 "accepted by record" fallback (Close keeps focus), which was not an
+     owner ruling. Removing the late move is a decision, not a cleanup. */
   return (
     <Modal open onClose={modaltoggle} size="lg" initialFocusRef={gameInputRef}>
       <Modal.Header>{editingEvent ? 'Edit Event' : 'Create Event'}</Modal.Header>
@@ -1128,8 +1276,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           primitive default ever changes again, this modal must re-assert
           `p-3 md:p-6` or the R2 75px budget arithmetic above breaks. */}
       <Modal.Body>
-        {loading ? (
-          <p className="text-content-primary">Loading group members...</p>
+        {/* Plan 88.6.1-68 (#233): a layout-neutral region this component owns (Modal.Body forwards
+            className only), marked busy while the gate is closed. */}
+        <div aria-busy={!bodyGateOpen || undefined}>
+        {!bodyGateOpen ? (
+          <p className="text-content-primary">{editingEvent ? LOADING_GAME_NIGHT_LABEL : 'Loading group members...'}</p>
         ) : (
           <>
         {/* Phase 62-02: nudge user to set profile TZ before editing/creating
@@ -1593,7 +1744,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 AMENDED Phase 88.6.1-81: a request that outlives its dialog never closes, resets or
                 latches a reopened one — see DECISION Phase 88.6.1-81 (dialog session); the hosts'
                 own `onEventCreated` closes are the hosts'. And the same payload in flight is sent
-                once — see DECISION Phase 88.6.1-81 (one payload in flight). */}
+                once — see DECISION Phase 88.6.1-81 (one payload in flight).
+                AMENDED Phase 88.6.1-68: the hosts' own closes are gone, so a request that outlives
+                its dialog never closes a reopened one at any host. */}
             <Button variant="secondary" onClick={modaltoggle}>
               Cancel
             </Button>
@@ -1625,6 +1778,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         </form>
           </>
         )}
+        </div>
       </Modal.Body>
     </Modal>
   );
