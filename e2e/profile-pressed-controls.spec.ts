@@ -1,7 +1,14 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 
 import { focusByKeyboard } from './support/contrast';
-import { expectNoApiWrites, holdUntilReleased, holdWrites, type WriteHold } from './support/inFlight';
+import {
+  expectGatedPair,
+  expectNoApiWrites,
+  holdUntilReleased,
+  holdWrites,
+  type ReleasableHold,
+  type WriteHold,
+} from './support/inFlight';
 import { expectFocusRingClearOfText } from './support/ringGeometry';
 
 // Phase 88.6.1 plan 18 (Requirement 4 / D-35, Requirement 5): the Profile page's two pressed
@@ -49,55 +56,19 @@ import { expectFocusRingClearOfText } from './support/ringGeometry';
 const FAKE_PHONE = '(201) 555-0123';
 const FAKE_CODE = '123456';
 
-interface Held {
-  /** How many matching requests reached the browser-side handler. */
-  count: () => number;
-  /** Resolves when the first matching request arrives (it is then held). */
-  arrived: Promise<void>;
-  /** Answers every held request, and every later one at once. */
-  release: () => void;
-}
-
-function heldResponder(status: number, json: Record<string, unknown>): {
-  held: Held;
-  take: (route: Route) => Promise<void>;
-} {
-  let count = 0;
-  let released = false;
-  const waiting: Route[] = [];
-  let markArrived!: () => void;
-  const arrived = new Promise<void>((resolve) => {
-    markArrived = resolve;
-  });
-  return {
-    held: {
-      count: () => count,
-      arrived,
-      release: () => {
-        released = true;
-        for (const route of waiting.splice(0)) void route.fulfill({ status, json });
-      },
-    },
-    take: async (route: Route) => {
-      count += 1;
-      markArrived();
-      if (released) {
-        await route.fulfill({ status, json });
-        return;
-      }
-      waiting.push(route);
-    },
-  };
-}
-
 interface WriteMocks {
   savePosts: () => number;
-  verify: Held;
-  reset: Held;
+  verify: ReleasableHold;
+  reset: ReleasableHold;
   completePuts: () => number;
 }
 
 // The write intercepts, shared by both tests. Each handler only ever answers in the browser.
+// The two HELD writes (the verification check and the tutorial reset) use the shared
+// release-capable hold, `holdUntilReleased` (e2e/support/inFlight.ts, plan 88.6.1-44) — one copy
+// phase-wide (plan 88.6.1-59 folded this spec's own earlier copy onto it, behaviour unchanged).
+// Each hold is registered AFTER its path's answering handler, so a request of another method on
+// that path falls back to the handler below it and is still answered in the browser.
 async function interceptWrites(page: Page): Promise<WriteMocks> {
   let savePosts = 0;
   await page.route(
@@ -112,29 +83,22 @@ async function interceptWrites(page: Page): Promise<WriteMocks> {
     },
   );
 
-  const verify = heldResponder(200, { verified: true });
+  // Any method other than the held POST is refused in the browser.
   await page.route(
     (url) => url.pathname.endsWith('/phone/verify'),
     async (route) => {
-      if (route.request().method() !== 'POST') {
-        await route.fulfill({ status: 405, json: {} });
-        return;
-      }
-      await verify.take(route);
+      await route.fulfill({ status: 405, json: {} });
     },
   );
+  const verify = await holdUntilReleased(page, 'POST', /\/phone\/verify$/);
 
-  // One handler for the one path: DELETE is the held reset, PUT the completion safety net.
-  const reset = heldResponder(200, { tutorial_version: 0 });
+  // One handler for the one path: PUT is the completion safety net; the DELETE (the reset) is held
+  // by the hold registered after it.
   let completePuts = 0;
   await page.route(
     (url) => url.pathname.endsWith('/tutorial'),
     async (route) => {
       const method = route.request().method();
-      if (method === 'DELETE') {
-        await reset.take(route);
-        return;
-      }
       if (method === 'PUT') {
         completePuts += 1;
         await route.fulfill({ status: 200, json: { tutorial_version: 3 } });
@@ -143,11 +107,12 @@ async function interceptWrites(page: Page): Promise<WriteMocks> {
       await route.fulfill({ status: 405, json: {} });
     },
   );
+  const reset = await holdUntilReleased(page, 'DELETE', /\/tutorial$/);
 
   return {
     savePosts: () => savePosts,
-    verify: verify.held,
-    reset: reset.held,
+    verify,
+    reset,
     completePuts: () => completePuts,
   };
 }
@@ -245,7 +210,7 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await expect(verify).toHaveText('Verifying...');
     expect(mocks.verify.count()).toBe(1);
 
-    mocks.verify.release();
+    await mocks.verify.release({ verified: true });
     // Requirement 5: the success removes the button; focus lands on the settled text.
     await expect(page.getByText('Phone verified', { exact: true })).toBeFocused();
 
@@ -275,7 +240,7 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await expect(pressed).toHaveText('Starting...');
     expect(mocks.reset.count()).toBe(1);
 
-    mocks.reset.release();
+    await mocks.reset.release({ tutorial_version: 0 });
     // The tour opened. Where focus goes from here is the v2.1 tutorial rewrite's (D-49, AC-16
     // struck), so nothing is asserted about it and the tour is left as it is.
     await expect(page.getByRole('button', { name: 'Skip tutorial' })).toBeVisible({ timeout: 15_000 });
@@ -403,5 +368,102 @@ test.describe('Profile phone block focus and Remove in flight (plan 88.6.1-53)',
     // Exactly the one held DELETE; Dismiss writes nothing (the backstop's half is in afterEach).
     expect(removal.count()).toBe(1);
     expectNoMockedWrites(mocks);
+  });
+});
+
+// Phase 88.6.1 plan 59 (Requirement 4 / D-35, Requirement 5, Requirement 9): the availability
+// forms' Save Schedule / Save Override and (Task 3) the username editor, in a real browser. Each
+// pressed Save keeps focus and refuses a second Enter while its write is held, shows the gated
+// primary pair, and after release focus lands on the control that opened the form.
+//
+// Intercepts, registered BEFORE page.goto in this order (Playwright runs the newest first):
+//   - holdWrites: the fail-closed net, so any write nobody mocked is held in the browser and
+//     fails the test in afterEach rather than reaching the fixture account.
+//   - holdUntilReleased (the shared helper, e2e/support/inFlight.ts): the ONE write under test,
+//     kept unanswered until the test releases it in the browser. Not holdWrites for this one:
+//     holdWrites never answers, and these tests release the write to see where focus lands.
+test.describe('Profile availability forms and username editor in flight (plan 88.6.1-59)', () => {
+  let backstop: WriteHold | undefined;
+
+  test.afterEach(async ({ page }) => {
+    expectNoApiWrites(backstop);
+    backstop = undefined;
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('Save Schedule keeps focus, refuses a second press, then lands on + Add Schedule', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const create = await holdUntilReleased(page, 'POST', /\/availability\/user\/[^/]+\/recurring$/);
+    await page.goto('/userProfile');
+
+    // A missing control is a failure, never a skip.
+    const toggle = page.getByRole('button', { name: '+ Add Schedule' });
+    await expect(toggle).toBeVisible({ timeout: 15_000 });
+    await toggle.click();
+    await page.getByRole('button', { name: 'Mon' }).click();
+
+    const save = page.getByRole('button', { name: /^(Save Schedule|Saving\.\.\.)$/ });
+    await focusByKeyboard(page, save);
+    await page.keyboard.press('Enter');
+    await create.arrived;
+
+    await expect(save).toBeFocused();
+    await expect(save).toHaveAttribute('aria-disabled', 'true');
+    await expect(save).not.toHaveAttribute('disabled');
+    await expect(save).toHaveText('Saving...');
+    await expectGatedPair(page, save, 'primary', 'dark');
+
+    await page.keyboard.press('Enter');
+    expect(create.count()).toBe(1);
+
+    await create.release(
+      { id: 'e2e-created', type: 'recurring_pattern', pattern_data: { dayOfWeek: 1, startTime: '09:00', endTime: '17:00' } },
+      201,
+    );
+    await expect(page.getByRole('button', { name: '+ Add Schedule' })).toBeFocused();
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow after Save Schedule').toBe(true);
+    expect(create.count()).toBe(1);
+  });
+
+  test('Save Override keeps focus, refuses a second press, then lands on + Add Override', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const create = await holdUntilReleased(page, 'POST', /\/availability\/user\/[^/]+\/override$/);
+    await page.goto('/userProfile');
+
+    const tab = page.getByRole('tab', { name: 'Specific Dates' });
+    await expect(tab).toBeVisible({ timeout: 15_000 });
+    await tab.click();
+    const toggle = page.getByRole('button', { name: '+ Add Override' });
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+
+    const save = page.getByRole('button', { name: /^(Save Override|Saving\.\.\.)$/ });
+    await focusByKeyboard(page, save);
+    await page.keyboard.press('Enter');
+    await create.arrived;
+
+    await expect(save).toBeFocused();
+    await expect(save).toHaveAttribute('aria-disabled', 'true');
+    await expect(save).not.toHaveAttribute('disabled');
+    await expect(save).toHaveText('Saving...');
+    await expectGatedPair(page, save, 'primary', 'dark');
+
+    await page.keyboard.press('Enter');
+    expect(create.count()).toBe(1);
+
+    await create.release({ id: 'e2e-override', type: 'specific_override' }, 201);
+    await expect(page.getByRole('button', { name: '+ Add Override' })).toBeFocused();
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow after Save Override').toBe(true);
+    expect(create.count()).toBe(1);
   });
 });

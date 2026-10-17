@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -285,6 +285,16 @@ function Profile(){
     // `handleChangeNumber`.
     const phoneFlowGenerationRef = useRef(0);
     const phoneSaveGenerationRef = useRef(0);
+    // Plan 88.6.1-59 (D-35, Req 5, D-44): the two availability forms' ONE in-flight latch, the
+    // targets a successful save lands focus on, and the form panels' ids their toggles control.
+    // See `DECISION Phase 88.6.1-59 (D-35, availability forms)` at Save Schedule.
+    const savePatternInFlightRef = useRef(false);
+    const availabilityHeadingRef = useRef(null);
+    const addScheduleToggleRef = useRef(null);
+    const addOverrideToggleRef = useRef(null);
+    const availabilityRecovery = useFocusRecovery({ fallback: availabilityHeadingRef });
+    const recurringFormPanelId = useId();
+    const specificFormPanelId = useId();
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -1387,7 +1397,13 @@ function Profile(){
         }
     }, [user, fetchOwnedGames, checkGoogleCalendarStatus]);
 
-    const handleCreateRecurringPattern = async () => {
+    const handleCreateRecurringPattern = async (event) => {
+        // D-35 (88.6.1-59): the in-flight refusal, synchronous and FIRST — see
+        // `DECISION Phase 88.6.1-59 (D-35, availability forms)` at Save Schedule.
+        if (savePatternInFlightRef.current) return;
+        // The pressed Save, captured before any await (React clears `currentTarget` once the
+        // handler returns): it seeds the focus arm at success (Safari, plan 04's contract).
+        const pressed = event?.currentTarget ?? null;
         // 87.4 Plan 10: gate on the resolved self identity, not user?.sub, so the
         // write cannot fire (and cannot send an empty self-param) before self resolves.
         if (!self?.id) return;
@@ -1402,8 +1418,9 @@ function Profile(){
             toast.error('Start time must be before end time.');
             return;
         }
+        savePatternInFlightRef.current = true;
+        setSavingPattern(true);
         try {
-            setSavingPattern(true);
             // Create one schedule per selected day
             for (const dayOfWeek of recurringForm.daysOfWeek) {
                 const formData = { ...recurringForm, dayOfWeek };
@@ -1414,6 +1431,9 @@ function Profile(){
                 await availabilityAPI.createRecurringPattern(self.id, formData);
             }
             await patternsQuery.refetch();
+            // Req 5 (88.6.1-59): armed at SUCCESS, before the write that closes the form and
+            // removes this button (the plan 18 precedent).
+            const settle = availabilityRecovery.arm({ preferred: () => addScheduleToggleRef.current, from: pressed });
             setShowRecurringForm(false);
             setRecurringForm({
                 daysOfWeek: [],
@@ -1427,6 +1447,7 @@ function Profile(){
             // the old string carried is deliberately dropped rather than shortened
             // into it. The created rows are visible in the list directly below.
             toast.success('Schedules created');
+            settle();
         } catch (error) {
             logger.info('Error creating schedule:', errCtx(error));
             toast.error(
@@ -1435,11 +1456,18 @@ function Profile(){
                 })
             );
         } finally {
+            // Released in `finally` so a FAILED save does not strand the control.
+            savePatternInFlightRef.current = false;
             setSavingPattern(false);
         }
     };
 
-    const handleCreateSpecificOverride = async () => {
+    const handleCreateSpecificOverride = async (event) => {
+        // D-35 (88.6.1-59): the same first-line refusal on the SAME latch — see
+        // `DECISION Phase 88.6.1-59 (D-35, availability forms)` at Save Schedule.
+        if (savePatternInFlightRef.current) return;
+        // The pressed Save, captured before any await (see the recurring handler).
+        const pressed = event?.currentTarget ?? null;
         // 87.4 Plan 10: gate on the resolved self identity, not user?.sub, so the
         // write cannot fire (and cannot send an empty self-param) before self resolves.
         if (!self?.id) return;
@@ -1449,10 +1477,13 @@ function Profile(){
             toast.error('Start time must be before end time.');
             return;
         }
+        savePatternInFlightRef.current = true;
+        setSavingPattern(true);
         try {
-            setSavingPattern(true);
             await availabilityAPI.createOverride(self.id, specificForm);
             await patternsQuery.refetch();
+            // Req 5 (88.6.1-59): armed at SUCCESS, as in the recurring handler.
+            const settle = availabilityRecovery.arm({ preferred: () => addOverrideToggleRef.current, from: pressed });
             setShowSpecificForm(false);
             setSpecificForm({
                 date: toLocalDateString(),
@@ -1461,6 +1492,7 @@ function Profile(){
                 isAvailable: true,
             });
             toast.success('Override created');
+            settle();
         } catch (error) {
             logger.info('Error creating specific override:', errCtx(error));
             toast.error(
@@ -1469,6 +1501,8 @@ function Profile(){
                 })
             );
         } finally {
+            // Released in `finally` so a FAILED save does not strand the control.
+            savePatternInFlightRef.current = false;
             setSavingPattern(false);
         }
     };
@@ -2719,7 +2753,7 @@ function Profile(){
                     tutorial handoff (ONBD-04, Phase 73). Read by the
                     ?section=availability useEffect above. */}
                 <div id="availability-settings" className="card p-3 md:p-6 mb-6">
-                    <Heading level={2} size="heading" className="text-content-primary mb-4">Availability Settings</Heading>
+                    <Heading ref={availabilityHeadingRef} level={2} size="heading" className="text-content-primary mb-4">Availability Settings</Heading>
                     <p className="text-base text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
                         {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
@@ -2749,15 +2783,18 @@ function Profile(){
                                     <p className="text-sm text-content-secondary mt-1">Set your recurring availability schedule</p>
                                 </div>
                                 <Button
+                                    ref={addScheduleToggleRef}
                                     variant="primary"
                                     onClick={() => setShowRecurringForm(!showRecurringForm)}
+                                    aria-expanded={showRecurringForm}
+                                    {...(showRecurringForm ? { 'aria-controls': recurringFormPanelId } : {})}
                                 >
                                     {showRecurringForm ? 'Cancel' : '+ Add Schedule'}
                                 </Button>
                             </div>
 
                             {showRecurringForm && (
-                                <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
+                                <div id={recurringFormPanelId} className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
                                     <Heading level={4} size="body" className="mb-3 text-content-primary">New Schedule</Heading>
                                     <div className="space-y-3">
                                         <div>
@@ -2935,10 +2972,30 @@ function Profile(){
                                                 />
                                             </div>
                                         </div>
+                                        {/* DECISION Phase 88.6.1-59 (D-35, availability forms): Save Schedule and
+                                            Save Override are PRESSED controls (rule of POSITION, `DECISION Phase
+                                            88.6-22`): the in-flight half is `aria-disabled` plus ONE
+                                            `savePatternInFlightRef` refusal as the first statement of both
+                                            handlers, released in `finally`. One latch because the two forms already
+                                            share one `savingPattern`, and Radix unmounts the inactive tab panel, so
+                                            they never coexist.
+                                            Success: the form closes, and focus moves to the form's own toggle (the
+                                            control that opened it, which stays mounted), else the `Availability
+                                            Settings` heading (D-05). Armed at success, because only the success path
+                                            closes the form.
+                                            REJECTED: (a) native `disabled` — it drops focus in a real browser, and
+                                            the form's close then loses it again; (b) two latches — they would split
+                                            a state the page deliberately keeps as one; (c) focusing the new rows — a
+                                            multi-day save creates several, so "the new row" is not one element, and
+                                            the success toast already announces the outcome; (d) minting a heading or
+                                            any text (D-05, D-31).
+                                            Disclosed visible delta: while a save runs the button shows the gated
+                                            primary pair instead of the half-strength wash. Dropping either half of
+                                            the pair is a decision, not a cleanup. */}
                                         <Button
                                             variant="primary"
                                             onClick={handleCreateRecurringPattern}
-                                            disabled={savingPattern}
+                                            aria-disabled={savingPattern ? 'true' : undefined}
                                             className="w-full"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Schedule'}
@@ -3010,15 +3067,18 @@ function Profile(){
                                     <p className="text-sm text-content-secondary mt-1">Override your schedules for specific dates</p>
                                 </div>
                                 <Button
+                                    ref={addOverrideToggleRef}
                                     variant="primary"
                                     onClick={() => setShowSpecificForm(!showSpecificForm)}
+                                    aria-expanded={showSpecificForm}
+                                    {...(showSpecificForm ? { 'aria-controls': specificFormPanelId } : {})}
                                 >
                                     {showSpecificForm ? 'Cancel' : '+ Add Override'}
                                 </Button>
                             </div>
 
                             {showSpecificForm && (
-                                <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
+                                <div id={specificFormPanelId} className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
                                     <Heading level={4} size="body" className="mb-3 text-content-primary">New Specific Override</Heading>
                                     <div className="space-y-3">
                                         <div>
@@ -3080,10 +3140,11 @@ function Profile(){
                                                 <span className="text-sm text-content-secondary">Mark as available (uncheck to mark as busy)</span>
                                             </label>
                                         </div>
+                                        {/* D-35 (88.6.1-59): see `DECISION Phase 88.6.1-59 (D-35, availability forms)` at Save Schedule. */}
                                         <Button
                                             variant="primary"
                                             onClick={handleCreateSpecificOverride}
-                                            disabled={savingPattern}
+                                            aria-disabled={savingPattern ? 'true' : undefined}
                                             className="w-full"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Override'}
