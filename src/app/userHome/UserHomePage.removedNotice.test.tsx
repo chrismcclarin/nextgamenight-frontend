@@ -153,7 +153,7 @@ describe('the removed-from-group notice is spoken from a region that was already
     expect(strong.textContent).toBe("Tom & Jerry's <Table>");
     expect(strong.children).toHaveLength(0);
 
-    const dismiss = screen.getByRole('button', { name: 'Dismiss', exact: true });
+    const dismiss = screen.getByRole('button', { name: 'Dismiss' });
     expect(region.contains(dismiss)).toBe(false);
     expect(region.nextElementSibling).toBe(dismiss);
 
@@ -179,7 +179,7 @@ describe('the removed-from-group notice is spoken from a region that was already
     const wrapper = region.parentElement as HTMLElement;
     expect(wrapper.hasAttribute('class')).toBe(false);
     expect(wrapper.children).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: 'Dismiss', exact: true })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
 
   it('RB4 (Req 5, D-04 / D-07): Dismiss empties the same region and focus lands on main, never <body>', async () => {
@@ -189,7 +189,7 @@ describe('the removed-from-group notice is spoken from a region that was already
     render(homeElement(), { container: main });
 
     const region = await screen.findByText(/no longer a member of/);
-    const dismiss = screen.getByRole('button', { name: 'Dismiss', exact: true });
+    const dismiss = screen.getByRole('button', { name: 'Dismiss' });
     dismiss.focus();
     expect(document.activeElement).toBe(dismiss);
     fireEvent.click(dismiss);
@@ -199,7 +199,7 @@ describe('the removed-from-group notice is spoken from a region that was already
     expect(after).toBe(region);
     expect(after.textContent).toBe('');
     expect(after).toHaveClass('sr-only');
-    expect(screen.queryByRole('button', { name: 'Dismiss', exact: true })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(main));
     expect(document.activeElement).not.toBe(document.body);
   });
@@ -209,7 +209,7 @@ describe('the removed-from-group notice is spoken from a region that was already
     h.search = 'removedFrom=Weekend%20Warriors';
     const { rerender } = render(homeElement());
     await screen.findByText(/no longer a member of/);
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByText(/no longer a member of/)).toBeNull();
 
     rerender(homeElement());

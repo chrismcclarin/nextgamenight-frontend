@@ -38,6 +38,8 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 // events" empty state (its siblings grouplist/EventCalendar already degrade).
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '../../components/ui/StatusRegion';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 
 // List of all the groups for the logged in User
 function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
@@ -76,9 +78,21 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     // a 403 redirect set by Plan 69-04 (router.push('/?removedFrom=...')).
     const removedFromName = searchParams?.get('removedFrom') || null;
     const [removedBannerVisible, setRemovedBannerVisible] = useState(false);
+    // Plan 88.6.1-82 (D-42): the flag is set ONLY by this timer, after the empty region has been
+    // on the page for REGION_EMPTY_DWELL_MS — never during render, never synchronously here.
     useEffect(() => {
-        if (removedFromName) setRemovedBannerVisible(true);
+        if (!removedFromName) return undefined;
+        const timer = setTimeout(() => setRemovedBannerVisible(true), REGION_EMPTY_DWELL_MS);
+        return () => clearTimeout(timer);
     }, [removedFromName]);
+    const removedNoticeShown = removedBannerVisible && Boolean(removedFromName);
+    // No `fallback`: the notice belongs to no section, so Dismiss lands on the page floor (`main`).
+    const removedNoticeRecovery = useFocusRecovery();
+    const dismissRemovedNotice = () => {
+        const settle = removedNoticeRecovery.arm();
+        setRemovedBannerVisible(false);
+        settle();
+    };
 
     // Phase 71.1 GAMP-07: fetch upcoming events for the user.
     // GET /events/user/:user_id was UNIONed in Plan 71.1-01 to include
@@ -430,23 +444,51 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
            bottom padding from 1.5rem to 0, with no gate to catch it (padding-budget.spec.ts is
            phone-only). */
         <div className="user-home-container p-4 md:p-6 md:pb-6">
-            {removedBannerVisible && removedFromName && (
-                <div
-                    role="status"
-                    className="mb-4 px-4 py-3 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-100 flex items-center justify-between gap-3"
-                >
-                    <span className="text-sm">
-                        You&apos;re no longer a member of <strong>{removedFromName}</strong>.
-                    </span>
+            {/* DECISION Phase 88.6.1-82 (Req 8 / Req 5, D-22 / D-42 / D-31): CHOSEN — ONE always-mounted
+                polite region (the shared StatusRegion primitive with srOnlyWhenEmpty, D-22) that IS the
+                visible sentence: rendered empty from UserHome's first render and filled by a timer of
+                REGION_EMPTY_DWELL_MS started after mount; the amber box styling and Dismiss apply only
+                while shown and sit OUTSIDE the region; Dismiss arms useFocusRecovery (D-04) with no host
+                target, so focus lands on the page floor (D-07: main h1, which this page does not
+                render, then main). REJECTED: (a) the inserted status box it replaces — a polite region
+                inserted already holding its text is not announced (research/APPENDIX-AT.md:297-299);
+                (b) deriving the shown flag during render — the region would mount holding its text;
+                (c) setting the flag in the bare effect with no dwell — React can run a passive effect
+                before the browser has rendered the empty region, so the accessibility tree may first
+                see it full; (d) a second, screen-reader-only copy of the sentence beside the visible
+                one — the words would be in the page twice, and D-31's reuse holds only while heard and
+                seen are one node; (e) Dismiss inside the region — an atomic region would speak
+                "Dismiss" with the sentence; (f) a host focus target — the notice belongs to no
+                section, no heading is minted (D-05), GroupList owns its own heading (plan 41), and the
+                phone-only Calendar button would give desktop a different rule. AC-14's "section
+                heading" fallback has no section to name here. Accepted: the notice appears
+                REGION_EMPTY_DWELL_MS after the page renders. The wrapper carries no role (a live region
+                nested in a live region would speak the sentence twice) and no class while nothing is
+                shown. Changing this is a decision, not a cleanup. */}
+            <div
+                className={
+                    removedNoticeShown
+                        ? "mb-4 px-4 py-3 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-100 flex items-center justify-between gap-3"
+                        : undefined
+                }
+            >
+                <StatusRegion srOnlyWhenEmpty data-testid="removed-from-group-status">
+                    {removedNoticeShown ? (
+                        <>
+                            You&apos;re no longer a member of <strong>{removedFromName}</strong>.
+                        </>
+                    ) : null}
+                </StatusRegion>
+                {removedNoticeShown && (
                     <button
-                        onClick={() => setRemovedBannerVisible(false)}
+                        onClick={dismissRemovedNotice}
                         className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0"
                         aria-label="Dismiss"
                     >
                         Dismiss
                     </button>
-                </div>
-            )}
+                )}
+            </div>
             <div className="flex flex-col md:flex-row gap-4 md:gap-6">
                 {/* Req 11b (UI-SPEC S4): the phone-only entry point to the calendar, above the
                     group list. It lives HERE and not inside `grouplist.js`, because desktop
