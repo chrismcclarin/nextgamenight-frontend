@@ -26,7 +26,7 @@ import KebabMenu from '../components/KebabMenu';
 import GroupSettings from '../components/GroupSettings';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner, useRetainedContent } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
@@ -470,6 +470,21 @@ function GroupHomePage(){
     // load, and false after an access or gone answer until the next success.
     const membersRetained = useRetainedContent(membersLoadedFor === Router, membersErrorState);
     const eventsRetained = useRetainedContent(eventsLoadedFor === Router, eventsErrorState);
+    /* DECISION Phase 88.6.1-71 (C12, focus when content leaves): CHOSEN — plan 88.6.1-70's shared
+       guard, one per `retained` value. The members guard is the SECOND child of a fragment in
+       every markup return of this component, so ONE instance survives the switch from the page
+       to the G7 gate and sees `membersRetained` go from true to false; it has no target (nothing
+       of the group survives under G7, so plan 88.6.1-04's floor takes focus). The events guard
+       is the calendar slot's NEXT sibling, so it runs after the failure arm's 'Calendar' heading
+       has taken `calendarHeadingRef` in the same commit (React runs layout effects and attaches
+       refs in one depth-first pass, a subtree before its next sibling).
+       REJECTED — (a) the members guard inside the page's return only: it unmounts with the page
+       and never fires (plant M2); (b) the events guard before the slot: the ref is still empty
+       when it runs, so focus lands on the group's heading, a screen above the section on a phone
+       (plant E2); (c) a members target: no element of the group stays on screen under G7;
+       (d) focus code of this page's own (D-04).
+       Changing any of these is a decision, not a cleanup. */
+    const membersFocusGuard = <RetainedContentFocusGuard retained={membersRetained} />;
 
     // PR2-L11 (SPEC Req 7): getGroup + fetchGroupEvents do NOT depend on selfUuid,
     // so they live in an effect keyed only on [Router, user?.sub, ...] — they fire
@@ -540,11 +555,14 @@ function GroupHomePage(){
     // page returns) is the honest target.
     if (membersErrorState.showError && !membersRetained) {
         return (
-            <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
-                <div className="w-full max-w-xl">
-                    <FetchErrorBanner state={membersErrorState} title={GROUP_LOAD_FAILED_TITLE} />
+            <>
+                <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                    <div className="w-full max-w-xl">
+                        <FetchErrorBanner state={membersErrorState} title={GROUP_LOAD_FAILED_TITLE} />
+                    </div>
                 </div>
-            </div>
+                {membersFocusGuard}
+            </>
         );
     }
 
@@ -556,21 +574,27 @@ function GroupHomePage(){
     // between mount and redirect.
     if (!membershipChecked) {
         return (
-            <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
-                <p className="text-content-secondary">Loading group…</p>
-                {/* D-08: if identity resolution permanently fails, the membership
-                    check can never complete — surface a compact, non-blocking
-                    degrade notice instead of an indefinite silent spinner (D-11). */}
-                <FetchErrorBanner state={selfIdentityErrorState} compact />
-            </div>
+            <>
+                <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                    <p className="text-content-secondary">Loading group…</p>
+                    {/* D-08: if identity resolution permanently fails, the membership
+                        check can never complete — surface a compact, non-blocking
+                        degrade notice instead of an indefinite silent spinner (D-11). */}
+                    <FetchErrorBanner state={selfIdentityErrorState} compact />
+                </div>
+                {membersFocusGuard}
+            </>
         );
     }
 
     if (loading) {
         return (
-            <div className="p-6 flex items-center justify-center min-h-screen">
-                <p className="text-content-secondary">Loading games...</p>
-            </div>
+            <>
+                <div className="p-6 flex items-center justify-center min-h-screen">
+                    <p className="text-content-secondary">Loading games...</p>
+                </div>
+                {membersFocusGuard}
+            </>
         );
     }
 
@@ -749,6 +773,9 @@ function GroupHomePage(){
         // POLL-02: FriendshipStatusProvider lifted to root layout — see
         // src/app/layout.js. Nested mount removed so NotificationBell +
         // friends/page consume the same receivedRequests state.
+        // The fragment carries the members focus guard as its SECOND child, in every return
+        // (the C12 DECISION block at `membersFocusGuard`); the page's markup is not re-indented.
+        <>
         <div className="p-4 md:p-6">
             {/* Breadcrumbs.
                 DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
@@ -1426,6 +1453,30 @@ function GroupHomePage(){
                 </div>
             </div>
 
+            {/* DECISION Phase 88.6.1-71 (AC-29 / RF1, owner ruling 2026-10-05): CHOSEN — a failed
+                REFRESH keeps what was on screen and shows plan 88.6.1-70's shared notice + Retry
+                (members: here, between the header, which carries the member count it qualifies,
+                and the tab strip; events: directly above the calendar it qualifies), each gated by
+                its own `retained` from plan 88.6.1-70's `useRetainedContent` over the
+                loaded-for-this-group state — so a list that loaded EMPTY is kept under the notice
+                (owner ruling Y, 2026-10-05) and an access or gone answer never is (contract C10);
+                a failed FIRST load keeps the full banner (the G7 return and the calendar slot's
+                failure arm); a removal still redirects first and never shows the notice.
+                REJECTED (a) — the full banner above the retained content (the earlier D-09a
+                arrangement): the owner ruled the smaller notice for a refresh on 2026-10-05, and
+                the orchestrator converged every retained-content site on it.
+                REJECTED (b) — a notice written in this page: the same sentence ships at other
+                surfaces and must look and speak the same everywhere.
+                Focus after a successful Retry: the page's h1 for the members notice (its section's
+                own heading, so no focusTarget); the calendar's own 'Calendar' heading for the
+                events notice (`headingRef`, plan 88.6.1-73).
+                Changing any of these is a decision, not a cleanup. */}
+            <RefreshFailedNotice
+                state={membersErrorState}
+                retained={membersRetained}
+                className="mb-4"
+            />
+
             {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}
 
             {/* Tab bar */}
@@ -1494,6 +1545,14 @@ function GroupHomePage(){
                         />
                     </div>
                 ) : (
+                    <>
+                    {/* The events notice: see DECISION Phase 88.6.1-71 (AC-29 / RF1, owner ruling 2026-10-05). */}
+                    <RefreshFailedNotice
+                        state={eventsErrorState}
+                        retained={eventsRetained}
+                        focusTarget={calendarHeadingRef}
+                        className="mb-4"
+                    />
                     <EventCalendar
                         refreshKey={eventsRefreshKey}
                         events={groupEvents}
@@ -1511,7 +1570,10 @@ function GroupHomePage(){
                             setEventModal(true);
                         } : undefined}
                     />
+                    </>
                 )}
+                {/* After the slot, never before it: see DECISION Phase 88.6.1-71 (C12, focus when content leaves). */}
+                <RetainedContentFocusGuard retained={eventsRetained} focusTarget={calendarHeadingRef} />
 
                 {/* Group Games Section */}
                 <GroupGamesList
@@ -1549,6 +1611,20 @@ function GroupHomePage(){
                 group_id={Router}
                 user={user}
                 modal={memberModal}
+                /* DECISION Phase 88.6.1-71 (RF1 after the Manage Members dialog closes): CHOSEN — the
+                   close re-presents NOTHING; the members notice keeps its one region across the
+                   close. Five of this dialog's six member updates refresh the list while it is
+                   open, so a failed refresh fills the notice's region behind it — and that fill IS
+                   heard: the dialog hides the page through the aria-hidden package's hideOthers,
+                   which exempts every aria-live element and keeps its ancestors (the package's
+                   index, comment "we should not hide aria-live elements"), and the dialog sets no
+                   aria-modal. Measured by RF-8 (the page's link sits under aria-hidden while the
+                   region does not).
+                   REJECTED — remounting the notice on close (the planned review r2 #236 fix, whose
+                   premise was that the region sits under aria-hidden): the region is exposed, so a
+                   remount would make a screen reader hear the same sentence twice (plant N).
+                   If the dialog ever gains aria-modal or a hide that covers live regions, this
+                   choice must be revisited. Changing it is a decision, not a cleanup. */
                 modaltoggle={() => setMemberModal(false)}
                 onMembersUpdated={getGroupMembers}
                 group_name={Group?.name || 'this group'}
@@ -1578,6 +1654,8 @@ function GroupHomePage(){
                 />
             )}
         </div>
+        {membersFocusGuard}
+        </>
     );
 }
 
