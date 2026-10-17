@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+import { settleAnimations } from './support/inFlight';
+
 /**
  * Phase 88.6.1 plan 27 (R7-M5, register phase-88.6.1.md:275): the Invite Members panel's
  * freeform header row sits on the Modal header's phone-first scale — 12px sides / 8px top and
@@ -60,14 +62,7 @@ test('R7-M5: the Invite Members header row is 12px/8px at phone and 24px/12px at
   // above use computed style, which a transform does not touch. Infinite animations (a spinner)
   // are skipped, since their `finished` never settles; a cancelled one rejects, and is treated as
   // done (a cancelled animation no longer transforms anything).
-  await dialog.evaluate((el) =>
-    Promise.all(
-      el
-        .getAnimations({ subtree: true })
-        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
-        .map((a) => a.finished.catch(() => undefined)),
-    ),
-  );
+  await settleAnimations(dialog);
   const close = dialog.getByRole('button', { name: 'Close' }).first();
   const closeBox = await close.boundingBox();
   const columnBox = await column.boundingBox();

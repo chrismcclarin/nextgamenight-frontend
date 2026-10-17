@@ -72,6 +72,26 @@ export async function holdWrites(page: Page, options: HoldWritesOptions = {}): P
   return { held, count };
 }
 
+/**
+ * Wait until every running animation under `locator` has finished before reading geometry.
+ * `boundingBox()` reads the TRANSFORMED box, and the house dialog opens with dialog.tsx's
+ * `zoom-in-95` over `duration-200`, so a read mid-animation measured 44px controls at 43.07px
+ * (run 38983292066, Start poll) and 43.35-43.96px (run 38878098281, the invite panel's close).
+ * Infinite animations (a spinner) are skipped because their `finished` never settles; a cancelled
+ * one rejects and counts as done (it no longer transforms anything). Added at the wave 5 CI gate
+ * (orchestrator, 2026-10-16) as the one shared wait, replacing plan 88.6.1-27's inline copy.
+ */
+export async function settleAnimations(locator: Locator): Promise<void> {
+  await locator.evaluate((el) =>
+    Promise.all(
+      el
+        .getAnimations({ subtree: true })
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+}
+
 export type GatedVariant = 'primary' | 'secondary' | 'danger' | 'accent';
 
 export async function expectGatedPair(

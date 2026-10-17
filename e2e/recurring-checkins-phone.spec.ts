@@ -1,6 +1,6 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 
-import { holdWrites, type WriteHold } from './support/inFlight';
+import { holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 
 // Phase 88.6.1 plan 30 — Recurring Check-ins and Start a check-in at 375px, in a real browser.
 //
@@ -131,6 +131,9 @@ test.describe('Recurring Check-ins and Start a check-in at 375px (88.6.1-30)', (
   });
 
   test.afterEach(() => {
+    // The describe-level skip (journeys project) still runs afterEach for the skipped tests, with
+    // beforeEach never having set `hold` (run 38983292066: three TypeErrors). Nothing to check then.
+    if (!hold) return;
     const apiWrites = hold.held.filter((request) => new URL(request.url).pathname.startsWith('/api/'));
     expect(apiWrites, 'an /api write reached the backstop: mock that exact path in this spec').toEqual([]);
   });
@@ -248,6 +251,8 @@ test.describe('Recurring Check-ins and Start a check-in at 375px (88.6.1-30)', (
     await expect(submit).toBeFocused();
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(submit).not.toHaveAttribute('disabled');
+    // The dialog's zoom-in is still running at this point; boundingBox() reads the transformed box.
+    await settleAnimations(dialog);
     const submitBox = await submit.boundingBox();
     expect(submitBox, 'Start poll has a box').not.toBeNull();
     expect(submitBox!.height, `Start poll measured ${submitBox!.height}px tall`).toBeGreaterThanOrEqual(44);
