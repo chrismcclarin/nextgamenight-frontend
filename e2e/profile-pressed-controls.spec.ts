@@ -602,7 +602,9 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await focusByKeyboard(page, pencil);
     await page.keyboard.press('Enter');
     // The field takes focus (its autoFocus). Nothing is typed: the current name is kept.
-    await expect(page.getByRole('textbox', { name: 'Username' })).toBeFocused();
+    // `exact`: a bare 'Username' is a case-insensitive substring match and also finds the BGG
+    // field (`BoardGameGeek username`; wave 7 CI gate, run 39020174955: strict-mode, 2 elements).
+    await expect(page.getByRole('textbox', { name: 'Username', exact: true })).toBeFocused();
 
     const save = page.getByRole('button', { name: /^(Save|Saving\.\.\.)$/ });
     await focusByKeyboard(page, save);
