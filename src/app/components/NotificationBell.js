@@ -6,6 +6,8 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { useDismissal } from '@/components/ui/useDismissal';
 import { useFocusRecovery } from '@/components/ui/useFocusRecovery';
+import { StatusRegion } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 
@@ -14,6 +16,26 @@ const LOADING_NOTIFICATIONS = 'Loading notifications';
 
 // Copy row N2 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:101) — seen and heard.
 const ACCEPTING_COPY = 'Accepting...';
+
+// Copy rows N3-N6 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:102-105), each U+2019
+// written as the straight apostrophe (D-32 R8). Each failure arm passes its own row as the fallback
+// of getFetchErrorMessage, so a code-less failure shows it and a coded one keeps its register line
+// (D-33 row 22). The friend pair is exported because the Friends page's Requests tab shows the same
+// N5 / N6 lines (plan 88.6.1-72): one source per row, never retyped. Chosen over a separate copy
+// module, because this module is already loaded on every page through the header
+// (src/app/Header.js:6) and both files are client modules (the use-client directive on line 1 of
+// this file and of src/app/friends/page.js), so the import is an ordinary one, not a
+// server-to-client reference.
+const ACCEPT_INVITE_FAILED_COPY = "We couldn't accept that invite. Please try again.";
+const DECLINE_INVITE_FAILED_COPY = "We couldn't decline that invite. Please try again.";
+export const ACCEPT_FRIEND_FAILED_COPY = "We couldn't accept that friend request. Please try again.";
+export const DECLINE_FRIEND_FAILED_COPY = "We couldn't decline that friend request. Please try again.";
+
+// Copy rows N9 / N10 (owner ruling #205, RATIFIED 2026-10-13, 88.6.1-PLAN-REVIEW-work/RULINGS.md,
+// section "### #205"; the ids are plan 88.6.1-44's proposal): a successful Decline is announced in
+// the same confirmation slot, tone and 3 s clear as the accept lines.
+const DECLINED_FRIEND_REQUEST_COPY = "Declined friend request.";
+const declinedInviteCopy = (groupName) => `Declined invite to ${groupName}.`;
 
 /* DECISION Phase 88.6.1-44 (N8, D-19 shape, Req 6): each row button is named for what it acts on
    (owner-ratified 2026-10-05, copy row N8: Accept invite to {group}, Decline invite to {group},
@@ -35,6 +57,14 @@ const ACCEPTING_COPY = 'Accepting...';
    NOTE: Sentry click breadcrumbs copy a clicked control's name; plan 88.6.1-76 (split from 08)
    keeps only the static prefix of those values (its NAMED_ATTRIBUTE_PREFIXES lists the four N8
    prefixes). Changing how these buttons are named is a decision, not a cleanup. */
+// The per-row record's key: the row's kind, a colon, then its id (two id spaces from two tables in
+// one map, so the kind rules out a collision). Built only here: it is a map key, never a class, and
+// one spelling keeps all six sites in step. Spelled inline as a literal kind, a colon and an
+// interpolation, it also reads as a Tailwind variant to src/app/interpolatedClassCensus.test.ts.
+function rowKey(kind, id) {
+  return `${kind}:${id}`;
+}
+
 function rowLabelText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -109,8 +139,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // The panel heading's id, derived from panelId (no second useId call): the section names itself
   // through it (DECISION Phase 88.6.1-28, D-18, D-33 row 21, at the panel below).
   const headingId = `${panelId}-heading`;
-  // Per-row in-flight record: { [rowKey]: 'accept' | 'decline' }, rowKey = 'invite:<id>' or
-  // 'friend:<id>' (two id spaces from two tables in one map; the prefix rules out a collision).
+  // Per-row in-flight record: { [rowKey(kind, id)]: 'accept' | 'decline' } (see rowKey above).
   const [actionLoading, setActionLoading] = useState({});
   // The latch: row keys whose request is running. A ref, so a second synchronous press sees it.
   const inFlightRef = useRef(new Set());
@@ -119,6 +148,23 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // { text, tone: 'success' | 'muted' } — muted is the L-8 "no longer
   // available" notice, which must not render in success-green.
   const [confirmation, setConfirmation] = useState(null);
+  // The failure line of the last row action ('' while there is none) — the assertive region below.
+  const [actionFailure, setActionFailure] = useState('');
+  // Both outcome regions start empty every time the panel opens, and a failure line leaves when
+  // it closes (SPEC Edge R8 empty; finding #52: a request can settle while the panel is closed).
+  // DECISION Phase 88.6.1-44 (R8 empty, finding #52): the clear runs DURING RENDER on the open /
+  // close transition (React's adjust-state-on-change pattern: the stored previous value), chosen
+  // OVER a layout effect (a 'use client' component that still renders on the server, where the
+  // house avoids it, src/app/components/AutoPromptBehaviorBanner.js, anchor
+  // "WHY useEffect AND NOT useLayoutEffect") and OVER a plain effect (the reopened panel would
+  // paint the stale line for one frame). No trigger handler is touched. Moving this into a handler
+  // or an effect is a decision, not a cleanup.
+  const [shownOpen, setShownOpen] = useState(isOpen);
+  if (shownOpen !== isOpen) {
+    setShownOpen(isOpen);
+    setActionFailure('');
+    if (isOpen) setConfirmation(null);
+  }
   const dropdownRef = useRef(null);
   // Whichever trigger renders (row or icon, one per variant) — Escape returns focus here.
   const triggerRef = useRef(null);
@@ -211,6 +257,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
     if (inFlightRef.current.has(key)) return false;
     inFlightRef.current.add(key);
     setActionLoading((prev) => ({ ...prev, [key]: action }));
+    // A new action clears both outcomes, so a repeated outcome is a real text change (R8).
+    setConfirmation(null);
+    setActionFailure('');
     return true;
   }
 
@@ -341,9 +390,15 @@ function NotificationBell({ user, variant = 'icon', label }) {
      restore — and because the class-only shape exists for a body carrying a reporter's address and
      prose, which an accept/decline does not have. RESIDUAL, accepted by the owner 2026-09-13:
      non-pattern upstream prose (group names, provider prose) reaching Sentry from these paths;
-     pattern PII is redacted by `sentry.scrub.js`'s `beforeSend`. */
+     pattern PII is redacted by `sentry.scrub.js`'s `beforeSend`.
+
+     AMENDED Phase 88.6.1-44 (W026, D-33 row 22): the user-facing half ships. After its unchanged
+     logger.error call, each failure arm writes getFetchErrorMessage(err, fallback) into the
+     panel's assertive region — copy rows N3-N6 for a code-less failure, the register line for a
+     coded one. The escalation is still ONE logger.error per failure path: getFetchErrorMessage
+     logs nothing (src/components/ui/useFetchErrorState.ts). The 410 arms are unchanged. */
   async function handleAccept(invite, pressedEl) {
-    const key = `invite:${invite.id}`;
+    const key = rowKey('invite', invite.id);
     if (!beginRowAction(key, 'accept')) return;
     let settle = null;
     try {
@@ -372,6 +427,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         setConfirmation({ text: `${groupName} is no longer available.`, tone: 'muted' });
       } else {
         logger.error('Failed to accept invite:', err);
+        setActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_INVITE_FAILED_COPY }));
       }
     } finally {
       endRowAction(key);
@@ -380,13 +436,14 @@ function NotificationBell({ user, variant = 'icon', label }) {
   }
 
   async function handleDecline(invite, pressedEl) {
-    const key = `invite:${invite.id}`;
+    const key = rowKey('invite', invite.id);
     if (!beginRowAction(key, 'decline')) return;
     let settle = null;
     try {
       await invitesAPI.declineInvite(invite.id);
       settle = armRowRecovery(pressedEl);
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
+      setConfirmation({ text: declinedInviteCopy(invite.Group?.name || invite.group_name || 'the group'), tone: 'success' });
     } catch (err) {
       // L-8: dead-group 410 — removing the row is exactly what the user asked
       // for, so no notice needed.
@@ -395,6 +452,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
       } else {
         logger.error('Failed to decline invite:', err);
+        setActionFailure(getFetchErrorMessage(err, { fallback: DECLINE_INVITE_FAILED_COPY }));
       }
     } finally {
       endRowAction(key);
@@ -403,7 +461,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
   }
 
   async function handleAcceptFriend(request, pressedEl) {
-    const key = `friend:${request.id}`;
+    const key = rowKey('friend', request.id);
     if (!beginRowAction(key, 'accept')) return;
     let settle = null;
     try {
@@ -418,6 +476,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
     } catch (err) {
       logger.error('Failed to accept friend request:', err);
       if (err?.requestRowRemoved) settle = armRowRecovery(pressedEl);
+      setActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_FRIEND_FAILED_COPY }));
     } finally {
       endRowAction(key);
       settle?.();
@@ -425,15 +484,19 @@ function NotificationBell({ user, variant = 'icon', label }) {
   }
 
   async function handleDeclineFriend(request, pressedEl) {
-    const key = `friend:${request.id}`;
+    const key = rowKey('friend', request.id);
     if (!beginRowAction(key, 'decline')) return;
     let settle = null;
     try {
+      // Any resolve, the provider's stale-404 answer included, means the decline the person wanted is
+      // done, as the accept path above reasons.
       await ctxDeclineFriend(request.id);
       settle = armRowRecovery(pressedEl);
+      setConfirmation({ text: DECLINED_FRIEND_REQUEST_COPY, tone: 'success' });
     } catch (err) {
       logger.error('Failed to decline friend request:', err);
       if (err?.requestRowRemoved) settle = armRowRecovery(pressedEl);
+      setActionFailure(getFetchErrorMessage(err, { fallback: DECLINE_FRIEND_FAILED_COPY }));
     } finally {
       endRowAction(key);
       settle?.();
@@ -617,30 +680,57 @@ function NotificationBell({ user, variant = 'icon', label }) {
             </Heading>
           </div>
 
-          {/* Confirmation banner — success-green for completed actions, muted
-              for the L-8 "no longer available" notice */}
-          {confirmation && (
-            <div className={`px-4 py-2 border-b border-line ${
-              confirmation.tone === 'success' ? 'bg-status-success-subtle' : 'bg-surface-muted'
-            }`}>
-              {/* DECISION Phase 88.6-31 (D-16, owner ruling ARM A, 2026-09-16): the MUTED arm's
-                  ink moves `text-content-muted` (4.3725) -> `text-content-secondary` (6.9620),
-                  chosen OVER leaving it and OVER changing the GROUND. This is a measured sub-AA
-                  pairing, not a scan artefact: both arms key on the SAME condition
-                  (`confirmation.tone === 'success'`), so the muted ink and the muted
-                  `bg-surface-muted` ground directly above are genuinely co-live. The token was
-                  wrong for this ground, not the ground — this is a NOTICE, and `secondary` is the
-                  shape plan 27 chose for the same class of site. The SUCCESS arm is
-                  byte-unchanged. Its `groundInk.test.ts` OFFENDERS entry is deleted in this same
-                  commit, as that roster's exactness requires.
-                  §4.5: `font-medium` takes the EMPHASIS outcome — DELETED, with the distinction
-                  carried by the colour token each arm already has (dropped-utility spelling, the
-                  same one this plan's tasks 1 and 2 used). */}
-              <p className={`text-sm ${
-                confirmation.tone === 'success' ? 'text-content-status-success' : 'text-content-secondary'
-              }`}>{confirmation.text}</p>
-            </div>
-          )}
+          {/* The panel's two outcome regions, always mounted while it is open: the assertive one for a
+              failed row action (copy rows N3-N6 or a register line), the polite one for the
+              confirmation — success-green for completed actions, muted for the L-8 "no longer
+              available" notice. */}
+          {/* DECISION Phase 88.6.1-44 (Req 8, W026, MEDLOW-28, D-22, D-33 row 22): CHOSEN — two
+              always-mounted StatusRegions with srOnlyWhenEmpty (plan 88.6.1-06), assertive for the
+              N3-N6 failure lines and polite for the confirmation, siblings, both cleared when a row
+              action starts and on every open, the failure also when the panel closes.
+              REJECTED: a conditionally mounted alert paragraph (D-42 says its insertion is
+              announced, but Req 8's target is a text change in a region that was already there,
+              and AC-24 needs the same node before and after); a fixed N-line for every failure
+              (D-33 row 22 ruled fallback: a coded failure keeps its register line); one region
+              for both outcomes (a success must not interrupt; the house pair is one assertive and
+              one polite, never nested); a second screen-reader-only copy beside the visible banner
+              (the words in the DOM twice); plain error ink on the card ground (a second banner
+              shape inside one panel; the tint mirrors the success arm, measured in
+              src/app/tokenContrast.test.ts, anchor "19. Req 6", so the error look stays on existing
+              tokens and nothing routes to 88.9).
+              Merging the regions, or mounting either conditionally, is a decision, not a cleanup. */}
+          <StatusRegion
+            politeness="assertive"
+            srOnlyWhenEmpty
+            className="px-4 py-2 border-b border-line bg-status-error-subtle text-content-status-error"
+            message={actionFailure}
+          />
+          {/* DECISION Phase 88.6-31 (D-16, owner ruling ARM A, 2026-09-16): the MUTED arm's
+              ink moves `text-content-muted` (4.3725) -> `text-content-secondary` (6.9620),
+              chosen OVER leaving it and OVER changing the GROUND. This is a measured sub-AA
+              pairing, not a scan artefact: both arms key on the SAME condition
+              (`confirmation.tone === 'success'`), so the muted ink and the muted
+              `bg-surface-muted` ground directly above are genuinely co-live. The token was
+              wrong for this ground, not the ground — this is a NOTICE, and `secondary` is the
+              shape plan 27 chose for the same class of site. The SUCCESS arm is
+              byte-unchanged. Its `groundInk.test.ts` OFFENDERS entry is deleted in this same
+              commit, as that roster's exactness requires.
+              §4.5: `font-medium` takes the EMPHASIS outcome — DELETED, with the distinction
+              carried by the colour token each arm already has (dropped-utility spelling, the
+              same one this plan's tasks 1 and 2 used).
+              AMENDED Phase 88.6.1-44 (MEDLOW-28): the banner is now the panel's always-mounted
+              polite StatusRegion; the ground and the ink sit on that one element instead of a
+              div over a paragraph. Tokens are byte-unchanged and the two arms are still co-live
+              on one condition. */}
+          <StatusRegion
+            srOnlyWhenEmpty
+            className={
+              confirmation?.tone === 'success'
+                ? 'px-4 py-2 border-b border-line bg-status-success-subtle text-content-status-success'
+                : 'px-4 py-2 border-b border-line bg-surface-muted text-content-secondary'
+            }
+            message={confirmation?.text}
+          />
 
           {/* Content */}
           <div className="max-h-80 overflow-y-auto">
@@ -677,7 +767,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                         const groupName = invite.Group?.name || invite.group_name || 'Unknown Group';
                         const inviterName = invite.Inviter?.username || invite.inviter_name || 'Someone';
                         const memberCount = invite.Group?.memberCount || invite.member_count || null;
-                        const pressed = actionLoading[`invite:${invite.id}`];
+                        const pressed = actionLoading[rowKey('invite', invite.id)];
 
                         return (
                           <li
@@ -732,7 +822,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                     <ul>
                       {friendRequests.map((request) => {
                         const requesterName = request.Requester?.username || 'Someone';
-                        const pressed = actionLoading[`friend:${request.id}`];
+                        const pressed = actionLoading[rowKey('friend', request.id)];
 
                         return (
                           <li

@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import type { Route } from '@playwright/test';
 
 import { assertTheme } from './contrast';
 
@@ -32,6 +33,8 @@ import { assertTheme } from './contrast';
 // probe, chosen over a second inline copy in the new spec (the milestone's duplication tenet:
 // two copies of a safety hold drift, and the copy that drifts is the one that lets a write
 // through). Changing this is a decision, not a cleanup.
+// AMENDED Phase 88.6.1-44: the release-capable hold for ONE write under test lives here too, chosen
+// over a spec-local copy (duplication tenet).
 
 export interface HeldRequest {
   method: string;
@@ -104,6 +107,64 @@ export async function settleAnimations(locator: Locator): Promise<void> {
         .map((a) => a.finished.catch(() => undefined)),
     ),
   );
+}
+
+/** What holdUntilReleased hands back. */
+export interface ReleasableHold {
+  /** How many requests with the held method and a matching pathname have arrived. */
+  count: () => number;
+  /** Resolves when the first matching request arrives. */
+  arrived: Promise<void>;
+  /** Answers every kept request in the browser, and any later match at once. */
+  release: (json: unknown, status?: number) => Promise<void>;
+}
+
+/**
+ * The release-capable hold for the ONE write a test is about (Phase 88.6.1-44; plans 59, 60, 67 and
+ * 68 import it too). It registers on a URL predicate over the pathname, so a request whose pathname
+ * does not match never enters this handler; inside it, a matching request of another method is
+ * handed back with route.fallback(). A match is counted, the first one resolves `arrived`, and
+ * every match is kept unanswered until `release(json, status = 200)`, which answers each kept
+ * request in the browser and every later match at once. Nothing is ever sent to the network.
+ * Register it AFTER holdWrites: Playwright runs the newest matching handler first, so a write this
+ * hold does not match falls back into the net and is held there. Why a second helper beside
+ * holdWrites: these tests must RELEASE the write to see what happens after a success, and the net
+ * never answers a write, by design.
+ */
+export async function holdUntilReleased(
+  page: Page,
+  method: string,
+  pathPattern: RegExp,
+): Promise<ReleasableHold> {
+  const kept: Route[] = [];
+  let matched = 0;
+  let answer: { json: unknown; status: number } | null = null;
+  let markArrived!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    markArrived = resolve;
+  });
+  await page.route(
+    (url) => pathPattern.test(url.pathname),
+    async (route) => {
+      if (route.request().method() !== method) {
+        await route.fallback();
+        return;
+      }
+      matched += 1;
+      if (matched === 1) markArrived();
+      if (answer) {
+        await route.fulfill({ status: answer.status, json: answer.json });
+        return;
+      }
+      kept.push(route);
+    },
+  );
+  const release = async (json: unknown, status = 200): Promise<void> => {
+    answer = { json, status };
+    const waiting = kept.splice(0);
+    await Promise.all(waiting.map((route) => route.fulfill({ status, json })));
+  };
+  return { count: () => matched, arrived, release };
 }
 
 export type GatedVariant = 'primary' | 'secondary' | 'danger' | 'accent';
