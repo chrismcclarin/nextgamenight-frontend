@@ -6,7 +6,7 @@
 // keyboard select-cycle (null -> preferred -> if-need-be -> null) for free from
 // useHeatmapCell — the F-803/809 keyboard-parity gap this plan closes.
 import * as React from 'react';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import AvailabilityGrid from './AvailabilityGrid';
@@ -25,6 +25,15 @@ const cellsByLabel = () => screen.getAllByRole('button', { name: /, not selected
 // `ariaLabel` override, else the preference), so a cell painted in the default paint mode
 // carries a name ending ", preferred".
 const paintedCells = () => screen.getAllByRole('button', { name: /, preferred$/ });
+
+// 88.6.1-39: a cell by its DOM index (stable while its name changes with its state), and a
+// mouse tap that ends the way a real one does, with the release reaching the document, where
+// the grid's gesture-end listener lives.
+const slotCellsAt = (i: number) => document.querySelectorAll<HTMLElement>('[data-slot-id]')[i];
+function mouseTap(cell: HTMLElement) {
+  fireEvent.pointerDown(cell);
+  fireEvent.pointerUp(document);
+}
 
 // Kiritimati is UTC+14, so a 10:00 wall-clock slot on 2026-06-29 maps to a UTC
 // instant on 2026-06-28 — the cross-day case where a browser-local
@@ -341,6 +350,7 @@ describe('AvailabilityGrid — mirror day checkboxes + bulk fill/clear (SPEC R9,
 // selection summary was a plain div, so the running count was never announced. The fix keeps the
 // button mounted (aria-disabled + a first-line refusal when empty) and makes the summary ONE
 // always-mounted polite StatusRegion. Copy is the shipped copy (P1).
+// Since 88.6.1-39 the summary is spoken by a separate sr-only region at gesture end, and the visible line is no longer a region (D-14 / D-45).
 describe('88.6-63 (review round 2 #23) — Clear All keeps focus; the summary announces', () => {
   it('activating Clear All empties the selection and focus STAYS on it, now aria-disabled', () => {
     const onChange = renderHarness(2);
@@ -368,17 +378,32 @@ describe('88.6-63 (review round 2 #23) — Clear All keeps focus; the summary an
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('the selection summary is ONE always-mounted polite status region whose text changes', () => {
+  it('the visible line is plain text; the ONE status region is the sr-only summary, empty at mount (rewritten by 88.6.1-39, D-45)', () => {
     renderHarness(2);
 
-    const region = screen.getByRole('status');
-    expect(region).toHaveTextContent('Click and drag to select your available times');
+    // ONE status region, and it is the sr-only summary, empty before anything happened.
+    const regions = screen.getAllByRole('status');
+    expect(regions).toHaveLength(1);
+    expect(regions[0]).toHaveClass('sr-only');
+    expect(regions[0].textContent).toBe('');
 
-    fireEvent.pointerDown(cellsByLabel()[0]); // paint one slot (default mode: preferred)
+    // The visible line is plain text: no role, not live, and NOT hidden from browse mode.
+    const line = screen.getByTestId('availability-grid-summary-line');
+    expect(line).not.toHaveAttribute('role');
+    expect(line).not.toHaveAttribute('aria-live');
+    expect(line).not.toHaveAttribute('aria-hidden');
+    // The same box and type the region composed for it before (top margin, small type, secondary ink).
+    expect(line).toHaveClass('mt-3', 'text-sm', 'text-content-secondary');
+    expect(line.textContent).toBe('Click and drag to select your available times');
 
-    // The SAME node — a region mounted with its content announces nothing.
-    expect(screen.getByRole('status')).toBe(region);
-    expect(region).toHaveTextContent('1 preferred, 0 if-need-be slots selected');
+    mouseTap(slotCellsAt(0)); // paint one slot (default mode: preferred)
+    expect(line.textContent).toBe('1 preferred, 0 if need be slots selected');
+
+    // The count still filters on the wire enum: an If Need Be paint counts 1, never 0 (CP-3).
+    fireEvent.click(screen.getByRole('button', { name: 'Adding: Preferred' }));
+    expect(screen.getByRole('button', { name: 'Adding: If Need Be' })).toBeTruthy();
+    mouseTap(slotCellsAt(1));
+    expect(line.textContent).toBe('1 preferred, 1 if need be slots selected');
   });
 });
 
@@ -510,5 +535,79 @@ describe('88.6.1-17 whole grid (AC-21) — every cell, every state, on the wall 
     // The 28 if-need-be names are day 0's column (even DOM indexes in a 2-day grid).
     expect(ifNeedBe.every((n) => n.startsWith('Monday, June 29 at '))).toBe(true);
     expect(names.some((n) => n.includes('if-need-be'))).toBe(false);
+  });
+});
+
+// Plan 88.6.1-39 (D-14 / D-45, AC-24, register R3-M20). Before this plan the visible count line
+// WAS the live region, so a screen reader heard every painted cell while the finger was still
+// moving. Now one separate sr-only region, empty at mount, speaks the count ONCE, when the gesture
+// ends (a tap included), read from the selection the parent committed. The region is found by
+// role (it is the only status node) and must be the SAME node before and after (C-6).
+const SUMMARY_ONE = '1 preferred, 0 if need be slots selected';
+
+describe('88.6.1-39 (D-14 / D-45, AC-24) — the count is spoken ONCE, when a gesture ends, from the committed selection', () => {
+  it('G39-1: a touch tap speaks the count once, after the tap commits, from the region that was there and empty', () => {
+    renderHarness(1);
+    const region = screen.getByRole('status');
+    expect(region).toHaveClass('sr-only');
+    expect(region.textContent).toBe('');
+
+    fireEvent.pointerDown(slotCellsAt(0), { pointerId: 1, pointerType: 'touch', clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(document, { pointerId: 1, pointerType: 'touch' });
+
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe(SUMMARY_ONE);
+  });
+
+  it('G39-2: a mouse drag over three cells speaks nothing while the button is down, then one summary at release', () => {
+    renderHarness(1);
+    const region = screen.getByRole('status');
+
+    fireEvent.pointerDown(slotCellsAt(0));
+    expect(region.textContent, 'the count was spoken at the first painted cell').toBe('');
+    fireEvent.pointerEnter(slotCellsAt(1));
+    expect(region.textContent, 'the count was spoken per cell during the drag').toBe('');
+    fireEvent.pointerEnter(slotCellsAt(2));
+    expect(region.textContent, 'the count was spoken per cell during the drag').toBe('');
+
+    fireEvent.pointerUp(document);
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe('3 preferred, 0 if need be slots selected');
+  });
+
+  it('G39-3: keyboard select (Enter on a cell) is a discrete action and speaks the count once', () => {
+    renderHarness(1);
+    const region = screen.getByRole('status');
+    const cell = slotCellsAt(0);
+    cell.focus();
+    fireEvent.keyDown(cell, { key: 'Enter' });
+
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe(SUMMARY_ONE);
+  });
+
+  it('G39-5: a second finger lifting while a long-press paint is in flight is not the gesture end and speaks nothing', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      renderHarness(1);
+      const region = screen.getByRole('status');
+
+      fireEvent.pointerDown(slotCellsAt(0), { pointerId: 1, pointerType: 'touch', clientX: 5, clientY: 5 });
+      // Past the long-press timer: paint mode starts and toggles cell 0 on (one cell painted).
+      act(() => {
+        vi.advanceTimersByTime(350);
+      });
+      expect(slotCellsAt(0)).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.pointerDown(document, { pointerId: 2, pointerType: 'touch' });
+      fireEvent.pointerUp(document, { pointerId: 2, pointerType: 'touch' });
+      expect(region.textContent, 'the count was spoken while the first finger was still painting').toBe('');
+
+      fireEvent.pointerUp(document, { pointerId: 1, pointerType: 'touch' });
+      expect(screen.getByRole('status')).toBe(region);
+      expect(region.textContent).toBe(SUMMARY_ONE);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

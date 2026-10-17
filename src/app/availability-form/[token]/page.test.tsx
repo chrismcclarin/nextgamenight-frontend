@@ -13,7 +13,7 @@
 //
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,17 +29,27 @@ vi.mock('next/navigation', () => ({
  * own always-mounted `StatusRegion`, and this stub renders one too — so the "two `role=status`
  * nodes coexist on READY" property the page's marker records is REPRODUCED here rather than
  * mocked away. The submit button is what drives `onSuccess`.
+ * The real form is rendered on demand (`formMode.real`) for the arms that count or drive the
+ * grid's region.
  */
-vi.mock('@/app/components/AvailabilityForm', () => ({
-  default: ({ onSuccess }: { onSuccess: (r: unknown) => void }) => (
+const formMode = vi.hoisted(() => ({ real: false }));
+vi.mock('@/app/components/AvailabilityForm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/app/components/AvailabilityForm')>();
+  const RealForm = actual.default as unknown as React.ComponentType<Record<string, unknown>>;
+  function AvailabilityFormSwitch(props: Record<string, unknown>) {
+    if (formMode.real) return <RealForm {...props} />;
+    const { onSuccess } = props as { onSuccess: (r: unknown) => void };
+    return (
     <div>
       <div role="status" aria-live="polite" className="sr-only" />
       <button type="button" onClick={() => onSuccess({ isUnavailable: false, slotCount: 3 })}>
         Submit availability
       </button>
     </div>
-  ),
-}));
+    );
+  }
+  return { ...actual, default: AvailabilityFormSwitch };
+});
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
@@ -459,5 +469,34 @@ describe('availability-form/[token] — 88.6.1-23 R3-M3: a stalled 404 body on t
     await screen.findByRole('button', { name: /submit availability/i });
     expect(text, 'a body the lookup throws away is never read').not.toHaveBeenCalled();
     expect(logger.info, 'a 404 is the normal no-prior-response outcome').not.toHaveBeenCalled();
+  });
+});
+
+// ADDED by plan 88.6.1-39 (D-14 / D-45, AC-24, the tracer's far end). The grid's count must be
+// read from the COMMITTED selection, after the parent re-rendered; on this page the parent is
+// react-hook-form's Controller inside the REAL AvailabilityForm, not a useState harness. These
+// arms switch the form mock to the real component (formMode.real) and back.
+const GRID_SUMMARY_TESTID = 'availability-grid-summary-status';
+
+describe('availability-form/[token] — 88.6.1-39: the real form speaks the grid summary once, from the committed value', () => {
+  afterEach(() => {
+    formMode.real = false;
+  });
+
+  it('P39-1: a touch tap on the first empty cell speaks "1 preferred, 0 if need be slots selected" on the same region', async () => {
+    formMode.real = true;
+    validate().mockResolvedValue(VALID_TOKEN_BODY);
+
+    render(<AvailabilityFormPage />);
+
+    const region = await screen.findByTestId(GRID_SUMMARY_TESTID);
+    expect(region.textContent).toBe('');
+
+    const cell = screen.getAllByRole('button', { name: /, not selected$/ })[0];
+    fireEvent.pointerDown(cell, { pointerId: 1, pointerType: 'touch', clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(document, { pointerId: 1, pointerType: 'touch' });
+
+    expect(screen.getByTestId(GRID_SUMMARY_TESTID)).toBe(region);
+    expect(region.textContent).toBe('1 preferred, 0 if need be slots selected');
   });
 });
