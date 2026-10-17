@@ -564,7 +564,7 @@ describe('userProfile availability settings', () => {
   // The recurring DATE pair had NO client guard of any kind: the server rejects an
   // inverted range with a code-less 400 that renders the generic register copy and
   // discards the form (`routes/availability.js:137`). The TIME pair on the same form
-  // already refuses it with a ratified toast (`userProfile/page.js:1528`,
+  // already refuses it with a ratified toast (`userProfile/page.js:1576`,
   // 88-CODE-REVIEW MED#7) and is deliberately untouched.
   //
   // THIS ASSERTS THE DERIVATION, NOT A DATE. A test that pinned a literal would pass
@@ -2039,9 +2039,13 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
       'Game added',
       'Still loading your account — please try again in a moment.',
       'Game removed',
+      // 88.6.1-61 (review 65): the two availability create guards reuse the page's existing
+      // still-loading sentence instead of returning without a word — no new string.
+      'Still loading your account — please try again in a moment.',
       'Please select at least one day.',
       'Start time must be before end time.',
       'Schedules created',
+      'Still loading your account — please try again in a moment.',
       'Start time must be before end time.',
       'Override created',
       'Pattern deleted',
@@ -4220,9 +4224,10 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
   const TOGGLED = { ...REAL_PREFS, event_created: { email: false, sms: false } };
 
   afterEach(async () => {
-    const { userGamesAPI } = await import('@/lib/api');
-    // The persistence trap: clearAllMocks keeps an implementation, so restore the default here.
+    const { userGamesAPI, googleCalendarAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps an implementation, so restore the defaults here.
     (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([]);
+    (googleCalendarAPI.getStatus as Mock).mockResolvedValue({ connected: false });
   });
 
   it('I1: a kept row whose refetch failed shows and saves the real settings, never the defaults', async () => {
@@ -4317,14 +4322,16 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
   }
 
   it('I3: a kept row whose refetch failed shows the calendar control and the collection, with no identity notice', async () => {
-    const { userGamesAPI } = await import('@/lib/api');
+    const { userGamesAPI, googleCalendarAPI } = await import('@/lib/api');
     (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    // Re-set explicitly: earlier describes leave `getStatus` answering connected.
+    (googleCalendarAPI.getStatus as Mock).mockResolvedValue({ connected: false });
     h.selfError = new Error('boom');
     renderProfile();
 
     // Positive signal: the collection list renders under the kept row.
     await screen.findByRole('button', { name: 'Remove Catan' });
-    expect(screen.getByRole('button', { name: 'Connect Google Calendar' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Connect Google Calendar' })).toBeInTheDocument();
     expect(screen.queryAllByRole('button', { name: 'Retry' })).toHaveLength(0);
     expect(screen.getByRole('heading', { name: 'Notification Preferences' })).toBeInTheDocument();
   });

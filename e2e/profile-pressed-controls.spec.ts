@@ -52,7 +52,7 @@ import { expectFocusRingClearOfText } from './support/ringGeometry';
 
 // In the 555-01xx fictional range, so it is never a real person's phone, and it still passes the
 // page's own check (`parsePhoneNumber(value, 'US')` then `isValid()`,
-// `src/app/userProfile/page.js:651-652`; `isValid()` is true for this value, run 2026-10-11 and
+// `src/app/userProfile/page.js:653-654`; `isValid()` is true for this value, run 2026-10-11 and
 // again 2026-10-15).
 const FAKE_PHONE = '(201) 555-0123';
 const FAKE_CODE = '123456';

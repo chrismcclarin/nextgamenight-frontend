@@ -146,12 +146,12 @@ function Profile(){
     // on it (+ selfUuid in their dep arrays so they re-run once it resolves) and
     // user-action senders guard-before-optimistic-update, failing loud.
     const { self, selfUuid, query: selfQuery } = useSelfIdentity();
-    // WR-03: the profile header already falls back on selfQuery.isError (init
-    // effect below), but the owned-games + Google-calendar-status zones init
-    // their loading flags to true and clear them only inside selfUuid-gated
-    // fetchers. On a TERMINAL identity failure those fetchers early-return, so
-    // the flags never clear and both zones spin forever. Derive the shared error
-    // state here and render the compact degrade banner in those two zones.
+    // WR-03: the profile header falls back when identity fails with NO row (the init effect
+    // below; a failed refetch that keeps the row initializes from that row — 88.6.1-61), but
+    // the owned-games + Google-calendar-status zones init their loading flags to true and clear
+    // them only inside selfUuid-gated fetchers. On a TERMINAL identity failure those fetchers
+    // early-return, so the flags never clear and both zones spin forever. Derive the shared
+    // error state here and render the compact degrade banner in those two zones.
     const selfIdentityErrorState = useFetchErrorState(selfQuery);
     const [ownedGames, setOwnedGames] = useState([]);
     const [loadingGames, setLoadingGames] = useState(true);
@@ -307,6 +307,8 @@ function Profile(){
     const overridesHeadingRef = useRef(null);
     const patternsRetained = useRetainedContent(patternsQuery.data !== undefined, patternsError, { queryKey: availabilityKeys.patterns(self?.id) });
     const patternsFailedWithNothingCached = patternsError.showError && !patternsRetained;
+    // No-row half (88.6.1-61); selfIdentityErrorState stays RAW: plan 88.6.1-79 reads it over a kept row.
+    const selfFailedWithNothingCached = selfIdentityErrorState.showError && self === undefined;
     // D-35 / Req 5 (88.6.1-59): the username editor's Save latch, and the pencil that both of the
     // editor's exits land focus on (fallback: plan 18's profile <h1>). See
     // `DECISION Phase 88.6.1-59 (D-35, username)` at the editor's button row.
@@ -1559,7 +1561,11 @@ function Profile(){
         const pressed = event?.currentTarget ?? null;
         // 87.4 Plan 10: gate on the resolved self identity, not user?.sub, so the
         // write cannot fire (and cannot send an empty self-param) before self resolves.
-        if (!self?.id) return;
+        // 88.6.1-61 (review 65): the refusal says so — see `DECISION Phase 88.6.1-61 (AC-29, identity notices)`.
+        if (!self?.id) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
         if (recurringForm.daysOfWeek.length === 0) {
             toast.error('Please select at least one day.');
             return;
@@ -1655,7 +1661,11 @@ function Profile(){
         const pressed = event?.currentTarget ?? null;
         // 87.4 Plan 10: gate on the resolved self identity, not user?.sub, so the
         // write cannot fire (and cannot send an empty self-param) before self resolves.
-        if (!self?.id) return;
+        // 88.6.1-61 (review 65): the refusal says so — see `DECISION Phase 88.6.1-61 (AC-29, identity notices)`.
+        if (!self?.id) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
         // 88-CODE-REVIEW MED#7: same client-side start<end mirror as the recurring form
         // (availability.js:208 on this path).
         if (specificForm.startTime >= specificForm.endTime) {
@@ -2639,10 +2649,11 @@ function Profile(){
                                         : 'Connect your Google Calendar to automatically add future game events'}
                                 </p>
                             </div>
-                            {selfIdentityErrorState.showError ? (
-                                // WR-03: identity failed terminally — the status
+                            {selfFailedWithNothingCached ? (
+                                // WR-03: identity failed terminally (no row) — the status
                                 // check never ran; show the degrade notice, not a
                                 // stuck "Checking your calendar...".
+                                // See `DECISION Phase 88.6.1-61 (AC-29, identity notices)`.
                                 <FetchErrorBanner state={selfIdentityErrorState} compact />
                             ) : checkingCalendarStatus ? (
                                 <div className="text-sm text-content-muted">Checking your calendar...</div>
@@ -3245,7 +3256,7 @@ function Profile(){
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1528` (recurring) and `:1619`
+                                            `userProfile/page.js:1576` (recurring) and `:1671`
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
@@ -3343,7 +3354,10 @@ function Profile(){
                                 target (the floor is the page's h1, far above on a phone).
                                 This marker names copy rows by id and spells no user-facing sentence. Changing
                                 any of these is a decision, not a cleanup. */}
-                            {loadingPatterns ? (
+                            {selfFailedWithNothingCached ? (
+                                // AC-29 (88.6.1-61): no identity row — see `DECISION Phase 88.6.1-61 (AC-29, identity notices)`.
+                                <FetchErrorBanner state={selfIdentityErrorState} compact focusTarget={schedulesHeadingRef} />
+                            ) : loadingPatterns ? (
                                 <p className="text-content-secondary">Loading schedules...</p>
                             ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
@@ -3497,7 +3511,10 @@ function Profile(){
                             )}
 
                             {/* AC-29 / RF1 (88.6.1-59): see `DECISION Phase 88.6.1-59 (AC-29 / RF1)` at the schedules list. */}
-                            {loadingPatterns ? (
+                            {selfFailedWithNothingCached ? (
+                                // AC-29 (88.6.1-61): no identity row — see `DECISION Phase 88.6.1-61 (AC-29, identity notices)`.
+                                <FetchErrorBanner state={selfIdentityErrorState} compact focusTarget={overridesHeadingRef} />
+                            ) : loadingPatterns ? (
                                 <p className="text-content-secondary">Loading overrides...</p>
                             ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
@@ -3796,11 +3813,44 @@ function Profile(){
                     )}
 
                     {/* Owned Games List */}
-                    {selfIdentityErrorState.showError ? (
-                        // WR-03: identity failed terminally — the owned-games
+                    {/* DECISION Phase 88.6.1-61 (AC-29, identity notices): the compact identity notice
+                        replaces a zone only when identity failed with NO row
+                        (`selfFailedWithNothingCached`, keyed on `self === undefined`, the plan-59
+                        shape). With a kept row the calendar zone and this collection render their
+                        normal content and no notice shows: its sentence would be false, since every
+                        control works from the kept row. Plan 88.6.1-67 reads the same boolean.
+                        CHOSEN (review 65): with no row the same notice also takes the place of each
+                        availability panel's list (the patterns query never runs, so the list's empty
+                        sentence would state as fact that the user has no schedules or overrides), and
+                        the two availability create guards toast the page's existing still-loading
+                        sentence instead of returning without a word.
+                        CHOSEN (review 222): after a successful no-row Retry, focus lands on this
+                        card's heading (`collectionHeadingRef`) and on each availability panel's own
+                        heading (plan 59's refs); the calendar notice passes no `focusTarget`, because
+                        its nearest heading is the page's `main h1` in the same card, which plan 21's
+                        floor already reaches.
+                        REJECTED: (a) the old error-only condition (it hid a working calendar control
+                        and collection list behind a false notice); (b) the compact notice beside the
+                        content (its sentence is false there; plan 30's ruling on the compact text);
+                        (c) removing the ternaries (their announcement gap is Phase 92's,
+                        `.planning/deferred/phase-92.md:84`, which says keep them); (d) leaving the
+                        availability lists' empty sentences in the no-row state (a false statement of
+                        fact); (e) no `focusTarget` on the collection and availability notices (focus
+                        would jump to the top of the page, far from the card on a phone).
+                        Kept-row state, routed (not mounted here): plan 88.6.1-79 Task 3 mounts plan
+                        88.6.1-70's RF1 notice as the header card's first child for a kept row whose
+                        refresh failed, reading `selfIdentityErrorState` RAW, so that state is never
+                        wrapped in a no-row source; this boolean is the no-row half. An access-or-gone
+                        answer over a kept row is ALSO plan 79 Task 3's (its `identityWithdrawn`, which
+                        withdraws the row's name and address and decides which zones show a notice for
+                        it), so `selfFailedWithNothingCached` is not the whole story of when a zone's
+                        notice shows. Plan 79 amends this bullet in place when it lands.
+                        Changing any of these is a decision, not a cleanup. */}
+                    {selfFailedWithNothingCached ? (
+                        // WR-03: identity failed terminally (no row) — the owned-games
                         // fetch never ran; surface the degrade notice instead of
                         // a permanent "Loading your collection...".
-                        <FetchErrorBanner state={selfIdentityErrorState} compact />
+                        <FetchErrorBanner state={selfIdentityErrorState} compact focusTarget={collectionHeadingRef} />
                     ) : loadingGames ? (
                         <p className="text-content-secondary">Loading your collection...</p>
                     ) : ownedGames.length > 0 ? (
