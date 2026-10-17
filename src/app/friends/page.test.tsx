@@ -79,6 +79,12 @@ const providerCtx = vi.hoisted(() => ({
   isRequestActionPending: vi.fn((_id: string) => false),
   // 88.6.1-40 carry-in: the provider's first-load flag (true until its first load settles).
   loading: false,
+  // 88.6.1-72: plan 88.6.1-66's load-error object (null while healthy), its has-loaded fact (the
+  // Requests tab's C3 input; true = a load succeeded for this user) and its JOINING retry (the
+  // Requests adapter's refetch, review finding #149; `refreshFriendships` stays the post-unfriend sync).
+  error: null as unknown,
+  hasLoaded: true,
+  retryFriendships: vi.fn(),
 }));
 vi.mock('@/app/components/FriendshipStatusProvider', () => ({
   useFriendshipStatus: () => ({
@@ -89,6 +95,9 @@ vi.mock('@/app/components/FriendshipStatusProvider', () => ({
     loading: providerCtx.loading,
     getStatus: () => 'none',
     refreshFriendships: providerCtx.refreshFriendships,
+    error: providerCtx.error,
+    hasLoaded: providerCtx.hasLoaded,
+    retryFriendships: providerCtx.retryFriendships,
   }),
 }));
 
@@ -139,6 +148,7 @@ import FriendsPage from './page';
 import { ApiError, friendshipsAPI, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { queryCacheOnError } from '@/lib/queryClient';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -197,6 +207,12 @@ beforeEach(() => {
   providerCtx.declineRequest.mockReset().mockResolvedValue({});
   providerCtx.isRequestActionPending.mockImplementation(() => false);
   providerCtx.loading = false;
+  // 88.6.1-72: a healthy provider whose load succeeded (every pre-existing case renders as before);
+  // both loads resolve plan 88.6.1-66's `{ isError: false }`.
+  providerCtx.error = null;
+  providerCtx.hasLoaded = true;
+  providerCtx.refreshFriendships.mockReset().mockResolvedValue({ isError: false });
+  providerCtx.retryFriendships.mockReset().mockResolvedValue({ isError: false });
   // 88.6.1-40: the API mocks too (reset first, so an unconsumed one-shot cannot leak), because one arm's admin group used to leak into every later render.
   (groupsAPI.getUserGroups as Mock).mockReset().mockResolvedValue([]);
   (groupsAPI.getGroupMembers as Mock).mockReset().mockResolvedValue([]);
@@ -568,17 +584,22 @@ describe('friends AC-2 — the converted channel, and what it did NOT become', (
   });
 
   it.each([
-    ['accept', 'Accept', 'acceptRequest', 'Error accepting request:'],
-    ['decline', 'Decline', 'declineRequest', 'Error declining request:'],
+    ['accept', 'Accept', 'acceptRequest', 'Error accepting request:', "We couldn't accept that friend request. Please try again."],
+    ['decline', 'Decline', 'declineRequest', 'Error declining request:', "We couldn't decline that friend request. Please try again."],
   ] as const)(
-    'a failed %s reaches the log channel AND shows the user nothing — the registered residual',
-    async (_label, button, mutator, message) => {
+    'a failed %s reaches the log channel AND shows its line (88.6.1-72)',
+    async (_label, button, mutator, message, line) => {
       // These two are the sites this plan registers as an owner-facing residual in
       // `.planning/deferred/phase-88.6.md`: after the conversion the failure is silent to
       // the user AND silent in the browser console, surviving only as a breadcrumb. BOTH
       // halves are asserted here, so the residual is pinned as a FACT rather than as a
       // sentence in a summary that nothing re-checks. If a later plan gives either path a
       // toast or a banner, the second half reds and the register entry must be amended.
+      // CLOSED by 88.6.1-72 on the owner's 2026-10-05 ruling: the sentence above is what
+      // happened. The second half now pins the shown line (copy rows N5 / N6, D-30, as the
+      // bell's `fallback` for the same provider call; `boom()` is a plain Error, code `unknown`,
+      // so the fallback answers), and the breadcrumb half is unchanged. Plan 88.6.1-58 amends
+      // `.planning/deferred/phase-88.6.md:2004-2006`.
       providerCtx.receivedRequests = [
         { id: 'req-1', Requester: { id: FRIEND_2_UUID, username: 'Sam' } },
       ];
@@ -596,11 +617,9 @@ describe('friends AC-2 — the converted channel, and what it did NOT become', (
       expect(call?.[1]).toEqual({ name: 'Error', message: 'HTTP error! status: 500' });
       expect(call?.[1]).not.toBeInstanceOf(Error);
 
-      // The silent half. Settled on a POSITIVE signal first (the breadcrumb above), so
-      // this absence claim is observed AFTER the failure landed rather than on tick one.
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-      expect(screen.queryByText(/couldn't|went wrong|Something/i)).not.toBeInTheDocument();
-      // ...and the row is still sitting there, indistinguishable from an unattempted one.
+      // The shown half (88.6.1-72): the failure's own line, exactly, in the house alert; and
+      // the row is still there, ready for a retry.
+      expect((await screen.findByRole('alert')).textContent).toBe(line);
       expect(screen.getByText('Sam')).toBeInTheDocument();
     }
   );
@@ -1459,5 +1478,289 @@ describe('friends — lists refresh in place (88.6.1-40, AC-29)', () => {
     renderFriends({ loadError: new ApiError('boom', 'network', 500) });
     await screen.findByText("Couldn't load your friends");
     expect(await searchTo(RILEY_HIT, 'riley@example.com')).toBeInTheDocument();
+  });
+});
+
+// Phase 88.6.1-72 Task 1 (owner rulings 2026-10-05: N5 / N6 on a failed Accept / Decline, FR1 and
+// the RF1 notice on the Requests tab; 88.6.1-70 contract C1-C12). `//` comments only (CF-9).
+
+// Copy row RF1 / D-47 (plan 88.6.1-70's REFRESH_FAILED_NOTICE, contract C7): the ONLY place this
+// file spells it. While the notice shows and its region is not quiet it is on screen TWICE (the
+// sr-only polite region plus the visible line).
+const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+// Copy row FR1 (owner ruling 2026-10-05), the Requests tab's full-banner title.
+const FR1 = "Couldn't load your friend requests";
+const NO_PENDING = 'No pending friend requests.';
+const N5 = "We couldn't accept that friend request. Please try again.";
+
+// The house tab-return idiom (src/components/ui/useFetchErrorState.test.tsx, `function fireVisibility`).
+function fireVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+const requestsTab = () => screen.getByRole('button', { name: /^Requests/ });
+const friendsTabButton = () => screen.getByRole('button', { name: /^Friends/ });
+// The RF1 notice's VISIBLE line: the occurrence outside every role=status node.
+const rf1Line = () => screen.getAllByText(RF1).find((n) => n.closest('[role="status"]') === null) ?? null;
+// The RF1 notice's polite region (a role=status node carrying the sentence).
+const rf1Region = () => screen.getAllByRole('status').find((n) => n.textContent === RF1) ?? null;
+// The page's own request-action line: the one paragraph carrying the alert role on the Requests tab
+// (FR1's banner speaks through its own region, never a paragraph).
+const requestActionLine = () => document.querySelector('p[role="alert"]');
+const precedes = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+// Healthy first render, then the Requests tab (no wait on its content: each test waits for its own).
+async function openRequestsTab(requests: Array<Record<string, unknown>>) {
+  providerCtx.receivedRequests = requests;
+  const utils = renderFriends();
+  await screen.findByText('Dana');
+  fireEvent.click(requestsTab());
+  return utils;
+}
+
+// Healthy Requests tab listing Sam, then the provider's load fails with `err` (a rerender stands in
+// for the provider's commit).
+async function samThenFailure(err: unknown) {
+  const utils = await openRequestsTab([SAM_REQUEST]);
+  await screen.findByText('Sam');
+  providerCtx.error = err;
+  utils.rerender(<FriendsPage />);
+  return utils;
+}
+
+describe('friends — the Requests tab tells the truth (88.6.1-72, owner rulings 2026-10-05)', () => {
+  const boom = () => new Error('HTTP error! status: 500');
+
+  it('N2. a coded Accept failure keeps its register line, never the N5 fallback (D-33 row 22)', async () => {
+    const err = new ApiError('offline', 'network', 0);
+    providerCtx.acceptRequest.mockRejectedValueOnce(err);
+    await openRequestsTab([SAM_REQUEST]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(getFetchErrorMessage(err));
+    expect(alert.textContent).not.toBe(N5);
+  });
+
+  it('N3. the same Accept failure twice is removed at the second press and inserted again (R8 backstop)', async () => {
+    providerCtx.acceptRequest.mockRejectedValueOnce(boom());
+    await openRequestsTab([SAM_REQUEST]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(N5);
+
+    const held = deferred<unknown>();
+    providerCtx.acceptRequest.mockReturnValueOnce(held.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    // Synchronously, at the press: the old line is gone (clear-first, D-42).
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    await act(async () => {
+      held.reject(boom());
+    });
+    expect((await screen.findByRole('alert')).textContent).toBe(N5);
+  });
+
+  it('N4. GUARD: after a failed Accept focus stays on the pressed Accept, live again (Req 5)', async () => {
+    // Green by construction in jsdom (it never blurs, FE-TESTING-CONVENTIONS C-11); the real-browser
+    // proof is e2e (4). The positive signal is the breadcrumb, which exists before and after the fix.
+    providerCtx.acceptRequest.mockRejectedValueOnce(boom());
+    await openRequestsTab([SAM_REQUEST, RILEY_REQUEST]);
+    await screen.findByText('Sam');
+    const samAccept = within(requestRow('Sam')).getByRole('button', { name: 'Accept' });
+    act(() => samAccept.focus());
+    fireEvent.click(samAccept);
+    await waitFor(() =>
+      expect((logger.info as Mock).mock.calls.some(([m]) => m === 'Error accepting request:')).toBe(true)
+    );
+    await waitFor(() => expect(samAccept).not.toHaveAttribute('aria-disabled'));
+    expect(document.activeElement).toBe(samAccept);
+  });
+
+  it('Q1. a failed load with nothing retained is FR1 (never the empty line); Try again runs the joining retry', async () => {
+    providerCtx.hasLoaded = false;
+    providerCtx.error = new ApiError('offline', 'network', 0);
+    await openRequestsTab([]);
+    expect(await screen.findByText(FR1)).toBeInTheDocument();
+    expect(screen.queryByText(NO_PENDING)).toBeNull();
+    expect(screen.getByText(getFetchErrorMessage(providerCtx.error))).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /Try again/ }));
+    expect(providerCtx.retryFriendships).toHaveBeenCalledTimes(1);
+    expect(providerCtx.refreshFriendships).not.toHaveBeenCalled();
+    await act(async () => {});
+  });
+
+  it('Q2. a failed refresh keeps the requests under RF1, spoken from a region that was already there (C8 a, b)', async () => {
+    const utils = await openRequestsTab([SAM_REQUEST]);
+    await screen.findByText('Sam');
+    const before = screen.getAllByRole('status');
+    providerCtx.error = new ApiError('offline', 'network', 0);
+    utils.rerender(<FriendsPage />);
+
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText('Sam')).toBeInTheDocument();
+    const region = rf1Region();
+    expect(region).not.toBeNull();
+    expect(before.find((n) => n === region)).toBe(region);
+    expect(screen.queryByText(FR1)).toBeNull();
+    expect(screen.queryByText(NO_PENDING)).toBeNull();
+    expect(precedes(rf1Line() as Node, screen.getByText('Sam'))).toBe(true);
+  });
+
+  it('Q3. a list that loaded EMPTY is retained: RF1 above the empty line, never FR1 (C3, owner ruling Y)', async () => {
+    const utils = await openRequestsTab([]);
+    await screen.findByText(NO_PENDING);
+    providerCtx.error = new ApiError('offline', 'network', 0);
+    utils.rerender(<FriendsPage />);
+
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText(NO_PENDING)).toBeInTheDocument();
+    expect(screen.queryByText(FR1)).toBeNull();
+  });
+
+  it('Q4. the notice Retry runs the joining retry; a success removes the notice and keeps the rows (C8 c)', async () => {
+    const utils = await samThenFailure(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(providerCtx.retryFriendships).toHaveBeenCalledTimes(1);
+    expect(providerCtx.refreshFriendships).not.toHaveBeenCalled();
+    await act(async () => {});
+
+    providerCtx.error = null;
+    utils.rerender(<FriendsPage />);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByText('Sam')).toBeInTheDocument();
+  });
+
+  it('Q5. GUARD: healthy and empty shows the empty line, with neither FR1 nor RF1', async () => {
+    await openRequestsTab([]);
+    expect(await screen.findByText(NO_PENDING)).toBeInTheDocument();
+    expect(screen.queryByText(FR1)).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('Q6. a 401 or 403 refresh withdraws the requests behind FR1 with the register line; a 500 keeps them under RF1 (C8 e, C10)', async () => {
+    for (const err of [
+      new ApiError('Unauthorized', 'unauthorized', 401),
+      new ApiError('Forbidden', 'forbidden', 403),
+    ]) {
+      await samThenFailure(err);
+      expect(await screen.findByText(FR1)).toBeInTheDocument();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
+      expect(screen.queryByText('Sam')).toBeNull();
+      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      cleanup();
+      providerCtx.error = null;
+    }
+
+    await samThenFailure(new ApiError('Server error', 'internal', 500));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText('Sam')).toBeInTheDocument();
+    expect(screen.queryByText(FR1)).toBeNull();
+  });
+
+  it('Q7. a provider that loaded EMPTY before the page opened and failed since shows RF1 above the empty line (D-50, plan 66 hasLoaded)', async () => {
+    providerCtx.hasLoaded = true;
+    providerCtx.error = new ApiError('offline', 'network', 0);
+    await openRequestsTab([]);
+    // Mounted mid-failure: the notice fills its region after its dwell (quietOnMount).
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const empty = screen.getByText(NO_PENDING);
+    expect(screen.queryByText(FR1)).toBeNull();
+    expect(precedes(rf1Line() as Node, empty)).toBe(true);
+  });
+
+  it('Q8. a refresh NOBODY pressed: a withdrawal lands focus on the Requests tab; a success with Retry focused too (C8 f, C12)', async () => {
+    // (f1) A row control holds focus; the tab-return re-attempt is answered 403.
+    let utils = await samThenFailure(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const samAccept = within(requestRow('Sam')).getByRole('button', { name: 'Accept' });
+    act(() => samAccept.focus());
+    providerCtx.retryFriendships.mockResolvedValueOnce({ isError: true });
+    act(() => fireVisibility('visible'));
+    // Nobody pressed anything: the hook's re-attempt went through the adapter's joining retry.
+    expect(providerCtx.retryFriendships).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+    providerCtx.error = new ApiError('Forbidden', 'forbidden', 403);
+    utils.rerender(<FriendsPage />);
+    expect(await screen.findByText(FR1)).toBeInTheDocument();
+    expect(screen.queryByText('Sam')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(requestsTab()));
+    expect(document.activeElement).not.toBe(document.body);
+    cleanup();
+    providerCtx.error = null;
+    providerCtx.retryFriendships.mockClear();
+
+    // (f2) The notice's Retry holds focus; the tab-return re-attempt succeeds.
+    utils = await samThenFailure(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    act(() => retry.focus());
+    act(() => fireVisibility('visible'));
+    expect(providerCtx.retryFriendships).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+    providerCtx.error = null;
+    utils.rerender(<FriendsPage />);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByText('Sam')).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(requestsTab()));
+  });
+
+  it('L1. a tab change clears the request-action line, so a return never announces it again (#238)', async () => {
+    providerCtx.acceptRequest.mockRejectedValueOnce(boom());
+    await openRequestsTab([SAM_REQUEST]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(N5);
+
+    fireEvent.click(friendsTabButton());
+    fireEvent.click(requestsTab());
+    expect(await screen.findByText('Sam')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('L2. the line is never beside FR1, and FR1 clears it so a recovery never brings it back (#83)', async () => {
+    const actionErr = new ApiError('Unauthorized', 'unauthorized', 401);
+    providerCtx.acceptRequest.mockRejectedValueOnce(actionErr);
+    const utils = await openRequestsTab([SAM_REQUEST]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(requestActionLine()?.textContent).toBe(getFetchErrorMessage(actionErr)));
+
+    providerCtx.error = new ApiError('Unauthorized', 'unauthorized', 401);
+    utils.rerender(<FriendsPage />);
+    expect(await screen.findByText(FR1)).toBeInTheDocument();
+    expect(requestActionLine()).toBeNull();
+
+    providerCtx.error = null;
+    utils.rerender(<FriendsPage />);
+    expect(await screen.findByText('Sam')).toBeInTheDocument();
+    expect(requestActionLine()).toBeNull();
+  });
+
+  it('L3. the line leaves with the request it names (handled elsewhere, reconciled away) (#83)', async () => {
+    providerCtx.acceptRequest.mockRejectedValueOnce(boom());
+    const utils = await openRequestsTab([SAM_REQUEST, RILEY_REQUEST]);
+    await screen.findByText('Sam');
+    fireEvent.click(within(requestRow('Sam')).getByRole('button', { name: 'Accept' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(N5);
+
+    providerCtx.receivedRequests = [RILEY_REQUEST];
+    utils.rerender(<FriendsPage />);
+    expect(await screen.findByText('Riley')).toBeInTheDocument();
+    expect(screen.queryByText('Sam')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('L4. the same tab change clears the Friends tab remove line (#83, review r3 L-20)', async () => {
+    (friendshipsAPI.removeFriend as Mock).mockRejectedValue(boom());
+    renderFriends();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Tap again to confirm' }));
+    expect(await screen.findByText("We couldn't remove that friend. Please try again.")).toBeInTheDocument();
+
+    fireEvent.click(requestsTab());
+    fireEvent.click(friendsTabButton());
+    expect(await screen.findByText('Dana')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
