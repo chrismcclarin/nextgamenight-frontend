@@ -10,9 +10,11 @@
 //
 //   1. ANNOUNCEMENT — the region is captured BEFORE the failure and asserted on as the
 //      SAME NODE afterwards (`expect(after).toBe(before)`), the idiom
-//      `StatusRegion.test.tsx:20-29` already uses. A presence check passes against a
+//      `StatusRegion.test.tsx:25-34` already uses. A presence check passes against a
 //      CONDITIONALLY-mounted region, which is exactly the bug: screen readers announce a
 //      CHANGE to a live region, never the conditional mount of a new one.
+//      Scoped by Phase 88.6.1-31 (D-42): that holds for POLITE regions, which all three are;
+//      an inserted role="alert" that arrives with its text IS announced.
 //   2. ASSOCIATION — the description is resolved FROM THE CHOICE BUTTON, a focusable
 //      element, and the text is read back. An `aria-describedby` attribute asserted on the
 //      role-less `space-y-2` wrapper would satisfy a presence check while producing zero
