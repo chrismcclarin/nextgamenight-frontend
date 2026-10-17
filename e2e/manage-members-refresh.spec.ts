@@ -1,7 +1,13 @@
 import { test, expect, type APIResponse, type Page, type Route } from '@playwright/test';
 
 import { forceLightMode } from './support/contrast';
-import { expectGatedPair, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
+import {
+  expectGatedPair,
+  expectNoApiWrites,
+  holdWrites,
+  settleAnimations,
+  type WriteHold,
+} from './support/inFlight';
 
 /**
  * Phase 88.6.1-42 (D-09a, Req 9; Req 5 H1, D-05 as amended by D-57) — Manage Members at 375px.
@@ -221,6 +227,120 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
       () => document.documentElement.scrollWidth <= window.innerWidth,
     );
     expect(fits, 'the failed first load causes no horizontal page scroll').toBe(true);
+  });
+
+  /**
+   * Phase 88.6.1-78 (AC-29 / RF1, D-51; 88.6.1-70 contract C8 d) — a failed REFRESH of the Manage
+   * Members roster keeps the rows on screen under plan 70's shared notice, at 375px, through a
+   * real close and reopen.
+   *
+   * WHAT IT PROVES: after the reopen's members read fails, the last roster stays (D-09a) with the
+   * notice above the "(You)" row inside the dialog (pinned under the title, owner ruling #242);
+   * its Retry is at least 44 by 44 and fully inside the viewport once scrolled to; nothing scrolls
+   * sideways; and Retry recovers, landing focus on the "Manage Group Members" title.
+   *
+   * IT WRITES NOTHING. Only the members GET is answered IN THE BROWSER (a 500 while failing); no
+   * row action is pressed; every other request falls back, and the write backstop holds any write
+   * and fails the test if one reaches it.
+   *
+   * CI-RUN ONLY (no local `.auth`, FE-TESTING-CONVENTIONS C-14): typechecked and listed locally.
+   * A failed overlap, reachability, size or sideways-scroll assertion is a STOP for the owner's
+   * mockup, never a restyle of the notice or the dialog.
+   */
+  test('a failed refresh keeps the roster under the refresh notice at 375px, and Retry recovers (88.6.1-78)', async ({
+    page,
+  }) => {
+    // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE), written once here (contract C7).
+    const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+
+    try {
+      // The group page loads its own members once identity resolves; wait for that read first.
+      const pageMembersRead = page.waitForResponse(
+        (response) =>
+          isMembersRead(new URL(response.url())) && response.request().method() === 'GET',
+      );
+      await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+      await pageMembersRead;
+      const manage = page.getByRole('button', { name: 'Manage Members' });
+      await expect(manage).toBeVisible({ timeout: 15_000 });
+      await manage.tap();
+
+      const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+      await expect(dialog).toBeVisible({ timeout: 15_000 });
+      const self = dialog.getByText('(You)', { exact: true });
+      await expect(self).toBeVisible({ timeout: 15_000 });
+
+      // A real close, with the dialog's own Close control.
+      await dialog.getByRole('button', { name: 'Close' }).tap();
+      await expect(dialog).toHaveCount(0);
+
+      // Installed only now, so the first load is never touched. The backstop holds any write; the
+      // members route (registered after it, so it runs first) answers only the members GET.
+      const hold = await holdWrites(page);
+      let mode: 'fail' | 'pass' = 'pass';
+      let served500 = 0;
+      await page.route(isMembersRead, async (route) => {
+        if (route.request().method() !== 'GET' || mode !== 'fail') {
+          await route.fallback();
+          return;
+        }
+        served500 += 1;
+        await route.fulfill({ status: 500, json: { message: 'Internal error' } });
+      });
+      mode = 'fail';
+
+      await manage.tap();
+
+      // POSITIVE: the visible RF1 line (the notice's span; its sr-only status region also holds
+      // the sentence and still has a box, plan 88.6.1-73's CI lesson).
+      const line = dialog.getByText(RF1, { exact: true }).and(page.locator('span'));
+      await expect(line).toBeVisible({ timeout: 15_000 });
+      // D-09a: the reopen shows the last roster, kept under the notice.
+      await expect(self).toBeVisible();
+      await expect(dialog.getByText("Couldn't load members")).toHaveCount(0);
+      expect(served500, 'at least one 500 was served to the members read').toBeGreaterThan(0);
+
+      // boundingBox reads the transformed box; the dialog opens with a zoom animation.
+      await settleAnimations(dialog);
+      const lineBox = await line.boundingBox();
+      const selfBox = await self.boundingBox();
+      expect(lineBox, 'the RF1 line has a box').not.toBeNull();
+      expect(selfBox, 'the (You) row has a box').not.toBeNull();
+      expect(
+        lineBox!.y + lineBox!.height,
+        'STOP (owner mockup): the notice must sit above the (You) row',
+      ).toBeLessThanOrEqual(selfBox!.y);
+
+      const retry = dialog.getByRole('button', { name: 'Retry', exact: true });
+      await expect(retry).toHaveCount(1);
+      await retry.scrollIntoViewIfNeeded();
+      await expect(retry).toBeInViewport({ ratio: 1 });
+      const retryBox = await retry.boundingBox();
+      expect(retryBox, 'Retry has a box').not.toBeNull();
+      expect(retryBox!.width, 'STOP (owner mockup): Retry is narrower than 44px').toBeGreaterThanOrEqual(44);
+      expect(retryBox!.height, 'STOP (owner mockup): Retry is shorter than 44px').toBeGreaterThanOrEqual(44);
+      const fits = await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      );
+      expect(fits, 'STOP (owner mockup): the page scrolls sideways').toBe(true);
+
+      // Retry recovers: the next members read goes through to the server.
+      mode = 'pass';
+      const recovered = page.waitForResponse(
+        (response) =>
+          isMembersRead(new URL(response.url())) &&
+          response.request().method() === 'GET' &&
+          response.status() === 200,
+      );
+      await retry.click();
+      await recovered;
+      await expect(dialog.getByText(RF1, { exact: true }).and(page.locator('span'))).toHaveCount(0);
+      await expect(dialog.getByRole('heading', { name: 'Manage Group Members' })).toBeFocused();
+      await expect(self).toBeVisible();
+      expectNoApiWrites(hold);
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
   });
 });
 
