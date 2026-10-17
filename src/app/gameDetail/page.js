@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
@@ -27,7 +27,13 @@ import { FormField } from '../components/form/FormField';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { logger, errCtx } from '../../lib/logger';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import {
+    FetchErrorBanner,
+    RefreshFailedNotice,
+    RetainedContentFocusGuard,
+    useRetainedContent,
+    isAccessOrGoneError,
+} from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
@@ -500,6 +506,16 @@ export default function GameDetailPage() {
     const [userReview, setUserReview] = useState(null);
     const [loading, setLoading] = useState(true);
     const [gameError, setGameError] = useState(null);
+    // 88.6.1-74 (contract C3): the `entityKey` whose PRIMARY record (the event or the game) is on
+    // screen. Set ONLY when the current run's primary read succeeds; cleared at the start of a run
+    // for a new key and by every access or gone answer (C10). Not `loadedEntityKeyRef`, which is
+    // stamped after ANY settle and only drives the loading flash.
+    const [loadedFor, setLoadedFor] = useState(null);
+    // 88.6.1-74 (review r3 L-02, scoped check 2 M2-01): the `entityKey` whose game read ANSWERED in
+    // the run that started when the page last moved to that key. The shared loader covers a game key
+    // that has not answered on this visit, so an in-page key change never paints a one-commit
+    // "Game not found" or a stale game view.
+    const [gameAnsweredFor, setGameAnsweredFor] = useState(null);
     // 88.6.1-25 (D-01): the event fetch's error OBJECT (useFetchErrorState reads `ApiError.code` off
     // it, as the game view's gameError does), and where the sign-in redirect stands for this event:
     // 'idle' (none decided), 'redirecting' (replace called), 'declined' (the latch was already set or
@@ -730,6 +746,10 @@ export default function GameDetailPage() {
     // param change (different game/event) still gets the full loading screen.
     const loadedEntityKeyRef = useRef(null);
     const entityKey = `${game_id}|${group_id}|${event_id}`;
+    // 88.6.1-74: the event view's <h1> (RF1's focusTarget) and the replacement screen's title (the
+    // C12 guards' target: E1 / "Event not found" through renderEventMessageState, "Game not found").
+    const eventTitleRef = useRef(null);
+    const withdrawalTitleRef = useRef(null);
     // 88.6.1-25 (RESEARCH M-1.2): per-run generation for fetchEventOnly. The fetch effect below can
     // run several times for one link (mount, user resolves, identity resolves, a new event id), so
     // a run that is no longer the newest applies NOTHING: no state write after any await, no
@@ -837,6 +857,9 @@ export default function GameDetailPage() {
         // 88.6.1-25: this run's generation, taken before the first await (see eventFetchGenRef).
         const gen = ++eventFetchGenRef.current;
         const isCurrentRun = () => gen === eventFetchGenRef.current;
+        // 88.6.1-74 (M2-01): a run for a DIFFERENT key forgets which game key last answered; a
+        // same-key run keeps it (see gameAnsweredFor).
+        setGameAnsweredFor((k) => (k === entityKey ? k : null));
         // Identity-only re-run (selfUuid resolved after first load of the SAME
         // event): refresh in place — no full-page loading flash (#1/#18).
         if (loadedEntityKeyRef.current !== entityKey) {
@@ -848,6 +871,7 @@ export default function GameDetailPage() {
             // reaches this reset; 'none' is the initial value. The group id resets to the guarded URL
             // hint, NOT null, so the suggestions fetch can still start before the event loads.
             setSingleEvent(null);
+            setLoadedFor(null);
             setEventError(null);
             setSignInRedirect('idle');
             setUserRole(null);
@@ -888,10 +912,13 @@ export default function GameDetailPage() {
                 const code = error instanceof ApiError ? error.code : 'unknown';
                 // TERMINAL answers clear any event still on screen, so neither the no-access state nor
                 // the redirect loader can sit under a retained event (Prohibition 1); every other code
-                // keeps a retained event of the same entity. Lap 3: a deliberate wave-4 LOCAL list, ONE
-                // membership test; plan 88.6.1-74 replaces it with plan 70's isAccessOrGoneError.
-                if (['unauthorized', 'forbidden', 'not_found', 'account_deleted'].includes(code)) {
+                // keeps a retained event of the same entity, under RF1 (88.6.1-74). The membership
+                // test is plan 70's ONE predicate (contract C10), which replaced the wave-4 local
+                // four-code list: it adds `gone`, `not_provisioned`, the three restore-link 410s and
+                // `token_invalid`, which reach the E3 banner with the register's line.
+                if (isAccessOrGoneError({ showError: true, code })) {
                     setSingleEvent(null);
+                    setLoadedFor(null);
                 }
                 // An answer the backend sends only to an AUTHENTICATED caller proves the session, so it
                 // clears the sign-in latch (review r2 #305). Never a 401, network, 5xx, 429 or unknown.
@@ -908,13 +935,15 @@ export default function GameDetailPage() {
                 setEventError(
                     error instanceof Error ? error : new Error("The event request didn't complete.")
                 );
-                return;
+                // 88.6.1-70 contract C4: the run this retry ran ended failed.
+                return { isError: true };
             }
             if (!isCurrentRun()) return;
             setEventError(null);
             setSignInRedirect('idle');
             clearSignInLatch(event_id);
             setSingleEvent(eventData);
+            setLoadedFor(entityKey);
 
             // Backend GET /events/:event_id flattens EventParticipations via
             // formatEventWithCustomParticipants — each row is { user_id (UUID),
@@ -1022,6 +1051,9 @@ export default function GameDetailPage() {
                 setLoading(false);
             }
         }
+        // 88.6.1-70 contract C4: a clean end resolves `{ isError: false }`; a superseded run
+        // resolves `undefined` (it wrote nothing).
+        return isCurrentRun() ? { isError: false } : undefined;
     };
 
     // (88-33 Task 5: the 65-02 "clean up the second-click confirm timer on unmount"
@@ -1199,6 +1231,9 @@ export default function GameDetailPage() {
 
     const fetchGameData = async () => {
         if (!game_id) return;
+        // 88.6.1-74 (M2-01): a run for a DIFFERENT key forgets which game key last answered; a
+        // same-key run keeps it, so an identity re-run shows no loader flash.
+        setGameAnsweredFor((k) => (k === entityKey ? k : null));
         setGameError(null);
 
         // Identity-only re-run (selfUuid resolved after first load of the SAME
@@ -1343,6 +1378,7 @@ export default function GameDetailPage() {
             );
         } finally {
             loadedEntityKeyRef.current = entityKey;
+            setGameAnsweredFor(entityKey);
             setLoading(false);
         }
     };
@@ -1385,6 +1421,9 @@ export default function GameDetailPage() {
         error: eventError,
         refetch: retryEventOnly,
     });
+    // 88.6.1-74 (contract C10): the event view's `retained` — plan 70's hook over the success-only
+    // `loadedFor`, so an access or gone answer is never a refresh failure.
+    const eventRetained = useRetainedContent(loadedFor === entityKey, eventErrorState);
 
     // DECISION Phase 88.6.1-25 (D-01): CHOSEN — a latched `window.location.replace` to sign-in on ANY
     // 401 from the event fetch, decided only after `useUser` has settled and only for the CURRENT
@@ -1978,6 +2017,36 @@ export default function GameDetailPage() {
                             </div>
     );
 
+    /* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): CHOSEN — plan 70's shared
+       RetainedContentFocusGuard, once per view's `retained` value, rendered as the LAST child, under
+       ONE stable key, of the root `div` of every return from the first early return on. React matches
+       a keyed child by its key, not its index, so the guards stay ONE instance through the switch from
+       a view to a withdrawal screen and see `retained` flip. The target is the replacement screen's
+       title (`withdrawalTitleRef`: E1 / "Event not found" in renderEventMessageState, "Game not
+       found" in renderGameNotFound), else plan 04's floor (`main h1`, else `main`) — both view
+       headings leave with their views (review r2 #338).
+       REJECTED (a): a guard inside each view's return — it unmounts with the view and never sees
+       the flip, so focus falls to <body>. REJECTED (b): wrapping the early-return chain in an inner
+       render function under one outer fragment — a whole-region re-indent of a megafile and a diff
+       nobody can review. REJECTED (c): eventTitleRef / gameTitleRef as the target — gone with the
+       view; the ref is null by then. REJECTED (d): the guards as the FIRST child (round 1's shape) —
+       React runs the guard's componentDidUpdate before a later sibling's ref attaches, so the title
+       ref is still null and focus lands on bare `main`. REJECTED (e): keeping the one-commit "Game
+       not found" frame after an in-page key change and keeping the target off it (round 2's shape) —
+       the frame is gone instead (the loader gate below, review r3 L-02).
+       THE INVARIANT: every return from the first early return on keeps a `div` root whose LAST child
+       is {retainedFocusGuards}, with the same key. A return added without it, with another root
+       element, or with the guards ahead of a sibling silently remounts them or reads a null target
+       on that transition, and focus falls to <body> or bare `main` there. Declared here, above the
+       rejected-id gates (the first early returns) and above the two helpers that render it — a
+       constant declared below those gates is read before its initialisation on a rejected-id URL.
+       Changing this is a decision, not a cleanup. */
+    const retainedFocusGuards = (
+        <Fragment key="retained-focus-guards">
+            <RetainedContentFocusGuard retained={eventRetained} focusTarget={withdrawalTitleRef} />
+        </Fragment>
+    );
+
     // 88.6.1-25 (Requirement 1): the ONE layout for the event view's message screens ("Event not
     // found" and, from task 2, no access), so the two cannot drift. Component-local because it renders
     // a Link; declared above the first gate that calls it.
@@ -1991,12 +2060,13 @@ export default function GameDetailPage() {
                         every h1 here to the 30/700 Display rung, a look change in a non-look phase).
                         REJECTED: keeping the heading-styled paragraph (its only recorded reason was the
                         heading-count pin, which is bookkeeping; the pin moved with this, review r2 #180). */}
-                    <Heading level={2} size="heading" className="text-content-primary mb-2">{title}</Heading>
+                    <Heading ref={withdrawalTitleRef} level={2} size="heading" className="text-content-primary mb-2">{title}</Heading>
                     <p className="text-content-secondary mb-6">{detail}</p>
                     <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                         ← Back to Home
                     </Link>
                 </div>
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -2018,7 +2088,7 @@ export default function GameDetailPage() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
-                    <p className="text-content-status-error mb-4">Game not found</p>
+                    <p ref={withdrawalTitleRef} className="text-content-status-error mb-4">Game not found</p>
                     {/* Phase 71.1 GAMP-11: scope-aware fallback — game-only/none
                         callers fall through to "← Back to Home" since the group
                         page would 403. Group-member/pending see the group link
@@ -2039,6 +2109,7 @@ export default function GameDetailPage() {
                         </Link>
                     )}
                 </div>
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -2058,6 +2129,7 @@ export default function GameDetailPage() {
                         ← Back to Home
                     </Link>
                 </div>
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -2138,6 +2210,20 @@ export default function GameDetailPage() {
                     surfaces loudly-but-small instead of silently. */}
                 <FetchErrorBanner state={selfIdentityErrorState} compact />
 
+                {/* DECISION Phase 88.6.1-74 (AC-29 / RF1, event view): CHOSEN — plan 70's shared
+                    RefreshFailedNotice, mounted unconditionally here, beside the event it qualifies and
+                    below the identity notice. `retained` comes from plan 70's useRetainedContent over
+                    the success-only `loadedFor` (C10: an access or gone answer is never RF1); the focus
+                    target is the event heading. REJECTED (a): above the breadcrumb or the timezone
+                    nudge — farther from the content, and it pushes the RSVP further down at 375px.
+                    REJECTED (b): the full E3 banner over the retained event — it hides what is still
+                    true, and C6 forbids both forms for one state. REJECTED (c): silence — the owner
+                    ruling of 2026-10-05. REJECTED (d): the floor's `main h1` instead of an explicit
+                    target — the same element today, but a heading added above would move focus to the
+                    top of the page. The access answers (C10) clear the event before this branch can
+                    render. Moving or removing this is a decision, not a cleanup. */}
+                <RefreshFailedNotice state={eventErrorState} retained={eventRetained} focusTarget={eventTitleRef} className="mb-4" />
+
                 {/* DECISION Phase 88-24 (SPEC Req 2, owner ruling 2026-08-05 = option-a):
                     the `p-3 md:p-6` on the `.card` below — and on all 28 `.card` call sites
                     app-wide — is DELIBERATELY RETAINED, not leftover. Req 2's wording is
@@ -2171,7 +2257,7 @@ export default function GameDetailPage() {
                         - game-only scope: Leave event
                         - pending or none: no kebab at all (matches prior pending behavior) */}
                     <div className="flex justify-between items-start gap-3 mb-2">
-                        <Heading level={1} size="display" className="text-content-primary">{singleEvent.title || 'Game Night'}</Heading>
+                        <Heading ref={eventTitleRef} level={1} size="display" className="text-content-primary">{singleEvent.title || 'Game Night'}</Heading>
                         {/* DECISION Phase 88.6-18 (D-12): the second, hand-rolled kebab that lived
                             here CONVERGES onto the shared `KebabMenu` component this file already
                             imports and renders one screen over. It shipped the same dropdown-role
@@ -2770,6 +2856,7 @@ export default function GameDetailPage() {
                         if (bringPickerEventId) refreshBringersSet(bringPickerEventId).then(setBringersSet);
                     }}
                 />
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -2783,7 +2870,12 @@ export default function GameDetailPage() {
        (or a rejected id, gated earlier) reaches "Event not found". REJECTED: classifying in
        fetchEventOnly's old single catch, which also caught the roster fetch, so a members 403 after
        a good event would have become the no-access screen (RESEARCH P-2). Reordering these is a
-       decision, not a cleanup. */
+       decision, not a cleanup.
+       AMENDED Phase 88.6.1-74 (AC-29 / RF1, owner ruling 2026-10-05): a transient failure on a
+       same-event refresh now shows RF1 INSIDE the event view (the event stays). The access answers
+       still drop the event first (C10), now classified by plan 70's isAccessOrGoneError instead of
+       the four-code list, so the six widened codes (`gone`, `not_provisioned`, the restore-link
+       410s, `token_invalid`) land on (iii) with the register's line. The gates below are unchanged. */
     const eventErrorCode = eventError instanceof ApiError ? eventError.code : null;
     // (i) A 401 holds the loader while the sign-in decision is pending and while redirecting, so
     // "Event not found" never paints for a frame before navigation (RESEARCH P-5); only a declined
@@ -2800,10 +2892,15 @@ export default function GameDetailPage() {
 
     // The shared loader (both views) reads copy row E4 and is a labelled status, RouteFallback's
     // contract (role="status" + aria-label), so the loader that holds the redirect is announced.
-    if (loading || holdEventLoader || holdAccountDeletedLoader) {
+    // 88.6.1-74 (review r3 L-02, M2-01): the loader also covers a game key whose game read has not
+    // answered in this visit's run, so an in-page key change never paints "Game not found" or a
+    // stale game view for one commit. See the AMENDED line on the DECISION Phase 88-25 gate below.
+    const gameKeyUnanswered = Boolean(game_id) && gameAnsweredFor !== entityKey;
+    if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered) {
         return (
             <div className="flex items-center justify-center min-h-screen" role="status" aria-label={PAGE_LOADING_LABEL}>
                 <p className="text-content-secondary">{PAGE_LOADING_LABEL}</p>
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -2826,6 +2923,7 @@ export default function GameDetailPage() {
                         reportContext="Game detail page — event fetch"
                     />
                 </div>
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -2847,7 +2945,12 @@ export default function GameDetailPage() {
        null, so flipping these tells someone whose request merely failed that the game does not
        exist, which is a false statement and a dead end with no retry. `not_found` is deliberately
        NOT routed here: a real 404 IS "Game not found", and that branch keeps the scope-aware
-       back-link 71.1 GAMP-11 put there. */
+       back-link 71.1 GAMP-11 put there.
+       AMENDED Phase 88.6.1-74 (key-change frame, review r3 L-02): the shared loader above also
+       covers a key whose game read has not answered in this visit's run, so neither branch below
+       renders in the one commit after an in-page key change. REJECTED: keeping that frame and
+       keeping the focus target off it (round 2's shape) — the page said a game that exists was not
+       found, and the target needed a two-way rule. */
     if (!game && gameErrorState.showError && gameErrorState.code !== 'not_found') {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -2858,6 +2961,7 @@ export default function GameDetailPage() {
                         reportContext="Game detail page — game/session fetch"
                     />
                 </div>
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -3773,6 +3877,7 @@ export default function GameDetailPage() {
                 self={self}
                 onSave={() => setBringRefreshKey(k => k + 1)}
             />
+            {retainedFocusGuards}
         </div>
     );
 }

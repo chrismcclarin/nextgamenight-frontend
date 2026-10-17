@@ -267,6 +267,20 @@ export interface RenderGameDetailOptions {
    * URL guard passes its own (a rejected or missing id).
    */
   search?: string;
+  /**
+   * 88.6.1-74: render inside a `<main>` container, the layout's shape (`layout.js`, the
+   * `<main className="flex-1">`), so plan 04's focus floor has a `main`. Default false.
+   */
+  inMain?: boolean;
+}
+
+// 88.6.1-74: the container a render with `inMain` uses. Testing Library's cleanup removes a
+// container it was handed when that container's parent is document.body.
+function renderPage(inMain: boolean) {
+  if (!inMain) return render(<GameDetailPage />);
+  return render(<GameDetailPage />, {
+    container: document.body.appendChild(document.createElement('main')),
+  });
 }
 
 /**
@@ -281,6 +295,7 @@ export function renderGameDetail(options: RenderGameDetailOptions = {}) {
     reviews = [],
     game = GAME,
     search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`,
+    inMain = false,
   } = options;
   h.selfUuid = SELF_UUID;
   h.search = search;
@@ -289,7 +304,7 @@ export function renderGameDetail(options: RenderGameDetailOptions = {}) {
   (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue(reviews);
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor(role));
   (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
-  return render(<GameDetailPage />);
+  return renderPage(inMain);
 }
 
 /**
@@ -333,6 +348,8 @@ export interface RenderEventDetailOptions {
    * unchanged.
    */
   identityPending?: boolean;
+  /** 88.6.1-74: render inside a `<main>` container (see RenderGameDetailOptions.inMain). */
+  inMain?: boolean;
 }
 
 /**
@@ -369,6 +386,7 @@ export function renderEventDetail(options: RenderEventDetailOptions = {}) {
     getEventRejectsWith,
     eventOverrides = {},
     identityPending = false,
+    inMain = false,
   } = options;
   h.selfUuid = identityPending ? undefined : SELF_UUID;
   h.search =
@@ -382,7 +400,7 @@ export function renderEventDetail(options: RenderEventDetailOptions = {}) {
   (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
   (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
   (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
-  return render(<GameDetailPage />);
+  return renderPage(inMain);
 }
 
 /** Open the See-all participants modal and return its dialog element. */
@@ -2229,6 +2247,7 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 // ---------------------------------------------------------------------------
 import { axe } from 'vitest-axe';
 import { auditFormControls } from '../../test-utils/formControlAudit';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
 const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
@@ -3316,5 +3335,298 @@ describe('gameDetail breadcrumbs — ring, hidden separators, min-w-0 (D-46 / R7
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     await within(nav).findByRole('link', { name: 'Group' });
     expectHouseBreadcrumb(nav);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 88.6.1-74 — RF1 on the event and game views (owner ruling 2026-10-05, merits over record):
+// a failed REFRESH over content already on screen keeps the content and says so; access and
+// gone answers still withdraw it (plan 70's C10); focus never falls to <body> (C12).
+// ---------------------------------------------------------------------------------------------
+
+// Copy row RF1 / D-47 (contract C7): the ratified refresh-failed sentence, written once. It is
+// expected TWICE while the notice shows (the visible line and its polite region).
+const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+const SERVER_500 = () => new ApiError('Server error', 'internal', 500);
+
+// Force ONE same-key refresh of whatever the page shows, the way plan 25's C6 does: the fetch
+// effect keys on `user?.sub`, so a changed sub re-runs it for the same event or game.
+function forceRefresh(rerender: (ui: React.ReactElement) => void, sub = 'auth0|other-sub') {
+  h.userSub = sub;
+  rerender(<GameDetailPage />);
+}
+
+// The RF1 region: the `role="status"` node whose whole text is the sentence.
+function rf1Region(): HTMLElement | undefined {
+  return screen.getAllByRole('status').find((n) => n.textContent === RF1);
+}
+
+// Render the event view and reach a failed same-event refresh (EV-1's state).
+async function reachEventRf1(options: RenderEventDetailOptions = {}) {
+  const r = renderEventDetail(options);
+  await screen.findByRole('heading', { name: 'Game Night' });
+  (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+  forceRefresh(r.rerender);
+  await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+  return r;
+}
+
+describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: REAL_LOCATION,
+    });
+  });
+
+  it('EV-1. a failed refresh keeps the event and shows RF1 with one Retry (C8 a)', async () => {
+    await reachEventRf1();
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    const line = screen.getAllByText(RF1).find((n) => n.getAttribute('role') !== 'status');
+    expect(line).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+  });
+
+  it('EV-2. the RF1 region is a status node present before the failure (C8 b)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const before = screen.getAllByRole('status');
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(rf1Region()).toBeTruthy());
+    expect(before).toContain(rf1Region());
+  });
+
+  it('EV-3. Retry recovers and focus lands on the event heading (C8 c)', async () => {
+    const user = userEvent.setup();
+    await reachEventRf1();
+    const calls = (eventsAPI.getEvent as Mock).mock.calls.length;
+    (eventsAPI.getEvent as Mock).mockResolvedValueOnce(eventFixture());
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    const heading = screen.getByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(calls + 1);
+  });
+
+  it('EV-4. while a pressed Retry is held the event stays and Retry keeps focus (C2)', async () => {
+    const user = userEvent.setup();
+    await reachEventRf1();
+    const held = deferred(eventsAPI.getEvent as Mock);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    const button = await screen.findByRole('button', { name: 'Retrying…' });
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toHaveAttribute('disabled');
+    expect(document.activeElement).toBe(button);
+    await act(async () => held.settle(eventFixture()));
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+  });
+
+  it('EV-5. a 403 refresh withdraws the event to E1, never RF1 (C10)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-6. a 401 refresh redirects once and shows the loader, never RF1 (C10, C8 e)', async () => {
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(UNAUTHORIZED());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-7. a 404 refresh is "Event not found", never RF1 (C10)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(new ApiError('Not found', 'not_found', 404));
+    forceRefresh(r.rerender);
+    expect(await screen.findByRole('heading', { name: 'Event not found' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-8. an account_deleted refresh holds the loader, never RF1 (C10)', async () => {
+    h.selfRefetch.mockReturnValue(new Promise(() => {}));
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(ACCOUNT_DELETED());
+    forceRefresh(r.rerender);
+    expect(await screen.findByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText('Event not found')).toBeNull();
+  });
+
+  it('EV-9. a FIRST-load failure is unchanged: the E3 banner, no RF1 (control)', async () => {
+    renderEventDetail({ getEventRejectsWith: SERVER_500() });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-10. a superseded refresh that fails after a newer success shows no RF1 (ordering / R9)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    let failOlder: (e: unknown) => void = () => {};
+    (eventsAPI.getEvent as Mock)
+      .mockImplementationOnce(() => new Promise((_, reject) => { failOlder = reject; }))
+      .mockResolvedValueOnce(eventFixture());
+    forceRefresh(r.rerender, 'auth0|older-sub');
+    forceRefresh(r.rerender, 'auth0|newer-sub');
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(3));
+    await flushMacrotask();
+    await act(async () => failOlder(SERVER_500()));
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+  });
+
+  it('EV-11. a second failed Retry re-announces through the same node and keeps focus (R8 backstop)', async () => {
+    const user = userEvent.setup();
+    await reachEventRf1();
+    const region = rf1Region() as HTMLElement;
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(region.textContent).toBe('');
+    await waitFor(() => expect(region.textContent).toBe(RF1));
+    const button = screen.getByRole('button', { name: 'Retry' });
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('EV-12. a gone (410) refresh is plan 70\'s widened set: E3 with its register line, never RF1 (C10)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const eGone = new ApiError('Gone', 'gone', 410);
+    (eventsAPI.getEvent as Mock).mockRejectedValue(eGone);
+    forceRefresh(r.rerender);
+    expect(await screen.findByText(getFetchErrorMessage(eGone))).toBeInTheDocument();
+    expect(screen.getByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-13. a network failure on refresh keeps the event under RF1 (C8 e)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(new ApiError('Network', 'network', 0));
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  it('EV-14. an unpressed 403 withdraws the event while Home holds focus: focus lands on E1\'s title (C12 a)', async () => {
+    await reachEventRf1({ inMain: true });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(FORBIDDEN());
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    within(nav).getByRole('link', { name: 'Home' }).focus();
+    await act(async () => fireVisibility('visible'));
+    const title = await screen.findByRole('heading', { name: NO_ACCESS_TITLE });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-15. Retry holds focus and an unpressed refresh succeeds: focus lands on the heading (C12 b)', async () => {
+    await reachEventRf1();
+    screen.getByRole('button', { name: 'Retry' }).focus();
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture());
+    await act(async () => fireVisibility('visible'));
+    const heading = screen.getByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-16. a rejected event_id URL renders its screen without a ReferenceError (C12 a declaration order)', async () => {
+    renderAt('event_id=not-a-uuid');
+    expect(await screen.findByRole('heading', { name: 'Event not found' })).toBeInTheDocument();
+  });
+
+  it('EV-17. the event-to-game key change moves focus to main, never <body> (C12, #308 / H-01)', async () => {
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: GAME_ID, name: 'Azul' }]);
+    const r = renderEventDetail({ inMain: true });
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    const card = await screen.findByRole('button', { name: 'Azul' });
+    card.focus();
+    expect(document.activeElement).toBe(card);
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(document.querySelector('main'));
+  });
+
+  it('EV-18. an in-page key change never inserts a one-commit "Game not found" (L-02)', async () => {
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: GAME_ID, name: 'Azul' }]);
+    const r = renderEventDetail();
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    await screen.findByRole('button', { name: 'Azul' });
+    const held = deferred(gamesAPI.getGame as Mock);
+    const added: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const rec of records) rec.addedNodes.forEach((n) => added.push(n));
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    expect(await screen.findByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    for (const rec of observer.takeRecords()) rec.addedNodes.forEach((n) => added.push(n));
+    expect(added.some((n) => (n.textContent ?? '').includes('Game not found'))).toBe(false);
+    expect(screen.queryByText('Game not found')).toBeNull();
+    await act(async () => held.settle(GAME));
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    for (const rec of observer.takeRecords()) rec.addedNodes.forEach((n) => added.push(n));
+    observer.disconnect();
+    expect(added.some((n) => (n.textContent ?? '').includes('Game not found'))).toBe(false);
+  });
+
+  it('EV-19. a REVISITED game key never inserts its stale game view for one commit (M2-01)', async () => {
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: GAME_ID, name: 'Azul' }]);
+    const r = renderEventDetail();
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    await screen.findByRole('button', { name: 'Azul' });
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    h.search = `event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const held = deferred(gamesAPI.getGame as Mock);
+    const added: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const rec of records) rec.addedNodes.forEach((n) => added.push(n));
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    const isStaleTitle = (n: Node) =>
+      n instanceof Element &&
+      [n, ...Array.from(n.querySelectorAll('h1'))].some(
+        (el) => el.tagName === 'H1' && el.textContent === 'Wingspan'
+      );
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    expect(await screen.findByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    for (const rec of observer.takeRecords()) rec.addedNodes.forEach((n) => added.push(n));
+    expect(added.some(isStaleTitle)).toBe(false);
+    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+    observer.disconnect();
+    await act(async () => held.settle(GAME));
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(gamesAPI.getGame).toHaveBeenCalledTimes(2);
   });
 });
