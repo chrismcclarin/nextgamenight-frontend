@@ -76,6 +76,7 @@ import type { FetchErrorMessageOptions } from '@/components/ui/useFetchErrorStat
 import { ApiError, usersAPI } from '@/lib/api';
 import { invalidateSelfCache, patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 import { SELF_IDENTITY_KEY, useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
+import { selfIdentityFailedWithNoRow } from '@/lib/hooks/selfIdentityErrorSource';
 import { EmailChangeResponseSchema } from '@/lib/schemas/users';
 import type { EmailChangeResponse } from '@/lib/schemas/users';
 import { isSyntheticAddress } from '@/lib/syntheticAddress';
@@ -739,10 +740,12 @@ export function EmailAddressSection() {
            back";
        (c) rendering idle while unresolved — an empty address with a live
            Change action beside it.
-     Restoring any of the three is a decision, not a cleanup. */
+     Restoring any of the three is a decision, not a cleanup.
+     AMENDED Phase 88.6.1-79 (AC-29): the error test below is the shared no-row rule
+     (`selfIdentityFailedWithNoRow`) — a failed re-read over a held row hydrates from the row. */
   React.useEffect(() => {
     if (hydratedRef.current) return;
-    if (selfQuery.isError) {
+    if (selfIdentityFailedWithNoRow(selfQuery, self?.id)) {
       hydratedRef.current = true;
       setState('unavailable');
       return;
@@ -786,6 +789,10 @@ export function EmailAddressSection() {
       return;
     }
     setState('idle');
+    // Phase 88.6.1-79: `selfIdentityFailedWithNoRow` reads only `selfQuery.isError`, so the
+    // dependency list keeps that flag and `self`; adding the whole query object would re-run
+    // the effect on every query result for no new input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [self, selfQuery.isError]);
 
   /* ── THE ONE DEFENSIVE ARM ────────────────────────────────────────────────
@@ -1750,9 +1757,15 @@ export function EmailAddressSection() {
      code the user is halfway through typing. In practice the hook cannot
      re-enter those flags (`staleTime: Infinity`, and its docblock states the
      self row "NEVER self-refreshes"), so this is a guard against a future change
-     to the hook rather than against today's behaviour. */
+     to the hook rather than against today's behaviour.
+     AMENDED Phase 88.6.1-79 (AC-29): the "cannot re-enter" premise was false — a failed
+     refetch keeps the row AND sets the error flag (TanStack `isRefetchError`), and this
+     section's own `refetchSelfAfterLocalMutation` is the app's one self refetch. Both arms
+     (this one and the hydration effect) now test for NO row, through the shared
+     `selfIdentityFailedWithNoRow`. */
   const preHydration = !hydratedRef.current;
-  const showUnavailable = state === 'unavailable' || (preHydration && selfQuery.isError);
+  const showUnavailable =
+    state === 'unavailable' || (preHydration && selfIdentityFailedWithNoRow(selfQuery, self?.id));
   const showUnresolved = !showUnavailable && (state === 'unresolved' || (preHydration && !self));
 
   /* Round 4 #29: the loading→failed transition happened in plain <p>s below the always-

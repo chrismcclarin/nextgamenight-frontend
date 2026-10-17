@@ -320,13 +320,25 @@ export interface UseFetchErrorStateOptions {
 }
 
 /**
+ * The three fields of a TanStack query result that `useFetchErrorState` reads. A full
+ * `UseQueryResult` satisfies it; so does a derived source such as
+ * `selfIdentityErrorSource` (Phase 88.6.1-79, AC-29), which passes `error` and `refetch`
+ * through and decides `isError` itself.
+ */
+export type FetchErrorSource<TData = unknown, TError = unknown> = Pick<
+  UseQueryResult<TData, TError>,
+  'isError' | 'error' | 'refetch'
+>;
+
+/**
  * Derive fetch-error surface state from a TanStack query result.
  *
- * @param query a `UseQueryResult` (only `isError`/`error`/`refetch` are read).
+ * @param query a `UseQueryResult` (only `isError`/`error`/`refetch` are read; since Phase
+ *   88.6.1-79 the parameter's type, `FetchErrorSource`, says so).
  * @param options optional message override.
  */
 export function useFetchErrorState<TData = unknown, TError = unknown>(
-  query: UseQueryResult<TData, TError>,
+  query: FetchErrorSource<TData, TError>,
   options: UseFetchErrorStateOptions = {}
 ): FetchErrorState {
   const { isError, error, refetch } = query;

@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useId } from 'react';
 import * as Sentry from '@sentry/nextjs';
 import { feedbackAPI } from '../../lib/api';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityFailedWithNoRow } from '../../lib/hooks/selfIdentityErrorSource';
 import { isSyntheticAddress } from '../../lib/syntheticAddress';
 import { DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
@@ -78,9 +79,16 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      address) is told the reply-to is missing — never given the stale session address,
      never blocked from filing.
      AMENDED Phase 88.6.1-34 (D-35): the IN-FLIGHT half of the gate moved to `aria-disabled` + a
-     first-line ref latch (rule of POSITION); the validity half stays native as recorded here. */
+     first-line ref latch (rule of POSITION); the validity half stays native as recorded here.
+     AMENDED Phase 88.6.1-79 (AC-29): "the self query errored" above means NO row was ever held
+     (`selfIdentityFailedWithNoRow`). A re-read that fails over a held row keeps the row, and
+     this form already sends that row's address (`const appAddress = self?.email;`), so the
+     line now matches what is sent. Residual, stated plainly: the app's only self refetch
+     follows an email-change answer the Email section could not read, so a held address may
+     predate a change that landed — the form sent it before this amendment too; this makes the
+     line truthful, not the address different. */
   const replyToUnavailable =
-    selfQuery.isError === true ||
+    selfIdentityFailedWithNoRow(selfQuery, self?.id) ||
     (self !== undefined && !(self?.email && !isSyntheticAddress(self.email)));
   const [type, setType] = useState(initialType);
   const [subject, setSubject] = useState(initialSubject);
