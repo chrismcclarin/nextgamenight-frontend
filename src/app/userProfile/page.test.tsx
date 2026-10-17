@@ -3882,3 +3882,266 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     expect(screen.queryByText(/^Found \d+ games?\.$/)).toBeNull();
   });
 });
+
+describe('BGG import result timer (88.6.1-60: Req 11)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  let setSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let clearSpy: ReturnType<typeof vi.spyOn> | undefined;
+  const resultTimers: unknown[] = [];
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // The handle of the most recent 5-second timer the page scheduled.
+  function lastResultTimer(): unknown {
+    const spy = setSpy as unknown as Mock;
+    for (let i = spy.mock.calls.length - 1; i >= 0; i -= 1) {
+      if (spy.mock.calls[i][1] === 5000) {
+        const handle = spy.mock.results[i].value;
+        if (!resultTimers.includes(handle)) resultTimers.push(handle);
+        return handle;
+      }
+    }
+    return undefined;
+  }
+
+  async function importOnce() {
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+    setSpy?.mockRestore();
+    clearSpy?.mockRestore();
+    setSpy = undefined;
+    clearSpy = undefined;
+    // No stray result timer outlives a case.
+    for (const handle of resultTimers.splice(0)) clearTimeout(handle as ReturnType<typeof setTimeout>);
+  });
+
+  it('T1: a second import inside the window clears the first import\'s result timer by its handle', async () => {
+    setSpy = vi.spyOn(globalThis, 'setTimeout');
+    clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValueOnce({ imported: 1 });
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    await importOnce();
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    await waitFor(() => expect(region).toHaveTextContent('Imported 1 games'));
+    await waitFor(() => expect(lastResultTimer()).toBeDefined());
+    const h1 = lastResultTimer();
+
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    await importOnce();
+    await waitFor(() => expect(region).toHaveTextContent('Fetching your BGG collection...'));
+    expect(clearSpy).toHaveBeenCalledWith(h1);
+
+    await act(async () => { pending.resolve({ imported: 0 }); });
+  });
+
+  it('T2: unmounting the page cancels a pending result timer by its handle', async () => {
+    setSpy = vi.spyOn(globalThis, 'setTimeout');
+    clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValueOnce({ imported: 1 });
+    const { unmount } = renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    await importOnce();
+    await waitFor(() => expect(document.getElementById('bgg-import-status')).toHaveTextContent('Imported 1 games'));
+    await waitFor(() => expect(lastResultTimer()).toBeDefined());
+    const h1 = lastResultTimer();
+
+    unmount();
+    expect(clearSpy).toHaveBeenCalledWith(h1);
+  });
+});
+
+describe('BGG import result timer focus (88.6.1-60: Req 5, owner design 2026-10-05)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // Fake timers are on: vi.waitFor only (RTL's findBy / waitFor poll on the faked clock).
+  async function importAndWaitForTimer() {
+    const { userGamesAPI } = await import('@/lib/api');
+    const getOwnedGames = userGamesAPI.getOwnedGames as Mock;
+    renderProfile();
+    const field = await vi.waitFor(() => screen.getByRole('textbox', { name: 'BoardGameGeek username' }));
+    fireEvent.change(field, { target: { value: 'someone' } });
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    act(() => importBtn.focus());
+    fireEvent.click(importBtn);
+    const refreshesBefore = getOwnedGames.mock.calls.length;
+    fireEvent.click(within(await vi.waitFor(() => screen.getByRole('dialog'))).getByRole('button', { name: 'Continue' }));
+    await vi.waitFor(() =>
+      expect(document.getElementById('bgg-import-status')).toHaveTextContent('Imported 1 games')
+    );
+    // A positive wait for the post-import refresh; the timer is scheduled right after it.
+    await vi.waitFor(() => expect(getOwnedGames.mock.calls.length).toBeGreaterThan(refreshesBefore));
+    await act(async () => {});
+    return { field: field as HTMLInputElement, importBtn };
+  }
+
+  async function runResultTimer() {
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  }
+
+  function expectRegionCleared() {
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    expect(region.textContent).toBe('');
+    expect(region.classList).toContain('sr-only');
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+  });
+
+  it('T3-A: focus still on Import Collection moves to + Add from BGG before the box empties', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 1, skipped: 0, total: 1 });
+      const { field, importBtn } = await importAndWaitForTimer();
+      act(() => importBtn.focus());
+      expect(document.activeElement).toBe(importBtn);
+
+      await runResultTimer();
+
+      expectRegionCleared();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add from BGG' }));
+      expect(document.activeElement).not.toBe(document.body);
+      expect(field.value).toBe('');
+      // The state in which a real browser drops focus; jsdom does not, so the toggle line above
+      // is the RED half.
+      expect(importBtn).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // CONFIRM-ONLY on the tree before this plan (nothing moved focus at all); its teeth are a
+  // throwaway callback that moves focus without checking where it is.
+  it('T3-B: focus the user moved elsewhere is left alone', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 1, skipped: 0, total: 1 });
+      const { field } = await importAndWaitForTimer();
+      act(() => field.focus());
+      const toggle = screen.getByRole('button', { name: '+ Add from BGG' });
+      const toggleFocused = vi.fn();
+      toggle.addEventListener('focus', toggleFocused);
+
+      await runResultTimer();
+
+      expectRegionCleared();
+      expect(document.activeElement).toBe(field);
+      expect(field.value).toBe('');
+      expect(toggleFocused).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('T3-W: the move is wired to the shared refs and plan 04 primitives, and written before the write that disables the button', async () => {
+    const source = await pageSource();
+    expect(source).toContain('ref={importButtonRef}');
+    expect(source).toContain('ref={addFromBggToggleRef}');
+    expect(source).toContain('ref={collectionHeadingRef}');
+    expect(source).toContain('focusElement(addFromBggToggleRef.current)');
+    expect(source).toContain('focusElement(collectionHeadingRef.current)');
+    expect(source).toContain('focusPageFloor(');
+    const move = source.indexOf('focusElement(addFromBggToggleRef.current)');
+    expect(move).toBeGreaterThan(-1);
+    expect(move).toBeLessThan(source.indexOf("setBggUsername('')"));
+  });
+
+  it('T3-N: a newly typed name is kept, the result line still goes, and focus stays on an enabled Import Collection', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 1, skipped: 0, total: 1 });
+      const { field, importBtn } = await importAndWaitForTimer();
+      fireEvent.change(field, { target: { value: 'another' } });
+      act(() => importBtn.focus());
+      expect(document.activeElement).toBe(importBtn);
+
+      await runResultTimer();
+
+      expectRegionCleared();
+      expect(field.value).toBe('another');
+      expect(importBtn).not.toBeDisabled();
+      expect(document.activeElement).toBe(importBtn);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('T3-D: with the import dialog open the name is kept, the result line goes behind it, and Continue re-imports', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      const held = deferred();
+      (userGamesAPI.importBGGCollection as Mock)
+        .mockResolvedValueOnce({ imported: 1, skipped: 0, total: 1 })
+        .mockReturnValue(held.promise);
+      const { field, importBtn } = await importAndWaitForTimer();
+      act(() => importBtn.focus());
+      fireEvent.click(importBtn);
+      const dialog = await vi.waitFor(() => screen.getByRole('dialog'));
+
+      await runResultTimer();
+
+      expectRegionCleared();
+      expect(within(dialog).getByText('someone')).toBeInTheDocument();
+      expect(field.value).toBe('someone');
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+      await vi.waitFor(() => expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(2));
+      expect((userGamesAPI.importBGGCollection as Mock).mock.calls[1]).toEqual([SELF_UUID, 'someone']);
+      await act(async () => { held.resolve({ imported: 0 }); });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('T3-E: the + Add from BGG toggle is a disclosure: aria-expanded, and aria-controls only while the panel exists', async () => {
+    renderProfile();
+    const toggle = await screen.findByRole('button', { name: '+ Add from BGG' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+
+    fireEvent.click(toggle);
+    expect(toggle.textContent).toBe('Hide Search');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const panelId = toggle.getAttribute('aria-controls');
+    expect(panelId).toBeTruthy();
+    const panel = document.getElementById(panelId as string);
+    expect(panel).not.toBeNull();
+    expect(within(panel as HTMLElement).getByRole('textbox', { name: 'Search BoardGameGeek' })).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+});
