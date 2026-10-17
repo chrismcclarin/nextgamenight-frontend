@@ -9,14 +9,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as React from 'react';
 import { render, screen, waitFor, cleanup, within, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 // Mutable self-identity the mocked hook reads so each case can present a
 // pending (undefined selfUuid) or resolved identity.
-// `search` drives useSearchParams (GR-3 switches group); the two `*Props` fields are what the
-// createEvent and GroupGamesList stubs last rendered with (the refresh describe drives and reads them).
+// `search` drives useSearchParams (GR-3 switches group); the four `*Props` fields are what the
+// createEvent, GroupGamesList, EventCalendar and ManageMembers stubs last rendered with (the refresh
+// and load-failure describes drive and read them).
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
   isPending: true,
@@ -24,7 +26,18 @@ const h = vi.hoisted(() => ({
   createEventProps: null as null | { onEventCreated: (event: unknown) => Promise<void> },
   gamesListProps: null as null | {
     games: unknown[];
+    members?: unknown[] | null;
     errorState: { showError: boolean; retry: () => Promise<unknown> };
+  },
+  calendarProps: null as null | {
+    events: unknown[];
+    title?: string;
+    headingRef?: React.RefObject<HTMLHeadingElement>;
+  },
+  manageMembersProps: null as null | {
+    modal: boolean;
+    modaltoggle: () => void;
+    onMembersUpdated: () => Promise<unknown>;
   },
 }));
 
@@ -48,22 +61,40 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
 }));
 
-// Stub the heavy children. Two of the stubs (createEvent, GroupGamesList) capture their props, for
-// the refresh describe; every stub still renders nothing.
+// Stub the heavy children. Four of the stubs capture their props: createEvent and GroupGamesList for
+// the games refresh describe, ManageMembers (its `onMembersUpdated` is a members refresh) and
+// EventCalendar for the 88.6.1-71 load-failure describes. Every stub renders nothing EXCEPT the
+// calendar's: it renders a `calendar-stub` div holding an h2 with the `title`, carrying
+// `props.headingRef` — plan 88.6.1-73's `headingRef` contract in miniature (the real component is
+// pinned by plan 73's HR-4), so the events focus target exists in jsdom.
 vi.mock('@/app/components/createEvent', () => ({
   default: (props: NonNullable<typeof h.createEventProps>) => {
     h.createEventProps = props;
     return null;
   },
 }));
-vi.mock('@/app/components/ManageMembers', () => ({ default: () => null }));
+vi.mock('@/app/components/ManageMembers', () => ({
+  default: (props: NonNullable<typeof h.manageMembersProps>) => {
+    h.manageMembersProps = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/GroupGamesList', () => ({
   default: (props: NonNullable<typeof h.gamesListProps>) => {
     h.gamesListProps = props;
     return null;
   },
 }));
-vi.mock('@/app/components/EventCalendar', () => ({ default: () => null }));
+vi.mock('@/app/components/EventCalendar', () => ({
+  default: (props: NonNullable<typeof h.calendarProps>) => {
+    h.calendarProps = props;
+    return (
+      <div data-testid="calendar-stub">
+        <h2 ref={props.headingRef}>{props.title}</h2>
+      </div>
+    );
+  },
+}));
 vi.mock('@/app/components/PendingMemberBanner', () => ({ default: () => null }));
 vi.mock('@/app/components/GroupLibrary', () => ({ default: () => null }));
 // 88.6-21 task 2: rendered rather than nulled. The kebab GATING is the thing under test, and a
@@ -99,6 +130,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import GroupHomePage from './page';
 import { groupsAPI, eventsAPI, listsAPI, ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { readOpeningTag, withoutComments } from '../../test-utils/sourceScan';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -115,6 +147,8 @@ beforeEach(() => {
   h.search = 'id=GROUP1';
   h.createEventProps = null;
   h.gamesListProps = null;
+  h.calendarProps = null;
+  h.manageMembersProps = null;
   (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(ROSTER);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
@@ -133,6 +167,30 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+/** Render the page inside a `main` element — the focus floor's last stop (the app's layout wraps
+ *  every page in one), so a test can tell "focus landed on the page" from "focus fell to body". */
+function renderInMain() {
+  return render(
+    <main>
+      <GroupHomePage />
+    </main>
+  );
+}
+
+/** The house idiom (`useFetchErrorState.test.tsx`, anchor `function fireVisibility(`): a tab return. */
+function fireVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+const EV_A = { id: 'ev-a', start_date: '2026-11-02T19:00:00.000Z' };
+const EV_B = { id: 'ev-b', start_date: '2026-11-09T19:00:00.000Z' };
+const ROSTER3 = [
+  { id: SELF_UUID, user_id: 'auth0|self', username: 'Me', UserGroup: { role: 'owner' } },
+  { id: 'other-uuid', user_id: 'auth0|other', username: 'Other', UserGroup: { role: 'member' } },
+  { id: 'third-uuid', user_id: 'auth0|third', username: 'Third', UserGroup: { role: 'member' } },
+];
 
 describe('groupHomePage membership gate vs unresolved identity', () => {
   it('does NOT redirect-as-removed while the identity query is unresolved (shows loading)', async () => {
@@ -206,15 +264,17 @@ describe('groupHomePage double-fetch — single-fire per hard load', () => {
  * than being dropped by it, and that the slotted anchor carries no `type`.
  * ========================================================================================== */
 
-/** Mount the page with a resolved identity at `role`, settled on a branch-specific control. */
-async function renderHeaderAt(role: string) {
+/** Mount the page with a resolved identity at `role`, settled on a branch-specific control. With
+ *  `{ inMain: true }` the page renders inside a `main` (the focus floor's last stop, as in the app's
+ *  layout), through `renderInMain`. */
+async function renderHeaderAt(role: string, opts: { inMain?: boolean } = {}) {
   h.selfUuid = SELF_UUID;
   h.isPending = false;
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
     { id: SELF_UUID, user_id: 'auth0|self', username: 'Me', UserGroup: { role } },
     { id: 'other-uuid', user_id: 'auth0|other', username: 'Other', UserGroup: { role: 'owner' } },
   ]);
-  const utils = render(<GroupHomePage />);
+  const utils = opts.inMain ? renderInMain() : render(<GroupHomePage />);
   // "Plan Game Session" renders for every role, so it is the settle signal that does not
   // presuppose the gate under test.
   await screen.findByRole('link', { name: 'Plan Game Session' });
@@ -509,5 +569,296 @@ describe('groupHomePage kebab — one role check (88.6.1-55: W051 / AC-35)', () 
     expect(src).toMatch(
       new RegExp(`\\{\\s*${roleVar}\\s*&&\\s*\\(\\s*<div className="shrink-0 relative z-20">\\s*<KebabMenu\\b`),
     );
+  });
+});
+
+/* ============================================================================================
+ * 88.6.1-71 Task 1 — the page's two first-load failures (Req 9, owner rulings 2026-10-05, D-47).
+ * A failed members load used to leave "Loading group…" up forever; a failed events load rendered
+ * an empty calendar. Both are now tracked through `useFetchErrorState`, newest run wins, the
+ * error clears only on the newest success, and `retained` comes from plan 88.6.1-70's
+ * `useRetainedContent` (contract C10: an access or gone answer is never kept on screen). The two
+ * titles are copy rows G7 / G8 (D-47), written here as literals.
+ * ========================================================================================== */
+describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-05)', () => {
+  const G7 = "Couldn't load this group";
+  const G8 = "Couldn't load this group's events";
+  const internal = () => new ApiError('Request failed', 'internal', 500);
+  const membersCalls = () => (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+  const eventsCalls = () => (eventsAPI.getGroupEvents as Mock).mock.calls.length;
+  const statusHolds = (text: string) => screen.getAllByRole('status').some((r) => r.textContent === text);
+  const resolveIdentity = () => {
+    h.selfUuid = SELF_UUID;
+    h.isPending = false;
+  };
+
+  it('MB-1. a failed first members load shows the group banner instead of an endless loading line', async () => {
+    resolveIdentity();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(internal());
+    render(<GroupHomePage />);
+    await screen.findAllByText(G7);
+    expect(screen.queryByText('Loading group…')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(listsAPI.getGroupGames as Mock).not.toHaveBeenCalled();
+  });
+
+  it('MB-2. a failed Try again keeps focus and speaks the title again; a good one loads the page, focus inside main', async () => {
+    resolveIdentity();
+    (groupsAPI.getGroupMembers as Mock)
+      .mockRejectedValueOnce(internal())
+      .mockRejectedValueOnce(internal())
+      .mockResolvedValue(ROSTER);
+    renderInMain();
+    await screen.findAllByText(G7);
+    const user = userEvent.setup();
+    const button = screen.getByRole('button', { name: 'Try again' });
+
+    await user.click(button);
+    await waitFor(() => expect(membersCalls()).toBe(2));
+    await waitFor(() => expect(button).toHaveTextContent('Try again'));
+    await waitFor(() => expect(statusHolds(G7)).toBe(true));
+    expect(button.isConnected).toBe(true);
+    expect(document.activeElement).toBe(button);
+
+    await user.click(button);
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.querySelector('main')!.contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it('MB-3. a members answer that is not a list shows the group banner', async () => {
+    resolveIdentity();
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue({ unexpected: true });
+    render(<GroupHomePage />);
+    await screen.findAllByText(G7);
+    expect(screen.queryByText('Loading group…')).toBeNull();
+  });
+
+  it('MB-4. a removal (403) still redirects first and never shows the group banner', async () => {
+    resolveIdentity();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('Forbidden', 'forbidden', 403));
+    render(<GroupHomePage />);
+    await waitFor(() =>
+      expect(pushSpy.mock.calls.some(([url]) => String(url).startsWith('/?removedFrom='))).toBe(true)
+    );
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+  });
+
+  it('MB-5. a failed members refresh keeps the member list (C1)', async () => {
+    await renderHeaderAt('owner');
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+    const before = screen.getByRole('link', { name: 'Plan Game Session' });
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(internal());
+    await act(async () => {
+      await h.manageMembersProps!.onMembersUpdated();
+    });
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+    expect(h.gamesListProps!.members).toHaveLength(2);
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    expect(screen.getByRole('link', { name: 'Plan Game Session' })).toBe(before);
+  });
+
+  it('MB-6. only the newest members run writes; an overtaken failure is still logged', async () => {
+    const infoSpy = vi.spyOn(logger, 'info');
+    await renderHeaderAt('owner');
+    const a = deferred<unknown>();
+    const b = deferred<unknown>();
+    const callsBefore = membersCalls();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    await act(async () => {
+      void h.manageMembersProps!.onMembersUpdated();
+    });
+    await act(async () => {
+      void h.manageMembersProps!.onMembersUpdated();
+    });
+    // A direct caller never joins a pending run (IF-1's other half): both reached the request.
+    expect(membersCalls()).toBe(callsBefore + 2);
+    await act(async () => {
+      b.resolve(ROSTER3);
+    });
+    await act(async () => {
+      a.reject(internal());
+    });
+    expect(screen.getByText(/3 members/)).toBeInTheDocument();
+    expect(h.gamesListProps!.members).toHaveLength(3);
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    expect(infoSpy.mock.calls.some(([msg]) => msg === 'Error fetching group members:')).toBe(true);
+    infoSpy.mockRestore();
+  });
+
+  it('MB-7. a 401 members refresh replaces the loaded page with the group banner until a load succeeds (C10)', async () => {
+    await renderHeaderAt('owner', { inMain: true });
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+    const err = new ApiError('Unauthorized', 'unauthorized', 401);
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
+    await act(async () => {
+      await h.manageMembersProps!.onMembersUpdated();
+    });
+    await screen.findAllByText(G7);
+    expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/2 members/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
+    expect(pushSpy).not.toHaveBeenCalled();
+
+    const user = userEvent.setup();
+    const callsBefore = membersCalls();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(internal());
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(membersCalls()).toBe(callsBefore + 1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument());
+    expect(screen.getAllByText(G7).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/2 members/)).toBeNull();
+
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+  });
+
+  it('EV-1. a failed first events load shows the Calendar heading and the events banner, never an empty calendar', async () => {
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(internal());
+    await renderHeaderAt('owner');
+    const [title] = await screen.findAllByText(G8);
+    const heading = screen.getByRole('heading', { level: 2, name: 'Calendar' });
+    expect(heading.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId('calendar-stub')).toBeNull();
+  });
+
+  it('EV-2. a failed Try again keeps focus and speaks the title again; a good one brings the calendar back, focus on its heading', async () => {
+    resolveIdentity();
+    (eventsAPI.getGroupEvents as Mock)
+      .mockRejectedValueOnce(internal())
+      .mockRejectedValueOnce(internal())
+      .mockResolvedValue([EV_A]);
+    renderInMain();
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    await screen.findAllByText(G8);
+    const user = userEvent.setup();
+    const button = screen.getByRole('button', { name: 'Try again' });
+
+    await user.click(button);
+    await waitFor(() => expect(eventsCalls()).toBe(2));
+    await waitFor(() => expect(button).toHaveTextContent('Try again'));
+    await waitFor(() => expect(statusHolds(G8)).toBe(true));
+    expect(button.isConnected).toBe(true);
+    expect(document.activeElement).toBe(button);
+
+    await user.click(button);
+    await screen.findByTestId('calendar-stub');
+    expect(h.calendarProps!.events).toEqual([EV_A]);
+    expect(screen.queryAllByText(G8)).toHaveLength(0);
+    await waitFor(() => expect(document.activeElement).toBe(h.calendarProps!.headingRef!.current));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('EV-3. a failed events refresh keeps the calendar and its events (C1)', async () => {
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValueOnce([EV_A]);
+    await renderHeaderAt('owner');
+    await waitFor(() => expect(h.calendarProps!.events).toEqual([EV_A]));
+    const first = h.calendarProps!.events;
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(internal());
+    await act(async () => {
+      await h.createEventProps!.onEventCreated({ id: 'e-new' });
+    });
+    expect(screen.getByTestId('calendar-stub')).toBeInTheDocument();
+    expect(h.calendarProps!.events).toBe(first);
+    expect(screen.queryAllByText(G8)).toHaveLength(0);
+  });
+
+  it('EV-4. only the newest events run writes; an overtaken failure is still logged', async () => {
+    const infoSpy = vi.spyOn(logger, 'info');
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValueOnce([EV_A]);
+    await renderHeaderAt('owner');
+    await waitFor(() => expect(h.calendarProps!.events).toEqual([EV_A]));
+    const a = deferred<unknown>();
+    const b = deferred<unknown>();
+    (eventsAPI.getGroupEvents as Mock).mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    await act(async () => {
+      void h.createEventProps!.onEventCreated({ id: 'e-1' });
+    });
+    await act(async () => {
+      void h.createEventProps!.onEventCreated({ id: 'e-2' });
+    });
+    await act(async () => {
+      b.resolve([EV_B]);
+    });
+    await act(async () => {
+      a.reject(internal());
+    });
+    expect(h.calendarProps!.events).toEqual([EV_B]);
+    expect(screen.queryAllByText(G8)).toHaveLength(0);
+    expect(infoSpy.mock.calls.some(([msg]) => msg === 'Error fetching group events:')).toBe(true);
+    infoSpy.mockRestore();
+  });
+
+  it('EV-5. a 401 or a 403 events refresh replaces the loaded calendar with the events banner (C10)', async () => {
+    for (const err of [
+      new ApiError('Unauthorized', 'unauthorized', 401),
+      new ApiError('Forbidden', 'forbidden', 403),
+    ]) {
+      (eventsAPI.getGroupEvents as Mock).mockResolvedValueOnce([EV_A]);
+      await renderHeaderAt('owner');
+      await waitFor(() => expect(h.calendarProps!.events).toEqual([EV_A]));
+      (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(err);
+      await act(async () => {
+        await h.createEventProps!.onEventCreated({ id: 'e-new' });
+      });
+      await screen.findAllByText(G8);
+      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.queryByTestId('calendar-stub')).toBeNull();
+      // The events fetch has no removal arm: a 403 here is the banner, never a redirect.
+      expect(pushSpy).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+
+  it('IF-1. a Try again pressed while a tab-return run is held joins that run instead of sending another', async () => {
+    const user = userEvent.setup();
+
+    // Members arm.
+    resolveIdentity();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(internal());
+    render(<GroupHomePage />);
+    await screen.findAllByText(G7);
+    const membersBefore = membersCalls();
+    const heldMembers = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(heldMembers.promise);
+    await act(async () => {
+      fireVisibility('visible');
+    });
+    expect(membersCalls()).toBe(membersBefore + 1);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(membersCalls()).toBe(membersBefore + 1);
+    await act(async () => {
+      heldMembers.resolve(ROSTER);
+    });
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+
+    cleanup();
+
+    // Events arm.
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(internal());
+    render(<GroupHomePage />);
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    await screen.findAllByText(G8);
+    const eventsBefore = eventsCalls();
+    const heldEvents = deferred<unknown>();
+    (eventsAPI.getGroupEvents as Mock).mockReturnValueOnce(heldEvents.promise);
+    await act(async () => {
+      fireVisibility('visible');
+    });
+    expect(eventsCalls()).toBe(eventsBefore + 1);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(eventsCalls()).toBe(eventsBefore + 1);
+    await act(async () => {
+      heldEvents.resolve([EV_A]);
+    });
+    await screen.findByTestId('calendar-stub');
+    expect(screen.queryAllByText(G8)).toHaveLength(0);
   });
 });
