@@ -23,6 +23,7 @@ const UnreadNotificationContext = createContext({
   friendRequests: [],
   totalCount: 0,
   loading: true,
+  error: null,
   setInvites: () => {},
   refetch: () => {},
 });
@@ -35,6 +36,7 @@ export function UnreadNotificationProvider({ children }) {
   const { user } = useUser();
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Friend requests come from the existing FriendshipStatusProvider context
   // (mounted as the parent of this provider in layout.js). Re-exposing here
@@ -44,6 +46,18 @@ export function UnreadNotificationProvider({ children }) {
 
   const totalCount = invites.length + friendRequests.length;
 
+  // DECISION Phase 88.6.1-44 (N7 provider half, Req 11): CHOSEN — error is the caught error object,
+  // null while healthy, cleared only by a successful load and never at the START of one (a banner
+  // keyed on it must stay mounted through its own Retry); the load resolves { isError } so a retry
+  // can report its outcome (plan 88.6.1-21 announces a failed retry only from that value); refetch,
+  // already exposed, is the retry (one reference per signed-in user). The shape mirrors plan
+  // 88.6.1-66's friendship provider.
+  // REJECTED: a boolean (no code, so every failure would show the register's generic line); a
+  // second retry function; clearing at the start; keeping the old list on failure (a user switch
+  // would show the previous user's invites).
+  // The bell's N7 banner that consumes this is mounted by plan 88.6.1-80, through one adapter in
+  // this provider over this error and the friendship provider's (owner ruling 2026-10-05, D-48).
+  // Clearing it at the start, or dropping the { isError } result, is a decision, not a cleanup.
   const fetchInvites = useCallback(async () => {
     if (!user?.sub) {
       setInvites([]);
@@ -53,9 +67,13 @@ export function UnreadNotificationProvider({ children }) {
     try {
       const data = await invitesAPI.getPendingInvites();
       setInvites(Array.isArray(data) ? data : data?.invites || []);
+      setError(null);
+      return { isError: false };
     } catch (err) {
       console.error('Failed to fetch invites:', err.message);
       setInvites([]);
+      setError(err instanceof Error ? err : new Error());
+      return { isError: true };
     } finally {
       setLoading(false);
     }
@@ -72,6 +90,7 @@ export function UnreadNotificationProvider({ children }) {
     friendRequests,
     totalCount,
     loading,
+    error,
     setInvites,
     refetch: fetchInvites,
   };
