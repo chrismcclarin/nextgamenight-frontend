@@ -227,6 +227,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import Profile from './page';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { auditFormControls } from '../../test-utils/formControlAudit';
 
 /** Accessor for the mocked house logger — AC-2's channel on this surface. */
 export function loggerMock() {
@@ -2481,5 +2482,68 @@ describe('Days of Week toggles (88.6.1-48: D-21 / D-44, AC-19)', () => {
         expect(tokens, `${el.textContent} is missing ${cls}`).toContain(cls);
       }
     }
+  });
+});
+
+// 88.6.1-53 (W065, AC-22, plus the seven controls ST-7 found): every Profile form control carries
+// an id AND a name, because browser autofill reads id, name and autocomplete, never ARIA (the
+// house rule, src/components/ui/Input.tsx HOUSE RULE). The SMS code field offers the texted code
+// and the number pad; the phone field offers the saved number; the Username field is the public
+// display name, so it is marked nickname, never username (review #216).
+describe('form controls carry id + name (88.6.1-53: W065, AC-22)', () => {
+  function expectIdEqualsName(id: string) {
+    const el = document.getElementById(id);
+    expect(el, `#${id} is not rendered`).not.toBeNull();
+    expect(el?.getAttribute('name'), `#${id} has no matching name`).toBe(id);
+  }
+
+  it('A1: the default tab, with the username editor, the SMS phone field, the schedule form and the BGG search open, passes the audit', async () => {
+    const user = userEvent.setup();
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    await openDefaultTabControls(user);
+
+    auditFormControls(document.body);
+    for (const id of [
+      'profile-username',
+      'profile-phone',
+      'recurring-start-time',
+      'recurring-end-time',
+      'recurring-start-date',
+      'recurring-end-date',
+      'bgg-search',
+    ]) {
+      expectIdEqualsName(id);
+    }
+    expect(document.getElementById('profile-phone')).toHaveAttribute('autocomplete', 'tel');
+    expect(document.getElementById('profile-username')).toHaveAttribute('autocomplete', 'nickname');
+
+    // No two rendered controls share an id.
+    const ids = Array.from(document.body.querySelectorAll('input, select, textarea')).map((el) => el.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('A2: the code-entry step offers the texted code on a number pad and passes the audit', async () => {
+    await reachArmedVerify();
+    const code = screen.getByRole('textbox', { name: 'Verification code' });
+    expect(code.id).toBe('profile-verification-code');
+    expect(code).toHaveAttribute('name', 'profile-verification-code');
+    expect(code).toHaveAttribute('autocomplete', 'one-time-code');
+    expect(code).toHaveAttribute('inputmode', 'numeric');
+    auditFormControls(document.body);
+  });
+
+  it('A3: the Specific Dates form passes the audit, and its checkbox stays native', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+    await user.click(await screen.findByRole('tab', { name: 'Specific Dates' }));
+    await user.click(await screen.findByRole('button', { name: '+ Add Override' }));
+
+    auditFormControls(document.body);
+    for (const id of ['specific-date', 'specific-start-time', 'specific-end-time', 'specific-is-available']) {
+      expectIdEqualsName(id);
+    }
+    const checkbox = document.getElementById('specific-is-available');
+    expect(checkbox).toBeInstanceOf(HTMLInputElement);
+    expect((checkbox as HTMLInputElement).type).toBe('checkbox');
   });
 });
