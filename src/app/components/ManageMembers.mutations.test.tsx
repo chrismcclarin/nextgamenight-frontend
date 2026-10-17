@@ -95,6 +95,9 @@ import ManageMembers from './ManageMembers';
 import { ApiError, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
+// Plan 88.6.1-78 (C8 e): every expected register line is read through the shipped helper on the
+// SAME error object, never typed.
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -1568,5 +1571,190 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     expect(sentence.isConnected).toBe(true);
     expect(screen.queryByText("Couldn't load members")).toBeNull();
     expect(precedes(rf1Line(), sentence)).toBe(true);
+  });
+
+  // The house idiom (`useFetchErrorState.test.tsx`, `function fireVisibility(`): the hook's
+  // tab-return re-attempt listens only while an error shows.
+  function fireVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  // Never `<body>`, never the dialog container.
+  function expectFocusNotLost() {
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.getAttribute('role')).not.toBe('dialog');
+  }
+
+  it('RF-6. a 403 on a refresh withdraws the rows, the pending invites and the Invite / Reset row for the full banner, never RF1 (C10, C8 e, #127)', async () => {
+    (invitesAPI.getGroupPendingInvites as Mock).mockResolvedValue([
+      { id: 'inv-1', invited_email: 'pending-invite@example.test' },
+    ]);
+    await openMembersModal();
+    await screen.findByText('pending-invite@example.test');
+    expect(screen.getByRole('button', { name: 'Invite members' })).toBeInTheDocument();
+    // Copy row G1 (plan 88.6.1-50).
+    expect(screen.getByRole('button', { name: 'Reset invite link' })).toBeInTheDocument();
+    const err = new ApiError('Access denied', 'forbidden', 403);
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
+    triggerRefresh();
+    await screen.findByText(getFetchErrorMessage(err));
+
+    expect(screen.getByText("Couldn't load members")).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText('(You)')).toBeNull();
+    expect(screen.queryByText('Target')).toBeNull();
+    expect(screen.queryByText('pending-invite@example.test')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Invite members' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset invite link' })).toBeNull();
+  });
+
+  it('RF-7. a 401 on a refresh is the full banner with the sign-in line, never RF1 (C10, C8 e)', async () => {
+    await loadRoster();
+    const err = new ApiError('Session expired', 'unauthorized', 401);
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
+    triggerRefresh();
+    await screen.findByText(getFetchErrorMessage(err));
+    expect(screen.getByText("Couldn't load members")).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText('(You)')).toBeNull();
+  });
+
+  it('RF-8. a 403 answering the notice\'s own Retry withdraws the rows and lands focus on the dialog title (C10; Req 5)', async () => {
+    await loadRoster();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
+    triggerRefresh();
+    await rf1Shown();
+    const heading = title();
+    const err = new ApiError('Access denied', 'forbidden', 403);
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText(getFetchErrorMessage(err));
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText('(You)')).toBeNull();
+    expectFocusNotLost();
+  });
+
+  it('RF-9. a close and reopen after a transient failure starts the notice clean, and the reopen\'s own failure fills a region that was already there (R8 empty)', async () => {
+    const view = renderWithRerender();
+    await screen.findByRole('dialog', { name: 'Manage Group Members' });
+    await screen.findByText('Target');
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
+    triggerRefresh();
+    await rf1Shown();
+
+    view.rerender({ modal: false });
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    view.rerender({ modal: true });
+    await screen.findByRole('dialog', { name: 'Manage Group Members' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(3));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    // D-09a: the reopen shows the last roster (the Modal remounted: presence, not identity).
+    expect(screen.getByText('(You)')).toBeInTheDocument();
+
+    const regionsAtReopen = screen.getAllByRole('status');
+    await act(async () => {
+      held.reject(ERR_500);
+    });
+    await rf1Shown();
+    expect(regionsAtReopen).toContain(rf1Region());
+  });
+
+  // Reaches the withheld state: a 403 refresh, then the full banner's Try again failing with a
+  // 500 (the stored code is now transient while the roster is still withheld).
+  async function withholdThenFailTryAgain() {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(
+      new ApiError('Access denied', 'forbidden', 403)
+    );
+    triggerRefresh();
+    await screen.findByText("Couldn't load members");
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    await screen.findByText(getFetchErrorMessage(ERR_500));
+    expect(screen.queryByText('(You)')).toBeNull();
+  }
+
+  it('RF-10. a withheld roster stays withheld across a close and reopen until a refresh succeeds (C10 memory)', async () => {
+    const view = renderWithRerender();
+    await screen.findByRole('dialog', { name: 'Manage Group Members' });
+    await screen.findByText('Target');
+    await withholdThenFailTryAgain();
+
+    view.rerender({ modal: false });
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    view.rerender({ modal: true });
+    await screen.findByRole('dialog', { name: 'Manage Group Members' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(4));
+    expect(screen.getByText("Couldn't load members")).toBeInTheDocument();
+    expect(screen.queryByText('(You)')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    await act(async () => {
+      held.resolve(ROSTER);
+    });
+    await screen.findByText('(You)');
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+  });
+
+  it('RF-11. an access answer to a refresh nobody pressed withdraws the rows while a row control holds focus, and focus lands on the dialog title (C12 a, C8 f1; 403 and 401 legs)', async () => {
+    for (const err of [
+      new ApiError('Access denied', 'forbidden', 403),
+      new ApiError('Session expired', 'unauthorized', 401),
+    ]) {
+      cleanup();
+      (groupsAPI.getGroupMembers as Mock).mockClear();
+      await loadRoster();
+      (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
+      triggerRefresh();
+      await rf1Shown();
+      const heading = title();
+      const kebab = await screen.findByLabelText('More actions for Target');
+      act(() => kebab.focus());
+      expect(document.activeElement).toBe(kebab);
+
+      (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
+      // No press and no onMemberAdded: the hook's tab-return re-attempt is the refresh.
+      act(() => fireVisibility('visible'));
+      await screen.findByText(getFetchErrorMessage(err));
+      await waitFor(() => expect(document.activeElement).toBe(heading));
+      expect(kebab.isConnected).toBe(false);
+      expect(screen.queryByText('(You)')).toBeNull();
+      expectFocusNotLost();
+      expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(3);
+    }
+  });
+
+  it('RF-12. a refresh nobody pressed that SUCCEEDS while Retry holds focus lands focus on the dialog title (C12 b, C8 f2)', async () => {
+    await loadRoster();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
+    triggerRefresh();
+    await rf1Shown();
+    const heading = title();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    act(() => retry.focus());
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
+    act(() => fireVisibility('visible'));
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByText('(You)')).toBeInTheDocument();
+    expect(retry.isConnected).toBe(false);
+    expectFocusNotLost();
+  });
+
+  it('RF-13. a withheld roster\'s kept error starts no members request while the dialog is closed (#155)', async () => {
+    const view = renderWithRerender();
+    await screen.findByRole('dialog', { name: 'Manage Group Members' });
+    await screen.findByText('Target');
+    await withholdThenFailTryAgain();
+    view.rerender({ modal: false });
+    await act(async () => {});
+    const callsAtClose = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    act(() => fireVisibility('visible'));
+    await act(async () => {});
+    expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(callsAtClose);
   });
 });
