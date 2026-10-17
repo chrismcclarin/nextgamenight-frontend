@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
+import { flushSync } from 'react-dom';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -115,6 +116,8 @@ const SAVE_STATUS_PRECEDENCE = ['guard', 'error', 'saving', 'saved'];
 /** Slots that are not a per-row channel and therefore have their own indicator. */
 const REMINDER_WINDOW_SLOT = 'reminder:window';
 const RESET_SLOT = 'all:reset';
+const BGG_FOUND_ONE_LABEL = 'Found 1 game.';
+const bggFoundManyLabel = (n) => `Found ${n} games.`;
 function rowSaveStatus(statuses, typeKey) {
     return SAVE_STATUS_PRECEDENCE.find(
         status => statuses[`${typeKey}:email`] === status || statuses[`${typeKey}:sms`] === status
@@ -312,6 +315,18 @@ function Profile(){
     // D-35 (88.6.1-60): the BGG import's ONE in-flight latch, read first by both of its handlers.
     // See `DECISION Phase 88.6.1-60 (D-35, BGG import)` at Import Collection.
     const importInFlightRef = useRef(false);
+    // Req 8 / D-22 (88.6.1-60): the import outcome region's node, and the writes HELD while a closing
+    // dialog still hides the page from assistive tech. See `DECISION Phase 88.6.1-60 (Req 8 / D-22,
+    // BGG import outcome)` at the region.
+    const importStatusRegionRef = useRef(null);
+    const heldImportWritesRef = useRef([]);
+    const importHoldObserverRef = useRef(null);
+    // D-35 (88.6.1-60): the BGG search latch, read first by `searchBGG` (the button AND the field's
+    // Enter). See `DECISION Phase 88.6.1-60 (D-35, BGG search)` at Search.
+    const searchInFlightRef = useRef(false);
+    // Review 221 (88.6.1-60): the screen-reader-only result count. See `DECISION Phase 88.6.1-60 (review 221,
+    // owner 2026-10-13)` in `searchBGG`.
+    const [bggFoundAnnouncement, setBggFoundAnnouncement] = useState('');
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -850,9 +865,14 @@ function Profile(){
 
     // Cleanup the two-tap revert timer on unmount (mirrors KebabMenu lines 64-71).
     // R2 #29: the resend cooldown ticker is cleared HERE too — an ADDITION to this effect's
-    // body, deliberately not a second unmount effect.
+    // body, deliberately not a second unmount effect. 88.6.1-60: so is the BGG import outcome's
+    // hold observer.
     useEffect(() => {
         return () => {
+            if (importHoldObserverRef.current) {
+                importHoldObserverRef.current.disconnect();
+                importHoldObserverRef.current = null;
+            }
             if (removeArmedTimerRef.current) {
                 clearTimeout(removeArmedTimerRef.current);
                 removeArmedTimerRef.current = null;
@@ -1308,11 +1328,39 @@ function Profile(){
     }, [selfUuid]);
 
     const searchBGG = async () => {
+        // D-35: the button AND the field's Enter call this, so one refusal covers both entry points.
+        // See `DECISION Phase 88.6.1-60 (D-35, BGG search)` at Search.
+        if (searchInFlightRef.current) return;
         if (!bggSearchQuery.trim()) return;
+        searchInFlightRef.current = true;
+        setBggSearching(true);
+        // Emptied as the search starts, so the same count twice is a DOM change and is spoken twice.
+        setBggFoundAnnouncement('');
         try {
-            setBggSearching(true);
             const results = await gamesAPI.searchBGG(bggSearchQuery);
             setBggSearchResults(results || []);
+            /* DECISION Phase 88.6.1-60 (review 221, owner 2026-10-13): a search that lands with results is
+               announced through ONE new always-mounted sr-only polite StatusRegion in the collection
+               card, outside the search panel's conditional and outside the owned-games list, which
+               speaks the ratified pair (copy row F8, hoisted: BGG_FOUND_ONE_LABEL / bggFoundManyLabel).
+               A NEW region because no existing one qualifies (polite, sr-only while it holds text,
+               mounted in every state a search can run in, writable from here): the import outcome
+               region and the phone format region become VISIBLE when they hold text; the three
+               gates' status nodes carry their hook's text; the save-outcome polite region sits in
+               the Notification Preferences card, shares its setter and clear timer with the save
+               outcomes, and is absent whenever no identity row is held (plan 88.6.1-61), while this
+               search has no identity guard. Emptied when a search starts; zero results keep the
+               existing toast and leave the region empty, so the two never speak together; the catch
+               writes nothing (its toast speaks). REJECTED: a visible results line (a look change,
+               not ruled); speaking zero through the region too (two announcements of one outcome);
+               reusing a region that fails the test above; naming the games (a long list read aloud,
+               and the list is on screen). Written only here, never from a render or an effect. */
+            const found = (results || []).length;
+            if (found === 1) {
+                setBggFoundAnnouncement(BGG_FOUND_ONE_LABEL);
+            } else if (found > 1) {
+                setBggFoundAnnouncement(bggFoundManyLabel(found));
+            }
             if (results.length === 0) {
                 toast('No games found. Try a different search term.');
             }
@@ -1340,6 +1388,8 @@ function Profile(){
                 })
             );
         } finally {
+            // Released in `finally` so a FAILED search does not strand the control.
+            searchInFlightRef.current = false;
             setBggSearching(false);
         }
     };
@@ -1653,6 +1703,31 @@ function Profile(){
         setBggImportPromptOpen(true);
     };
 
+    // Req 8 / review 220 (88.6.1-60): every write the import makes to its outcome region goes
+    // through here. While the region sits under an `aria-hidden` ancestor (the closing import dialog's
+    // modal hiding, lifted only when its content unmounts) the write is HELD and applied in order, one
+    // commit each, the moment that hiding lifts; otherwise it goes straight through. See
+    // `DECISION Phase 88.6.1-60 (Req 8 / D-22, BGG import outcome)` at the region.
+    const writeImportProgress = (value) => {
+        const isHidden = () => Boolean(importStatusRegionRef.current?.closest('[aria-hidden="true"]'));
+        if (!importStatusRegionRef.current || (heldImportWritesRef.current.length === 0 && !isHidden())) {
+            setImportProgress(value);
+            return;
+        }
+        heldImportWritesRef.current.push(value);
+        if (importHoldObserverRef.current) return;
+        const observer = new MutationObserver(() => {
+            if (isHidden()) return;
+            observer.disconnect();
+            importHoldObserverRef.current = null;
+            // One commit per held write, so a result that settled inside the exit still lands as a
+            // text CHANGE after the progress line (a batched update would collapse the two).
+            heldImportWritesRef.current.splice(0).forEach((next) => flushSync(() => setImportProgress(next)));
+        });
+        observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['aria-hidden'] });
+        importHoldObserverRef.current = observer;
+    };
+
     const importBGGCollection = async () => {
         // D-35: a second Continue before the dialog's exit ends must not start a second import.
         // See `DECISION Phase 88.6.1-60 (D-35, BGG import)` at Import Collection.
@@ -1663,11 +1738,11 @@ function Profile(){
         importInFlightRef.current = true;
         setImportingCollection(true);
         try {
-            setImportProgress({ status: 'fetching', message: 'Fetching your BGG collection...' });
+            writeImportProgress({ status: 'fetching', message: 'Fetching your BGG collection...' });
 
             const result = await userGamesAPI.importBGGCollection(selfUuid, bggUsername.trim());
             
-            setImportProgress({
+            writeImportProgress({
                 status: 'complete',
                 message: `Imported ${result.imported} games`,
                 details: result
@@ -1683,7 +1758,7 @@ function Profile(){
             }, 5000);
         } catch (error) {
             logger.info('Error importing BGG collection:', errCtx(error));
-            setImportProgress({
+            writeImportProgress({
                 status: 'error',
                 message: getFetchErrorMessage(error, {
                     fallback: "We couldn't import that collection. Check the username and try again.",
@@ -3466,23 +3541,58 @@ function Profile(){
                                 {importingCollection ? 'Importing...' : 'Import Collection'}
                             </Button>
                         </div>
-                        {importProgress && (
-                            <div className={`mt-3 p-3 rounded-btn ${
-                                importProgress.status === 'error' ? 'bg-status-error-subtle text-content-status-error' :
-                                importProgress.status === 'complete' ? 'bg-status-success-subtle text-content-status-success' :
+                        {/* DECISION Phase 88.6.1-60 (Req 8 / D-22, BGG import outcome): the outcome box IS a
+                            polite StatusRegion, always mounted, srOnlyWhenEmpty: empty and hidden before the
+                            first import, the visible box once a message is set, the same node throughout, so
+                            a slow import's start, result and failure are each a text change a screen reader
+                            announces. Its classes are the old box's byte-for-byte (each status read now
+                            optional, since the region renders before any import) plus text-base, which holds
+                            the message at today's inherited 16px against the primitive's smaller default.
+                            Its writes WAIT while the closing import dialog still hides the page (review 220):
+                            the dialog's modal hiding lifts only when its content unmounts, after a 200 ms exit,
+                            and a text change inside a hidden subtree is silent and never repeated, so
+                            `writeImportProgress` holds them and applies them in order, one commit each, when
+                            the region's aria-hidden ancestry lifts (a MutationObserver on that attribute; the
+                            latch and the in-flight state are never held). The result timer's emptying is not
+                            held: an emptying is not an announcement.
+                            REJECTED: (a) the conditional mount (announces nothing, the page's own rule at the
+                            three gates below); (b) an sr-only twin beside the visible box (the text twice in
+                            the DOM; DECISION Phase 88.6-36 in FetchErrorBanner.tsx rejects two regions of
+                            opposite visibility); (c) assertive (neither progress nor result is urgent; D-42);
+                            (d) writing at Continue (the silent window); (e) a per-consumer close-focus handler
+                            on the dialog as the release moment (DECISION Phase 88.6-44 in Modal.tsx); (f)
+                            polling frames until no dialog remains (a proxy for the property that matters, and
+                            the hiding is undone in an effect cleanup that can trail the dialog's removal).
+                            The id is the test handle and is never read aloud. */}
+                        <StatusRegion
+                            ref={importStatusRegionRef}
+                            id="bgg-import-status"
+                            srOnlyWhenEmpty
+                            className={`mt-3 p-3 rounded-btn text-base ${
+                                importProgress?.status === 'error' ? 'bg-status-error-subtle text-content-status-error' :
+                                importProgress?.status === 'complete' ? 'bg-status-success-subtle text-content-status-success' :
                                 'bg-surface-muted text-content-secondary'
-                            }`}>
-                                <p className="text-content-primary">{importProgress.message}</p>
-                                {importProgress.details && (
-                                    <p className="text-sm mt-1">
-                                        Imported: {importProgress.details.imported} | 
-                                        Skipped (already owned): {importProgress.details.skipped} | 
-                                        Total: {importProgress.details.total}
-                                    </p>
-                                )}
-                            </div>
-                        )}
+                            }`}
+                        >
+                            {importProgress && (
+                                <>
+                                    <p className="text-content-primary">{importProgress.message}</p>
+                                    {importProgress.details && (
+                                        <p className="text-sm mt-1">
+                                            Imported: {importProgress.details.imported} | 
+                                            Skipped (already owned): {importProgress.details.skipped} | 
+                                            Total: {importProgress.details.total}
+                                        </p>
+                                    )}
+                                </>
+                            )}
+                        </StatusRegion>
                     </div>
+
+                    {/* Review 221 (88.6.1-60): the search result count, screen-reader only. Outside the search
+                        panel's conditional so it is mounted before any search answers. See
+                        `DECISION Phase 88.6.1-60 (review 221, owner 2026-10-13)` in `searchBGG`. */}
+                    <StatusRegion className="sr-only" message={bggFoundAnnouncement} />
 
                     {/* BGG Search */}
                     {showBggSearch && (
@@ -3498,10 +3608,25 @@ function Profile(){
                                     placeholder="Search BoardGameGeek..."
                                     className="flex-1"
                                 />
+                                {/* DECISION Phase 88.6.1-60 (D-35, BGG search): rule of POSITION. Search carries
+                                    aria-disabled while a search runs, plus ONE `searchInFlightRef` refusal as
+                                    `searchBGG`'s first statement, which BOTH this button and the field's Enter
+                                    call, so one guard covers both entry points; set before the `try`, released
+                                    in `finally`. The blank-query half stays native (rule of KIND). Closed with
+                                    it: the field's Enter was never gated, so an Enter mid-search started a
+                                    second request and whichever answered last wrote the results.
+                                    REJECTED: (a) a native disable while searching (drops focus in a real
+                                    browser); (b) disabling the field while searching (typing is legitimate;
+                                    only a second request is not); (c) a latest-request-wins counter (a second
+                                    mechanism on a control the house rule already latches, and the button
+                                    already says Searching...). Disclosed visible delta: while searching, the
+                                    gated primary pair instead of the 50% wash. Dropping either half of the
+                                    pair is a decision, not a cleanup. */}
                                 <Button
                                     variant="primary"
                                     onClick={searchBGG}
-                                    disabled={bggSearching || !bggSearchQuery.trim()}
+                                    disabled={!bggSearchQuery.trim()}
+                                    aria-disabled={bggSearching ? 'true' : undefined}
                                     className="whitespace-nowrap"
                                 >
                                     {bggSearching ? 'Searching...' : 'Search'}

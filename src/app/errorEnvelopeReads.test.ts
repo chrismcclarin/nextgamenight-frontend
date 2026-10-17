@@ -187,7 +187,10 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // comment line (`VERIFY_CODE_IN_FLIGHT_LABEL`, row P1) above it, and every other symbol that
     // plan added sits below it. Kept as a line number rather than a text anchor, per the note on
     // the AvailabilityForm entry above: the line number is what makes a MOVE visible.
-    declaredAt: 231,
+    // RE-DERIVED by plan 88.6.1-60 (Task 2, 2026-10-17): 231 -> 234. Again not on its own: plan 60
+    // added the `flushSync` import (the import outcome's held writes, review #220) and the two
+    // hoisted #221 copy constants (`BGG_FOUND_ONE_LABEL`, `bggFoundManyLabel`, copy row F8) above it.
+    declaredAt: 234,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +

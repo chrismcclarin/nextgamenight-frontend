@@ -653,6 +653,29 @@ test.describe('Profile availability forms and username editor in flight (plan 88
 //   - GET .../games/bgg/search (the Search test): holdUntilReleased too, so CI never calls
 //     BoardGameGeek.
 const IMPORT_PATH = /\/user-games\/user\/[^/]+\/import-bgg-collection$/;
+const SEARCH_PATH = /\/games\/bgg\/search$/;
+
+// Review #220: records, for every text mutation of the import outcome region, whether the region
+// sat under an aria-hidden ancestor at that moment. The closing import dialog keeps the rest of the
+// page aria-hidden until its content unmounts (after its exit animation), and a text change inside
+// a hidden subtree is never announced, so a `true` entry is the defect.
+async function recordRegionMutations(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const region = document.getElementById('bgg-import-status');
+    if (!region) throw new Error('#bgg-import-status is not in the document');
+    const seen: boolean[] = [];
+    (window as unknown as { __bggRegionHidden: boolean[] }).__bggRegionHidden = seen;
+    new MutationObserver((records) => {
+      for (let i = 0; i < records.length; i += 1) {
+        seen.push(region.closest('[aria-hidden="true"]') !== null);
+      }
+    }).observe(region, { childList: true, characterData: true, subtree: true });
+  });
+}
+
+async function regionMutations(page: Page): Promise<boolean[]> {
+  return page.evaluate(() => (window as unknown as { __bggRegionHidden: boolean[] }).__bggRegionHidden);
+}
 
 async function twoFrames(page: Page): Promise<void> {
   await page.evaluate(
@@ -679,12 +702,19 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(field).toBeVisible({ timeout: 15_000 });
     await field.fill('e2e-meeple');
 
+    // Requirement 8: the outcome region is mounted, polite and empty before the first import.
+    const region = page.locator('#bgg-import-status');
+    await expect(region).toHaveAttribute('role', 'status');
+    await expect(region).toHaveText('');
+
     // One locator for both labels of the one control, so it follows the label flip.
     const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
     await focusByKeyboard(page, importBtn);
     await page.keyboard.press('Enter');
 
     const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await recordRegionMutations(page);
     await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
     // The double-activation arm: a second Enter during the dialog's exit.
     await page.keyboard.press('Enter');
@@ -693,6 +723,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     // A positive wait for the dialog to go, so the exit window has passed.
     await expect(dialog).toHaveCount(0);
     expect(imp.count()).toBe(1);
+    await expect(region).toContainText('Fetching your BGG collection...');
 
     // The dialog's close restore landed on its opener, which is gated but focusable (D-35).
     await expect(importBtn).toBeFocused();
@@ -712,11 +743,111 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(importBtn).not.toHaveAttribute('aria-disabled');
     await expect(importBtn).toBeFocused();
 
+    // The result on the same region, now the visible box, at today's 16px (look unchanged).
+    await expect(region).toContainText('Imported 2 games');
+    await expect(region).toBeVisible();
+    await expect(region.locator('p').first()).toHaveCSS('font-size', '16px');
+
+    // Review #220: the region changed, and never while the closing dialog hid the page.
+    const hiddenFlags = await regionMutations(page);
+    expect(hiddenFlags.length, 'the outcome region never changed').toBeGreaterThan(0);
+    expect(hiddenFlags.filter(Boolean), 'a write landed while the page was aria-hidden').toEqual([]);
+
     if (testInfo.project.name === 'phone') {
       expect(page.viewportSize()?.width).toBe(375);
     }
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(fits, 'horizontal overflow around the import block').toBe(true);
     expect(imp.count()).toBe(1);
+  });
+
+  test('the import outcome is written only after the dialog has gone, on a fast failure too', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const imp = await holdUntilReleased(page, 'POST', IMPORT_PATH);
+    await page.goto('/userProfile');
+
+    const field = page.getByRole('textbox', { name: 'BoardGameGeek username' });
+    await expect(field).toBeVisible({ timeout: 15_000 });
+    await field.fill('e2e-meeple');
+
+    const region = page.locator('#bgg-import-status');
+    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    await focusByKeyboard(page, importBtn);
+    await page.keyboard.press('Enter');
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await recordRegionMutations(page);
+    await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
+    await page.keyboard.press('Enter');
+
+    // Answered AT ONCE with a 500, so the failure settles inside the dialog's exit window.
+    await imp.arrived;
+    await imp.release({ error: 'e2e import failure' }, 500);
+
+    await expect(dialog).toHaveCount(0);
+    await expect(region).toHaveClass(/(^|\s)bg-status-error-subtle(\s|$)/);
+    await expect(region).not.toHaveClass(/(^|\s)sr-only(\s|$)/);
+    await expect(region).not.toHaveText('');
+    await expect(region).toBeVisible();
+
+    const hiddenFlags = await regionMutations(page);
+    expect(hiddenFlags.length, 'the outcome region never changed').toBeGreaterThan(0);
+    expect(hiddenFlags.filter(Boolean), 'a write landed while the page was aria-hidden').toEqual([]);
+
+    await expect(importBtn).toHaveText('Import Collection');
+    await expect(importBtn).not.toHaveAttribute('aria-disabled');
+    expect(imp.count()).toBe(1);
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow around the import failure').toBe(true);
+  });
+
+  test("Search keeps focus and refuses a second press and the field's Enter", async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const s = await holdUntilReleased(page, 'GET', SEARCH_PATH);
+    await page.goto('/userProfile');
+
+    const toggle = page.getByRole('button', { name: '+ Add from BGG' });
+    await expect(toggle).toBeVisible({ timeout: 15_000 });
+    await toggle.click();
+    const field = page.getByRole('textbox', { name: 'Search BoardGameGeek' });
+    await field.fill('catan');
+
+    const search = page.getByRole('button', { name: /^(Search|Searching\.\.\.)$/ });
+    await focusByKeyboard(page, search);
+    await page.keyboard.press('Enter');
+    await s.arrived;
+
+    await expect(search).toBeFocused();
+    await expect(search).toHaveAttribute('aria-disabled', 'true');
+    await expect(search).not.toHaveAttribute('disabled');
+    await expect(search).toHaveText('Searching...');
+    await expectGatedPair(page, search, 'primary', 'dark');
+
+    // A second press is refused...
+    await page.keyboard.press('Enter');
+    expect(s.count()).toBe(1);
+    // ...and so is the field's own Enter, the second entry point.
+    await field.focus();
+    await page.keyboard.press('Enter');
+    await twoFrames(page);
+    expect(s.count()).toBe(1);
+
+    await s.release([{ bgg_id: 990001, name: 'E2E Meeple Game', year_published: 2001 }]);
+    await expect(page.getByText('E2E Meeple Game (2001)')).toBeVisible();
+    await expect(search).toHaveText('Search');
+    await expect(search).not.toHaveAttribute('aria-disabled');
+    // Add to Collection is deliberately never pressed.
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow around the search panel').toBe(true);
+    expect(s.count()).toBe(1);
   });
 });
