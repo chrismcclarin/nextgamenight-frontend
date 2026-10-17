@@ -2589,3 +2589,237 @@ describe('breadcrumb ring and separator (88.6.1-53: D-46 / R7-M7)', () => {
     }
   });
 });
+
+// 88.6.1-53 (Req 5, Req 4, D-42, D-22): the phone block. Change number (two rows), the second tap on
+// Remove and the SMS banner's Dismiss each remove the control the person pressed, so focus used to
+// fall to <body>; each now lands on a real target through plan 18's shared phoneVerifyRecovery.
+// A verify answer that arrives after Change number no longer undoes it (review 61), and never
+// writes an old number as verified over a newer save (review M-32). Remove refuses a tap while its
+// removal is in flight. The polite format hint is the house always-mounted region.
+// jsdom never blurs a disabled element (C-11): the RED half of the Remove latch is the attribute
+// and the request count; the focus claims are proven again in e2e/profile-pressed-controls.spec.ts.
+describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, Req 4, D-42, D-22)', () => {
+  const VALID = '+1 415 555 2671';
+  const NEWER = '+1 415 555 0199';
+  const BANNER = 'SMS disabled — add a phone number to re-enable.';
+  const REMOVE_FAILED = "We couldn't remove your number. Please try again.";
+  const REMOVED_USER = { sms_enabled: true, phone: null, phone_verified: false, notification_preferences: DEFAULT_PREFS };
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // Each case sets its own implementations; restore the defaults so a held one never leaks into a
+  // later suite (vi.clearAllMocks keeps implementations).
+  afterEach(async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  it('C1: Change number in the code-entry row lands focus on the Phone number field, never <body>', async () => {
+    const user = userEvent.setup();
+    await reachArmedVerify();
+    await user.click(screen.getByRole('button', { name: 'Change number' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Phone number' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('C2: Change number in the verified row lands focus on the Phone number field, which holds the number', async () => {
+    const user = userEvent.setup();
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+    await user.click(await screen.findByRole('button', { name: 'Change number' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Phone number' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.getByRole('textbox', { name: 'Phone number' })).toHaveValue(VALID);
+  });
+
+  it('C3: a verify answer that lands after Change number does not undo it, and the server truth still lands (review 61)', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    const check = deferred();
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(() => check.promise);
+
+    const verify = await reachArmedVerify();
+    await user.click(verify);
+    await waitFor(() => expect(verify).toHaveAttribute('aria-disabled', 'true'));
+    await user.click(screen.getByRole('button', { name: 'Change number' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Phone number' }))
+    );
+
+    await act(async () => { check.resolve({ verified: true }); });
+
+    // POSITIVE settle first: the server did verify that number, so the SMS toggles unlock.
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: 'New Event SMS notifications' })).not.toBeDisabled()
+    );
+    const field = screen.getByRole('textbox', { name: 'Phone number' });
+    expect(field.isConnected).toBe(true);
+    expect(document.activeElement).toBe(field);
+    expect(screen.queryByText('Phone verified')).toBeNull();
+  });
+
+  it('C4: a verify answer that lands after a NEWER number was saved writes nothing (review M-32, Edge R11 ordering)', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    const { patchSelfCache } = await import('@/lib/hooks/selfIdentityCache');
+    const check = deferred();
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(() => check.promise);
+
+    const verify = await reachArmedVerify();
+    await user.click(verify);
+    await waitFor(() => expect(verify).toHaveAttribute('aria-disabled', 'true'));
+    await user.click(screen.getByRole('button', { name: 'Change number' }));
+    const field = await screen.findByRole('textbox', { name: 'Phone number' });
+    fireEvent.change(field, { target: { value: NEWER } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
+    // POSITIVE: the page reached code entry for the NEW number.
+    const code = await screen.findByRole('textbox', { name: 'Verification code' });
+    expect(screen.getByText(/^Code sent to/)).toHaveTextContent('555 0199');
+
+    await act(async () => { check.resolve({ verified: true }); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+    expect(screen.getByRole('switch', { name: 'New Event SMS notifications' })).toBeDisabled();
+    expect(screen.queryByText('Phone verified')).toBeNull();
+    expect(code.isConnected).toBe(true);
+    expect(patchSelfCache).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ phone_verified: true })
+    );
+  });
+
+  it('R1: four taps across one held removal send ONE removePhone; Remove stays aria-disabled and never re-arms', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const removal = deferred();
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockImplementation(() => removal.promise);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    // The SAME node is now armed.
+    expect(remove).toHaveTextContent('Tap again to remove');
+    fireEvent.click(remove);
+    // POSITIVE settle on the same node.
+    await waitFor(() => expect(remove).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveTextContent('Remove');
+    expect(remove).not.toHaveTextContent('Tap again to remove');
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => { removal.resolve(REMOVED_USER); });
+    await screen.findByText(BANNER);
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+  });
+
+  it('R2: focus stays on Remove while the removal is held, then lands on the banner statement, never <body>', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    const removal = deferred();
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockImplementation(() => removal.promise);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    await user.click(remove);
+    await user.click(remove);
+    // CONFIRM-ONLY in jsdom (C-11): the held removal leaves the pressed control focused. The R5
+    // ordering is proven in the phone e2e spec in a real browser.
+    expect(document.activeElement).toBe(remove);
+
+    await act(async () => { removal.resolve(REMOVED_USER); });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText(BANNER)));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(remove.isConnected).toBe(false);
+  });
+
+  it('R3: a failed removal releases the latch, keeps the diagnostic shape, and a second removal is sent', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue(REMOVED_USER);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    await screen.findByText(REMOVE_FAILED);
+    expect(loggerMock().info).toHaveBeenCalledWith('Error removing phone:', expect.any(Object));
+    expect(remove).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(2);
+    await screen.findByText(BANNER);
+  });
+
+  it('R4: the banner Dismiss lands focus on the Phone number field it points at, never <body> (review 214)', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue(REMOVED_USER);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    await user.click(remove);
+    await user.click(remove);
+    await screen.findByText(BANNER);
+
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Phone number' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByText(BANNER)).toBeNull();
+  });
+
+  it('F1: the format hint is one always-mounted polite region, empty and visually hidden until an error, and the same node after', async () => {
+    renderProfile({ sms_enabled: true });
+    const phone = await screen.findByRole('textbox', { name: 'Phone number' });
+    const region = document.getElementById('phone-format-error');
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region?.textContent).toBe('');
+    expect(region?.className.split(/\s+/)).toContain('sr-only');
+
+    fireEvent.change(phone, { target: { value: '1234567' } });
+    // C-6: node identity, not presence.
+    expect(document.getElementById('phone-format-error')).toBe(region);
+    expect(region?.textContent).toBe('Invalid phone number');
+    const shown = region?.className.split(/\s+/) ?? [];
+    expect(shown).not.toContain('sr-only');
+    for (const cls of ['text-content-status-error', 'text-xs', 'mt-1']) expect(shown).toContain(cls);
+    expect(phone.getAttribute('aria-describedby') ?? '').toContain('phone-format-error');
+
+    fireEvent.change(phone, { target: { value: VALID } });
+    expect(document.getElementById('phone-format-error')).toBe(region);
+    expect(region?.textContent).toBe('');
+    expect(region?.className.split(/\s+/)).toContain('sr-only');
+    expect(phone.getAttribute('aria-describedby') ?? '').not.toContain('phone-format-error');
+
+    // R8 idempotency: the same error a second time re-sets the SAME node's text.
+    fireEvent.change(phone, { target: { value: '1234567' } });
+    expect(document.getElementById('phone-format-error')).toBe(region);
+    expect(region?.textContent).toBe('Invalid phone number');
+  });
+
+  it('D1: the phone error alert stays conditionally mounted, and its DECISION marker reads true under D-42', async () => {
+    const src = await pageSource();
+    expect(src).toContain('DECISION Phase 88-25 (DEF-88-19-04)');
+    expect(src).toContain('AMENDED Phase 88.6.1-53 (D-42');
+    expect(src).not.toContain('that would make it polite');
+
+    renderProfile({ sms_enabled: true });
+    await screen.findByRole('textbox', { name: 'Phone number' });
+    expect(document.getElementById('phone-flow-error')).toBeNull();
+  });
+});
