@@ -454,6 +454,10 @@ const countByFile = (hits: Hit[]): Record<string, number> => {
 // an anti-vacuity subject (every one of its files must be in the scanned set) and as the
 // record of what a hand census misses — `StartPollModal.js:151` is a live raw render it
 // does not contain at all.
+// AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): the census's one SuggestionCard.js site
+// left with its file, which the owner retired, so its row was removed in the deletion commit
+// (check (b) below would red on a census path that is no longer in the scanned set). 24 sites
+// across 15 files remain; the rest stays the historical record and is not re-pointed.
 const CENSUS_SITES = [
   'app/invite/accept/page.js:59',
   'app/invite/group/[token]/page.js:109',
@@ -466,7 +470,6 @@ const CENSUS_SITES = [
   'app/components/BrowseMoreModal.js:120',
   'app/components/ResponseDashboard.js:49',
   'app/components/ResponseDashboard.js:99',
-  'app/components/SuggestionCard.js:56',
   'app/components/GameComboInput.js:131',
   'app/components/GroupSettings.js:481',
   'app/components/GroupSettings.js:532',

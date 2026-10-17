@@ -345,8 +345,17 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // the same correction at its own site, and the file has moved by hundreds of lines since
     // the register entry that minted `:361` was written. Re-pointing this to today's line
     // number would only mint the next stale cite.
+    //
+    // LOWERED 40 -> 37 by plan 88.6.1-49 (Req 14, 2026-10-16 Pacific), WITH ALL THREE DEPARTING
+    // SITES NAMED, per 4a's rule. All three were in SuggestionCard.js, which the owner retired:
+    //   1. its getScoreColor() below-minimum ground (line 123 before the deletion);
+    //   2. its in-flight Create Event arm (line 220);
+    //   3. its View Event button (line 233).
+    // All three left with the file. None was renamed, hover-prefixed or re-keyed, so the
+    // replace-all property this floor protects is intact, and the slack above the floor is
+    // unchanged: measured 42 -> 39 on the plan 49 base (FE 3500274), against 40 -> 37.
     const sites = sitesOf(files, LEGACY);
-    expect(sites.length, `static surfaces remaining: ${sites.length}`).toBeGreaterThanOrEqual(40);
+    expect(sites.length, `static surfaces remaining: ${sites.length}`).toBeGreaterThanOrEqual(37);
   });
 });
 
@@ -401,7 +410,9 @@ describe('Phase 88.6-02 (D-15) — the retired card-hover CLASS token has zero l
   it('(a-control) the scan is looking at a real app and the NEW spelling is actually adopted', () => {
     // The zero above must not be zero-by-emptiness. Same control shape as test 0 and test 4a.
     expect(files.length).toBeGreaterThan(50);
-    expect(sitesOf(files, LEGACY).length, 'the renamed static surfaces').toBeGreaterThanOrEqual(40);
+    // The floor was lowered 40 -> 37 by plan 88.6.1-49 (Req 14, 2026-10-16 Pacific) for the same
+    // three named departures as 4e: the three bare muted surfaces of the retired SuggestionCard.js.
+    expect(sitesOf(files, LEGACY).length, 'the renamed static surfaces').toBeGreaterThanOrEqual(37);
   });
 
   it('(c) `e2e/` has no live use — no old token in a locator/selector, no old custom-property reference', () => {

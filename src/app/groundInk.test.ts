@@ -42,11 +42,13 @@
 // DECLARED LIMITATIONS — what a green run here does NOT prove
 // -----------------------------------------------------------
 //  * FUNCTION-RETURNED GROUND IS INVISIBLE. `inkGroundPairs` cannot resolve a ground returned
-//    from a function body (`${getScoreColor()}`), so `SuggestionCard.js`'s roster UNDERCOUNTS
-//    by THREE live AA failures at TWO ratios: `:92` and `:116` are `text-content-muted`
-//    (4.3725) and `:122` is `text-content-link` (3.9909). A single ratio for three sites would
-//    be wrong on its face. They are carried on the UNRESOLVABLE roster below and MEASURED by
-//    their own `it`, not asserted from a hand-written number.
+//    from a function body (a `${helper()}` interpolation): the walk reads class TEXT in opening
+//    tags and never evaluates a function. No live instance remains. The last one, the retired
+//    SuggestionCard.js's score-colour helper, had its three forbidden-ink sites fixed by plan
+//    88.6-42 and its file deleted by plan 88.6.1-49 (Req 14). A new instance would be invisible
+//    to this suite and must be declared on the UNRESOLVABLE roster below. (Rewritten by plan
+//    88.6.1-49; plan 88.6.1-02's cross-plan note records that the old wording, which still
+//    claimed three live failures in that file, was already false.)
 //  * COMPONENT-SET GROUND IS INVISIBLE. A ground applied by a component (`<Card>`) is not a
 //    class in any opening tag this walk reads.
 //  * ALPHA IS INVISIBLE. The walk resolves TOKENS. An `opacity-*` utility, or a `text-*`/`bg-*`
@@ -303,6 +305,10 @@ const OFFENDERS: ExemptionRoster = {
  * Test 5 MEASURES the count rather than trusting it: a hand-written number in a blind spot goes
  * stale silently, which is the "prose instead of a gate" failure D-16 exists to end.
  */
+// AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): test 5 was deleted with SuggestionCard.js,
+// the file it measured. The limitation itself is still not gone: it is structural (sourceScan's
+// declared limitation 2). Test 2's resolved-ground floor is now what stops "empty list" from
+// being reached by a walk that went blind.
 const UNRESOLVABLE: ExemptionRoster = {
   // EMPTIED by plan 88.6-42 task 3 (wave 8, 2026-09-17). The entry carried sites: 3 — :92 and
   // :116 (text-content-muted, 4.3725) and :122 (text-content-link, 3.9909), all three under the
@@ -317,6 +323,11 @@ const UNRESOLVABLE: ExemptionRoster = {
   // supply the root ground) and now measures ZERO forbidden ink under it. A negative control over
   // a real blind spot beats an empty list with no instance behind it, and it is what plan 09 own
   // fallback design contemplated.
+  // AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): the owner retired SuggestionCard.js, so
+  // test 5 was deleted with it; the live instance named above is gone and none survives. The
+  // limitation itself is still not gone (structural, sourceScan's declared limitation 2). Test 2's
+  // resolved-ground floor is now what stops "empty list" from being reached by a walk that went
+  // blind.
   //
   // A NEW blind-spot instance still has to be DECLARED here rather than dropped silently — test 4
   // is what makes that a red rather than a shrug.
@@ -619,36 +630,31 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // and a future plan adding one must add it here deliberately. Test 5 keeps the blind-spot
     // MECHANISM exercised as a negative control, so 'empty list' cannot be reached by the walk
     // quietly going blind.
+    // AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): test 5 was deleted with
+    // SuggestionCard.js. The limitation is still not gone (structural, sourceScan's declared
+    // limitation 2); test 2's resolved-ground floor is now what stops "empty list" from being
+    // reached by a walk that went blind.
     expect(assertRosterShape(UNRESOLVABLE)).toEqual([]);
     expect(Object.keys(UNRESOLVABLE)).toEqual([]);
   });
 
-  it('5. the SuggestionCard blind spot is MEASURED — mechanism live, debt now ZERO', () => {
-    const rel = 'app/components/SuggestionCard.js';
-    const src = fs.readFileSync(path.join(SRC, rel), 'utf8');
-
-    // First pin the MECHANISM, so this row measures the blind spot rather than any three sites:
-    // the root element's ground really does come from a function body.
-    expect(src).toContain("if (!suggestion.meets_minimum) return 'bg-surface-muted border-line';");
-    expect(src).toMatch(/className=\{`rounded-card border-2 p-4 \$\{getScoreColor\(\)\}`\}/);
-
-    // Then count the forbidden RESTING ink in this file that the walk did NOT resolve onto a
-    // muted ground. Those are exactly the descendants of the getScoreColor() ground.
-    const blind = [...new Set(
-      ROWS.filter((r) => r.file === rel && FORBIDDEN.has(r.inkToken) && !onMuted(r)).map((r) => r.line),
-    )].sort((a, b) => a - b);
-    //
-    // INVERTED by plan 88.6-42 task 3 (2026-09-17): this was `[92, 116, 122]` cross-checked
-    // against `UNRESOLVABLE[rel].sites`. All three took `text-content-secondary`, so the roster
-    // entry is gone and the measurement is ZERO. The two MECHANISM pins above are what keep this
-    // row from being vacuous: they prove the walk really is blind here, so a zero means "no
-    // forbidden ink under a ground the walk cannot see" rather than "nothing was scanned".
-    expect(blind).toEqual([]);
-    expect(UNRESOLVABLE[rel]).toBeUndefined();
-    // Anti-vacuity for the scan itself: this file IS in the scanned corpus and DOES report ink
-    // rows — they are simply all sanctioned now.
-    expect(ROWS.filter((r) => r.file === rel).length).toBeGreaterThan(0);
-  });
+  // DECISION Phase 88.6.1-49 (Req 14 / D-29): test 5 is DELETED with its subject, chosen OVER
+  // two alternatives. Its subject, SuggestionCard.js, was retired by the owner's ruling
+  // (SUGGESTION-CARD-RULING: retire); the test read that file directly, so it could only throw.
+  //   REJECTED (a): re-pointing it to a surviving instance, the way test 3 was re-pointed by
+  //   plans 88.6-27 and 88.6-40. None exists. Test 5 measured a FUNCTION-RETURNED muted ground,
+  //   and a census of functions returning the muted ground class (plan 88.6.1-49's census C1,
+  //   run 2026-10-16) found only the deleted file. The other function-returned className in the
+  //   tree, WriteCell.tsx's preferenceColor() (src/app/components/heatmap/WriteCell.tsx:156,
+  //   anchor `${preferenceColor(preference, disabled)}`), never returns the muted ground
+  //   (src/lib/availabilityColor.ts:245-248, its four returns).
+  //   REJECTED (b): a fixture-only stand-in like test 8. It would pin a LIMITATION of the walk,
+  //   so the day the walk learns to read function bodies it would red on an improvement.
+  // STILL GUARDING: test 4's EMPTY pin, test 2's resolved-ground floor (a walk going blind) and
+  // the header's declared limitation. Numbering: tests 6-9 keep their numbers so
+  // cross-references in this file and in plan records stay true. The suite is back at 8, its
+  // drift-gate floor (periodictabletop/.github/workflows/ci.yml:363). Re-adding a blind-spot
+  // measurement needs a live instance; that is a decision, not a cleanup.
 
   it('6. the false-positive list is exact, live, and disjoint from the offender roster', () => {
     // Three checks, because three different things can go wrong.
