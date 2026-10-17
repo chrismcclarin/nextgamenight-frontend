@@ -14,6 +14,7 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import { Modal } from '@/app/components/Modal';
 import { useFetchErrorState, getFetchErrorMessage } from './useFetchErrorState';
 import { FetchErrorBanner, REGION_EMPTY_DWELL_MS, RETRY_OUTCOME_WINDOW_MS } from './FetchErrorBanner';
+import { FeedbackModalProvider } from '@/app/components/FeedbackModalProvider';
 import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
@@ -439,7 +440,9 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
     expect(compactRetry).toHaveClass('underline');
     unmount();
 
-    render(<FetchErrorBanner state={errorState('boom')} />);
+    // Under the owner's 2026-10-05 ruling the report link exists only after a failed retry, and
+    // opens the app-level report host (plan 88.6.1-69): setup only, no assertion edited.
+    render(<FeedbackModalProvider><FetchErrorBanner state={{ ...errorState('boom'), retryFailed: true }} /></FeedbackModalProvider>);
     for (const name of ['Try again', 'Report this']) {
       const button = screen.getByRole('button', { name });
       expect(button, `${name}: 500 is a §4.5 prohibition outside Button`).not.toHaveClass(
@@ -459,7 +462,9 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
     expect(screen.getByRole('button', { name: 'Retry' }).className, 'Retry').toContain(HOUSE_RING);
     unmount();
 
-    render(<FetchErrorBanner state={errorState('boom')} />);
+    // Under the owner's 2026-10-05 ruling the report link exists only after a failed retry, and
+    // opens the app-level report host (plan 88.6.1-69): setup only, no assertion edited.
+    render(<FeedbackModalProvider><FetchErrorBanner state={{ ...errorState('boom'), retryFailed: true }} /></FeedbackModalProvider>);
     for (const name of ['Try again', 'Report this']) {
       expect(screen.getByRole('button', { name }).className, name).toContain(HOUSE_RING);
     }

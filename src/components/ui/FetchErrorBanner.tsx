@@ -645,15 +645,33 @@ export function FetchErrorBanner({
         <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
         {retrying ? 'Retrying…' : 'Try again'}
       </button>
-      <button
-        type="button"
-        onClick={() => setShowReport(true)}
-        onFocus={watchFocus}
-        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-      >
-        <Icon name="Flag" size={14} />
-        Report this
-      </button>
+      {/* DECISION Phase 88.6.1-69 (owner ruling 2026-10-05, Report this after a failed retry):
+          option C of the owner's three (375px mockup
+          https://claude.ai/artifact/So2zG4F5qpHWzRaibS2V4N) — `Try again` always; `Report this`
+          only after a retry has failed, then for as long as that failure persists. Read from
+          `state.retryFailed`, which the HOST's `useFetchErrorState` keeps, because a caller-gated
+          banner is destroyed at the press and re-created on failure (that hook's marker). The
+          owner's reasons, in substance: no reports for a temporary issue ("Backend is down for a
+          couple of minutes, you just retry and it works"), but when it keeps failing for other
+          reasons he wants to know, and "a call to action at the spot of the action is more likely
+          to happen". REJECTED: A, no report link at all (he wants to hear about persistent
+          failures); B, both links from the start (the earlier behaviour; reports for two-minute
+          outages). Also rejected: announcing the link's appearance or moving focus to it (plan 21
+          already speaks a failed retry; a second message would be new words, D-31). The report
+          button's opening tag, plan 70's focus watch, its classes and label are unchanged inside
+          the condition. AMENDS Phase 86 D-02's CTA (`86-CONTEXT.md:35`). Showing it from the
+          start again is a decision, not a cleanup. */}
+      {state.retryFailed ? (
+        <button
+          type="button"
+          onClick={() => setShowReport(true)}
+          onFocus={watchFocus}
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        >
+          <Icon name="Flag" size={14} />
+          Report this
+        </button>
+      ) : null}
     </div>
   ) : null;
 

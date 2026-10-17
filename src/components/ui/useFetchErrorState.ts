@@ -35,6 +35,12 @@ import { ApiError, isCsrfRejection, type ApiErrorCode } from '@/lib/api';
 
 export type FetchErrorCode = ApiErrorCode;
 
+// A layout effect on the client, a plain effect on the server, where effects never run and a bare
+// `useLayoutEffect` logs React 18's "does nothing on the server" warning on every SSR'd page that
+// uses this hook. The house idiom (`paintGestureActiveStore.ts`, anchor
+// `const useIsomorphicLayoutEffect`).
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
+
 export interface FetchErrorState {
   /** True once the query has surfaced a visible error (retries exhausted). */
   showError: boolean;
@@ -44,6 +50,55 @@ export interface FetchErrorState {
   code: FetchErrorCode;
   /** Re-attempt the query. Resolves when the refetch settles. */
   retry: () => Promise<unknown>;
+  /**
+   * True once a retry the PERSON started (`retry()`) has failed in the current failure episode;
+   * false again when the failure ends (the error clears). Never set by the automatic tab-return
+   * re-attempt. Optional: a hand-built state without it reads as "no retry has failed", the
+   * rule's resting state. The full `FetchErrorBanner` offers `Report this` only while it is true
+   * (owner ruling 2026-10-05, plan 88.6.1-69).
+   *
+   * Caller contract: `error` must keep its identity across renders of the same failure (every
+   * measured production adapter holds it in state, or reads it from TanStack). A caller that
+   * builds a fresh error object on every render cannot crash the host (nothing is written during
+   * render), but the identity rule cannot read its retries correctly.
+   */
+  retryFailed?: boolean;
+}
+
+/**
+ * One retry being tracked, from the press (or the tab-return re-attempt) to its verdict.
+ * `phase` is `inFlight` until the retry's promise settles, then the verdict it waits to see
+ * committed.
+ */
+type RetryAttempt = {
+  id: number;
+  /** The person pressed (true) or the hook's own tab-return re-attempt ran (false). */
+  byPerson: boolean;
+  /** The committed error showing at the press, read for the unknown-result identity rule. */
+  errorAtStart: unknown;
+  phase: 'inFlight' | 'awaitFailed' | 'awaitSucceeded' | 'awaitUnknown';
+};
+
+/**
+ * Reads a refetch's OWN result: an object whose `isError` is `true` failed, `false` succeeded,
+ * anything else (an awaited loader resolving nothing, an adapter resolving before its run) is
+ * unknown. The same rule as `FetchErrorBanner`'s module-private `classifyRetryResult`, restated
+ * here because this hook must not import the component module.
+ */
+function classifyRefetchResult(result: unknown): 'failed' | 'succeeded' | 'unknown' {
+  if (typeof result !== 'object' || result === null) return 'unknown';
+  const { isError } = result as { isError?: unknown };
+  if (isError === true) return 'failed';
+  if (isError === false) return 'succeeded';
+  return 'unknown';
+}
+
+/** The phase a settled attempt moves to, from its own result. */
+function verdictPhase(result: unknown): RetryAttempt['phase'] {
+  const verdict = classifyRefetchResult(result);
+  if (verdict === 'failed') return 'awaitFailed';
+  if (verdict === 'succeeded') return 'awaitSucceeded';
+  return 'awaitUnknown';
 }
 
 /** User-facing copy per error code. Rendered as auto-escaped React text. */
@@ -273,7 +328,94 @@ export function useFetchErrorState<TData = unknown, TError = unknown>(
   // carries no ApiError code.
   const message = getFetchErrorMessage(error, { fallback: options.fallbackMessage });
 
-  const retry = React.useCallback(() => Promise.resolve(refetch()), [refetch]);
+  /* DECISION Phase 88.6.1-69 (retryFailed): owner ruling 2026-10-05 ("c everywhere") — the full
+     banner offers `Report this` only after a retry the person started has failed. CHOSEN: the
+     memory lives HERE, because this hook runs in the HOST and outlives a caller-gated banner;
+     "failed" is read from the COMMITTED state (a known-failed result once the error commits; for
+     an unknown result, a NEW error object once the retry's promise has settled; a clear after the
+     settle is a success), resolved at commit in a layout effect with no state written during
+     render; the flag is lowered only when the failure ENDS; the field is optional.
+     REJECTED, each so it is not re-proposed as a tidy-up:
+     (a) a flag inside `FetchErrorBanner` — a never-loaded query's refetch commits `pending` with no
+         data (`@tanstack/query-core` `query.js`, anchor `...data === void 0 && {`), the caller
+         removes the banner at the press, and the flag dies with it; the link would never appear;
+     (b) "the error still shows after the promise settled" — an adapter that resolves before its
+         run (`UserHomePage.js`, anchor `return Promise.resolve();`) settles while the OLD error
+         still shows, so the link would appear over a request that may still succeed (SPEC
+         Prohibition 2);
+     (c) a required field — 16 hand-built test doubles in 8 suites other plans own, and no
+         production builder;
+     (d) counting the automatic tab-return re-attempt — the owner's rule is about the person
+         having tried ("a call to action at the spot of the action");
+     (e) reusing plan 21's `retryFailedAgain` — it is per banner mount and dies with the banner;
+     (f) a render-time adjust holding the last-seen error in state — a caller that builds its
+         error fresh on every render loops "Too many re-renders" and crashes the host (review #77);
+     (g) lowering the flag on any new error object no tracked retry explains — a reconnect
+         refetch (`queryClient.ts`, `refetchOnReconnect: true`) re-failing the same query would
+         withdraw the link while the failure persists, against "for as long as that failure
+         persists" (review #78).
+     STATED LIMITS: (1) the home upcoming-events adapter clears its error at the start of its run
+     (`UserHomePage.js`, anchor `setUpcomingError(null);`), so a failed retry there reads as a
+     success and the link waits for the next failed retry (an under-report) until plan
+     88.6.1-62's C4 conversion; (2) a hand-rolled adapter whose data key changes while mounted,
+     straight from one error to another, keeps the flag across the switch (plan 71 records the one
+     such shape, a group switch while mounted, as unreachable today); (3) a NEVER-LOADED TanStack
+     query refetched by anything but a tracked attempt (a reconnect refetch, an invalidation,
+     another observer) passes through `pending`, so the episode-end rule lowers the flag and the
+     link returns only after the person's next failed retry — an under-offer this hook cannot tell
+     apart from a key change. Changing where this lives, reading the promise as the verdict, or
+     resetting on a new error object, is a decision, not a cleanup. */
+  const [retryFailed, setRetryFailed] = React.useState(false);
+  // Written only from `retry()` and its settle, never during render.
+  const [attempt, setAttempt] = React.useState<RetryAttempt | null>(null);
+  const attemptIdRef = React.useRef(0);
+  // The committed error, read at the press. The only record of it: no render-time state.
+  const latestErrorRef = React.useRef<unknown>(error);
+  useIsomorphicLayoutEffect(() => {
+    latestErrorRef.current = error;
+  });
+
+  const retry = React.useCallback(async () => {
+    const id = ++attemptIdRef.current;
+    setAttempt({ id, byPerson: true, errorAtStart: latestErrorRef.current, phase: 'inFlight' });
+    // Only the newest attempt decides: a superseded one settles into nothing.
+    const settleAs = (phase: RetryAttempt['phase']) =>
+      setAttempt((current) => (current !== null && current.id === id ? { ...current, phase } : current));
+    try {
+      const result = await Promise.resolve(refetch());
+      settleAs(verdictPhase(result));
+      return result;
+    } catch (err) {
+      settleAs('awaitUnknown');
+      throw err;
+    }
+  }, [refetch]);
+
+  // Resolve the verdict at COMMIT, before paint (a `useEffect` would paint a frame with the wrong
+  // link). Each set runs only when its value changes, so an unstable error identity can at worst
+  // re-run a no-op effect.
+  useIsomorphicLayoutEffect(() => {
+    if (attempt === null) {
+      // The failure episode ended with no attempt in flight (a TanStack key change reaches this
+      // through `pending`). A new error object alone never lowers the flag (REJECTED (g)).
+      if (!isError && retryFailed) setRetryFailed(false);
+      return;
+    }
+    // An in-flight attempt is never judged and never ends the episode: the verdict waits for
+    // its promise, so no re-render during a held retry can show the link (Prohibition 2).
+    if (attempt.phase === 'inFlight') return;
+    const failed =
+      Boolean(isError) &&
+      (attempt.phase === 'awaitFailed' || (attempt.phase === 'awaitUnknown' && error !== attempt.errorAtStart));
+    const succeeded = !isError && (attempt.phase === 'awaitSucceeded' || attempt.phase === 'awaitUnknown');
+    if (failed) {
+      if (attempt.byPerson && !retryFailed) setRetryFailed(true);
+      setAttempt(null);
+    } else if (succeeded) {
+      if (retryFailed) setRetryFailed(false);
+      setAttempt(null);
+    }
+  }, [attempt, isError, error, retryFailed]);
 
   // Error-only refocus recovery — scoped to THIS query, active ONLY while
   // erroring, and independent of the global `refetchOnWindowFocus: false`.
@@ -286,5 +428,5 @@ export function useFetchErrorState<TData = unknown, TError = unknown>(
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [showError, refetch]);
 
-  return { showError, message, code, retry };
+  return { showError, message, code, retry, retryFailed };
 }
