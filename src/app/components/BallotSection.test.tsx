@@ -30,7 +30,12 @@ import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../lib/api', () => ({
+// Plan 88.6.1-31 Task 3: the import-original spread, NOT a factory returning only ballotAPI. The
+// component now renders the house FetchErrorBanner through useFetchErrorState, which reads the
+// VALUE ApiError from this module (instanceof); a factory without it would break that check
+// (FE-TESTING-CONVENTIONS C-3, the ResponseDashboard.test.tsx idiom). Only ballotAPI is replaced.
+vi.mock('../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/api')>()),
   ballotAPI: {
     getBallot: vi.fn(),
     toggleVote: vi.fn(),
@@ -38,8 +43,18 @@ vi.mock('../../lib/api', () => ({
   },
 }));
 
+// The developer breadcrumb (logger.info) and the class-only capture go through Sentry. The three
+// entry points the import graph calls are stubbed so the capture can be counted and read.
+vi.mock('@sentry/nextjs', () => ({
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
+}));
+
+import * as Sentry from '@sentry/nextjs';
 import BallotSection from './BallotSection';
 import { ballotAPI } from '../../lib/api';
+import { logger, errCtx } from '@/lib/logger';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -694,5 +709,295 @@ describe('BallotSection — a failed vote keeps the card, and a late answer chan
     expect(document.getElementById('ballot-tiebreak-error')?.textContent).toBe('');
     // The stale-closure refetch for event-1 sends no GET.
     expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Plan 88.6.1-31 Task 3 (E15, Req 9; owner ruling 2026-10-05). The server's ONLY "this event has
+// no vote" answer is a 200 whose body is { ballot_status: null }, which RESOLVES; every way the
+// load can fail REJECTS. So a rejection shows the house banner, and the no-vote body still shows
+// nothing. No status, code or message is read to decide it.
+const BALLOT_LOAD_FAILED = "Couldn't load the game vote";
+// The register line for the internal code (useFetchErrorState MESSAGE_BY_CODE).
+const INTERNAL_LINE = 'Something went wrong on our end. Please try again shortly.';
+
+// A REAL ApiError off the module (the spread keeps the real class), so instanceof holds. Its
+// details and upstream string carry text that must reach neither the DOM nor the capture.
+async function codedError(code: string, status: number, message = `HTTP error! status: ${status}`) {
+  const actual = await import('../../lib/api');
+  return new actual.ApiError(message, code as never, status, { error: 'RAW UPSTREAM TEXT' }, 'RAW UPSTREAM TEXT');
+}
+
+// Every argument of every capture, as text: an Error by its name, message and stack, anything
+// else as JSON (JSON alone would read an Error as an empty object and prove nothing).
+function captureTexts(): string[] {
+  return vi.mocked(Sentry.captureException).mock.calls.map((args) =>
+    args
+      .map((a) => (a instanceof Error ? `${a.name}: ${a.message}\n${a.stack ?? ''}` : JSON.stringify(a)))
+      .join(' | ')
+  );
+}
+
+function fireVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+describe('BallotSection — a failed load says so, and an event with no vote still shows nothing (88.6.1-31 E15)', () => {
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    infoSpy = vi.spyOn(logger, 'info');
+  });
+  afterEach(() => {
+    infoSpy.mockRestore();
+  });
+
+  it('NB-1 (confirm-only): the server no-vote body renders nothing at all, and no banner', async () => {
+    queueBallots([{ ballot_status: null }]);
+    const { container } = render(<BallotSection {...ballotProps('event-1')} />);
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText('Loading ballot...')).toBeNull());
+
+    expect(screen.queryByText(BALLOT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Game Vote' })).toBeNull();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('NB-2 (confirm-only): a closed, winnerless voter body shows no load-failure banner', async () => {
+    // The voter body as the server sends it: no tie or fallback flags. Only the banner absence
+    // is pinned; what this body renders otherwise is a backend defect routed to Phase 91.
+    queueBallots([{ ballot_status: 'closed', rsvp_deadline: null, options: OPTIONS, winner: null }]);
+    render(<BallotSection {...ballotProps('event-1', { userRole: 'member' })} />);
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText('Loading ballot...')).toBeNull());
+
+    expect(screen.queryByText(BALLOT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('LF-1: a failed first load shows the banner alone, with the register line and Try again, and no backend text anywhere', async () => {
+    const err = await codedError('internal', 500);
+    queueBallots([() => Promise.reject(err)]);
+    render(<BallotSection {...ballotProps('event-1')} />);
+
+    await screen.findByText(BALLOT_LOAD_FAILED);
+    expect(screen.getByText(INTERNAL_LINE)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('RAW UPSTREAM TEXT');
+    // The banner ALONE (R3 adjacency): no card, none of the three action regions, one assertive
+    // and one polite region and nothing nested.
+    expect(screen.queryByRole('heading', { name: 'Game Vote' })).toBeNull();
+    for (const id of ['ballot-tiebreak-error', 'ballot-fallback-error', 'ballot-vote-error']) {
+      expect(document.getElementById(id)).toBeNull();
+    }
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+
+    // The developer breadcrumb: exactly errCtx's two keys, nothing else rides along.
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    expect(infoSpy.mock.calls[0]).toStrictEqual([
+      'Error loading ballot:',
+      { name: 'ApiError', message: 'HTTP error! status: 500' },
+    ]);
+    // The class-only capture: once, and carrying none of the upstream text.
+    const texts = captureTexts();
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).not.toContain('RAW UPSTREAM TEXT');
+  });
+
+  it('LF-1b: when the error MESSAGE carries body text, the breadcrumb forwards exactly errCtx (sanctioned, scrubbed) and the capture and the DOM carry none of it', async () => {
+    // The shape api.ts builds from a non-JSON error body: the capped body becomes the message.
+    const err = await codedError('internal', 502, 'RAW UPSTREAM TEXT');
+    queueBallots([() => Promise.reject(err)]);
+    render(<BallotSection {...ballotProps('event-1')} />);
+
+    await screen.findByText(BALLOT_LOAD_FAILED);
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    expect(infoSpy.mock.calls[0]).toStrictEqual(['Error loading ballot:', errCtx(err)]);
+    expect(document.body.textContent).not.toContain('RAW UPSTREAM TEXT');
+    const texts = captureTexts();
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).not.toContain('RAW UPSTREAM TEXT');
+  });
+
+  it('LF-2: Try again keeps the banner in flight (the first-load loader never returns) and brings the vote back', async () => {
+    const held = deferred();
+    const err = await codedError('network', 0);
+    queueBallots([() => Promise.reject(err), held.promise]);
+    const user = userEvent.setup();
+    render(<BallotSection {...ballotProps('event-1')} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(BALLOT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Loading ballot...')).toBeNull();
+
+    await act(async () => {
+      held.resolve(TIE_BREAK);
+    });
+    await screen.findByRole('heading', { name: 'Game Vote' });
+    expect(screen.queryByText(BALLOT_LOAD_FAILED)).toBeNull();
+    expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2);
+  });
+
+  it('LF-3: a Try again that fails again keeps the banner and announces the title in the polite region', async () => {
+    const err1 = await codedError('internal', 500);
+    const err2 = await codedError('internal', 500);
+    queueBallots([() => Promise.reject(err1), () => Promise.reject(err2)]);
+    const user = userEvent.setup();
+    render(<BallotSection {...ballotProps('event-1')} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('status').some((r) => r.textContent === BALLOT_LOAD_FAILED)).toBe(true)
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(BALLOT_LOAD_FAILED);
+    expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2);
+  });
+
+  it('LF-4: after a successful Try again focus lands on the Game Vote heading of the card that replaced the banner, not the page h1 (Req 5, fix F4)', async () => {
+    const err = await codedError('internal', 500);
+    queueBallots([() => Promise.reject(err), TIE_BREAK]);
+    const user = userEvent.setup();
+    render(
+      <main>
+        <h1>Game night</h1>
+        <BallotSection {...ballotProps('event-1')} />
+      </main>
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Game Vote' }))
+    );
+    expect(document.activeElement).not.toBe(screen.getByRole('heading', { name: 'Game night' }));
+  });
+
+  it('LF-4b: a successful Try again that renders no card (the no-vote body) lands focus on the page h1, never <body>', async () => {
+    const err = await codedError('internal', 500);
+    queueBallots([() => Promise.reject(err), { ballot_status: null }]);
+    const user = userEvent.setup();
+    const { container } = render(
+      <main>
+        <h1>Game night</h1>
+        <BallotSection {...ballotProps('event-1')} />
+      </main>
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Game night' }))
+    );
+    expect(screen.queryByText(BALLOT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Game Vote' })).toBeNull();
+    expect(container.querySelector('main')?.children).toHaveLength(1);
+  });
+
+  it('LF-5 (held-out backstop): one event failure is never shown for another event', async () => {
+    const held = deferred();
+    const err = await codedError('internal', 500);
+    queueBallots([() => Promise.reject(err), held.promise]);
+    const { rerender } = render(<BallotSection {...ballotProps('event-1')} />);
+    await screen.findByText(BALLOT_LOAD_FAILED);
+
+    rerender(<BallotSection {...ballotProps('event-2')} />);
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(BALLOT_LOAD_FAILED)).toBeNull();
+
+    await act(async () => {
+      held.resolve(TIE_BREAK);
+    });
+    await screen.findByRole('heading', { name: 'Game Vote' });
+  });
+
+  it('LF-6 (held-out backstop): a failed refetch over a kept ballot never shows the banner (the AC-29 shape)', async () => {
+    (ballotAPI.toggleVote as Mock).mockResolvedValueOnce({ voted: true });
+    const err = await codedError('internal', 500);
+    queueBallots([OPEN_BALLOT, () => Promise.reject(err)]);
+    const user = userEvent.setup();
+    render(<BallotSection {...ballotProps('event-1')} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Catan' }));
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Wingspan/ })).not.toBeDisabled());
+
+    expect(screen.getByRole('heading', { name: 'Game Vote' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Catan/ }).textContent).toContain('Voted');
+    expect(screen.queryByText(BALLOT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('LF-7: a failure and a failed Try again with the same code file ONE capture (one per failure episode, review #38)', async () => {
+    const err1 = await codedError('internal', 500);
+    const err2 = await codedError('internal', 500);
+    queueBallots([() => Promise.reject(err1), () => Promise.reject(err2)]);
+    const user = userEvent.setup();
+    render(<BallotSection {...ballotProps('event-1')} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getAllByRole('status').some((r) => r.textContent === BALLOT_LOAD_FAILED)).toBe(true)
+    );
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledTimes(1);
+  });
+
+  it('LF-8: a successful load ends the episode, so a later failure with the same code files again (review #38)', async () => {
+    (ballotAPI.toggleVote as Mock).mockResolvedValueOnce({ voted: true });
+    const err1 = await codedError('internal', 500);
+    const err2 = await codedError('internal', 500);
+    queueBallots([() => Promise.reject(err1), OPEN_BALLOT, () => Promise.reject(err2)]);
+    const user = userEvent.setup();
+    render(<BallotSection {...ballotProps('event-1')} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    await user.click(await screen.findByRole('button', { name: 'Catan' }));
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Wingspan/ })).not.toBeDisabled());
+
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledTimes(2);
+  });
+
+  it('LF-9: refocus re-attempts while one load is held share that ONE request (review #142)', async () => {
+    const held = deferred();
+    const err = await codedError('network', 0);
+    queueBallots([() => Promise.reject(err), held.promise]);
+    render(<BallotSection {...ballotProps('event-1')} />);
+    await screen.findByText(BALLOT_LOAD_FAILED);
+    expect(ballotAPI.getBallot).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireVisibility('visible');
+      fireVisibility('visible');
+    });
+    expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      held.resolve(TIE_BREAK);
+    });
+    await screen.findByRole('heading', { name: 'Game Vote' });
+  });
+
+  it('LF-10: two failing instances show one banner each, two distinct assertive regions, none nested (owner ruling #192, OPTION A)', async () => {
+    const err1 = await codedError('internal', 500);
+    const err2 = await codedError('internal', 500);
+    queueBallots([() => Promise.reject(err1), () => Promise.reject(err2)]);
+    render(
+      <>
+        <BallotSection {...ballotProps('event-1')} />
+        <BallotSection {...ballotProps('event-2')} />
+      </>
+    );
+
+    await waitFor(() => expect(screen.getAllByText(BALLOT_LOAD_FAILED)).toHaveLength(2));
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts).toHaveLength(2);
+    for (const alert of alerts) expect(alert).toHaveTextContent(BALLOT_LOAD_FAILED);
+    expect(alerts[0]).not.toBe(alerts[1]);
+    expect(alerts[0].contains(alerts[1])).toBe(false);
+    expect(alerts[1].contains(alerts[0])).toBe(false);
   });
 });
