@@ -11,6 +11,7 @@ import { wallClockToUtc } from '../../lib/datetime';
 import WriteCell from './heatmap/WriteCell';
 import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 
 // Zero-pad an hour/minute to two digits for the "yyyy-MM-ddTHH:mm" wall-clock
 // string handed to wallClockToUtc. Module-level (stable identity, no deps).
@@ -36,7 +37,20 @@ function writeCellName(prefix, preference) {
 // (see DECISION Phase 88.6.1-39 (D-14 / D-45, R3-M20) at the summary effect below). The words
 // reuse plan 88.6.1-17's state words, so the cell names and the summary speak one spelling.
 const SELECTION_SUMMARY_TAIL = 'slots selected';
+// DECISION Phase 88.6.1-39 (D-16, copy rows A1 / A4): what the line under the grid says when
+// nothing is selected. The instruction branches on the shared phone hook (plan 88.6.1-09,
+// usePhoneViewport), CHOSEN OVER responsive utility classes (DECISION Phase 88.1-11's reason:
+// jsdom applies no stylesheet, so no unit pin could tell the two arms apart) and OVER a copy of
+// the subscription in this file (the duplication tenet). Desktop keeps its sentence
+// byte-identical. The hook starts false and flips after mount, which is harmless here ONLY
+// because the line is no longer live (research CP-5): making it live again would announce that
+// flip. After Clear All the line shows A4 until the next paint, and the instruction returns only
+// when the grid is empty AND no Clear All just happened (D-33 row 17) — CHOSEN OVER returning to
+// the instruction at once (A4 would vanish before a sighted user read it, and the instruction
+// never says anything was cleared). Changing this is a decision, not a cleanup.
 const GESTURE_HINT_DESKTOP = 'Click and drag to select your available times';
+const GESTURE_HINT_PHONE = 'Tap a time to select it. Press and hold, then drag, to select several.';
+const ALL_CLEARED_TEXT = 'All times cleared.';
 // Test handles, not user-facing (the tests re-declare these literals; not exported, the
 // magic-link page's own house style for its region handle).
 const GRID_SUMMARY_STATUS_TESTID = 'availability-grid-summary-status';
@@ -100,6 +114,15 @@ export default function AvailabilityGrid({
   const gestureChangedRef = useRef(false);
   // The last request the summary effect has spoken.
   const handledSummaryRef = useRef(0);
+  // True from a Clear All until the next paint: the line shows A4 instead of the instruction
+  // (see DECISION Phase 88.6.1-39 (D-16, copy rows A1 / A4) at the module constants).
+  const [justCleared, setJustCleared] = useState(false);
+  useEffect(() => {
+    if (value.length > 0) setJustCleared(false);
+  }, [value.length]);
+  // The one phone-viewport hook (plan 88.6.1-09): false on the first render, then the live
+  // answer. Only the empty-grid instruction reads it.
+  const isPhoneViewport = usePhoneViewport();
 
   // ARIA grid roving tabindex (84-10 / F-803/809): AvailabilityGrid is one of
   // the three roving keyboard INPUT grids. The nav-key + select state machine
@@ -275,6 +298,7 @@ export default function AvailabilityGrid({
       const filtered = value.filter((s) => !dayKeys.has(s.slotId));
       if (filtered.length !== value.length) {
         onChange?.(filtered);
+        setSummaryRequest((n) => n + 1);
       }
     } else {
       // Not full: paint every empty slot in this day column.
@@ -287,6 +311,7 @@ export default function AvailabilityGrid({
       });
       if (additions.length > 0) {
         onChange?.([...value, ...additions]);
+        setSummaryRequest((n) => n + 1);
       }
     }
   }, [days, dayFull, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
@@ -307,6 +332,7 @@ export default function AvailabilityGrid({
     if (allChecked) {
       // Uncheck All clears every painted slot — symmetric with the check path.
       onChange?.([]);
+      setSummaryRequest((n) => n + 1);
     } else {
       // Paint every slot in the grid that isn't already painted.
       const additions = [];
@@ -320,6 +346,7 @@ export default function AvailabilityGrid({
       });
       if (additions.length > 0) {
         onChange?.([...value, ...additions]);
+        setSummaryRequest((n) => n + 1);
       }
     }
   }, [allChecked, days, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
@@ -755,10 +782,15 @@ export default function AvailabilityGrid({
   // stranded-checkbox bug cannot recur.)
   // Plan 88.6-63: the button stays mounted when the selection is empty (aria-disabled, see the
   // DECISION at the button), so an empty-state press is REFUSED here, on the first line.
+  // AMENDED Phase 88.6.1-39 (D-33 row 17, copy row A4): an accepted press now also speaks
+  // "All times cleared." and shows it on the line under the grid until the next paint (see
+  // DECISION Phase 88.6.1-39 (D-16, copy rows A1 / A4) at the module constants).
   const handleClearAll = useCallback(() => {
     if (value.length === 0) return;
     onChange?.([]);
-  }, [onChange, value.length]);
+    announce(ALL_CLEARED_TEXT);
+    setJustCleared(true);
+  }, [onChange, value.length, announce]);
 
   return (
     <div className="w-full">
@@ -1065,7 +1097,13 @@ export default function AvailabilityGrid({
           (DECISION Phase 88.6.1-39 at the summary effect). The note's premise — a polite region
           mounted with its content announces nothing — stands (D-42).] */}
       <div data-testid={GRID_SUMMARY_LINE_TESTID} className="mt-3 text-sm text-content-secondary">
-        {value.length > 0 ? selectionSummaryText(value) : GESTURE_HINT_DESKTOP}
+        {value.length > 0
+          ? selectionSummaryText(value)
+          : justCleared
+            ? ALL_CLEARED_TEXT
+            : isPhoneViewport
+            ? GESTURE_HINT_PHONE
+            : GESTURE_HINT_DESKTOP}
       </div>
       <StatusRegion
         politeness="polite"
