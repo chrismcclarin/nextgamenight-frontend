@@ -710,6 +710,34 @@ describe('BallotSection — a failed vote keeps the card, and a late answer chan
     // The stale-closure refetch for event-1 sends no GET.
     expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2);
   });
+
+  // Carry-in, plan 88.6.1-82 (register entry "BallotSection shows the PREVIOUS event's ballot"):
+  // the single-event mount keeps one instance across an eventId change, so the previous event's
+  // card must be gone the moment the prop changes, not when the new GET answers.
+  it('T2j (carry-in 88.6.1-82): while a NEW eventId loads, the previous event ballot is gone and nothing of it can be pressed; the loader shows until the new ballot arrives', async () => {
+    const second = deferred();
+    queueBallots([TIE_BREAK, second.promise]);
+    const { rerender } = render(<BallotSection {...ballotProps('event-1')} />);
+    await screen.findByRole('button', { name: 'Catan' });
+
+    rerender(<BallotSection {...ballotProps('event-2')} />);
+
+    expect(screen.queryByRole('button', { name: 'Catan' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Wingspan' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Game Vote' })).toBeNull();
+    expect(screen.getByText('Loading ballot...')).toBeInTheDocument();
+    await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledTimes(2));
+    expect(ballotAPI.getBallot).toHaveBeenLastCalledWith('event-2');
+    expect(ballotAPI.resolveTie).not.toHaveBeenCalled();
+
+    await act(async () => {
+      second.resolve(EVENT2_TIE_BREAK);
+    });
+
+    expect(await screen.findByRole('button', { name: 'Azul' })).toBeInTheDocument();
+    expect(screen.queryByText('Loading ballot...')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Catan' })).toBeNull();
+  });
 });
 
 // Plan 88.6.1-31 Task 3 (E15, Req 9; owner ruling 2026-10-05). The server's ONLY "this event has
