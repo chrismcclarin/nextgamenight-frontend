@@ -814,3 +814,13 @@ describe('BringGamePicker — the focus contract axe cannot see (T-88.6-141)', (
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });
+
+describe('BringGamePicker — the dynamic-viewport cap (88.6.1-56, W023 class)', () => {
+  it('BP-W1. the dialog caps its height at 80% of the DYNAMIC viewport, not the static one', () => {
+    render(<Host initiallyOpen />);
+    const cls = screen.getByRole('dialog').className;
+    expect(cls).toContain('max-h-[80dvh]');
+    expect(cls).not.toContain('max-h-[80' + 'vh]');
+    expect(cls).not.toContain('max-h-[90dvh]');
+  });
+});

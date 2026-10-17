@@ -323,7 +323,14 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
        flex column, the list owns the scroll with `min-h-0`). Collapsing it into a
        single scrolling body would push the search field off-screen as soon as the
        list scrolls — that is a decision, not a cleanup. */
-    <Modal open onClose={handleClose} className="max-w-md max-h-[80vh]">
+    /* DECISION Phase 88.6.1-56 (W023 class): CHOSEN — the 80% height cap is kept (this dialog's
+       own choice) and its unit is the DYNAMIC viewport unit the shared primitive
+       (`Modal.tsx`, `DECISION Phase 88.6-08`) and the day dialog (plan 88.6.1-47) use, so the
+       dialog's bottom and its Save button never sit under a phone's browser toolbar.
+       REJECTED: dropping the override (the dialog would grow to the primitive's 90%, a visible
+       change) and keeping the static unit (W023's defect). Changing this is a decision, not a
+       cleanup. */
+    <Modal open onClose={handleClose} className="max-w-md max-h-[80dvh]">
       <Modal.Header>Games to Bring</Modal.Header>
       <Modal.Body className="flex flex-col p-0 md:p-0">
         {/* Phase 88.6-44 (T-88.6-142): the two always-mounted announcement regions — see the
@@ -346,7 +353,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
               house rule allows `aria-label` alone only where a visible label genuinely cannot
               exist, and here it cannot in THIS phase: a visible "Search" line is NEW VISIBLE
               COPY with no UI-SPEC §6.3 row (P1 forbids an executor minting it) and a new
-              visible row on a `max-h-[80vh]` dialog whose list owns the scroll — ~24px of list
+              visible row on a `max-h-[80dvh]` dialog whose list owns the scroll — ~24px of list
               height at 375px on a phone-primary surface, an unsanctioned look delta. The
               `aria-label` mirrors the placeholder so sighted and spoken names agree. `id`/`name`
               are present regardless: the autofill heuristic does not read ARIA. Adding a visible
