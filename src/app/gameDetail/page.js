@@ -23,6 +23,7 @@ import SafeImage from '../components/SafeImage';
 import ClickableMemberName from '../components/ClickableMemberName';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
+import { FormField } from '../components/form/FormField';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { logger, errCtx } from '../../lib/logger';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
@@ -441,6 +442,10 @@ function buildSignInUrl() {
 // 88.6.1-47 (D-44): the id of the Game Sessions filter panel, named by the "Show Filters & Sort"
 // disclosure's aria-controls while the panel is mounted.
 const SESSION_FILTERS_PANEL_ID = 'game-sessions-filters';
+
+// Copy row E5 (D-30, seen and heard), ratified 2026-10-04; byte-checked against
+// 88.6.1-COPY-TABLE.html (row E5). The Sessions filter's To Date error, shown only while the range is backwards.
+const SESSION_DATE_RANGE_ERROR = 'To Date must be on or after From Date.';
 
 export default function GameDetailPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -1717,6 +1722,22 @@ export default function GameDetailPage() {
     };
 
     const displayedEvents = filteredEvents.slice(0, visibleSessions);
+
+    // 88.6.1-52 (D-25, E5; review #212, #59): the Sessions date range is backwards only when BOTH
+    // values are complete dates — the YYYY-MM-DD shape with exactly four year digits, and not
+    // earlier than 1000-01-01 — and the To string sorts before the From string. Under that guard
+    // string order really is date order; a bare `filters.dateTo < filters.dateFrom` is not: a
+    // five-digit year sorts by its first character, and Chrome's progressive year values
+    // (0002-…, 0020-…, 0202-…) while a desktop year is typed sort before any real year, so the
+    // alert would fire mid-entry. Equal dates are valid ("on or after").
+    // `new Date(...)` is deliberately not used: `new Date('10000-01-01')` is not an ISO date
+    // string, so what it parses to depends on the engine, and it would hide the five-digit case
+    // only by accident.
+    const isCompleteSessionDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && value >= '1000-01-01';
+    const sessionDateRangeInverted =
+        isCompleteSessionDate(filters.dateFrom) &&
+        isCompleteSessionDate(filters.dateTo) &&
+        filters.dateTo < filters.dateFrom;
 
     // Shared per-event card renderer for the Upcoming and Game Sessions sections
     // (88-33 Task 7 step 1b — the card is defined ONCE; `interactive` controls
@@ -3220,9 +3241,9 @@ export default function GameDetailPage() {
 
                             These are NATIVE attributes, which is the point: iOS and Android date pickers
                             honour `min`/`max` by greying out unreachable days, and a picker is the surface
-                            the owner was actually using when he reported this. `Input` spreads unknown
-                            props straight onto the element (`src/components/ui/Input.tsx:143`, contract
-                            recorded at `:27-29`), so no primitive changes.
+                            the owner was actually using when he reported this. `Input.tsx` spreads
+                            `...props` straight onto the element (the composition-contract note in its
+                            docblock), so no primitive changes.
 
                             THE BOUNDS ARE TWO-SIDED ON PURPOSE. A one-sided `min` on the To control would
                             trap a user who set To first: with From unbounded he could still pick an
@@ -3237,12 +3258,16 @@ export default function GameDetailPage() {
                             REJECTED — an inline error message for the typed path. The string would be NEW
                             visible copy, the phase's P1 contract forbids minting it, and neither register
                             holds a reusable one: UI-SPEC §6.3's 17 rows are all fetch-failure or
-                            save-success strings, and `MESSAGE_BY_CODE`
-                            (`src/components/ui/useFetchErrorState.ts:46-112`) is exhaustive over
+                            save-success strings, and `useFetchErrorState.ts`'s `MESSAGE_BY_CODE` is exhaustive over
                             `FetchErrorCode` — every entry is an API-failure message and this filter calls
                             no API. Routed to Phase 88.9 with the proposed string named on a row in
                             `.planning/deferred/phase-88.6.md`, so the owner ratifies it in the look phase
-                            rather than an executor minting it mid-sweep. */}
+                            rather than an executor minting it mid-sweep.
+                            [AMENDED Phase 88.6.1-52 (D-25, E5)] The REJECTED paragraph's only reason —
+                            the 88.6 copy contract forbade minting the string — no longer holds: row E5
+                            was ratified on 2026-10-04 (D-30) and now ships on To Date (see
+                            `DECISION Phase 88.6.1-52 (D-25 / E5)` below). The WHAT THIS DOES NOT DO
+                            paragraph's typed-path gap is closed by it. The bounds are unchanged. */}
                         <div>
                             <label htmlFor="session-filter-date-from" className="block text-sm text-content-secondary mb-1">From Date</label>
                             <Input
@@ -3253,8 +3278,25 @@ export default function GameDetailPage() {
                                 onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
                             />
                         </div>
-                        <div>
-                            <label htmlFor="session-filter-date-to" className="block text-sm text-content-secondary mb-1">To Date</label>
+                        {/* DECISION Phase 88.6.1-52 (D-25 / E5): CHOSEN — the house `FormField` on To Date
+                            only, with `labelClassName` holding today's exact label classes (no look
+                            change at rest) and `error` set to copy row E5 only while the range is
+                            backwards. The error sits on To because the ratified sentence names To. It
+                            is a `role="alert"` line inserted with its text, which D-42 rules is
+                            announced on insertion. REJECTED — (a) converting all ten session filters
+                            to `FormField` (no defect behind it; `DECISION Phase 88-20`'s htmlFor/id
+                            association is already met); (b) a second error on From (one condition,
+                            one message); (c) clamping or correcting the typed date (it would silently
+                            change what the person typed); (d) a raw string compare of the two values
+                            (wrong for years of five or more digits, and it alerts while a desktop
+                            year is being typed — hence the complete-date guard on
+                            `sessionDateRangeInverted`). The two-sided native bounds above stay.
+                            Removing the message is a decision, not a cleanup. */}
+                        <FormField
+                            label="To Date"
+                            labelClassName="block text-sm text-content-secondary mb-1"
+                            error={sessionDateRangeInverted ? SESSION_DATE_RANGE_ERROR : undefined}
+                        >
                             <Input
                                 id="session-filter-date-to"
                                 type="date"
@@ -3262,7 +3304,7 @@ export default function GameDetailPage() {
                                 min={filters.dateFrom || undefined}
                                 onChange={(e) => handleFilterChange('dateTo', e.target.value)}
                             />
-                        </div>
+                        </FormField>
 
                         {/* Player Filters */}
                         <div>

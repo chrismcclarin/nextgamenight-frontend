@@ -448,3 +448,43 @@ for (const surface of SURFACES) {
     });
   }
 }
+
+// Phase 88.6.1-52 (D-25, copy row E5, AC-32): the backwards date range at 375px. It reuses the
+// synthetic game view (`newline` probe: one past session, 7 days ago), so the From/To pair below
+// filters it out and the empty list must explain itself.
+const E5_TEXT = 'To Date must be on or after From Date.';
+
+test('Sessions filter at 375 — a backwards date range explains itself (E5, D-25)', async ({ page }) => {
+  hold = await holdWrites(page);
+  await openGamePage(page, 'newline');
+
+  await page.getByRole('button', { name: /Show Filters/ }).click();
+  const toDate = page.getByLabel('To Date');
+  await page.getByLabel('From Date').fill('2026-05-10');
+  await toDate.fill('2026-05-01');
+
+  const message = page.getByText(E5_TEXT);
+  await expect(message, 'E5 shows under To Date while To is before From').toBeVisible();
+  await expect(toDate).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('No sessions match your filters.'), 'the empty list shows beside E5').toBeVisible();
+
+  const geometry = await message.evaluate((el) => ({
+    right: el.getBoundingClientRect().right,
+    innerWidth: window.innerWidth,
+    docScrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(geometry.right, `E5's right edge ${geometry.right} past the ${geometry.innerWidth}px viewport`).toBeLessThanOrEqual(
+    geometry.innerWidth + 1,
+  );
+  expect(
+    geometry.docScrollWidth,
+    `the document scrolls sideways: scrollWidth ${geometry.docScrollWidth} at a ${geometry.innerWidth}px viewport`,
+  ).toBeLessThanOrEqual(geometry.innerWidth);
+
+  await toDate.fill('2026-05-20');
+  await expect(toDate).toHaveValue('2026-05-20');
+  await expect(message, 'E5 clears once the range is the right way round').toHaveCount(0);
+  await expect(toDate).not.toHaveAttribute('aria-invalid');
+
+  await expectNoWritesThenUnroute(page, hold);
+});

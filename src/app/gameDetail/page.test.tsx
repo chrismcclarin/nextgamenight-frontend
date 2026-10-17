@@ -2160,6 +2160,11 @@ describe('gameDetail breadcrumb landmarks are named (#175)', () => {
 // THIS ASSERTS THE DERIVATION, NOT A DATE: each bound is set from a variable and then
 // CHANGED, so a hard-coded bound reds. The empty case is pinned too — this filter starts
 // empty on both ends, and an empty-string bound is a real bound of nothing.
+//
+// [AMENDED Phase 88.6.1-52 (D-25, E5)] The typed path's explanation is no longer routed to
+// Phase 88.9: it was ratified as copy row E5 on 2026-10-04 (D-30) and now ships on To Date,
+// pinned by the E5 describe at the end of this file. The bounds themselves are unchanged, and
+// the test below is byte-unchanged.
 describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
   it('bounds each date control by its sibling, and places no bound while the sibling is empty', async () => {
     const user = userEvent.setup();
@@ -3153,5 +3158,112 @@ describe('gameDetail typed line breaks (R10, 88.6.1-52)', () => {
       expect(matches, `one paragraph renders ${JSON.stringify(rendered)}`).toHaveLength(1);
       expectTypedTextClasses(matches[0]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-52 (D-25, copy row E5, AC-32) — a backwards Sessions date range explains itself.
+// The ratified sentence shows under To Date through the house FormField (role="alert", the To
+// input aria-invalid and described by it) only while BOTH values are complete dates and To sorts
+// before From. Every absence assertion follows a positive settle on the input's own value.
+// ---------------------------------------------------------------------------
+const E5_TEXT = 'To Date must be on or after From Date.';
+
+async function openSessionFilters() {
+  fireEvent.click(await screen.findByRole('button', { name: /Show Filters/ }));
+  return {
+    from: screen.getByLabelText('From Date') as HTMLInputElement,
+    to: screen.getByLabelText('To Date') as HTMLInputElement,
+  };
+}
+
+function expectToDateValid(to: HTMLInputElement) {
+  expect(screen.queryByText(E5_TEXT)).toBeNull();
+  expect(to).not.toHaveAttribute('aria-invalid');
+  expect(to).not.toHaveAttribute('aria-describedby');
+}
+
+describe('gameDetail Sessions date filter explains a backwards range (E5, 88.6.1-52)', () => {
+  it('E5-1: a To date before the From date shows E5 as an alert wired to the To input', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    const msg = await screen.findByText(E5_TEXT);
+    expect(msg).toHaveAttribute('role', 'alert');
+    expect(msg.id).toBe('session-filter-date-to-error');
+    expect(to).toHaveAttribute('aria-invalid', 'true');
+    expect(to).toHaveAttribute('aria-describedby', msg.id);
+    expect(from).not.toHaveAttribute('aria-invalid');
+  });
+
+  // SPEC Edge Coverage empty / R11: the empty list now says why it is empty.
+  it('E5-2: the empty session list and E5 show together', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(await screen.findByText('No sessions match your filters.')).toBeInTheDocument();
+    expect(screen.getByText(E5_TEXT)).toBeInTheDocument();
+  });
+
+  it('E5-3: clearing To removes E5 and both attributes, and equal dates are valid', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(await screen.findByText(E5_TEXT)).toBeInTheDocument();
+
+    fireEvent.change(to, { target: { value: '' } });
+    expect(to.value).toBe('');
+    expectToDateValid(to);
+
+    fireEvent.change(from, { target: { value: '2026-05-01' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(from.value).toBe('2026-05-01');
+    expect(to.value).toBe('2026-05-01');
+    expectToDateValid(to);
+  });
+
+  // Control (green before and after): zero look change at rest.
+  it('E5-4: at rest the To label keeps its exact classes and the To input carries no error wiring', async () => {
+    renderGameDetail({ role: 'member' });
+    const { to } = await openSessionFilters();
+    const toLabel = document.querySelector('label[for="session-filter-date-to"]') as HTMLLabelElement;
+    const fromLabel = document.querySelector('label[for="session-filter-date-from"]') as HTMLLabelElement;
+    expect(toLabel.className).toBe('block text-sm text-content-secondary mb-1');
+    expect(toLabel.textContent).toBe('To Date');
+    expect(fromLabel.className).toBe('block text-sm text-content-secondary mb-1');
+    expect(to).not.toHaveAttribute('aria-invalid');
+    expect(to).not.toHaveAttribute('aria-describedby');
+  });
+
+  // #212: Chrome hands the page progressive year values (0002-, 0020-, 0202-) while a desktop
+  // year is typed; a raw string compare would alert mid-entry because '0002' sorts before '2026'.
+  it('E5-5: a year still being typed shows no E5', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(await screen.findByText(E5_TEXT)).toBeInTheDocument();
+
+    fireEvent.change(to, { target: { value: '0002-05-01' } });
+    expect(to.value).toBe('0002-05-01');
+    expectToDateValid(to);
+  });
+
+  // #59: a five-digit year. A raw string compare sorts '10000-' before '2026-' by its first
+  // character. jsdom keeps the value (its date sanitiser accepts four or more year digits); the
+  // read-back below is this arm's precondition.
+  it('E5-6: a five-digit year shows no E5', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(await screen.findByText(E5_TEXT)).toBeInTheDocument();
+
+    fireEvent.change(to, { target: { value: '10000-01-01' } });
+    expect(to.value).toBe('10000-01-01');
+    expectToDateValid(to);
   });
 });
