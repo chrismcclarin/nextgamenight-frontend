@@ -557,8 +557,13 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     const retryBox = await retry.boundingBox();
     expect(retryBox, 'Retry has a box').not.toBeNull();
     if (retryBox) {
-      expect(retryBox.width, 'Retry width').toBeGreaterThanOrEqual(44);
-      expect(retryBox.height, 'Retry height').toBeGreaterThanOrEqual(44);
+      // The 44 x 44 floor is the PHONE tenet (contract C8 d: "a phone e2e at 375px"); the shared
+      // Retry row carries `min-h-11 md:min-h-0`, so `journeys` (desktop) measures the opt-out
+      // (wave 7 CI gate, run 39020174955: 20px there). The edges below hold at every width.
+      if (testInfo.project.name === 'phone') {
+        expect(retryBox.width, 'Retry width').toBeGreaterThanOrEqual(44);
+        expect(retryBox.height, 'Retry height').toBeGreaterThanOrEqual(44);
+      }
       expect(retryBox.x, 'Retry left edge').toBeGreaterThanOrEqual(0);
       expect(retryBox.x + retryBox.width, 'Retry right edge').toBeLessThanOrEqual(viewportWidth);
     }
