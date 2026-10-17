@@ -19,6 +19,7 @@ import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import MemberChipStack from './MemberChipStack';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
@@ -81,7 +82,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // flips value at PR-C). selfUuid resolves ASYNC, so role derivation runs in its own effect
   // gated on resolution (D-04 async-resolution constraint).
   const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-  const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+  // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+  const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
   const [groups, setGroups] = useState([]);
   // From Phase 88.6.1-41 on, `loading` means only "a groups request is in flight"; the render
   // reads it solely for the cards wrapper's `aria-busy`. The first-load gate is `hasLoaded` below.
@@ -326,7 +328,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // replaces a working list. A failed refetch keeps the query's data, so `selfUuid` stays
   // defined; this shell is for a terminal failure with NO id, and the compact notice in the
   // list below carries the retained case.
-  if (selfIdentityErrorState.showError && !selfUuid) {
+  // AMENDED Phase 88.6.1-63 (AC-29): the held-row case no longer shows the compact notice either,
+  // because after a non-access failure its sentence is false while every control works from the
+  // held row, and an access answer is told by the list's own request (C10). The no-row rule now
+  // lives in selfIdentityErrorSource.ts, so this condition reads the error state alone.
+  if (selfIdentityErrorState.showError) {
     return (
       <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
@@ -390,10 +396,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         )}
       </div>
 
-      {/* D-08: if identity resolution permanently fails, per-group role
-          affordances (Invite / settings) silently vanish — surface a compact,
-          non-blocking degrade notice instead of failing silently (D-11). */}
-      <FetchErrorBanner state={selfIdentityErrorState} compact />
+      {/* DECISION Phase 88.6.1-63 (AC-29): CHOSEN — the identity shell (the early return above)
+          is the list's one identity notice, and it shows whenever identity failed with no row
+          held. REJECTED — keeping a second compact identity mount here: this return renders only
+          once the list has loaded, which needs a resolved identity id, and the no-row rule never
+          reports a failure while that id is held, so the mount could never render (a dead element
+          under a comment saying it shows). D-08's intent, never failing silently, is kept by the
+          shell. */}
 
       {/* DECISION Phase 88.6.1-77 (C12, focus when the list is withdrawn): focus never falls to
           the page body when an access or gone answer withdraws the cards.

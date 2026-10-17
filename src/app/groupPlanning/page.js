@@ -9,6 +9,7 @@ import CreateEvent from '../components/createEvent';
 import ResponseDashboard from '../components/ResponseDashboard';
 import PromptScheduleSection from '../components/PromptScheduleSection';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
@@ -30,7 +31,8 @@ export default function GroupPlanningPage() {
     // self-fetch (getUser by sub). selfUuid feeds the self-role derive
     // (UUID vs nested member.id) and PromptScheduleSection's currentUserDbId.
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+    // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
@@ -416,7 +418,10 @@ export default function GroupPlanningPage() {
                 first-failure sentence after every failed Retry and never saying "still"; a
                 superseded read resolves nothing rather than a failure, so a stale answer is never
                 reported as the outcome of the press.
-                Changing this is a decision, not a cleanup. */}
+                Changing this is a decision, not a cleanup.
+                AMENDED Phase 88.6.1-63 (AC-29): identity counts as failed only with no row held;
+                with a held row the role read runs and, if it fails, it is the failure this notice
+                tells and the request its Retry repeats; the two can no longer show at once. */}
             <FetchErrorBanner state={personalControlsErrorState} compact />
 
             {/* A failed GROUP load — the page keeps its generic "Plan Game Session" title and the

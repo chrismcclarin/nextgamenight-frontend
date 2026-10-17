@@ -25,6 +25,7 @@ import GroupLibrary from '../components/GroupLibrary';
 import KebabMenu from '../components/KebabMenu';
 import GroupSettings from '../components/GroupSettings';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
@@ -56,7 +57,8 @@ function GroupHomePage(){
     // selfUuid makes the find miss and would bounce an active member off their
     // own group. Identity-unresolved is a LOADING state, never "removed".
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+    // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
