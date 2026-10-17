@@ -108,9 +108,6 @@ function FriendsPage() {
     const [friends, setFriends] = useState([]);
     const [sentRequests, setSentRequests] = useState([]);
 
-    // Loading state per tab
-    const [loadingFriends, setLoadingFriends] = useState(true);
-    const [loadingSent, setLoadingSent] = useState(true);
     // Has each list loaded successfully at least once (see the AC-29 marker on fetchFriends)?
     const [friendsLoaded, setFriendsLoaded] = useState(false);
     const [sentLoaded, setSentLoaded] = useState(false);
@@ -312,20 +309,26 @@ function FriendsPage() {
        effect cleanup to cancel them. Every failure is still logged and reported once, before the
        check. REJECTED: a visible "Updating" line or aria-busy on the list (D-09 gave that line
        to Browse Games only). The failed-refresh treatment (rows kept beside a notice) is plan
-       88.6.1-72's. Changing this is a decision, not a cleanup. */
+       88.6.1-72's. Changing this is a decision, not a cleanup.
+       AMENDED Phase 88.6.1-72 (88.6.1-70 contract C2 / C4): the error is cleared only by the
+       newest success, never at the start of a run, so the notice and the full banner stay mounted
+       through their own retry; each run resolves { isError } for the retry that ran (undefined when
+       a newer run superseded it), which is what lets a failed retry be announced and a success be
+       told apart from a lagging commit. The loading line now reads the has-loaded flag alone, so
+       the per-run loading state it used is gone. */
     const fetchFriends = async () => {
         const gen = ++friendsFetchGenRef.current;
-        setLoadingFriends(true);
-        setFriendsLoadError(null);
         try {
             const data = await friendshipsAPI.getFriends();
-            if (gen !== friendsFetchGenRef.current) return;
+            if (gen !== friendsFetchGenRef.current) return undefined;
             setFriends(Array.isArray(data) ? data : []);
             setFriendsLoaded(true);
+            setFriendsLoadError(null);
+            return { isError: false };
         } catch (err) {
             logger.info('Error fetching friends:', errCtx(err));
             queryCacheOnError(err, { queryKey: ['friendships', 'accepted'] });
-            if (gen !== friendsFetchGenRef.current) return;
+            if (gen !== friendsFetchGenRef.current) return undefined;
             // Keep the ERROR, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
             // Wording matches the 88-18 register ("The X request didn't complete.") used by
@@ -335,8 +338,7 @@ function FriendsPage() {
             setFriendsLoadError(
                 err instanceof Error ? err : new Error("The friends request didn't complete.")
             );
-        } finally {
-            if (gen === friendsFetchGenRef.current) setLoadingFriends(false);
+            return { isError: true };
         }
     };
 
@@ -369,26 +371,26 @@ function FriendsPage() {
     });
 
     // The same first-load-only line and newest-wins generation as fetchFriends (its marker).
+    // Contract C2 / C4 as well (the amendment on that marker).
     const fetchSentRequests = async () => {
         const gen = ++sentFetchGenRef.current;
-        setLoadingSent(true);
-        setSentError(null);
         try {
             const data = await friendshipsAPI.getSentRequests();
-            if (gen !== sentFetchGenRef.current) return;
+            if (gen !== sentFetchGenRef.current) return undefined;
             setSentRequests(Array.isArray(data) ? data : []);
             setSentLoaded(true);
+            setSentError(null);
+            return { isError: false };
         } catch (err) {
             logger.info('Error fetching sent requests:', errCtx(err));
             queryCacheOnError(err, { queryKey: ['friendships', 'sent'] });
-            if (gen !== sentFetchGenRef.current) return;
+            if (gen !== sentFetchGenRef.current) return undefined;
             // Keep the ERROR object, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
             setSentError(
                 err instanceof Error ? err : new Error("The sent-requests request didn't complete.")
             );
-        } finally {
-            if (gen === sentFetchGenRef.current) setLoadingSent(false);
+            return { isError: true };
         }
     };
 
@@ -424,6 +426,10 @@ function FriendsPage() {
        memory of such an answer is the provider's (Task 4), because the provider outlives this
        page. Changing this is a decision, not a cleanup. */
     const requestsRetained = useRetainedContent(friendshipHasLoaded === true, requestsErrorState);
+    // The Friends and Sent tabs the same way (88.6.1-70 contract C10): the has-loaded flag (C3)
+    // through the shared hook, which withdraws on an access or gone answer until the next success.
+    const friendsRetained = useRetainedContent(friendsLoaded, friendsErrorState);
+    const sentRetained = useRetainedContent(sentLoaded, sentErrorState);
     // FR1, the Requests tab's full banner: an error with nothing retained.
     const requestsFullBannerShown = requestsErrorState.showError && !requestsRetained;
     // FR1 showing CLEARS the request-action line (a clear, not a hide; the N5 / N6 marker), so a
@@ -1162,230 +1168,257 @@ function FriendsPage() {
                             told the person they had no friends — the shipped walkthrough finding §9.2
                             folds in. EmptyState means "nothing here yet" and nothing else; a fetch
                             failure gets the error banner with its retry. Collapsing these back into one
-                            branch is a decision to re-introduce that lie, not a simplification. */}
-                        {loadingFriends && !friendsLoaded ? (
-                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
-                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
-                                <span>Loading friends...</span>
-                            </div>
-                        ) : friendsErrorState.showError ? (
+                            branch is a decision to re-introduce that lie, not a simplification.
+                            AMENDED Phase 88.6.1-72 (RF1; 88.6.1-70 contract C1-C6): empty and failed stay separate for a
+                            list that never loaded; the full banner owns that case and is checked before the
+                            loading line, so it survives its own Try again (C2). Once a load has succeeded, a
+                            failed refresh keeps what was shown (rows, or the empty line of a list that loaded
+                            empty; owner ruling 2026-10-05: a list that loaded empty is retained content) under
+                            the shared RF1 notice, which labels it as what loaded earlier, so the empty line
+                            beside it no longer states the present as fact. An answer saying access was lost or
+                            the content is gone is never kept: the full banner takes the list's place until a
+                            load succeeds (contract C10, through plan 70's shared hook). This is one treatment
+                            for the page's three lists (orchestrator decision 2026-10-05). REJECTED: the full
+                            banner above retained rows (two treatments on one page; the owner's
+                            retained-content ruling gives a refresh failure the small notice) and a row count
+                            as the retained flag (contract C3). */}
+                        {!friendsRetained && friendsErrorState.showError ? (
                             <FetchErrorBanner
                                 state={friendsErrorState}
                                 title="Couldn't load your friends"
                                 reportContext="friends page — friends list fetch"
+                                focusTarget={friendsTabRef}
                             />
-                        ) : friends.length === 0 ? (
-                            /* No CTA: the search field directly above IS the action (§9.2). */
-                            <EmptyState
-                                icon="UsersRound"
-                                heading="No friends yet"
-                                body="Search by email above to find the people you play with."
-                            />
+                        ) : !friendsLoaded ? (
+                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
+                                <span>Loading friends...</span>
+                            </div>
                         ) : (
-                            <div>
-                                {/* Group Invite Bulk Action Bar */}
-                                {userGroups.length > 0 && (
-                                    <div className="mb-4 p-3 md:p-6 card">
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            <label htmlFor="group-invite-select" className="text-sm text-content-secondary">
-                                                Invite to Group:
-                                            </label>
-                                            <SelectControl
-                                                id="group-invite-select"
-                                                aria-label="Invite to group"
-                                                value={selectedGroupId}
-                                                onChange={(e) => setSelectedGroupId(e.target.value)}
-                                                className="flex-1 min-w-[180px] max-w-xs"
-                                            >
-                                                <option value="" disabled>Select a group...</option>
-                                                {userGroups.map(group => (
-                                                    <option key={group.id} value={group.id}>
-                                                        {group.name}
-                                                    </option>
-                                                ))}
-                                            </SelectControl>
-                                            {/* Every utility this control used to carry was DEAD under
-                                                unlayered `.btn` and is deleted rather than moved: `px-4 py-2`
-                                                (padding, `globals.css:2349`), `text-sm` (font-size, `:2348`),
-                                                `font-medium` (font-weight 600, `:2347`), `flex items-center
-                                                gap-2` (`display: inline-flex` / `align-items` / `gap`,
-                                                `:2342-2345`) and the `disabled:` pair (`.btn:disabled`,
-                                                `:2397-2400`). Re-adding any of them changes no pixel.
-                                                (Cites re-pointed 88.6.1-40 to the `.btn {` block
-                                                and its `.btn:disabled {` block.) */}
-                                            <Button
-                                                variant="primary"
-                                                size="default"
-                                                onClick={handleBulkInvite}
-                                                aria-disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading || groupMembersLoading ? 'true' : undefined}
-                                                aria-busy={bulkInviteLoading || undefined}
-                                            >
-                                                {bulkInviteLoading && (
-                                                    <>
-                                                        <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                                        <span className="sr-only">Sending invites...</span>
-                                                    </>
+                            <>
+                                {/* 88.6.1-70 contract C6: above the content, outside the rows' stack. */}
+                                <RefreshFailedNotice
+                                    state={friendsErrorState}
+                                    retained={friendsRetained}
+                                    focusTarget={friendsTabRef}
+                                    className="mb-4"
+                                />
+                                {friends.length === 0 ? (
+                                    /* No CTA: the search field directly above IS the action (§9.2). */
+                                    <EmptyState
+                                        icon="UsersRound"
+                                        heading="No friends yet"
+                                        body="Search by email above to find the people you play with."
+                                    />
+                                ) : (
+                                    <div>
+                                        {/* Group Invite Bulk Action Bar */}
+                                        {userGroups.length > 0 && (
+                                            <div className="mb-4 p-3 md:p-6 card">
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <label htmlFor="group-invite-select" className="text-sm text-content-secondary">
+                                                        Invite to Group:
+                                                    </label>
+                                                    <SelectControl
+                                                        id="group-invite-select"
+                                                        aria-label="Invite to group"
+                                                        value={selectedGroupId}
+                                                        onChange={(e) => setSelectedGroupId(e.target.value)}
+                                                        className="flex-1 min-w-[180px] max-w-xs"
+                                                    >
+                                                        <option value="" disabled>Select a group...</option>
+                                                        {userGroups.map(group => (
+                                                            <option key={group.id} value={group.id}>
+                                                                {group.name}
+                                                            </option>
+                                                        ))}
+                                                    </SelectControl>
+                                                    {/* Every utility this control used to carry was DEAD under
+                                                        unlayered `.btn` and is deleted rather than moved: `px-4 py-2`
+                                                        (padding, `globals.css:2349`), `text-sm` (font-size, `:2348`),
+                                                        `font-medium` (font-weight 600, `:2347`), `flex items-center
+                                                        gap-2` (`display: inline-flex` / `align-items` / `gap`,
+                                                        `:2342-2345`) and the `disabled:` pair (`.btn:disabled`,
+                                                        `:2397-2400`). Re-adding any of them changes no pixel.
+                                                        (Cites re-pointed 88.6.1-40 to the `.btn {` block
+                                                        and its `.btn:disabled {` block.) */}
+                                                    <Button
+                                                        variant="primary"
+                                                        size="default"
+                                                        onClick={handleBulkInvite}
+                                                        aria-disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading || groupMembersLoading ? 'true' : undefined}
+                                                        aria-busy={bulkInviteLoading || undefined}
+                                                    >
+                                                        {bulkInviteLoading && (
+                                                            <>
+                                                                <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                                                <span className="sr-only">Sending invites...</span>
+                                                            </>
+                                                        )}
+                                                        Invite to Group
+                                                    </Button>
+                                                    {selectedFriends.size > 0 && (
+                                                        <span className="text-sm text-content-muted">
+                                                            {selectedFriends.size} selected
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {groupMembersLoading && (
+                                                    <div role="status" aria-label="Loading group members" className="mt-2 flex items-center gap-2 text-xs text-content-muted">
+                                                        <div aria-hidden="true" className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
+                                                        <span>Loading group members...</span>
+                                                    </div>
                                                 )}
-                                                Invite to Group
-                                            </Button>
-                                            {selectedFriends.size > 0 && (
-                                                <span className="text-sm text-content-muted">
-                                                    {selectedFriends.size} selected
-                                                </span>
-                                            )}
-                                        </div>
-                                        {groupMembersLoading && (
-                                            <div role="status" aria-label="Loading group members" className="mt-2 flex items-center gap-2 text-xs text-content-muted">
-                                                <div aria-hidden="true" className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
-                                                <span>Loading group members...</span>
+                                                {/* DECISION Phase 88.6.1-40 (Req 8, D-22, D-32 R2; Req 11): the batch
+                                                    result was a conditionally mounted block with no role, so a
+                                                    screen-reader user who pressed Invite to Group heard no outcome at
+                                                    all. It is now TWO regions mounted empty with the bar and hidden
+                                                    while empty (the D-22 house shape): a polite region for the
+                                                    all-succeeded and partial outcomes, and an alert region for the
+                                                    all-failed one. Chosen OVER one polite region for every outcome (a
+                                                    total failure would queue behind other speech; the invite panel twin
+                                                    is split the same way) and OVER the alert role for all of them (a
+                                                    success is not an alert). The words are the block's own (D-31); the
+                                                    88-27 tint per branch is unchanged.
+
+                                                    The line stays until the next batch starts: the old 5 s self-clear
+                                                    is REMOVED, chosen OVER holding and clearing it (a line that
+                                                    vanishes on its own can be gone before a sighted user looks back,
+                                                    and a first batch's clear could wipe a second batch's line), the
+                                                    twin's shape (the invite panel never self-clears). Disclosed visible
+                                                    delta, for the owner to confirm: the success, partial and all-failed
+                                                    lines no longer disappear after 5 s (if a fade is wanted, only the
+                                                    all-success line fades, never under 20 s).
+
+                                                    The group is captured when the batch starts, so a later change of
+                                                    the group select cannot re-word (and re-announce) the line. A
+                                                    selection is pruned of anyone the newly loaded group already holds,
+                                                    and only the CURRENT group's members answer writes (a generation:
+                                                    an older group's late answer neither prunes nor ends the load);
+                                                    Invite to Group refuses while the members load, so the bar never
+                                                    claims "Invited 0". Chosen OVER emptying the member list at the
+                                                    change (every checkbox would be enabled during the load) and OVER
+                                                    natively disabling the checkboxes during the load (a focused one
+                                                    would drop focus). Changing any of this is a decision, not a
+                                                    cleanup. */}
+                                                <StatusRegion
+                                                    id="friends-batch-status"
+                                                    srOnlyWhenEmpty
+                                                    message={batchStatusText}
+                                                    className={batchStatusText
+                                                        ? `mt-3 p-3 rounded-lg text-sm ${bulkInviteResult.failCount === 0
+                                                            ? 'bg-status-success-subtle text-content-status-success border border-status-success'
+                                                            : 'bg-status-warning-subtle text-content-status-warning border border-status-warning'}`
+                                                        : 'mt-3'}
+                                                />
+                                                <StatusRegion
+                                                    id="friends-batch-error"
+                                                    politeness="assertive"
+                                                    srOnlyWhenEmpty
+                                                    message={batchErrorText}
+                                                    className={batchErrorText
+                                                        ? 'mt-3 p-3 rounded-lg text-sm bg-status-error-subtle text-content-status-error border border-status-error'
+                                                        : 'mt-3'}
+                                                />
                                             </div>
                                         )}
-                                        {/* DECISION Phase 88.6.1-40 (Req 8, D-22, D-32 R2; Req 11): the batch
-                                            result was a conditionally mounted block with no role, so a
-                                            screen-reader user who pressed Invite to Group heard no outcome at
-                                            all. It is now TWO regions mounted empty with the bar and hidden
-                                            while empty (the D-22 house shape): a polite region for the
-                                            all-succeeded and partial outcomes, and an alert region for the
-                                            all-failed one. Chosen OVER one polite region for every outcome (a
-                                            total failure would queue behind other speech; the invite panel twin
-                                            is split the same way) and OVER the alert role for all of them (a
-                                            success is not an alert). The words are the block's own (D-31); the
-                                            88-27 tint per branch is unchanged.
 
-                                            The line stays until the next batch starts: the old 5 s self-clear
-                                            is REMOVED, chosen OVER holding and clearing it (a line that
-                                            vanishes on its own can be gone before a sighted user looks back,
-                                            and a first batch's clear could wipe a second batch's line), the
-                                            twin's shape (the invite panel never self-clears). Disclosed visible
-                                            delta, for the owner to confirm: the success, partial and all-failed
-                                            lines no longer disappear after 5 s (if a fade is wanted, only the
-                                            all-success line fades, never under 20 s).
+                                        {/* Friend rows with checkboxes */}
+                                        <div className="space-y-3">
+                                            {friends.map((friendship) => {
+                                                const friend = friendship.friend;
+                                                if (!friend) return null;
 
-                                            The group is captured when the batch starts, so a later change of
-                                            the group select cannot re-word (and re-announce) the line. A
-                                            selection is pruned of anyone the newly loaded group already holds,
-                                            and only the CURRENT group's members answer writes (a generation:
-                                            an older group's late answer neither prunes nor ends the load);
-                                            Invite to Group refuses while the members load, so the bar never
-                                            claims "Invited 0". Chosen OVER emptying the member list at the
-                                            change (every checkbox would be enabled during the load) and OVER
-                                            natively disabling the checkboxes during the load (a focused one
-                                            would drop focus). Changing any of this is a decision, not a
-                                            cleanup. */}
-                                        <StatusRegion
-                                            id="friends-batch-status"
-                                            srOnlyWhenEmpty
-                                            message={batchStatusText}
-                                            className={batchStatusText
-                                                ? `mt-3 p-3 rounded-lg text-sm ${bulkInviteResult.failCount === 0
-                                                    ? 'bg-status-success-subtle text-content-status-success border border-status-success'
-                                                    : 'bg-status-warning-subtle text-content-status-warning border border-status-warning'}`
-                                                : 'mt-3'}
-                                        />
-                                        <StatusRegion
-                                            id="friends-batch-error"
-                                            politeness="assertive"
-                                            srOnlyWhenEmpty
-                                            message={batchErrorText}
-                                            className={batchErrorText
-                                                ? 'mt-3 p-3 rounded-lg text-sm bg-status-error-subtle text-content-status-error border border-status-error'
-                                                : 'mt-3'}
-                                        />
+                                                // Friend side of the already-in-group join + the bulk-invite
+                                                // write arg both key on the Users.id UUID (friend.id), matching
+                                                // the roster side (member.id) above — single keyspace end-to-end.
+                                                const friendUserId = friend.id;
+                                                const isInGroup = selectedGroupId && groupMembers.includes(friendUserId);
+                                                const checkboxDisabled = !selectedGroupId || isInGroup;
+
+                                                return (
+                                                    <div
+                                                        key={friendship.id}
+                                                        data-friend-row={friendship.id}
+                                                        className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
+                                                    >
+                                                        <div className="flex items-center gap-3 flex-1">
+                                                            <input
+                                                                id={`bulk-invite-${friendship.id}`}
+                                                                name={`bulk-invite-${friendship.id}`}
+                                                                type="checkbox"
+                                                                aria-label={`Select ${friend.username}`}
+                                                                checked={isInGroup || selectedFriends.has(friendUserId)}
+                                                                disabled={checkboxDisabled}
+                                                                onChange={() => toggleFriendSelection(friendUserId)}
+                                                                className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                                                                    checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                                                }`}
+                                                            />
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="font-bold text-content-primary">
+                                                                        {friend.username}
+                                                                    </p>
+                                                                    {isInGroup && (
+                                                                        <span className="text-xs text-content-muted italic">(already in group)</span>
+                                                                    )}
+                                                                </div>
+                                                                {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
+                                                            </div>
+                                                        </div>
+                                                        {(() => {
+                                                            const friendName = friend.username || 'this friend';
+                                                            const removing = actionLoading[friendship.id] === 'remove';
+                                                            const armed = removeFriendGate.isArmed(friendship.id);
+                                                            return (
+                                                                <button
+                                                                    // targetId is the FRIENDSHIP id (what the API takes) and
+                                                                    // targetLabel is the person — the live region names them,
+                                                                    // so switching rows is a guaranteed re-announcement.
+                                                                    {...removeFriendGate.triggerProps(
+                                                                        friendship.id,
+                                                                        friendName,
+                                                                        `Remove ${friendName}`
+                                                                    )}
+                                                                    // Label-in-Name (WCAG 2.5.3) during the commit: the
+                                                                    // visible label is "Removing...", so the accessible name
+                                                                    // must contain it. The hook only owns resting-vs-armed.
+                                                                    {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
+                                                                    aria-disabled={removing ? 'true' : undefined}
+                                                                    // DECISION Phase 88-27 (D-32 bucket D): the hover affordance
+                                                                    // 87.7 stripped from here was a TEXT alpha (error text at
+                                                                    // 80% on hover). It comes back as a subtle SURFACE, chosen
+                                                                    // OVER re-adding the text alpha — that is the forbidden
+                                                                    // mechanism — and OVER leaving the control with no hover
+                                                                    // state at all, which would have been a silent downgrade
+                                                                    // dressed up as a decision. A background cannot collide with
+                                                                    // the armed state below it, which speaks in border and
+                                                                    // weight. Same treatment on the two delete-pattern gates in
+                                                                    // userProfile and on ParticipantRow's Remove, which reaches
+                                                                    // it by the ordinary bucket-C rule.
+                                                                    className={`min-h-11 px-3 rounded-btn border text-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
+                                                                        armed
+                                                                            ? 'border-status-error font-semibold'
+                                                                            : 'border-transparent'
+                                                                    }`}
+                                                                >
+                                                                    {removing
+                                                                        ? 'Removing...'
+                                                                        : removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                </button>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 )}
-
-                                {/* Friend rows with checkboxes */}
-                                <div className="space-y-3">
-                                    {friends.map((friendship) => {
-                                        const friend = friendship.friend;
-                                        if (!friend) return null;
-
-                                        // Friend side of the already-in-group join + the bulk-invite
-                                        // write arg both key on the Users.id UUID (friend.id), matching
-                                        // the roster side (member.id) above — single keyspace end-to-end.
-                                        const friendUserId = friend.id;
-                                        const isInGroup = selectedGroupId && groupMembers.includes(friendUserId);
-                                        const checkboxDisabled = !selectedGroupId || isInGroup;
-
-                                        return (
-                                            <div
-                                                key={friendship.id}
-                                                data-friend-row={friendship.id}
-                                                className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
-                                            >
-                                                <div className="flex items-center gap-3 flex-1">
-                                                    <input
-                                                        id={`bulk-invite-${friendship.id}`}
-                                                        name={`bulk-invite-${friendship.id}`}
-                                                        type="checkbox"
-                                                        aria-label={`Select ${friend.username}`}
-                                                        checked={isInGroup || selectedFriends.has(friendUserId)}
-                                                        disabled={checkboxDisabled}
-                                                        onChange={() => toggleFriendSelection(friendUserId)}
-                                                        className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
-                                                            checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-                                                        }`}
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="font-bold text-content-primary">
-                                                                {friend.username}
-                                                            </p>
-                                                            {isInGroup && (
-                                                                <span className="text-xs text-content-muted italic">(already in group)</span>
-                                                            )}
-                                                        </div>
-                                                        {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
-                                                    </div>
-                                                </div>
-                                                {(() => {
-                                                    const friendName = friend.username || 'this friend';
-                                                    const removing = actionLoading[friendship.id] === 'remove';
-                                                    const armed = removeFriendGate.isArmed(friendship.id);
-                                                    return (
-                                                        <button
-                                                            // targetId is the FRIENDSHIP id (what the API takes) and
-                                                            // targetLabel is the person — the live region names them,
-                                                            // so switching rows is a guaranteed re-announcement.
-                                                            {...removeFriendGate.triggerProps(
-                                                                friendship.id,
-                                                                friendName,
-                                                                `Remove ${friendName}`
-                                                            )}
-                                                            // Label-in-Name (WCAG 2.5.3) during the commit: the
-                                                            // visible label is "Removing...", so the accessible name
-                                                            // must contain it. The hook only owns resting-vs-armed.
-                                                            {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
-                                                            aria-disabled={removing ? 'true' : undefined}
-                                                            // DECISION Phase 88-27 (D-32 bucket D): the hover affordance
-                                                            // 87.7 stripped from here was a TEXT alpha (error text at
-                                                            // 80% on hover). It comes back as a subtle SURFACE, chosen
-                                                            // OVER re-adding the text alpha — that is the forbidden
-                                                            // mechanism — and OVER leaving the control with no hover
-                                                            // state at all, which would have been a silent downgrade
-                                                            // dressed up as a decision. A background cannot collide with
-                                                            // the armed state below it, which speaks in border and
-                                                            // weight. Same treatment on the two delete-pattern gates in
-                                                            // userProfile and on ParticipantRow's Remove, which reaches
-                                                            // it by the ordinary bucket-C rule.
-                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
-                                                                armed
-                                                                    ? 'border-status-error font-semibold'
-                                                                    : 'border-transparent'
-                                                            }`}
-                                                        >
-                                                            {removing
-                                                                ? 'Removing...'
-                                                                : removeFriendGate.labelFor(friendship.id, 'Remove')}
-                                                        </button>
-                                                    );
-                                                })()}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                            </>
                         )}
+                        {/* C12 (a): the Friends panel's guard, last child, outside every arm; see DECISION Phase 88.6.1-72 (C12, focus when content leaves). */}
+                        <RetainedContentFocusGuard retained={friendsRetained} focusTarget={friendsTabRef} />
                     </div>
                 )}
 
@@ -1529,50 +1562,77 @@ function FriendsPage() {
                             "No sent friend requests." — so the person was told, in the same breath,
                             that something went wrong and that they had sent nothing. The error branch
                             is checked BEFORE the empty branch and that order is load-bearing: an
-                            errored fetch also has zero requests. */}
-                        {loadingSent && !sentLoaded ? (
-                            <div role="status" aria-label="Loading your sent requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
-                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
-                                <span>Loading sent requests...</span>
-                            </div>
-                        ) : sentErrorState.showError ? (
+                            errored fetch also has zero requests.
+                            AMENDED Phase 88.6.1-72 (RF1; 88.6.1-70 contract C1-C6): empty and failed stay separate for a
+                            list that never loaded; the full banner owns that case and is checked before the
+                            loading line, so it survives its own Try again (C2). Once a load has succeeded, a
+                            failed refresh keeps what was shown (rows, or the empty line of a list that loaded
+                            empty; owner ruling 2026-10-05: a list that loaded empty is retained content) under
+                            the shared RF1 notice, which labels it as what loaded earlier, so the empty line
+                            beside it no longer states the present as fact. An answer saying access was lost or
+                            the content is gone is never kept: the full banner takes the list's place until a
+                            load succeeds (contract C10, through plan 70's shared hook). This is one treatment
+                            for the page's three lists (orchestrator decision 2026-10-05). REJECTED: the full
+                            banner above retained rows (two treatments on one page; the owner's
+                            retained-content ruling gives a refresh failure the small notice) and a row count
+                            as the retained flag (contract C3). */}
+                        {!sentRetained && sentErrorState.showError ? (
                             <FetchErrorBanner
                                 state={sentErrorState}
                                 title="Couldn't load your sent requests"
                                 reportContext="friends page — sent requests fetch"
+                                focusTarget={sentTabRef}
                             />
-                        ) : sentRequests.length === 0 ? (
-                            <div className="text-center py-12">
-                                {/* D2 mini-formula rider (88-33 Task 7, Rule 2): + text-sm. */}
-                                <p className="text-content-muted text-sm">No sent friend requests.</p>
+                        ) : !sentLoaded ? (
+                            <div role="status" aria-label="Loading your sent requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
+                                <span>Loading sent requests...</span>
                             </div>
                         ) : (
-                            <div className="space-y-3">
-                                {sentRequests.map((request) => {
-                                    const addressee = request.Addressee;
-                                    if (!addressee) return null;
+                            <>
+                                {/* 88.6.1-70 contract C6: above the content, outside the rows' stack. */}
+                                <RefreshFailedNotice
+                                    state={sentErrorState}
+                                    retained={sentRetained}
+                                    focusTarget={sentTabRef}
+                                    className="mb-4"
+                                />
+                                {sentRequests.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        {/* D2 mini-formula rider (88-33 Task 7, Rule 2): + text-sm. */}
+                                        <p className="text-content-muted text-sm">No sent friend requests.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {sentRequests.map((request) => {
+                                            const addressee = request.Addressee;
+                                            if (!addressee) return null;
 
-                                    return (
-                                        <div
-                                            key={request.id}
-                                            className="flex items-center justify-between p-4 border border-line rounded-card"
-                                        >
-                                            <div className="flex-1">
-                                                <p className="font-bold text-content-primary">
-                                                    {addressee.username || addressee.email}
-                                                </p>
-                                                {addressee.email && addressee.email !== addressee.username && (
-                                                    <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
-                                                )}
-                                            </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
-                                                Pending
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                            return (
+                                                <div
+                                                    key={request.id}
+                                                    className="flex items-center justify-between p-4 border border-line rounded-card"
+                                                >
+                                                    <div className="flex-1">
+                                                        <p className="font-bold text-content-primary">
+                                                            {addressee.username || addressee.email}
+                                                        </p>
+                                                        {addressee.email && addressee.email !== addressee.username && (
+                                                            <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
+                                                        )}
+                                                    </div>
+                                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
+                                                        Pending
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </>
                         )}
+                        {/* C12 (a): the Sent panel's guard, last child, outside every arm; see DECISION Phase 88.6.1-72 (C12, focus when content leaves). */}
+                        <RetainedContentFocusGuard retained={sentRetained} focusTarget={sentTabRef} />
                     </div>
                 )}
             </div>
