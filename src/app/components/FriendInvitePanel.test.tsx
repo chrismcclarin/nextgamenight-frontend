@@ -1143,6 +1143,41 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     expect(batchError()).toHaveClass('sr-only');
   });
 
+  it('P1. a terminal 409 reads as already invited — the panel shipped lines (88.6.1-72 GUARD)', async () => {
+    // Pins the panel's two shipped 409 lines before plan 88.6.1-72 moves them into
+    // friendBatchInviteOutcome.ts (no test pinned them). This suite's beforeEach clears calls but
+    // not implementations or one-shot queues (B5 leaves a standing implementation), so this arm
+    // resets the invite mock itself and restores the default when it ends.
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    const send = invitesAPI.sendFriendInvite as Mock;
+    try {
+      send.mockReset().mockImplementation((_group: string, friendId: string) =>
+        friendId === FRIEND_UUID
+          ? Promise.resolve({})
+          : Promise.reject(new ApiError('This person already has a pending invite', 'invite_pending', 409))
+      );
+      renderPanel({ friends: [FRIENDSHIP, OTHER_FRIENDSHIP] });
+      await screen.findByText('Eli');
+      for (const box of screen.getAllByRole('checkbox')) fireEvent.click(box);
+      await inviteSelected();
+      await waitFor(() => expect(batchStatus()?.textContent).toBe('Invited 1 \u2014 1 already invited or a member'));
+      expect(batchError()?.textContent).toBe('');
+      cleanup();
+
+      send.mockReset().mockRejectedValue(
+        new ApiError('This person is already a member of the group', 'already_member', 409)
+      );
+      renderPanel();
+      await screen.findByText('Dana');
+      fireEvent.click(screen.getByRole('checkbox'));
+      await inviteSelected();
+      await waitFor(() => expect(batchStatus()?.textContent).toBe('Everyone selected was already invited or a member'));
+      expect(batchError()?.textContent).toBe('');
+    } finally {
+      send.mockReset().mockResolvedValue({});
+    }
+  });
+
   it('H: the header row is on the Modal header phone-first scale (R7-M5), keeping items-start and gap-3', async () => {
     renderPanel();
     const column = (await screen.findByRole('heading', { name: 'Invite Members' })).closest('div');

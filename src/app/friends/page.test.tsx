@@ -2015,3 +2015,106 @@ describe('friends — one treatment per page: Friends and Sent keep their rows u
     expect(screen.getByText('Alex')).toBeInTheDocument();
   });
 });
+
+// Phase 88.6.1-72 Task 3 (owner rulings 2026-10-05): the Invite to Group batch counts a terminal
+// 409 as already invited, in the invite panel's shipped words (from one module); a found search
+// result is announced (copy row F7).
+const searchStatus = () => document.getElementById('friends-search-status');
+
+describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)', () => {
+  it('K1. a batch with one sent and one already pending reads the panel line, success tint (owner ruling 2026-10-05)', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1', { friends: [FRIENDSHIP, FRIENDSHIP_2] });
+    (invitesAPI.sendFriendInvite as Mock)
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new ApiError('This person already has a pending invite', 'invite_pending', 409));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Sam' }));
+    fireEvent.click(inviteButton());
+
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(statusRegion()?.textContent).toBe('Invited 1 — 1 already invited or a member'));
+    expect(statusRegion()?.className.split(/\s+/)).toContain('bg-status-success-subtle');
+    expect(errorRegion()?.textContent).toBe('');
+  });
+
+  it('K2. a batch where everyone was already a member reads the panel line, success tint, never a failure', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
+    (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(
+      new ApiError('This person is already a member of the group', 'already_member', 409)
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(inviteButton());
+
+    await waitFor(() => expect(statusRegion()?.textContent).toBe('Everyone selected was already invited or a member'));
+    expect(statusRegion()?.className.split(/\s+/)).toContain('bg-status-success-subtle');
+    expect(errorRegion()?.textContent).toBe('');
+  });
+
+  it('K3. GUARD: a 409 with any other code is still a failure (the panel contract, MED #9)', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
+    (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(new ApiError('x', 'conflict', 409));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(inviteButton());
+
+    await waitFor(() => expect(errorRegion()?.textContent).toBe("We couldn't send those invites. Please try again."));
+    expect(statusRegion()?.textContent).toBe('');
+  });
+
+  it('F1. a found result is announced from an always-mounted sr-only polite region: Found {name}. (copy row F7)', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const region = searchStatus();
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region?.className.split(/\s+/)).toContain('sr-only');
+    expect(region?.textContent).toBe('');
+    await searchTo(RILEY_HIT, 'riley@example.com');
+    expect(searchStatus()?.textContent).toBe('Found Riley.');
+    expect(searchStatus()).toBe(region);
+    cleanup();
+
+    // An email-only hit is announced by what the row shows: the address.
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValueOnce({ ...RILEY_HIT, username: null });
+    fireEvent.change(emailField(), { target: { value: 'riley@example.com' } });
+    fireEvent.submit(emailField().closest('form') as HTMLFormElement);
+    await screen.findByRole('button', { name: 'Send Request' });
+    expect(searchStatus()?.textContent).toBe('Found riley@example.com.');
+  });
+
+  it('F2. a miss keeps the search alert and leaves the found region empty', async () => {
+    (friendshipsAPI.searchUserByEmail as Mock).mockRejectedValue(
+      new ApiError('HTTP error! status: 404', 'not_found', 404)
+    );
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    fireEvent.change(emailField(), { target: { value: 'nobody@example.com' } });
+    fireEvent.submit(emailField().closest('form') as HTMLFormElement);
+    expect((await screen.findByRole('alert')).textContent).toBe('No user found with that email.');
+    expect(searchStatus()?.textContent).toBe('');
+  });
+
+  it('F3. the same result found twice is a DOM mutation on the same region (R8 backstop)', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    await searchTo(RILEY_HIT, 'riley@example.com');
+    expect(searchStatus()?.textContent).toBe('Found Riley.');
+    const region = searchStatus() as HTMLElement;
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => records.push(...list));
+    observer.observe(region, { childList: true, characterData: true, subtree: true });
+    try {
+      (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValueOnce(RILEY_HIT);
+      fireEvent.submit(emailField().closest('form') as HTMLFormElement);
+      await waitFor(() => expect(friendshipsAPI.searchUserByEmail as Mock).toHaveBeenCalledTimes(2));
+      // Positive signal: the second search settled (Send Request is back).
+      await screen.findByRole('button', { name: 'Send Request' });
+      expect(records.length).toBeGreaterThan(0);
+      expect(searchStatus()).toBe(region);
+      expect(region.textContent).toBe('Found Riley.');
+    } finally {
+      observer.disconnect();
+    }
+  });
+});
