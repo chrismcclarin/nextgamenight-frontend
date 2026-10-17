@@ -34,14 +34,20 @@ const FRIEND_2_UUID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
  * `selfUuid` (D-09) — with it undefined the page is a spinner and nothing else,
  * so every list assertion needs it set.
  */
-const h = vi.hoisted(() => ({ selfUuid: undefined as string | undefined }));
+// 88.6.1-63: `identityError` drives the identity query's `isError` (FK1: a failed re-read over a held row).
+const h = vi.hoisted(() => ({ selfUuid: undefined as string | undefined, identityError: false }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
   useSelfIdentity: () => ({
     selfUuid: h.selfUuid,
     self: h.selfUuid ? { id: h.selfUuid, user_id: 'auth0|self' } : undefined,
-    query: { isError: false, error: null, isPending: !h.selfUuid, refetch: vi.fn() },
+    query: {
+      isError: h.identityError,
+      error: h.identityError ? new Error('identity failed') : null,
+      isPending: !h.selfUuid,
+      refetch: vi.fn(),
+    },
     isPending: !h.selfUuid,
   }),
 }));
@@ -200,6 +206,7 @@ export function renderFriends(options: RenderFriendsOptions = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
+  h.identityError = false;
   // `clearAllMocks` clears CALLS, not IMPLEMENTATIONS, so a rejection set by one arm
   // would leak into every later one in file order. Restore the defaults explicitly.
   providerCtx.receivedRequests = [];
@@ -238,6 +245,15 @@ describe('friends render harness', () => {
     expect(await screen.findByRole('heading', { name: 'Friends' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Add Friend' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
+  });
+
+  // 88.6.1-63 (AC-29): a failed identity re-read that kept its row is not an identity failure;
+  // the page renders, not the whole-page identity error.
+  it('a held identity row renders the page, not the identity error (88.6.1-63, AC-29)', async () => {
+    h.identityError = true;
+    renderFriends();
+    expect(await screen.findByRole('heading', { name: 'Add Friend' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
   });
 
   it('the logged-out branch keeps a real ANCHOR to the Auth0 handler', async () => {
