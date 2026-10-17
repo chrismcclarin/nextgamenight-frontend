@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
+import { expectNoApiWrites, holdWrites, settleAnimations } from './support/inFlight';
 
 // Phase 88.6.1 plan 11 (Req 4 / D-35, Req 5, the SPEC's 44x44 floor): the Plan Game Session
 // page's Remind button, seen in a real browser.
@@ -24,6 +25,15 @@ import { test, expect, type Locator, type Page, type Route } from '@playwright/t
 //     no seeded user owns, so every row shows Remind (none is the fixture user's own row);
 //   - the remind POST, HELD and then fulfilled 200 IN THE BROWSER, never continued, so no
 //     reminder email is ever sent and no fixture row changes.
+//
+// Phase 88.6.1-73 adds test 4 (RF1 / D-47, plan 88.6.1-70 contract C8 d): a failed Refresh keeps
+// the roster under the shared "Couldn't refresh" notice, measured IN PLACE at 375px in the phone
+// project (Retry inside the viewport and at least 44 x 44, no sideways scroll, the notice between
+// the heading and the first row), and a Retry that succeeds lands on the 'Responses:' heading. It
+// answers the same respondents GET with a 503 (an empty JSON body) and then a 200, in the browser,
+// and holds every write (support/inFlight.ts). It never answers 401 / 403: the access-answer and
+// tab-return focus cases are jsdom only (ResponseDashboard.test.tsx, RD-RF-7, RD-RF-8, RD-RF-10).
+// If a layout assertion fails in CI, that is a STOP for the owner's mockup, never a restyle.
 
 // Seeded fixture group (the fixture user OWNS it, so the admin-only Remind renders) — same
 // fallback idiom as padding-budget.spec.ts:69.
@@ -45,9 +55,33 @@ interface RemindMocks {
   release: () => void;
 }
 
+/** What the respondents GET answers (plan 88.6.1-73's RF1 test switches it between calls). */
+interface RespondentsAnswer {
+  status: number;
+  json: unknown;
+}
+
+// Plan 11's fixed answer: the three pending members above.
+function threePendingMembers(): RespondentsAnswer {
+  return {
+    status: 200,
+    json: MEMBERS.map((m) => ({
+      ...m,
+      has_responded: false,
+      slot_count: null,
+      last_reminded_at: null,
+    })),
+  };
+}
+
 // ONE module-local helper the tests call (plan 88.6.1-73 reuses it for its RF1 test rather than
 // copying the mocks). Registered BEFORE `page.goto` so the first load is answered too.
-async function mockDashboard(page: Page): Promise<RemindMocks> {
+// `respondents` (plan 88.6.1-73) is read on EVERY respondents GET, so a test can switch the answer
+// between a 200 and a failure; absent, every GET gets plan 11's three members.
+async function mockDashboard(
+  page: Page,
+  respondents: () => RespondentsAnswer = threePendingMembers,
+): Promise<RemindMocks> {
   const deadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   await page.route(
     (url) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/prompts/active`),
@@ -69,15 +103,7 @@ async function mockDashboard(page: Page): Promise<RemindMocks> {
         await route.continue();
         return;
       }
-      await route.fulfill({
-        status: 200,
-        json: MEMBERS.map((m) => ({
-          ...m,
-          has_responded: false,
-          slot_count: null,
-          last_reminded_at: null,
-        })),
-      });
+      await route.fulfill(respondents());
     },
   );
 
@@ -237,5 +263,89 @@ test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
         ).toBe(false);
       }
     }
+  });
+
+  test('RF1 (plan 88.6.1-73): a failed Refresh keeps the roster under the notice, measured in place at 375px; Retry brings the roster back and lands on the heading', async ({ page }, testInfo) => {
+    // Copy row RF1 / D-47 (plan 88.6.1-70's REFRESH_FAILED_NOTICE), written once in this spec.
+    const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+    const NEW_MEMBERS = [
+      { user_id: '8861a073-0000-4000-8000-0000000000d1', username: 'E2E refreshed member D' },
+      { user_id: '8861a073-0000-4000-8000-0000000000e1', username: 'E2E refreshed member E' },
+    ];
+    // The hold FIRST, so every write that no later handler answers is held (never sent).
+    const hold = await holdWrites(page);
+    let answer: RespondentsAnswer = threePendingMembers();
+    await mockDashboard(page, () => answer);
+    const card = await openDashboard(page);
+    for (const m of MEMBERS) {
+      await expect(card.getByText(m.username, { exact: true })).toBeVisible({ timeout: 15_000 });
+    }
+
+    // The refresh fails with a transient answer.
+    answer = { status: 503, json: {} };
+    await card.getByRole('button', { name: 'Refresh', exact: true }).click();
+
+    // The VISIBLE line (the notice's polite region carries the same sentence, sr-only).
+    const rf1Line = card.getByText(RF1, { exact: true }).filter({ visible: true });
+    await expect(rf1Line).toBeVisible({ timeout: 15_000 });
+    await expect(rf1Line).toHaveCount(1);
+    for (const m of MEMBERS) {
+      await expect(card.getByText(m.username, { exact: true })).toBeVisible();
+    }
+    await expect(page.getByText("We couldn't load the respondents.")).toHaveCount(0);
+
+    const retry = card.getByRole('button', { name: 'Retry', exact: true });
+    // A missing control fails, never skips.
+    await expect(retry).toBeVisible();
+
+    if (testInfo.project.name === 'phone') {
+      // C8 (d): measured in place, provably at phone width.
+      const viewport = page.viewportSize();
+      expect(viewport?.width).toBe(375);
+      await settleAnimations(card);
+      const retryBox = await measuredBox(retry, 'the RF1 Retry');
+      expect(retryBox.width, `Retry measured ${retryBox.width}px wide`).toBeGreaterThanOrEqual(44);
+      expect(retryBox.height, `Retry measured ${retryBox.height}px tall`).toBeGreaterThanOrEqual(44);
+      expect(retryBox.x).toBeGreaterThanOrEqual(0);
+      expect(retryBox.x + retryBox.width).toBeLessThanOrEqual(375);
+      const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(scrollWidth, 'the page must not scroll sideways').toBeLessThanOrEqual(clientWidth);
+      const lineBox = await measuredBox(rf1Line, 'the RF1 line');
+      const headingBox = await measuredBox(
+        card.getByRole('heading', { name: /^Responses:/ }),
+        'the Responses heading',
+      );
+      const firstRowBox = await measuredBox(card.getByRole('listitem').first(), 'the first row');
+      expect(
+        lineBox.y,
+        `the notice starts at ${lineBox.y}px; the heading ends at ${headingBox.y + headingBox.height}px`,
+      ).toBeGreaterThanOrEqual(headingBox.y + headingBox.height);
+      expect(
+        lineBox.y + lineBox.height,
+        `the notice ends at ${lineBox.y + lineBox.height}px; the first row starts at ${firstRowBox.y}px`,
+      ).toBeLessThanOrEqual(firstRowBox.y);
+    }
+
+    // A keyboard Retry that succeeds: the notice leaves, the new roster shows, focus lands on the heading.
+    answer = {
+      status: 200,
+      json: NEW_MEMBERS.map((m) => ({
+        ...m,
+        has_responded: true,
+        slot_count: 1,
+        last_reminded_at: null,
+      })),
+    };
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    for (const m of NEW_MEMBERS) {
+      await expect(card.getByText(m.username, { exact: true })).toBeVisible({ timeout: 15_000 });
+    }
+    await expect(card.getByText(RF1, { exact: true }).filter({ visible: true })).toHaveCount(0);
+    await expect(card.getByRole('heading', { name: /^Responses:/ })).toBeFocused();
+    expectNoApiWrites(hold);
   });
 });
