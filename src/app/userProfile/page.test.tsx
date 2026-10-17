@@ -3424,3 +3424,130 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
     expect(document.activeElement).not.toBe(document.body);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 88.6.1-59 Task 3 (D-35, Req 4, Req 5): the username editor's Save is a PRESSED control (its
+// in-flight half aria-disabled plus a first-line latch; its blank-name half stays native), its
+// Cancel is a sibling that stays natively disabled while saving, and both exits land focus on the
+// Edit-username pencil that opened the editor.
+describe('username Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // Scoped to the editor's button row: the Email section renders its own Cancel while its editor
+  // is open.
+  function editorCancel(save: HTMLElement) {
+    return within(save.parentElement as HTMLElement).getByRole('button', { name: 'Cancel' });
+  }
+
+  afterEach(async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.updateUsername as Mock).mockResolvedValue({ username: 'Self' });
+  });
+
+  it('U1: Save keeps its node, reads Saving... under aria-disabled, Cancel stays native, three presses send one request', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (usersAPI.updateUsername as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    const save = screen.getByRole('button', { name: 'Save' });
+    const cancel = editorCancel(save);
+    fireEvent.click(save);
+
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(save).not.toBeDisabled();
+    expect(save.textContent).toBe('Saving...');
+    expect(cancel).toBeDisabled();
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(usersAPI.updateUsername).toHaveBeenCalledTimes(1);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save.textContent).toBe('Saving...');
+
+    await act(async () => { pending.resolve({ username: 'Self' }); });
+  });
+
+  it('U2: a blank username keeps Save natively disabled, with no aria-disabled (rule of KIND)', async () => {
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Username' }), { target: { value: '   ' } });
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    expect(save).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('U3: a successful Save closes the editor and focus lands on the Edit-username pencil, after the removal', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (usersAPI.updateUsername as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit username' }));
+    const save = screen.getByRole('button', { name: 'Save' });
+    await user.click(save);
+    // CONFIRM-ONLY in jsdom (C-11): the pressed Save still holds focus while the save is held.
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(document.activeElement).toBe(save);
+
+    await act(async () => { pending.resolve({ username: 'Self' }); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit username' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(save.isConnected).toBe(false);
+  });
+
+  it('U4: Cancel closes the editor and focus lands on the Edit-username pencil', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit username' }));
+    const cancel = editorCancel(screen.getByRole('button', { name: 'Save' }));
+    await user.click(cancel);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit username' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('U5: a failed Save releases the latch, keeps the editor, and logs the unchanged diagnostic', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.updateUsername as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({ username: 'Self' });
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith("We couldn't save your username. Please try again.")
+    );
+    expect(loggerMock().info).toHaveBeenCalledWith('Error updating username:', expect.any(Object));
+    const save = await screen.findByRole('button', { name: 'Save' });
+    expect(save.textContent).toBe('Save');
+    expect(save).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('textbox', { name: 'Username' })).toBeInTheDocument();
+
+    fireEvent.click(save);
+    await waitFor(() => expect(usersAPI.updateUsername).toHaveBeenCalledTimes(2));
+  });
+
+  it('U6: the username recovery is wired to the pencil, the h1 fallback, and both exits (R5 empty)', async () => {
+    const source = await pageSource();
+    expect(source).toContain('const usernameRecovery = useFocusRecovery({ fallback: profileHeadingRef });');
+    expect(source).toContain('ref={editUsernamePencilRef}');
+    expect(source.split('usernameRecovery.arm({ preferred: () => editUsernamePencilRef.current').length - 1).toBe(2);
+  });
+});
