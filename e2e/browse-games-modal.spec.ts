@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { settleAnimations } from './support/inFlight';
 
 /**
  * Phase 88.6.1-32 — the Browse Games dialog at 375px (AC-27's Browse Games half, D-41, AC-13).
@@ -161,9 +162,12 @@ async function openBrowseGames(page: Page): Promise<Locator> {
   const browse = browseDialog(page);
   await expect(browse).toBeVisible();
   await expect(browse.getByRole('button', { name: GAME_ALPHA.name })).toBeVisible();
-  await browse.evaluate((el) =>
-    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
-  );
+  // Wave 9 gate (orchestrator-routed 2026-10-17, CI run 39026336968): the inline wait here awaited
+  // every animation's `finished` bare, and a CANCELLED animation rejects it with AbortError ("The
+  // user aborted a request." at this line, the failed-refresh arm's first attempt). The shared
+  // settleAnimations counts a cancelled animation as done and skips infinite ones (a spinner), so
+  // the dialog is still measured only once nothing in it is moving.
+  await settleAnimations(browse);
   return browse;
 }
 
@@ -223,12 +227,20 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
     try {
       const browse = await openBrowseGames(page);
       route.fail();
+      // Wave 9 gate: a positive signal that the refresh REQUEST happened (the route aborts it), so
+      // the assertions below read the failed state, not the moment before the request left.
+      const failedRefresh = page.waitForRequest(
+        (req) => req.method() === 'GET' && new URL(req.url()).pathname.startsWith('/api/suggestions/group/'),
+      );
       await browse
         .getByRole('group', { name: 'Complexity' })
         .getByRole('button', { name: 'Light', exact: true })
         .click();
+      await failedRefresh;
       const alertRegion = browse.getByTestId('browse-more-status').getByRole('alert');
       await expect(alertRegion).toHaveText(/\S/);
+      await expect(browse.getByTestId('browse-more-results')).not.toHaveAttribute('aria-busy', 'true');
+      await settleAnimations(browse);
 
       await expect(browse.getByRole('button', { name: GAME_ALPHA.name })).toBeVisible();
       await expect(browse.getByText(FIRST_LOAD, { exact: true })).toHaveCount(0);
