@@ -122,6 +122,8 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
     selfUuid: h.self?.id as string | undefined,
     query: { isError: Boolean(h.selfError), error: h.selfError, isPending: !h.self && !h.selfError, refetch: h.refetchSelf },
     isPending: !h.self && !h.selfError,
+    // Plan 88.6.1-79 (D-r3-10): the identity query's cache key, the same shape the real hook builds.
+    queryKey: ['users', 'self', h.authUser.sub],
   }),
 }));
 
@@ -250,6 +252,7 @@ import { ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
 import { QueryClientContext } from '@tanstack/react-query';
+import { UNAVAILABLE_COPY } from '@/app/components/EmailAddressSection';
 
 /** Accessor for the mocked house logger — AC-2's channel on this surface. */
 export function loggerMock() {
@@ -289,7 +292,8 @@ export function toastMock() {
  */
 export function renderProfile(
   selfOverrides: Record<string, unknown> = {},
-  options: { wrapper?: React.ComponentType<{ children: React.ReactNode }> } = {}
+  // Plan 88.6.1-79: `container` too, so a case can render inside a `main` (focus-floor cases).
+  options: { wrapper?: React.ComponentType<{ children: React.ReactNode }>; container?: HTMLElement } = {}
 ) {
   h.self = harnessSelfRow(selfOverrides);
   return render(<Profile />, options);
@@ -310,6 +314,13 @@ function harnessSelfRow(overrides: Record<string, unknown> = {}): Record<string,
     notification_preferences: DEFAULT_PREFS,
     ...overrides,
   };
+}
+
+/** Plan 88.6.1-79: the profile header card (the calendar zone lives in it in every state). */
+function headerCard(): HTMLElement {
+  const card = screen.getByRole('heading', { name: 'Google Calendar Integration' }).closest('.card');
+  if (!(card instanceof HTMLElement)) throw new Error('no header card around Google Calendar Integration');
+  return card;
 }
 
 beforeEach(() => {
@@ -4335,7 +4346,9 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
     // Positive signal: the collection list renders under the kept row.
     await screen.findByRole('button', { name: 'Remove Catan' });
     expect(await screen.findByRole('button', { name: 'Connect Google Calendar' })).toBeInTheDocument();
-    expect(screen.queryAllByRole('button', { name: 'Retry' })).toHaveLength(0);
+    // AMENDED Phase 88.6.1-79 (D-51): the kept row now carries the header card's RF1 Retry; no compact notice replaces the calendar or collection zone
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1));
+    expect(within(headerCard()).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Notification Preferences' })).toBeInTheDocument();
   });
 
@@ -5129,5 +5142,266 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
 
     await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
     expect(screen.getAllByRole('button', { name: 'Remove Azul' })).toHaveLength(1);
+  });
+});
+
+describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  // Copy row RF1 (D-47, owner-ratified) — declared once here (88.6.1-70 contract C7); the page
+  // itself never spells it (plan 70's one constant renders it).
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  const ROW_ADDRESS = 'row-address@example.com';
+
+  beforeEach(async () => {
+    const { userGamesAPI, googleCalendarAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    // Re-set explicitly: earlier describes leave `getStatus` answering connected.
+    (googleCalendarAPI.getStatus as Mock).mockResolvedValue({ connected: false });
+  });
+  afterEach(async () => {
+    const { userGamesAPI, googleCalendarAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps an implementation, so restore the defaults here.
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([]);
+    (googleCalendarAPI.getStatus as Mock).mockResolvedValue({ connected: false });
+    document.querySelectorAll('main[data-k-main]').forEach((m) => m.remove());
+  });
+
+  // The mocked identity hook reads `h` on render, so a changed query state commits only on a render.
+  async function commit(rerender: (ui: React.ReactElement) => void) {
+    await act(async () => { rerender(<Profile />); });
+  }
+  function mainContainer(): HTMLElement {
+    const main = document.createElement('main');
+    main.setAttribute('data-k-main', '');
+    document.body.appendChild(main);
+    return main;
+  }
+  // The unpressed re-attempt: a tab return, the useFetchErrorState.test.tsx idiom.
+  function fireVisible() {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+  const visibleRf1 = (root: HTMLElement) => {
+    const node = within(root).getAllByText(RF1).find((n) => !n.closest('.sr-only'));
+    if (!node) throw new Error('no visible RF1 line');
+    return node;
+  };
+  const collectionCard = () => {
+    const card = screen.getByRole('heading', { name: /^My Game Collection/ }).closest('.card');
+    if (!(card instanceof HTMLElement)) throw new Error('no collection card');
+    return card;
+  };
+
+  async function healthy(container?: HTMLElement) {
+    const view = renderProfile({ username: 'RealName' }, container ? { container } : {});
+    await screen.findByRole('heading', { level: 1, name: 'RealName' });
+    return view;
+  }
+
+  it('K1: a 500 refresh keeps the name under the header card RF1 notice, with no full banner', async () => {
+    const view = await healthy();
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+    const heading = screen.getByRole('heading', { level: 1, name: 'RealName' });
+    expect(visibleRf1(headerCard()).compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(headerCard()).queryByText('Something went wrong')).toBeNull();
+  });
+
+  it('K2: the RF1 region is one of the header card status nodes present before the failure', async () => {
+    const view = await healthy();
+    const before = within(headerCard()).queryAllByRole('status');
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+    const region = within(headerCard()).getAllByRole('status').find((n) => n.textContent === RF1);
+    expect(region).toBeDefined();
+    expect(before).toContain(region);
+  });
+
+  it('K3: Retry recovers, the notice leaves and focus lands on the page h1, never body', async () => {
+    const user = userEvent.setup();
+    const view = await healthy(mainContainer());
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+
+    h.refetchSelf.mockImplementation(async () => { h.selfError = null; return { isError: false }; });
+    await user.click(within(headerCard()).getByRole('button', { name: 'Retry' }));
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).queryAllByText(RF1)).toHaveLength(0));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'RealName' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  async function withdrawnCase(err: ApiError) {
+    const view = await healthy();
+    // Positive signal: the collection list renders live over the healthy row.
+    await screen.findByRole('button', { name: 'Remove Catan' });
+    h.selfError = err;
+    await commit(view.rerender);
+
+    const line = (await within(headerCard()).findAllByText(getFetchErrorMessage(err)))[0];
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    const headings = screen.getAllByRole('heading', { level: 1 });
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toHaveAccessibleName('Self');
+    expect(screen.queryByRole('heading', { level: 1, name: 'RealName' })).toBeNull();
+    expect(headings[0].compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Google Calendar Integration' })).toBeInTheDocument();
+    // Review #117: the collection card shows its existing compact notice, no live Remove control.
+    const card = collectionCard();
+    expect(within(card).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(within(card).queryAllByRole('button', { name: /^Remove / })).toHaveLength(0);
+  }
+
+  it('K4: a 401 over the kept row withdraws it; the page keeps one h1 (the session name) above the register line', async () => {
+    await withdrawnCase(new ApiError('Unauthorized', 'unauthorized', 401));
+  });
+
+  it('K5: a 403 over the kept row withdraws it; the page keeps one h1 (the session name) above the register line', async () => {
+    await withdrawnCase(new ApiError('Forbidden', 'forbidden', 403));
+  });
+
+  it('K6: a network failure keeps the name under RF1', async () => {
+    const view = await healthy();
+    h.selfError = new ApiError('Network error', 'network', 0);
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+  });
+
+  it('K7: a 403 then a 500 stays withdrawn; the next success brings the row back (C10 memory)', async () => {
+    const view = await healthy();
+    const forbidden = new ApiError('Forbidden', 'forbidden', 403);
+    h.selfError = forbidden;
+    await commit(view.rerender);
+    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Self');
+    expect(screen.queryByRole('heading', { level: 1, name: 'RealName' })).toBeNull();
+
+    h.selfError = null;
+    await commit(view.rerender);
+    expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('K8: an unpressed re-attempt answered 403, then 401, withdraws the focused pencil and focus lands on the h1, never body (C12 a)', async () => {
+    for (const err of [
+      new ApiError('Forbidden', 'forbidden', 403),
+      new ApiError('Unauthorized', 'unauthorized', 401),
+    ]) {
+      const view = await healthy(mainContainer());
+      h.selfError = new ApiError('Server error', 'internal', 500);
+      await commit(view.rerender);
+      await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+
+      act(() => screen.getByRole('button', { name: 'Edit username' }).focus());
+      h.refetchSelf.mockImplementation(async () => { h.selfError = err; return { isError: true }; });
+      await act(async () => { fireVisible(); });
+      await commit(view.rerender);
+
+      expect(screen.queryByRole('button', { name: 'Edit username' })).toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 })));
+      expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Self');
+      expect(document.activeElement).not.toBe(document.body);
+
+      cleanup();
+      document.querySelectorAll('main[data-k-main]').forEach((m) => m.remove());
+      h.selfError = null;
+      h.refetchSelf.mockReset();
+    }
+  });
+
+  it('K9: the notice Retry holds focus and an unpressed re-attempt succeeds; focus lands on the RealName h1 (C12 b)', async () => {
+    const view = await healthy(mainContainer());
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+
+    act(() => within(headerCard()).getByRole('button', { name: 'Retry' }).focus());
+    h.refetchSelf.mockImplementation(async () => { h.selfError = null; return { isError: false }; });
+    await act(async () => { fireVisible(); });
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).queryAllByText(RF1)).toHaveLength(0));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'RealName' }))
+    );
+  });
+
+  it('K10: an access answer puts the Email card on its unavailable arm (said, not empty), and a success restores it (review #125)', async () => {
+    const view = renderProfile({ username: 'RealName', email: ROW_ADDRESS });
+    await screen.findByRole('heading', { level: 1, name: 'RealName' });
+    const emailRegion = () => screen.getByRole('region', { name: 'Email' });
+    expect(await within(emailRegion()).findByText(ROW_ADDRESS)).toBeInTheDocument();
+    expect(within(emailRegion()).getByRole('button', { name: 'Change' })).toBeInTheDocument();
+
+    const forbidden = new ApiError('Forbidden', 'forbidden', 403);
+    h.selfError = forbidden;
+    await commit(view.rerender);
+    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+
+    expect(within(emailRegion()).queryByText(ROW_ADDRESS)).toBeNull();
+    expect(within(emailRegion()).queryByRole('button', { name: 'Change' })).toBeNull();
+    const said = await within(emailRegion()).findByText(UNAVAILABLE_COPY);
+    expect(said).not.toHaveClass('sr-only');
+
+    h.selfError = null;
+    await commit(view.rerender);
+    expect(await within(emailRegion()).findByText(ROW_ADDRESS)).toBeInTheDocument();
+    expect(within(emailRegion()).getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    expect(within(emailRegion()).queryByText(UNAVAILABLE_COPY)).toBeNull();
+  });
+
+  it('K11: the access memory survives a remount over the cached identity entry (C10 TanStack source)', async () => {
+    // This suite mocks the identity hook, so there is no real cache. A fake QueryClientContext
+    // stands in for the one property a real cache gives: the SAME entry object for the identity
+    // key on both sides of an unmount (plan 59's P11 shape). Every other key finds nothing.
+    const selfEntry = {};
+    const fakeClient = {
+      getQueryCache: () => ({
+        find: (filters: { queryKey?: unknown }) =>
+          JSON.stringify(filters?.queryKey) === JSON.stringify(['users', 'self', h.authUser.sub])
+            ? selfEntry
+            : undefined,
+      }),
+    };
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientContext.Provider value={fakeClient as never}>{children}</QueryClientContext.Provider>
+    );
+    const first = renderProfile({ username: 'RealName' }, { wrapper });
+    await screen.findByRole('heading', { level: 1, name: 'RealName' });
+
+    const forbidden = new ApiError('Forbidden', 'forbidden', 403);
+    h.selfError = forbidden;
+    await commit(first.rerender);
+    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(first.rerender);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Self');
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    first.unmount();
+    // `h` unchanged: the held row and the 500 a real cache would still hold.
+    const second = renderProfile({ username: 'RealName' }, { wrapper });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Self' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: 'RealName' })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    h.selfError = null;
+    await commit(second.rerender);
+    expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
   });
 });

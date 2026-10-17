@@ -182,3 +182,23 @@ describe('useSelfIdentity — invalidation contract', () => {
     expect(mockGetUser).toHaveBeenCalledTimes(2);
   });
 });
+
+// Phase 88.6.1-79 (D-r3-10, finding #309): the hook RETURNS the key it builds, so Profile can
+// pass C10's TanStack source (`useRetainedContent`'s third argument) with one spelling of it.
+// The key assertions come BEFORE the lookup: query-core's `find` skips the key test for an
+// undefined key and returns the first cached query, so the lookup alone would pass at base.
+describe('useSelfIdentity — returns its own cache key (88.6.1-79)', () => {
+  it('K0: the returned queryKey IS the identity query cache key', async () => {
+    const row = { id: SELF_UUID, user_id: SELF_UUID, email: 'self@example.com' };
+    mockGetUser.mockResolvedValue(row);
+    const { client, wrapper } = makeWrapper();
+    const { result } = renderHook(() => useSelfIdentity(), { wrapper });
+    await waitFor(() => expect(result.current.self).toBeDefined());
+
+    expect(result.current.queryKey).toBeDefined();
+    expect(result.current.queryKey).toEqual(['users', 'self', SUB]);
+    const entry = client.getQueryCache().find({ queryKey: result.current.queryKey, exact: true });
+    expect(entry).toBeDefined();
+    expect(entry?.state.data).toBe(result.current.self);
+  });
+});
