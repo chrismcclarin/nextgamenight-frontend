@@ -3020,3 +3020,138 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     expect(screen.queryByRole('heading', { name: 'Recommended Games' })).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-52 (R10 / AC-31, shared rule 12) — typed line breaks at the game page's three
+// typed-text sites: the session card's comments, the own review and the other reviews.
+// The jsdom half pins the two classes and the typed characters; the layout half (separate lines,
+// no overflow at 375px) is e2e/typed-line-breaks.spec.ts, which runs in CI's phone project.
+// Elements are found by EXACT textContent: Testing Library's text matchers collapse whitespace,
+// which would hide the very thing under test.
+// ---------------------------------------------------------------------------
+function exactTextElements(root: HTMLElement, tag: string, text: string): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(tag)).filter((el) => el.textContent === text);
+}
+
+function expectTypedTextClasses(el: HTMLElement) {
+  expect(el).toHaveClass('whitespace-pre-line');
+  expect(el).toHaveClass('wrap-anywhere');
+}
+
+const OTHER_REVIEW = {
+  ...SAVED_REVIEW,
+  id: 'rev-other',
+  User: { id: OTHER_UUID, username: 'Someone Else' },
+};
+
+describe('gameDetail typed line breaks (R10, 88.6.1-52)', () => {
+  it('R10-1: the session comments paragraph keeps a typed line break and wraps a long string', async () => {
+    renderGameDetail({ events: [{ ...SESSION, comments: 'Line one\nLine two' }] });
+    const section = await sessionsSection();
+    const matches = exactTextElements(section, 'p', 'Line one\nLine two');
+    expect(matches).toHaveLength(1);
+    expectTypedTextClasses(matches[0]);
+    expect(matches[0].textContent).toContain('\n');
+  });
+
+  it('R10-2: the own-review paragraph keeps a typed line break and wraps a long string', async () => {
+    renderGameDetail({ role: 'member', reviews: [{ ...SAVED_REVIEW, review_text: 'Mine one\nMine two' }] });
+    const section = await reviewsSection();
+    await within(section).findByText('(You)');
+    const matches = exactTextElements(section, 'p', 'Mine one\nMine two');
+    expect(matches).toHaveLength(1);
+    expectTypedTextClasses(matches[0]);
+    expect(matches[0].textContent).toContain('\n');
+  });
+
+  it('R10-3: an other-review paragraph keeps a typed line break and wraps a long string', async () => {
+    renderGameDetail({ role: 'member', reviews: [{ ...OTHER_REVIEW, review_text: 'Theirs one\nTheirs two' }] });
+    const section = await reviewsSection();
+    await within(section).findByText('Someone Else');
+    const matches = exactTextElements(section, 'p', 'Theirs one\nTheirs two');
+    expect(matches).toHaveLength(1);
+    expectTypedTextClasses(matches[0]);
+    expect(matches[0].textContent).toContain('\n');
+  });
+
+  // SPEC Edge Coverage encoding / R10 (an AC-31 pin, green before and after by construction):
+  // the value is a React text child, so markup in it renders as its own characters.
+  it('R10-4: typed markup renders literally at all three sites and no b element exists', async () => {
+    renderGameDetail({
+      role: 'member',
+      events: [{ ...SESSION, comments: '<b>x</b>' }],
+      reviews: [
+        { ...SAVED_REVIEW, review_text: '<b>x</b>' },
+        { ...OTHER_REVIEW, review_text: '<b>x</b>' },
+      ],
+    });
+    const sessions = await sessionsSection();
+    const reviews = await reviewsSection();
+    await within(reviews).findByText('(You)');
+    await within(reviews).findByText('Someone Else');
+    expect(exactTextElements(sessions, 'p', '<b>x</b>')).toHaveLength(1);
+    expect(exactTextElements(reviews, 'p', '<b>x</b>')).toHaveLength(2);
+    expect(sessions.querySelector('b')).toBeNull();
+    expect(reviews.querySelector('b')).toBeNull();
+  });
+
+  // SPEC Edge Coverage empty / R10 (backstop, held out). Three spaces render as typed; three
+  // newlines render as two (owner ruling #115: a run of three or more breaks is one blank line).
+  it('R10-5: whitespace-only and blank-line values render as their rendered text with both classes', async () => {
+    renderGameDetail({
+      role: 'member',
+      events: [
+        { ...SESSION, id: 'evt-ws-1', comments: '   ' },
+        { ...SESSION, id: 'evt-ws-2', start_date: '2026-01-10T18:00:00Z', comments: '\n\n\n' },
+      ],
+      reviews: [
+        { ...SAVED_REVIEW, review_text: '\n\n\n' },
+        { ...OTHER_REVIEW, review_text: '   ' },
+      ],
+    });
+    await screen.findByRole('heading', { name: 'Game Sessions (2)' });
+    const sessions = await sessionsSection();
+    const reviews = await reviewsSection();
+    await within(reviews).findByText('(You)');
+    const cases: Array<[HTMLElement, string]> = [
+      [sessions, '   '],
+      [sessions, '\n\n'],
+      [reviews, '\n\n'],
+      [reviews, '   '],
+    ];
+    for (const [root, rendered] of cases) {
+      const matches = exactTextElements(root, 'p', rendered);
+      expect(matches, `one paragraph renders ${JSON.stringify(rendered)}`).toHaveLength(1);
+      expectTypedTextClasses(matches[0]);
+      expect(matches[0].textContent).toBe(rendered);
+    }
+  });
+
+  // Owner ruling #115 (2026-10-13): a flood of typed breaks renders as one blank line, at render
+  // only, through plan 88.6.1-84's collapseBlankLines.
+  it('R10-6: 5000 typed breaks render as one blank line at all three sites', async () => {
+    const flood = '\n'.repeat(5000);
+    renderGameDetail({
+      role: 'member',
+      events: [{ ...SESSION, comments: `S-top${flood}S-end` }],
+      reviews: [
+        { ...SAVED_REVIEW, review_text: `M-top${flood}M-end` },
+        { ...OTHER_REVIEW, review_text: `T-top${flood}T-end` },
+      ],
+    });
+    const sessions = await sessionsSection();
+    const reviews = await reviewsSection();
+    await within(reviews).findByText('(You)');
+    await within(reviews).findByText('Someone Else');
+    const cases: Array<[HTMLElement, string]> = [
+      [sessions, 'S-top\n\nS-end'],
+      [reviews, 'M-top\n\nM-end'],
+      [reviews, 'T-top\n\nT-end'],
+    ];
+    for (const [root, rendered] of cases) {
+      const matches = exactTextElements(root, 'p', rendered);
+      expect(matches, `one paragraph renders ${JSON.stringify(rendered)}`).toHaveLength(1);
+      expectTypedTextClasses(matches[0]);
+    }
+  });
+});

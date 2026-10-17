@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL, ApiError } from '../../lib/api';
 import { isUuid } from '../../lib/isUuid';
+import { collapseBlankLines } from '../../lib/collapseBlankLines';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
@@ -1753,8 +1754,25 @@ export default function GameDetailPage() {
                                                 </span>
                                             </p>
                                         )}
+                                        {/* DECISION Phase 88.6.1-52 (R10 / AC-31, shared rule 12): CHOSEN — `whitespace-pre-line` +
+                                            `wrap-anywhere`, the ONE pair decided for all five typed-text sites so plans 88.6.1-29,
+                                            88.6.1-38 and 88.6.1-52 agree; the value stays a React text child.
+                                            REJECTED (a): `whitespace-pre-wrap` — it keeps runs of spaces and leading indentation,
+                                            which a comment or a review does not need, and the five sites must not diverge.
+                                            REJECTED (b): the `break-word` wrap utility for this site. This paragraph sits in a
+                                            `flex-1` item with no `min-w-0` (the card's left column), and only `overflow-wrap: anywhere`
+                                            lowers the min-content width that a flex item's `min-width: auto` resolves to; `break-word`
+                                            would still let one long pasted string widen the whole card past a 375px screen.
+                                            REJECTED (c): splitting the text on newlines into separate elements, or injecting it as
+                                            HTML (SPEC Constraint: user-entered text is rendered as text).
+                                            CHOSEN as well (owner ruling #115, 2026-10-13): each value passes through plan 88.6.1-84's
+                                            shared `collapseBlankLines`, so a run of three or more breaks renders as one blank line,
+                                            OVER rendering every break as typed (a flood of blank lines pushes the card off a phone
+                                            screen) and OVER a server cap (it would change stored text); the stored text is
+                                            untouched, and all five sites call the same helper. Dropping either class or the helper
+                                            call is a decision, not a cleanup. */}
                                         {event.comments && (
-                                            <p className="text-content-secondary mt-1 text-sm italic">{event.comments}</p>
+                                            <p className="text-content-secondary mt-1 text-sm italic whitespace-pre-line wrap-anywhere">{collapseBlankLines(event.comments)}</p>
                                         )}
                                     </div>
                                     {/* DECISION Phase 88-11 (D-40, F-6c/F-6d): ONE role gate wraps BOTH
@@ -3476,8 +3494,9 @@ export default function GameDetailPage() {
                                 </button>
                             </div>
                         </div>
+                        {/* R10: same class pair, same `collapseBlankLines` call and reasons as `DECISION Phase 88.6.1-52 (R10 / AC-31, shared rule 12)` at the session card's comments line. */}
                         {userReview.review_text && (
-                            <p className="text-content-secondary mt-2">{userReview.review_text}</p>
+                            <p className="text-content-secondary mt-2 whitespace-pre-line wrap-anywhere">{collapseBlankLines(userReview.review_text)}</p>
                         )}
                     </div>
                 )}
@@ -3524,8 +3543,9 @@ export default function GameDetailPage() {
                                                 )}
                                             </div>
                                         </div>
+                                        {/* R10: same class pair, same `collapseBlankLines` call and reasons as `DECISION Phase 88.6.1-52 (R10 / AC-31, shared rule 12)` at the session card's comments line. */}
                                         {review.review_text && (
-                                            <p className="text-content-secondary mt-2">{review.review_text}</p>
+                                            <p className="text-content-secondary mt-2 whitespace-pre-line wrap-anywhere">{collapseBlankLines(review.review_text)}</p>
                                         )}
                                     </div>
                                 );
