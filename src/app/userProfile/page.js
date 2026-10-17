@@ -34,7 +34,7 @@ import { validatedQueryFn } from '../../lib/validatedQueryFn';
 import { AvailabilityPatternListSchema } from '../../lib/schemas/availability';
 import { availabilityKeys } from '../../lib/queryKeys/availabilityKeys';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Switch } from '../../components/ui/Switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -295,6 +295,14 @@ function Profile(){
     const availabilityRecovery = useFocusRecovery({ fallback: availabilityHeadingRef });
     const recurringFormPanelId = useId();
     const specificFormPanelId = useId();
+    // AC-29 / RF1 (88.6.1-59): each panel's level-3 heading is where focus lands when its notice,
+    // its first-load banner or its withdrawn rows leave. Retention is plan 70's ONE hook, with the
+    // patterns query's own key (C10), so an access answer is remembered with the cached entry. See
+    // `DECISION Phase 88.6.1-59 (AC-29 / RF1)` at the schedules list.
+    const schedulesHeadingRef = useRef(null);
+    const overridesHeadingRef = useRef(null);
+    const patternsRetained = useRetainedContent(patternsQuery.data !== undefined, patternsError, { queryKey: availabilityKeys.patterns(self?.id) });
+    const patternsFailedWithNothingCached = patternsError.showError && !patternsRetained;
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -1420,6 +1428,9 @@ function Profile(){
         }
         savePatternInFlightRef.current = true;
         setSavingPattern(true);
+        // Req 11 (88.6.1-59): the days whose create was CONFIRMED (its request resolved) — see
+        // `DECISION Phase 88.6.1-59 (Req 11, partial save)` in the catch.
+        const createdDays = [];
         try {
             // Create one schedule per selected day
             for (const dayOfWeek of recurringForm.daysOfWeek) {
@@ -1429,6 +1440,7 @@ function Profile(){
                     delete formData.end_date;
                 }
                 await availabilityAPI.createRecurringPattern(self.id, formData);
+                createdDays.push(dayOfWeek);
             }
             await patternsQuery.refetch();
             // Req 5 (88.6.1-59): armed at SUCCESS, before the write that closes the form and
@@ -1455,6 +1467,34 @@ function Profile(){
                     fallback: "We couldn't save that schedule. Please try again.",
                 })
             );
+            /* DECISION Phase 88.6.1-59 (Req 11, partial save): the loop creates one row per day, so a
+               failure on day k used to leave days 1 to k-1 saved but not listed (this catch never
+               re-read the list), and a retry created them again — the backend accepts duplicates
+               (`routes/availability.js` creates with no existence check; `UserAvailability` has no
+               unique index).
+               CHOSEN: drop the days whose create was CONFIRMED from the selection, and re-read the
+               list on EVERY failure, so the list shows what the backend had committed by the time of
+               the re-read and a retry never re-sends a confirmed day. The toast above stays.
+               RESIDUAL, named (not claimed fixed): a day whose answer was lost (the proxy's 30 s
+               abort, which does not stop the backend, or a dropped connection after the commit)
+               stays selected and can be duplicated on retry until the backend dedupes — routed to
+               Phase 91 (`.planning/deferred/phase-91.md`, `POST /availability/user/:id/recurring
+               accepts duplicates`); a commit that lands after the re-read is missed until the next
+               load.
+               REJECTED: (a) leaving the selection (duplicates on retry); (b) a saved-N-of-M line (new
+               words, D-31; and the toast rule above drops counts); (c) one batch request (a backend
+               change, out of this frontend-only phase); (d) deleting the created rows on failure
+               (destroys saved data on a transient error); (e) re-reading only when a create was
+               confirmed (a lost-answer commit on day 1 would stay off the list); (f) trimming the
+               selection against the re-read list (matching dates and timezones is brittle, and a late
+               commit can still miss the re-read — the backend dedupe is the real guard).
+               The latch is released in `finally`, AFTER the re-read, so a retry cannot start before
+               the trimmed selection commits. Undoing either half is a decision, not a cleanup. */
+            if (createdDays.length > 0) {
+                setRecurringForm((prev) => ({ ...prev, daysOfWeek: prev.daysOfWeek.filter((d) => !createdDays.includes(d)) }));
+            }
+            // TanStack swallows a failed refetch without `throwOnError`, so this never throws.
+            await patternsQuery.refetch();
         } finally {
             // Released in `finally` so a FAILED save does not strand the control.
             savePatternInFlightRef.current = false;
@@ -1507,11 +1547,22 @@ function Profile(){
         }
     };
 
+    /* DECISION Phase 88.6.1-59 (Req 5, row delete): the second tap commits, the re-read removes the
+       row holding the focused Delete, and focus used to fall to <body>.
+       CHOSEN: the same panel's toggle (`+ Add Schedule` / `+ Add Override`, the control that adds a
+       row back), else the `Availability Settings` heading, through the page's one
+       `availabilityRecovery`; armed at SUCCESS, so a failed delete (the row stays) moves nothing.
+       REJECTED: (a) the next row's Delete — it puts a destructive control under the user's finger
+       right after a destructive action, and these lists are short; (b) per-host inline focus code
+       (D-04, by tenet); (c) a minted heading (D-05). Changing this is a decision, not a cleanup. */
     const performDeletePattern = async (patternId) => {
         try {
             await availabilityAPI.deleteAvailability(patternId);
+            const rowType = availabilityPatterns.find((p) => p.id === patternId)?.type;
+            const settle = availabilityRecovery.arm({ preferred: () => (rowType === 'specific_override' ? addOverrideToggleRef.current : addScheduleToggleRef.current) });
             await patternsQuery.refetch();
             toast.success('Pattern deleted');
+            settle();
         } catch (error) {
             logger.info('Error deleting pattern:', errCtx(error));
             toast.error(
@@ -2764,6 +2815,9 @@ function Profile(){
                         arrow-key roving tabindex all come from Radix; the hand-rolled
                         strip this replaces emitted none of them. `availabilityTab` stays
                         the source of truth (controlled) so nothing else on the page moves. */}
+                    {/* C12 (88.6.1-59): ONE guard for `patternsRetained`, outside both panels — see
+                        `DECISION Phase 88.6.1-59 (AC-29 / RF1)` at the schedules list. */}
+                    <RetainedContentFocusGuard retained={patternsRetained} focusTarget={availabilityTab === 'recurring' ? schedulesHeadingRef : overridesHeadingRef} />
                     <Tabs value={availabilityTab} onValueChange={setAvailabilityTab}>
                     <TabsList aria-label="Availability settings" className="mb-4">
                         <TabsTrigger value="recurring">
@@ -2779,7 +2833,7 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <Heading level={3} size="body" className="text-content-primary">Availability Schedules</Heading>
+                                    <Heading ref={schedulesHeadingRef} level={3} size="body" className="text-content-primary">Availability Schedules</Heading>
                                     <p className="text-sm text-content-secondary mt-1">Set your recurring availability schedule</p>
                                 </div>
                                 <Button
@@ -3004,16 +3058,45 @@ function Profile(){
                                 </div>
                             )}
 
+                            {/* DECISION Phase 88.6.1-59 (AC-29 / RF1): a failed refresh keeps the rows.
+                                CHOSEN: plan 70's shared `RefreshFailedNotice` above the kept rows (owner ruling
+                                2026-10-05, copy row RF1 / D-47; every retained-content site uses it, D-51); the
+                                full banner only when nothing is retained; retention keyed on data presence
+                                (`data !== undefined`, contract C3), never a count, so a list that loaded empty
+                                is retained content with the notice above its empty sentence (D-50, owner
+                                ruling Y); an access or gone answer is treated as nothing retained through plan
+                                70's `useRetainedContent` (C10: the rows are not rendered and the full banner
+                                carries the register line); focus after a successful Retry or Try again lands
+                                on the panel's own level-3 heading (D-05); when a withdrawal removes a focused
+                                row control, the ONE guard before the tab strip moves focus to the mounted
+                                panel's heading (C12), never <body>.
+                                Spacing: `mb-3` (the form's own `space-y-3` rhythm) on the notice's wrapper,
+                                which plan 70 renders only while the notice shows; healthy, only its empty
+                                sr-only region exists, so the panel gains no box.
+                                REJECTED: (a) the exclusive ternary keyed on the error alone (after a create or
+                                delete whose re-read failed it hid every row the user had); (b) the FULL banner
+                                above the kept rows (this plan's earlier lap) — its could-not-load title is
+                                false over rows that did load; (c) the compact banner (both of its sentences are
+                                about personal controls and false here); (d) a count-keyed test; (e) one notice
+                                for both panels above the tab strip (it would sit away from the list it
+                                qualifies, and Radix mounts one panel at a time anyway); (f) for C12, a guard
+                                inside each panel (two guards for one `retained` value) or a guard with no
+                                target (the floor is the page's h1, far above on a phone).
+                                This marker names copy rows by id and spells no user-facing sentence. Changing
+                                any of these is a decision, not a cleanup. */}
                             {loadingPatterns ? (
                                 <p className="text-content-secondary">Loading schedules...</p>
-                            ) : patternsError.showError ? (
+                            ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
                                     state={patternsError}
                                     title="Couldn't load your schedules"
                                     reportSubject="Couldn't load availability patterns on /userProfile"
                                     reportContext="userProfile — availability schedules tab"
+                                    focusTarget={schedulesHeadingRef}
                                 />
                             ) : (
+                                <>
+                                <RefreshFailedNotice state={patternsError} retained={patternsRetained} focusTarget={schedulesHeadingRef} className="mb-3" />
                                 <div className="space-y-2">
                                     {availabilityPatterns
                                         .filter(p => p.type === 'recurring_pattern')
@@ -3054,6 +3137,7 @@ function Profile(){
                                         <p className="text-content-muted text-sm">No schedules set. Add one to get started.</p>
                                     )}
                                 </div>
+                                </>
                             )}
                         </div>
                     </TabsContent>
@@ -3063,7 +3147,7 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <Heading level={3} size="body" className="text-content-primary">Specific Date Overrides</Heading>
+                                    <Heading ref={overridesHeadingRef} level={3} size="body" className="text-content-primary">Specific Date Overrides</Heading>
                                     <p className="text-sm text-content-secondary mt-1">Override your schedules for specific dates</p>
                                 </div>
                                 <Button
@@ -3153,16 +3237,20 @@ function Profile(){
                                 </div>
                             )}
 
+                            {/* AC-29 / RF1 (88.6.1-59): see `DECISION Phase 88.6.1-59 (AC-29 / RF1)` at the schedules list. */}
                             {loadingPatterns ? (
                                 <p className="text-content-secondary">Loading overrides...</p>
-                            ) : patternsError.showError ? (
+                            ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
                                     state={patternsError}
                                     title="Couldn't load your overrides"
                                     reportSubject="Couldn't load availability patterns on /userProfile"
                                     reportContext="userProfile — specific overrides tab"
+                                    focusTarget={overridesHeadingRef}
                                 />
                             ) : (
+                                <>
+                                <RefreshFailedNotice state={patternsError} retained={patternsRetained} focusTarget={overridesHeadingRef} className="mb-3" />
                                 <div className="space-y-2">
                                     {availabilityPatterns
                                         .filter(p => p.type === 'specific_override')
@@ -3202,6 +3290,7 @@ function Profile(){
                                         <p className="text-content-secondary text-sm">No specific overrides set. Add one to override your default availability!</p>
                                     )}
                                 </div>
+                                </>
                             )}
                         </div>
                     </TabsContent>

@@ -6,6 +6,7 @@ import {
   expectNoApiWrites,
   holdUntilReleased,
   holdWrites,
+  settleAnimations,
   type ReleasableHold,
   type WriteHold,
 } from './support/inFlight';
@@ -382,6 +383,19 @@ test.describe('Profile phone block focus and Remove in flight (plan 88.6.1-53)',
 //   - holdUntilReleased (the shared helper, e2e/support/inFlight.ts): the ONE write under test,
 //     kept unanswered until the test releases it in the browser. Not holdWrites for this one:
 //     holdWrites never answers, and these tests release the write to see where focus lands.
+// Copy row RF1 (D-47), written ONCE in this spec (contract C7): plan 70's refresh notice.
+const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+
+function patternRow(id: string, dayOfWeek: number): Record<string, unknown> {
+  return {
+    id,
+    type: 'recurring_pattern',
+    start_date: '2026-01-01',
+    end_date: null,
+    pattern_data: { dayOfWeek, startTime: '18:00', endTime: '22:00' },
+  };
+}
+
 test.describe('Profile availability forms and username editor in flight (plan 88.6.1-59)', () => {
   let backstop: WriteHold | undefined;
 
@@ -465,5 +479,96 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(fits, 'horizontal overflow after Save Override').toBe(true);
     expect(create.count()).toBe(1);
+  });
+
+  test('deleting a schedule lands on + Add Schedule; a failed refresh keeps the rows under the RF1 notice', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    // The patterns read, answered in the browser from a mutable answer (GET only).
+    const patterns: { status: number; body: unknown } = {
+      status: 200,
+      body: [patternRow('e2e-mon', 1), patternRow('e2e-tue', 2)],
+    };
+    await page.route(
+      (url) => url.pathname.endsWith('/patterns'),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({ status: patterns.status, json: patterns.body });
+      },
+    );
+    const removal = await holdUntilReleased(page, 'DELETE', /\/availability\/e2e-(mon|tue)$/);
+    await page.goto('/userProfile');
+
+    // Arm 1 (Requirement 5): a committed Delete keeps focus while held, then lands on the toggle.
+    const monday = page.getByRole('button', { name: /^(Delete Monday schedule|Tap again to confirm)$/ });
+    await expect(monday).toBeVisible({ timeout: 15_000 });
+    await focusByKeyboard(page, monday);
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await removal.arrived;
+    await expect(monday).toBeFocused();
+    patterns.body = [patternRow('e2e-tue', 2)];
+    await removal.release({});
+    await expect(page.getByRole('button', { name: '+ Add Schedule' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Delete Monday schedule' })).toHaveCount(0);
+
+    // Arm 2 (AC-29 / RF1, contract C8 a + d): the re-read after the next delete answers 500.
+    patterns.status = 500;
+    patterns.body = { error: 'boom' };
+    const tuesday = page.getByRole('button', { name: /^(Delete Tuesday schedule|Tap again to confirm)$/ });
+    await focusByKeyboard(page, tuesday);
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    // The Tuesday DELETE is answered at once: the shared hold was released in Arm 1, and
+    // holdUntilReleased answers any later match at once after release (its `arrived` already
+    // resolved on the Monday DELETE), so a held-state check here could never fail. The in-flight
+    // focus property stays pinned by Arm 1. A 5xx read is retried once (shouldRetry), hence 15 s.
+    const retry = page.getByRole('button', { name: 'Retry' });
+    await expect(retry).toBeVisible({ timeout: 15_000 });
+    const noticeRow = retry.locator('xpath=..');
+    await expect(noticeRow).toContainText(RF1);
+    await expect(page.getByText("Couldn't load your schedules")).toHaveCount(0);
+    const keptRow = page.getByRole('button', { name: 'Delete Tuesday schedule' });
+    await expect(keptRow).toBeVisible();
+
+    // Layout (C8 d). A red here is a STOP for the owner's mockup, never a restyle.
+    await settleAnimations(noticeRow);
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    const retryBox = await retry.boundingBox();
+    expect(retryBox, 'Retry has a box').not.toBeNull();
+    if (retryBox) {
+      expect(retryBox.width, 'Retry width').toBeGreaterThanOrEqual(44);
+      expect(retryBox.height, 'Retry height').toBeGreaterThanOrEqual(44);
+      expect(retryBox.x, 'Retry left edge').toBeGreaterThanOrEqual(0);
+      expect(retryBox.x + retryBox.width, 'Retry right edge').toBeLessThanOrEqual(viewportWidth);
+    }
+    const noSideways = await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    );
+    expect(noSideways, 'sideways scroll with the notice showing').toBe(true);
+    const rowBox = await noticeRow.boundingBox();
+    const keptBox = await keptRow.locator('xpath=..').boundingBox();
+    expect(rowBox && keptBox, 'notice row and kept row have boxes').toBeTruthy();
+    if (rowBox && keptBox) {
+      expect(rowBox.y + rowBox.height, 'the notice sits above the kept row').toBeLessThanOrEqual(keptBox.y);
+    }
+
+    // Arm 3 (C8 c, Requirement 5): a keyboard Retry that succeeds lands on the panel heading.
+    patterns.status = 200;
+    patterns.body = [];
+    await focusByKeyboard(page, retry);
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByText('No schedules set. Add one to get started.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Availability Schedules' })).toBeFocused();
+
+    if (testInfo.project.name === 'phone') {
+      expect(viewportWidth).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow on the availability card').toBe(true);
+    expect(removal.count()).toBe(2);
   });
 });

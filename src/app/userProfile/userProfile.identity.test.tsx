@@ -67,7 +67,11 @@ vi.mock('next/navigation', () => ({
 
 // The page pulls only useQueryClient + useQuery from react-query; patternsQuery
 // is neutralized so the availability fetch never touches the network.
-vi.mock('@tanstack/react-query', () => ({
+// Contract C9 (88.6.1-70, carried by 88.6.1-59): the real module stays underneath, so
+// useRetainedContent's QueryClientContext read resolves (no provider: no cache entry, the
+// instance memory serves); only the two hooks the page calls are stubbed.
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@tanstack/react-query')>()),
   useQueryClient: () => ({}),
   useQuery: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }),
 }));
@@ -93,7 +97,13 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // Heavy / irrelevant children stubbed to isolate the sender logic.
 vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
 vi.mock('@/app/components/DangerZoneDeleteAccount', () => ({ default: () => null }));
-vi.mock('@/components/ui/FetchErrorBanner', () => ({ FetchErrorBanner: () => null }));
+// Contract C9 (88.6.1-70, carried by 88.6.1-59): keep the real module so useRetainedContent,
+// isAccessOrGoneError and RetainedContentFocusGuard stay real; stub only what renders.
+vi.mock('@/components/ui/FetchErrorBanner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/ui/FetchErrorBanner')>()),
+  FetchErrorBanner: () => null,
+  RefreshFailedNotice: () => null,
+}));
 vi.mock('@/components/ui/useFetchErrorState', () => ({
   useFetchErrorState: () => ({ showError: false }),
 }));

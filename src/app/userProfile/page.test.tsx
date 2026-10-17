@@ -3053,7 +3053,9 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
 describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 5)', () => {
   type Mock = ReturnType<typeof vi.fn>;
   // Copy row RF1 (D-47), written ONCE here (contract C7). The notice renders it twice while it
-  // shows (the visible line and its polite region), so every query is an All query.
+  // shows (the visible line and its polite region), so every query is an All query. A notice
+  // mounted mid-failure fills its region only after plan 70's dwell (quietOnMount), so the
+  // two-carrier count is waited for, never read on the first find.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
   const OVERRIDE = {
     id: 'override-1',
@@ -3162,7 +3164,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
     h.patternsError = new Error('boom');
     rerender(<Profile />);
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
     expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
@@ -3178,7 +3180,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
     h.patternsError = new Error('boom');
     renderProfile();
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
     const sentence = screen.getByText('No schedules set. Add one to get started.');
     const row = screen.getByRole('button', { name: 'Retry' }).parentElement as HTMLElement;
     expect(row.textContent).toContain(RF1);
@@ -3204,7 +3206,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
     renderProfile();
     await openSpecificDates(user);
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
     expect(screen.getByRole('button', { name: /^Delete .+ override$/ })).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load your overrides")).toBeNull();
   });
@@ -3274,7 +3276,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
       h.patterns = PATTERNS;
       h.patternsError = error;
       renderProfile();
-      expect(await screen.findAllByText(RF1)).toHaveLength(2);
+      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
       expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
       expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
@@ -3290,7 +3292,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
       h.patterns = PATTERNS;
       h.patternsError = new Error('boom');
       const { rerender } = renderProfile();
-      expect(await screen.findAllByText(RF1)).toHaveLength(2);
+      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
       act(() => screen.getByRole('button', { name: 'Delete Monday schedule' }).focus());
       h.refetchPatterns.mockImplementation(async () => {
         h.patternsError = answer;
@@ -3313,7 +3315,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
     h.patterns = PATTERNS;
     h.patternsError = new Error('boom');
     const { rerender } = renderProfile();
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
     act(() => screen.getByRole('button', { name: 'Retry' }).focus());
     h.refetchPatterns.mockImplementation(async () => {
       h.patternsError = null;
