@@ -1062,7 +1062,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
            `grep -rn 'onEventCreated=' src --include='*.js'` (five JSX mounts in
            `groupPlanning/page.js`, `gameDetail/page.js` x3, `groupHomePage/page.js`),
            and every handler they name refetches, toggles or bumps a refresh key —
-           none navigates.
+           none navigates. AMENDED Phase 88.6.1-68: `groupPlanning/page.js` no longer passes
+           the callback, so that grep now finds four (`gameDetail/page.js` x3,
+           `groupHomePage/page.js`); the five mounts remain (`grep -rn '<CreateEvent' src/app`).
            ——— AMENDED Phase 88.6.1-81 (dialog session), original reasoning above KEPT AS HISTORY:
            the order toast, then `modaltoggle()`, then the resets is unchanged for a write whose
            dialog session is still open. For a write whose session ended mid-request (the dialog was
