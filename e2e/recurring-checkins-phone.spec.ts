@@ -1,6 +1,6 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 
-import { holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
+import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 
 // Phase 88.6.1 plan 30 — Recurring Check-ins and Start a check-in at 375px, in a real browser.
 //
@@ -130,13 +130,7 @@ test.describe('Recurring Check-ins and Start a check-in at 375px (88.6.1-30)', (
     hold = await holdWrites(page);
   });
 
-  test.afterEach(() => {
-    // The describe-level skip (journeys project) still runs afterEach for the skipped tests, with
-    // beforeEach never having set `hold` (run 38983292066: three TypeErrors). Nothing to check then.
-    if (!hold) return;
-    const apiWrites = hold.held.filter((request) => new URL(request.url).pathname.startsWith('/api/'));
-    expect(apiWrites, 'an /api write reached the backstop: mock that exact path in this spec').toEqual([]);
-  });
+  test.afterEach(() => expectNoApiWrites(hold));
 
   test('E1: Cancel on the phone delete confirm hands focus back to the Schedule actions trigger', async ({ page }) => {
     await mockSettings(page, { current: 'fixture' });

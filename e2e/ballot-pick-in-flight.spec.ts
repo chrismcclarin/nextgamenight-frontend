@@ -1,6 +1,6 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 
-import { holdWrites, type WriteHold } from './support/inFlight';
+import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
 
 // Phase 88.6.1 plan 31 — the Game Vote at 375px, in a real browser.
 //
@@ -129,10 +129,7 @@ test.describe('the Game Vote at 375px: one pick per press, focus after it, and a
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test.afterEach(() => {
-    const apiWrites = hold.held.filter((request) => new URL(request.url).pathname.startsWith('/api/'));
-    expect(apiWrites, 'an /api write reached the backstop: mock that exact path in this spec').toEqual([]);
-  });
+  test.afterEach(() => expectNoApiWrites(hold));
 
   test('A: tie-break pick at 375 — the pressed pick keeps focus while it saves, a second Enter sends nothing, and focus lands on the winner', async ({ page }) => {
     const state = { decided: false };

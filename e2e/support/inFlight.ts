@@ -73,6 +73,20 @@ export async function holdWrites(page: Page, options: HoldWritesOptions = {}): P
 }
 
 /**
+ * The write backstop's afterEach, shared so every spec that holds writes fails the same way when a
+ * write it did not mock reached the hold. A describe-level `test.skip` (a project the spec does not
+ * run in) still runs afterEach for the skipped tests with beforeEach never having set the hold, so an
+ * unset hold means "nothing ran, nothing to check" (runs 38983292066 and 38986410775: six
+ * TypeErrors from two specs reading `hold.held` on undefined). Added at the wave 5 CI gate
+ * (orchestrator, 2026-10-16).
+ */
+export function expectNoApiWrites(hold: WriteHold | undefined): void {
+  if (!hold) return;
+  const apiWrites = hold.held.filter((request) => new URL(request.url).pathname.startsWith('/api/'));
+  expect(apiWrites, 'an /api write reached the backstop: mock that exact path in this spec').toEqual([]);
+}
+
+/**
  * Wait until every running animation under `locator` has finished before reading geometry.
  * `boundingBox()` reads the TRANSFORMED box, and the house dialog opens with dialog.tsx's
  * `zoom-in-95` over `duration-200`, so a read mid-animation measured 44px controls at 43.07px
