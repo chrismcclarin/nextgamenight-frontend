@@ -44,6 +44,21 @@ function acceptInviteLabel(group) {
   return n ? `Accept invite to ${n}` : 'Accept';
 }
 
+function declineInviteLabel(group) {
+  const n = rowLabelText(group);
+  return n ? `Decline invite to ${n}` : 'Decline';
+}
+
+function acceptFriendLabel(name) {
+  const n = rowLabelText(name);
+  return n ? `Accept friend request from ${n}` : 'Accept';
+}
+
+function declineFriendLabel(name) {
+  const n = rowLabelText(name);
+  return n ? `Decline friend request from ${n}` : 'Decline';
+}
+
 function NotificationBell({ user, variant = 'icon', label }) {
   const [isOpen, setIsOpen] = useState(false);
   /* DECISION Phase 88.6-31 (ACCEPT §9 / #164, owner ruling 2026-09-14, option 1): both disclosure
@@ -125,6 +140,8 @@ function NotificationBell({ user, variant = 'icon', label }) {
   const {
     acceptRequest: ctxAcceptFriend,
     declineRequest: ctxDeclineFriend,
+    // Plan 88.6.1-66: true while an accept or decline for that request runs, on either surface.
+    isRequestActionPending,
   } = useFriendshipStatus();
 
   /* DECISION Phase 88.6.1-28 (D-18, D-08a): the bell dismisses through the shared `useDismissal`
@@ -180,6 +197,14 @@ function NotificationBell({ user, variant = 'icon', label }) {
      surfaces.
      VISIBLE DELTA, disclosed: the pressed control takes the gated colour pair (src/app/globals.css,
      anchor ".btn-primary[aria-disabled='true']") instead of the 50% opacity wash.
+     ACROSS SURFACES (review r3, D-r3-9, H-02): a friend-request row whose request runs from the
+     Friends page (plan 88.6.1-66's in-flight fact, anchor "isRequestActionPending(request.id)") is
+     natively disabled on BOTH buttons here while the bell has no press of its own for that row —
+     chosen OVER leaving them live (the provider refuses an other-kind press with no request sent,
+     and this panel would then show copy row N6 for a decline that was never sent) and OVER an
+     aria-disabled pair (neither button was pressed on this surface, so no focus has to be kept).
+     A press made here keeps its rule of POSITION: the fact is read only while the row has no
+     record of its own.
      Going back to one shared flag, or dropping either half of the gate, is a decision, not a
      cleanup. */
   function beginRowAction(key, action) {
@@ -217,6 +242,18 @@ function NotificationBell({ user, variant = 'icon', label }) {
      refuses focus and the user lands on the heading past a row they can still act on.
      REJECTED (e): arming only when focus is inside the row — on Safari and iOS a tapped button is
      never focused, so nothing would recover there.
+     FRIEND PATHS: they arm on the line after the provider call resolves, because
+     src/app/components/FriendshipStatusProvider.js removes the row only when the server confirms
+     (plan 88.6.1-66, anchor "const reconcileFailedRequest = useCallback(") and React commits that
+     removal in a later task than the continuation that arms (NF-1 pins it against the real
+     provider). They also arm in the catch when the rethrown error carries the provider's
+     row-removed mark (requestRowRemoved), set only when its one-row reconcile removed a row the
+     server no longer lists (a stale not-pending answer, or a 500 sent after the server
+     committed, NF-5); a failure without the mark keeps the row and arms nothing.
+     REJECTED: arming on the status code (a 400) — a 500 after a committed accept removes the row
+     with nothing armed, and a 400 whose reconcile read failed keeps the row with the hook armed;
+     the mark is the provider's own record of what it did. Since the friend row now stays while
+     its request runs, Accepting... paints on friend rows too.
      Arming earlier, or focusing inside the handler, is a decision, not a cleanup. */
   function armRowRecovery(pressedEl) {
     const row = pressedEl?.closest?.('li');
@@ -342,51 +379,64 @@ function NotificationBell({ user, variant = 'icon', label }) {
     }
   }
 
-  async function handleDecline(invite) {
+  async function handleDecline(invite, pressedEl) {
     const key = `invite:${invite.id}`;
     if (!beginRowAction(key, 'decline')) return;
+    let settle = null;
     try {
       await invitesAPI.declineInvite(invite.id);
+      settle = armRowRecovery(pressedEl);
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
       // L-8: dead-group 410 — removing the row is exactly what the user asked
       // for, so no notice needed.
       if (err?.status === 410) {
+        settle = armRowRecovery(pressedEl);
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
       } else {
         logger.error('Failed to decline invite:', err);
       }
     } finally {
       endRowAction(key);
+      settle?.();
     }
   }
 
-  async function handleAcceptFriend(request) {
+  async function handleAcceptFriend(request, pressedEl) {
     const key = `friend:${request.id}`;
     if (!beginRowAction(key, 'accept')) return;
+    let settle = null;
     try {
       // Provider handles optimistic removal + 404-stale silencing.
+      // AMENDED Phase 88.6.1-44: since plan 88.6.1-66 the provider removes the row when the server confirms, so this handler arms focus recovery when the call resolves (see the H9 marker).
       // alreadyAccepted means the row was already resolved on another
       // surface (friends page) — we still show the success confirmation
       // since from the user's POV the action they wanted is done.
       await ctxAcceptFriend(request.id);
+      settle = armRowRecovery(pressedEl);
       setConfirmation({ text: 'Accepted friend request!', tone: 'success' });
     } catch (err) {
       logger.error('Failed to accept friend request:', err);
+      if (err?.requestRowRemoved) settle = armRowRecovery(pressedEl);
     } finally {
       endRowAction(key);
+      settle?.();
     }
   }
 
-  async function handleDeclineFriend(request) {
+  async function handleDeclineFriend(request, pressedEl) {
     const key = `friend:${request.id}`;
     if (!beginRowAction(key, 'decline')) return;
+    let settle = null;
     try {
       await ctxDeclineFriend(request.id);
+      settle = armRowRecovery(pressedEl);
     } catch (err) {
       logger.error('Failed to decline friend request:', err);
+      if (err?.requestRowRemoved) settle = armRowRecovery(pressedEl);
     } finally {
       endRowAction(key);
+      settle?.();
     }
   }
 
@@ -657,8 +707,10 @@ function NotificationBell({ user, variant = 'icon', label }) {
                               </Button>
                               <Button
                                 variant="secondary"
-                                onClick={() => handleDecline(invite)}
-                                disabled={!!pressed}
+                                onClick={(e) => handleDecline(invite, e.currentTarget)}
+                                aria-label={declineInviteLabel(groupName)}
+                                aria-disabled={pressed === 'decline' ? 'true' : undefined}
+                                disabled={pressed === 'accept'}
                                 className="flex-1"
                               >
                                 Decline
@@ -695,20 +747,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
                             <div className="flex gap-2 mt-2">
                               <Button
                                 variant="primary"
-                                onClick={() => handleAcceptFriend(request)}
-                                disabled={!!pressed}
+                                onClick={(e) => handleAcceptFriend(request, e.currentTarget)}
+                                aria-label={pressed === 'accept' ? undefined : acceptFriendLabel(requesterName)}
+                                aria-disabled={pressed === 'accept' ? 'true' : undefined}
+                                disabled={pressed === 'decline' || (!pressed && isRequestActionPending(request.id))}
                                 className="flex-1"
                               >
-                                {pressed ? (
-                                  <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                  'Accept'
-                                )}
+                                {pressed === 'accept' ? ACCEPTING_COPY : 'Accept'}
                               </Button>
                               <Button
                                 variant="secondary"
-                                onClick={() => handleDeclineFriend(request)}
-                                disabled={!!pressed}
+                                onClick={(e) => handleDeclineFriend(request, e.currentTarget)}
+                                aria-label={declineFriendLabel(requesterName)}
+                                aria-disabled={pressed === 'decline' ? 'true' : undefined}
+                                disabled={pressed === 'accept' || (!pressed && isRequestActionPending(request.id))}
                                 className="flex-1"
                               >
                                 Decline

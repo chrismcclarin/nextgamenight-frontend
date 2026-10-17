@@ -14,10 +14,20 @@
 // that work and flushes it on act's own schedule (same file, anchor
 // "function scheduleCallback$1(priorityLevel, callback) {"), a test-only order.
 //
+// Presses are focus(), fireEvent.click(), then clearStaleWindowEvent(). MEASURED 2026-10-16 (jsdom
+// 29.1.1, React 18.2 development build): once a React event handler has run, window.event keeps
+// answering that click after dispatch has ended (seen after fireEvent.click and after user-event's
+// click alike; a click on a button with no React handler leaves it undefined). React reads
+// window.event to pick an update's lane, so every later provider update in the test took the
+// discrete (sync) lane and was flushed in a microtask, committing the provider's removal BEFORE the
+// bell's await continuation ran: an order no browser produces, because a browser's window.event is
+// undefined in a promise continuation. With the stale value in place NF-1, NF-3, NF-4 and NF-5
+// measured focus on body against the correct code. Clearing it right after the dispatch, before
+// any continuation runs, restores the browser's state (window.event then reads undefined).
+//
 // Comments in this file are line comments only (FE-TESTING-CONVENTIONS CF-9).
 import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api';
 
@@ -157,6 +167,20 @@ async function openBell() {
   expect(await screen.findByText('Friend Requests')).toBeInTheDocument();
 }
 
+// See the header: drop the stale own window.event property so it reads undefined again.
+function clearStaleWindowEvent() {
+  delete (window as unknown as { event?: unknown }).event;
+}
+
+// A press on a focused control. fireEvent wraps the dispatch in act, so the pressed control's own
+// in-flight render lands before the next line; the request's continuation runs after that act,
+// and the stale window.event is cleared before it can.
+function press(button: HTMLElement) {
+  button.focus();
+  fireEvent.click(button);
+  clearStaleWindowEvent();
+}
+
 function rowFor(name: string) {
   const row = screen.getByText(name).closest('li');
   expect(row).not.toBeNull();
@@ -177,7 +201,6 @@ afterEach(() => {
 
 describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread providers (H9 on plan 88.6.1-66\'s remove-on-confirm)', () => {
   it('NF-1. arm-on-resolve ordering: the row stays while its Accept works, and focus lands on the next request\'s Accept once the provider removes the row', async () => {
-    const user = userEvent.setup();
     queueReceived([R1, R2], [R2]);
     const dA = deferred<unknown>();
     mockApi.acceptRequest.mockReturnValue(dA.promise);
@@ -185,7 +208,7 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
     await openBell();
 
     const acceptAna = within(rowFor('Ana')).getByRole('button', { name: 'Accept friend request from Ana' });
-    await user.click(acceptAna);
+    press(acceptAna);
     expect(rowFor('Ana')).toBeInTheDocument();
     expect(acceptAna).toHaveAccessibleName('Accepting...');
 
@@ -199,7 +222,6 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
   });
 
   it('NF-2. a 500 the reconcile still lists keeps the row and arms nothing: a later outside press moves nobody to the page heading', async () => {
-    const user = userEvent.setup();
     queueReceived([R1, R2], [R1, R2]);
     const err500 = make500();
     mockApi.acceptRequest.mockRejectedValue(err500);
@@ -207,7 +229,7 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
     await openBell();
 
     const acceptAna = within(rowFor('Ana')).getByRole('button', { name: 'Accept friend request from Ana' });
-    await user.click(acceptAna);
+    press(acceptAna);
     await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
 
     const region = screen.getByRole('region', { name: 'Notifications' });
@@ -229,14 +251,13 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
   });
 
   it('NF-3. the stale 400 (RECORDED): the server no longer lists the request, the row leaves and focus moves to the next request\'s Accept', async () => {
-    const user = userEvent.setup();
     queueReceived([R1, R2], [R2], [R2]);
     const err400 = make400();
     mockApi.acceptRequest.mockRejectedValue(err400);
     renderTree();
     await openBell();
 
-    await user.click(within(rowFor('Ana')).getByRole('button', { name: 'Accept friend request from Ana' }));
+    press(within(rowFor('Ana')).getByRole('button', { name: 'Accept friend request from Ana' }));
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Accept friend request from Ben' })),
     );
@@ -245,7 +266,6 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
   });
 
   it('NF-4. a decline on the last request lands focus on the panel\'s Notifications heading, inside the still-open panel', async () => {
-    const user = userEvent.setup();
     // The mount load answers [R1]; the reload the provider pulls after the confirmed decline answers
     // the empty list the server now holds (an exhausted queue would answer [R1] again).
     queueReceived([R1], []);
@@ -253,7 +273,7 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
     renderTree();
     await openBell();
 
-    await user.click(within(rowFor('Ana')).getByRole('button', { name: 'Decline friend request from Ana' }));
+    press(within(rowFor('Ana')).getByRole('button', { name: 'Decline friend request from Ana' }));
     const region = screen.getByRole('region', { name: 'Notifications' });
     await waitFor(() =>
       expect(document.activeElement).toBe(within(region).getByRole('heading', { name: 'Notifications' })),
@@ -262,14 +282,13 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
   });
 
   it('NF-5. a 500 the reconcile removes (the backend committed, then failed to answer) still moves focus to the next request — the arm follows the provider\'s row-removed mark, not the status', async () => {
-    const user = userEvent.setup();
     queueReceived([R1, R2], [R2], [R2]);
     const err500 = make500();
     mockApi.acceptRequest.mockRejectedValue(err500);
     renderTree();
     await openBell();
 
-    await user.click(within(rowFor('Ana')).getByRole('button', { name: 'Accept friend request from Ana' }));
+    press(within(rowFor('Ana')).getByRole('button', { name: 'Accept friend request from Ana' }));
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Accept friend request from Ben' })),
     );
