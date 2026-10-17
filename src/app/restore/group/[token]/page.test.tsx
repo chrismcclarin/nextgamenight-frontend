@@ -10,7 +10,7 @@
 //
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`.
 import * as React from 'react';
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'a'.repeat(64);
@@ -717,5 +717,108 @@ describe('SPEC-REQ-7 — no state on this page claims the group was permanently 
       }
       cleanup();
     }
+  });
+});
+
+// Plan 88.6.1-36 (D-26 / R112, D-24 / D-46, D-30 copy row L2). Every text query below is an EXACT
+// string or a role query: plan 36's Task 3 adds a slot-0 region that repeats on-screen text, and an
+// exact string cannot match that region's longer composed sentence.
+describe('restore/group/[token] — R112, D-24 and L2 (plan 88.6.1-36)', () => {
+  it("C1 (D-24). the proxy's CSRF 403 is not a membership refusal: the retryable failure line and a working Try again", async () => {
+    signedIn();
+    accept().mockRejectedValueOnce(
+      new ApiError('Cross-origin request rejected', 'forbidden', 403, {
+        error: 'Cross-origin request rejected',
+        csrf_rejected: true,
+      })
+    );
+    renderPage();
+    await tapTakeOver();
+
+    expect(
+      await screen.findByText('Something went wrong bringing this group back. Please try again.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText("You're not a member of this group, so you can't take it over.")).toBeNull();
+
+    // The proxy refused BEFORE forwarding, so no acceptance happened and the retry is safe; the
+    // once-rejection is consumed and the retry hits the beforeEach success.
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Tuesday Night Crew is back' })
+    ).toBeInTheDocument();
+    expect(accept()).toHaveBeenCalledTimes(2);
+  }, 10000);
+
+  it("S1 (R112). a superseded preview run's late 404 cannot overwrite the live run's preview", async () => {
+    // StrictMode runs Effect 1 twice, so two preview requests are in flight and run 1 is the
+    // superseded one. The live run (call 2) answers FIRST with a valid preview; the superseded
+    // run (call 1) rejects 404 LAST. Without the per-run flag that late 404 replaced the preview
+    // with "This restore link is no longer valid." on a link that is valid.
+    const calls: Array<{ resolve: (v: unknown) => void; reject: (e: unknown) => void }> = [];
+    getPreview().mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          calls.push({ resolve, reject });
+        })
+    );
+    renderPage(true);
+
+    await waitFor(() => expect(getPreview()).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      calls[1].resolve(LIVE_PREVIEW);
+    });
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Tuesday Night Crew' })
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      calls[0].reject(new ApiError('nope', 'not_found', 404, { error: 'nope' }));
+    });
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Tuesday Night Crew' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Unable to restore this group' })).toBeNull();
+  });
+
+  it('S2 (held-out guard for the Effect 2 ruling). a forced Effect 2 re-run does not strand the already-restored hand-off', async () => {
+    // Confirm-only on the shipped shape: Effect 2 deliberately carries NO per-run flag. Its one
+    // async continuation (the membership probe, then the redirect) is issued once per page load
+    // behind a latch, so a per-run cancel would drop the probe's answer when the effect re-runs
+    // on a new user object, and the re-run returns at the latch without re-issuing it: the page
+    // would sit on "One moment..." for good. Shown RED once against a throwaway per-run-cancel
+    // variant (recorded in 88.6.1-36-SUMMARY.md, never committed).
+    signedIn();
+    getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
+    let resolveGroup: (value: unknown) => void = () => {};
+    getGroup().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGroup = resolve;
+        })
+    );
+    const { rerender } = renderPage();
+
+    await waitFor(() => expect(getGroup()).toHaveBeenCalledWith(LIVE_ID));
+
+    // A NEW user object with the same subject: a changed dependency, so Effect 2 re-runs.
+    authState.user = { sub: 'auth0|accepter' };
+    rerender(<RestoreGroupPage />);
+
+    await act(async () => {
+      resolveGroup({ id: LIVE_ID, name: GROUP_NAME });
+    });
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith(`/groupHomePage?id=${LIVE_ID}`), {
+      timeout: 4000,
+    });
+  }, 10000);
+
+  it('L1 (L2). the loading line names what is loading, and the spinner carries the same name', async () => {
+    getPreview().mockImplementation(() => new Promise(() => {}));
+    renderPage();
+
+    expect(await screen.findByText('Checking your restore link...')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Checking your restore link...' })).toBeInTheDocument();
+    expect(screen.queryByText('Loading...')).toBeNull();
   });
 });
