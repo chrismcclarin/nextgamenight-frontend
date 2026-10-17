@@ -1645,7 +1645,9 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/gameDetail/page.js': { 1: 3, 2: 6, 3: 1 },
   'app/global-error.tsx': { 1: 1 },
   'app/goodbye/page.tsx': { 1: 2 },
-  'app/groupHomePage/page.js': { 1: 1 },
+  // RAISED { 1: 1 } -> { 1: 1, 2: 1 } by plan 88.6.1-71 task 1 (owner ruling 2026-10-05): the events-failure
+  // arm renders the calendar's own section heading, an h2, only when the calendar does not render — same outline.
+  'app/groupHomePage/page.js': { 1: 1, 2: 1 },
   'app/groupPlanning/page.js': { 1: 1, 2: 1, 3: 1 },
   'app/invite/accept/page.js': { 1: 3 },
   'app/invite/game/[token]/page.js': { 1: 6 },

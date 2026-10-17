@@ -26,7 +26,7 @@ import KebabMenu from '../components/KebabMenu';
 import GroupSettings from '../components/GroupSettings';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
@@ -37,6 +37,13 @@ import { logger, errCtx } from '../../lib/logger';
 // nothing (unknown, never announced).
 const LOAD_OK = Object.freeze({ isError: false });
 const LOAD_FAILED = Object.freeze({ isError: true });
+
+// Copy rows G7 / G8, ratified by the owner on 2026-10-05 (revision lap 3, recorded as D-47): one
+// constant per string, so a copy scan finds each byte for byte. CALENDAR_TITLE is the calendar's
+// existing title, hoisted so the calendar and the events failure arm's heading cannot drift apart.
+const GROUP_LOAD_FAILED_TITLE = "Couldn't load this group";
+const GROUP_EVENTS_LOAD_FAILED_TITLE = "Couldn't load this group's events";
+const CALENDAR_TITLE = "Calendar";
 
 // A groups home page
 function GroupHomePage(){
@@ -72,6 +79,21 @@ function GroupHomePage(){
 
     // Calendar state
     const [groupEvents, setGroupEvents] = useState([]);
+    // 88.6.1-71 (Req 9): the members and events loads are tracked like the games load. Each slot
+    // keeps its error until its newest run succeeds, the group id its newest success loaded for
+    // (88.6.1-70 contract C3 — never a row count), a run counter (newest wins) and the pending
+    // run a retry joins (review r2 #81).
+    const [membersError, setMembersError] = useState(null);
+    const [eventsError, setEventsError] = useState(null);
+    const [membersLoadedFor, setMembersLoadedFor] = useState(null);
+    const [eventsLoadedFor, setEventsLoadedFor] = useState(null);
+    const membersRunRef = useRef(0);
+    const eventsRunRef = useRef(0);
+    const membersInFlightRef = useRef(null);
+    const eventsInFlightRef = useRef(null);
+    // The calendar section's heading: plan 88.6.1-73's `headingRef` on the calendar, and the events
+    // failure arm's own heading, so it always names the section heading on screen.
+    const calendarHeadingRef = useRef(null);
     const [calendarPrefillDate, setCalendarPrefillDate] = useState(null);
     // CAL-05: track the visual entry mode for the create-event modal.
     // 'day' is set when the user taps an empty day cell or the modal's
@@ -141,6 +163,44 @@ function GroupHomePage(){
         }
     };
 
+    /* DECISION Phase 88.6.1-71 (Req 9, members load failure — owner ruling 2026-10-05): CHOSEN — a
+       members request that fails for any reason but removal, or answers with something that is not
+       a list, is TRACKED; on the first load the gate shows the full banner titled
+       GROUP_LOAD_FAILED_TITLE with Try again, checked BEFORE the group loading line; on a refresh
+       the member list is kept (the refresh notice says so).
+       REJECTED (a) — emptying the member list and moving on (what shipped): the first load sat on
+       the group loading line forever because nothing ever opened the gate, and a failed refresh
+       silently erased the member count and the games list's member data.
+       REJECTED (b) — the compact notice: its sentence says some personal controls are unavailable,
+       which is false here; nothing on the page is.
+       REJECTED (c) — treating any failure as a removal: a network blip would bounce an active
+       member to the home page; for the newest run the removal redirect stays the FIRST decision in
+       both arms, and the redirect call itself is unchanged (an overtaken run never redirects, LOG
+       FIRST below).
+       ACCESS (plan 88.6.1-70's contract C10): `retained` comes only from `useRetainedContent`, and
+       the banner's early return keys on "not retained", not on the paint gate — so an access or
+       gone answer the removal redirect does not take (a session that expired, a 410) replaces the
+       group's content with the banner even after the page has loaded, and keeps it replaced until
+       a load succeeds.
+       REJECTED (d) — gating the banner on the paint gate alone: once the page has loaded, the
+       notice handed "not retained" shows nothing, and the whole group would stay on screen with no
+       failure state.
+       Newest wins, the error is cleared only by the newest run's success (so Try again keeps its
+       banner, label and focus), and each run resolves LOAD_OK / LOAD_FAILED (plan 88.6.1-70's
+       contract C1-C5, C10).
+       LOG FIRST (review r2 #80): the catch's existing log line runs BEFORE the superseded return —
+       a request that really failed is a real diagnostic even when a newer run has overtaken it,
+       the house order (ResponseDashboard's "Logged BEFORE the generation guard on purpose",
+       EventCalendar's "Reported REGARDLESS of cancellation"); the removal redirect is taken by the
+       newest run only.
+       REJECTED (e) — guard before log: every overtaken failure vanishes from the logs, so an
+       outage looks smaller than it was.
+       JOIN (review r2 #81): Try again and the tab-return re-attempt return the pending run's
+       promise instead of starting another (ResponseDashboard's in-flight short-circuit); a direct
+       refresh after a write never joins, so a pre-write answer cannot land last.
+       REJECTED (f) — a run per tab return: on a phone every app switch would send one more request
+       and throw the previous answer away.
+       Changing any of these is a decision, not a cleanup. */
     const getGroupMembers = async () => {
         // Gate the membership derive on identity resolution. Until selfUuid is
         // resolved the find below would miss and the redirect-as-removed branch
@@ -148,9 +208,20 @@ function GroupHomePage(){
         // false (page shows "Loading group…"); when selfUuid resolves the effect
         // re-runs (selfUuid is in its deps) and the derive recomputes.
         if (!Router || !user?.sub || !selfUuid) return;
+        const run = ++membersRunRef.current;
+        const groupId = Router;
+        // JOIN: this run's promise is published from its start until it settles, whoever started
+        // it, and resolves with the run's own outcome, so a joined retry reads it too (C4).
+        let outcome;
+        let finishRun;
+        const thisRun = new Promise((resolve) => {
+            finishRun = resolve;
+        });
+        membersInFlightRef.current = thisRun;
         try {
             // Use groupsAPI.getGroupMembers which automatically includes Authorization header
             const data = await groupsAPI.getGroupMembers(Router);
+            if (run !== membersRunRef.current) return undefined;
 
             // Ensure data is an array before processing
             if (!Array.isArray(data)) {
@@ -166,8 +237,9 @@ function GroupHomePage(){
                 logger.info('Group members data is not an array:', {
                     received: data === null ? 'null' : typeof data,
                 });
-                setUserList([]);
-                return;
+                setMembersError(new Error("The group members request didn't complete."));
+                outcome = LOAD_FAILED;
+                return outcome;
             }
 
             // GROUP-05: backend's `/groups/:id/users` returns 200 even for
@@ -186,24 +258,82 @@ function GroupHomePage(){
             setUserList(data);
             setUserRole(currentUserMember.UserGroup.role);
             setMembershipChecked(true);
+            setMembersError(null);
+            setMembersLoadedFor(groupId);
+            outcome = LOAD_OK;
+            return outcome;
         } catch (error) {
-            if (isRemovedFromGroupError(error)) {
-                redirectToHomeAsRemoved();
-                return;
+            if (run === membersRunRef.current) {
+                if (isRemovedFromGroupError(error)) {
+                    redirectToHomeAsRemoved();
+                    return undefined;
+                }
             }
             logger.info('Error fetching group members:', errCtx(error));
-            setUserList([]);
+            if (run !== membersRunRef.current) return undefined;
+            setMembersError(
+                error instanceof Error ? error : new Error("The group members request didn't complete.")
+            );
+            outcome = LOAD_FAILED;
+            return outcome;
+        } finally {
+            finishRun(outcome);
+            if (membersInFlightRef.current === thisRun) membersInFlightRef.current = null;
         }
     };
 
+    /* DECISION Phase 88.6.1-71 (Req 9, events load failure — owner ruling 2026-10-05): CHOSEN — a
+       failed events request is TRACKED; on this group's first load the calendar's place shows its
+       section heading and the full banner titled GROUP_EVENTS_LOAD_FAILED_TITLE, checked BEFORE
+       the calendar because a failed request also has zero events — the same heading-plus-banner
+       shape as the games section below; on a refresh the events already shown are kept
+       (`eventsRetained`, from plan 88.6.1-70's `useRetainedContent` over `eventsLoadedFor`) — an
+       events list that loaded EMPTY is kept too (owner ruling Y, 2026-10-05: a list that loaded
+       empty is retained content); an access or gone answer is never kept (plan 88.6.1-70's
+       contract C10: the banner replaces the calendar until a load succeeds — this fetch has no
+       removal arm of its own).
+       REJECTED (a) — emptying the events list (what shipped): an empty calendar told the group it
+       had no events when the request had failed — the defect `DECISION Phase 88.6-27` closed in
+       the calendar's own fetch, still open on this page's.
+       REJECTED (b) — a new failure prop on the calendar: it documents its external-events mode as
+       parent-owned, and a prop would widen a component two pages mount for a fetch only this page
+       owns.
+       Focus after a successful Try again goes to the calendar's own heading through `headingRef`
+       (plan 88.6.1-73), never the top of the page. Newest wins; error cleared on success; outcome
+       resolved; log first and the retry joins a pending run (the members block's two rules and
+       reasons, review r2 #80 / #81). A non-member's events request is answered 403 by the
+       backend, which the access rule above turns into the banner.
+       Changing any of these is a decision, not a cleanup. */
     const fetchGroupEvents = async () => {
         if (!Router || !user?.sub) return;
+        const run = ++eventsRunRef.current;
+        const groupId = Router;
+        // JOIN: published from the run's start until it settles (the members fetch's comment).
+        let outcome;
+        let finishRun;
+        const thisRun = new Promise((resolve) => {
+            finishRun = resolve;
+        });
+        eventsInFlightRef.current = thisRun;
         try {
-            const data = await eventsAPI.getGroupEvents(Router, { includeRsvpSummary: true });
+            const data = await eventsAPI.getGroupEvents(groupId, { includeRsvpSummary: true });
+            if (run !== eventsRunRef.current) return undefined;
             setGroupEvents(data || []);
+            setEventsError(null);
+            setEventsLoadedFor(groupId);
+            outcome = LOAD_OK;
+            return outcome;
         } catch (error) {
             logger.info('Error fetching group events:', errCtx(error));
-            setGroupEvents([]);
+            if (run !== eventsRunRef.current) return undefined;
+            setEventsError(
+                error instanceof Error ? error : new Error("The group events request didn't complete.")
+            );
+            outcome = LOAD_FAILED;
+            return outcome;
+        } finally {
+            finishRun(outcome);
+            if (eventsInFlightRef.current === thisRun) eventsInFlightRef.current = null;
         }
     };
 
@@ -307,6 +437,40 @@ function GroupHomePage(){
         refetch: getGamesForGroup,
     });
 
+    // The members and events fetches are re-created every render, so each reaches the hook through
+    // the Friends-shape adapter (`DECISION Phase 88-14`): a ref-held fetch behind a STABLE callback
+    // (the hook keys its tab-return listener on `refetch`). The retry JOINS a pending run — it
+    // returns that run's promise rather than starting another (the members fetch's DECISION
+    // block); the direct callers (a role change, a settings save, a created event) never join.
+    const membersFetchRef = useRef(null);
+    const eventsFetchRef = useRef(null);
+    useEffect(() => {
+        membersFetchRef.current = getGroupMembers;
+        eventsFetchRef.current = fetchGroupEvents;
+    });
+    const retryMembers = useCallback(
+        () => membersInFlightRef.current ?? membersFetchRef.current?.(),
+        []
+    );
+    const retryEvents = useCallback(
+        () => eventsInFlightRef.current ?? eventsFetchRef.current?.(),
+        []
+    );
+    const membersErrorState = useFetchErrorState({
+        isError: Boolean(membersError),
+        error: membersError,
+        refetch: retryMembers,
+    });
+    const eventsErrorState = useFetchErrorState({
+        isError: Boolean(eventsError),
+        error: eventsError,
+        refetch: retryEvents,
+    });
+    // 88.6.1-70 contract C10: the ONLY derivation of `retained` on this page — false on a first
+    // load, and false after an access or gone answer until the next success.
+    const membersRetained = useRetainedContent(membersLoadedFor === Router, membersErrorState);
+    const eventsRetained = useRetainedContent(eventsLoadedFor === Router, eventsErrorState);
+
     // PR2-L11 (SPEC Req 7): getGroup + fetchGroupEvents do NOT depend on selfUuid,
     // so they live in an effect keyed only on [Router, user?.sub, ...] — they fire
     // once per hard load and are NOT re-fetched when selfUuid resolves later. Prior
@@ -368,6 +532,21 @@ function GroupHomePage(){
         setEventModal(!eventModal);
     };
 
+
+    // 88.6.1-71 (Req 9, G7): a members load that failed with nothing retained — the first load, or
+    // an access or gone answer the removal redirect did not take (C10) — replaces the page with the
+    // full banner. Checked BEFORE the paint gate (the members fetch's DECISION block, REJECTED (d)).
+    // No focusTarget: this screen has no section, so the floor (`main`, or the group's h1 once the
+    // page returns) is the honest target.
+    if (membersErrorState.showError && !membersRetained) {
+        return (
+            <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                <div className="w-full max-w-xl">
+                    <FetchErrorBanner state={membersErrorState} title={GROUP_LOAD_FAILED_TITLE} />
+                </div>
+            </div>
+        );
+    }
 
     // Phase 69-04 paint gate: don't render the group page until the
     // membership check has confirmed the current user belongs here. This
@@ -1300,23 +1479,39 @@ function GroupHomePage(){
 
             {activeTab === 'home' && (
               <>
-                {/* Group Calendar */}
-                <EventCalendar
-                    refreshKey={eventsRefreshKey}
-                    events={groupEvents}
-                    variant="compact"
-                    title="Calendar"
-                    showListView={true}
-                    scope={Router ? `group:${Router}` : 'group'}
-                    onEmptyDayClick={userRole && userRole !== 'pending' ? (dateStr) => {
-                        // CAL-05: empty-day tap (or EventDayModal's
-                        // "+ New event on this day") opens create-event in
-                        // visual day-mode focused on the tapped day.
-                        setCalendarPrefillDate(dateStr);
-                        setCalendarEntryMode('day');
-                        setEventModal(true);
-                    } : undefined}
-                />
+                {/* Group Calendar. The failure arm is checked FIRST: a failed request also has
+                    zero events, so the calendar would read as an empty group (the events fetch's
+                    DECISION block). */}
+                {eventsErrorState.showError && !eventsRetained ? (
+                    <div>
+                        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
+                            {CALENDAR_TITLE}
+                        </Heading>
+                        <FetchErrorBanner
+                            state={eventsErrorState}
+                            title={GROUP_EVENTS_LOAD_FAILED_TITLE}
+                            focusTarget={calendarHeadingRef}
+                        />
+                    </div>
+                ) : (
+                    <EventCalendar
+                        refreshKey={eventsRefreshKey}
+                        events={groupEvents}
+                        variant="compact"
+                        title={CALENDAR_TITLE}
+                        headingRef={calendarHeadingRef}
+                        showListView={true}
+                        scope={Router ? `group:${Router}` : 'group'}
+                        onEmptyDayClick={userRole && userRole !== 'pending' ? (dateStr) => {
+                            // CAL-05: empty-day tap (or EventDayModal's
+                            // "+ New event on this day") opens create-event in
+                            // visual day-mode focused on the tapped day.
+                            setCalendarPrefillDate(dateStr);
+                            setCalendarEntryMode('day');
+                            setEventModal(true);
+                        } : undefined}
+                    />
+                )}
 
                 {/* Group Games Section */}
                 <GroupGamesList
