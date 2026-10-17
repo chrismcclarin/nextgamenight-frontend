@@ -285,8 +285,11 @@ test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
     answer = { status: 503, json: {} };
     await card.getByRole('button', { name: 'Refresh', exact: true }).click();
 
-    // The VISIBLE line (the notice's polite region carries the same sentence, sr-only).
-    const rf1Line = card.getByText(RF1, { exact: true }).filter({ visible: true });
+    // The VISIBLE line: the notice renders the sentence twice, once in its sr-only polite region
+    // (a div with role=status) and once in the visible <span>. `filter({ visible: true })` keeps
+    // BOTH (an sr-only node still has a box), which CI run 39005519001 reported as a strict-mode
+    // violation in both projects; `.and(locator('span'))` keeps only the visible span.
+    const rf1Line = card.getByText(RF1, { exact: true }).and(card.locator('span'));
     await expect(rf1Line).toBeVisible({ timeout: 15_000 });
     await expect(rf1Line).toHaveCount(1);
     for (const m of MEMBERS) {
