@@ -6,16 +6,24 @@
 // query and asserts no removed-redirect fires (loading is shown instead), plus
 // the positive path where a resolved member passes the gate without redirect.
 import * as React from 'react';
-import { render, screen, waitFor, cleanup, within } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, within, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 // Mutable self-identity the mocked hook reads so each case can present a
 // pending (undefined selfUuid) or resolved identity.
+// `search` drives useSearchParams (GR-3 switches group); the two `*Props` fields are what the
+// createEvent and GroupGamesList stubs last rendered with (the refresh describe drives and reads them).
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
   isPending: true,
+  search: 'id=GROUP1',
+  createEventProps: null as null | { onEventCreated: (event: unknown) => Promise<void> },
+  gamesListProps: null as null | {
+    games: unknown[];
+    errorState: { showError: boolean; retry: () => Promise<unknown> };
+  },
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -30,7 +38,7 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 
 const pushSpy = vi.fn();
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams('id=GROUP1'),
+  useSearchParams: () => new URLSearchParams(h.search),
   useRouter: () => ({ push: pushSpy }),
 }));
 
@@ -38,10 +46,21 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
 }));
 
-// Stub the heavy children — this test only exercises the membership gate.
-vi.mock('@/app/components/createEvent', () => ({ default: () => null }));
+// Stub the heavy children. Two of the stubs (createEvent, GroupGamesList) capture their props, for
+// the refresh describe; every stub still renders nothing.
+vi.mock('@/app/components/createEvent', () => ({
+  default: (props: NonNullable<typeof h.createEventProps>) => {
+    h.createEventProps = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/ManageMembers', () => ({ default: () => null }));
-vi.mock('@/app/components/GroupGamesList', () => ({ default: () => null }));
+vi.mock('@/app/components/GroupGamesList', () => ({
+  default: (props: NonNullable<typeof h.gamesListProps>) => {
+    h.gamesListProps = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/EventCalendar', () => ({ default: () => null }));
 vi.mock('@/app/components/PendingMemberBanner', () => ({ default: () => null }));
 vi.mock('@/app/components/GroupLibrary', () => ({ default: () => null }));
@@ -76,7 +95,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import GroupHomePage from './page';
-import { groupsAPI, eventsAPI, listsAPI } from '@/lib/api';
+import { groupsAPI, eventsAPI, listsAPI, ApiError } from '@/lib/api';
+import { logger } from '@/lib/logger';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -89,6 +109,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
   h.isPending = true;
+  h.search = 'id=GROUP1';
+  h.createEventProps = null;
+  h.gamesListProps = null;
   (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(ROSTER);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
@@ -96,6 +119,17 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+/** A promise with its resolve and reject handed out, so a test decides when a request settles. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('groupHomePage membership gate vs unresolved identity', () => {
   it('does NOT redirect-as-removed while the identity query is unresolved (shows loading)', async () => {
@@ -316,5 +350,135 @@ describe('groupHomePage breadcrumb — hidden separator, min-w-0, ring (88.6.1-5
     ]) {
       expect(homeTokens).toContain(token);
     }
+  });
+});
+
+// 88.6.1-55 Task 3 (Req 9; D-09a / D-37 precedent). Every absence below is asserted synchronously
+// after act returns, never inside waitFor (CF-26): a waitFor around an absence passes on its
+// first tick.
+describe('groupHomePage games refresh keeps the page (88.6.1-55: Req 9, D-09a / D-37 precedent)', () => {
+  const gamesFailure = () => new ApiError('Request failed', 'internal', 500);
+
+  it('GR-1. an event created from the page refreshes the games without replacing the page', async () => {
+    await renderHeaderAt('owner');
+    const before = screen.getByRole('link', { name: 'Plan Game Session' });
+    const refresh = deferred<unknown[]>();
+    (listsAPI.getGroupGames as Mock).mockReturnValueOnce(refresh.promise);
+
+    await act(async () => {
+      void h.createEventProps!.onEventCreated({ id: 'e-new' });
+    });
+
+    expect(screen.queryByText('Loading games...')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Plan Game Session' })).toBe(before);
+    expect(listsAPI.getGroupGames as Mock).toHaveBeenCalledTimes(2);
+
+    const game = { id: 'game-1', name: 'Azul' };
+    await act(async () => {
+      refresh.resolve([game]);
+    });
+    expect(h.gamesListProps!.games).toEqual([game]);
+  });
+
+  it('GR-2. Try again keeps the page AND the banner until the answer, and resolves the outcome', async () => {
+    (listsAPI.getGroupGames as Mock).mockRejectedValueOnce(gamesFailure());
+    await renderHeaderAt('owner');
+    expect(h.gamesListProps!.errorState.showError).toBe(true);
+    expect(h.gamesListProps!.games).toEqual([]);
+    const before = screen.getByRole('link', { name: 'Plan Game Session' });
+
+    const firstRetry = deferred<unknown[]>();
+    (listsAPI.getGroupGames as Mock).mockReturnValueOnce(firstRetry.promise);
+    let p1!: Promise<unknown>;
+    await act(async () => {
+      p1 = h.gamesListProps!.errorState.retry();
+    });
+
+    // In flight: the page stays mounted and the banner stays (its label and focus live there).
+    expect(screen.queryByText('Loading games...')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Plan Game Session' })).toBe(before);
+    expect(h.gamesListProps!.errorState.showError).toBe(true);
+
+    await act(async () => {
+      firstRetry.reject(gamesFailure());
+    });
+    await expect(p1).resolves.toMatchObject({ isError: true });
+    expect(h.gamesListProps!.errorState.showError).toBe(true);
+
+    const game = { id: 'game-1', name: 'Azul' };
+    (listsAPI.getGroupGames as Mock).mockResolvedValueOnce([game]);
+    let p2!: Promise<unknown>;
+    await act(async () => {
+      p2 = h.gamesListProps!.errorState.retry();
+      await p2;
+    });
+    await expect(p2).resolves.toMatchObject({ isError: false });
+    expect(h.gamesListProps!.errorState.showError).toBe(false);
+    expect(h.gamesListProps!.games).toEqual([game]);
+  });
+
+  it('GR-3. a switch to another group still names what is loading until that group settles', async () => {
+    const { rerender } = await renderHeaderAt('owner');
+    const otherGroup = deferred<unknown[]>();
+    (listsAPI.getGroupGames as Mock).mockReturnValueOnce(otherGroup.promise);
+
+    h.search = 'id=GROUP2';
+    rerender(<GroupHomePage />);
+
+    expect(await screen.findByText('Loading games...')).toBeInTheDocument();
+    await act(async () => {
+      otherGroup.resolve([]);
+    });
+  });
+
+  it('GR-4. only the newest request writes: an older answer, or an older failure, lands nowhere but the log', async () => {
+    const gameA = { id: 'game-a', name: 'Older' };
+    const gameB = { id: 'game-b', name: 'Newer' };
+
+    // Arm 1: an older SUCCESS that settles last is dropped.
+    await renderHeaderAt('owner');
+    const a1 = deferred<unknown[]>();
+    const b1 = deferred<unknown[]>();
+    (listsAPI.getGroupGames as Mock).mockReturnValueOnce(a1.promise).mockReturnValueOnce(b1.promise);
+    await act(async () => {
+      void h.createEventProps!.onEventCreated({ id: 'e-1' });
+    });
+    await act(async () => {
+      void h.createEventProps!.onEventCreated({ id: 'e-2' });
+    });
+    await act(async () => {
+      b1.resolve([gameB]);
+    });
+    await act(async () => {
+      a1.resolve([gameA]);
+    });
+    expect(h.gamesListProps!.games).toEqual([gameB]);
+    expect(screen.queryByText('Loading games...')).toBeNull();
+
+    cleanup();
+
+    // Arm 2 (seam pass S7-1): an older FAILURE that settles last writes no error, but is LOGGED
+    // first (the house log-first order).
+    const infoSpy = vi.spyOn(logger, 'info');
+    await renderHeaderAt('owner');
+    const a2 = deferred<unknown[]>();
+    const b2 = deferred<unknown[]>();
+    (listsAPI.getGroupGames as Mock).mockReturnValueOnce(a2.promise).mockReturnValueOnce(b2.promise);
+    await act(async () => {
+      void h.createEventProps!.onEventCreated({ id: 'e-3' });
+    });
+    await act(async () => {
+      void h.createEventProps!.onEventCreated({ id: 'e-4' });
+    });
+    await act(async () => {
+      b2.resolve([gameB]);
+    });
+    await act(async () => {
+      a2.reject(gamesFailure());
+    });
+    expect(h.gamesListProps!.games).toEqual([gameB]);
+    expect(h.gamesListProps!.errorState.showError).toBe(false);
+    expect(infoSpy.mock.calls.some(([msg]) => msg === 'Error fetching games:')).toBe(true);
+    infoSpy.mockRestore();
   });
 });

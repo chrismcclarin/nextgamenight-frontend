@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
@@ -31,6 +31,13 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
 
+// The resolved outcome of one games load: the shape plan 88.6.1-21's banner reads
+// (`classifyRetryResult`) to announce a failed retry, and the shape plan 88.6.1-71 reuses for the
+// page's members and events fetches (88.6.1-70 contract C4). A skipped or superseded run resolves
+// nothing (unknown, never announced).
+const LOAD_OK = Object.freeze({ isError: false });
+const LOAD_FAILED = Object.freeze({ isError: true });
+
 // A groups home page
 function GroupHomePage(){
     const { user } = Auth();
@@ -47,6 +54,10 @@ function GroupHomePage(){
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
     const [gamesError, setGamesError] = useState(null);
+    // Req 9 (88.6.1-55): the number of the newest games request, and the group id whose FIRST
+    // games request has settled. See the marker on getGamesForGroup.
+    const gamesRunRef = useRef(0);
+    const gamesSettledForRef = useRef(null);
     const [eventModal, setEventModal] = useState(false);
     const [memberModal, setMemberModal] = useState(false);
     const [showGroupSettings, setShowGroupSettings] = useState(false);
@@ -196,6 +207,31 @@ function GroupHomePage(){
         }
     };
 
+    /* DECISION Phase 88.6.1-55 (Req 9, D-09a / D-37 precedent): CHOSEN — the page-wide games
+       loader shows only until THIS group's first games request settles (a has-settled marker
+       keyed by the group id), and only the newest request may write anything.
+       REJECTED (a): re-arming the loader on every call — what shipped: every event created from
+       this page and every "Try again" on the games banner replaced the WHOLE page (the open
+       create-event dialog, the calendar, the scroll position and keyboard focus) with one line,
+       for a request about one list.
+       REJECTED (b): a flag that never re-arms — this component stays mounted when the page moves
+       to another group's id, so the previous group's games would sit under the new group's
+       header until the request lands.
+       Newest wins: an older request that settles later (an overlapping refresh, or the previous
+       group's) writes nothing — no list, no error, no loader, no settled mark, not even the
+       removal redirect; the newest run gets the same answer and acts on it. LOG FIRST: the
+       catch's log line still runs for an overtaken failure, BEFORE the superseded return — a
+       request that really failed is a real diagnostic (the house order this page's members and
+       events catches use). REJECTED: guard before log — every overtaken failure vanishes from the
+       logs, so an outage looks smaller than it was.
+       The error is cleared only by the newest run's SUCCESS, never at the start of a run.
+       REJECTED: the start-of-run clear that shipped — it unmounted the games banner the moment
+       "Try again" was pressed, so the in-flight label never showed and focus fell off the
+       removed button. Each run resolves LOAD_OK, LOAD_FAILED or nothing, so the banner can
+       announce a failed retry and never a superseded one.
+       No busy line and no dimming: D-09 keeps the visible "Updating…" line to Browse Games, and
+       dimming old rows is Phase 88.9's look option.
+       Changing any of these is a decision, not a cleanup. */
     const getGamesForGroup = useCallback(async () => {
         // 87.4 Plan 10 (SPEC Req 5 + T-874-10-RACE): gate the games fetch on
         // selfUuid resolution the same way getGroupMembers is (L109-115). selfUuid
@@ -205,21 +241,28 @@ function GroupHomePage(){
         // and have the catch below misread that 403 as a removal signal -- bouncing
         // an active member. Gating here (and re-keying selfUuid into the deps) makes
         // the fetch impossible to fire before identity resolves.
-        if (!Router || !user?.sub || !selfUuid) return;
+        if (!Router || !user?.sub || !selfUuid) return undefined;
+        const run = ++gamesRunRef.current;
+        const groupId = Router;
         try {
-            setLoading(true);
-            setGamesError(null);
-            const games = await listsAPI.getGroupGames(Router, selfUuid);
+            if (gamesSettledForRef.current !== groupId) setLoading(true);
+            const games = await listsAPI.getGroupGames(groupId, selfUuid);
+            if (run !== gamesRunRef.current) return undefined;
             setGamesList(games || []);
+            setGamesError(null);
+            return LOAD_OK;
         } catch (error) {
             // /api/lists/games/:groupId/:userId 403s non-members — treat
             // it as a removal signal and redirect, same as the member-list
-            // absence path in getGroupMembers.
-            if (isRemovedFromGroupError(error)) {
-                redirectToHomeAsRemoved();
-                return;
+            // absence path in getGroupMembers. Only the newest run redirects.
+            if (run === gamesRunRef.current) {
+                if (isRemovedFromGroupError(error)) {
+                    redirectToHomeAsRemoved();
+                    return undefined;
+                }
             }
             logger.info('Error fetching games:', errCtx(error));
+            if (run !== gamesRunRef.current) return undefined;
             /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): a failed games request is
                TRACKED as a failure here and handed to GroupGamesList as an `errorState` prop —
                chosen OVER the `setGamesList([])` this shipped with. GroupGamesList takes `games`
@@ -234,12 +277,24 @@ function GroupHomePage(){
                Keep the ERROR object, not a flattened string: useFetchErrorState reads
                `ApiError.code` off it to pick the right user-facing copy. Do NOT re-add
                `setGamesList([])` here — the stale list is deliberately left alone so a refetch
-               failure does not blank a list the person is still looking at. */
+               failure does not blank a list the person is still looking at.
+
+               AMENDED Phase 88.6.1-55 (AC-29 record): the parent keeps the list on a failed
+               refresh and, since this plan, no longer blanks the page while refreshing. But the
+               games list component checks its failure branch FIRST and renders the banner in
+               place of the cached list, so a failed refresh still hides a list the person was
+               looking at. Recorded as this site's AC-29 retained-data shape and handed to plan
+               88.6.1-56: the fix lives in the games list component, as an RF1 site (plan
+               88.6.1-70's notice above the retained cards). */
             setGamesError(
                 error instanceof Error ? error : new Error("The group games request didn't complete.")
             );
+            return LOAD_FAILED;
         } finally {
-            setLoading(false);
+            if (run === gamesRunRef.current) {
+                gamesSettledForRef.current = groupId;
+                setLoading(false);
+            }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Router, user?.sub, selfUuid]);
