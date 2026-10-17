@@ -13,11 +13,14 @@
 // PUT each test is about goes through `holdUntilReleased` (registered after it, so it runs first)
 // and is answered in the browser. The spec's own routes are GET-only. No request or response body
 // is logged, printed or attached.
+// R3/R4 (the other hosts) reuse plan 71's `fillCreateEventManualEntry` and plan 20's `E2E_GROUP_ID`,
+// and answer every write in the browser (`holdWrites` plus plan 44's `holdUntilReleased`).
 import { test, expect, type Page } from '@playwright/test';
 
+import { fillCreateEventManualEntry } from './support/createEvent';
+import { E2E_GROUP_ID } from './support/groupSettings';
 import { holdWrites, holdUntilReleased } from './support/inFlight';
 
-const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 const E2E_EVENT_DETAIL_PATH =
   process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
 const EVENT_ID = new URL(E2E_EVENT_DETAIL_PATH, 'http://localhost').searchParams.get('event_id') ?? '1';
@@ -121,5 +124,70 @@ test.describe('Edit Event on the event page — reopening while an update is sav
     await page.waitForTimeout(1000);
     await expect(editHeading(page)).toBeHidden();
     expect(put.count()).toBe(1);
+  });
+});
+
+function createHeading(page: Page) {
+  return page.getByRole('heading', { name: 'Create Event', exact: true });
+}
+
+test.describe('Create Event — late success and the ordinary close at the other hosts (88.6.1-68)', () => {
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('R3: groupHomePage — a reopened Create dialog keeps what was typed through the first create\'s late success (confirm-only)', async ({ page }) => {
+    const net = await holdWrites(page);
+    const resolve = await holdUntilReleased(page, 'POST', /\/games\/resolve$/);
+    await resolve.release({ id: '6f1c2a4e-8b3d-4e5f-9a7b-0c1d2e3f4a5b' }, 200);
+    const post = await holdUntilReleased(page, 'POST', /\/events$/);
+
+    await page.goto('/groupHomePage?id=' + E2E_GROUP_ID);
+    await fillCreateEventManualEntry(page);
+    await page.getByTestId('create-event-submit').click();
+    await post.arrived;
+    expect(post.count()).toBe(1);
+
+    await page.keyboard.press('Escape');
+    await expect(createHeading(page)).toBeHidden();
+    await page.getByRole('button', { name: /add new game event/i }).click();
+    await expect(createHeading(page)).toBeVisible();
+    const submit = page.getByTestId('create-event-submit');
+    await expect(submit).toBeVisible();
+    const comments = page.getByRole('dialog').getByLabel('Comments');
+    await comments.fill('second session');
+
+    await post.release({}, 201);
+    await expect(page.getByText('Event created', { exact: true })).toBeVisible();
+    await expect(createHeading(page)).toBeVisible();
+    await expect(comments).toHaveValue('second session');
+    await expect(submit).toHaveText('Create Event');
+    await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByText('Loading games...', { exact: true })).toHaveCount(0);
+    expect(post.count()).toBe(1);
+    expect(net.count('POST', /\/events$/)).toBe(0);
+    await page.keyboard.press('Escape');
+  });
+
+  test('R4: groupPlanning — the email-link dialog creates, closes once and clears its parameters (confirm-only)', async ({ page }) => {
+    await holdWrites(page);
+    const post = await holdUntilReleased(page, 'POST', /\/events$/);
+    await post.release({}, 201);
+    const d = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const date = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+
+    await page.goto(
+      '/groupPlanning?group_id=' + E2E_GROUP_ID + '&prefillDate=' + date + '&prefillTime=19:00&prefillDuration=120',
+    );
+    await expect(createHeading(page)).toBeVisible();
+    await expect(page.getByLabel('Start Date & Time')).toHaveValue(date + 'T19:00');
+    await page.getByTestId('create-event-submit').click();
+    await expect(createHeading(page)).toBeHidden();
+    await expect(page.getByText('Event created', { exact: true })).toBeVisible();
+    // Phase 71.2 hotfix: the close clears the email-link parameters.
+    await expect.poll(() => new URL(page.url()).searchParams.has('prefillDate')).toBe(false);
+    await page.waitForTimeout(1000);
+    await expect(createHeading(page)).toBeHidden();
+    expect(post.count()).toBe(1);
   });
 });

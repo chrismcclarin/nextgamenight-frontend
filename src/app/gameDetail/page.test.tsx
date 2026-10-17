@@ -4530,4 +4530,83 @@ describe("gameDetail hosts leave the dialog's close to CreateEvent (88.6.1-68)",
     expect(h.createEventMounts).toBe(0);
     expect(screen.getByRole('button', { name: 'Edit Event' })).toBeInTheDocument();
   });
+  // Task 3: the game view's two mounts (Edit from the sessions list, Create from the CTA).
+  async function openGameViewEdit() {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'owner' });
+    const sessions = await sessionsSection();
+    await user.click(await within(sessions).findByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(h.createEventMounts).toBe(1));
+    const p = h.createEventProps.at(-1) as CreateEventProps;
+    expect(p.editingEvent?.id).toBe(SESSION.id);
+    return p;
+  }
+
+  async function openGameViewCreate() {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'owner' });
+    await user.click(await screen.findByRole('button', { name: 'Plan a game night with this' }));
+    await waitFor(() => expect(h.createEventMounts).toBe(1));
+    const p = h.createEventProps.at(-1) as CreateEventProps;
+    expect(p.editingEvent).toBeNull();
+    return p;
+  }
+
+  it('GD-2: game view Edit — a late update success refreshes the page and leaves the (reopened) Edit dialog open', async () => {
+    const p = await openGameViewEdit();
+    const games = (gamesAPI.getGame as Mock).mock.calls.length;
+    const brings = (eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === SESSION.id).length;
+
+    await act(async () => {
+      p.onEventCreated(null);
+    });
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
+    await waitFor(() =>
+      expect((eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === SESSION.id).length).toBeGreaterThan(
+        brings
+      )
+    );
+    expect(h.createEventMounts).toBe(1);
+  });
+
+  it('GD-2o: game view Edit, ordinary path (confirm-only) — callback then modaltoggle refreshes and closes', async () => {
+    const p = await openGameViewEdit();
+    const games = (gamesAPI.getGame as Mock).mock.calls.length;
+    const brings = (eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === SESSION.id).length;
+
+    await act(async () => {
+      p.onEventCreated(null);
+      p.modaltoggle();
+    });
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
+    await waitFor(() =>
+      expect((eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === SESSION.id).length).toBeGreaterThan(
+        brings
+      )
+    );
+    expect(h.createEventMounts).toBe(0);
+  });
+
+  it('GD-3: game view Create — a late create success refreshes the page and leaves the (reopened) Create dialog open', async () => {
+    const p = await openGameViewCreate();
+    const games = (gamesAPI.getGame as Mock).mock.calls.length;
+
+    await act(async () => {
+      p.onEventCreated({ id: 'e-new' });
+    });
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
+    expect(h.createEventMounts).toBe(1);
+  });
+
+  it('GD-3o: game view Create, ordinary path (confirm-only) — callback then modaltoggle refreshes and closes', async () => {
+    const p = await openGameViewCreate();
+    const games = (gamesAPI.getGame as Mock).mock.calls.length;
+
+    await act(async () => {
+      p.onEventCreated({ id: 'e-new' });
+      p.modaltoggle();
+    });
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
+    expect(h.createEventMounts).toBe(0);
+  });
 });

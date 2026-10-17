@@ -517,3 +517,36 @@ describe('groupPlanning page — loading line and breadcrumb (88.6.1-16, G5 / R7
     }
   });
 });
+
+describe("groupPlanning leaves the dialog's close to CreateEvent (88.6.1-68)", () => {
+  it('P-1: no created-callback; a create closes the email-link dialog once and clears its parameters once', async () => {
+    const previousParams = h.PARAMS;
+    h.PARAMS = new URLSearchParams('group_id=G1&prompt_id=P1');
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: null });
+    const replace = vi.spyOn(h.ROUTER, 'replace');
+    try {
+      render(<GroupPlanningPage />);
+      // The email-link auto-open.
+      await waitFor(() => expect(h.ce?.modal).toBe(true));
+      const p = h.ce!;
+      expect(p.onEventCreated).toBeUndefined();
+
+      // CreateEvent's success order, with both closures captured while the dialog is open.
+      act(() => {
+        (p.onEventCreated as ((e: unknown) => void) | undefined)?.({ id: 'E1' });
+        (p.modaltoggle as () => void)();
+      });
+      expect(h.ce!.modal).toBe(false);
+      expect(replace).toHaveBeenCalledTimes(1);
+      expect(replace).toHaveBeenCalledWith('/groupPlanning?group_id=G1', { scroll: false });
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      expect(h.ce!.modal).toBe(false);
+    } finally {
+      replace.mockRestore();
+      h.PARAMS = previousParams;
+    }
+  });
+});
