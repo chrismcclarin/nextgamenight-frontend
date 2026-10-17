@@ -6,7 +6,14 @@ import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import {
+    FetchErrorBanner,
+    RefreshFailedNotice,
+    RetainedContentFocusGuard,
+    useRetainedContent,
+} from '../../components/ui/FetchErrorBanner';
+// Copy rows N5 / N6 (D-30): the bell's own constants for the same provider call, never retyped.
+import { ACCEPT_FRIEND_FAILED_COPY, DECLINE_FRIEND_FAILED_COPY } from '../components/NotificationBell';
 // 88-33 Task 1 (r3 triage): this page's fetchers run through a raw
 // Promise.allSettled, NOT react-query, so they bypass the global
 // QueryCache.onError hook entirely and their failures never reached Sentry.
@@ -25,6 +32,10 @@ import { logger, errCtx } from '../../lib/logger';
 // D-32 R2 (R8: straight apostrophe), byte-identical to the line this page already showed; the
 // same name as the FriendInvitePanel twin's constant.
 const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try again.";
+
+// Copy row FR1 (owner ruling 2026-10-05, D-47; D-32 R8 straight apostrophe): the Requests tab's
+// full-banner title when the provider's load failed and nothing is retained.
+const FRIEND_REQUESTS_LOAD_FAILED_TITLE = "Couldn't load your friend requests";
 
 // The row among the elements carrying `attribute` whose value is `id` (compared as strings).
 function rowElementFor(attribute, id) {
@@ -82,6 +93,12 @@ function FriendsPage() {
         // 88.6.1-66's read-only fact: an accept or decline for that request id is in flight on
         // ANY surface (the bell included). Its context default is a function, never undefined.
         isRequestActionPending,
+        // 88.6.1-66's load-error object (null while healthy, never cleared at the start of a load),
+        // its has-loaded fact (the Requests tab's C3 input) and its JOINING retry (the Requests
+        // adapter's refetch, review finding #149).
+        error: friendshipLoadError,
+        hasLoaded: friendshipHasLoaded,
+        retryFriendships,
     } = useFriendshipStatus();
 
     // Tab state
@@ -116,6 +133,9 @@ function FriendsPage() {
     // Friends tab below.
     const [friendsLoadError, setFriendsLoadError] = useState(null);
     const [removeError, setRemoveError] = useState(null);
+    // A failed Accept / Decline on the Requests tab: `{ id, message }`, the request it describes and
+    // its line (see the N5 / N6 marker on the Requests tab), never a bare string.
+    const [requestActionError, setRequestActionError] = useState(null);
     const [sentError, setSentError] = useState(null);
     // 88-33 Task 1: the groups fetch used to swallow its failure into
     // `setRawGroups([])`, which silently emptied the invite bar and read as
@@ -386,6 +406,30 @@ function FriendsPage() {
         refetch: retrySent,
     });
 
+    // The Requests tab over the shared provider (88.6.1-70 contract C5): the refetch is plan
+    // 88.6.1-66's JOINING retry, so this adapter's tab-return re-attempt and the bell's share one
+    // load; the always-fresh refreshFriendships stays the post-unfriend sync only.
+    const requestsErrorState = useFetchErrorState({ isError: Boolean(friendshipLoadError), error: friendshipLoadError, refetch: retryFriendships });
+    /* DECISION Phase 88.6.1-72 (RF1 retained, Requests tab): what has loaded is the PROVIDER's own
+       has-loaded fact for the signed-in user (plan 88.6.1-66's hasLoaded: set by the newest
+       successful load, never cleared by a transient failure, cleared with the lists by an access
+       or gone answer (this plan's Task 4, owner ruling #11), reset when the signed-in user
+       changes), chosen OVER a flag this page sets by watching the provider settle (a provider that
+       loaded before this page opened, empty, and failed since would read as never loaded and show
+       the full banner where the owner's ruling of 2026-10-05 wants the small notice above the
+       empty line) and OVER a row count (a list that loaded empty would read as never loaded,
+       88.6.1-70 contract C3). Compared with true, so a provider without the field reads as not
+       loaded. That value goes through plan 70's shared hook, never a code list written here, so an
+       answer saying access was lost or the content is gone is never kept (contract C10); the
+       memory of such an answer is the provider's (Task 4), because the provider outlives this
+       page. Changing this is a decision, not a cleanup. */
+    const requestsRetained = useRetainedContent(friendshipHasLoaded === true, requestsErrorState);
+    // FR1, the Requests tab's full banner: an error with nothing retained.
+    const requestsFullBannerShown = requestsErrorState.showError && !requestsRetained;
+    // FR1 showing CLEARS the request-action line (a clear, not a hide; the N5 / N6 marker), so a
+    // recovery never brings back a line about a session or access state that may no longer hold.
+    if (requestsFullBannerShown && requestActionError !== null) setRequestActionError(null);
+
     // Search handler
     const handleSearch = async (e) => {
         // FIRST, always: a refused submit must never fall through to a native form post.
@@ -486,15 +530,14 @@ function FriendsPage() {
         }
     };
 
-    // Accept friend request — provider handles optimistic removal,
-    // 404-stale silencing, and friends-list refresh. Local fetchFriends()
-    // still kept since the friends-tab list is owned here (not in the
-    // provider's getStatus-only consumer surface).
+    // Accept: the provider removes the row when the server confirms (plan 88.6.1-66); a failure keeps the row and is shown here.
     // Since 88.6.1-66 the provider drops the row inside the awaited call, the moment the
     // server confirms, so the recovery is armed and the neighbour captured before that await.
     const handleAccept = async (friendshipId, event) => {
         if (requestActionInFlightRef.current.has(friendshipId)) return;
         requestActionInFlightRef.current.add(friendshipId);
+        // Clear-first (D-42): a repeated failure is removed here and inserted again below.
+        setRequestActionError(null);
         const settle = requestRecovery.arm({
             preferred: neighbourControl(rowElementFor('data-request-row', friendshipId), isRequestRowInFlight),
             from: event?.currentTarget,
@@ -505,6 +548,10 @@ function FriendsPage() {
             fetchFriends();
         } catch (err) {
             logger.info('Error accepting request:', errCtx(err));
+            setRequestActionError({
+                id: friendshipId,
+                message: getFetchErrorMessage(err, { fallback: ACCEPT_FRIEND_FAILED_COPY }),
+            });
         } finally {
             requestActionInFlightRef.current.delete(friendshipId);
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
@@ -512,11 +559,12 @@ function FriendsPage() {
         }
     };
 
-    // Decline friend request — provider handles optimistic removal +
-    // 404-stale silencing. No friends-list refresh needed.
+    // Decline: the provider removes the row when the server confirms (plan 88.6.1-66); a failure keeps the row and is shown here.
     const handleDecline = async (friendshipId, event) => {
         if (requestActionInFlightRef.current.has(friendshipId)) return;
         requestActionInFlightRef.current.add(friendshipId);
+        // Clear-first (D-42), as in handleAccept.
+        setRequestActionError(null);
         const settle = requestRecovery.arm({
             preferred: neighbourControl(rowElementFor('data-request-row', friendshipId), isRequestRowInFlight),
             from: event?.currentTarget,
@@ -526,6 +574,10 @@ function FriendsPage() {
             await ctxDeclineRequest(friendshipId);
         } catch (err) {
             logger.info('Error declining request:', errCtx(err));
+            setRequestActionError({
+                id: friendshipId,
+                message: getFetchErrorMessage(err, { fallback: DECLINE_FRIEND_FAILED_COPY }),
+            });
         } finally {
             requestActionInFlightRef.current.delete(friendshipId);
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
@@ -1043,7 +1095,14 @@ function FriendsPage() {
                             <button
                                 key={key}
                                 ref={tabRefs[key]}
-                                onClick={() => setActiveTab(key)}
+                                onClick={() => {
+                                    // A tab change clears both action lines: DECISION Phase 88.6.1-72 (N5 / N6; D-33 row 22; D-42).
+                                    if (key !== activeTab) {
+                                        setRequestActionError(null);
+                                        setRemoveError(null);
+                                    }
+                                    setActiveTab(key);
+                                }}
                                 aria-current={activeTab === key ? 'true' : undefined}
                                 className={`pb-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                                     activeTab === key
@@ -1338,65 +1397,126 @@ function FriendsPage() {
                     'unknown' to consumers). If the provider fails to load
                     receivedRequests will be [] and the empty-state copy
                     renders, which is the correct UX for a transient
-                    network blip on this surface. */}
+                    network blip on this surface.
+                    AMENDED Phase 88.6.1-72 (FR1 / RF1; owner ruling 2026-10-05): the premise above
+                    was false. Until plan 88.6.1-66 the provider set its load-error flag and never
+                    cleared or retried it, so after a failed load the empty line said there were no
+                    pending requests as fact, until a reload (SPEC Prohibition 2). Now a failure with
+                    nothing retained shows the FR1 banner with a Retry that re-runs the provider's
+                    load; a failure over content loaded earlier (an empty list included, owner ruling
+                    2026-10-05) keeps it under the shared RF1 notice (88.6.1-70); an answer saying
+                    access was lost or the content is gone shows the FR1 banner instead (88.6.1-70
+                    contract C10); and the empty line renders as current fact only while the provider
+                    holds no error. REJECTED: keeping the empty line (the false statement), and the
+                    full banner above retained rows (the owner's retained-content ruling gives a
+                    refresh failure the small notice). */}
                 {activeTab === 'requests' && (
                     <div>
+                        {/* DECISION Phase 88.6.1-72 (N5 / N6; D-33 row 22; D-42): a failed Accept or
+                            Decline shows the bell's mechanism for the same provider call, the N-line as
+                            the fallback of getFetchErrorMessage, so a coded failure keeps its register
+                            line, chosen OVER a fixed N-line (the bell and this page would then say
+                            different things for one failure). A conditionally mounted alert cleared at
+                            the start of every accept and decline, chosen OVER an always-mounted empty
+                            assertive region (D-42: an alert inserted with its text is announced, and
+                            clear-first makes a repeat re-insert). Its lifetime is bound to its subject:
+                            rendered only while the request it names is still listed and FR1 is not
+                            showing, cleared when FR1 shows and on a tab change (with the remove line),
+                            chosen OVER a line cleared only by the next press (it outlived the row it
+                            named, repeated FR1's line above a list no longer shown, and was announced
+                            again as new on every return to the tab; review #83, #238). Changing this
+                            is a decision, not a cleanup. */}
+                        {requestActionError &&
+                            !requestsFullBannerShown &&
+                            receivedRequests.some((r) => r.id === requestActionError.id) && (
+                                <p role="alert" className="text-content-status-error text-sm mb-4">{requestActionError.message}</p>
+                            )}
                         {friendshipCtxLoading ? (
                             <div role="status" aria-label="Loading your friend requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading requests...</span>
                             </div>
-                        ) : receivedRequests.length === 0 ? (
-                            <div className="text-center py-12">
-                                {/* D2 mini-formula rider (88-33 Task 7, Rule 2 — same class as the
-                                    sent-requests sibling below): + text-sm. */}
-                                <p className="text-content-muted text-sm">No pending friend requests.</p>
-                            </div>
+                        ) : requestsFullBannerShown ? (
+                            <FetchErrorBanner
+                                state={requestsErrorState}
+                                title={FRIEND_REQUESTS_LOAD_FAILED_TITLE}
+                                focusTarget={requestsTabRef}
+                            />
                         ) : (
-                            <div className="space-y-3">
-                                {receivedRequests.map((request) => {
-                                    const requester = request.Requester;
-                                    if (!requester) return null;
+                            <>
+                                {/* 88.6.1-70 contract C6: mounted whenever this branch renders, above
+                                    the content and outside the rows' stack; no title, no report
+                                    context (C7). */}
+                                <RefreshFailedNotice
+                                    state={requestsErrorState}
+                                    retained={requestsRetained}
+                                    focusTarget={requestsTabRef}
+                                    className="mb-4"
+                                />
+                                {receivedRequests.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        {/* D2 mini-formula rider (88-33 Task 7, Rule 2 — same class as the
+                                            sent-requests sibling below): + text-sm. */}
+                                        <p className="text-content-muted text-sm">No pending friend requests.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {receivedRequests.map((request) => {
+                                            const requester = request.Requester;
+                                            if (!requester) return null;
 
-                                    return (
-                                        <div
-                                            key={request.id}
-                                            data-request-row={request.id}
-                                            className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
-                                        >
-                                            <div className="flex-1">
-                                                <p className="font-bold text-content-primary">
-                                                    {requester.username || requester.email}
-                                                </p>
-                                                {requester.email && requester.email !== requester.username && (
-                                                    <p className="text-sm text-content-muted mt-0.5">{requester.email}</p>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <Button
-                                                    variant="primary"
-                                                    size="default"
-                                                    onClick={(e) => handleAccept(request.id, e)}
-                                                    aria-disabled={actionLoading[request.id] === 'accept' ? 'true' : undefined}
-                                                    disabled={actionLoading[request.id] === 'decline' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                            return (
+                                                <div
+                                                    key={request.id}
+                                                    data-request-row={request.id}
+                                                    className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
                                                 >
-                                                    {actionLoading[request.id] === 'accept' ? 'Accepting...' : 'Accept'}
-                                                </Button>
-                                                <Button
-                                                    variant="secondary"
-                                                    size="default"
-                                                    onClick={(e) => handleDecline(request.id, e)}
-                                                    aria-disabled={actionLoading[request.id] === 'decline' ? 'true' : undefined}
-                                                    disabled={actionLoading[request.id] === 'accept' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
-                                                >
-                                                    {actionLoading[request.id] === 'decline' ? 'Declining...' : 'Decline'}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                                    <div className="flex-1">
+                                                        <p className="font-bold text-content-primary">
+                                                            {requester.username || requester.email}
+                                                        </p>
+                                                        {requester.email && requester.email !== requester.username && (
+                                                            <p className="text-sm text-content-muted mt-0.5">{requester.email}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="primary"
+                                                            size="default"
+                                                            onClick={(e) => handleAccept(request.id, e)}
+                                                            aria-disabled={actionLoading[request.id] === 'accept' ? 'true' : undefined}
+                                                            disabled={actionLoading[request.id] === 'decline' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                                        >
+                                                            {actionLoading[request.id] === 'accept' ? 'Accepting...' : 'Accept'}
+                                                        </Button>
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="default"
+                                                            onClick={(e) => handleDecline(request.id, e)}
+                                                            aria-disabled={actionLoading[request.id] === 'decline' ? 'true' : undefined}
+                                                            disabled={actionLoading[request.id] === 'accept' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                                        >
+                                                            {actionLoading[request.id] === 'decline' ? 'Declining...' : 'Decline'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </>
                         )}
+                        {/* DECISION Phase 88.6.1-72 (C12, focus when content leaves): CHOSEN, plan 70's
+                            one shared guard per tab panel, the panel's last child, outside every arm,
+                            given the tab's own button (outside the panel, so it survives the
+                            withdrawal), the same target the tab's notice and banner use. It renders
+                            nothing and must stay even though it draws nothing. REJECTED: (a) no guard,
+                            because a refresh nobody pressed (the tab-return re-attempt) that withdraws
+                            the rows drops focus to the page body, since nothing was armed; (b) a
+                            heading as the target (the panels have none; the page heading is a screen
+                            away on a phone); (c) focus code of this page's own (D-04). The Friends and
+                            Sent guards point here. Changing this is a decision, not a cleanup. */}
+                        <RetainedContentFocusGuard retained={requestsRetained} focusTarget={requestsTabRef} />
                     </div>
                 )}
 
