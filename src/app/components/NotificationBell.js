@@ -8,11 +8,17 @@ import { useDismissal } from '@/components/ui/useDismissal';
 import { useFocusRecovery } from '@/components/ui/useFocusRecovery';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 
 // Copy row N1 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:100) — heard, not seen.
 const LOADING_NOTIFICATIONS = 'Loading notifications';
+
+// Copy row N7 (D-47, owner-ratified 2026-10-05; planning-briefs/revision-lap-3-manifest.md:17), the
+// full banner's title when the notifications could not be loaded and there is nothing to show;
+// straight apostrophe (D-32 R8).
+const NOTIFICATIONS_LOAD_FAILED_COPY = "Couldn't load your notifications";
 
 // Copy row N2 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:101) — seen and heard.
 const ACCEPTING_COPY = 'Accepting...';
@@ -178,6 +184,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
     friendRequests,
     totalCount,
     loading,
+    // Plan 88.6.1-80: the provider's ONE adapter over both sources; read with optional chaining
+    // below, so a context without it (a mocked suite) renders no banner.
+    loadErrorState,
     setInvites: ctxSetInvites,
   } = useUnreadNotificationCount();
 
@@ -749,6 +758,27 @@ function NotificationBell({ user, variant = 'icon', label }) {
                     not exposed. */}
                 <div className="inline-block w-5 h-5 border-2 border-line border-t-accent rounded-full animate-spin" aria-hidden="true" />
                 <span className="sr-only">{LOADING_NOTIFICATIONS}</span>
+              </div>
+            ) : loadErrorState?.showError ? (
+              <div className="px-4 py-3">
+                {/* DECISION Phase 88.6.1-80 (N7 banner): CHOSEN — the house FULL banner titled
+                    with NOTIFICATIONS_LOAD_FAILED_COPY (copy row N7, D-47), in a branch AFTER the
+                    first load and BEFORE the empty branch (Prohibition 2: the bell never says there
+                    is nothing pending when it could not find out), keyed on the provider's one
+                    adapter; focusTarget is the panel heading, so a successful Try again keeps focus
+                    inside the panel and the dismissal hook keeps it open. Report this behaves as on
+                    every full banner: it appears only after a failed retry (owner ruling
+                    2026-10-05, plan 88.6.1-69), opening the form the app-level report host renders.
+                    REJECTED — A: no report link in the bell (the owner's option A, plan 44's R3);
+                    B: both links from the start; the compact notice (fixed words, no title); a
+                    bell-local banner (a second implementation, tenet); the refresh-failed notice
+                    over partial rows (owner: partial failure not covered in the bell); a report
+                    context string (none ratified). Changing this is a decision, not a cleanup. */}
+                <FetchErrorBanner
+                  state={loadErrorState}
+                  title={NOTIFICATIONS_LOAD_FAILED_COPY}
+                  focusTarget={panelHeadingRef}
+                />
               </div>
             ) : totalCount === 0 ? (
               <div className="px-4 py-8 text-center">

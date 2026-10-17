@@ -1,8 +1,9 @@
 'use client';
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 
 /**
  * Unread notification count — single source of truth (MOB-08, Plan 77-01).
@@ -16,6 +17,10 @@ import { useFriendshipStatus } from './FriendshipStatusProvider';
  * No new polling. Fetch-on-mount only, matching the pre-refactor bell
  * behavior. Optimistic updates from NotificationBell's Accept/Decline
  * handlers go through `setInvites` so the count drops immediately.
+ * AMENDED Phase 88.6.1-80: the one refetch trigger added is `useFetchErrorState`'s error-only
+ * tab-return re-attempt (the house D-02 recovery) inside `loadErrorState`, active only while the
+ * bell's load has failed with nothing to show; it re-runs only the failed source(s). Still no
+ * polling.
  */
 
 const UnreadNotificationContext = createContext({
@@ -24,6 +29,7 @@ const UnreadNotificationContext = createContext({
   totalCount: 0,
   loading: true,
   error: null,
+  loadErrorState: null,
   setInvites: () => {},
   refetch: () => {},
 });
@@ -42,7 +48,7 @@ export function UnreadNotificationProvider({ children }) {
   // (mounted as the parent of this provider in layout.js). Re-exposing here
   // gives consumers a single hook to read instead of needing both
   // useUnreadNotificationCount() AND useFriendshipStatus().
-  const { receivedRequests: friendRequests } = useFriendshipStatus();
+  const { receivedRequests: friendRequests, error: friendsError, retryFriendships } = useFriendshipStatus();
 
   const totalCount = invites.length + friendRequests.length;
 
@@ -85,12 +91,53 @@ export function UnreadNotificationProvider({ children }) {
     fetchInvites();
   }, [fetchInvites]);
 
+  // DECISION Phase 88.6.1-80 (N7 adapter): CHOSEN — the bell's load-error state lives HERE, once:
+  // both bells and the hamburger dot already read this provider. `isError` needs a failed source
+  // (the invites error above, or the friendship provider's) AND nothing to show; `error` is the
+  // invites error, else the friendship error, each passed through as stored (never wrapped in a new
+  // Error: a wrapped 401 / 403 would read as unknown, plan 88.6.1-70's C10); the retry re-runs only
+  // the source(s) whose error is set at the press and resolves { isError }.
+  // The owner's recorded limit: a PARTIAL failure (one list failed, the other has rows) shows the
+  // rows and says nothing this phase; there is no refresh-failed notice in the bell.
+  // REJECTED: (a) the adapter in NotificationBell.js — the bell is mounted twice at all times (the
+  // header's icon bell and the hamburger's row bell), so two memories of a failed retry (the report
+  // link would vanish when the viewport crosses md) and two tab-return re-attempts; (b) re-running
+  // both sources on every retry (a source that is fine is re-fetched for nothing); (c) the refresh-
+  // failed notice over partial rows (owner: not covered this phase); (d) the friendship provider's
+  // always-fresh reload as the re-run (review #149: it starts a new load per call, so on /friends
+  // this adapter and the Requests tab's would send two loads on one tab return; the joining retry
+  // sends one).
+  // Moving this into the bell is a decision, not a cleanup.
+  const latestSourcesRef = useRef({ invitesError: error, friendsError, fetchInvites, retryFriendships });
+  useEffect(() => {
+    latestSourcesRef.current = { invitesError: error, friendsError, fetchInvites, retryFriendships };
+  });
+
+  const retryFailedSources = useCallback(async () => {
+    const sources = latestSourcesRef.current;
+    // Both re-runs start before the first await, so the friendship re-run joins a load the
+    // Requests tab started on the same tab return instead of starting a second one after it.
+    const runs = [];
+    if (sources.invitesError) runs.push(sources.fetchInvites());
+    if (sources.friendsError) runs.push(sources.retryFriendships?.());
+    if (runs.length === 0) return { isError: false };
+    const results = await Promise.all(runs);
+    return { isError: results.some((result) => result?.isError === true) };
+  }, []);
+
+  const loadErrorState = useFetchErrorState({
+    isError: Boolean(error || friendsError) && totalCount === 0,
+    error: error ?? friendsError ?? null,
+    refetch: retryFailedSources,
+  });
+
   const value = {
     invites,
     friendRequests,
     totalCount,
     loading,
     error,
+    loadErrorState,
     setInvites,
     refetch: fetchInvites,
   };
