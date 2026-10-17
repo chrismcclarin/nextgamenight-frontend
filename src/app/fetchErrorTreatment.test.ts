@@ -585,7 +585,7 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // one answer.
   //   - `:49` is a LOAD arm. It does NOT call `getFetchErrorMessage` at all; the state now
   //     stores the ERROR OBJECT and the component adopts the house synthetic-adapter contract
-  //     (`groupPlanning/page.js:172-196`), so `useFetchErrorState` derives the copy from
+  //     (`groupPlanning/page.js`, anchor `Adapters onto the shared fetch-error pair`), so `useFetchErrorState` derives the copy from
   //     `ApiError.code`. Storing a flattened string there would have gone GREEN on this roster
   //     while making every failure resolve to `unknown` — the silent-green this note exists to
   //     warn the next reader about. The error branch renders `FetchErrorBanner` in the same
