@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, useId } from 'react';
+import { useState, useMemo, useId, useRef } from 'react';
 import Link from 'next/link';
 import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
@@ -8,7 +8,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { SelectControl } from '../../components/ui/Input';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
 
 const SORT_ASCENDING_LABEL = 'Sort order: ascending';
 const SORT_DESCENDING_LABEL = 'Sort order: descending';
@@ -89,8 +89,13 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
  *   load renders the shared error treatment instead of falling through to "no game nights logged
  *   yet". This component does not fetch, so it cannot derive this itself. Same contract as
  *   `UpcomingEventsCard` (88-18).
+ * @param {boolean} [props.retained=false] - Plan 88.6.1-56 (AC-29): the page's `useRetainedContent`
+ *   result — true while games loaded for THIS group may stay on screen; the component never derives it.
+ * @param {Object} [props.focusRef=null] - Plan 88.6.1-56 (C12): the page's ref for the games section,
+ *   so the page's focus guard and this component's notice and banner share ONE target; absent, the
+ *   component uses its own.
  */
-export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members, errorState = null }) {
+export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members, errorState = null, retained = false, focusRef = null }) {
     const { timezone } = useTimezone();
     const [sortBy, setSortBy] = useState('name');
     const [sortOrder, setSortOrder] = useState('asc');
@@ -100,6 +105,8 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
     // The Filter panel's id, for the toggle's open-only aria-controls (88.6.1-48, D-44). Called
     // here, above both early returns, because hooks run in the same order on every render.
     const filterPanelId = useId();
+    const ownFocusRef = useRef(null);
+    const gamesFocusRef = focusRef ?? ownFocusRef;
 
     const sortedGames = useMemo(() => {
         if (!games || games.length === 0) return [];
@@ -276,18 +283,51 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
         return 'Players: Unknown';
     };
 
+    const hasGames = Array.isArray(games) && games.length > 0;
+    /* DECISION Phase 88.6.1-56 (AC-29 / RF1, D-50 / D-51): CHOSEN — a failed refresh over games
+       that loaded for this group keeps them and shows plan 88.6.1-70's refresh notice (copy row
+       RF1) above them; a list that loaded EMPTY is retained too (D-50), so the notice sits above
+       the empty state; the full banner shows only while nothing is retained (a first load, a group
+       switch, an access answer — contract C10); focus after a successful Retry or Try again lands
+       on the games section (D-05). The notice is mounted unconditionally (healthy, it is only its
+       empty status region), so its region exists before a failure (C8 b).
+       REJECTED: (a) the banner in place of the list — what shipped: it hides what the person was
+       reading (AC-29); (b) the FULL banner above the retained cards — this plan's earlier fix; its
+       could-not-load title is false over cards that loaded (D-51); (c) the compact banner — both of
+       its sentences are about personal controls; (d) no notice while data is retained — a failed
+       refresh would read as a success (the intent the stale-list test in this component's suite
+       recorded); (e) retention keyed on a non-empty list — D-50 rejected it; (f) the retention hook
+       inside this component — it unmounts whenever the Library tab shows, losing a remembered
+       access answer, so the page computes it; (g) a heading-ref prop added to the shared
+       EmptyState for one consumer — its root, whose first readable text is the empty-state
+       heading, is the target; (h) the C12 focus guard inside this component — its three branches
+       are separate returns, so no spot here survives a withdrawal; the page renders it after this
+       component and hands in focusRef. Changing any of these is a decision, not a cleanup. */
+    const refreshNotice = errorState ? (
+        <RefreshFailedNotice
+            state={errorState}
+            retained={retained}
+            focusTarget={gamesFocusRef}
+            className={hasGames ? 'mb-4' : 'mt-8'}
+        />
+    ) : null;
+
     /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): the failed-fetch branch is checked
        BEFORE the empty branch below. That ordering is load-bearing and is the whole fix — an
        errored fetch also has zero games, so flipping these two silently restores the bug where a
-       group with years of history was told it had logged nothing. Do not merge them. */
-    if (errorState?.showError) {
+       group with years of history was told it had logged nothing. Do not merge them.
+       AMENDED Phase 88.6.1-56 (AC-29): the two branches stay separate and failure still comes
+       first whenever nothing is retained; with retained games, or a retained empty list, the
+       refresh notice renders above them, which is not a merge of the failure and empty branches. */
+    if (errorState?.showError && !retained) {
         return (
             <div className="mt-8">
-                <Heading level={2} size="heading" className="text-content-primary mb-4">Group Games</Heading>
+                <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mb-4">Group Games</Heading>
                 <FetchErrorBanner
                     state={errorState}
                     title="We couldn't load this group's games"
                     reportContext="Group games list (group home page)"
+                    focusTarget={gamesFocusRef}
                 />
             </div>
         );
@@ -323,7 +363,10 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                tracked `gamesError`, and passes an `errorState` prop checked in the branch ABOVE
                this one. The warning survives the fix: this branch means "nothing here yet" and
                NOTHING else — do not let a failure reach it again. */
+            <>
+            {refreshNotice}
             <EmptyState
+                ref={gamesFocusRef}
                 icon="Dices"
                 heading="No game nights logged yet"
                 body="Log a night you played and the group's history builds up here."
@@ -344,12 +387,14 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     ) : undefined
                 }
             />
+            </>
         );
     }
 
     return (
         <div>
-            <Heading level={2} size="heading" className="text-content-primary mt-8 mb-4">Group Games</Heading>
+            <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mt-8 mb-4">Group Games</Heading>
+            {refreshNotice}
 
             {/* Sorting Controls */}
             <div className="mb-6 flex items-center justify-between bg-surface-page p-3 md:p-4 rounded-card">

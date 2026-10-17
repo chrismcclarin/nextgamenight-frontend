@@ -65,6 +65,12 @@ function GroupHomePage(){
     // games request has settled. See the marker on getGamesForGroup.
     const gamesRunRef = useRef(0);
     const gamesSettledForRef = useRef(null);
+    // 88.6.1-56: the newest games run's pending outcome promise (the retry joins it), the group id
+    // whose games last LOADED (C3), and the games section's one focus target (C12). See the
+    // marker on gamesRetained.
+    const gamesInFlightRef = useRef(null);
+    const [gamesLoadedFor, setGamesLoadedFor] = useState(null);
+    const gamesFocusRef = useRef(null);
     const [eventModal, setEventModal] = useState(false);
     const [memberModal, setMemberModal] = useState(false);
     const [showGroupSettings, setShowGroupSettings] = useState(false);
@@ -374,13 +380,23 @@ function GroupHomePage(){
         if (!Router || !user?.sub || !selfUuid) return undefined;
         const run = ++gamesRunRef.current;
         const groupId = Router;
+        // JOIN: this run's promise is published from its start until it settles, whoever started
+        // it, and resolves with the run's own outcome, so a joined retry reads it too (C4).
+        let outcome;
+        let finishRun;
+        const thisRun = new Promise((resolve) => {
+            finishRun = resolve;
+        });
+        gamesInFlightRef.current = thisRun;
         try {
             if (gamesSettledForRef.current !== groupId) setLoading(true);
             const games = await listsAPI.getGroupGames(groupId, selfUuid);
             if (run !== gamesRunRef.current) return undefined;
             setGamesList(games || []);
             setGamesError(null);
-            return LOAD_OK;
+            setGamesLoadedFor(groupId);
+            outcome = LOAD_OK;
+            return outcome;
         } catch (error) {
             // /api/lists/games/:groupId/:userId 403s non-members — treat
             // it as a removal signal and redirect, same as the member-list
@@ -415,12 +431,18 @@ function GroupHomePage(){
                place of the cached list, so a failed refresh still hides a list the person was
                looking at. Recorded as this site's AC-29 retained-data shape and handed to plan
                88.6.1-56: the fix lives in the games list component, as an RF1 site (plan
-               88.6.1-70's notice above the retained cards). */
+               88.6.1-70's notice above the retained cards).
+               AMENDED Phase 88.6.1-56 (AC-29): closed — the games list keeps its cards (or its
+               loaded empty state) under plan 88.6.1-70's refresh notice, and the full banner shows
+               only while nothing is retained. */
             setGamesError(
                 error instanceof Error ? error : new Error("The group games request didn't complete.")
             );
-            return LOAD_FAILED;
+            outcome = LOAD_FAILED;
+            return outcome;
         } finally {
+            finishRun(outcome);
+            if (gamesInFlightRef.current === thisRun) gamesInFlightRef.current = null;
             if (run === gamesRunRef.current) {
                 gamesSettledForRef.current = groupId;
                 setLoading(false);
@@ -429,13 +451,44 @@ function GroupHomePage(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Router, user?.sub, selfUuid]);
 
+    const retryGames = useCallback(() => gamesInFlightRef.current ?? getGamesForGroup(), [getGamesForGroup]);
     // getGamesForGroup is already a useCallback with a stable identity, so it can be handed to
     // the hook directly — no ref hop needed here (unlike groupPlanning's per-render fetches).
+    // The hook is handed retryGames, which joins a pending games run instead of starting another
+    // (the games DECISION block on gamesRetained).
     const gamesErrorState = useFetchErrorState({
         isError: Boolean(gamesError),
         error: gamesError,
-        refetch: getGamesForGroup,
+        refetch: retryGames,
     });
+    /* DECISION Phase 88.6.1-56 (C3 + C10, games): CHOSEN — a has-loaded state keyed to the group
+       id (gamesLoadedFor), set by the newest run's success only, read through plan 88.6.1-70's one
+       hook at the page's top level, above every early return.
+       REJECTED: (a) a row count — D-09a, and D-50: a list that loaded empty is retained content;
+       (b) plan 88.6.1-55's settled-for ref — a ref renders nothing, and it marks a settled FAILURE
+       too; (c) the hook inside the games list — it unmounts whenever the Library tab shows, which
+       would forget a remembered access answer.
+       The loading gate also holds while the settled-for ref differs from the group id. Reading
+       that ref at render is deliberate: the effect-time re-arm alone (plan 88.6.1-55's, which
+       stays) paints one stale frame of the previous group's kept error under the new group's
+       header.
+       JOIN (seam pass S7-2): CHOSEN — Try again and the tab-return re-attempt return the pending
+       games run's promise (retryGames), the rule the members and events blocks state for this
+       page's other two slots (one retry idiom per file, D-30); a direct refresh (the games effect,
+       a created event) never joins, so a pre-write answer cannot land last. REJECTED: (f) handing
+       the hook the fetch itself, as shipped — a press while a tab-return run is held starts a
+       second request that supersedes the held one and throws its answer away, and on a phone
+       every app switch plus a press sends one more request.
+       C12: CHOSEN — the page owns gamesFocusRef and renders plan 88.6.1-70's focus guard as the
+       games list's NEXT sibling. REJECTED: (d) the guard inside the list — its branches are
+       separate returns, so no spot there survives a withdrawal; (e) the guard BEFORE the list —
+       when a list that loaded EMPTY is withdrawn, only that empty-branch return remounts (its
+       fragment is replaced by the first-load branch's div), so React detaches the ref and
+       re-attaches it in the commit's layout pass in tree order, where the guard also runs, and an
+       earlier guard reads it while it is null; the list branch's heading survives reconciliation
+       into the first-load branch, so a withdrawal of the cards cannot show the difference.
+       Changing any of these is a decision, not a cleanup. */
+    const gamesRetained = useRetainedContent(gamesLoadedFor === Router, gamesErrorState);
 
     // The members and events fetches are re-created every render, so each reaches the hook through
     // the Friends-shape adapter (`DECISION Phase 88-14`): a ref-held fetch behind a STABLE callback
@@ -587,7 +640,7 @@ function GroupHomePage(){
         );
     }
 
-    if (loading) {
+    if (loading || gamesSettledForRef.current !== Router) {
         return (
             <>
                 <div className="p-6 flex items-center justify-center min-h-screen">
@@ -1583,7 +1636,11 @@ function GroupHomePage(){
                     userRole={userRole}
                     members={UserList}
                     errorState={gamesErrorState}
+                    retained={gamesRetained}
+                    focusRef={gamesFocusRef}
                 />
+                {/* After the list, never before it: see DECISION Phase 88.6.1-56 (C3 + C10, games). */}
+                <RetainedContentFocusGuard retained={gamesRetained} focusTarget={gamesFocusRef} />
               </>
             )}
 
