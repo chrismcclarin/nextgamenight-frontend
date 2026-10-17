@@ -11,6 +11,7 @@
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`.
 import * as React from 'react';
 import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'a'.repeat(64);
@@ -136,6 +137,11 @@ function renderPage(strict = false) {
     : render(<RestoreGroupPage />);
 }
 
+// Plan 88.6.1-36: the page's slot-0 status region repeats on-screen text by design, so a text
+// query aimed at what a sighted user sees must skip it; the region's own text is asserted through
+// its test id.
+const VISIBLE_ONLY = { ignore: 'script, style, [data-testid="restore-page-status"]' };
+
 /** The three strings SPEC-REQ-7 forbids anywhere in the group-delete flow. */
 const FORBIDDEN = ['cannot be undone', 'permanently remove', 'permanently delete'];
 
@@ -218,7 +224,7 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
 
       await tapTakeOver();
 
-      expect(await screen.findByText(/is back/i)).toBeInTheDocument();
+      expect(await screen.findByText(/is back/i, VISIBLE_ONLY)).toBeInTheDocument();
       expect(accept()).toHaveBeenCalledWith(TOKEN);
       expect(sessionStorage.getItem('nggroups:refresh')).toBe('1');
 
@@ -244,7 +250,7 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     fireEvent.click(button);
     fireEvent.click(button);
 
-    expect(await screen.findByText(/is back/i)).toBeInTheDocument();
+    expect(await screen.findByText(/is back/i, VISIBLE_ONLY)).toBeInTheDocument();
     expect(accept()).toHaveBeenCalledTimes(1);
 
     // Force the resolve effect to re-run for real: a NEW user object identity is
@@ -256,7 +262,7 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
         <RestoreGroupPage />
       </React.StrictMode>
     );
-    await waitFor(() => expect(screen.getByText(/is back/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/is back/i, VISIBLE_ONLY)).toBeInTheDocument());
     expect(accept()).toHaveBeenCalledTimes(1);
   });
 
@@ -265,10 +271,12 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     getPreview().mockResolvedValue(null);
     renderPage();
 
-    expect(await screen.findByText(/no longer valid/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no longer valid/i, VISIBLE_ONLY)).toBeInTheDocument();
     // The bug this pins spins forever with no error state. Absence of the
     // spinner is the half that would have stayed green without this line.
-    expect(screen.queryByRole('status')).toBeNull();
+    // Plan 88.6.1-36: narrowed to the loading spinner by its name. The page now carries an
+    // always-mounted slot-0 status region, so a bare role query would find that region instead.
+    expect(screen.queryByRole('status', { name: 'Checking your restore link...' })).toBeNull();
     expect(accept()).not.toHaveBeenCalled();
   });
 
@@ -278,9 +286,9 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     renderPage();
     await tapTakeOver();
 
-    expect(await screen.findByText(/you can't take it over/i)).toBeInTheDocument();
-    expect(screen.queryByText(/is back/i)).toBeNull();
-    expect(screen.queryByText(/already brought this group back/i)).toBeNull();
+    expect(await screen.findByText(/you can't take it over/i, VISIBLE_ONLY)).toBeInTheDocument();
+    expect(screen.queryByText(/is back/i, VISIBLE_ONLY)).toBeNull();
+    expect(screen.queryByText(/already brought this group back/i, VISIBLE_ONLY)).toBeNull();
     expect(pushMock).not.toHaveBeenCalled();
     // R-3: terminal rejections stay terminal — no retry affordance renders.
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
@@ -294,8 +302,8 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     renderPage();
     await tapTakeOver();
 
-    expect(await screen.findByText(/session has expired/i)).toBeInTheDocument();
-    expect(screen.queryByText(/something went wrong/i)).toBeNull();
+    expect(await screen.findByText(/session has expired/i, VISIBLE_ONLY)).toBeInTheDocument();
+    expect(screen.queryByText(/something went wrong/i, VISIBLE_ONLY)).toBeNull();
 
     // The remedy is the login round-trip, landing back on this exact page so
     // the visitor can tap take-over again with a fresh session.
@@ -312,13 +320,13 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     renderPage();
     await tapTakeOver();
 
-    expect(await screen.findByText(/something went wrong/i)).toBeInTheDocument();
+    expect(await screen.findByText(/something went wrong/i, VISIBLE_ONLY)).toBeInTheDocument();
 
     // The latch must have been reset, or this click is swallowed and the copy
     // "Please try again" is a lie — the exact defect R-3 pins. The
     // once-rejection is consumed; the retry hits the beforeEach success.
     fireEvent.click(screen.getByRole('button', { name: /try again/i }));
-    expect(await screen.findByText(/is back/i)).toBeInTheDocument();
+    expect(await screen.findByText(/is back/i, VISIBLE_ONLY)).toBeInTheDocument();
     expect(accept()).toHaveBeenCalledTimes(2);
   }, 10000);
 
@@ -351,7 +359,7 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     renderPage();
     await tapTakeOver();
 
-    expect(await screen.findByText(/recovery window ended and its data was erased/i)).toBeInTheDocument();
+    expect(await screen.findByText(/recovery window ended and its data was erased/i, VISIBLE_ONLY)).toBeInTheDocument();
   });
 
   it('410 — the copy is split by CAUSE, and the unattributable case claims nothing', async () => {
@@ -362,7 +370,7 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
       renderPage();
       await tapTakeOver();
 
-      expect(await screen.findByText(/no longer valid/i)).toBeInTheDocument();
+      expect(await screen.findByText(/no longer valid/i, VISIBLE_ONLY)).toBeInTheDocument();
       const text = (document.body.textContent ?? '').toLowerCase();
       // The weaker message must NOT graduate into the destructive claim just
       // because the client could not attribute the 410.
@@ -385,7 +393,7 @@ describe('M-6 — preview failures split rejection from unreachable', () => {
     );
     renderPage();
 
-    expect(await screen.findByText(/no longer valid/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no longer valid/i, VISIBLE_ONLY)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
 
@@ -393,14 +401,14 @@ describe('M-6 — preview failures split rejection from unreachable', () => {
     getPreview().mockRejectedValueOnce(new ApiError('down', 'network', 0));
     renderPage();
 
-    expect(await screen.findByText(/couldn.t check this link/i)).toBeInTheDocument();
-    expect(screen.queryByText(/no longer valid/i)).toBeNull();
+    expect(await screen.findByText(/couldn.t check this link/i, VISIBLE_ONLY)).toBeInTheDocument();
+    expect(screen.queryByText(/no longer valid/i, VISIBLE_ONLY)).toBeNull();
 
     // The once-rejection is consumed; the retry hits the beforeEach default and
     // must land on the real preview.
     fireEvent.click(screen.getByRole('button', { name: /try again/i }));
     expect(await screen.findByText(GROUP_NAME)).toBeInTheDocument();
-    expect(screen.queryByText(/couldn.t check this link/i)).toBeNull();
+    expect(screen.queryByText(/couldn.t check this link/i, VISIBLE_ONLY)).toBeNull();
   });
 });
 
@@ -415,8 +423,8 @@ describe('already-restored — the same event, reached two ways', () => {
       renderPage();
       await tapTakeOver();
 
-      expect(await screen.findByText(/already brought this group back/i)).toBeInTheDocument();
-      expect(screen.queryByText(/unable to restore/i)).toBeNull();
+      expect(await screen.findByText(/already brought this group back/i, VISIBLE_ONLY)).toBeInTheDocument();
+      expect(screen.queryByText(/unable to restore/i, VISIBLE_ONLY)).toBeNull();
 
       // MED #15: the id is read off `err.details.group_id`, one level down. The
       // envelope accessor reads two levels and returns undefined here — SILENTLY,
@@ -440,9 +448,9 @@ describe('already-restored — the same event, reached two ways', () => {
     renderPage();
     await tapTakeOver();
 
-    expect(await screen.findByText(/already brought this group back/i)).toBeInTheDocument();
+    expect(await screen.findByText(/already brought this group back/i, VISIBLE_ONLY)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /open your groups/i })).toHaveAttribute('href', '/');
-    expect(screen.queryByText(/taking you to/i)).toBeNull();
+    expect(screen.queryByText(/taking you to/i, VISIBLE_ONLY)).toBeNull();
 
     // No destination id, so nothing may ever fire.
     await new Promise((resolve) => setTimeout(resolve, DWELL_MS + 600));
@@ -456,7 +464,7 @@ describe('already-restored — the same event, reached two ways', () => {
       getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
       renderPage();
 
-      expect(await screen.findByText(/already brought this group back/i)).toBeInTheDocument();
+      expect(await screen.findByText(/already brought this group back/i, VISIBLE_ONLY)).toBeInTheDocument();
       // There is nothing left to accept. A POST here would 409 and show the user
       // a failure they did not cause.
       expect(accept()).not.toHaveBeenCalled();
@@ -483,7 +491,7 @@ describe('already-restored — the same event, reached two ways', () => {
       getGroup().mockRejectedValue(forbiddenError());
       renderPage();
 
-      expect(await screen.findByText(/taking you to your groups/i)).toBeInTheDocument();
+      expect(await screen.findByText(/taking you to your groups/i, VISIBLE_ONLY)).toBeInTheDocument();
 
       await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/'), { timeout: 4000 });
       expect(pushMock).not.toHaveBeenCalledWith(`/groupHomePage?id=${LIVE_ID}`);
@@ -522,7 +530,7 @@ describe('already-restored — the same event, reached two ways', () => {
     getGroup().mockRejectedValue(new ApiError('down', 'network', 0));
     renderPage();
 
-    expect(await screen.findByText(/taking you to the group/i)).toBeInTheDocument();
+    expect(await screen.findByText(/taking you to the group/i, VISIBLE_ONLY)).toBeInTheDocument();
     await waitFor(
       () => expect(pushMock).toHaveBeenCalledWith(`/groupHomePage?id=${LIVE_ID}`),
       { timeout: 4000 }
@@ -542,13 +550,13 @@ describe('already-restored — the same event, reached two ways', () => {
     );
     renderPage();
 
-    expect(await screen.findByText(/already brought this group back/i)).toBeInTheDocument();
+    expect(await screen.findByText(/already brought this group back/i, VISIBLE_ONLY)).toBeInTheDocument();
     // Destination unknown: neutral copy, no promise that could flip mid-read.
-    expect(screen.getByText(/one moment/i)).toBeInTheDocument();
-    expect(screen.queryByText(/taking you to/i)).toBeNull();
+    expect(screen.getByText(/one moment/i, VISIBLE_ONLY)).toBeInTheDocument();
+    expect(screen.queryByText(/taking you to/i, VISIBLE_ONLY)).toBeNull();
 
     resolveGroup({ id: LIVE_ID, name: GROUP_NAME });
-    expect(await screen.findByText(/taking you to the group/i)).toBeInTheDocument();
+    expect(await screen.findByText(/taking you to the group/i, VISIBLE_ONLY)).toBeInTheDocument();
   }, 10000);
 
   it('L-3 — navigating away during the dwell cancels the redirect', async () => {
@@ -558,7 +566,7 @@ describe('already-restored — the same event, reached two ways', () => {
 
     // Wait until the timer is actually scheduled (the membership fetch resolves
     // and the hand-off copy renders) — unmounting before that proves nothing.
-    expect(await screen.findByText(/taking you to the group/i)).toBeInTheDocument();
+    expect(await screen.findByText(/taking you to the group/i, VISIBLE_ONLY)).toBeInTheDocument();
     unmount();
 
     await new Promise((resolve) => setTimeout(resolve, DWELL_MS + 600));
@@ -576,7 +584,7 @@ describe('already-restored — the same event, reached two ways', () => {
     getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
     renderPage();
 
-    expect(await screen.findByText(/already brought this group back/i)).toBeInTheDocument();
+    expect(await screen.findByText(/already brought this group back/i, VISIBLE_ONLY)).toBeInTheDocument();
 
     const cta = screen.getByRole('link', { name: /sign in/i });
     expect(cta).toHaveAttribute(
@@ -709,7 +717,7 @@ describe('SPEC-REQ-7 — no state on this page claims the group was permanently 
 
       renderPage();
       if (scenario.tap) await tapTakeOver();
-      await screen.findByText(scenario.settled);
+      await screen.findByText(scenario.settled, VISIBLE_ONLY);
 
       const text = (document.body.textContent ?? '').toLowerCase();
       for (const phrase of FORBIDDEN) {
@@ -820,5 +828,255 @@ describe('restore/group/[token] — R112, D-24 and L2 (plan 88.6.1-36)', () => {
     expect(await screen.findByText('Checking your restore link...')).toBeInTheDocument();
     expect(screen.getByRole('status', { name: 'Checking your restore link...' })).toBeInTheDocument();
     expect(screen.queryByText('Loading...')).toBeNull();
+  });
+});
+
+// Plan 88.6.1-36 (Requirement 8 and Requirement 5 on the restore page). Every ByText query in this
+// describe passes VISIBLE_ONLY; the region is read only through its test id (re-declared here:
+// a page module cannot export it).
+const PAGE_STATUS_TESTID = 'restore-page-status';
+const CHECKING = 'Checking your restore link...';
+
+describe('restore/group/[token] — slot-0 region and outcome focus (plan 88.6.1-36)', () => {
+  it('R1. the region is mounted empty at slot 0 while the page loads, and the SAME node carries the preview', async () => {
+    let resolvePreview: (v: unknown) => void = () => {};
+    getPreview().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve;
+        })
+    );
+    const { container } = renderPage();
+
+    await screen.findByText(CHECKING, VISIBLE_ONLY);
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+    expect(region.textContent).toBe('');
+    expect(container.firstElementChild).toBe(region);
+
+    await act(async () => {
+      resolvePreview(LIVE_PREVIEW);
+    });
+    await screen.findByRole('heading', { level: 1, name: GROUP_NAME });
+
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(region.textContent).toBe(
+      'Bring this group back Tuesday Night Crew It was deleted, but you can restore it and take over as owner until August 25, 2026.'
+    );
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('R2. while accepting the region is empty (focus speaks the line), then it carries the restored outcome', async () => {
+    signedIn();
+    let resolveAccept: (v: unknown) => void = () => {};
+    accept().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAccept = resolve;
+        })
+    );
+    renderPage();
+    await tapTakeOver();
+
+    await screen.findByText('Bringing back Tuesday Night Crew...', VISIBLE_ONLY);
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(region.textContent).toBe('');
+
+    await act(async () => {
+      resolveAccept({ success: true, group_id: RESTORED_ID, group_name: GROUP_NAME });
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Tuesday Night Crew is back' });
+
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(region.textContent).toBe("Tuesday Night Crew is back You're the owner now. Taking you to the group...");
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('R3. a failed acceptance is announced with the error headline and the error line', async () => {
+    signedIn();
+    accept().mockRejectedValue(new ApiError('down', 'network', 0));
+    renderPage();
+    await tapTakeOver();
+
+    await screen.findByRole('heading', { level: 1, name: 'Unable to restore this group' });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      'Unable to restore this group Something went wrong bringing this group back. Please try again.'
+    );
+  });
+
+  it('R4. a 409 is announced as the already-restored outcome, without the hand-off line', async () => {
+    signedIn();
+    accept().mockRejectedValue(conflictError());
+    renderPage();
+    await tapTakeOver();
+
+    await screen.findByRole('heading', { level: 1, name: 'Someone else already brought this group back' });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      'Someone else already brought this group back Nothing to do -- Tuesday Night Crew is up and running again.'
+    );
+  });
+
+  it('B1 (R8 idempotency backstop). a preview Try again that fails the same way twice re-announces on the same node', async () => {
+    let rejectSecond: (e: unknown) => void = () => {};
+    getPreview()
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0))
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSecond = reject;
+          })
+      );
+    renderPage();
+
+    await screen.findByRole('heading', { level: 1, name: 'Unable to restore this group' });
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    const first = region.textContent;
+    expect(first).toBe(
+      "Unable to restore this group We couldn't check this link. It may be a connection problem — please try again."
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText(CHECKING, VISIBLE_ONLY);
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(region.textContent).toBe('');
+
+    await act(async () => {
+      rejectSecond(new ApiError('down', 'network', 0));
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Unable to restore this group' });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(region.textContent).toBe(first);
+  });
+
+  it('F1 (Req 5; R5 ordering backstop). take-over: focus is on the accepting line in flight, then on the outcome heading', async () => {
+    signedIn();
+    let resolveAccept: (v: unknown) => void = () => {};
+    accept().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAccept = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Take over this group' }));
+    const line = await screen.findByText('Bringing back Tuesday Night Crew...', VISIBLE_ONLY);
+    await waitFor(() => expect(document.activeElement).toBe(line));
+
+    await act(async () => {
+      resolveAccept({ success: true, group_id: RESTORED_ID, group_name: GROUP_NAME });
+    });
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Tuesday Night Crew is back' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('F2. a failed take-over lands focus on the error heading, never on <body>', async () => {
+    signedIn();
+    accept().mockRejectedValue(new ApiError('down', 'network', 0));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Take over this group' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('heading', { level: 1, name: 'Unable to restore this group' })
+      )
+    );
+  });
+
+  it('F3. a preview Try again: focus is on the loading line in flight, then on the preview heading', async () => {
+    let resolveSecond: (v: unknown) => void = () => {};
+    getPreview()
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          })
+      );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    const line = await screen.findByText(CHECKING, VISIBLE_ONLY);
+    await waitFor(() => expect(document.activeElement).toBe(line));
+
+    await act(async () => {
+      resolveSecond(LIVE_PREVIEW);
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: GROUP_NAME }))
+    );
+  });
+
+  it('F4 (pin). the first load moves nothing', async () => {
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: GROUP_NAME });
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('F5 (pin). a user who moved focus elsewhere while the take-over was in flight is not moved back', async () => {
+    signedIn();
+    let resolveAccept: (v: unknown) => void = () => {};
+    accept().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAccept = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    render(
+      <>
+        <button type="button">Elsewhere</button>
+        <RestoreGroupPage />
+      </>
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Take over this group' }));
+    await screen.findByText('Bringing back Tuesday Night Crew...', VISIBLE_ONLY);
+    const elsewhere = screen.getByRole('button', { name: 'Elsewhere' });
+    act(() => {
+      elsewhere.focus();
+    });
+
+    await act(async () => {
+      resolveAccept({ success: true, group_id: RESTORED_ID, group_name: GROUP_NAME });
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Tuesday Night Crew is back' });
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it('G1. no status glyph on any settled branch is exposed to the accessibility tree', async () => {
+    const cases: Array<{ setup: () => void; tap: boolean; heading: string }> = [
+      { setup: () => signedOut(), tap: false, heading: GROUP_NAME },
+      { setup: () => signedIn(), tap: true, heading: 'Tuesday Night Crew is back' },
+      {
+        setup: () => {
+          signedIn();
+          accept().mockRejectedValueOnce(conflictError());
+        },
+        tap: true,
+        heading: 'Someone else already brought this group back',
+      },
+      {
+        setup: () => {
+          signedOut();
+          getPreview().mockRejectedValueOnce(new ApiError('nope', 'not_found', 404, { error: 'nope' }));
+        },
+        tap: false,
+        heading: 'Unable to restore this group',
+      },
+    ];
+
+    for (const c of cases) {
+      c.setup();
+      const { container } = renderPage();
+      if (c.tap) await tapTakeOver();
+      await screen.findByRole('heading', { level: 1, name: c.heading });
+      expect(container.querySelectorAll('svg:not([aria-hidden="true"])')).toHaveLength(0);
+      cleanup();
+    }
   });
 });
