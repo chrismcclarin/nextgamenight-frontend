@@ -445,11 +445,10 @@ describe('groupPlanning page — one load per visit (88.6.1-16, W060)', () => {
     });
     expect(h.ce!.modal).toBe(true);
 
-    // The production order: CreateEvent calls onEventCreated(data) before modaltoggle().
+    // 88.6.1-68: the page passes no created-callback; CreateEvent's own modaltoggle() is the close.
+    expect(h.ce!.onEventCreated).toBeUndefined();
     act(() => {
-      const ce = h.ce!;
-      (ce.onEventCreated as (e: unknown) => void)({ id: 'E1' });
-      (ce.modaltoggle as () => void)();
+      (h.ce!.modaltoggle as () => void)();
     });
     expect(eventsAPI.getGroupEvents).not.toHaveBeenCalled();
     expect(h.ce!.modal).toBe(false);

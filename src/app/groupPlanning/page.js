@@ -272,9 +272,6 @@ export default function GroupPlanningPage() {
         if (willClose) clearEventModalParams();
     };
 
-    const handleEventCreated = (newEvent) => {
-        toggleEventModal();
-    };
 
     if (!user) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
@@ -491,11 +488,22 @@ export default function GroupPlanningPage() {
                 createEvent already accepts these props; we just need to
                 forward them. The modal auto-opens when prefillDate+Time are
                 present (see useEffect above). */}
+            {/* DECISION Phase 88.6.1-68 (one close owner): chosen — this page passes CreateEvent no
+                created-callback; the dialog's close after a create is CreateEvent's own modaltoggle()
+                alone (plan 88.6.1-81 calls it only while the press's session is open), and it still
+                runs toggleEventModal, so the Phase 71.2 email-link parameters are still cleared on
+                that close. REJECTED — the host closing it too (what shipped: a second call to a TRUE
+                toggle, safe only because both calls ran from closures captured while the dialog was
+                open — a call from a fresh closure reopens it — and a host-side close cannot tell a
+                late success from the current one, the case that reopened dialogs at the other
+                hosts). Nothing on this page renders events (plan 16), so the callback had no other
+                job; this page's dialog opens only from the email link, so no late-success reopen is
+                reachable here today — the change makes all five mounts follow one rule. Re-adding a
+                callback that closes is a decision, not a cleanup. */}
             <CreateEvent
                 group_id={groupId}
                 modal={eventModal}
                 modaltoggle={toggleEventModal}
-                onEventCreated={handleEventCreated}
                 user={user}
                 // Phase 71.2 / Plan 03 hotfix — when arriving via the email CTA
                 // (prompt_id present), surface the visual heatmap so the user

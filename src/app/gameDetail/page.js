@@ -1999,13 +1999,15 @@ export default function GameDetailPage() {
         setEditEventModal(true);
     };
 
+    // DECISION Phase 88.6.1-68 (one close owner) — refresh only; see the marker at the event-view Edit mount.
     const handleEventUpdated = () => {
         // Capture editingEvent.id before clearing — needed for refreshBringersSet
         // so the 🎲 indicators on the strip + See-all modal drop the removed
         // user immediately (same pattern as Phase 65-02 RSVP-flip-deletes-brings).
+        // AMENDED Phase 88.6.1-68: the handler no longer clears editingEvent; the capture stays
+        // because this closure's event is the one that was updated, even if a later Edit has
+        // opened another.
         const updatedEventId = editingEvent?.id;
-        setEditEventModal(false);
-        setEditingEvent(null);
         fetchGameData(); // Refresh the event data
         // Phase 71.1-02: bump every per-event refresh signal so child
         // components that hold private state (RsvpSection, BallotSection) and
@@ -4377,8 +4379,8 @@ export default function GameDetailPage() {
                     group_id={group_id}
                     modal={showCreateEvent}
                     modaltoggle={() => setShowCreateEvent(false)}
+                    // DECISION Phase 88.6.1-68 (one close owner) — refresh only; see the marker at the event-view Edit mount.
                     onEventCreated={() => {
-                        setShowCreateEvent(false);
                         // Refresh sessions list so the brand-new event shows up.
                         fetchGameData();
                     }}
