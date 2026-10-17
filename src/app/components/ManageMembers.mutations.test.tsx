@@ -555,13 +555,16 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
   it('the region is MOUNTED AND EMPTY before any failure — the empty-first contract', async () => {
     const dialog = await openLeaveConfirm();
     const region = liveRegion(dialog);
-    // A conditionally-mounted region announces nothing, so its presence BEFORE the
-    // failure is the whole mechanism. Both halves are asserted: it exists, and the
-    // ARIA contract on it is the polite one.
+    // For THIS polite region, a conditionally-mounted region announces nothing, so its
+    // presence BEFORE the failure is the whole mechanism. That is not a rule for alerts: an
+    // inserted role="alert" that arrives with its text IS announced (ARIA 1.2; D-42, AT-4).
+    // Both halves are asserted: it exists, and the ARIA contract on it is the polite one.
     expect(region).toHaveAttribute('role', 'status');
     expect(region).toHaveAttribute('aria-live', 'polite');
     expect(region).toHaveAttribute('aria-atomic', 'true');
     expect(region).toHaveTextContent('');
+    // D-22 (88.6.1-50): the house empty shape, hidden only while it has nothing to say.
+    expect(region).toHaveClass('sr-only');
   });
 
   it('the SAME region carries the ratified message after a failed leave', async () => {
@@ -574,6 +577,10 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     await waitFor(() =>
       expect(before).toHaveTextContent('Something went wrong. Refresh the page to try again.')
     );
+    // Visible the moment it holds text, with the 16px gap (D-22; CONFIRM-ONLY: the old
+    // conditional margin did this too when set).
+    expect(before).not.toHaveClass('sr-only');
+    expect(before).toHaveClass('mt-4');
     // The node did not remount — announcement depends on a CHANGE inside a region
     // that was already there, not on a new region appearing.
     expect(liveRegion(dialog)).toBe(before);
@@ -590,6 +597,78 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Leave' }));
     await waitFor(() => expect(liveRegion(dialog)).not.toHaveTextContent(''));
     expect(dialog).not.toHaveTextContent(/pg:|relation "user_groups"/);
+  });
+
+  const RATIFIED_UNKNOWN_LEAVE = 'Something went wrong. Refresh the page to try again.';
+
+  it('LV1: two presses send one leave; the pressed Confirm Leave stays aria-disabled and focusable until it settles, then is released (W016 rows 14-15)', async () => {
+    const held = deferred<unknown>();
+    (groupsAPI.leaveGroup as Mock).mockReturnValueOnce(held.promise);
+    const dialog = await openLeaveConfirm();
+    const region = liveRegion(dialog);
+    const confirm = screen.getByRole('button', { name: 'Confirm Leave' });
+
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    // RED halves are the attributes and the request count (C-11); focus is CONFIRM-ONLY in jsdom.
+    expect(confirm).toHaveTextContent('Leaving…');
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(confirm).not.toHaveAttribute('disabled');
+    expect(confirm).toHaveClass('btn-danger');
+    expect(confirm.getAttribute('aria-describedby')).toBe(region.id);
+    // The sibling Cancel nobody pressed keeps its native gate (rule of POSITION).
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    expect(cancel).toBeDisabled();
+    expect(cancel).not.toHaveAttribute('aria-disabled');
+    expect(groupsAPI.leaveGroup as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      held.reject(new Error('HTTP error! status: 500'));
+    });
+    // Positive signal first (CF-26): the failure line landed in the region.
+    await waitFor(() => expect(region).toHaveTextContent(RATIFIED_UNKNOWN_LEAVE));
+    expect(confirm).not.toHaveAttribute('aria-disabled');
+    expect(cancel).not.toBeDisabled();
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(groupsAPI.leaveGroup as Mock).toHaveBeenCalledTimes(2));
+  });
+
+  it('LV2: two failed leaves are announced twice: the SAME region empties (sr-only) during the second request, then carries the line again (R8 idempotency backstop + adjacency)', async () => {
+    const second = deferred<unknown>();
+    (groupsAPI.leaveGroup as Mock)
+      .mockRejectedValueOnce(new Error('HTTP error! status: 500'))
+      .mockReturnValueOnce(second.promise);
+    const dialog = await openLeaveConfirm();
+    const region = liveRegion(dialog);
+    const confirm = screen.getByRole('button', { name: 'Confirm Leave' });
+
+    // Adjacency: exactly ONE live region in the leave dialog, polite, with no region inside it.
+    const statuses = within(dialog).getAllByRole('status');
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toBe(region);
+    expect(dialog.querySelectorAll('[aria-live]')).toHaveLength(1);
+    expect(region.querySelector('[aria-live]')).toBeNull();
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(region).toHaveTextContent(RATIFIED_UNKNOWN_LEAVE));
+    expect(region).not.toHaveClass('sr-only');
+
+    fireEvent.click(confirm);
+    // During the second request the handler has cleared the message: same node, empty, hidden.
+    await waitFor(() => expect(groupsAPI.leaveGroup as Mock).toHaveBeenCalledTimes(2));
+    // Mid-flight the confirm reads "Leaving…", so the region is read by its captured id here.
+    expect(dialog.querySelector(`#${CSS.escape(region.id)}`)).toBe(region);
+    expect(region.textContent).toBe('');
+    expect(region).toHaveClass('sr-only');
+
+    await act(async () => {
+      second.reject(new Error('HTTP error! status: 500'));
+    });
+    await waitFor(() => expect(region).toHaveTextContent(RATIFIED_UNKNOWN_LEAVE));
+    expect(liveRegion(dialog)).toBe(region);
+    expect(region).not.toHaveClass('sr-only');
   });
 });
 
