@@ -30,6 +30,7 @@ import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 const SELF = vi.hoisted(() => ({ uuid: '00000000-0000-4000-8000-0000000000aa' }));
 
@@ -218,7 +219,9 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
       expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Accept friend request from Ben' })),
     );
     expect(screen.queryByText('Ana')).toBeNull();
-    expect(screen.getByText('Accepted friend request!')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Notifications' })).getByRole('status').textContent).toBe(
+      'Accepted friend request!',
+    );
   });
 
   it('NF-2. a 500 the reconcile still lists keeps the row and arms nothing: a later outside press moves nobody to the page heading', async () => {
@@ -231,8 +234,15 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
     const acceptAna = within(rowFor('Ana')).getByRole('button', { name: 'Accept friend request from Ana' });
     press(acceptAna);
     await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
+    // The register's internal line (D-33 row 22: a coded failure keeps its register line, not N5).
+    await waitFor(() =>
+      expect(within(screen.getByRole('region', { name: 'Notifications' })).getByRole('alert').textContent).toBe(
+        getFetchErrorMessage(err500),
+      ),
+    );
 
     const region = screen.getByRole('region', { name: 'Notifications' });
+    expect(within(region).getByRole('status').textContent).toBe('');
     expect(within(region).getAllByRole('listitem')[0]).toBe(rowFor('Ana'));
     expect(acceptAna).toHaveAccessibleName('Accept friend request from Ana');
     expect(acceptAna).not.toHaveAttribute('aria-disabled');
@@ -263,6 +273,13 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
     );
     expect(screen.queryByText('Ana')).toBeNull();
     expect((err400 as unknown as { requestRowRemoved?: boolean }).requestRowRemoved).toBe(true);
+    // RECORDED for the owner: the stale accept shows the register's validation line, not N5.
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    expect(within(region).getByRole('alert').textContent).toBe(getFetchErrorMessage(err400));
+    expect(within(region).getByRole('alert').textContent).not.toBe(
+      "We couldn't accept that friend request. Please try again.",
+    );
+    expect(within(region).getByRole('status').textContent).toBe('');
   });
 
   it('NF-4. a decline on the last request lands focus on the panel\'s Notifications heading, inside the still-open panel', async () => {

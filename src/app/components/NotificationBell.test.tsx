@@ -70,6 +70,7 @@ vi.mock('./FriendshipStatusProvider', () => ({
 import NotificationBell from './NotificationBell';
 import { invitesAPI, ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -182,6 +183,9 @@ describe('L-8 — a dead-group 410 on the pending invite', () => {
     // A transient failure must NOT eat the row — the user can retry.
     expect(setInvitesMock).not.toHaveBeenCalled();
     expect(screen.queryByText(/no longer available/i)).toBeNull();
+    // AMENDED Phase 88.6.1-44: this failure now shows the register's internal line in the panel's
+    // assertive region (D-33 row 22; NA-14 pins the coded case). This case still pins that the row
+    // stays and that no 'no longer available' notice appears.
   });
 });
 
@@ -214,6 +218,7 @@ describe('the { text, tone } confirmation shape', () => {
 // AMENDED Phase 88.6.1-28 (D-18): the outside click, the Escape path and the panel's role and
 // name are now fixed and pinned in the NB describe at the end of this file; the four failures'
 // user-facing copy is plan 88.6.1-44's (N3-N6).
+// DONE Phase 88.6.1-44 (W026, MEDLOW-28): the four failures' user-facing lines (N3-N6) and the success announcement are pinned by NA-12..NA-17; the two decline success lines (N9 / N10, owner ruling #205) by NA-20.
 
 const loggerError = () => logger.error as unknown as Mock;
 
@@ -1139,5 +1144,246 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     const longAccept = within(screen.getByRole('region', { name: 'Notifications' })).getAllByRole('button')[0];
     expect(longAccept).toHaveAttribute('aria-label', `Accept invite to ${longName}`);
     expect(longAccept).toHaveAccessibleName(`Accept invite to ${longName}`);
+  });
+
+  // Task 3 (W026, MEDLOW-28, Req 8): the outcome regions. The ratified bytes are hard-coded here on
+  // purpose (AC-33): copy rows N3-N6 (88.6.1-COPY-TABLE.html, U+2019 normalised to a straight
+  // apostrophe, D-32 R8) and the decline success lines N9 / N10 (owner ruling #205).
+  const N3 = "We couldn't accept that invite. Please try again.";
+  const N4 = "We couldn't decline that invite. Please try again.";
+  const N5 = "We couldn't accept that friend request. Please try again.";
+  const N6 = "We couldn't decline that friend request. Please try again.";
+  const teapot = () => new ApiError('teapot', 'unknown', 418, {});
+
+  const panelRegion = () => screen.getByRole('region', { name: 'Notifications' });
+  const alertNode = () => within(panelRegion()).getByRole('alert');
+  const statusNode = () => within(panelRegion()).getByRole('status');
+
+  function closeWithEscape() {
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Notifications' }), { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull();
+  }
+
+  it('NA-12. AC-24 + N3 (W026): the failure line appears in the panel\'s always-mounted assertive region, the same node as before the failure; the escalation is still one logger call; the row stays', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A]);
+    acceptInvite().mockRejectedValue(teapot());
+    renderBell();
+    await openBell();
+
+    const alert = alertNode();
+    expect(alert).toHaveTextContent(/^$/);
+    expect(alert).toHaveClass('sr-only');
+
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    await waitFor(() => expect(alertNode()).toHaveTextContent(N3));
+    expect(alertNode()).toBe(alert);
+    expect(alert.textContent).toBe(N3);
+    expect(alert).not.toHaveClass('sr-only');
+    expect(loggerError()).toHaveBeenCalledTimes(1);
+    expect(loggerError().mock.calls[0][0]).toBe('Failed to accept invite:');
+    expect(statusNode()).toHaveTextContent(/^$/);
+    expect(rowFor('Alpha Crew')).toBeInTheDocument();
+  });
+
+  it('NA-13. N4, N5, N6: invite Decline, friend Accept and friend Decline each show their own line on the panel\'s single alert node', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A]);
+    declineInvite().mockRejectedValue(teapot());
+    renderBell();
+    await openBell();
+    const inviteAlert = alertNode();
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Decline invite to Alpha Crew' }));
+    await waitFor(() => expect(inviteAlert.textContent).toBe(N4));
+    expect(within(panelRegion()).getAllByRole('alert')).toHaveLength(1);
+
+    cleanup();
+    seed([], [FR1]);
+    friendAccept().mockRejectedValue(new Error('nope'));
+    renderBell();
+    await openOn('Friend Requests');
+    const acceptAlert = alertNode();
+    await user.click(screen.getByRole('button', { name: 'Accept friend request from Cee' }));
+    await waitFor(() => expect(acceptAlert.textContent).toBe(N5));
+    expect(within(panelRegion()).getAllByRole('alert')).toHaveLength(1);
+
+    cleanup();
+    seed([], [FR1]);
+    friendDecline().mockRejectedValue(new Error('nope'));
+    renderBell();
+    await openOn('Friend Requests');
+    const declineAlert = alertNode();
+    await user.click(screen.getByRole('button', { name: 'Decline friend request from Cee' }));
+    await waitFor(() => expect(declineAlert.textContent).toBe(N6));
+    expect(within(panelRegion()).getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('NA-14. D-33 row 22: a coded failure keeps its register line (a network failure shows the register\'s network sentence, never N3)', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A]);
+    const offline = new ApiError('offline', 'network', 0, null);
+    acceptInvite().mockRejectedValue(offline);
+    renderBell();
+    await openBell();
+    const alert = alertNode();
+
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    await waitFor(() => expect(alert.textContent).toBe(getFetchErrorMessage(offline)));
+    expect(alert.textContent).not.toBe(N3);
+  });
+
+  it('NA-15. AC-24 success (MEDLOW-28, SPEC Edge R8 adjacency): the confirmation appears in the always-mounted polite region, the same node, in the success ink; one alert and one status, siblings, never nested', async () => {
+    const user = userEvent.setup();
+    acceptInvite().mockResolvedValue({ success: true });
+    renderBell();
+    await openBell();
+
+    const status = statusNode();
+    const alert = alertNode();
+    expect(status).toHaveTextContent(/^$/);
+    expect(status).toHaveClass('sr-only');
+
+    await user.click(screen.getByRole('button', { name: `Accept invite to ${GROUP_NAME}` }));
+    await waitFor(() => expect(statusNode()).toHaveTextContent(`Joined ${GROUP_NAME}!`));
+    expect(statusNode()).toBe(status);
+    expect(status.textContent).toBe(`Joined ${GROUP_NAME}!`);
+    expect(status).toHaveClass('text-content-status-success');
+    expect(status).not.toHaveClass('sr-only');
+    expect(alert).toHaveTextContent(/^$/);
+
+    const region = panelRegion();
+    expect(within(region).getAllByRole('alert')).toHaveLength(1);
+    expect(within(region).getAllByRole('status')).toHaveLength(1);
+    expect(alert.contains(status)).toBe(false);
+    expect(status.contains(alert)).toBe(false);
+  });
+
+  it('NA-16. SPEC Edge R8 idempotency (backstop): the same outcome twice is announced twice — the same node empties while the repeat is in flight and carries the text again after', async () => {
+    const user = userEvent.setup();
+    // (a) failure twice.
+    seedInvites([INVITE_A]);
+    const second = deferred();
+    acceptInvite().mockRejectedValueOnce(teapot()).mockReturnValueOnce(second.promise);
+    renderBell();
+    await openBell();
+    const alert = alertNode();
+    const acceptA = within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' });
+
+    await user.click(acceptA);
+    await waitFor(() => expect(alert.textContent).toBe(N3));
+    await user.click(acceptA);
+    expect(alertNode()).toBe(alert);
+    expect(alert.textContent).toBe('');
+    expect(alert).toHaveClass('sr-only');
+    await act(async () => {
+      second.reject(teapot());
+    });
+    await waitFor(() => expect(alert.textContent).toBe(N3));
+
+    // (b) success twice.
+    cleanup();
+    seed([], [FR1, FR2]);
+    const heldSecond = deferred();
+    friendAccept().mockResolvedValueOnce({ alreadyAccepted: false }).mockReturnValueOnce(heldSecond.promise);
+    renderBell();
+    await openOn('Friend Requests');
+    const status = statusNode();
+
+    await user.click(screen.getByRole('button', { name: 'Accept friend request from Cee' }));
+    await waitFor(() => expect(status.textContent).toBe('Accepted friend request!'));
+    await user.click(screen.getByRole('button', { name: 'Accept friend request from Dee' }));
+    expect(statusNode()).toBe(status);
+    expect(status.textContent).toBe('');
+    expect(status).toHaveClass('sr-only');
+    await act(async () => {
+      heldSecond.resolve({ alreadyAccepted: false });
+    });
+    await waitFor(() => expect(status.textContent).toBe('Accepted friend request!'));
+  });
+
+  it('NA-17. SPEC Edge R8 empty: both regions start empty every time the panel opens — a failure is cleared by a close, and an outcome that settles while the panel is closed never shows on the next open', async () => {
+    const user = userEvent.setup();
+    // (a) a failure, then close and reopen.
+    seedInvites([INVITE_A]);
+    acceptInvite().mockRejectedValue(teapot());
+    renderBell();
+    await openBell();
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    await waitFor(() => expect(alertNode().textContent).toBe(N3));
+    closeWithEscape();
+    await openBell();
+    expect(alertNode().textContent).toBe('');
+    expect(alertNode()).toHaveClass('sr-only');
+
+    // (b) a failure that lands while the panel is CLOSED.
+    cleanup();
+    vi.clearAllMocks();
+    seedInvites([INVITE_A]);
+    const held = deferred();
+    acceptInvite().mockReturnValue(held.promise);
+    renderBell();
+    await openBell();
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    closeWithEscape();
+    await act(async () => {
+      held.reject(teapot());
+    });
+    await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
+    await openBell();
+    expect(alertNode().textContent).toBe('');
+    expect(alertNode()).toHaveClass('sr-only');
+
+    // (c) a confirmation that lands while the panel is closed; reopened at once (well inside the
+    // 3 s timer, so the timer cannot be what clears it).
+    cleanup();
+    seedInvites([INVITE_A]);
+    const heldOk = deferred();
+    acceptInvite().mockReturnValue(heldOk.promise);
+    renderBell();
+    await openBell();
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    closeWithEscape();
+    await act(async () => {
+      heldOk.resolve({ success: true });
+    });
+    await waitFor(() => expect(setInvitesMock).toHaveBeenCalled());
+    await openBell();
+    expect(statusNode().textContent).toBe('');
+    expect(statusNode()).toHaveClass('sr-only');
+  });
+
+  it('NA-20. owner ruling #205 (N9, N10): a successful Decline is announced in the polite region — Declined invite to {group}. for an invite, Declined friend request. for a friend request', async () => {
+    const user = userEvent.setup();
+    // (a) invite Decline.
+    seedInvites([INVITE_A]);
+    declineInvite().mockResolvedValue({ success: true });
+    renderBell();
+    await openBell();
+    const status = statusNode();
+    const alert = alertNode();
+    expect(status.textContent).toBe('');
+    expect(status).toHaveClass('sr-only');
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Decline invite to Alpha Crew' }));
+    await waitFor(() => expect(status.textContent).toBe('Declined invite to Alpha Crew.'));
+    expect(statusNode()).toBe(status);
+    expect(status).toHaveClass('text-content-status-success');
+    expect(status).not.toHaveClass('sr-only');
+    expect(alert.textContent).toBe('');
+
+    // (b) friend Decline.
+    cleanup();
+    seed([], [FR1]);
+    friendDecline().mockResolvedValue({ alreadyDeclined: false });
+    renderBell();
+    await openOn('Friend Requests');
+    const friendStatus = statusNode();
+    const friendAlert = alertNode();
+    expect(friendStatus.textContent).toBe('');
+    await user.click(screen.getByRole('button', { name: 'Decline friend request from Cee' }));
+    await waitFor(() => expect(friendStatus.textContent).toBe('Declined friend request.'));
+    expect(statusNode()).toBe(friendStatus);
+    expect(friendStatus).toHaveClass('text-content-status-success');
+    expect(friendStatus).not.toHaveClass('sr-only');
+    expect(friendAlert.textContent).toBe('');
   });
 });
