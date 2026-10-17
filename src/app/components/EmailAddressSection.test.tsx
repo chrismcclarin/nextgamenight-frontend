@@ -2795,3 +2795,32 @@ describe('EmailAddressSection — 88.6.1-13: the Save drift arm, the lanes and r
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-79 (AC-29): TanStack keeps `data` when a refetch fails and reports `isError`
+// with it, so the raw flag alone does not mean "nothing loaded". The one rule
+// (`selfIdentityFailedWithNoRow`) is failed AND no row held.
+// ---------------------------------------------------------------------------
+
+describe('a held identity row is not an unavailable address (88.6.1-79, AC-29)', () => {
+  it('EA1: a held row with the query flag in error hydrates the address view, never the unavailable copy', () => {
+    mockSelf.mockReturnValue(selfState(ROW(), true));
+    renderSection();
+
+    expect(screen.getByText(REAL)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    expect(
+      screen.queryByText("We couldn't load the address we have for you. Refresh the page to try again.")
+    ).not.toBeInTheDocument();
+  });
+
+  it('EA2 (guard): no row with the query flag in error still renders the unavailable copy, unchanged', () => {
+    mockSelf.mockReturnValue(selfState(undefined, true));
+    renderSection();
+
+    expect(
+      screen.getAllByText("We couldn't load the address we have for you. Refresh the page to try again.")
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Change' })).not.toBeInTheDocument();
+  });
+});

@@ -1135,3 +1135,52 @@ describe('FeedbackForm — Phase 88.6.1-34 task 3 (D-35, Req 5, F2, R8 idempoten
     }
   });
 });
+
+// Phase 88.6.1-79 (AC-29): a refetch that fails over a held row keeps the row (TanStack
+// reports `isError` with `data`), and the form already sends that row's address as the
+// reply-to — so the missing-reply-to line must follow the no-row rule, not the raw flag.
+describe('a held identity row is a known reply-to (88.6.1-79, AC-29)', () => {
+  const REPLY_TO_LINE = "We couldn't load your email address, so we won't be able to reply to this.";
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  const fileOne = async () => {
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description here.');
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    return JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = undefined;
+    h.query = {};
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  it('FF1: a held row with a usable address and the flag in error shows no missing-reply-to line and sends that address', async () => {
+    h.self = { id: 'u-1', email: APP_EMAIL };
+    h.query = { isError: true, isFetching: false };
+    render(<FeedbackForm onClose={() => {}} />);
+
+    expect(screen.queryByText(REPLY_TO_LINE)).not.toBeInTheDocument();
+    const body = await fileOne();
+    expect(body.user_email).toBe(APP_EMAIL);
+  });
+
+  it('FF2 (guard): no row and the flag in error shows the line and sends no address', async () => {
+    h.query = { isError: true, isFetching: false };
+    render(<FeedbackForm onClose={() => {}} />);
+
+    expect(screen.getByText(REPLY_TO_LINE)).toBeInTheDocument();
+    const body = await fileOne();
+    expect(body.user_email).toBeNull();
+  });
+});
