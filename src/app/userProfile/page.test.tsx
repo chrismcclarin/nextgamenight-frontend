@@ -66,7 +66,14 @@ const h = vi.hoisted(() => ({
    * QueryClientProvider. Plan 88-10 added this; the default stays `[]` so every
    * pre-existing test sees exactly what it saw before.
    */
-  patterns: [] as Record<string, unknown>[],
+  patterns: [] as undefined | Record<string, unknown>[],
+  // Plan 88.6.1-59: the patterns query's error, read by the mocked `useQuery` (isError / error).
+  patternsError: null as null | Error,
+  // Plan 88.6.1-59: ONE stable refetch for the patterns query, so a case can assert on it.
+  refetchPatterns: vi.fn(),
+  // Plan 88.6.1-59 (P11): the one cache entry the fake QueryClientContext hands back for the
+  // patterns key, standing in for a real cache's entry that outlives an unmount.
+  patternsEntry: {} as object,
   /**
    * The Auth0 row, held as ONE object rather than rebuilt inside the mock factory.
    * Identity matters: the page's owned-games / calendar-status effect depends on
@@ -145,9 +152,9 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
     useQuery: () => ({
       data: h.patterns,
       isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+      isError: Boolean(h.patternsError),
+      error: h.patternsError,
+      refetch: h.refetchPatterns,
     }),
   };
 });
@@ -228,6 +235,10 @@ import Profile from './page';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { auditFormControls } from '../../test-utils/formControlAudit';
+import { ApiError } from '@/lib/api';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
+import { QueryClientContext } from '@tanstack/react-query';
 
 /** Accessor for the mocked house logger — AC-2's channel on this surface. */
 export function loggerMock() {
@@ -265,7 +276,10 @@ export function toastMock() {
  *   `phone_verified` drive the entitlement-gated SMS column, and
  *   `notification_preferences` gates the whole Notification Preferences card.
  */
-export function renderProfile(selfOverrides: Record<string, unknown> = {}) {
+export function renderProfile(
+  selfOverrides: Record<string, unknown> = {},
+  options: { wrapper?: React.ComponentType<{ children: React.ReactNode }> } = {}
+) {
   h.self = {
     id: SELF_UUID,
     user_id: 'auth0|self',
@@ -275,13 +289,15 @@ export function renderProfile(selfOverrides: Record<string, unknown> = {}) {
     notification_preferences: DEFAULT_PREFS,
     ...selfOverrides,
   };
-  return render(<Profile />);
+  return render(<Profile />, options);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   h.self = undefined;
   h.patterns = [];
+  h.patternsError = null;
+  h.patternsEntry = {};
   h.authError = null;
   h.showTutorial = false;
 });
@@ -3025,5 +3041,384 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(toggle.textContent).toBe('+ Add Override'));
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1-59 Task 2 (Req 11, AC-29 / RF1, Req 5): what the availability lists show after a
+// write. A multi-day save that fails part-way drops the days it saved from the selection and
+// re-reads the list; a failed refresh keeps the rows under plan 70's notice (the full banner only
+// when nothing is retained, or on an access answer); focus never falls to the body when a row,
+// the notice or the rows leave; a row Delete lands on the panel's toggle.
+describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  // Copy row RF1 (D-47), written ONCE here (contract C7). The notice renders it twice while it
+  // shows (the visible line and its polite region), so every query is an All query.
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  const OVERRIDE = {
+    id: 'override-1',
+    type: 'specific_override',
+    is_available: true,
+    pattern_data: { date: '2026-11-03', startTime: '18:00', endTime: '22:00' },
+  };
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  async function openSpecificDates(user: ReturnType<typeof userEvent.setup>) {
+    (await screen.findByRole('tab', { name: 'Specific Dates' })).focus();
+    await user.keyboard('{Enter}');
+  }
+
+  // The unpressed re-attempt: a tab return, the useFetchErrorState.test.tsx idiom.
+  function fireVisible() {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  // The mocked useQuery reads `h` on render, so a changed query state commits only on a render.
+  async function rerenderPage(rerender: (ui: React.ReactElement) => void) {
+    await act(async () => { rerender(<Profile />); });
+  }
+
+  const schedulesHeading = () => screen.getByRole('heading', { name: 'Availability Schedules' });
+
+  afterEach(async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    h.refetchPatterns.mockReset();
+    (availabilityAPI.createRecurringPattern as Mock).mockResolvedValue({});
+    (availabilityAPI.deleteAvailability as Mock).mockResolvedValue({});
+  });
+
+  it('M1: a multi-day save that fails on Tuesday re-reads the list, drops Monday, and the retry never re-sends Monday', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    let failedOnce = false;
+    (availabilityAPI.createRecurringPattern as Mock).mockImplementation(
+      async (_id: string, formData: { dayOfWeek: number }) => {
+        if (formData.dayOfWeek === 2 && !failedOnce) {
+          failedOnce = true;
+          throw new Error('boom');
+        }
+        return {};
+      }
+    );
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    const mon = screen.getByRole('button', { name: 'Mon' });
+    fireEvent.click(mon);
+    fireEvent.click(screen.getByRole('button', { name: 'Tue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Wed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Schedule' }));
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith("We couldn't save that schedule. Please try again.")
+    );
+    await waitFor(() => expect(mon).toHaveAttribute('aria-pressed', 'false'));
+    expect(h.refetchPatterns).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Tue' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Wed' })).toHaveAttribute('aria-pressed', 'true');
+    const save = await screen.findByRole('button', { name: 'Save Schedule' });
+    await waitFor(() => expect(save).not.toHaveAttribute('aria-disabled'));
+
+    fireEvent.click(save);
+    await waitFor(() => expect(availabilityAPI.createRecurringPattern).toHaveBeenCalledTimes(4));
+    const sent = (availabilityAPI.createRecurringPattern as Mock).mock.calls.map(
+      (call) => (call[1] as { dayOfWeek: number }).dayOfWeek
+    );
+    expect(sent).toEqual([1, 2, 2, 3]);
+  });
+
+  it('M2: a failure with nothing confirmed still re-reads the list and keeps the whole selection', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    (availabilityAPI.createRecurringPattern as Mock).mockRejectedValueOnce(
+      new ApiError('Gateway timeout', 'internal', 504)
+    );
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Schedule' }));
+
+    await waitFor(() => expect(toastMock().error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save Schedule' })).not.toHaveAttribute('aria-disabled')
+    );
+    expect(h.refetchPatterns).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Tue' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('P1: a failed refresh keeps the schedules under RF1, in a status region that was already there', async () => {
+    h.patterns = PATTERNS;
+    const { rerender } = renderProfile();
+    await screen.findByRole('button', { name: 'Delete Monday schedule' });
+    const before = screen.getAllByRole('status');
+
+    h.patternsError = new Error('boom');
+    rerender(<Profile />);
+
+    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    const region = screen.getAllByRole('status').find((node) => node.textContent === RF1);
+    expect(region).toBeDefined();
+    // Contract C8 b: the region pre-existed (node identity, C-6).
+    expect(before).toContain(region);
+  });
+
+  it('P2: a list that loaded empty keeps its empty sentence, with RF1 above it (D-50)', async () => {
+    h.patterns = [];
+    h.patternsError = new Error('boom');
+    renderProfile();
+
+    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    const sentence = screen.getByText('No schedules set. Add one to get started.');
+    const row = screen.getByRole('button', { name: 'Retry' }).parentElement as HTMLElement;
+    expect(row.textContent).toContain(RF1);
+    expect(row.compareDocumentPosition(sentence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
+  });
+
+  it('P3: a failed load with nothing retained shows only the full banner, never an empty sentence or RF1', async () => {
+    h.patterns = undefined;
+    h.patternsError = new Error('boom');
+    renderProfile();
+
+    // CONFIRM-ONLY against the pre-task page: it pins that the nothing-retained arm survives.
+    await screen.findByText("Couldn't load your schedules");
+    expect(screen.queryByText('No schedules set. Add one to get started.')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('P4: a failed refresh keeps the overrides under RF1 on the Specific Dates tab', async () => {
+    const user = userEvent.setup();
+    h.patterns = [OVERRIDE];
+    h.patternsError = new Error('boom');
+    renderProfile();
+    await openSpecificDates(user);
+
+    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    expect(screen.getByRole('button', { name: /^Delete .+ override$/ })).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your overrides")).toBeNull();
+  });
+
+  it('P5: a successful Retry removes the notice and lands focus on the Availability Schedules heading', async () => {
+    const user = userEvent.setup();
+    h.patterns = PATTERNS;
+    h.patternsError = new Error('boom');
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patternsError = null;
+      return { isError: false };
+    });
+    const { rerender } = renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Retry' }));
+    await rerenderPage(rerender);
+
+    await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+  });
+
+  it('P6: a 401 or 403 over the kept schedules withdraws them for the full banner and its register line', async () => {
+    // CONFIRM-ONLY against the pre-task page (its exclusive banner shows exactly this); RED
+    // against a plant that hands the rows' presence to the notice without the retention hook.
+    for (const error of [
+      new ApiError('Unauthorized', 'unauthorized', 401),
+      new ApiError('Forbidden', 'forbidden', 403),
+    ]) {
+      h.patterns = PATTERNS;
+      h.patternsError = error;
+      renderProfile();
+      await screen.findByText("Couldn't load your schedules");
+      expect(screen.getByText(getFetchErrorMessage(error))).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
+      cleanup();
+    }
+  });
+
+  it('P7: a first-load Try again that succeeds lands focus on the Availability Schedules heading', async () => {
+    const user = userEvent.setup();
+    h.patterns = undefined;
+    h.patternsError = new Error('boom');
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patternsError = null;
+      h.patterns = PATTERNS;
+      return { isError: false };
+    });
+    const { rerender } = renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    await rerenderPage(rerender);
+
+    await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('P8: a 500 or a network failure over the kept schedules shows RF1 above them', async () => {
+    for (const error of [
+      new ApiError('Server error', 'internal', 500),
+      new ApiError('Network error', 'network', 0),
+    ]) {
+      h.patterns = PATTERNS;
+      h.patternsError = error;
+      renderProfile();
+      expect(await screen.findAllByText(RF1)).toHaveLength(2);
+      expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+      expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('P9: an unpressed re-attempt answered 403 or 401 withdraws the rows while a Delete holds focus, and focus lands on the heading', async () => {
+    for (const answer of [
+      new ApiError('Forbidden', 'forbidden', 403),
+      new ApiError('Unauthorized', 'unauthorized', 401),
+    ]) {
+      h.patterns = PATTERNS;
+      h.patternsError = new Error('boom');
+      const { rerender } = renderProfile();
+      expect(await screen.findAllByText(RF1)).toHaveLength(2);
+      act(() => screen.getByRole('button', { name: 'Delete Monday schedule' }).focus());
+      h.refetchPatterns.mockImplementation(async () => {
+        h.patternsError = answer;
+        return { isError: true };
+      });
+
+      await act(async () => { fireVisible(); });
+      await rerenderPage(rerender);
+
+      await screen.findByText("Couldn't load your schedules");
+      expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+      expect(document.activeElement).not.toBe(document.body);
+      cleanup();
+      h.refetchPatterns.mockReset();
+    }
+  });
+
+  it('P10: an unpressed re-attempt that succeeds while Retry holds focus lands on the heading', async () => {
+    h.patterns = PATTERNS;
+    h.patternsError = new Error('boom');
+    const { rerender } = renderProfile();
+    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    act(() => screen.getByRole('button', { name: 'Retry' }).focus());
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patternsError = null;
+      return { isError: false };
+    });
+
+    await act(async () => { fireVisible(); });
+    await rerenderPage(rerender);
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('P11: an access answer is remembered across a remount over the cached query (C10 memory with the cache entry)', async () => {
+    // This suite mocks useQuery, so there is no real cache. A fake QueryClientContext stands in
+    // for the one property a real cache gives: the SAME entry object for the patterns key on both
+    // sides of an unmount. Every other key finds nothing (the hook's instance memory serves).
+    const fakeClient = {
+      getQueryCache: () => ({
+        find: (filters: { queryKey?: unknown }) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(availabilityKeys.patterns(h.self?.id as string | undefined))
+            ? h.patternsEntry
+            : undefined,
+      }),
+    };
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientContext.Provider value={fakeClient as never}>{children}</QueryClientContext.Provider>
+    );
+    // CONFIRM-ONLY against Task 1's page (its exclusive banner shows on every error); RED against
+    // the two-argument hook call.
+    h.patterns = PATTERNS;
+    const first = renderProfile({}, { wrapper });
+    await screen.findByRole('button', { name: 'Delete Monday schedule' });
+
+    h.patternsError = new ApiError('Forbidden', 'forbidden', 403);
+    await rerenderPage(first.rerender);
+    await screen.findByText("Couldn't load your schedules");
+
+    h.patternsError = new ApiError('Server error', 'internal', 500);
+    await rerenderPage(first.rerender);
+    expect(screen.getByText("Couldn't load your schedules")).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    first.unmount();
+    const second = renderProfile({}, { wrapper });
+    await screen.findByText("Couldn't load your schedules");
+    expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete Tuesday schedule' })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    h.patternsError = null;
+    await rerenderPage(second.rerender);
+    expect(await screen.findByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+  });
+
+  it('D1: deleting a schedule lands focus on + Add Schedule after the row leaves', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    h.patterns = PATTERNS;
+    const pending = deferred();
+    (availabilityAPI.deleteAvailability as Mock).mockReturnValue(pending.promise);
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patterns = [PATTERNS[1]];
+      return { isError: false };
+    });
+    renderProfile();
+
+    const del = await screen.findByRole('button', { name: 'Delete Monday schedule' });
+    await user.click(del);
+    await user.click(del);
+    // CONFIRM-ONLY in jsdom (C-11): the committed Delete still holds focus while it is held.
+    await waitFor(() => expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon'));
+    expect(document.activeElement).toBe(del);
+
+    await act(async () => { pending.resolve({}); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Schedule' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+  });
+
+  it('D2: deleting an override lands focus on + Add Override', async () => {
+    const user = userEvent.setup();
+    h.patterns = [OVERRIDE];
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patterns = [];
+      return { isError: false };
+    });
+    renderProfile();
+    await openSpecificDates(user);
+
+    const del = await screen.findByRole('button', { name: /^Delete .+ override$/ });
+    await user.click(del);
+    await user.click(del);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Override' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
   });
 });
