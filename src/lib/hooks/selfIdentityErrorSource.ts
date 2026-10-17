@@ -67,9 +67,12 @@ export function selfIdentityErrorSource<TData = unknown, TError = unknown>(
   query: FetchErrorSource<TData, TError>,
   selfUuid: string | null | undefined
 ): FetchErrorSource<TData, TError> {
+  // Destructured, as `useSelfIdentity` and `useFetchErrorState` read the same TanStack fields: this
+  // is the query's `error` object, not a response envelope's `error` key (`errorEnvelopeReads.test.ts`).
+  const { error, refetch } = query;
   return {
     isError: selfIdentityFailedWithNoRow(query, selfUuid),
-    error: query.error,
-    refetch: query.refetch,
+    error,
+    refetch,
   } as FetchErrorSource<TData, TError>;
 }

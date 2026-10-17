@@ -149,7 +149,7 @@ function Profile(){
     // undefined until the cached self-fetch resolves, so mount-fire senders gate
     // on it (+ selfUuid in their dep arrays so they re-run once it resolves) and
     // user-action senders guard-before-optimistic-update, failing loud.
-    const { self, selfUuid, query: selfQuery } = useSelfIdentity();
+    const { self, selfUuid, query: selfQuery, queryKey: selfQueryKey } = useSelfIdentity();
     // WR-03: the profile header falls back when identity fails with NO row (the init effect
     // below; a failed refetch that keeps the row initializes from that row — 88.6.1-61), but
     // the owned-games + Google-calendar-status zones init their loading flags to true and clear
@@ -313,6 +313,51 @@ function Profile(){
     const patternsFailedWithNothingCached = patternsError.showError && !patternsRetained;
     // No-row half (88.6.1-61); selfIdentityErrorState stays RAW: plan 88.6.1-79 reads it over a kept row.
     const selfFailedWithNothingCached = selfIdentityErrorState.showError && self === undefined;
+    /* DECISION Phase 88.6.1-79 (AC-29 / D-51, identity kept row): CHOSEN — Profile is the one host
+       that DISPLAYS the identity row as content (the header's name and address line), so a failed
+       identity refresh over a held row is retained data: ONE RF1 notice at the top of the header
+       card (D-51 names "Profile's identity header"; plan 88.6.1-61's AC-29 consistency check),
+       `retained` through plan 88.6.1-70's `useRetainedContent` with the identity query's own key
+       (C10), and an access or gone answer withdraws the identity zone until the next success —
+       the page keeps its `h1`, reading the session name, with the full banner and its register
+       line below it.
+       THE RAW STATE IS LOAD-BEARING: `selfIdentityErrorState` reads the raw self query on purpose;
+       wrapping it in `selfIdentityErrorSource` (the no-row source, right for the control hosts)
+       would make it quiet over a held row and silence this notice. Profile's no-row half is
+       `selfFailedWithNothingCached`.
+       REJECTED: (a) no notice (the control-host rule) — the header would show the earlier name and
+       address with nothing saying so; (b) the compact notice — its sentence is false, every control
+       works; (c) the full banner above the kept row — retired by D-51; (d) a `focusTarget` — the
+       card's heading is the page `h1`, which the floor reaches; (e) withdrawing the whole card on an
+       access answer — the calendar zone reads its own request and the phone zone may hold an
+       in-progress verification, so only the zone the row paints is withdrawn; (f) the bare
+       `self !== undefined` (or a local code list) as `retained` — a 403 then a 500 would bring the
+       withdrawn name back (C10).
+       THE WITHDRAWN ARM KEEPS THE PAGE'S `h1` (orchestrator decision, revision-lap-3 manifest):
+       CHOSEN — the same heading primitive and props, reading the SESSION's name (`user.name`), which
+       is exactly what this heading reads when the page holds no row; the banner sits below it.
+       REJECTED for the heading: (g) no heading while withdrawn — the page would lose its only `h1`,
+       the banner's title is a `span`, and the focus floor would fall past it to `main`; (h) the
+       row's username — it is the withdrawn row's content (C10); (i) a new heading text, such as the
+       breadcrumb's `Profile` — a second page title for one state, new visible words in a heading
+       role; (j) moving the heading above the card — it would jump position in one state.
+       C12: CHOSEN — plan 70's ONE `RetainedContentFocusGuard`, the card's second child, outside the
+       swapped arm, with NO target, so a withdrawal that removed a focused control lands on the
+       floor's `main h1` — the withdrawn arm's heading. REJECTED — (k)
+       `focusTarget={profileHeadingRef}`: that ref moves between the healthy and the withdrawn
+       heading in the same commit and may still be detached when the guard runs; (l) the guard
+       inside the identity zone — it would leave with the zone.
+       BELOW THE HEADER (reviews 117 and 125): CHOSEN — an access or gone answer also swaps the
+       collection list for its existing compact notice (`selfFailedWithNothingCached ||
+       identityWithdrawn`) and puts the Email card on its existing unavailable arm (its
+       `identityWithdrawn` prop), so no live control below the header acts on the withdrawn row.
+       REJECTED — (m) a compact notice in the calendar zone too — it sits in the header card, which
+       already carries the full banner (one failure surface per card, C6); (n) gating the profile
+       init effect — the kept row is the user's own last server-confirmed settings, and the server
+       rejects a write made with the dead session.
+       Changing this is a decision, not a cleanup. */
+    const identityRetained = useRetainedContent(self !== undefined, selfIdentityErrorState, { queryKey: selfQueryKey });
+    const identityWithdrawn = self !== undefined && !identityRetained;
     // D-35 / Req 5 (88.6.1-59): the username editor's Save latch, and the pencil that both of the
     // editor's exits land focus on (fallback: plan 18's profile <h1>). See
     // `DECISION Phase 88.6.1-59 (D-35, username)` at the editor's button row.
@@ -2211,10 +2256,25 @@ function Profile(){
 
                 {/* Profile Header */}
                 <div className="card p-3 md:p-6 mb-6">
+                    {/* AC-29 / D-51 (88.6.1-79): the shared RF1 notice, mounted unconditionally
+                        (88.6.1-70 contract C6), reading the RAW identity state; then the card's ONE
+                        focus guard, outside the swapped arm and with no target (C12). See
+                        `DECISION Phase 88.6.1-79 (AC-29 / D-51, identity kept row)`. */}
+                    <RefreshFailedNotice state={selfIdentityErrorState} retained={identityRetained} className="mb-4" />
+                    <RetainedContentFocusGuard retained={identityRetained} />
                     {/* Avatar + Username zone — paint-gated (D-PAINT-01) so user.name (Auth0/Google)
                         never flashes before userData.username arrives. Skeleton on first paint;
-                        real content (or Auth0 fallback on fetch failure) once profileLoaded flips. */}
-                    {profileLoaded ? (
+                        real content (or Auth0 fallback on fetch failure) once profileLoaded flips.
+                        88.6.1-79: an access or gone answer over a kept row withdraws the zone — the
+                        page heading reads the session name, the full banner below it. */}
+                    {identityWithdrawn ? (
+                        <div className="flex flex-col gap-3 md:gap-4">
+                            <Heading ref={profileHeadingRef} level={1} size="display" className="text-content-primary">
+                                {user.name}
+                            </Heading>
+                            <FetchErrorBanner state={selfIdentityErrorState} />
+                        </div>
+                    ) : profileLoaded ? (
                         <div className="flex items-center gap-3 md:gap-4">
                             {user.picture && (
                                 <img src={user.picture} alt={userData?.username || user.name} className="w-16 h-16 md:w-20 md:h-20 rounded-full shrink-0" />
@@ -2847,7 +2907,7 @@ function Profile(){
                     verification completes inline in the section (D-09 as re-ruled
                     2026-09-03), nothing arrives on this page by URL, and the
                     ONBD-04 return effect must NOT be cloned for it. */}
-                <EmailAddressSection />
+                <EmailAddressSection identityWithdrawn={identityWithdrawn} />
 
                 {/* Theme Setting */}
                 <div className="card p-3 md:p-6 mb-6">
@@ -3394,7 +3454,7 @@ function Profile(){
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1714` (recurring) and `:1809`
+                                            `userProfile/page.js:1759` (recurring) and `:1854`
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
@@ -4015,8 +4075,12 @@ function Profile(){
                         withdraws the row's name and address and decides which zones show a notice for
                         it), so `selfFailedWithNothingCached` is not the whole story of when a zone's
                         notice shows. Plan 79 amends this bullet in place when it lands.
+                        AMENDED Phase 88.6.1-79: mounted — the header card's first child; an access or
+                        gone answer over a kept row also shows the collection zone's compact notice
+                        (`selfFailedWithNothingCached || identityWithdrawn`); see `DECISION Phase
+                        88.6.1-79 (AC-29 / D-51, identity kept row)`.
                         Changing any of these is a decision, not a cleanup. */}
-                    {selfFailedWithNothingCached ? (
+                    {selfFailedWithNothingCached || identityWithdrawn ? (
                         // WR-03: identity failed terminally (no row) — the owned-games
                         // fetch never ran; surface the degrade notice instead of
                         // a permanent "Loading your collection...".

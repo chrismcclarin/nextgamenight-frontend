@@ -578,7 +578,7 @@ describe('userProfile availability settings', () => {
   // The recurring DATE pair had NO client guard of any kind: the server rejects an
   // inverted range with a code-less 400 that renders the generic register copy and
   // discards the form (`routes/availability.js:137`). The TIME pair on the same form
-  // already refuses it with a ratified toast (`userProfile/page.js:1714`,
+  // already refuses it with a ratified toast (`userProfile/page.js:1759`,
   // 88-CODE-REVIEW MED#7) and is deliberately untouched.
   //
   // THIS ASSERTS THE DERIVATION, NOT A DATE. A test that pinned a literal would pass
@@ -1317,7 +1317,9 @@ describe('userProfile type scale (Req 2)', () => {
     // that carry a className — prose does not.
     const raw = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)];
     expect(raw.map((m) => m[0])).toEqual([]);
-    expect(headingTags(source).length).toBe(14);
+    // 14 -> 15 (Phase 88.6.1-79): the withdrawn identity arm's page heading, a second `level={1}`
+    // TAG in source; only one of the two arms is ever mounted, so the page renders one h1.
+    expect(headingTags(source).length).toBe(15);
   });
 
   // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it exactly
@@ -1336,7 +1338,7 @@ describe('userProfile type scale (Req 2)', () => {
   it('keeps every heading inside the working set', async () => {
     const source = await pageSource();
     const tags = headingTags(source);
-    expect(tags.length).toBe(14);
+    expect(tags.length).toBe(15);
     const offenders = tags.filter((attrs) =>
       /\b(?:[a-z]+:)?text-(?:lg|2xl|4xl|5xl)\b/.test(attrs)
     );
@@ -1346,7 +1348,7 @@ describe('userProfile type scale (Req 2)', () => {
   it('gives every heading an explicit size and an explicit level', async () => {
     const source = await pageSource();
     const tags = headingTags(source);
-    expect(tags.length).toBe(14);
+    expect(tags.length).toBe(15);
     for (const attrs of tags) {
       // UI-SPEC §4.4: every migrated call site records its rung rather than
       // inheriting one from the level.
@@ -1364,7 +1366,8 @@ describe('userProfile type scale (Req 2)', () => {
       const lvl = /\blevel=\{([1-6])\}/.exec(attrs)?.[1] as string;
       counts[lvl] = (counts[lvl] ?? 0) + 1;
     }
-    expect(counts).toEqual({ '1': 1, '2': 7, '3': 4, '4': 2 });
+    // '1': 1 -> 2 (Phase 88.6.1-79): the withdrawn identity arm's heading; the two arms are exclusive.
+    expect(counts).toEqual({ '1': 2, '2': 7, '3': 4, '4': 2 });
   });
 
   // The two h4s at 16 are the one judgement D-04's table does not make for us.
@@ -1380,8 +1383,11 @@ describe('userProfile type scale (Req 2)', () => {
   it('leaves no clip utility on the page title', async () => {
     const source = await pageSource();
     const h1 = headingTags(source).filter((a) => /\blevel=\{1\}/.test(a));
-    expect(h1).toHaveLength(1);
-    expect(h1[0]).not.toMatch(/\b(?:truncate|line-clamp-\d|text-ellipsis|whitespace-nowrap)\b/);
+    // 1 -> 2 (Phase 88.6.1-79): the healthy heading and the withdrawn arm's (exclusive arms); both wrap.
+    expect(h1).toHaveLength(2);
+    for (const attrs of h1) {
+      expect(attrs).not.toMatch(/\b(?:truncate|line-clamp-\d|text-ellipsis|whitespace-nowrap)\b/);
+    }
   });
 
   // Plan 08 re-pointed `ModalAction` at `Button` internally and left the call-site

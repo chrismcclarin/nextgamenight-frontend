@@ -101,7 +101,8 @@ const SYNTHETIC_HELPER =
   "We don't have a working address for you yet, so nothing we send can reach you. Add one below.";
 
 const UNRESOLVED_COPY = 'Loading the address we have for you…';
-const UNAVAILABLE_COPY =
+// Exported (Phase 88.6.1-79) so the Profile suite reads the one spelling; the value is unchanged.
+export const UNAVAILABLE_COPY =
   "We couldn't load the address we have for you. Refresh the page to try again.";
 
 const NOT_VERIFIED_LABEL = 'Not verified yet';
@@ -504,7 +505,32 @@ export function driftedSavePendingAddress(
   return null;
 }
 
-export function EmailAddressSection() {
+export interface EmailAddressSectionProps {
+  /**
+   * True while the host withdrew the identity row after an access or gone answer (Profile's
+   * `identityWithdrawn`). Absent = false. Decided at RENDER time: the section shows its existing
+   * unavailable arm while it is true and its held state again when it goes false.
+   */
+  identityWithdrawn?: boolean;
+}
+
+/* DECISION Phase 88.6.1-79 (D-51, withdrawn row): CHOSEN — a render-time prop from the one page
+   that knows the identity answer was an access answer (Profile), FOLDED into `showUnavailable`, so
+   the section's existing unavailable arm and its one announcement path carry it, and the held state
+   returns when the prop goes false. REJECTED: (a) the sticky `'unavailable'` state (or
+   `hydratedRef`) — a recovered session would keep a dead card for the visit; (b) a code-aware
+   no-row rule — `selfIdentityFailedWithNoRow` stays code-blind, because the feedback form and plan
+   88.6.1-63's hosts need it so; (c) leaving the card painting the withdrawn address with a working
+   Change below a header that withdrew it (D-51, "content is withdrawn"); (d) the prop as a guard
+   BESIDE `showUnavailable` — the arm's only text is the region fed by the effect keyed on
+   `showUnavailable`, so a guard beside it paints the arm with no sentence.
+   It also records the DOUBLE ANNOUNCEMENT, chosen: one withdrawal is announced twice — the header's
+   full banner (its register line) and then this card's sentence — because they are two different
+   facts (why the session's content went, and that this card has nothing to show). REJECTED:
+   silencing this card's sentence, which would need a second, non-live rendering of it in this arm
+   against the section's one-node rule (round 5 #36) and would leave a screen-reader user meeting an
+   unannounced change. No new words either way. Changing this is a decision, not a cleanup. */
+export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressSectionProps = {}) {
   const { self, query: selfQuery } = useSelfIdentity();
   const queryClient = useQueryClient();
 
@@ -1785,7 +1811,9 @@ export function EmailAddressSection() {
      `selfIdentityFailedWithNoRow`. */
   const preHydration = !hydratedRef.current;
   const showUnavailable =
-    state === 'unavailable' || (preHydration && selfIdentityFailedWithNoRow(selfQuery, self?.id));
+    identityWithdrawn ||
+    state === 'unavailable' ||
+    (preHydration && selfIdentityFailedWithNoRow(selfQuery, self?.id));
   const showUnresolved = !showUnavailable && (state === 'unresolved' || (preHydration && !self));
 
   /* Round 4 #29: the loading→failed transition happened in plain <p>s below the always-
@@ -1794,6 +1822,10 @@ export function EmailAddressSection() {
      it, and the section is aria-busy while unresolved. */
   React.useEffect(() => {
     if (showUnavailable) setAnnouncement(UNAVAILABLE_COPY);
+    // Phase 88.6.1-79 (D-51): the arm can now LEAVE (a withdrawal ends on the next success), so on
+    // true -> false drop this one sentence — any other message stands — or the main arm's
+    // always-mounted region would keep reading it beside the restored address. A no-op on mount.
+    else setAnnouncement((a) => (a === UNAVAILABLE_COPY ? '' : a));
   }, [showUnavailable]);
   if (showUnavailable) {
     return (

@@ -68,6 +68,11 @@ export interface UseSelfIdentityResult {
   query: UseQueryResult<SelfIdentity, unknown>;
   /** True while the self row is still resolving (react-query v5 semantics). */
   isPending: boolean;
+  /**
+   * The identity query's cache key, built once and passed to `useQuery` — for C10's TanStack
+   * source (`useRetainedContent`'s third argument; Phase 88.6.1-79, D-r3-10).
+   */
+  queryKey: readonly unknown[];
 }
 
 /**
@@ -79,11 +84,14 @@ export interface UseSelfIdentityResult {
  */
 export function useSelfIdentity(): UseSelfIdentityResult {
   const { user } = useUser();
+  // Built ONCE (Phase 88.6.1-79): passed to `useQuery` and returned, so a consumer never spells
+  // a second copy of the key.
+  const queryKey = [...SELF_IDENTITY_KEY, user?.sub ?? null];
 
   const query = useQuery<SelfIdentity>({
     // Scoped by sub (see SELF_IDENTITY_KEY doc): a different logged-in account
     // resolves against its own cache entry, never the previous user's row.
-    queryKey: [...SELF_IDENTITY_KEY, user?.sub ?? null],
+    queryKey,
     queryFn: async (): Promise<SelfIdentity> => {
       // TZ-01: forward the detected browser timezone as getUser's 2nd arg so the
       // self-fetch keeps its persist/backfill WRITE side-effect once plan 07
@@ -118,5 +126,6 @@ export function useSelfIdentity(): UseSelfIdentityResult {
     self: query.data,
     query,
     isPending: query.isPending,
+    queryKey,
   };
 }

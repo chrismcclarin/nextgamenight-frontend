@@ -1664,7 +1664,12 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   // unchanged — this is one more branch, not a level change. Not an R7 heading-order finding.
   'app/rsvp/[token]/page.js': { 1: 4 },
   'app/terms/page.js': { 1: 1, 2: 8 },
-  'app/userProfile/page.js': { 1: 1, 2: 7, 3: 4, 4: 2 },
+  // RAISED { 1: 1, ... } -> { 1: 2, ... } by plan 88.6.1-79 task 3 (2026-10-17, orchestrator decision
+  // "a page keeps its h1", D-51): the withdrawn identity arm (an access or gone answer over a kept
+  // row) renders its own `<Heading level={1} size="display">` with the session name in place of the
+  // healthy one. Mutually exclusive with the healthy heading, so the page still renders exactly ONE
+  // h1 at a time; no existing heading moved level or size. Not an R7 heading-order finding.
+  'app/userProfile/page.js': { 1: 2, 2: 7, 3: 4, 4: 2 },
   'components/ui/ErrorFallback.tsx': { 1: 1 },
 };
 
