@@ -298,7 +298,7 @@ describe('ManageMembers Req 11 gates — blocking semantics (no API call until c
 
   it('reset invite link: dialog copy matches UI-SPEC 11.2 and calls nothing yet', async () => {
     await openMembersModal();
-    fireEvent.click(await screen.findByText('Reset QR link'));
+    fireEvent.click(await screen.findByText('Reset invite link'));
 
     expect(
       await screen.findByRole('dialog', { name: 'Reset the invite link?' })
@@ -311,14 +311,14 @@ describe('ManageMembers Req 11 gates — blocking semantics (no API call until c
 
   it('reset invite link: confirming commits, cancelling aborts', async () => {
     await openMembersModal();
-    fireEvent.click(await screen.findByText('Reset QR link'));
+    fireEvent.click(await screen.findByText('Reset invite link'));
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Reset the invite link?' })).not.toBeInTheDocument()
     );
     expect(groupsAPI.resetInviteToken as Mock).not.toHaveBeenCalled();
 
-    fireEvent.click(await screen.findByText('Reset QR link'));
+    fireEvent.click(await screen.findByText('Reset invite link'));
     fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
     await waitFor(() =>
       expect(groupsAPI.resetInviteToken as Mock).toHaveBeenCalledWith(GROUP_ID)
@@ -473,7 +473,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
   it('a failed reset-invite leaves its confirm dialog OPEN', async () => {
     (groupsAPI.resetInviteToken as Mock).mockRejectedValue(upstream());
     await openMembersModal();
-    fireEvent.click(await screen.findByText('Reset QR link'));
+    fireEvent.click(await screen.findByText('Reset invite link'));
     fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
@@ -675,7 +675,7 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
 describe('ManageMembers W11 receipt + AC-2 channel', () => {
   it('a successful invite-link reset fires the ratified "Invite link reset" receipt', async () => {
     await openMembersModal();
-    fireEvent.click(await screen.findByText('Reset QR link'));
+    fireEvent.click(await screen.findByText('Reset invite link'));
     fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invite link reset'));
   });
@@ -1390,5 +1390,39 @@ describe('ManageMembers 88.6.1-50 — the pressed Transfer ownership stays focus
     expect(modaltoggle).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Manage Group Members' })).toBeInTheDocument();
     expect(groupsAPI.transferOwnership as Mock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-50 (D-30 copy row G1; W016 row 20 / W014 case 1): the reset opener.
+// ---------------------------------------------------------------------------
+
+describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W016 row 20)', () => {
+  it('G1-1: the header opener says what its dialog and receipt say, and its tooltip is unchanged', async () => {
+    await openMembersModal();
+    const opener = await screen.findByRole('button', { name: 'Reset invite link' });
+    expect(opener).toHaveAttribute('title', 'Invalidate the current invite link and generate a new one');
+    expect(screen.queryByRole('button', { name: /QR link/ })).toBeNull();
+  });
+
+  it('RS1: while a reset runs the opener reads "Resetting…", aria-disabled and still focusable, then rests again', async () => {
+    const held = deferred<unknown>();
+    (groupsAPI.resetInviteToken as Mock).mockReturnValueOnce(held.promise);
+    await openMembersModal();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
+
+    // RED half is the attribute (C-11); the focus claim (the dialog's close restore can land
+    // on it) is CONFIRM-ONLY in jsdom.
+    const opener = (await screen.findByText('Resetting…')).closest('button') as HTMLElement;
+    expect(opener).toHaveAttribute('aria-disabled', 'true');
+    expect(opener).not.toHaveAttribute('disabled');
+
+    await act(async () => {
+      held.resolve({});
+    });
+    // Positive signal first (CF-26): the receipt fired.
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invite link reset'));
+    expect(screen.getByRole('button', { name: 'Reset invite link' })).not.toHaveAttribute('aria-disabled');
   });
 });
