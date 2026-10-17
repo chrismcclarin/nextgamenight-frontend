@@ -776,12 +776,17 @@ export async function apiFetch<T = unknown>(
    why they ALSO lacked res.ok and a guarded success parse. The app-wide absence is an
    OWNED RESIDUAL with Phase 93 named in .planning/deferred/phase-93.md.
 
-   WHY THIS IS NOT COSMETIC: AvailabilityForm.js sets setIsPrefilling(true) BEFORE the
-   await and clears it ONLY in finally, and both pre-fill buttons are disabled on that
-   flag. A request that never settles leaves TWO PERMANENTLY DISABLED BUTTONS on the
-   SMS/email magic-link flow, with no recovery short of a reload, on the phone-primary
-   surface. An AbortError that is SWALLOWED re-creates exactly that state, which is why it
-   is MAPPED to a rejection here and never absorbed.
+   WHY THIS IS NOT COSMETIC: AvailabilityForm.js marks a pre-fill in flight BEFORE the
+   await (prefillSource names the running source, and the prefillInFlightRef latch is set)
+   and clears both ONLY in finally. While they are set, the PRESSED pre-fill button is
+   aria-disabled (it keeps focus, and the latch refuses its presses) and the OTHER button is
+   natively disabled. A request that never settles leaves BOTH PRE-FILL BUTTONS PERMANENTLY
+   UNUSABLE on the SMS/email magic-link flow, with no recovery short of a reload, on the
+   phone-primary surface. An AbortError that is SWALLOWED re-creates exactly that state,
+   which is why it is MAPPED to a rejection here and never absorbed.
+   (Corrected in place by plan 88.6.1-49, 2026-10-16 Pacific: this paragraph named the
+   boolean flag plan 88.6.1-26 replaced with prefillSource, and said both buttons were
+   disabled on it. The mechanism changed; the conclusion did not.)
 
    BINDING CONSTRAINT -- NO res.ok THROW is added to any of the five, and no resolved body
    SHAPE changes. Every consumer reads the parsed body's fields directly
