@@ -7,9 +7,10 @@
 // each arm CAPTURES the region before the flip and asserts on the SAME captured element after.
 // Re-querying after the flip degrades the test back to presence and is deliberately avoided.
 //
-// A bare `getByRole('status')` is also FORBIDDEN here: `AvailabilityForm` renders its own
-// always-mounted `sr-only` `StatusRegion` (`useConfirmAction`'s `statusNode`), so the READY
-// render legitimately carries TWO. The page-level one is addressed by its `data-testid`.
+// A bare `getByRole('status')` is also FORBIDDEN here: READY carries FOUR always-mounted status
+// regions — the page's own, and three from the form: its confirm region (`useConfirmAction`'s
+// `statusNode`), its pre-fill outcome region (plan 88.6.1-26) and the grid's selection summary
+// (plan 88.6.1-39). Each is addressed by its `data-testid`, or counted on purpose.
 //
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only.
 import * as React from 'react';
@@ -25,10 +26,13 @@ vi.mock('next/navigation', () => ({
 }));
 
 /**
- * A stand-in for the real form. It is NOT a convenience: the real `AvailabilityForm` renders its
- * own always-mounted `StatusRegion`, and this stub renders one too — so the "two `role=status`
- * nodes coexist on READY" property the page's marker records is REPRODUCED here rather than
- * mocked away. The submit button is what drives `onSuccess`.
+ * A stand-in for the real form. It is NOT a convenience: the real `AvailabilityForm` renders
+ * THREE always-mounted `StatusRegion`s (its confirm region, its pre-fill outcome region and the
+ * grid's selection summary), and this stub renders three too — so the "four `role=status` nodes
+ * coexist on READY" property the page's marker records is REPRODUCED here rather than mocked
+ * away (in order: the confirm region, then stand-ins for the pre-fill outcome region and the
+ * grid's summary, the last two added by plan 88.6.1-39). The submit button is what drives
+ * `onSuccess`.
  * The real form is rendered on demand (`formMode.real`) for the arms that count or drive the
  * grid's region.
  */
@@ -41,6 +45,8 @@ vi.mock('@/app/components/AvailabilityForm', async (importOriginal) => {
     const { onSuccess } = props as { onSuccess: (r: unknown) => void };
     return (
     <div>
+      <div role="status" aria-live="polite" className="sr-only" />
+      <div role="status" aria-live="polite" className="sr-only" />
       <div role="status" aria-live="polite" className="sr-only" />
       <button type="button" onClick={() => onSuccess({ isUnavailable: false, slotCount: 3 })}>
         Submit availability
@@ -440,15 +446,15 @@ describe('availability-form/[token] — the branch roots and the second region',
     );
   });
 
-  it('READY carries TWO always-mounted role=status nodes, deliberately', async () => {
+  it('READY carries FOUR always-mounted role=status nodes, deliberately', async () => {
     validate().mockResolvedValue(VALID_TOKEN_BODY);
 
     render(<AvailabilityFormPage />);
     await screen.findByRole('button', { name: /submit availability/i });
 
     // This is why a bare getByRole('status') is forbidden in this file. The page-level one
-    // survives the flip; the form's unmounts with the form.
-    expect(screen.getAllByRole('status')).toHaveLength(2);
+    // survives the flip; the form's three unmount with the form.
+    expect(screen.getAllByRole('status')).toHaveLength(4);
   });
 });
 
@@ -498,5 +504,33 @@ describe('availability-form/[token] — 88.6.1-39: the real form speaks the grid
 
     expect(screen.getByTestId(GRID_SUMMARY_TESTID)).toBe(region);
     expect(region.textContent).toBe('1 preferred, 0 if need be slots selected');
+  });
+
+  // The page marker's count, held against the REAL form so it cannot drift silently again
+  // (register R3-M13/M21: the marker said TWO while the page carried more).
+  it('P39-2: on the real form READY carries exactly FOUR status nodes — the page, the grid summary, the pre-fill outcome and the confirm region — all empty', async () => {
+    formMode.real = true;
+    validate().mockResolvedValue(VALID_TOKEN_BODY);
+
+    render(<AvailabilityFormPage />);
+    const gridRegion = await screen.findByTestId(GRID_SUMMARY_TESTID);
+
+    const regions = screen.getAllByRole('status');
+    expect(regions).toHaveLength(4);
+    expect(regions).toContain(pageRegion());
+    expect(regions).toContain(gridRegion);
+    expect(regions).toContain(screen.getByTestId('prefill-status'));
+
+    const form = document.querySelector('form');
+    expect(form).not.toBeNull();
+    const insideForm = regions.filter((r) => form!.contains(r));
+    // The grid's summary and the pre-fill outcome sit inside the form.
+    expect(insideForm).toHaveLength(2);
+    expect(insideForm).toContain(gridRegion);
+    // The confirm region is neither the page's nor inside the form: a sibling of the form.
+    const others = regions.filter((r) => r !== pageRegion() && !form!.contains(r));
+    expect(others).toHaveLength(1);
+
+    for (const r of regions) expect(r.textContent).toBe('');
   });
 });

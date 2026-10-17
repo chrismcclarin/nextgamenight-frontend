@@ -1,5 +1,7 @@
 import { test, expect, type CDPSession, type Locator, type Page } from '@playwright/test';
 
+import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
+
 /**
  * Phase 87.8 plan 14 — MOB-04: touch gesture model on the check-in availability
  * grid (AvailabilityGrid.js), PHONE PROJECT ONLY.
@@ -17,6 +19,17 @@ import { test, expect, type CDPSession, type Locator, type Page } from '@playwri
  *      and KEEPS PAINTING slots that started below the viewport (the owner's
  *      10-to-7 case), and stops cleanly on release
  *
+ * Phase 88.6.1 plan 39 (D-14 / D-45 / D-16, copy rows A1 / A3 / A4) adds three checks of what
+ * the grid SAYS at 375px (see the DECISION Phase 88.6.1-39 markers in AvailabilityGrid.js):
+ *   6. right after load the spoken summary region is empty (the phone hook's post-mount flip
+ *      is silent), the line under the grid gives the phone instruction (A1) and fits the width
+ *   7. a long-press drag over 9 slots speaks ONE summary, after the finger lifts — never a
+ *      count per cell — and it equals the visible count line
+ *   8. Clear All shows and speaks "All times cleared." (A4); the next tap brings the counts back
+ * The summary region is sr-only, so it is asserted by TEXT only, never by visibility (a sr-only
+ * node is a 1x1 box Playwright reports visible — availability-submit.spec.ts says the same).
+ * These three hold every write in the browser (the shared write backstop) — nothing here submits.
+ *
  * RAW CDP, NOT page.touchscreen — DO NOT "SIMPLIFY": Playwright's
  * `page.touchscreen` only taps; the drag paths need real touch streams
  * (`Input.dispatchTouchEvent`: touchStart, ~400ms hold, stepped touchMoves,
@@ -24,8 +37,8 @@ import { test, expect, type CDPSession, type Locator, type Page } from '@playwri
  * override (playwright.config.ts D-14) is what makes this possible.
  *
  * PROJECT GUARD: `journeys` and `phone` share `testMatch: /.*\.spec\.ts/`, so
- * this file skips the desktop project the same way touch-targets.spec.ts:117
- * does. Touch behavior is a phone-tenet concern measured at 375x667.
+ * this file skips the desktop project the same way touch-targets.spec.ts
+ * does (its phone-only `test.skip(({ isMobile }) => !isMobile` guard). Touch behavior is a phone-tenet concern measured at 375x667.
  *
  * SELECTOR NOTE: painted-state assertions use `[data-slot-id]` +
  * `aria-pressed` — data-slot-id is WriteCell's own paint-resolution attribute
@@ -41,7 +54,8 @@ import { test, expect, type CDPSession, type Locator, type Page } from '@playwri
  *
  * Fixtures follow the env-const idiom: E2E_AVAILABILITY_TOKEN is the seeded
  * availability magic-link token minted in CI. Do not run locally — e2e is
- * CI-only by design (playwright.config.ts:19-21).
+ * CI-only by design (playwright.config.ts header: the credentials "are intentionally
+ * absent locally").
  */
 
 const E2E_AVAILABILITY_TOKEN = process.env.E2E_AVAILABILITY_TOKEN ?? 'seed-availability-token';
@@ -69,11 +83,14 @@ async function guardResolved(locator: Locator, what: string, atLeast = 1): Promi
   ).toBeGreaterThanOrEqual(atLeast);
 }
 
-/** Load the form and normalize to an empty selection (see STATE NOTE). */
-async function gotoCleanGrid(page: Page): Promise<void> {
+/** Load the form and normalize to an empty selection (see STATE NOTE). `afterLoad` runs once
+ *  the grid is rendered and BEFORE the normalizing Clear All (test (6) reads the untouched
+ *  region there). */
+async function gotoCleanGrid(page: Page, afterLoad?: () => Promise<void>): Promise<void> {
   await page.goto(`/availability-form/${E2E_AVAILABILITY_TOKEN}`);
   // Grid rendered: the Select All checkbox is the grid's stable landmark.
   await expect(page.getByRole('checkbox', { name: /^all$/i }).first()).toBeVisible();
+  if (afterLoad) await afterLoad();
   const clearAll = page.getByRole('button', { name: 'Clear All' });
   // Plan 88.6-63 (review round 2 #23): Clear All is now ALWAYS mounted and `aria-disabled="true"`
   // on an empty selection. Playwright treats aria-disabled as NOT enabled, and `click()` waits for
@@ -383,5 +400,136 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
       await paintedCells(page).count(),
       'slots kept being added after touchEnd — paint mode was not torn down on release',
     ).toBe(settledCount);
+  });
+
+  // Phase 88.6.1 plan 39: what the grid says, at 375px. Every write is held in the browser
+  // (the shared backstop, registered before the first navigation) — nothing here submits.
+  test.describe('88.6.1-39 — the spoken summary and the line under the grid (D-14 / D-45 / D-16)', () => {
+    const SUMMARY_STATUS = 'availability-grid-summary-status';
+    const SUMMARY_LINE = 'availability-grid-summary-line';
+    const PHONE_HINT = 'Tap a time to select it. Press and hold, then drag, to select several.';
+    const ALL_CLEARED = 'All times cleared.';
+    const ONE = '1 preferred, 0 if need be slots selected';
+
+    let hold: WriteHold | undefined;
+    test.beforeEach(async ({ page }) => {
+      hold = undefined;
+      hold = await holdWrites(page);
+    });
+    test.afterEach(async ({ page }) => {
+      expectNoApiWrites(hold);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    /** CDP tap: start + end, no movement, well under the 300ms long-press timer. */
+    async function tap(cdp: CDPSession, page: Page, at: { x: number; y: number }): Promise<void> {
+      await touchStart(cdp, at.x, at.y);
+      await page.waitForTimeout(60);
+      await touchEnd(cdp);
+    }
+
+    test('(6) the instruction under the grid gives the phone gesture (A1) and fits 375px', async ({ page }) => {
+      const region = page.getByTestId(SUMMARY_STATUS);
+      const line = page.getByTestId(SUMMARY_LINE);
+
+      await gotoCleanGrid(page, async () => {
+        await guardResolved(region, 'the grid summary region');
+        // Before ANY interaction: the phone hook flips after mount, and that flip must be silent.
+        await expect(
+          region,
+          'something was spoken on load — the phone/desktop instruction flip was announced (the line must not be live)',
+        ).toHaveText('');
+      });
+
+      const { xDay0, yTenAm } = await positionTenAmNearTop(page);
+      const cdp = await page.context().newCDPSession(page);
+
+      await tap(cdp, page, { x: xDay0, y: yTenAm });
+      await expect(line, 'the line under the grid does not show the count after a tap').toHaveText(ONE);
+
+      await tap(cdp, page, { x: xDay0, y: yTenAm }); // un-paint: empty again, no Clear All just happened
+      await expect(
+        line,
+        'an empty grid on a phone does not show the tap / press-and-hold instruction (copy row A1)',
+      ).toHaveText(PHONE_HINT);
+      await expect(line).not.toContainText('Click and drag');
+      await expect(
+        region,
+        'emptying the grid was not spoken as a count of zero',
+      ).toHaveText('0 preferred, 0 if need be slots selected');
+
+      const box = await line.boundingBox();
+      expect(box, 'the line under the grid has no box').not.toBeNull();
+      const viewportWidth = page.viewportSize()!.width;
+      expect(box!.x, 'the instruction starts left of the screen').toBeGreaterThanOrEqual(0);
+      expect(
+        box!.x + box!.width,
+        `the instruction runs past the ${viewportWidth}px screen edge`,
+      ).toBeLessThanOrEqual(viewportWidth);
+      const overflow = await line.evaluate((el) => el.scrollWidth - el.clientWidth);
+      expect(overflow, 'the instruction overflows its own box at 375px').toBeLessThanOrEqual(0);
+    });
+
+    test('(7) a long-press drag of 9 slots speaks ONE summary, after the finger lifts', async ({ page }) => {
+      await gotoCleanGrid(page);
+      const { xDay0, yTenAm } = await positionTenAmNearTop(page);
+      const cdp = await page.context().newCDPSession(page);
+      const region = page.getByTestId(SUMMARY_STATUS);
+      const line = page.getByTestId(SUMMARY_LINE);
+      await guardResolved(region, 'the grid summary region');
+
+      // The test (4) corridor and its band preconditions.
+      const yTwoPm = yTenAm + 8 * ROW_HEIGHT;
+      expect(yTenAm, 'drag start sits inside the top edge band — reposition the corridor').toBeGreaterThan(EDGE_BAND_PX + 10);
+      expect(yTwoPm, 'drag end sits inside the bottom edge band — reposition the corridor').toBeLessThan(VIEWPORT_H - EDGE_BAND_PX - 10);
+
+      // Log every text the region holds from here on.
+      await region.evaluate((el) => {
+        const w = window as unknown as { __gridSummaryLog: string[] };
+        w.__gridSummaryLog = [];
+        new MutationObserver(() => {
+          w.__gridSummaryLog.push(el.textContent ?? '');
+        }).observe(el, { childList: true, subtree: true, characterData: true });
+      });
+
+      await longPress(cdp, page, { x: xDay0, y: yTenAm });
+      await steppedMoves(cdp, page, { x: xDay0, y: yTenAm }, { x: xDay0, y: yTwoPm });
+      await touchEnd(cdp);
+
+      const NINE = '9 preferred, 0 if need be slots selected';
+      await expect(paintedCells(page)).toHaveCount(9);
+      await expect(region, 'the drag was not spoken once the finger lifted').toHaveText(NINE);
+      await expect(line).toHaveText(NINE);
+
+      const log = await page.evaluate(
+        () => (window as unknown as { __gridSummaryLog: string[] }).__gridSummaryLog,
+      );
+      const spoken = log
+        .filter((t) => t !== '')
+        .filter((t, i, all) => i === 0 || t !== all[i - 1]);
+      expect(
+        spoken,
+        'the count was spoken per cell during the drag — a screen reader hears every painted cell instead of one summary',
+      ).toEqual([NINE]);
+    });
+
+    test('(8) Clear All says it cleared (A4); the next tap brings the counts back', async ({ page }) => {
+      await gotoCleanGrid(page);
+      const { xDay0, yTenAm } = await positionTenAmNearTop(page);
+      const cdp = await page.context().newCDPSession(page);
+      const region = page.getByTestId(SUMMARY_STATUS);
+      const line = page.getByTestId(SUMMARY_LINE);
+      await guardResolved(region, 'the grid summary region');
+
+      await tap(cdp, page, { x: xDay0, y: yTenAm });
+      await expect(line).toHaveText(ONE);
+
+      await page.getByRole('button', { name: 'Clear All' }).click();
+      await expect(line, 'Clear All does not say what happened on screen').toHaveText(ALL_CLEARED);
+      await expect(region, 'Clear All does not say what happened to a screen reader').toHaveText(ALL_CLEARED);
+
+      await tap(cdp, page, { x: xDay0, y: yTenAm });
+      await expect(line, 'the counts did not come back after the next tap').toHaveText(ONE);
+    });
   });
 });
