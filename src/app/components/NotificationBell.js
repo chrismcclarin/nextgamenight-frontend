@@ -5,11 +5,44 @@ import { logger } from '@/lib/logger';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { useDismissal } from '@/components/ui/useDismissal';
+import { useFocusRecovery } from '@/components/ui/useFocusRecovery';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 
 // Copy row N1 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:100) — heard, not seen.
 const LOADING_NOTIFICATIONS = 'Loading notifications';
+
+// Copy row N2 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:101) — seen and heard.
+const ACCEPTING_COPY = 'Accepting...';
+
+/* DECISION Phase 88.6.1-44 (N8, D-19 shape, Req 6): each row button is named for what it acts on
+   (owner-ratified 2026-10-05, copy row N8: Accept invite to {group}, Decline invite to {group},
+   Accept friend request from {name}, Decline friend request from {name}). CHOSEN: a hoisted
+   function fed the row's own displayed value, trimmed at both ends, never truncated and never
+   hand-escaped (React writes the attribute as text), falling back to today's word when the value
+   is empty (no new words, D-31) — mirroring customizeGroupLabel in
+   src/app/components/grouplist.js (plan 88.6.1-54). Every name begins with the button's visible
+   label (WCAG 2.5.3, label in name). The pressed Accept DROPS its name while in flight, so it is
+   heard as copy row N2, a seen-and-heard row, and the name keeps containing the visible text.
+   REJECTED (a): aria-describedby pointing at the row's name text (D-19's rejected option: a
+   skippable hint, and the names stay identical in the rotor and in Voice Control).
+   REJECTED (b): keeping the name while in flight (a screen-reader user would never hear N2, and
+   the name would stop containing the visible Accepting...).
+   REJECTED (c): an in-flight name carrying the group (new words, D-31).
+   REJECTED (d): visually hidden text inside the button (a second naming shape beside D-19's, and
+   the words in the DOM twice for text queries).
+   REJECTED (e): truncating long names.
+   NOTE: Sentry click breadcrumbs copy a clicked control's name; plan 88.6.1-76 (split from 08)
+   keeps only the static prefix of those values (its NAMED_ATTRIBUTE_PREFIXES lists the four N8
+   prefixes). Changing how these buttons are named is a decision, not a cleanup. */
+function rowLabelText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function acceptInviteLabel(group) {
+  const n = rowLabelText(group);
+  return n ? `Accept invite to ${n}` : 'Accept';
+}
 
 function NotificationBell({ user, variant = 'icon', label }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -61,7 +94,13 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // The panel heading's id, derived from panelId (no second useId call): the section names itself
   // through it (DECISION Phase 88.6.1-28, D-18, D-33 row 21, at the panel below).
   const headingId = `${panelId}-heading`;
-  const [actionLoading, setActionLoading] = useState(null);
+  // Per-row in-flight record: { [rowKey]: 'accept' | 'decline' }, rowKey = 'invite:<id>' or
+  // 'friend:<id>' (two id spaces from two tables in one map; the prefix rules out a collision).
+  const [actionLoading, setActionLoading] = useState({});
+  // The latch: row keys whose request is running. A ref, so a second synchronous press sees it.
+  const inFlightRef = useRef(new Set());
+  // The panel's own "Notifications" heading — focus recovery's fallback target (H9, D-05).
+  const panelHeadingRef = useRef(null);
   // { text, tone: 'success' | 'muted' } — muted is the L-8 "no longer
   // available" notice, which must not render in success-green.
   const [confirmation, setConfirmation] = useState(null);
@@ -117,6 +156,90 @@ function NotificationBell({ user, variant = 'icon', label }) {
     containerRef: dropdownRef,
     triggerRef,
   });
+
+  const recovery = useFocusRecovery({ fallback: panelHeadingRef });
+
+  /* DECISION Phase 88.6.1-44 (W016, D-35, rule of POSITION): each row's in-flight state is a
+     PER-ROW record (the map shape the Friends page already ships, src/app/friends/page.js,
+     anchor "actionLoading[request.id] === 'accept'"), keyed by kind and id, plus one ref latch per
+     row that refuses a second press on the handler's first line and is released in finally.
+     CHOSEN: the pressed control is aria-disabled and keeps focus, its row sibling stays natively
+     disabled; Accept in flight reads copy row N2 (text replaces the nameless spinner); Decline
+     keeps its word (D-33 row 15 not taken). Both writes are functional updates, so two presses in
+     one batch never overwrite each other's entry.
+     REJECTED (a): ONE shared id-plus-action value for the whole panel (the research shape,
+     APPENDIX-CT CT-3) — a second row's press overwrites the first row's record, so the first
+     row's pressed control loses its gate and label mid-flight, and the first row's finally clears
+     the second's.
+     REJECTED (b): native disabled on the pressed control — a real browser drops focus to body,
+     and Accept had no name while its spinner showed.
+     REJECTED (c): refusing on the state flag instead of a ref — the state does not land before a
+     second synchronous press (DECISION Phase 88.6-22, src/app/components/FriendInvitePanel.js,
+     anchor "the rule of KIND + the rule of POSITION").
+     REJECTED (d): a spinner beside the text — one in-flight idiom for the same action on two
+     surfaces.
+     VISIBLE DELTA, disclosed: the pressed control takes the gated colour pair (src/app/globals.css,
+     anchor ".btn-primary[aria-disabled='true']") instead of the 50% opacity wash.
+     Going back to one shared flag, or dropping either half of the gate, is a decision, not a
+     cleanup. */
+  function beginRowAction(key, action) {
+    if (inFlightRef.current.has(key)) return false;
+    inFlightRef.current.add(key);
+    setActionLoading((prev) => ({ ...prev, [key]: action }));
+    return true;
+  }
+
+  function endRowAction(key) {
+    inFlightRef.current.delete(key);
+    setActionLoading((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  /* DECISION Phase 88.6.1-44 (H9, D-04, D-05): when a row action removes the row the user stood
+     on, focus goes to the next row's first natively enabled control in panel order (the invites
+     list, then the friend-requests list), else to the panel's own Notifications heading (nothing
+     minted), through the ONE shared hook useFocusRecovery (plan 88.6.1-04). CHOSEN: the hook is
+     armed at the moment the bell issues the row removal, and only when focus is in that row or on
+     body (the Safari / iOS tap shape: WebKit never focuses a tapped button), with the pressed
+     control handed over as the watched node (the from option).
+     REJECTED (a): arming at the start of the action (plan 88.6.1-04's general contract, item 1)
+     — a failed action removes nothing, the hook stays armed, and a later outside click that closes
+     the panel reads as a removal and floors focus to the page heading, scrolling the page; the
+     contract's reason (following a focus move made before the removal) cannot occur here,
+     because the pressed control is aria-disabled and keeps focus.
+     REJECTED (b): focusing the next row inside the handler — it runs before the removal commits
+     (Pitfall P-6; NA-2's ordering half).
+     REJECTED (c): a bell-local focus routine — D-04's one-helper tenet.
+     REJECTED (d): the next row's first button whatever its state — a natively disabled Accept
+     refuses focus and the user lands on the heading past a row they can still act on.
+     REJECTED (e): arming only when focus is inside the row — on Safari and iOS a tapped button is
+     never focused, so nothing would recover there.
+     Arming earlier, or focusing inside the handler, is a decision, not a cleanup. */
+  function armRowRecovery(pressedEl) {
+    const row = pressedEl?.closest?.('li');
+    if (!row || !row.isConnected) return null;
+    const active = document.activeElement;
+    const focusInRow = Boolean(active) && row.contains(active);
+    const tapShape = active === document.body && row.contains(pressedEl);
+    if (!focusInRow && !tapShape) return null;
+    const panel = dropdownRef.current;
+    if (!panel) return null;
+    // Every row is an li and nothing else in the container is; document order is panel order.
+    const rows = Array.from(panel.querySelectorAll('li'));
+    const kept = rows.slice(rows.indexOf(row) + 1);
+    const preferred = () => {
+      for (const candidate of kept) {
+        if (!candidate.isConnected) continue;
+        const button = candidate.querySelector('button:not([disabled])');
+        if (button) return button;
+      }
+      return null;
+    };
+    return recovery.arm({ preferred, from: pressedEl });
+  }
 
   // Clear confirmation after 3 seconds
   useEffect(() => {
@@ -182,10 +305,13 @@ function NotificationBell({ user, variant = 'icon', label }) {
      prose, which an accept/decline does not have. RESIDUAL, accepted by the owner 2026-09-13:
      non-pattern upstream prose (group names, provider prose) reaching Sentry from these paths;
      pattern PII is redacted by `sentry.scrub.js`'s `beforeSend`. */
-  async function handleAccept(invite) {
-    setActionLoading(invite.id);
+  async function handleAccept(invite, pressedEl) {
+    const key = `invite:${invite.id}`;
+    if (!beginRowAction(key, 'accept')) return;
+    let settle = null;
     try {
       await invitesAPI.acceptInvite(invite.id);
+      settle = armRowRecovery(pressedEl);
       // Optimistic update via the shared context — drops totalCount
       // immediately for BOTH the bell badge and the mobile hamburger dot.
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
@@ -203,6 +329,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       // gate). The row is dead — drop it now instead of leaving a button that
       // visibly does nothing until the next refetch INNER-JOINs it out.
       if (err?.status === 410) {
+        settle = armRowRecovery(pressedEl);
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
         const groupName = invite.Group?.name || invite.group_name || 'This group';
         setConfirmation({ text: `${groupName} is no longer available.`, tone: 'muted' });
@@ -210,12 +337,14 @@ function NotificationBell({ user, variant = 'icon', label }) {
         logger.error('Failed to accept invite:', err);
       }
     } finally {
-      setActionLoading(null);
+      endRowAction(key);
+      settle?.();
     }
   }
 
   async function handleDecline(invite) {
-    setActionLoading(invite.id);
+    const key = `invite:${invite.id}`;
+    if (!beginRowAction(key, 'decline')) return;
     try {
       await invitesAPI.declineInvite(invite.id);
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
@@ -228,12 +357,13 @@ function NotificationBell({ user, variant = 'icon', label }) {
         logger.error('Failed to decline invite:', err);
       }
     } finally {
-      setActionLoading(null);
+      endRowAction(key);
     }
   }
 
   async function handleAcceptFriend(request) {
-    setActionLoading(request.id);
+    const key = `friend:${request.id}`;
+    if (!beginRowAction(key, 'accept')) return;
     try {
       // Provider handles optimistic removal + 404-stale silencing.
       // alreadyAccepted means the row was already resolved on another
@@ -244,18 +374,19 @@ function NotificationBell({ user, variant = 'icon', label }) {
     } catch (err) {
       logger.error('Failed to accept friend request:', err);
     } finally {
-      setActionLoading(null);
+      endRowAction(key);
     }
   }
 
   async function handleDeclineFriend(request) {
-    setActionLoading(request.id);
+    const key = `friend:${request.id}`;
+    if (!beginRowAction(key, 'decline')) return;
     try {
       await ctxDeclineFriend(request.id);
     } catch (err) {
       logger.error('Failed to decline friend request:', err);
     } finally {
-      setActionLoading(null);
+      endRowAction(key);
     }
   }
 
@@ -431,7 +562,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                 default. LEVEL PRESERVED (P4) — `typeScaleTouchedSurfaces`' EXPECTED_LEVELS entry
                 for this file (`{ 3: 1 }`) is byte-unchanged; only the SOURCE of the rung and the
                 weight moves, and `font-bold` was already what this site shipped. */}
-            <Heading id={headingId} level={3} size="label" className="text-content-primary">
+            <Heading ref={panelHeadingRef} id={headingId} level={3} size="label" className="text-content-primary">
               Notifications
             </Heading>
           </div>
@@ -496,7 +627,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                         const groupName = invite.Group?.name || invite.group_name || 'Unknown Group';
                         const inviterName = invite.Inviter?.username || invite.inviter_name || 'Someone';
                         const memberCount = invite.Group?.memberCount || invite.member_count || null;
-                        const isLoading = actionLoading === invite.id;
+                        const pressed = actionLoading[`invite:${invite.id}`];
 
                         return (
                           <li
@@ -516,20 +647,18 @@ function NotificationBell({ user, variant = 'icon', label }) {
                             <div className="flex gap-2 mt-2">
                               <Button
                                 variant="primary"
-                                onClick={() => handleAccept(invite)}
-                                disabled={isLoading}
+                                onClick={(e) => handleAccept(invite, e.currentTarget)}
+                                aria-label={pressed === 'accept' ? undefined : acceptInviteLabel(groupName)}
+                                aria-disabled={pressed === 'accept' ? 'true' : undefined}
+                                disabled={pressed === 'decline'}
                                 className="flex-1"
                               >
-                                {isLoading ? (
-                                  <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                  'Accept'
-                                )}
+                                {pressed === 'accept' ? ACCEPTING_COPY : 'Accept'}
                               </Button>
                               <Button
                                 variant="secondary"
                                 onClick={() => handleDecline(invite)}
-                                disabled={isLoading}
+                                disabled={!!pressed}
                                 className="flex-1"
                               >
                                 Decline
@@ -551,7 +680,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                     <ul>
                       {friendRequests.map((request) => {
                         const requesterName = request.Requester?.username || 'Someone';
-                        const isLoading = actionLoading === request.id;
+                        const pressed = actionLoading[`friend:${request.id}`];
 
                         return (
                           <li
@@ -567,10 +696,10 @@ function NotificationBell({ user, variant = 'icon', label }) {
                               <Button
                                 variant="primary"
                                 onClick={() => handleAcceptFriend(request)}
-                                disabled={isLoading}
+                                disabled={!!pressed}
                                 className="flex-1"
                               >
-                                {isLoading ? (
+                                {pressed ? (
                                   <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 ) : (
                                   'Accept'
@@ -579,7 +708,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                               <Button
                                 variant="secondary"
                                 onClick={() => handleDeclineFriend(request)}
-                                disabled={isLoading}
+                                disabled={!!pressed}
                                 className="flex-1"
                               >
                                 Decline
