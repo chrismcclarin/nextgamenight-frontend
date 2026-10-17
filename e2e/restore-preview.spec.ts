@@ -69,7 +69,10 @@ test.describe('Phase 87.8 R7 — group-restore preview at phone width (phone pro
     // error/already-restored branch and every geometry number below would be
     // measured on the wrong surface. 15s explicit timeout on the first
     // post-navigation assertion (rsvp.spec.ts idiom).
-    await expect(page.getByText(/bring this group back/i)).toBeVisible({ timeout: 15_000 });
+    // Exact match on the visible lead-in <p>: since plan 88.6.1-36 the page's sr-only status region
+    // (`restore-page-status`) echoes the outcome text too, so the regex matched two elements
+    // (CI run 38988451419, strict-mode violation). The region's text is longer, so exact excludes it.
+    await expect(page.getByText('Bring this group back', { exact: true })).toBeVisible({ timeout: 15_000 });
     const groupName = page.getByRole('heading', { level: 1 });
     await expect(groupName).toBeVisible();
     await expect(groupName).not.toBeEmpty();
