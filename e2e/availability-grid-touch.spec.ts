@@ -536,7 +536,19 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
       await expect(line, 'Clear All does not say what happened on screen').toHaveText(ALL_CLEARED);
       await expect(region, 'Clear All does not say what happened to a screen reader').toHaveText(ALL_CLEARED);
 
-      await tap(cdp, page, { x: xDay0, y: yTenAm });
+      // The Clear All click scrolls its button into view, which moves the grid under the tap
+      // point measured above (CI run 38993406485: the button was centred at y~333, the 10:00a
+      // row moved from y~120 to y~507, and the second tap landed on the card above the grid, so
+      // nothing was selected and the line correctly stayed on A4). Measure the 10:00 AM cell again
+      // and prove a cell is under the point before tapping, so a miss fails here, not as a count.
+      const again = await positionTenAmNearTop(page);
+      const slotUnderTap = await page.evaluate(
+        ({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-slot-id]')?.getAttribute('data-slot-id') ?? null,
+        { x: again.xDay0, y: again.yTenAm },
+      );
+      expect(slotUnderTap, `no grid cell under the second tap point (${again.xDay0}, ${again.yTenAm})`).not.toBeNull();
+
+      await tap(cdp, page, { x: again.xDay0, y: again.yTenAm });
       await expect(line, 'the counts did not come back after the next tap').toHaveText(ONE);
     });
   });
