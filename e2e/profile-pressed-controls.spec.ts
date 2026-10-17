@@ -165,7 +165,21 @@ async function patchSelfRow(
 }
 
 test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
+  // The fail-closed write net (plan 88.6.1-60, carry-in from plan 59's register): registered FIRST
+  // in each test so it sits UNDER interceptWrites' answering handlers and the two holds (Playwright
+  // runs the newest matching handler first). Every write those answer still gets its in-browser
+  // answer; any other write is held in the browser and fails the test here, never reaching the
+  // fixture account. Behaviour of both tests is otherwise unchanged.
+  let backstop: WriteHold | undefined;
+
+  test.afterEach(async ({ page }) => {
+    expectNoApiWrites(backstop);
+    backstop = undefined;
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test('phone Verify: the pressed button keeps focus and reads "Verifying..." in flight, a second Enter sends nothing, and focus lands on "Phone verified" after success', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
     const mocks = await interceptWrites(page);
     await patchSelfRow(page, { sms_enabled: true, phone: null, phone_verified: false });
     await page.goto('/userProfile');
@@ -220,6 +234,7 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
   });
 
   test('Replay Tutorial: the pressed button keeps focus and reads "Starting..." in flight, and a second Enter sends no second reset', async ({ page }) => {
+    backstop = await holdWrites(page);
     const mocks = await interceptWrites(page);
     await page.goto('/userProfile');
 
@@ -621,5 +636,87 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(fits, 'horizontal overflow around the username editor').toBe(true);
     expect(rename.count()).toBe(1);
+  });
+});
+
+// Phase 88.6.1 plan 60 (Requirement 4 / D-35, Requirement 5, Requirement 8, Requirement 11): the
+// "My Game Collection" card's two pressed controls, Import Collection and Search, and the import's
+// outcome region and 5-second result timer, in a real browser in both projects.
+//
+// NOTHING IS WRITTEN TO THE BACKEND AND NOTHING REACHES BOARDGAMEGEEK. Every intercept is
+// registered BEFORE `page.goto`:
+//   - holdWrites: the fail-closed net, registered FIRST so it runs last; any write nobody answers
+//     is held in the browser and fails the test in afterEach.
+//   - POST .../user-games/user/<id>/import-bgg-collection: holdUntilReleased (the shared helper),
+//     kept unanswered until the test releases it in the browser. Reaching the backend would write
+//     the fixture user's collection and call BoardGameGeek server-side.
+//   - GET .../games/bgg/search (the Search test): holdUntilReleased too, so CI never calls
+//     BoardGameGeek.
+const IMPORT_PATH = /\/user-games\/user\/[^/]+\/import-bgg-collection$/;
+
+async function twoFrames(page: Page): Promise<void> {
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+}
+
+test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => {
+  let backstop: WriteHold | undefined;
+
+  test.afterEach(async ({ page }) => {
+    expectNoApiWrites(backstop);
+    backstop = undefined;
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('Import Collection keeps focus through its dialog and refuses a second press and a second Continue', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    const imp = await holdUntilReleased(page, 'POST', IMPORT_PATH);
+    await page.goto('/userProfile');
+
+    const field = page.getByRole('textbox', { name: 'BoardGameGeek username' });
+    // A missing control is a failure, never a skip.
+    await expect(field).toBeVisible({ timeout: 15_000 });
+    await field.fill('e2e-meeple');
+
+    // One locator for both labels of the one control, so it follows the label flip.
+    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    await focusByKeyboard(page, importBtn);
+    await page.keyboard.press('Enter');
+
+    const dialog = page.getByRole('dialog');
+    await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
+    // The double-activation arm: a second Enter during the dialog's exit.
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await imp.arrived;
+    // A positive wait for the dialog to go, so the exit window has passed.
+    await expect(dialog).toHaveCount(0);
+    expect(imp.count()).toBe(1);
+
+    // The dialog's close restore landed on its opener, which is gated but focusable (D-35).
+    await expect(importBtn).toBeFocused();
+    await expect(importBtn).toHaveAttribute('aria-disabled', 'true');
+    await expect(importBtn).not.toHaveAttribute('disabled');
+    await expect(importBtn).toHaveText('Importing...');
+    await expectGatedPair(page, importBtn, 'primary', 'dark');
+
+    // A press mid-import neither reopens the dialog nor sends a second import.
+    await page.keyboard.press('Enter');
+    await twoFrames(page);
+    await expect(dialog).toHaveCount(0);
+    expect(imp.count()).toBe(1);
+
+    await imp.release({ imported: 2, skipped: 1, total: 3 });
+    await expect(importBtn).toHaveText('Import Collection');
+    await expect(importBtn).not.toHaveAttribute('aria-disabled');
+    await expect(importBtn).toBeFocused();
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow around the import block').toBe(true);
+    expect(imp.count()).toBe(1);
   });
 });

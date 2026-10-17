@@ -309,6 +309,9 @@ function Profile(){
     const saveUsernameInFlightRef = useRef(false);
     const editUsernamePencilRef = useRef(null);
     const usernameRecovery = useFocusRecovery({ fallback: profileHeadingRef });
+    // D-35 (88.6.1-60): the BGG import's ONE in-flight latch, read first by both of its handlers.
+    // See `DECISION Phase 88.6.1-60 (D-35, BGG import)` at Import Collection.
+    const importInFlightRef = useRef(false);
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -1634,6 +1637,9 @@ function Profile(){
 
        Moving this onto ConfirmDialog is a decision that reopens D-10, not a cleanup. */
     const handleImportCollectionClick = () => {
+        // D-35: a press mid-import must not reopen the dialog over the running import.
+        // See `DECISION Phase 88.6.1-60 (D-35, BGG import)` at Import Collection.
+        if (importInFlightRef.current) return;
         if (!user?.sub || !bggUsername.trim()) {
             toast.error('Please enter your BGG username');
             return;
@@ -1648,11 +1654,15 @@ function Profile(){
     };
 
     const importBGGCollection = async () => {
+        // D-35: a second Continue before the dialog's exit ends must not start a second import.
+        // See `DECISION Phase 88.6.1-60 (D-35, BGG import)` at Import Collection.
+        if (importInFlightRef.current) return;
         setBggImportPromptOpen(false);
         if (!user?.sub || !bggUsername.trim() || !selfUuid) return;
 
+        importInFlightRef.current = true;
+        setImportingCollection(true);
         try {
-            setImportingCollection(true);
             setImportProgress({ status: 'fetching', message: 'Fetching your BGG collection...' });
 
             const result = await userGamesAPI.importBGGCollection(selfUuid, bggUsername.trim());
@@ -1680,6 +1690,8 @@ function Profile(){
                 })
             });
         } finally {
+            // Released in `finally` so a FAILED import does not strand the control.
+            importInFlightRef.current = false;
             setImportingCollection(false);
         }
     };
@@ -3423,10 +3435,32 @@ function Profile(){
                                 className="flex-1"
                                 disabled={importingCollection}
                             />
+                            {/* DECISION Phase 88.6.1-60 (D-35, BGG import): rule of POSITION on the import
+                                dialog's opener. Import Collection carries aria-disabled while an import runs,
+                                plus ONE `importInFlightRef` refusal as the FIRST statement of BOTH handlers:
+                                `handleImportCollectionClick` (a press mid-import must not reopen the dialog
+                                over a running import) and `importBGGCollection` (a second Continue before the
+                                dialog's exit animation ends must not start a second import). The latch is set
+                                before the `try` and released in `finally`. The blank-username half stays a
+                                NATIVE disable (rule of KIND, DECISION Phase 88.6-22 in FriendInvitePanel.js).
+                                Why it matters for focus: Continue closes the dialog and starts the import in
+                                one commit, so the dialog's close restore meets its opener mid-import. A
+                                natively disabled opener refuses focus and the user lands at the top of the
+                                page; a focusable one takes the restore.
+                                REJECTED: (a) a native disable while importing (the restore cannot land);
+                                (b) a refusal in `importBGGCollection` only (a press mid-import would reopen
+                                the dialog); (c) moving the gate onto ConfirmDialog (reopens D-10, the 88-10
+                                marker above `handleImportCollectionClick`); (d) a per-consumer close-focus
+                                handler on the dialog (DECISION Phase 88.6-44 in Modal.tsx).
+                                The username FIELD stays natively disabled while importing: a sibling (D-35),
+                                not the pressed control. Disclosed visible delta: while importing, the button
+                                shows the gated primary pair instead of the 50% wash. Dropping either half of
+                                the pair is a decision, not a cleanup. */}
                             <Button
                                 variant="primary"
                                 onClick={handleImportCollectionClick}
-                                disabled={importingCollection || !bggUsername.trim()}
+                                disabled={!bggUsername.trim()}
+                                aria-disabled={importingCollection ? 'true' : undefined}
                                 className="whitespace-nowrap"
                             >
                                 {importingCollection ? 'Importing...' : 'Import Collection'}
