@@ -1941,20 +1941,14 @@ export const promptAPI = {
     apiFetch(`/prompts/${promptId}/heatmap`),
 };
 
-/**
- * API functions for Availability Suggestions (event creation from suggestions)
- */
-export const suggestionAPI = {
-  /**
-   * Convert a suggestion to an event
-   * @param {string} suggestionId - UUID of the suggestion
-   * @returns {Promise<{success: boolean, event_id: string}>}
-   */
-  convert: (suggestionId: string) =>
-    apiFetch(`/suggestions/${suggestionId}/convert`, {
-      method: 'POST',
-    }),
-};
+// DECISION Phase 88.6.1-49 (Req 14, SUGGESTION-CARD-RULING: retire): the frontend client for
+// POST /suggestions/:suggestionId/convert is DELETED with its only caller, the retired
+// SuggestionCard.js. Chosen OVER keeping an uncalled client beside the still-live backend route.
+// The route's removal is Phase 91.1's rider (.planning/deferred/phase-91.1.md, "The suggestion
+// → event convert path has no caller"); the close-notification email is the feature that
+// replaced the card. Not to be confused with the plural game-suggestions client further down
+// this file, which is live. Re-adding a suggestion-to-event client is a product decision, not a
+// cleanup.
 
 /**
  * API functions for Group Invites
