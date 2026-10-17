@@ -7,7 +7,7 @@ import {
   useFetchErrorState,
   getFetchErrorMessage,
 } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger } from '@/lib/logger';
@@ -36,8 +36,18 @@ export default function ResponseDashboard({
   pollClosed = false,
 }) {
   const [respondents, setRespondents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // AC-29 / RF1 (Phase 88.6.1-73, 88.6.1-70 contract C3): the prompt id of the last SUCCESSFUL
+  // load, set only by a current-generation success. It replaces the old `loading` flag as the
+  // render's first-load test (the AC-29 / RF1 marker at the render): the skeleton is simply what
+  // shows while nothing has loaded for THIS prompt, so no loading flag is read any more.
+  const [loadedFor, setLoadedFor] = useState(null);
+  // The stamped failure record `{ key, caught }`: `key` is the prompt it was read for, `caught` the
+  // thrown error itself (see the catch). The field is `caught`, not `error`, so this local record
+  // is never read as an API envelope's `.error` (errorEnvelopeReads.test.ts; plan 88.6.1-31's shape).
   const [error, setError] = useState(null);
+  // Review #237 (Phase 88.6.1-73): true while a PRESSED 'Refresh' is out; drives the word-free
+  // busy cue (the icon's spin and the list's aria-busy). Only the press sets it.
+  const [refreshing, setRefreshing] = useState(false);
   // D-35 (Phase 88.6.1-11): the rows whose reminder is in flight, one entry per row.
   const [remindingUserIds, setRemindingUserIds] = useState([]);
   const { timezone } = useTimezone();
@@ -60,6 +70,8 @@ export default function ResponseDashboard({
      short-circuit; new generation => always proceeds. */
   const generationRef = useRef(0);
   const inFlightGenerationRef = useRef(null);
+  // C4 (Phase 88.6.1-73): the in-flight run's promise, handed to a call that joins it.
+  const inFlightRunRef = useRef(null);
   // W031 (Phase 88.6.1-11): the respondents capture's per-episode latch; see the catch below.
   const lastReportedKeyRef = useRef(null);
   // D-35 (Phase 88.6.1-11): the synchronous per-row latch (a Set of user ids); see handleRemind.
@@ -68,6 +80,9 @@ export default function ResponseDashboard({
   // row's settled "Reminded ..." text is the preferred target; see handleRemind.
   const responsesHeadingRef = useRef(null);
   const recovery = useFocusRecovery({ fallback: responsesHeadingRef });
+  // Req 5 under C10 (Phase 88.6.1-73): a SECOND instance for the 'Refresh' press, because `arm()`
+  // replaces any earlier intent of the same instance and the Remind button arms the one above.
+  const refreshRecovery = useFocusRecovery({ fallback: responsesHeadingRef });
   const remindStatusIdPrefix = useId();
   const statusIdFor = (userId) => `${remindStatusIdPrefix}remind-status-${userId}`;
 
@@ -86,13 +101,28 @@ export default function ResponseDashboard({
     // app switch and every lock/unlock. Without this line one outage would issue one request
     // — and one Sentry event, since `dedupeIntegration` compares only against the immediately
     // preceding event — per refocus. This is what makes that multiplier BOUNDED.
-    if (inFlightGenerationRef.current === generation) return;
+    /* DECISION Phase 88.6.1-73 (C4) [88.6.1-70 contract C4]: a call that finds this generation
+       already in flight is handed THAT run's promise, so it resolves `{ isError }` only when the
+       run settles; the generation-keyed short-circuit itself (keyed "deliberately", above) is
+       unchanged. The run resolves `{ isError: false }` / `{ isError: true }` for a current-
+       generation success / failure, `undefined` when the generation moved on, and never rejects.
+       REJECTED: resolving a joining call at once — the RF1 notice reads that outcome, so it would
+       treat it as unknown, end its dwell and re-speak the failure while the request is still out,
+       a moment before a success can land. Changing this is a decision, not a cleanup. */
+    if (inFlightGenerationRef.current === generation) return inFlightRunRef.current;
     inFlightGenerationRef.current = generation;
-    setLoading(true);
+    // This run's own promise, answered in `finally` with the run's outcome.
+    let answerRun = () => {};
+    inFlightRunRef.current = new Promise((resolve) => {
+      answerRun = resolve;
+    });
+    let outcome;
     try {
       const data = await promptAPI.getRespondents(promptId);
-      if (generation !== generationRef.current) return;
+      if (generation !== generationRef.current) return undefined;
       setRespondents(data);
+      // C3: only a current-generation SUCCESS records what has loaded; no catch or finally does.
+      setLoadedFor(promptId);
       /* DECISION Phase 88.6-32 (R1): the error clears HERE, on SUCCESS — and in the `promptId`
          effect below — chosen OVER the house clear-at-fetch-start idiom
          (`grouplist.js:87-88`, `groupPlanning/page.js:157`), which is REJECTED at this call
@@ -107,10 +137,17 @@ export default function ResponseDashboard({
          committed render at all. That is why re-ordering the branches ALONE is inert: this
          clear is the mechanism and the ordering is what lets the surviving error win.
 
-         Restoring the fetch-start clear is a decision, not a cleanup. */
+         Restoring the fetch-start clear is a decision, not a cleanup.
+
+         AMENDED Phase 88.6.1-73 (AC-29 / RF1): owner ruling 2026-10-05 — this clear-on-success
+         rule is now ALSO what keeps the RF1 notice and its focused Retry on screen through a
+         retry (88.6.1-70 contract C2: the error is cleared only by the newest run's success,
+         never at the start of a run). The "ordering" half above now governs the not-yet-loaded
+         case only, because a roster that loaded for this prompt stays on screen. */
       setError(null);
       // W031: a current-generation success ends the failure episode (the catch's latch).
       lastReportedKeyRef.current = null;
+      outcome = { isError: false };
     } catch (err) {
       // AC-2 WIDENED x the D2 AC-16 carve-out: this stays `logger.error` (a Sentry EVENT), not
       // `logger.info`, because AC-16 (a) requires a Sentry capture on this path. Logged BEFORE
@@ -137,19 +174,31 @@ export default function ResponseDashboard({
         logger.error('Failed to fetch respondents:', err);
         lastReportedKeyRef.current = reportKey;
       }
-      if (generation !== generationRef.current) return;
+      if (generation !== generationRef.current) return undefined;
       // Store the ERROR OBJECT, never a flattened string: `useFetchErrorState` derives the
       // user-facing copy from `ApiError.code` (`useFetchErrorState.ts:128`), so a string here
       // would make every failure resolve to `unknown` and render one generic line for a 403, a
       // 404 and a 500 alike — WHILE the roster scan reported green, because the `err.message`
       // read would be gone. `getFetchErrorMessage` is deliberately NOT applied here.
-      setError(
-        err instanceof Error ? err : new Error("The respondents request didn't complete.")
-      );
+      // Phase 88.6.1-73: the record's `caught` field holds that object (so a 401 / 403 keeps its
+      // code, C10), and its `key` field is the prompt it was read for, so a new prompt never shows
+      // the previous prompt's failure, even for the one commit before the `promptId` effect below
+      // clears it (an inserted alert that carries text IS announced, D-42).
+      setError({
+        key: promptId,
+        caught: err instanceof Error ? err : new Error("The respondents request didn't complete."),
+      });
+      outcome = { isError: true };
     } finally {
-      if (inFlightGenerationRef.current === generation) inFlightGenerationRef.current = null;
-      if (generation === generationRef.current) setLoading(false);
+      if (inFlightGenerationRef.current === generation) {
+        inFlightGenerationRef.current = null;
+        inFlightRunRef.current = null;
+      }
+      // C4: every caller this run answers (the starter and any call that joined it) gets the
+      // run's outcome; `undefined` when the generation moved on.
+      answerRun(outcome);
     }
+    return outcome;
   }, [promptId]);
 
   useEffect(() => {
@@ -183,11 +232,50 @@ export default function ResponseDashboard({
      for the 12 that already dedup and impossible for the 10 whose `refetch` is a caller-owned
      callback it does not own the lifecycle of. "Fixing it properly in the hook" is a decision
      that loses. */
+  // Phase 88.6.1-73 (C2, C3): only a record stamped with the CURRENT prompt reaches the hook.
+  const currentError = error && error.key === promptId ? error.caught : null;
   const errorState = useFetchErrorState({
-    isError: Boolean(error),
-    error,
+    isError: Boolean(currentError),
+    error: currentError,
     refetch: fetchRespondents,
   });
+  // 88.6.1-70 contract C10: `retained` comes from plan 70's one hook, at the top level before any
+  // early return. `hasData` is C3's has-loaded flag for THIS prompt, never a row count (a roster
+  // that loaded EMPTY is retained content, owner ruling Y). No code list is written here.
+  const retained = useRetainedContent(loadedFor === promptId, errorState);
+  /* DECISION Phase 88.6.1-73 (C12, focus when content leaves) [88.6.1-70 contract C12 (a), C8 (f)]:
+     CHOSEN — plan 70's one shared guard, ONE instance rendered as the card's next sibling (the
+     second child of a top-level fragment) in every return below, so React keeps it across the
+     switch from the roster to the not-retained card and it sees `retained` go from true to false.
+     It covers the refresh nobody pressed (the hook's tab-return re-attempt), which arms nothing:
+     an access answer to it withdraws the roster while a control inside it may hold focus. The
+     'Refresh' press arm (`refreshRecovery`) stays for the press (plan 70: a site's own press arm
+     may stay). It takes the notice's own `focusTarget`; after a withdrawal that ref is null (the
+     heading leaves with the roster), so the guard floors (dialog title, `main h1`, `main`).
+     REJECTED — (a) the guard in the content return only: it unmounts with the roster and never
+     sees the flip; (b) the guard BEFORE the card: here it would land on the same floor, but in
+     `EventCalendar.js` the target heading attaches during the card's own layout pass, and one
+     shape for both files keeps a later edit from copying the wrong one; (c) focus code of this
+     file's own (D-04, one shared mechanism). Changing this is a decision, not a cleanup. */
+  const retainedGuard = <RetainedContentFocusGuard retained={retained} focusTarget={responsesHeadingRef} />;
+
+  /* Phase 88.6.1-73 (Req 5 under C10, plan 88.6.1-04's consumer contract): an access or gone answer
+     to a 'Refresh' press now replaces the whole card, unmounting the focused button, so the press
+     arms `refreshRecovery` synchronously before any await and settles it in `finally`. The button
+     stays enabled (a second press joins the in-flight run through the short-circuit). Review
+     #237: the skeleton no longer acknowledges a press, so `refreshing` drives a word-free busy cue
+     (the icon spins, the roster list is aria-busy) while the PRESSED request is out; the tab-return
+     re-attempt and the notice's Retry (which has its own `Retrying…`) do not set it. */
+  const handleRefresh = async () => {
+    const settle = refreshRecovery.arm();
+    setRefreshing(true);
+    try {
+      await fetchRespondents();
+    } finally {
+      setRefreshing(false);
+      settle();
+    }
+  };
 
   /* DECISION Phase 88.6.1-11 (D-35) [Req 4, the rule of POSITION, `DECISION Phase 88.6-22` at
      `FriendInvitePanel.js:59`]: the Remind button the admin pressed takes `aria-disabled` plus a
@@ -324,6 +412,11 @@ export default function ResponseDashboard({
      ALONE: with the fetch-start clear still present the `if (loading)` guard wins under either
      branch order, which is why re-ordering on its own is inert.
 
+     AMENDED Phase 88.6.1-73 (AC-29 / RF1, owner ruling 2026-10-05): the order below now applies
+     only while nothing has loaded for this prompt. Once a roster has loaded, a failed refresh
+     keeps it and shows the RF1 notice under the heading, so the screen says the refresh failed
+     and that the roster is from earlier — nothing on it contradicts anything.
+
      NOT authority-by-`groupPlanning`: `groupPlanning/page.js:451-453` renders LOADING FIRST
      (`heatmapLoading ? … : heatmapErrorState.showError ? … : heatmapPrompt ? …`). What that
      file's `DECISION Phase 88-25` at `:454-460` establishes is error-before-CONTENT — a failed
@@ -335,6 +428,10 @@ export default function ResponseDashboard({
      rejected one. It lets the `respondents.length === 0` empty state ("No group members
      found.") paint over a FAILED refetch, which is the exact class of defect that same
      `DECISION Phase 88-25` comment exists to prevent.
+     AMENDED Phase 88.6.1-73 (AC-29 / RF1): the latch rejected here was set by a FAILURE too.
+     `loadedFor` is set only by a successful load for THIS prompt, so a failed first load still
+     reaches the banner, and the empty sentence can show over a failed refresh only when the
+     earlier SUCCESSFUL load was empty — then with RF1 above it.
 
      THE BANNER IS ANNOUNCED. AMENDED Phase 88.6.1-11 (D-42, outline shared rule 8): this
      paragraph used to claim the conditionally mounted banner never announces; that premise was
@@ -356,44 +453,75 @@ export default function ResponseDashboard({
      whole subject is WHO HAS REPLIED, so the named string tells the reader which fetch failed
      without painting anything upstream. Changing this string is a §6.3 amendment, not an
      executor's call — that half of the original rule is unchanged. */
-  if (errorState.showError) {
-    return (
-      <div className="bg-surface-card rounded-card border border-line p-4">
-        <FetchErrorBanner
-          state={errorState}
-          title="We couldn't load the respondents."
-          reportContext="Availability poll — respondents fetch"
-        />
-      </div>
-    );
-  }
+  /* DECISION Phase 88.6.1-73 (AC-29 / RF1, owner ruling 2026-10-05) [D-47, D-51, Req 9]:
+     CHOSEN: a failed refresh keeps the roster and plan 88.6.1-70's `RefreshFailedNotice`
+     qualifies it (88.6.1-70 contract C1-C10); the full banner and the skeleton are FIRST-LOAD-
+     ONLY, keyed on `loadedFor` (D-09a's has-loaded flag for this prompt, never a row count); the
+     notice sits under the heading, which is the section's label and the Retry's focus target.
+     `retained` comes from plan 70's `useRetainedContent` (C10): a 401 / 403 / 404 / 410 answer is
+     never RF1 — the full banner takes the roster's place, with the register's line, until the
+     next success — and the 'Refresh' press arms `refreshRecovery` because such an answer unmounts
+     it. A pressed 'Refresh' is acknowledged by a word-free busy cue (the spinning icon and
+     aria-busy on the list) instead of the skeleton. The first-load banner takes the same
+     `focusTarget` as the notice (review #82), so a successful Try again lands on the heading the
+     success mounts, not on the page's top heading.
+     REJECTED: (a) the full banner above the retained roster (two shapes for one situation; the
+     orchestrator's consistency decision, manifest row 70); (b) the notice above the heading (the
+     heading would no longer open the section the notice qualifies, and focus after a Retry would
+     land below the spot the user pressed); (c) the skeleton on a healthy refresh of a loaded
+     roster (the pressed Refresh unmounts and focus falls to <body>; D-09a / D-37); (d) the
+     88.6-32-rejected `hasLoadedOnce` latch in a `finally` (still rejected — this flag is set by a
+     success only); (e) a local list of access codes, or the bare predicate formula without the
+     hook (C10: one predicate, read through the hook, whose memory stops a later 500 from
+     re-showing a roster an access answer withdrew). Changing any of these is a decision, not a
+     cleanup. */
+  if (!retained) {
+    if (errorState.showError) {
+      return (
+        <>
+          <div className="bg-surface-card rounded-card border border-line p-4">
+            <FetchErrorBanner
+              state={errorState}
+              title="We couldn't load the respondents."
+              reportContext="Availability poll — respondents fetch"
+              focusTarget={responsesHeadingRef}
+            />
+          </div>
+          {retainedGuard}
+        </>
+      );
+    }
 
-  // Loading state
-  if (loading) {
+    // Loading state: nothing has loaded for this prompt yet (the first load, or a new prompt).
     return (
-      <div className="bg-surface-card rounded-card border border-line p-4">
-        {/* `data-testid` is a REQUIREMENT here, not decoration: the skeleton's outer node had
-            nothing addressable on it, so the "a refocus retry does not replace the banner with
-            the skeleton" assertion was unwritable. Asserting on `animate-pulse` instead was
-            rejected — that is a styling utility, and pinning a test to it makes a token rename
-            a test failure. */}
-        <div className="animate-pulse" data-testid="response-dashboard-skeleton">
-          <div className="h-6 bg-surface-elevated rounded-sm w-1/3 mb-4"></div>
-          <div className="space-y-3">
-            <div className="h-10 bg-surface-elevated rounded-sm"></div>
-            <div className="h-10 bg-surface-elevated rounded-sm"></div>
-            <div className="h-10 bg-surface-elevated rounded-sm"></div>
+      <>
+        <div className="bg-surface-card rounded-card border border-line p-4">
+          {/* `data-testid` is a REQUIREMENT here, not decoration: the skeleton's outer node had
+              nothing addressable on it, so the "a refocus retry does not replace the banner with
+              the skeleton" assertion was unwritable. Asserting on `animate-pulse` instead was
+              rejected — that is a styling utility, and pinning a test to it makes a token rename
+              a test failure. */}
+          <div className="animate-pulse" data-testid="response-dashboard-skeleton">
+            <div className="h-6 bg-surface-elevated rounded-sm w-1/3 mb-4"></div>
+            <div className="space-y-3">
+              <div className="h-10 bg-surface-elevated rounded-sm"></div>
+              <div className="h-10 bg-surface-elevated rounded-sm"></div>
+              <div className="h-10 bg-surface-elevated rounded-sm"></div>
+            </div>
           </div>
         </div>
-      </div>
+        {retainedGuard}
+      </>
     );
   }
 
   return (
+    <>
     <div className="bg-surface-card rounded-card border border-line p-4">
       <Heading ref={responsesHeadingRef} level={3} size="heading" className="text-content-primary mb-3">
         Responses: {responseCount}/{totalCount} responded
       </Heading>
+      <RefreshFailedNotice state={errorState} retained={retained} focusTarget={responsesHeadingRef} className="mb-3" />
 
       {/* The reminder-error block that used to sit here is GONE — both of the remind button's
           failure modes go through `toast.error` now. See the DECISION marker in `handleRemind`
@@ -411,7 +539,7 @@ export default function ResponseDashboard({
         <p className="text-content-muted text-sm">No group members found.</p>
       ) : (
         /* Respondent list */
-        <ul className="space-y-1">
+        <ul className="space-y-1" aria-busy={refreshing ? 'true' : undefined}>
           {respondents.map(r => (
             <li
               key={r.user_id}
@@ -467,13 +595,15 @@ export default function ResponseDashboard({
 
       {/* Refresh button */}
       <button
-        onClick={fetchRespondents}
+        onClick={handleRefresh}
         className="mt-4 text-sm text-content-muted hover:text-content-secondary active:opacity-75 flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
       >
-        <RefreshIcon className="w-4 h-4" />
+        <RefreshIcon className={refreshing ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />
         Refresh
       </button>
     </div>
+    {retainedGuard}
+    </>
   );
 }
 
