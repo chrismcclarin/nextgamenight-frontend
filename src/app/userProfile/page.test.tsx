@@ -1130,13 +1130,24 @@ describe('userProfile form controls (Req 1 — the 16px floor)', () => {
   // button (~20x24). It now carries the same negative-margin 44px idiom as the SMS banner
   // dismiss, so the tap target grows; the glyph shifts ~4px right because the -8px margin
   // consumes the row's gap-2 (page.js says the same). Pinned on the class idiom because jsdom
-  // has no layout — the geometry half is the owner's device check (88.6-UAT.md test 3, arm (n)).
-  it('the Edit-username pencil carries the 44px tap-target idiom', async () => {
+  // has no layout. 88.6.1-53 (V-1a / AC-23): the ring is INSET, so it can no longer paint over
+  // the last letter of the name; the geometry half is measured in a real browser by
+  // e2e/profile-pencil-ring.spec.ts, not left to the owner's device check. Review #215: the
+  // title is the ONE name source; the glyph is hidden, so the name is not read twice.
+  it('the Edit-username pencil carries the 44px tap-target idiom, ring inset, one name source (88.6.1-53, V-1a)', async () => {
     renderProfile();
     const pencil = await screen.findByRole('button', { name: 'Edit username' });
-    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-offset-2']) {
+    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-inset']) {
       expect(pencil.className.split(/\s+/)).toContain(cls);
     }
+    expect(pencil.className.split(/\s+/)).not.toContain('focus-visible:ring-offset-2');
+    // One name source: no aria-label, the title names it, and every glyph is aria-hidden.
+    expect(pencil).not.toHaveAttribute('aria-label');
+    expect(pencil).toHaveAttribute('title', 'Edit username');
+    const hidden = pencil.querySelector('span[aria-hidden="true"]');
+    expect(hidden).not.toBeNull();
+    expect((pencil.textContent ?? '').length).toBeGreaterThan(0);
+    expect(hidden?.textContent).toBe(pencil.textContent);
   });
 
   it('carries no sub-16px size class on any control', async () => {
@@ -2545,5 +2556,36 @@ describe('form controls carry id + name (88.6.1-53: W065, AC-22)', () => {
     const checkbox = document.getElementById('specific-is-available');
     expect(checkbox).toBeInstanceOf(HTMLInputElement);
     expect((checkbox as HTMLInputElement).type).toBe('checkbox');
+  });
+});
+
+// 88.6.1-53 (D-46 / R7-M7, AC-23): the Profile breadcrumb reaches the house standard the other
+// four breadcrumbs reached — the Home link carries the house focus ring, the separator is
+// hidden from screen readers, and the nav carries min-w-0.
+describe('breadcrumb ring and separator (88.6.1-53: D-46 / R7-M7)', () => {
+  it('B1: the separator is aria-hidden and the nav carries min-w-0 beside its overflow tokens', async () => {
+    renderProfile();
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByText('>')).toHaveAttribute('aria-hidden', 'true');
+    const tokens = nav.className.split(/\s+/);
+    for (const cls of ['min-w-0', 'inline-block', 'max-w-full', 'wrap-break-word']) {
+      expect(tokens, `the nav is missing ${cls}`).toContain(cls);
+    }
+  });
+
+  it('B2: the Home link carries the house outset focus ring', async () => {
+    // Read from source: the next/link mock renders children only, so the Home link has no
+    // element of its own in jsdom.
+    const src = await pageSource();
+    const start = src.indexOf('aria-label="Breadcrumb"');
+    expect(start).toBeGreaterThan(-1);
+    const slice = src.slice(start, src.indexOf('</nav>', start));
+    expect(slice.length).toBeGreaterThan(0);
+    expect(slice.split('<Link href="/"').length - 1).toBe(1);
+    const linkAt = slice.indexOf('<Link href="/"');
+    const tag = slice.slice(linkAt, slice.indexOf('>', linkAt));
+    for (const cls of ['focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-offset-2']) {
+      expect(tag, `the Home link is missing ${cls}`).toContain(cls);
+    }
   });
 });
