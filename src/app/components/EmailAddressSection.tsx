@@ -511,8 +511,24 @@ export function EmailAddressSection() {
   const [state, setState] = React.useState<SectionState>('unresolved');
   const [emailInput, setEmailInput] = React.useState('');
   const [codeInput, setCodeInput] = React.useState('');
-  const [emailError, setEmailError] = React.useState<string | null>(null);
-  const [codeError, setCodeError] = React.useState<string | null>(null);
+  /* AT-4 R3 at the two FIELD verdicts (Phase 88.6.1-79, carry-in from plan 88.6.1-26): the same
+     one-writer idiom as the three lanes below. `FormField` takes an optional `errorKey`, used ONLY
+     as its alert paragraph's `key` (plan 88.6.1-26), so every NON-NULL verdict write bumps the
+     field's sequence and an identical second verdict (Save twice on an empty address, Verify
+     twice on a short code) re-inserts the alert and is spoken again. A clear never bumps, and a
+     render that writes no verdict keeps the key, so nothing re-announces on unrelated renders. */
+  const [emailError, setEmailErrorState] = React.useState<string | null>(null);
+  const [emailErrorSeq, setEmailErrorSeq] = React.useState(0);
+  const setEmailError = React.useCallback((message: string | null) => {
+    setEmailErrorState(message);
+    if (message !== null) setEmailErrorSeq((n) => n + 1);
+  }, []);
+  const [codeError, setCodeErrorState] = React.useState<string | null>(null);
+  const [codeErrorSeq, setCodeErrorSeq] = React.useState(0);
+  const setCodeError = React.useCallback((message: string | null) => {
+    setCodeErrorState(message);
+    if (message !== null) setCodeErrorSeq((n) => n + 1);
+  }, []);
   /* AT-4 R3, ONE WRITER PER ALERT LANE (Phase 88.6.1-13; plan 88.6.1-15's keyed-reinsert
      idiom, `errorSeq` + `key`). The request arms clear their lane before the await, but the
      GATE refusals (busy, self unavailable, cooldown) write without clearing — so a second
@@ -901,7 +917,11 @@ export function EmailAddressSection() {
     // The raw setter: a clear never bumps the lane's sequence, and React keeps a state
     // setter stable, so the effect's dependency list stays honest.
     setActionErrorState(null);
-    setCodeError(EXPIRED_CODE_ERROR);
+    // The code field's verdict through its raw setters (Phase 88.6.1-79): the same one-writer
+    // shape as `setCodeError` — a non-null verdict bumps the sequence — spelled with the two
+    // stable state setters so this effect's dependency list stays honest.
+    setCodeErrorState(EXPIRED_CODE_ERROR);
+    setCodeErrorSeq((n) => n + 1);
     setResendPromoted(true);
     setSentLine(null);
   }, [self?.pending_email_change, state]);
@@ -2000,7 +2020,12 @@ export function EmailAddressSection() {
       {/* ── EDITING / SAVING ──────────────────────────────────────────────── */}
       {inEditing && (
         <div>
-          <FormField label="New email address" htmlFor={emailFieldId} error={emailError ?? undefined}>
+          <FormField
+            label="New email address"
+            htmlFor={emailFieldId}
+            error={emailError ?? undefined}
+            errorKey={emailErrorSeq}
+          >
             {/* The house form-field rule at `Input.tsx:11-19`: id + name + an
                 associated label on every control, because browser autofill does
                 not read ARIA. `FormField` injects the id and the aria
@@ -2138,6 +2163,7 @@ export function EmailAddressSection() {
             label="Code from the email"
             htmlFor={codeFieldId}
             error={codeError ?? undefined}
+            errorKey={codeErrorSeq}
             hint={
               <p id={codeHintId} className="text-xs text-content-muted mt-1">
                 {CODE_FORMAT_HINT}

@@ -2824,3 +2824,54 @@ describe('a held identity row is not an unavailable address (88.6.1-79, AC-29)',
     expect(screen.queryByRole('button', { name: 'Change' })).not.toBeInTheDocument();
   });
 });
+
+// Phase 88.6.1-79, carry-in from plan 88.6.1-26 (AT-4 R3 at both FormField mounts): an
+// identical second field verdict must re-insert the alert paragraph, or a screen reader says
+// nothing on the second press. Counted with a MutationObserver, as plans 26 and 37 did.
+describe('an identical second field verdict is announced again (88.6.1-79, AT-4 R3)', () => {
+  const insertedAlerts = (root: HTMLElement, text: string) => {
+    const seen: Element[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const r of records) {
+        r.addedNodes.forEach((n) => {
+          if (n instanceof Element && n.getAttribute('role') === 'alert' && n.textContent === text) {
+            seen.push(n);
+          }
+        });
+      }
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    return { seen, stop: () => observer.disconnect() };
+  };
+
+  it('FK-E1: Save twice on an empty address inserts the field alert twice', async () => {
+    mockSelf.mockReturnValue(selfState(ROW()));
+    const user = userEvent.setup();
+    const { container } = renderSection();
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+
+    const watch = insertedAlerts(container, 'Enter the address you want us to use');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(watch.seen).toHaveLength(1));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(watch.seen).toHaveLength(2));
+    watch.stop();
+    expect(watch.seen[1]).not.toBe(watch.seen[0]);
+    expect(screen.getAllByText('Enter the address you want us to use')).toHaveLength(1);
+  });
+
+  it('FK-E2: Verify twice on a short code inserts the code alert twice', async () => {
+    const user = userEvent.setup();
+    const { container } = renderAwaiting();
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD');
+
+    const watch = insertedAlerts(container, 'Enter all 8 characters from the email');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(watch.seen).toHaveLength(1));
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(watch.seen).toHaveLength(2));
+    watch.stop();
+    expect(watch.seen[1]).not.toBe(watch.seen[0]);
+    expect(screen.getAllByText('Enter all 8 characters from the email')).toHaveLength(1);
+  });
+});
