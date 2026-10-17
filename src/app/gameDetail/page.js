@@ -31,6 +31,7 @@ import {
     FetchErrorBanner,
     RefreshFailedNotice,
     RetainedContentFocusGuard,
+    SectionLoadFailedNotice,
     useRetainedContent,
     isAccessOrGoneError,
 } from '../../components/ui/FetchErrorBanner';
@@ -114,7 +115,7 @@ function canInviteGuest(participant, viewerRole) {
 // Phase 88-20 (Req 15): `canInvite` / `groupId` carry the guest-invite affordance
 // onto the chip. The gate is computed by `canInviteGuest` at the call site rather
 // than re-derived here, so the chip and the See-all row cannot disagree.
-function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId }) {
+function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId, rsvpUnavailable = false }) {
     const isCustom = !!participant.is_custom;
     return (
         <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
@@ -125,7 +126,9 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
                     participant.username || 'Unknown'
                 )}
             </span>
-            <RsvpStatusPill status={rsvpStatus} />
+            {/* 88.6.1-74 (owner ruling D8-r2, E17): no pill while the RSVP list never loaded, so no
+                chip says "No reply" for a list that failed. */}
+            {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} />}
             {role === 'owner' && (
                 <span className="text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
             )}
@@ -453,6 +456,29 @@ const SESSION_FILTERS_PANEL_ID = 'game-sessions-filters';
 // 88.6.1-COPY-TABLE.html (row E5). The Sessions filter's To Date error, shown only while the range is backwards.
 const SESSION_DATE_RANGE_ERROR = 'To Date must be on or after From Date.';
 
+// 88.6.1-74 — owner ruling D8-r2 (2026-10-13; copy rows GD1, GD2, E16) and its follow-up
+// (2026-10-15; copy rows E17, E18, GD3, GD4): the line a side read's section notice shows when it
+// failed and never loaded for this key (a coded failure shows the register sentence instead).
+const REVIEWS_LOAD_FAILED = "Couldn't load reviews.";
+const SESSIONS_LOAD_FAILED = "Couldn't load game sessions.";
+const ROSTER_LOAD_FAILED = "Couldn't load who's coming.";
+const REPLIES_LOAD_FAILED = "Couldn't load who's replied.";
+const BRINGS_LOAD_FAILED = "Couldn't load who's bringing games.";
+const MY_RSVPS_LOAD_FAILED = "Couldn't load your RSVPs.";
+const GROUP_ROLE_LOAD_FAILED = "Couldn't load your group role.";
+// The side reads, by name: event view `roster`, `rsvpList`, `brings`; game view `groupEvents`,
+// `fanOut`, `reviews`, `gameRoster`.
+const NO_SECTION_LOAD_ERRORS = {
+    roster: null,
+    rsvpList: null,
+    brings: null,
+    groupEvents: null,
+    fanOut: null,
+    reviews: null,
+    gameRoster: null,
+};
+const GROUP_CONTENT_READS = ['groupEvents', 'reviews', 'gameRoster'];
+
 export default function GameDetailPage() {
     const { user, isLoading: authLoading } = Auth();
     // Phase 87.3-04 (D-01/D-04): the caller's resolved Users.id UUID from the
@@ -511,6 +537,20 @@ export default function GameDetailPage() {
     // for a new key and by every access or gone answer (C10). Not `loadedEntityKeyRef`, which is
     // stamped after ANY settle and only drives the loading flash.
     const [loadedFor, setLoadedFor] = useState(null);
+    // 88.6.1-74 (review r1 D12): one entry per SIDE read, each the `entityKey` that read last
+    // loaded for in a current-generation run of the fetch function. Whether a side read's failure
+    // is a failed refresh is a fact about THAT read, not about the primary record (`loadedFor`):
+    // identity arrives after the first fetch in production, so several side reads first run on
+    // run 2 or 3. Each run reads it ONCE, at its start. State, not a ref: the group-content guard
+    // reads it at render. Reset to {} wherever `loadedFor` is cleared.
+    const [readLoadedFor, setReadLoadedFor] = useState({});
+    // 88.6.1-74 (owner ruling D8-r2): the thrown error of each side read that failed while it had
+    // NOT loaded for this key — shown by that read's SectionLoadFailedNotice. Never fed to
+    // useRetainedContent, gameError or eventSideError.
+    const [sectionLoadError, setSectionLoadError] = useState(NO_SECTION_LOAD_ERRORS);
+    // 88.6.1-74 (P-2 under C10): a side-read failure during an event-view refresh of a read that
+    // had loaded, stored as ONE code-less Error so its code reads `unknown`.
+    const [eventSideError, setEventSideError] = useState(null);
     // 88.6.1-74 (review r3 L-02, scoped check 2 M2-01): the `entityKey` whose game read ANSWERED in
     // the run that started when the page last moved to that key. The shared loader covers a game key
     // that has not answered on this visit, so an in-page key change never paints a one-commit
@@ -750,6 +790,27 @@ export default function GameDetailPage() {
     // C12 guards' target: E1 / "Event not found" through renderEventMessageState, "Game not found").
     const eventTitleRef = useRef(null);
     const withdrawalTitleRef = useRef(null);
+    // 88.6.1-74 (review r2 #86): the event id on screen, read by the user-triggered brings writes'
+    // cross-event check.
+    const currentEventIdRef = useRef(null);
+    useEffect(() => {
+        currentEventIdRef.current = event_id;
+    });
+    // 88.6.1-74: stamp / clear one side read's state for THIS run's key (functional updates).
+    const stampRead = (read) => {
+        setReadLoadedFor((prev) => (prev[read] === entityKey ? prev : { ...prev, [read]: entityKey }));
+        setSectionLoadError((prev) => (prev[read] === null ? prev : { ...prev, [read]: null }));
+    };
+    // At a side block's end: never-loaded failures go to their section notices.
+    const recordNeverLoaded = (failures) => {
+        const reads = Object.keys(failures);
+        if (reads.length === 0) return;
+        setSectionLoadError((prev) => {
+            const next = { ...prev };
+            for (const read of reads) next[read] = failures[read];
+            return next;
+        });
+    };
     // 88.6.1-25 (RESEARCH M-1.2): per-run generation for fetchEventOnly. The fetch effect below can
     // run several times for one link (mount, user resolves, identity resolves, a new event id), so
     // a run that is no longer the newest applies NOTHING: no state write after any await, no
@@ -839,11 +900,67 @@ export default function GameDetailPage() {
     // RSVP changes (backend hard-deletes EventBring rows when RSVP flips to
     // 'no' or 'maybe' — see routes/rsvp.js). Used both on initial mount and
     // from the RsvpSection onRsvpChange callback below.
-    // 88.6.1-25 (review r2 #29): the helper RETURNS the Set (an empty Set on failure; it never
-    // rejects) and writes nothing itself. Each caller writes the result: the initial event load only
-    // after its own current-generation check, so a superseded event's brings are never painted onto
-    // the next event's strip; every user-triggered caller chains `.then(` the state setter.
-    const refreshBringersSet = async (eventId) => {
+    // 88.6.1-25 (review r2 #29): the helper RETURNS the Set and writes nothing itself. Each caller
+    // writes the result: the initial event load only after its own current-generation check, so a
+    // superseded event's brings are never painted onto the next event's strip.
+    // [AMENDED Phase 88.6.1-74] On failure it returns `null` (the previous set stays on screen,
+    // contract C1) and hands the thrown error to `onError`; the non-array SHAPE fallback still
+    // yields an empty set. The user-triggered callers write through writeUserBringers below.
+    /* DECISION Phase 88.6.1-74 (C1, side reads): CHOSEN — a failed side read keeps the value on
+       screen and is a failed refresh shown by RF1 only when THAT read had loaded for this key (its
+       own `readLoadedFor` entry at run start — identity arrives after the first fetch in production,
+       so several side reads first run on run 2 or 3); a read that has not loaded for this key never
+       shows RF1 (P-2). CHOSEN (owner ruling D8-r2, 2026-10-13, and its follow-up, 2026-10-15):
+       every side read that failed and never loaded shows plan 70's SectionLoadFailedNotice with the
+       owner's ratified line (a coded failure: the register sentence for its code, through
+       `fallbackMessage`, never `byCode`) where its false state sat — reviews and sessions: the
+       count and the empty-state sentence hidden; event roster: the Participants card's place; RSVP
+       list: inside the Participants card, no `No reply` pills, no event-view ballot; brings: below
+       it; game RSVP fan-out: under the Upcoming heading, no upcoming ballot; game roster: the CTA's
+       slot, one notice for every member-only control it gates. `Add Review` and `Show Filters &
+       Sort` stay visible beside their notices — CHOSEN over hiding them, because hiding a working
+       control because a read failed is a larger change than the ruling asks for, and the notice's
+       Retry sits beside them. The ballots are the one control removed while a notice shows: their
+       gate would state something false ("RSVP to vote" to someone who replied).
+       CHOSEN, game view: the group reads are the access gate for the group content (`GET
+       /games/:id` is group-agnostic, periodictabletopbackend_v2/Sonnet/routes/games.js, anchor
+       `router.get('/:id'`): their access or gone answer withdraws that content and the member-only
+       state — never RF1, never the full banner over the catalog game — EXCEPT `unauthorized`, which
+       takes the primary-401 path (the full banner's sign-in line): a 401 says the session ended, not
+       that this user may not see the group, and a silent withdrawal would show a member a
+       non-member's page with no pointer to sign in and no tab-return re-attempt (review r2 #311).
+       The withdrawal hides the content on screen only; the `GET /games/:id` payload still carries
+       every group's reviews, a BE fix routed outside this phase (review r2 #317, Routed finding 6).
+       CHOSEN, event view (review r2 #316): the roster's OWN access or gone answer resets only the
+       roster-derived member state (`groupMembers`, `groupMembersByUserId`, `userRole`, `userScope`,
+       the roster's key) and keeps the event with no error — the game view's standard for the same
+       server answer, `unauthorized` excepted as there (review r3 M-01: a roster 401 is an ordinary
+       side failure — RF1 when the roster had loaded, the error stored so the tab-return re-attempt
+       arms). Measured path: a participant whose only participations in the group are on cancelled
+       events (the roster's game-only branch counts non-cancelled events only; the event read admits
+       a participant on any status).
+       REJECTED (a): resetting to empty — it wrote a false empty state over true data (Prohibition
+       2). REJECTED (b): a side failure deciding an access state — P-2: only the primary read does
+       that; the scoped exceptions above never produce E1, a redirect or a banner (save the game
+       view's `unauthorized`). REJECTED (c): reporting a failure of a read that has not loaded for
+       this key through RF1 — only a read that loaded for this key can be "earlier". REJECTED (d):
+       storing a side read's ApiError itself, which plan 70's C10 asks for at a PRIMARY read — a
+       roster or sessions 403 would reach useRetainedContent as an access answer and silence RF1
+       over an event / game that is still on screen. A non-access side failure is stored code-less;
+       a session that really expired is caught by the next Retry's primary read. REJECTED (e): the
+       full banner over a game this user may see — a false statement, and a game-only caller (403
+       from the group reads on every run) would lose the page. REJECTED (f): keeping `userRole` /
+       `userScope` / `groupMembers` after a group (or event roster) access answer under Phase
+       87.3-04's rule — that rule covers an unresolved identity, not a server answer; keeping them
+       shows member-only actions that will fail. REJECTED (g): the fetch run's brings write inside
+       this helper, ahead of the run's generation check — an older same-key run's answer could
+       overwrite a newer one's (#85); and a strict id compare against the raw URL `event_id` — an
+       upper-case UUID in the URL blocks every user-triggered write (#86). REJECTED (h) (owner
+       ruling D8-r2): silence for a never-loaded side failure — the page said `Reviews (0)` / "Be
+       the first" or `Game Sessions (0)` for a failure; hiding the count with no notice — the same
+       silence; the compact identity notice — its sentence is the identity line; an optional text
+       prop on the compact branch — plan 70's call. Changing this is a decision, not a cleanup. */
+    const refreshBringersSet = async (eventId, onError) => {
         try {
             const brings = await eventBringsAPI.getEventBrings(eventId);
             const bSet = new Set();
@@ -853,9 +970,44 @@ export default function GameDetailPage() {
                 }
             }
             return bSet;
-        } catch {
-            return new Set();
+        } catch (error) {
+            // DECISION Phase 88.6.1-74 (C1, side reads): a failure keeps the previous set.
+            onError?.(error);
+            return null;
         }
+    };
+    // 88.6.1-74 (review r2 #86): a user-triggered brings refresh writes only a Set (never the
+    // failure value — a null would throw at `bringersSet.has`) and only for the event on screen,
+    // compared case-insensitively (a URL may carry an upper-case UUID the server returns
+    // lower-case). On the game view (`handleEventUpdated`) no event is on screen, so the write is
+    // blocked — harmless, `bringersSet` is read only in the event view. A Set clears the brings
+    // section notice (the dice are loaded now); a failure changes nothing.
+    const writeUserBringers = (eventId, bSet) => {
+        if (!(bSet instanceof Set)) return;
+        const onScreen = currentEventIdRef.current;
+        if (!onScreen || String(eventId).toLowerCase() !== String(onScreen).toLowerCase()) return;
+        setBringersSet(bSet);
+        setSectionLoadError((prev) => (prev.brings === null ? prev : { ...prev, brings: null }));
+    };
+
+    // 88.6.1-74 (review r2 #310): the event view's ONE per-key reset, shared by the new-key clear and
+    // the C10 drop. Side reads no longer overwrite on failure, so without it a new event would
+    // inherit the previous one's side data, and an event whose access returns would show the
+    // pre-drop roster, RSVP pills and brings as current. It never touches `eventError`,
+    // `signInRedirect` (plan 25's per-code dispatch owns them), `effectiveGroupId` or the
+    // suggestions (the suggestions effect does not re-run on the same key).
+    const clearEventKeyData = () => {
+        setUserRole(null);
+        setUserScope('none');
+        setGroupMembers([]);
+        setGroupMembersByUserId({});
+        setParticipants([]);
+        setRsvpByUserId({});
+        setEventRsvpStatuses({});
+        setBringersSet(new Set());
+        setEventSideError(null);
+        setReadLoadedFor({});
+        setSectionLoadError((prev) => ({ ...prev, roster: null, rsvpList: null, brings: null }));
     };
 
     const fetchEventOnly = async () => {
@@ -864,6 +1016,10 @@ export default function GameDetailPage() {
         // 88.6.1-74 (review r2 #84): an event run supersedes any in-flight game run too.
         gameFetchGenRef.current += 1;
         const isCurrentRun = () => gen === eventFetchGenRef.current;
+        // 88.6.1-74: PRIMARY rules only (the eventError clear on success, C2); the side reads decide
+        // from their own run-start keys (the per-read rule, review r1 D12), read ONCE here.
+        const isRefresh = loadedFor === entityKey;
+        const readsAtStart = readLoadedFor;
         // 88.6.1-74 (M2-01): a run for a DIFFERENT key forgets which game key last answered; a
         // same-key run keeps it (see gameAnsweredFor).
         setGameAnsweredFor((k) => (k === entityKey ? k : null));
@@ -881,14 +1037,7 @@ export default function GameDetailPage() {
             setLoadedFor(null);
             setEventError(null);
             setSignInRedirect('idle');
-            setUserRole(null);
-            setUserScope('none');
-            setGroupMembers([]);
-            setGroupMembersByUserId({});
-            setParticipants([]);
-            setRsvpByUserId({});
-            setEventRsvpStatuses({});
-            setBringersSet(new Set());
+            clearEventKeyData();
             // DECISION Phase 88.6.1-25 (retention rule, amended by the wave 4 CI gate, run 38878098281):
             // Recommended Games is cleared only when the EVENT ID changes, NOT on every run that reaches
             // this reset. The reset also runs for the SAME event whenever identity resolves before the
@@ -905,6 +1054,8 @@ export default function GameDetailPage() {
             }
             setEffectiveGroupId(group_id || null);
         }
+        // 88.6.1-74: each side read's recorded failure, by read name (the per-read rule at the end).
+        const sideFailures = {};
         try {
             // 88.6.1-25 (D-01, RESEARCH P-2): ONLY the getEvent rejection decides the page state, so it
             // has its own try. The roster, RSVP and bring fetches below keep their own soft catches: a
@@ -926,6 +1077,7 @@ export default function GameDetailPage() {
                 if (isAccessOrGoneError({ showError: true, code })) {
                     setSingleEvent(null);
                     setLoadedFor(null);
+                    clearEventKeyData();
                 }
                 // An answer the backend sends only to an AUTHENTICATED caller proves the session, so it
                 // clears the sign-in latch (review r2 #305). Never a 401, network, 5xx, 429 or unknown.
@@ -946,7 +1098,9 @@ export default function GameDetailPage() {
                 return { isError: true };
             }
             if (!isCurrentRun()) return;
-            setEventError(null);
+            // 88.6.1-74 (C2): a FIRST run clears the error on the primary success; a refresh clears
+            // it at its clean end, so the notice never disappears and reappears inside one Retry.
+            if (!isRefresh) setEventError(null);
             setSignInRedirect('idle');
             clearSignInLatch(event_id);
             setSingleEvent(eventData);
@@ -997,6 +1151,11 @@ export default function GameDetailPage() {
                     // at its prior/default value (loading/indeterminate), NEVER
                     // downgrade to 'none'. The fetch effect's selfUuid dep re-runs
                     // this flow once identity resolves.
+                    // AMENDED Phase 88.6.1-74 (roster access answer): the rule covers an UNRESOLVED
+                    // identity only. The roster's own access or gone answer and the primary read's
+                    // C10 drop are server answers, so they return userRole / userScope /
+                    // groupMembers to their initial values; see DECISION Phase 88.6.1-74 (C1, side
+                    // reads).
                     if (selfUuid) {
                         const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
                         setUserRole(role);
@@ -1012,6 +1171,7 @@ export default function GameDetailPage() {
                         if (m.id) byId[m.id] = m;
                     }
                     setGroupMembersByUserId(byId);
+                    stampRead('roster');
                 }
                 // Fetch RSVP status — both for the current viewer (already
                 // wired into RsvpSection) and as a per-participant map keyed
@@ -1033,24 +1193,52 @@ export default function GameDetailPage() {
                         if (r.User?.id) byUserId[r.User.id] = r.status;
                     }
                     setRsvpByUserId(byUserId);
-                } catch {
-                    if (isCurrentRun()) {
-                        setEventRsvpStatuses({ [event_id]: null });
-                        setRsvpByUserId({});
-                    }
+                    stampRead('rsvpList');
+                } catch (error) {
+                    // DECISION Phase 88.6.1-74 (C1, side reads): keep the values; record the failure.
+                    if (!isCurrentRun()) return undefined;
+                    sideFailures.rsvpList = error;
                 }
 
                 // Fetch event brings to flag participants who are bringing a
                 // game (small bringersSet of User.id UUIDs). Written only by the
                 // current run (88.6.1-25, review r2 #29).
-                const bSet = await refreshBringersSet(event_id);
-                if (!isCurrentRun()) return;
-                setBringersSet(bSet);
+                let bringsError = null;
+                const bSet = await refreshBringersSet(event_id, (error) => { bringsError = error; });
+                if (!isCurrentRun()) return undefined;
+                if (bSet === null) {
+                    // DECISION Phase 88.6.1-74 (C1, side reads): a failure writes nothing.
+                    sideFailures.brings = bringsError;
+                } else {
+                    setBringersSet(bSet);
+                    stampRead('brings');
+                }
             }
         } catch (error) {
             // 88.6.1-25 (P-2): only a side fetch (roster) can reach this catch now; the event
             // stays rendered and the page state is not touched.
             logger.info('Error fetching event members:', errCtx(error));
+            if (!isCurrentRun()) return undefined;
+            const rosterCode = error instanceof ApiError ? error.code : 'unknown';
+            if (rosterCode !== 'unauthorized' && isAccessOrGoneError({ showError: true, code: rosterCode })) {
+                // DECISION Phase 88.6.1-74 (C1, side reads) — review r2 #316: the roster's OWN access
+                // or gone answer resets only the roster-derived member state and keeps the event; no
+                // error of any kind. Its `unauthorized` is an ordinary side failure (review r3 M-01).
+                setGroupMembers([]);
+                setGroupMembersByUserId({});
+                setUserRole(null);
+                setUserScope('none');
+                setReadLoadedFor((prev) => {
+                    if (!('roster' in prev)) return prev;
+                    const next = { ...prev };
+                    delete next.roster;
+                    return next;
+                });
+                setSectionLoadError((prev) => (prev.roster === null ? prev : { ...prev, roster: null }));
+            } else {
+                // DECISION Phase 88.6.1-74 (C1, side reads): record the roster failure.
+                sideFailures.roster = error;
+            }
         } finally {
             // A superseded run neither clears `loading` nor stamps the entity (RESEARCH M-1.2).
             if (isCurrentRun()) {
@@ -1058,9 +1246,26 @@ export default function GameDetailPage() {
                 setLoading(false);
             }
         }
+        if (!isCurrentRun()) return undefined;
+        // 88.6.1-74 — the per-read rule (DECISION Phase 88.6.1-74 (C1, side reads)): a recorded
+        // failure of a read that had loaded for this key at run start is a failed refresh, shown by
+        // RF1 through ONE code-less Error (P-2 under C10); a failure of a read that had not loaded
+        // goes to that read's section notice (owner ruling D8-r2) and the run ends like a clean one.
+        const failedReads = Object.keys(sideFailures);
+        const neverLoaded = {};
+        for (const read of failedReads) {
+            if (readsAtStart[read] !== entityKey) neverLoaded[read] = sideFailures[read];
+        }
+        recordNeverLoaded(neverLoaded);
+        if (failedReads.some((read) => readsAtStart[read] === entityKey)) {
+            setEventSideError(new Error("An event side read didn't complete."));
+            return { isError: true };
+        }
+        setEventError(null);
+        setEventSideError(null);
         // 88.6.1-70 contract C4: a clean end resolves `{ isError: false }`; a superseded run
         // resolves `undefined` (it wrote nothing).
-        return isCurrentRun() ? { isError: false } : undefined;
+        return { isError: false };
     };
 
     // (88-33 Task 5: the 65-02 "clean up the second-click confirm timer on unmount"
@@ -1250,6 +1455,25 @@ export default function GameDetailPage() {
         setReviewForm({ rating: 2.5, review_text: '', is_recommended: true });
         setGameError(null);
         setLoadedFor(null);
+        setReadLoadedFor({});
+        setSectionLoadError((prev) => ({ ...prev, groupEvents: null, fanOut: null, reviews: null, gameRoster: null }));
+    };
+
+    // 88.6.1-74 (review r1 D16, the group-access truth): a group read's access or gone answer
+    // withdraws the GROUP content and the member-only state in one current-generation step, and
+    // keeps the catalog game, `loadedFor` and `loadedEntityKeyRef` — never clearGameKeyData(), which
+    // would clear the game. DECISION Phase 88.6.1-74 (C1, side reads).
+    const withdrawGroupContent = () => {
+        setEvents([]);
+        setEventRsvpStatuses({});
+        setReviews([]);
+        setUserReview(null);
+        setReviewForm({ rating: 2.5, review_text: '', is_recommended: true });
+        setGroupMembers([]);
+        setUserRole(null);
+        setUserScope('none');
+        setReadLoadedFor({});
+        setSectionLoadError((prev) => ({ ...prev, groupEvents: null, fanOut: null, reviews: null, gameRoster: null }));
     };
 
     const fetchGameData = async () => {
@@ -1265,6 +1489,7 @@ export default function GameDetailPage() {
         const isCurrentRun = () => gen === gameFetchGenRef.current;
         // PRIMARY rules only (the first-run clear below); a side read's refresh is its own key.
         const isRefresh = loadedFor === entityKey;
+        const readsAtStart = readLoadedFor;
         // 88.6.1-74 (M2-01): a run for a DIFFERENT key forgets which game key last answered; a
         // same-key run keeps it, so an identity re-run shows no loader flash.
         setGameAnsweredFor((k) => (k === entityKey ? k : null));
@@ -1329,20 +1554,53 @@ export default function GameDetailPage() {
             // A first run (or a full banner's Try again) gives way to the content at once.
             if (!isRefresh) setGameError(null);
 
-            try {
-                // Only fetch events, reviews, and role when group_id is available
-                if (group_id) {
-                    // Fetch events for this game in this group
-                    // Use eventsAPI.getGroupEvents which automatically includes Authorization header
-                    let eventsData;
-                    try {
-                        eventsData = await eventsAPI.getGroupEvents(group_id);
-                    } catch (error) {
-                        logger.info('Error fetching events:', errCtx(error));
-                        eventsData = [];
-                    }
+            // 88.6.1-74: each side read's recorded failure, by read name (the per-read rule below).
+            const sideFailures = {};
+            // DECISION Phase 88.6.1-74 (C1, side reads): ONE line logs a review or roster failure,
+            // as the side catch did before each read got its own catch (the roster must still run
+            // after a reviews failure, so `Add Review` and the member actions are decided by it).
+            const logSideFailure = (error) => {
+                logger.info('Error fetching game details:', errCtx(error));
+            };
+            // DECISION Phase 88.6.1-74 (C1, side reads): a GROUP read's answer is classified on its
+            // thrown ApiError FIRST (C11's scoped exception): a 401 takes the primary-401 path (review
+            // r2 #311); any other access or gone answer withdraws the group content and ends the run
+            // clean (no error of any kind); anything else returns null and is recorded for its read.
+            const answerGroupRead = (error) => {
+                const code = error instanceof ApiError ? error.code : 'unknown';
+                if (code === 'unauthorized') {
+                    clearGameKeyData();
+                    setGameError(error);
+                    return { isError: true };
+                }
+                if (isAccessOrGoneError({ showError: true, code })) {
+                    withdrawGroupContent();
+                    setGameError(null);
+                    return { isError: false };
+                }
+                return null;
+            };
+            // Only fetch events, reviews, and role when group_id is available
+            if (group_id) {
+                // Fetch events for this game in this group
+                // Use eventsAPI.getGroupEvents which automatically includes Authorization header
+                let eventsData;
+                let eventsFailed = false;
+                try {
+                    eventsData = await eventsAPI.getGroupEvents(group_id);
+                } catch (error) {
+                    logger.info('Error fetching events:', errCtx(error));
                     if (!isCurrentRun()) return undefined;
+                    // DECISION Phase 88.6.1-74 (C1, side reads): no empty-list write; the access
+                    // answer first, then the failure is recorded and the fan-out skipped.
+                    const answered = answerGroupRead(error);
+                    if (answered) return answered;
+                    sideFailures.groupEvents = error;
+                    eventsFailed = true;
+                }
+                if (!isCurrentRun()) return undefined;
 
+                if (!eventsFailed) {
                     // Ensure eventsData is an array before filtering
                     if (!Array.isArray(eventsData)) {
                         /* DECISION Phase 88.6-18 (AC-2, T-84-01): this conversion carries a SHAPE
@@ -1362,6 +1620,7 @@ export default function GameDetailPage() {
 
                     const gameEvents = eventsData.filter(event => event.game_id === game_id);
                     setEvents(gameEvents);
+                    stampRead('groupEvents');
 
                     // Fetch RSVP statuses for each event (for BallotSection).
                     // Phase 87.3-04: gate on identity resolution — this whole
@@ -1382,82 +1641,133 @@ export default function GameDetailPage() {
                         new Date(evt.start_date) > rsvpFanoutNow
                     );
                     if (selfUuid && upcomingGameEvents.length > 0) {
+                        // DECISION Phase 88.6.1-74 (C1, side reads): a failed per-event read keeps its
+                        // previous value (never a null write); the fan-out stamps only when every
+                        // per-event request in it succeeded.
                         const rsvpStatusMap = {};
+                        const failedIds = [];
+                        let fanOutError = null;
                         await Promise.all(upcomingGameEvents.map(async (evt) => {
                             try {
                                 const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
                                 const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
                                 rsvpStatusMap[evt.id] = myRsvp?.status || null;
-                            } catch {
-                                rsvpStatusMap[evt.id] = null;
+                            } catch (error) {
+                                failedIds.push(evt.id);
+                                if (!fanOutError) fanOutError = error;
                             }
                         }));
+                        if (!isCurrentRun()) return undefined;
+                        setEventRsvpStatuses((prev) => {
+                            const next = { ...rsvpStatusMap };
+                            for (const id of failedIds) next[id] = prev[id] ?? null;
+                            return next;
+                        });
+                        if (failedIds.length > 0) sideFailures.fanOut = fanOutError;
+                        else stampRead('fanOut');
+                    }
+                }
+
+                // Fetch reviews for this game in this group
+                // Use gameReviewsAPI.getGameReviews which automatically includes Authorization header
+                // The 3rd arg is the caller's own identity (is-me review marker):
+                // send selfUuid. This runs inside the selfUuid-keyed fetch effect
+                // (deps at L303), so it re-fires with the resolved UUID once
+                // identity lands; before then it sends null (is-me indeterminate).
+                let reviewsData;
+                let reviewsFailed = false;
+                try {
+                    reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, selfUuid || null);
+                } catch (error) {
+                    logSideFailure(error);
                     if (!isCurrentRun()) return undefined;
-                        setEventRsvpStatuses(rsvpStatusMap);
+                    const answered = answerGroupRead(error);
+                    if (answered) return answered;
+                    sideFailures.reviews = error;
+                    reviewsFailed = true;
+                }
+                if (!isCurrentRun()) return undefined;
+                if (!reviewsFailed) {
+                    setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+                    stampRead('reviews');
+                }
+
+                // Find current user's review + derive role.
+                // Phase 87.3-04 (D-01): the per-page usersAPI.getUser(user.sub)
+                // self-fetch is REMOVED — selfUuid now comes from the shared
+                // useSelfIdentity() hook. `user?.sub` here only gates "logged in".
+                if (user?.sub) {
+                    // Get user's role in the group
+                    // Use groupsAPI.getGroupMembers which automatically includes Authorization header
+                    let fetchedGroupMembers;
+                    let rosterFailed = false;
+                    try {
+                        fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
+                    } catch (error) {
+                        logSideFailure(error);
+                        if (!isCurrentRun()) return undefined;
+                        const answered = answerGroupRead(error);
+                        if (answered) return answered;
+                        sideFailures.gameRoster = error;
+                        rosterFailed = true;
+                    }
+                    if (!isCurrentRun()) return undefined;
+                    if (!rosterFailed && Array.isArray(fetchedGroupMembers)) {
+                        setGroupMembers(fetchedGroupMembers);
+                        // Phase 87.3-04: gate the scope derive on identity —
+                        // unresolved selfUuid stays indeterminate (never 'none').
+                        // AMENDED Phase 88.6.1-74 (group access answer): the rule covers an UNRESOLVED
+                        // identity only; a group read's access or gone answer is a server answer, so
+                        // the withdrawal resets userRole / userScope / groupMembers to their initial
+                        // values (what a fresh load by that user shows); see DECISION Phase 88.6.1-74
+                        // (C1, side reads).
+                        if (selfUuid) {
+                            const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
+                            setUserRole(role);
+                            setUserScope(scope);
+                        }
+                        stampRead('gameRoster');
                     }
 
-                    // Fetch reviews for this game in this group
-                    // Use gameReviewsAPI.getGameReviews which automatically includes Authorization header
-                    // The 3rd arg is the caller's own identity (is-me review marker):
-                    // send selfUuid. This runs inside the selfUuid-keyed fetch effect
-                    // (deps at L303), so it re-fires with the resolved UUID once
-                    // identity lands; before then it sends null (is-me indeterminate).
-                    const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, selfUuid || null);
-                if (!isCurrentRun()) return undefined;
-                    setReviews(Array.isArray(reviewsData) ? reviewsData : []);
-
-                    // Find current user's review + derive role.
-                    // Phase 87.3-04 (D-01): the per-page usersAPI.getUser(user.sub)
-                    // self-fetch is REMOVED — selfUuid now comes from the shared
-                    // useSelfIdentity() hook. `user?.sub` here only gates "logged in".
-                    if (user?.sub) {
-                        // Get user's role in the group
-                        // Use groupsAPI.getGroupMembers which automatically includes Authorization header
-                        const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
-                        if (!isCurrentRun()) return undefined;
-                        if (Array.isArray(fetchedGroupMembers)) {
-                            setGroupMembers(fetchedGroupMembers);
-                            // Phase 87.3-04: gate the scope derive on identity —
-                            // unresolved selfUuid stays indeterminate (never 'none').
-                            if (selfUuid) {
-                                const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
-                                setUserRole(role);
-                                setUserScope(scope);
-                            }
-                        }
-
-                        // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
-                        // keys on nested User.id vs selfUuid. Gated on resolution so an
-                        // unresolved identity reads as "no own review yet" (loading),
-                        // never mislabels someone else's review as mine.
-                        if (selfUuid) {
-                            const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === selfUuid) : null;
-                            if (myReview) {
-                                setUserReview(myReview);
-                                // DECISION quick-260930-w9v: the saved rating is converted to a number here and a
-                                // stored 0 is kept, chosen over Number(...) || 2.5. The API sends the DECIMAL column
-                                // as a string; the review form before Phase 70 was a number input that accepted 0,
-                                // and || 2.5 would show such a review as 2.5 stars and resave it as 2.5 on a
-                                // text-only edit. Only a missing or non-numeric rating takes the 2.5 default.
-                                // StarRatingPicker converts too; both are deliberate.
-                                const savedRating = Number(myReview.rating);
-                                setReviewForm({
-                                    rating: myReview.rating != null && Number.isFinite(savedRating) ? savedRating : 2.5,
-                                    review_text: myReview.review_text || '',
-                                    is_recommended: myReview.is_recommended !== false
-                                });
-                            }
+                    // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
+                    // keys on nested User.id vs selfUuid. Gated on resolution so an
+                    // unresolved identity reads as "no own review yet" (loading),
+                    // never mislabels someone else's review as mine.
+                    if (selfUuid) {
+                        const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === selfUuid) : null;
+                        if (myReview) {
+                            setUserReview(myReview);
+                            // DECISION quick-260930-w9v: the saved rating is converted to a number here and a
+                            // stored 0 is kept, chosen over Number(...) || 2.5. The API sends the DECIMAL column
+                            // as a string; the review form before Phase 70 was a number input that accepted 0,
+                            // and || 2.5 would show such a review as 2.5 stars and resave it as 2.5 on a
+                            // text-only edit. Only a missing or non-numeric rating takes the 2.5 default.
+                            // StarRatingPicker converts too; both are deliberate.
+                            const savedRating = Number(myReview.rating);
+                            setReviewForm({
+                                rating: myReview.rating != null && Number.isFinite(savedRating) ? savedRating : 2.5,
+                                review_text: myReview.review_text || '',
+                                is_recommended: myReview.is_recommended !== false
+                            });
                         }
                     }
                 }
-            } catch (error) {
-                // 88.6.1-74: a SIDE read failed after a good game. Logged here (the plan's one added
-                // logger line); it writes nothing on screen and stores no error (Task 3's rule decides
-                // what it shows).
-                logger.info('Error fetching game details:', errCtx(error));
-                if (!isCurrentRun()) return undefined;
             }
             if (!isCurrentRun()) return undefined;
+            // 88.6.1-74 — the per-read rule (DECISION Phase 88.6.1-74 (C1, side reads)): a recorded
+            // failure of a read that had loaded for this key at run start is a failed refresh, shown
+            // by RF1 through the code-less 88-25 fallback (P-2 under C10); a failure of a read that
+            // had not loaded goes to its section notice (owner ruling D8-r2), and the run ends clean.
+            const failedReads = Object.keys(sideFailures);
+            const neverLoaded = {};
+            for (const read of failedReads) {
+                if (readsAtStart[read] !== entityKey) neverLoaded[read] = sideFailures[read];
+            }
+            recordNeverLoaded(neverLoaded);
+            if (failedReads.some((read) => readsAtStart[read] === entityKey)) {
+                setGameError(new Error("The game request didn't complete."));
+                return { isError: true };
+            }
             setGameError(null);
             return { isError: false };
         } finally {
@@ -1517,13 +1827,52 @@ export default function GameDetailPage() {
         eventErrorArmedCode !== 'not_found' &&
         !(eventErrorArmedCode === 'unauthorized' && signInRedirect !== 'declined');
     const eventErrorState = useFetchErrorState({
-        isError: eventErrorArmed,
-        error: eventError,
+        // 88.6.1-74: plan 25's armed predicate over `eventError`, OR a side-read failure of a read
+        // that had loaded (code-less, P-2). Plan 25's gates read `eventError` itself for the access
+        // states, so a side failure never reaches E1 or the redirect.
+        isError: eventErrorArmed || Boolean(eventSideError),
+        error: eventError || eventSideError,
         refetch: retryEventOnly,
     });
     // 88.6.1-74 (contract C10): the event view's `retained` — plan 70's hook over the success-only
     // `loadedFor`, so an access or gone answer is never a refresh failure.
     const eventRetained = useRetainedContent(loadedFor === entityKey, eventErrorState);
+
+    // 88.6.1-74 (owner ruling D8-r2 and its follow-up): one state per never-loaded side read, each
+    // over its own stored error with the view's retry adapter, so a section notice's Retry re-runs
+    // the page fetch and its tab-return re-attempt arms while it shows. A code-less failure shows
+    // the ratified line (`fallbackMessage`); a coded one shows the register sentence. No `byCode`.
+    const reviewsLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.reviews), error: sectionLoadError.reviews, refetch: retryGameData },
+        { fallbackMessage: REVIEWS_LOAD_FAILED }
+    );
+    const sessionsLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.groupEvents), error: sectionLoadError.groupEvents, refetch: retryGameData },
+        { fallbackMessage: SESSIONS_LOAD_FAILED }
+    );
+    const myRsvpsLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.fanOut), error: sectionLoadError.fanOut, refetch: retryGameData },
+        { fallbackMessage: MY_RSVPS_LOAD_FAILED }
+    );
+    const groupRoleLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.gameRoster), error: sectionLoadError.gameRoster, refetch: retryGameData },
+        { fallbackMessage: GROUP_ROLE_LOAD_FAILED }
+    );
+    const rosterLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.roster), error: sectionLoadError.roster, refetch: retryEventOnly },
+        { fallbackMessage: ROSTER_LOAD_FAILED }
+    );
+    const repliesLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.rsvpList), error: sectionLoadError.rsvpList, refetch: retryEventOnly },
+        { fallbackMessage: REPLIES_LOAD_FAILED }
+    );
+    const bringsLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.brings), error: sectionLoadError.brings, refetch: retryEventOnly },
+        { fallbackMessage: BRINGS_LOAD_FAILED }
+    );
+    // 88.6.1-74 (review r1 D16): true while any GROUP read (the group events, the reviews, the
+    // roster) has loaded for this key — the group-content guard's `retained`.
+    const groupContentRetained = GROUP_CONTENT_READS.some((read) => readLoadedFor[read] === entityKey);
 
     // DECISION Phase 88.6.1-25 (D-01): CHOSEN — a latched `window.location.replace` to sign-in on ANY
     // 401 from the event fetch, decided only after `useUser` has settled and only for the CURRENT
@@ -1643,7 +1992,7 @@ export default function GameDetailPage() {
         setBallotRefreshKey(k => k + 1);
         setRsvpRefreshKey(k => k + 1);
         setBringRefreshKey(k => k + 1);
-        if (updatedEventId) refreshBringersSet(updatedEventId).then(setBringersSet);
+        if (updatedEventId) refreshBringersSet(updatedEventId).then((bSet) => writeUserBringers(updatedEventId, bSet));
     };
 
     const handleReviewSubmit = async (e) => {
@@ -2098,12 +2447,16 @@ export default function GameDetailPage() {
                                             }}
                                         />
                                         {/* Ballot Section - game voting */}
-                                        <BallotSection
-                                            eventId={event.id}
-                                            eventDate={event.start_date}
-                                            userRole={userRole}
-                                            userRsvpStatus={eventRsvpStatuses[event.id] || null}
-                                        />
+                                        {/* 88.6.1-74 (D8-r2 follow-up): no ballot while my RSVPs never
+                                            loaded — its gate would tell someone who replied to RSVP. */}
+                                        {!myRsvpsLoadState.showError && (
+                                            <BallotSection
+                                                eventId={event.id}
+                                                eventDate={event.start_date}
+                                                userRole={userRole}
+                                                userRsvpStatus={eventRsvpStatuses[event.id] || null}
+                                            />
+                                        )}
                                         {/* Bring Summary - who is bringing which games */}
                                         <BringSummary
                                             eventId={event.id}
@@ -2135,6 +2488,9 @@ export default function GameDetailPage() {
        not found" frame after an in-page key change and keeping the target off it (round 2's shape) —
        the frame is gone instead (the loader gate below, review r3 L-02).
        The game view's guard (`gameRetained`) is the fragment's second child, on the same target.
+       A THIRD guard, for the group content (`groupContentRetained`, aimed at the game title), sits
+       INSIDE the game view as its root's FIRST child: a group withdrawal keeps the game view, so an
+       outer guard never sees a flip, and it may sit first because its target is already mounted.
        THE INVARIANT: every return from the first early return on keeps a `div` root whose LAST child
        is {retainedFocusGuards}, with the same key. A return added without it, with another root
        element, or with the guards ahead of a sibling silently remounts them or reads a null target
@@ -2544,6 +2900,7 @@ export default function GameDetailPage() {
                                         key={p.id ?? p.user_id ?? `row-${idx}`}
                                         participant={p}
                                         rsvpStatus={status}
+                                        rsvpUnavailable={repliesLoadState.showError}
                                         role={role}
                                         isBringing={isBringing}
                                         viewerScope={userScope}
@@ -2574,8 +2931,16 @@ export default function GameDetailPage() {
                                 See all ({participants.length}) →
                             </button>
                         )}
+                        {/* 88.6.1-74 (owner ruling D8-r2 follow-up, E17 / E18): the RSVP list's and
+                            the brings' never-loaded notices, inside the card they qualify. */}
+                        <SectionLoadFailedNotice state={repliesLoadState} className="mt-3" />
+                        <SectionLoadFailedNotice state={bringsLoadState} className="mt-3" />
                     </div>
                 )}
+
+                {/* 88.6.1-74 (owner ruling D8-r2, E16): the roster's never-loaded notice stands where
+                    the Participants card sits (absent while the roster never loaded). */}
+                <SectionLoadFailedNotice state={rosterLoadState} className="mb-6" />
 
                 <div className="space-y-4">
                     <RsvpSection
@@ -2604,16 +2969,20 @@ export default function GameDetailPage() {
                             // indicator on the strip + See-all modal in sync.
                             // Backend deletes EventBring rows when RSVP flips
                             // to 'no'/'maybe', so the local set must refresh.
-                            refreshBringersSet(singleEvent.id).then(setBringersSet);
+                            refreshBringersSet(singleEvent.id).then((bSet) => writeUserBringers(singleEvent.id, bSet));
                         }}
                     />
-                    <BallotSection
-                        key={ballotRefreshKey}
-                        eventId={singleEvent.id}
-                        eventDate={singleEvent.start_date}
-                        userRole={userRole}
-                        userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
-                    />
+                    {/* 88.6.1-74 (owner ruling D8-r2 follow-up): no ballot while the RSVP list never
+                        loaded — its gate would tell someone who said yes to RSVP. */}
+                    {!repliesLoadState.showError && (
+                        <BallotSection
+                            key={ballotRefreshKey}
+                            eventId={singleEvent.id}
+                            eventDate={singleEvent.start_date}
+                            userRole={userRole}
+                            userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
+                        />
+                    )}
                     <BringSummary
                         eventId={singleEvent.id}
                         groupId={effectiveGroupId}
@@ -2675,7 +3044,7 @@ export default function GameDetailPage() {
                             setBallotRefreshKey(k => k + 1);
                             setRsvpRefreshKey(k => k + 1);
                             setBringRefreshKey(k => k + 1);
-                            if (updatedEventId) refreshBringersSet(updatedEventId).then(setBringersSet);
+                            if (updatedEventId) refreshBringersSet(updatedEventId).then((bSet) => writeUserBringers(updatedEventId, bSet));
                         }}
                         editingEvent={editingEvent}
                         user={user}
@@ -2798,7 +3167,7 @@ export default function GameDetailPage() {
                                                 <span>{p.username || 'Unknown'}</span>
                                             )}
                                         </span>
-                                        <RsvpStatusPill status={status} />
+                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} />}
                                         {isSelfRow && (
                                             // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
                                             // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not
@@ -2955,7 +3324,7 @@ export default function GameDetailPage() {
                         setBringRefreshKey(k => k + 1);
                         // Phase 65-02 EVT-02 followup: show 🎲 immediately
                         // after picking a game without waiting for a remount.
-                        if (bringPickerEventId) refreshBringersSet(bringPickerEventId).then(setBringersSet);
+                        if (bringPickerEventId) refreshBringersSet(bringPickerEventId).then((bSet) => writeUserBringers(bringPickerEventId, bSet));
                     }}
                 />
                 {retainedFocusGuards}
@@ -3100,6 +3469,8 @@ export default function GameDetailPage() {
            Restoring `p-6` is a DECISION (it re-tightens the budget to ~72/75 and re-splits the
            two branches), not a cleanup. */
         <div className="p-3 md:p-6 max-w-6xl mx-auto">
+            {/* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): the group-content guard. */}
+            <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />
             {/* Breadcrumbs */}
             {/* Same ring, hidden separators and `min-w-0` as the event-view breadcrumb — `DECISION Phase 88.6.1-52 (D-46 / R7-M7)`. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
@@ -3345,6 +3716,9 @@ export default function GameDetailPage() {
                         </Button>
                     </div>
                 )}
+                {/* 88.6.1-74 (owner ruling D8-r2 follow-up, GD4): the roster's never-loaded notice in
+                    the CTA's slot — one notice for every member-only control the roster gates. */}
+                {group_id && <SectionLoadFailedNotice state={groupRoleLoadState} className="mt-6" />}
             </div>
 
             {/* DECISION Phase 88-33 Task 7 step 1b rider (owner-RATIFIED 2026-08-21 at phase
@@ -3361,6 +3735,8 @@ export default function GameDetailPage() {
                     <Heading ref={upcomingHeadingRef} level={2} size="heading" className="w-full text-content-primary mb-4">
                         Upcoming ({upcomingEvents.length})
                     </Heading>
+                    {/* 88.6.1-74 (owner ruling D8-r2 follow-up, GD3): the RSVP fan-out's notice. */}
+                    <SectionLoadFailedNotice state={myRsvpsLoadState} className="mb-4" />
                     <div className="space-y-0">
                         {upcomingEvents.map((event, index) => renderSessionCard(event, index, { interactive: true }))}
                     </div>
@@ -3386,9 +3762,12 @@ export default function GameDetailPage() {
                         {/* Post-split (Task 7 step 1b): counts key on the HISTORY partition —
                             keying on raw `events` would show "3 of 5" with no filter active
                             whenever upcoming events exist. */}
-                        Game Sessions ({filteredEvents.length === historyEvents.length
-                            ? historyEvents.length
-                            : `${filteredEvents.length} of ${historyEvents.length}`})
+                        Game Sessions{/* 88.6.1-74 (owner ruling D8-r2): no count while the sessions never loaded. */}
+                        {sessionsLoadState.showError
+                            ? ''
+                            : ` (${filteredEvents.length === historyEvents.length
+                                ? historyEvents.length
+                                : `${filteredEvents.length} of ${historyEvents.length}`})`}
                     </Heading>
                     {/* DECISION Phase 88.6.1-47 (D-44): CHOSEN — this toggle is a DISCLOSURE
                         (`aria-expanded`), not a pressed toggle: D-44 rules that it shows and hides a
@@ -3638,6 +4017,9 @@ export default function GameDetailPage() {
                 </div>
                 )}
                 
+                {/* 88.6.1-74 (owner ruling D8-r2, GD2): the sessions' never-loaded notice stands where
+                    the empty-state sentence stood. */}
+                <SectionLoadFailedNotice state={sessionsLoadState} />
                 {displayedEvents.length > 0 ? (
                     <div className="space-y-0">
                         {/* DECISION Phase 87.7 (Plan 08, R5): the separator below carries NO top
@@ -3662,11 +4044,13 @@ export default function GameDetailPage() {
                        NEVER the raw fetch — a group with only a future event has events.length
                        > 0 but genuinely no history, and must get the ruled empty copy, not
                        'No sessions match your filters.'. */
-                    <p className="text-content-muted text-sm">
-                        {historyEvents.length === 0
-                            ? "No game sessions yet — they'll show up here after your group plays this game."
-                            : 'No sessions match your filters.'}
-                    </p>
+                    !sessionsLoadState.showError && (
+                        <p className="text-content-muted text-sm">
+                            {historyEvents.length === 0
+                                ? "No game sessions yet — they'll show up here after your group plays this game."
+                                : 'No sessions match your filters.'}
+                        </p>
+                    )
                 )}
                 
                 {/* Show More Button */}
@@ -3727,7 +4111,7 @@ export default function GameDetailPage() {
                     gate. That escalation is what produced the ruling above: the deferral worked
                     exactly as designed, and is now RESOLVED. */}
                 <div className="flex justify-between items-center mb-4">
-                    <Heading level={2} size="heading" className="text-content-primary">Reviews ({reviews.length})</Heading>
+                    <Heading level={2} size="heading" className="text-content-primary">Reviews{reviewsLoadState.showError ? '' : ` (${reviews.length})`}</Heading>
                     {user && !userReview && userRole && userRole !== 'pending' && (
                         <Button
                             variant="primary"
@@ -3777,6 +4161,9 @@ export default function GameDetailPage() {
                 )}
 
                 {/* Other Reviews */}
+                {/* 88.6.1-74 (owner ruling D8-r2, GD1): the reviews' never-loaded notice stands where
+                    "No reviews yet" stood. */}
+                <SectionLoadFailedNotice state={reviewsLoadState} />
                 {reviews.length > 0 ? (
                     <div className="space-y-4">
                         {reviews
@@ -3829,7 +4216,9 @@ export default function GameDetailPage() {
                 ) : (
                     // D2 mini-formula rider (Rule 2, same-class as the 4 ruled sites):
                     // muted + text-sm, no "!", state + path.
-                    <p className="text-content-muted text-sm">No reviews yet. Be the first to review this game.</p>
+                    !reviewsLoadState.showError && (
+                        <p className="text-content-muted text-sm">No reviews yet. Be the first to review this game.</p>
+                    )
                 )}
             </div>
 

@@ -123,8 +123,11 @@ vi.mock('@/app/components/RsvpSection', () => ({
     return <div data-testid="rsvp-section" />;
   },
 }));
+// 88.6.1-74 (SR-7, SR-26): the stub echoes its `userRsvpStatus` prop, nothing else changes.
 vi.mock('@/app/components/BallotSection', () => ({
-  default: () => <div data-testid="ballot-section" />,
+  default: ({ userRsvpStatus }: { userRsvpStatus?: string | null }) => (
+    <div data-testid="ballot-section" data-rsvp-status={userRsvpStatus ?? ''} />
+  ),
 }));
 vi.mock('@/app/components/BringGamePicker', () => ({ default: () => null }));
 vi.mock('@/app/components/BringSummary', () => ({
@@ -272,6 +275,8 @@ export interface RenderGameDetailOptions {
    * `<main className="flex-1">`), so plan 04's focus floor has a `main`. Default false.
    */
   inMain?: boolean;
+  /** 88.6.1-74: render with the self identity unresolved (`selfUuid` undefined). Default false. */
+  identityPending?: boolean;
 }
 
 // 88.6.1-74: the container a render with `inMain` uses. Testing Library's cleanup removes a
@@ -296,8 +301,9 @@ export function renderGameDetail(options: RenderGameDetailOptions = {}) {
     game = GAME,
     search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`,
     inMain = false,
+    identityPending = false,
   } = options;
-  h.selfUuid = SELF_UUID;
+  h.selfUuid = identityPending ? undefined : SELF_UUID;
   h.search = search;
   (gamesAPI.getGame as Mock).mockResolvedValue(game);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue(events);
@@ -3889,5 +3895,524 @@ describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', ()
     await flushMacrotask();
     expect(screen.getByRole('heading', { name: 'Azul' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+  });
+});
+
+// owner ruling D8-r2 (2026-10-13; copy rows GD1 / GD2 / E16) and its follow-up (2026-10-15; E17,
+// E18, GD3, GD4): the seven never-loaded section lines, each written once here.
+const REVIEWS_LOAD_FAILED = "Couldn't load reviews.";
+const SESSIONS_LOAD_FAILED = "Couldn't load game sessions.";
+const ROSTER_LOAD_FAILED = "Couldn't load who's coming.";
+const REPLIES_LOAD_FAILED = "Couldn't load who's replied.";
+const BRINGS_LOAD_FAILED = "Couldn't load who's bringing games.";
+const MY_RSVPS_LOAD_FAILED = "Couldn't load your RSVPs.";
+const GROUP_ROLE_LOAD_FAILED = "Couldn't load your group role.";
+const SECTION_LINES = [
+  REVIEWS_LOAD_FAILED,
+  SESSIONS_LOAD_FAILED,
+  ROSTER_LOAD_FAILED,
+  REPLIES_LOAD_FAILED,
+  BRINGS_LOAD_FAILED,
+  MY_RSVPS_LOAD_FAILED,
+  GROUP_ROLE_LOAD_FAILED,
+];
+const CODELESS = () => new Error('side read down');
+const OTHER_YES = { rsvps: [{ User: { id: OTHER_UUID }, status: 'yes' }] };
+const OTHER_BRINGS = [{ User: { id: OTHER_UUID } }];
+const BRINGING = 'Bringing a game';
+const UPCOMING_SESSION = {
+  ...SESSION,
+  id: 'evt-up',
+  comments: 'Next week at the cafe',
+  start_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+};
+const SIDE_REVIEW = {
+  id: 'rev-1',
+  rating: 4,
+  review_text: 'Great with five players',
+  is_recommended: true,
+  User: { id: OTHER_UUID, username: 'Someone Else' },
+};
+const CTA = 'Plan a game night with this';
+
+// The visible line of a notice (never its polite region).
+function visibleLine(text: string): HTMLElement {
+  const line = screen.getAllByText(text).find((n) => n.getAttribute('role') !== 'status');
+  if (!line) throw new Error(`no visible line for "${text}"`);
+  return line;
+}
+
+// The Retry whose accessible description is the given notice line.
+function retryFor(text: string): HTMLElement {
+  const button = screen
+    .getAllByRole('button', { name: 'Retry' })
+    .find((b) => b.getAttribute('aria-describedby') && document.getElementById(b.getAttribute('aria-describedby') as string)?.textContent === text);
+  if (!button) throw new Error(`no Retry described by "${text}"`);
+  return button;
+}
+
+// The lowest ancestor of `a` that also contains `b`.
+function commonAncestor(a: Element, b: Element): Element {
+  let el: Element | null = a;
+  while (el && !el.contains(b)) el = el.parentElement;
+  return el as Element;
+}
+
+function expectNoSectionLines() {
+  for (const line of SECTION_LINES) expect(screen.queryAllByText(line), line).toHaveLength(0);
+}
+
+describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: REAL_LOCATION,
+    });
+  });
+
+  it('SR-1. a failed RSVP-list refresh keeps the participant\'s pill and shows RF1', async () => {
+    const r = renderEventDetail();
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue(OTHER_YES);
+    await screen.findByText('Going');
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText('Going')).toBeInTheDocument();
+  });
+
+  it('SR-2. a failed brings refresh keeps the dice and shows RF1', async () => {
+    const r = renderEventDetail();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    const count = screen.getAllByLabelText(BRINGING).length;
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getAllByLabelText(BRINGING)).toHaveLength(count);
+  });
+
+  it('SR-3. a side 403 never silences RF1 over the kept event (P-2 under C10)', async () => {
+    const r = renderEventDetail();
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue(OTHER_YES);
+    await screen.findByText('Going');
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValueOnce(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.getByText('Going')).toBeInTheDocument();
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  it('SR-4. a first-render roster 403 keeps the event with no notice of any kind (control)', async () => {
+    renderEventDetail();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(FORBIDDEN());
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryAllByText(ROSTER_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-5. a new event never inherits the previous event\'s dice', async () => {
+    const r = renderEventDetail();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture({ id: SECOND_EVENT_ID }));
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(SERVER_500());
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledWith(SECOND_EVENT_ID));
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await flushMacrotask();
+    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+    // The section notice shows; a CODED failure reads the register sentence for its code (SR-23's
+    // mechanism), so the expected line comes from getFetchErrorMessage, never typed.
+    await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(SERVER_500()))).toHaveLength(2));
+    expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-6. a failed group-events refresh keeps Upcoming and the session count, and shows RF1', async () => {
+    const r = renderGameDetail({ events: [UPCOMING_SESSION, SESSION] });
+    await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    const sessions = (await screen.findByRole('heading', { name: /^Game Sessions \(\d+\)$/ })).textContent;
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Upcoming (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Game Sessions \(/ }).textContent).toBe(sessions);
+  });
+
+  it('SR-7. a failed RSVP fan-out refresh keeps the ballot\'s RSVP input and shows RF1', async () => {
+    const r = renderGameDetail({ events: [UPCOMING_SESSION, SESSION] });
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [{ User: { id: SELF_UUID }, status: 'yes' }] });
+    await waitFor(() => expect(screen.getByTestId('ballot-section')).toHaveAttribute('data-rsvp-status', 'yes'));
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByTestId('ballot-section')).toHaveAttribute('data-rsvp-status', 'yes');
+  });
+
+  // A loaded member game view with an upcoming session, a past session and a review.
+  async function renderLoadedGroupGame(options: RenderGameDetailOptions = {}) {
+    const r = renderGameDetail({ events: [UPCOMING_SESSION, SESSION], reviews: [SIDE_REVIEW], ...options });
+    await screen.findByText(SIDE_REVIEW.review_text);
+    await screen.findByRole('button', { name: CTA });
+    return r;
+  }
+
+  function expectGroupContentWithdrawn() {
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Upcoming \(/ })).toBeNull();
+    expect(screen.queryByText(SESSION.comments)).toBeNull();
+    expect(screen.queryByText(UPCOMING_SESSION.comments)).toBeNull();
+    expect(screen.queryByText(SIDE_REVIEW.review_text)).toBeNull();
+    expect(screen.queryByRole('button', { name: CTA })).toBeNull();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByText('Game not found')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  }
+
+  it('SR-8. a group-events access answer withdraws the group content and keeps the game', async () => {
+    const r = await renderLoadedGroupGame();
+    const calls = (eventsAPI.getGroupEvents as Mock).mock.calls.length;
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((eventsAPI.getGroupEvents as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    expectGroupContentWithdrawn();
+  });
+
+  it('SR-8b. a reviews access answer withdraws the group content and keeps the game', async () => {
+    const r = await renderLoadedGroupGame();
+    const calls = (gameReviewsAPI.getGameReviews as Mock).mock.calls.length;
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((gameReviewsAPI.getGameReviews as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    expectGroupContentWithdrawn();
+  });
+
+  it('SR-8c. a roster not_found withdraws the group content and is never "Game not found"', async () => {
+    const r = await renderLoadedGroupGame();
+    const calls = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('Not found', 'not_found', 404));
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    expectGroupContentWithdrawn();
+  });
+
+  it('SR-9. a roster that first runs on run 2 and fails shows its section notice, never RF1 (D12)', async () => {
+    h.userSub = undefined;
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(SERVER_500());
+    h.userSub = 'auth0|self-sub';
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    // The section notice shows; a CODED failure reads the register sentence for its code (SR-23's
+    // mechanism), so the expected line comes from getFetchErrorMessage, never typed.
+    await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(SERVER_500()))).toHaveLength(2));
+    expect(screen.queryAllByText(ROSTER_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-10. a game roster that first runs on run 2 and fails shows its section notice, never RF1 (D12)', async () => {
+    h.userSub = undefined;
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await flushMacrotask();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(SERVER_500());
+    h.userSub = 'auth0|self-sub';
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    // The section notice shows; a CODED failure reads the register sentence for its code (SR-23's
+    // mechanism), so the expected line comes from getFetchErrorMessage, never typed.
+    await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(SERVER_500()))).toHaveLength(2));
+    expect(screen.queryAllByText(GROUP_ROLE_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-11. with identity unresolved, a loaded group-events read that fails shows RF1 (the derive rule)', async () => {
+    const r = renderGameDetail({ identityPending: true });
+    const sessions = (await screen.findByRole('heading', { name: /^Game Sessions \(\d+\)$/ })).textContent;
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: /^Game Sessions \(/ }).textContent).toBe(sessions);
+  });
+
+  it('SR-12. a game-only caller (group reads 403 on every run) never sees RF1 or a notice', async () => {
+    const r = renderGameDetail();
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(FORBIDDEN());
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(FORBIDDEN());
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await flushMacrotask();
+    const groupCalls = (eventsAPI.getGroupEvents as Mock).mock.calls.length;
+    const reviewCalls = (gameReviewsAPI.getGameReviews as Mock).mock.calls.length;
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((eventsAPI.getGroupEvents as Mock).mock.calls.length).toBe(groupCalls + 1));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    expectNoSectionLines();
+    expect((gameReviewsAPI.getGameReviews as Mock).mock.calls.length).toBe(reviewCalls);
+  });
+
+  it('SR-13. a group withdrawal that removes the focused session control lands focus on the game title (C12)', async () => {
+    const r = renderGameDetail({ inMain: true, role: 'owner', events: [UPCOMING_SESSION] });
+    await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    const control = (await screen.findAllByRole('button', { name: 'Session actions' }))[0];
+    control.focus();
+    expect(document.activeElement).toBe(control);
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Upcoming (1)' })).toBeNull());
+    const title = screen.getByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+  });
+
+  it('SR-14. an older run\'s brings answer never overwrites a newer run\'s (review r2 #85)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await flushMacrotask();
+    let settleOlder: (v: unknown) => void = () => {};
+    (eventBringsAPI.getEventBrings as Mock)
+      .mockImplementationOnce(() => new Promise((resolve) => { settleOlder = resolve; }))
+      .mockResolvedValueOnce(OTHER_BRINGS);
+    const before = (eventBringsAPI.getEventBrings as Mock).mock.calls.length;
+    forceRefresh(r.rerender, 'auth0|older-sub');
+    // The older run must reach its brings read (held) before the newer run starts.
+    await waitFor(() => expect((eventBringsAPI.getEventBrings as Mock).mock.calls.length).toBe(before + 1));
+    forceRefresh(r.rerender, 'auth0|newer-sub');
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await act(async () => settleOlder([]));
+    await flushMacrotask();
+    expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0);
+  });
+
+  it('SR-15. a user-triggered brings write lands for an upper-case event id in the URL (review r2 #86)', async () => {
+    // EVENT_ID is all digits, so its upper case is the same string; this id carries hex letters.
+    const LETTERED_EVENT_ID = 'abcdef12-3456-4789-8abc-def123456789';
+    h.selfUuid = SELF_UUID;
+    h.search = `event_id=${LETTERED_EVENT_ID.toUpperCase()}&group_id=${GROUP_ID}`;
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture({ id: LETTERED_EVENT_ID }));
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('owner'));
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
+    render(<GameDetailPage />);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
+    await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
+    await flushMacrotask();
+    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+  });
+
+  it('SR-16. an event whose access comes back never shows the pre-drop dice as current (review r2 #310)', async () => {
+    const r = renderEventDetail();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await screen.findByRole('heading', { name: NO_ACCESS_TITLE });
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture());
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(SERVER_500());
+    forceRefresh(r.rerender, 'auth0|third-sub');
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await flushMacrotask();
+    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+  });
+
+  it('SR-17. a group read\'s 401 takes the primary-401 path: the sign-in line, never a silent page (review r2 #311)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(e401);
+    forceRefresh(r.rerender);
+    expect(await screen.findByText(getFetchErrorMessage(e401))).toBeInTheDocument();
+    expect(screen.getByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+  });
+
+  it('SR-18. the event roster\'s own 403 removes the member actions and keeps the event (review r2 #316)', async () => {
+    const r = renderEventDetail({ role: 'owner' });
+    await screen.findByRole('button', { name: 'Event actions' });
+    const calls = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Event actions' })).toBeNull();
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('SR-19. the event roster\'s 401 is an ordinary side failure: RF1, the member actions kept (review r3 M-01)', async () => {
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    const r = renderEventDetail({ role: 'owner' });
+    await screen.findByRole('button', { name: 'Event actions' });
+    const calls = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(UNAUTHORIZED());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.getAllByText(RF1)).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Event actions' })).toBeInTheDocument();
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('SR-20. reviews that failed and never loaded: no count, no "Be the first", the D8-r2 notice and a working Retry', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(CODELESS());
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(screen.getAllByText(REVIEWS_LOAD_FAILED)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Reviews' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Reviews \(\d+\)$/ })).toBeNull();
+    expect(screen.queryByText('No reviews yet. Be the first to review this game.')).toBeNull();
+    expect(retryFor(REVIEWS_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Review' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    const calls = (gamesAPI.getGame as Mock).mock.calls.length;
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([SIDE_REVIEW]);
+    await user.click(retryFor(REVIEWS_LOAD_FAILED));
+    expect(await screen.findByRole('heading', { name: 'Reviews (1)' })).toBeInTheDocument();
+    expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(calls + 1);
+    await waitFor(() => expect(screen.queryAllByText(REVIEWS_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-21. sessions that failed and never loaded: no count, no empty sentence, the D8-r2 notice; tab return recovers', async () => {
+    renderGameDetail();
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(CODELESS());
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(screen.getAllByText(SESSIONS_LOAD_FAILED)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Sessions' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Game Sessions \(/ })).toBeNull();
+    expect(screen.queryByText(/^No game sessions yet/)).toBeNull();
+    expect(screen.getByText('Show Filters & Sort')).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([SESSION]);
+    await act(async () => fireVisibility('visible'));
+    expect(await screen.findByRole('heading', { name: 'Game Sessions (1)' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryAllByText(SESSIONS_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-22. an event roster that failed and never loaded shows its notice above the RSVP section; Retry recovers', async () => {
+    const user = userEvent.setup();
+    renderEventDetail();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(CODELESS());
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(screen.getAllByText(ROSTER_LOAD_FAILED)).toHaveLength(2));
+    const line = visibleLine(ROSTER_LOAD_FAILED);
+    expect(line.compareDocumentPosition(screen.getByTestId('rsvp-section')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: /^Participants \(/ })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    const calls = (eventsAPI.getEvent as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('owner'));
+    await user.click(retryFor(ROSTER_LOAD_FAILED));
+    await waitFor(() => expect(screen.queryAllByText(ROSTER_LOAD_FAILED)).toHaveLength(0));
+    expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(calls + 1);
+  });
+
+  it('SR-23. a CODED never-loaded reviews failure shows the register sentence, not the ratified line', async () => {
+    renderGameDetail({ role: 'member' });
+    const eNet = new ApiError('Network', 'network', 0);
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(eNet);
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(eNet))).toHaveLength(2));
+    expect(screen.queryAllByText(REVIEWS_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-24. an RSVP list that failed and never loaded: no "No reply", no ballot, the E17 notice; Retry recovers', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'member' });
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValue(CODELESS());
+    await screen.findByText('Someone Else');
+    await waitFor(() => expect(screen.getAllByText(REPLIES_LOAD_FAILED)).toHaveLength(2));
+    const card = commonAncestor(screen.getByRole('heading', { name: /^Participants \(/ }), visibleLine(REPLIES_LOAD_FAILED));
+    expect(within(card as HTMLElement).queryByTestId('rsvp-section')).toBeNull();
+    expect(screen.queryByText('No reply')).toBeNull();
+    expect(screen.queryByTestId('ballot-section')).toBeNull();
+    const calls = (eventsAPI.getEvent as Mock).mock.calls.length;
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue(OTHER_YES);
+    await user.click(retryFor(REPLIES_LOAD_FAILED));
+    expect(await screen.findByText('Going')).toBeInTheDocument();
+    expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(calls + 1);
+    expect(screen.getByTestId('ballot-section')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryAllByText(REPLIES_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-25. brings that failed and never loaded show the E18 notice; a user-triggered Set clears it', async () => {
+    renderEventDetail({ role: 'member' });
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(CODELESS());
+    await screen.findByText('Someone Else');
+    await waitFor(() => expect(screen.getAllByText(BRINGS_LOAD_FAILED)).toHaveLength(2));
+    const card = commonAncestor(screen.getByRole('heading', { name: /^Participants \(/ }), visibleLine(BRINGS_LOAD_FAILED));
+    expect(within(card as HTMLElement).queryByTestId('rsvp-section')).toBeNull();
+    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-26. an RSVP fan-out that failed and never loaded shows the GD3 notice and no upcoming ballot', async () => {
+    renderGameDetail({ events: [UPCOMING_SESSION, SESSION] });
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValue(CODELESS());
+    const upcoming = await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    await waitFor(() => expect(screen.getAllByText(MY_RSVPS_LOAD_FAILED)).toHaveLength(2));
+    const card = commonAncestor(upcoming, visibleLine(MY_RSVPS_LOAD_FAILED));
+    expect(within(card as HTMLElement).queryByText(SESSION.comments)).toBeNull();
+    expect(within(card as HTMLElement).queryByTestId('ballot-section')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('SR-27. a game roster that failed and never loaded shows the GD4 notice in the game card; Retry recovers', async () => {
+    const user = userEvent.setup();
+    renderGameDetail();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(CODELESS());
+    const title = await screen.findByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(screen.getAllByText(GROUP_ROLE_LOAD_FAILED)).toHaveLength(2));
+    const card = commonAncestor(title, visibleLine(GROUP_ROLE_LOAD_FAILED));
+    expect(within(card as HTMLElement).queryByRole('heading', { name: /^Game Sessions/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: CTA })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    const calls = (gamesAPI.getGame as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('member'));
+    await user.click(retryFor(GROUP_ROLE_LOAD_FAILED));
+    expect(await screen.findByRole('button', { name: CTA })).toBeInTheDocument();
+    expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(calls + 1);
+    await waitFor(() => expect(screen.queryAllByText(GROUP_ROLE_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-28. a failed user-triggered brings refresh changes nothing (seam pass S2-4)', async () => {
+    renderEventDetail();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    const count = screen.getAllByLabelText(BRINGING).length;
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(SERVER_500());
+    await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
+    await flushMacrotask();
+    expect(screen.getAllByLabelText(BRINGING)).toHaveLength(count);
+    expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0);
   });
 });
