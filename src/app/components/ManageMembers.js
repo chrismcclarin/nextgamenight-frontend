@@ -19,6 +19,9 @@ import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { SelectControl } from '../../components/ui/Input';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 
+// Copy row G1 (Phase 88.6.1 D-30, owner-ratified 2026-10-04): the opener says what its dialog title and its receipt say.
+const RESET_INVITE_LINK_LABEL = 'Reset invite link';
+
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
     // Phase 87.3-05 (PR-B): resolve the caller's own Users.id UUID once via the
@@ -102,8 +105,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
        WHY. §6.2's first row routes a load failure of a surface's primary data to the banner,
        and the string being retired is one of the eight ad-hoc "Failed to X" copies P1 forbids
-       authoring. Keeping the ERROR (the 88-14 idiom, `friends/page.js:180-182` /
-       `GroupLibrary.js`) is what lets `useFetchErrorState` read `ApiError.code` and pick the
+       authoring. Keeping the ERROR (the 88-14 idiom, `friends/page.js`'s
+       `setFriendsLoadError(` error object / `GroupLibrary.js`) is what lets `useFetchErrorState` read `ApiError.code` and pick the
        ratified copy, including the 403 line — a flattened string cannot be re-classified.
 
        Collapsing this back to a string, or back to a bare red `<p>`, is a decision: it
@@ -430,12 +433,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
        FND-88-12-02): reject-pending is the DIALOG tier, and its body says only
        "They'll be removed from the pending list."
 
-       The ratified copy in 88-UI-SPEC.md:623 was "They'll be removed from the group and
-       will need a new invite to rejoin." The second clause is FALSE against the shipped
-       backend and was cut, not softened: `routes/groups.js:1237-1238` hard-deletes only the
+       The ratified copy in 88-UI-SPEC.md's "Reject pending member" row was "They'll be
+       removed from the group and will need a new invite to rejoin." The second clause is
+       FALSE against the shipped backend and was cut, not softened: the reject route in
+       `routes/groups.js` (its `destroy({ force: true })`) hard-deletes only the
        UserGroup row — it does not rotate the group's invite_token and writes no block-list
-       entry — and `:738-744` still matches that STANDING token, with `:857-869` admitting
-       the holder as a full `member` ("QR invites bypass pending"). So a rejected person
+       entry — and the join-by-token lookup (`where: { invite_token: token }`) still matches
+       that STANDING token, with its membership create admitting the holder as a full
+       `member` ("QR invites bypass pending"). So a rejected person
        reusing the same link does not need a new invite at all; they skip the pending queue
        entirely. The tier is unaffected and stands as ratified.
 
@@ -576,6 +581,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         >
                             Invite members
                         </Button>
+                        {/* W016 row 20: aria-disabled, never native, so the reset dialog's close restore can land on this opener; its state guard stays the refusal, because the control pressed while a reset runs is the dialog's confirm (plan 88.6.1-22), not this opener. See DECISION Phase 88.6.1-50. */}
                         {canManageMembers && (
                             <Button
                                 variant="secondary"
@@ -584,11 +590,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     if (resettingInvite) return;
                                     resetInviteGate.trigger();
                                 }}
-                                disabled={resettingInvite}
+                                aria-disabled={resettingInvite || undefined}
                                 className="text-content-status-error"
                                 title="Invalidate the current invite link and generate a new one"
                             >
-                                {resettingInvite ? 'Resetting…' : 'Reset QR link'}
+                                {resettingInvite ? 'Resetting…' : RESET_INVITE_LINK_LABEL}
                             </Button>
                         )}
                     </div>
@@ -860,8 +866,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                     /* DECISION Phase 88 AR-DEC-3 (owner, 2026-08-05): keep
                                                                        KebabMenu-internal two-tap OVER routing through
                                                                        useConfirmAction — the hook tier cannot survive an
-                                                                       auto-closing menu item (D-07). The arming tap at
-                                                                       KebabMenu.js:76-86 is the ONLY tap that does not close
+                                                                       auto-closing menu item (D-07). The arming tap (the
+                                                                       first-tap branch of KebabMenu.js's item handler,
+                                                                       `if (armedIndex !== index) {`) is the ONLY tap that does not close
                                                                        the menu; hook-routing either arms without ever
                                                                        committing (silently breaking mobile remove) or closes
                                                                        on the arming tap. UI-SPEC §11.2 lists this gate as
@@ -992,7 +999,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </p>
             </Modal.Body>
             <Modal.Footer>
-                {/* DECISION Phase 88.6.1-50 (W016 rows 12-15 / D-35, D-39): the pressed control stays
+                {/* DECISION Phase 88.6.1-50 (W016 rows 12-15, 20 / D-35, D-39): the pressed control stays
                     focusable. Chosen: aria-disabled plus a synchronous first-line REF refusal
                     (transferInFlightRef) on the control the user pressed, Transfer ownership,
                     released only in its handler's finally. The sibling Cancel KEEPS its native
@@ -1016,8 +1023,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     pressed control carries aria-disabled with a first-line refusal through
                     leaveInFlightRef, released in handleLeaveGroupConfirmed's finally, and its
                     sibling Cancel stays native. Its busy look is plan 88.6.1-22's owner-approved
-                    gated danger pair (D-39), never an opacity utility. Changing this is a
-                    decision, not a cleanup. */}
+                    gated danger pair (D-39), never an opacity utility.
+
+                    Row 20, the header's reset opener: aria-disabled while a reset runs, so it
+                    stays focusable and the reset dialog's close restore can land on it (W014
+                    case 1). Its existing first-line state guard stays its only refusal; a second
+                    ref latch is rejected (two refusals for one gate), because the control pressed
+                    while a reset runs is the dialog's confirm, not this opener. Changing this is
+                    a decision, not a cleanup. */}
                 <Modal.Action
                     variant="secondary"
                     disabled={transferring}

@@ -1,7 +1,7 @@
 import { test, expect, type APIResponse, type Page, type Route } from '@playwright/test';
 
 import { forceLightMode } from './support/contrast';
-import { expectGatedPair, holdWrites, type WriteHold } from './support/inFlight';
+import { expectGatedPair, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 
 /**
  * Phase 88.6.1-42 (D-09a, Req 9; Req 5 H1, D-05 as amended by D-57) — Manage Members at 375px.
@@ -267,6 +267,37 @@ test.describe('Phase 88.6.1-50 — a pressed Transfer ownership keeps focus at 3
     const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
     await expect(dialog).toBeVisible({ timeout: 15_000 });
     await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+
+    // Copy row G1 at 375px (D-30): the renamed opener fits the header row beside Invite members.
+    // About 296px of buttons in a 327px row (a 351px dialog, 12px body padding a side). If the
+    // one-row check fails, STOP: the rename wraps the header. Show the owner a 375px screenshot
+    // before changing anything, and never shorten the ratified words.
+    const reset = dialog.getByRole('button', { name: 'Reset invite link', exact: true });
+    const invite = dialog.getByRole('button', { name: 'Invite members', exact: true });
+    await expect(reset).toBeVisible();
+    await expect(invite).toBeVisible();
+    // boundingBox reads the transformed box; the dialog opens with a zoom animation.
+    await settleAnimations(dialog);
+    const resetBox = await reset.boundingBox();
+    const inviteBox = await invite.boundingBox();
+    const dialogBox = await dialog.boundingBox();
+    if (!resetBox || !inviteBox || !dialogBox) throw new Error('G1 header geometry: a box did not measure');
+    const geometry = JSON.stringify({ resetBox, inviteBox, dialogBox });
+    expect(resetBox.x, `the reset opener starts inside the dialog (${geometry})`).toBeGreaterThanOrEqual(dialogBox.x);
+    expect(resetBox.x + resetBox.width, `the reset opener ends inside the dialog (${geometry})`).toBeLessThanOrEqual(
+      dialogBox.x + dialogBox.width,
+    );
+    expect(
+      Math.abs(resetBox.y - inviteBox.y),
+      `G1: "Reset invite link" shares one row with "Invite members" at 375px (${geometry})`,
+    ).toBeLessThanOrEqual(2);
+    const header = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(header.scrollWidth, 'G1: the renamed header causes no horizontal page scroll at 375px').toBeLessThanOrEqual(
+      header.innerWidth,
+    );
 
     const trigger = dialog.getByRole('button', { name: 'Member actions for E2E Removable' });
     const transferDialog = page.getByRole('dialog', { name: /Transfer ownership to E2E Removable\?/ });

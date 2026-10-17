@@ -50,7 +50,9 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
-// FriendInvitePanel calls `toast(...)` directly AND `toast.error/.success`.
+// ManageMembers itself calls `toast.success` / `toast.error`; FriendInvitePanel no longer
+// imports `sonner` (plan 88.6.1-27 deleted its only toast caller). The callable base is kept
+// because it matches the library's real shape: a function that carries methods.
 vi.mock('sonner', () => {
   const toast = Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() });
   return { toast };
@@ -302,7 +304,7 @@ describe('ManageMembers + FriendInvitePanel stacked open (BLK-88-12-01)', () => 
 // `useConfirmAction` calls it (grep, 2026-09-22) — one tree, one run per rule set, no resize.
 //
 // SCOPING. Every dialog here is a Radix `DialogPrimitive.Content` PORTALLED to `document.body`
-// (`dialog.tsx:59-60`), so the two open dialogs are SIBLINGS under body, not nested — a
+// (`DialogPrimitive.Content` inside `DialogPortal` in `dialog.tsx`), so the two open dialogs are SIBLINGS under body, not nested — a
 // `getByRole('dialog')` would throw on two matches, and scoping to either one alone is exactly the
 // per-dialog audit this test exists to go beyond. The audited container is therefore
 // `document.body`: the smallest element that holds BOTH.
@@ -320,7 +322,7 @@ async function openRemoveOverMembers() {
   renderManageMembers();
   const outer = await screen.findByRole('dialog', { name: 'Manage Group Members' });
   await screen.findByText('Target');
-  // The desktop entry point (`ManageMembers.js:636-641`, `title="Remove from group"`) — the one
+  // The desktop entry point (`title="Remove from group"`) — the one
   // that opens the DIALOG tier; the phone kebab's Remove is KebabMenu-internal two-tap (AR-DEC-3).
   const opener = screen.getAllByTitle('Remove from group')[0] as HTMLElement;
   opener.focus();
@@ -376,9 +378,10 @@ describe('ManageMembers — THE STACKED PAIR, ConfirmDialog over Modal (88.6-45,
      Radix hides "others" through the `aria-hidden` package (1.2.6), whose live-region carve-out
      (its issue #10) refuses to hide any ANCESTOR of an `[aria-live]` node and descends to hide the
      siblings instead — and the members Modal ALWAYS contains one (the compact `FetchErrorBanner`,
-     empty-first since plan 88.6-36, `ManageMembers.js:492`). So the outer `role=dialog`
+     empty-first since plan 88.6-36, the compact identity `FetchErrorBanner` on
+     `selfIdentityErrorState`). So the outer `role=dialog`
      `aria-modal=true` container and its live region stay exposed while every focusable under it
-     is hidden (test 2b, green). FRAMEWORK-sourced: `dialog.tsx:47-80` composes
+     is hidden (test 2b, green). FRAMEWORK-sourced: `const DialogContent` in `dialog.tsx` composes
      `DialogPrimitive.Content` unmodified. Not patched at this call site by the plan's own rule. */
   it.fails('2. OPEN FINDING — PRE-DECIDED: while the top dialog is open, the OUTER dialog carries aria-hidden="true" or inert', async () => {
     const { outer } = await openRemoveOverMembers();

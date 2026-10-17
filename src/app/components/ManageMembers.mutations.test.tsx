@@ -19,7 +19,7 @@ const PENDING_UUID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 // and the admin affordances render.
 //
 // Phase 88.6-19: hoisted to a MUTABLE holder (the `h` idiom already used in
-// `ManageMembers.modals.test.tsx:34-37`) so a test can switch WHICH member the
+// `ManageMembers.modals.test.tsx`, its `const h = vi.hoisted(`) so a test can switch WHICH member the
 // caller is before rendering. The leave-confirm flow this file now pins only
 // exists on a non-owner's OWN row, and it is unreachable with a hardcoded owner.
 // Every pre-existing test is byte-equivalent: `beforeEach` restores OWNER_UUID.
@@ -507,7 +507,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
   it('a 403 gets the ratified PERMISSION copy — no new string was authored for it', async () => {
     // D-31's explicit instruction: the kebab 403 needs NO new string, because
     // MESSAGE_BY_CODE.forbidden already carries the ratified permission line.
-    // `ApiError(message, code, status)` — re-read at `api.ts:155`, not assumed.
+    // `ApiError(message, code, status)` — re-read at `api.ts`'s `export class ApiError`, not assumed.
     const forbidden = new ApiError('whatever the backend said', 'forbidden', 403);
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(forbidden);
     await openMembersModal();
