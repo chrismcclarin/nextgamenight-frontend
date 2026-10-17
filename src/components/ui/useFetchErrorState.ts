@@ -28,6 +28,9 @@
  * scoped to this one query, torn down the instant the error clears. That
  * preserves the pre-migration userProfile `visibilitychange` recovery (mobile
  * close-and-reopen auto-recover) without touching the global default.
+ * [AMENDED Phase 88.6.1-69: the re-attempt is tracked as an AUTOMATIC attempt. It never counts
+ * as the person's failed retry (`retryFailed`), and while it is in flight it does not end the
+ * failure episode; a success clears the error and the flag with it.]
  */
 import * as React from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -375,21 +378,38 @@ export function useFetchErrorState<TData = unknown, TError = unknown>(
     latestErrorRef.current = error;
   });
 
+  // Only the newest attempt decides: a superseded one settles into nothing (the id guard).
+  const settleAttempt = React.useCallback((id: number, phase: RetryAttempt['phase']) => {
+    setAttempt((current) => (current !== null && current.id === id ? { ...current, phase } : current));
+  }, []);
+
   const retry = React.useCallback(async () => {
     const id = ++attemptIdRef.current;
+    // A person press always supersedes whatever attempt is current, automatic included.
     setAttempt({ id, byPerson: true, errorAtStart: latestErrorRef.current, phase: 'inFlight' });
-    // Only the newest attempt decides: a superseded one settles into nothing.
-    const settleAs = (phase: RetryAttempt['phase']) =>
-      setAttempt((current) => (current !== null && current.id === id ? { ...current, phase } : current));
     try {
       const result = await Promise.resolve(refetch());
-      settleAs(verdictPhase(result));
+      settleAttempt(id, verdictPhase(result));
       return result;
     } catch (err) {
-      settleAs('awaitUnknown');
+      settleAttempt(id, 'awaitUnknown');
       throw err;
     }
-  }, [refetch]);
+  }, [refetch, settleAttempt]);
+
+  // The tab-return re-attempt, tracked as an AUTOMATIC attempt: recorded only when no attempt is
+  // current, settled exactly as `retry` settles, and never able to raise the flag (the `byPerson`
+  // check at the verdict). Tracking it is what keeps a never-loaded query's `pending` window from
+  // ending an episode the person's failed retry started.
+  const startAutomaticAttempt = React.useCallback(() => {
+    const id = ++attemptIdRef.current;
+    const errorAtStart = latestErrorRef.current;
+    setAttempt((current) => current ?? { id, byPerson: false, errorAtStart, phase: 'inFlight' });
+    Promise.resolve(refetch()).then(
+      (result) => settleAttempt(id, verdictPhase(result)),
+      () => settleAttempt(id, 'awaitUnknown')
+    );
+  }, [refetch, settleAttempt]);
 
   // Resolve the verdict at COMMIT, before paint (a `useEffect` would paint a frame with the wrong
   // link). Each set runs only when its value changes, so an unstable error identity can at worst
@@ -419,14 +439,16 @@ export function useFetchErrorState<TData = unknown, TError = unknown>(
 
   // Error-only refocus recovery — scoped to THIS query, active ONLY while
   // erroring, and independent of the global `refetchOnWindowFocus: false`.
+  // AMENDED Phase 88.6.1-69: the re-attempt runs on EVERY visible return while erroring, as
+  // before (even while a person's retry is in flight), now through `startAutomaticAttempt`.
   React.useEffect(() => {
     if (!showError) return;
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') void refetch();
+      if (document.visibilityState === 'visible') startAutomaticAttempt();
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [showError, refetch]);
+  }, [showError, startAutomaticAttempt]);
 
   return { showError, message, code, retry, retryFailed };
 }
