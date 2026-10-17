@@ -49,6 +49,34 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   // The reasoning is the DECISION marker at the submit button.
   const eventSubmitInFlightRef = useRef(false);
   const [eventSubmitting, setEventSubmitting] = useState(false);
+  /* DECISION Phase 88.6.1-81 (dialog session): a dialog SESSION ends when the dialog closes
+     (`modal` true to false at the always-mounted hosts, groupHomePage and groupPlanning, where the
+     SAME instance comes back on reopen) or when the component unmounts (the conditional gameDetail
+     hosts, a fresh instance per open). The `[modal]` effect's cleanup is the one mechanism for both:
+     it bumps `dialogSessionRef`, clears `dialogOpenRef` and releases plan 26's latch and
+     `eventSubmitting`, because the latch belongs to the session. `onSubmit` captures the session it
+     started in. A write that settles after its session ended still calls `onEventCreated` (the host
+     refresh) and still fires its receipt toast, but never calls `modaltoggle()`, and touches the
+     form (the resets, the edit-mode ballot notice) only if no NEWER session is open; its `finally`
+     releases nothing, since a newer session may hold its own press. CHOSEN over: blocking close
+     while creating (owner ruling 2026-10-05, D-55 (b): closable is fine; and `apiFetch` has no
+     timeout, so a hung request would trap the person in the dialog); a latch that survives the
+     close (a reopened dialog read `Creating...` for a press it never had and refused a different
+     event); skipping `onEventCreated` for a stale write (the host page would never refresh); and
+     running the resets unconditionally (they wiped what was typed into a reopened dialog).
+     Removing the session check is a decision, not a cleanup. */
+  const dialogSessionRef = useRef(0);
+  const dialogOpenRef = useRef(false);
+  useEffect(() => {
+    if (!modal) return undefined;
+    dialogOpenRef.current = true;
+    return () => {
+      dialogSessionRef.current += 1;
+      dialogOpenRef.current = false;
+      eventSubmitInFlightRef.current = false;
+      setEventSubmitting(false);
+    };
+  }, [modal]);
   /* DECISION Phase 88.1-21 (H1): the fetched week anchor is stored as ONE object,
      `{ monday, fromNavigation }`, chosen OVER a bare `Date` plus reading `currentWeekStart`
      back out at the consumer. The two facts — WHICH week landed, and whether it landed because
@@ -709,6 +737,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const onSubmit = async (e) => {
     e.preventDefault();
     if (eventSubmitInFlightRef.current) return;
+    // Plan 88.6.1-81: the dialog session this submit belongs to (DECISION Phase 88.6.1-81
+    // (dialog session), at the refs). CURRENT: no close or unmount since this press. NO NEWER
+    // SESSION OPEN: current, or the dialog is closed and was not reopened.
+    const session = dialogSessionRef.current;
+    const sessionIsCurrent = () => dialogSessionRef.current === session;
+    const noNewerSessionOpen = () => sessionIsCurrent() || !dialogOpenRef.current;
     eventSubmitInFlightRef.current = true;
     setEventSubmitting(true);
     try {
@@ -800,7 +834,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               })));
             } catch (ballotErr) {
               logger.info('Error updating ballot options:', errCtx(ballotErr));
-              setBallotError('Event updated but ballot options could not be saved.');
+              if (noNewerSessionOpen()) {
+                setBallotError('Event updated but ballot options could not be saved.');
+              }
             }
           }
 
@@ -844,23 +880,38 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
            `grep -rn 'onEventCreated=' src --include='*.js'` (five JSX mounts in
            `groupPlanning/page.js`, `gameDetail/page.js` x3, `groupHomePage/page.js`),
            and every handler they name refetches, toggles or bumps a refresh key —
-           none navigates. */
+           none navigates.
+           ——— AMENDED Phase 88.6.1-81 (dialog session), original reasoning above KEPT AS HISTORY:
+           the order toast, then `modaltoggle()`, then the resets is unchanged for a write whose
+           dialog session is still open. For a write whose session ended mid-request (the dialog was
+           closed, or unmounted at a conditional host) the toast still fires here, `modaltoggle()` is
+           skipped (the person's own close already ran it; a second call is what closed a REOPENED
+           dialog) and the resets run only if no newer session is open. See
+           DECISION Phase 88.6.1-81 (dialog session) at the refs. */
         toast.success(editingEvent ? 'Event updated' : 'Event created');
-        modaltoggle();
-        // Reset form. Phase 66-01: derivedSelectedSlot resets automatically
-        // when newEvent.start_date is cleared by createEventForm — no separate
-        // selectedTimeSlot reset needed.
-        setNewEvent(createEventForm(group_id, groupMembers));
-        setBallotOptions([]);
-        setBallotError(null);
-        setUseVisualCalendar(true);
+        if (sessionIsCurrent()) {
+          modaltoggle();
+        }
+        if (noNewerSessionOpen()) {
+          // Reset form. Phase 66-01: derivedSelectedSlot resets automatically
+          // when newEvent.start_date is cleared by createEventForm — no separate
+          // selectedTimeSlot reset needed.
+          setNewEvent(createEventForm(group_id, groupMembers));
+          setBallotOptions([]);
+          setBallotError(null);
+          setUseVisualCalendar(true);
+        }
       } catch (error) {
         logger.info(`Error ${editingEvent ? 'updating' : 'creating'} event:`, errCtx(error));
         toast.error(getFetchErrorMessage(error));
       }
     } finally {
-      eventSubmitInFlightRef.current = false;
-      setEventSubmitting(false);
+      // Plan 88.6.1-81: release only the session this press belongs to. After a close the cleanup
+      // already released it, and a newer session may hold its own press.
+      if (sessionIsCurrent()) {
+        eventSubmitInFlightRef.current = false;
+        setEventSubmitting(false);
+      }
     }
   };
 
@@ -1470,7 +1521,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 2026-10-05: fine). REJECTED: blocking close while creating (createGroup's shape,
                 88.6.1-15). A late success cannot reopen a closed dialog, because every host's
                 `modaltoggle` closes (groupPlanning's toggle runs from the closure captured while the
-                dialog was open). Gating any close path here is a decision, not a cleanup. */}
+                dialog was open). Gating any close path here is a decision, not a cleanup.
+                AMENDED Phase 88.6.1-81: a request that outlives its dialog never closes, resets or
+                latches a reopened one — see DECISION Phase 88.6.1-81 (dialog session); the hosts'
+                own `onEventCreated` closes are the hosts'. */}
             <Button variant="secondary" onClick={modaltoggle}>
               Cancel
             </Button>
