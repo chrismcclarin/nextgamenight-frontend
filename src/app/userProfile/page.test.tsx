@@ -69,6 +69,9 @@ const h = vi.hoisted(() => ({
   patterns: [] as undefined | Record<string, unknown>[],
   // Plan 88.6.1-59: the patterns query's error, read by the mocked `useQuery` (isError / error).
   patternsError: null as null | Error,
+  // Wave 7 CI gate (88.6.1-21 / 59): the query's `isPending`, so a case can hold a never-loaded
+  // query in flight the way TanStack reports it (pending, no error) and the page shows its loading line.
+  patternsPending: false,
   // Plan 88.6.1-59: ONE stable refetch for the patterns query, so a case can assert on it.
   refetchPatterns: vi.fn(),
   // Plan 88.6.1-59 (P11): the one cache entry the fake QueryClientContext hands back for the
@@ -151,7 +154,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
     useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
     useQuery: () => ({
       data: h.patterns,
-      isPending: false,
+      isPending: h.patternsPending,
       isError: Boolean(h.patternsError),
       error: h.patternsError,
       refetch: h.refetchPatterns,
@@ -297,6 +300,7 @@ beforeEach(() => {
   h.self = undefined;
   h.patterns = [];
   h.patternsError = null;
+  h.patternsPending = false;
   h.patternsEntry = {};
   h.authError = null;
   h.showTutorial = false;
@@ -3266,6 +3270,46 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
 
     await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
     expect(document.activeElement).not.toBe(document.body);
+  });
+
+  // Wave 7 CI gate (2026-10-17, run 39020174955): the PRESS half of P7, where a real browser takes
+  // it. A never-loaded TanStack query reports `pending` at the press, so the page swaps the full
+  // banner for its loading line while Try again holds focus, and focus moves THEN (P7's success
+  // rerender finds it already moved). DECISION Phase 88.6.1-59 (AC-29 / RF1, D-05) and DECISION
+  // Phase 88.6.1-70 (Req 5, focusTarget) send it to the panel's level-3 heading before plan 21's
+  // floor; e2e/error-recovery-floor.spec.ts test 1 and e2e/report-form-survives-recovery.spec.ts
+  // follow this record.
+  it('P7b: a first-load Try again lands focus on the Availability Schedules heading at the press, not the page h1', async () => {
+    const user = userEvent.setup();
+    h.patterns = undefined;
+    h.patternsError = new Error('boom');
+    let release: () => void = () => {};
+    h.refetchPatterns.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          h.patternsError = null;
+          h.patternsPending = true;
+          release = () => {
+            h.patternsPending = false;
+            h.patterns = [];
+            resolve({ isError: false });
+          };
+        })
+    );
+    const { rerender } = renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    await rerenderPage(rerender);
+
+    expect(screen.getByText('Loading schedules...')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+    expect(document.activeElement).not.toBe(screen.getByRole('heading', { level: 1 }));
+
+    await act(async () => { release(); });
+    await rerenderPage(rerender);
+    expect(screen.queryByText('Loading schedules...')).toBeNull();
+    expect(document.activeElement).toBe(schedulesHeading());
   });
 
   it('P8: a 500 or a network failure over the kept schedules shows RF1 above them', async () => {
