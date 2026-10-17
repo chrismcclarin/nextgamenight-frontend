@@ -7,8 +7,11 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 //     — FetchErrorBanner's full `Try again` and `Report this`, its compact `Retry`, and
 //     ErrorFallback's `Reload page`.
 //   - Req 7 shape: each paints the house focus ring on KEYBOARD focus and not on a pointer press.
-//   - Req 5: when a retry removes the focused control, focus lands on the page floor (`main h1`,
-//     else `main`), never on <body>.
+//   - Req 5: when a retry removes the focused control, focus lands on the host's `focusTarget` when
+//     it passes one, else the page floor (`main h1`, else `main`), never on <body>. /userProfile's
+//     schedules banner passes the panel's level-3 heading (DECISION Phase 88.6.1-59 (AC-29 / RF1,
+//     D-05) at its mount; DECISION Phase 88.6.1-70 (Req 5, focusTarget) in FetchErrorBanner), so
+//     test 1 expects that heading; test 2's notice passes none, so it expects the floor.
 //   - D-47 / copy row B1: a failed compact retry is told — the visible line AND the same polite
 //     region read "Some personal controls are still unavailable.", and a second failure re-speaks.
 //   - AC-9's in-flight half, where the banner stays mounted: the pressed retry keeps focus, carries
@@ -98,7 +101,7 @@ test.describe('error recovery controls on a phone (88.6.1-21: AC-10, Req 5, Req 
   // opt-out. A runtime skip, not a collection filter.
   test.skip(({ isMobile }) => !isMobile, 'AC-10 at 375px: the recovery-control floors are phone-scoped');
 
-  test('1: the full banner on /userProfile — floor, ring, and focus on the page heading at the press', async ({ page }) => {
+  test('1: the full banner on /userProfile — floor, ring, and focus on the panel heading at the press', async ({ page }) => {
     let mode: 'fail' | 'hold' = 'fail';
     let retryHits = 0;
     let release: () => void = () => {};
@@ -145,10 +148,13 @@ test.describe('error recovery controls on a phone (88.6.1-21: AC-10, Req 5, Req 
     await page.keyboard.press('Enter');
     await expect.poll(() => retryHits).toBe(1);
 
-    // The caller swapped the banner for its loading line at the press; focus is on the floor.
+    // The caller swapped the banner for its loading line at the press; focus is on the banner's
+    // focusTarget, the Schedules panel's own heading (plan 59's D-05 wiring, which supersedes this
+    // test's original `main h1` floor expectation: wave 7 CI gate, run 39020174955), never <body>.
     await expect(retry).toHaveCount(0);
-    const heading = page.getByRole('main').getByRole('heading', { level: 1 });
+    const heading = page.getByRole('main').getByRole('heading', { level: 3, name: 'Availability Schedules' });
     await expect(heading).toBeFocused();
+    expect(await page.evaluate(() => document.activeElement === document.body), 'never <body>').toBe(false);
 
     // A second Enter lands on the heading and retries nothing.
     await page.keyboard.press('Enter');

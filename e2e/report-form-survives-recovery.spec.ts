@@ -13,8 +13,9 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 //   - a recovery while the person is typing (the error hook's tab-return re-attempt) removes the
 //     banner and the form STAYS open with every typed character (the bug this task fixes: the form
 //     used to live inside the banner and died with it);
-//   - closing the form lands focus on the page heading (the banner passes no focusTarget, so plan
-//     20's floor), never on <body>.
+//   - closing the form lands focus on the Schedules panel's own heading (the banner's
+//     focusTarget, handed to the report form as its fallback: DECISION Phase 88.6.1-59 (AC-29 /
+//     RF1, D-05) and DECISION Phase 88.6.1-70 (Req 5, focusTarget)), never on <body>.
 //
 // NOT RUN LOCALLY. The `phone` project needs the CI-only Auth0 login (`.auth/user.json`; C-14 in
 // .planning/codebase/FE-TESTING-CONVENTIONS.md). Typecheck and collection are the local proof; the
@@ -109,10 +110,14 @@ test.describe('a typed report survives a recovery on a phone (88.6.1-69, Req 11)
     await expect(dialog).toBeVisible();
     await expect(description).toHaveValue(prefill + TYPED);
 
-    // Closing it: the opener is gone and the banner passed no focusTarget, so plan 20's floor.
+    // Closing it: the opener is gone, so the banner's focusTarget (the panel's own heading; plan
+    // 59 wired it after this spec was written, superseding its `main h1` expectation: wave 7 CI
+    // gate, run 39020174955).
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toBeFocused();
+    await expect(
+      page.getByRole('main').getByRole('heading', { level: 3, name: 'Availability Schedules' }),
+    ).toBeFocused();
     expect(await page.evaluate(() => document.activeElement === document.body), 'never <body>').toBe(false);
   });
 });
