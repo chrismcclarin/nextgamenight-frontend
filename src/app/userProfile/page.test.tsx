@@ -4270,8 +4270,10 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
     const { usersAPI } = await import('@/lib/api');
     h.selfError = new Error('boom');
     render(<Profile />);
-    // The calendar zone and the collection zone each show the identity notice.
-    expect(await screen.findAllByRole('button', { name: 'Retry' })).toHaveLength(2);
+    // The calendar zone, the ACTIVE availability panel (Radix mounts only that one) and the
+    // collection zone each show the identity notice (amended by 88.6.1-61 Task 2, review 65).
+    expect(await screen.findAllByRole('button', { name: 'Retry' })).toHaveLength(3);
+    expect(screen.queryByText('No schedules set. Add one to get started.')).toBeNull();
 
     expect(screen.queryByRole('heading', { name: 'Notification Preferences' })).toBeNull();
     expect(screen.queryAllByRole('switch')).toHaveLength(0);
@@ -4298,5 +4300,108 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
     expect(screen.getByRole('textbox', { name: 'Username' })).toHaveValue('Typed Name');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+  });
+
+  // ---- 88.6.1-61 Task 2 (AC-29, review 65, review 222) ----
+
+  const STILL_LOADING = 'Still loading your account — please try again in a moment.';
+
+  // A Retry that supplies the row: the mocked refetch swaps the harness to a resolved identity,
+  // and the retry's own state write re-renders the page over it.
+  function retrySuppliesTheRow() {
+    h.refetchSelf.mockImplementation(async () => {
+      h.selfError = null;
+      h.self = harnessSelfRow();
+      return { isError: false, data: h.self };
+    });
+  }
+
+  it('I3: a kept row whose refetch failed shows the calendar control and the collection, with no identity notice', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    h.selfError = new Error('boom');
+    renderProfile();
+
+    // Positive signal: the collection list renders under the kept row.
+    await screen.findByRole('button', { name: 'Remove Catan' });
+    expect(screen.getByRole('button', { name: 'Connect Google Calendar' })).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: 'Retry' })).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Notification Preferences' })).toBeInTheDocument();
+  });
+
+  it('I7: with no row a Save press says the account is still loading, and neither panel says the user has nothing', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    const user = userEvent.setup();
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+
+    await user.click(screen.getByRole('button', { name: '+ Add Schedule' }));
+    await user.click(screen.getByRole('button', { name: 'Save Schedule' }));
+    await waitFor(() => expect(toastMock().error).toHaveBeenCalledWith(STILL_LOADING));
+    expect(availabilityAPI.createRecurringPattern).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('tab', { name: 'Specific Dates' }));
+    await screen.findByRole('heading', { name: 'Specific Date Overrides' });
+    expect(screen.queryByText(/No specific overrides set\./)).toBeNull();
+    expect(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '+ Add Override' }));
+    await user.click(screen.getByRole('button', { name: 'Save Override' }));
+    await waitFor(() =>
+      expect(toastMock().error.mock.calls.filter((call) => call[0] === STILL_LOADING)).toHaveLength(2)
+    );
+    expect(availabilityAPI.createOverride).not.toHaveBeenCalled();
+  });
+
+  it('I8: a successful Retry in the collection card lands focus on the My Game Collection heading', async () => {
+    const user = userEvent.setup();
+    h.selfError = new Error('boom');
+    retrySuppliesTheRow();
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+
+    const card = screen.getByRole('heading', { name: /^My Game Collection/ }).closest('.card') as HTMLElement;
+    await user.click(within(card).getByRole('button', { name: 'Retry' }));
+
+    // The notice leaves once the row is in hand; focus lands on the section's own heading.
+    await waitFor(() => expect(within(card).queryByRole('button', { name: 'Retry' })).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: /^My Game Collection/ }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('I9: a successful Retry in the Availability Settings card lands focus on the Availability Schedules heading', async () => {
+    const user = userEvent.setup();
+    h.selfError = new Error('boom');
+    retrySuppliesTheRow();
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+
+    const card = document.getElementById('availability-settings') as HTMLElement;
+    await user.click(within(card).getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(within(card).queryByRole('button', { name: 'Retry' })).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Availability Schedules' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("I10: with no row the BGG search still announces its results (plan 60's region is outside the hidden card)", async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([
+      { bgg_id: 1, name: 'Azul', year_published: 2017 },
+      { bgg_id: 2, name: 'Catan', year_published: 1995 },
+    ]);
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByText('Found 2 games.')).toBeInTheDocument();
   });
 });
