@@ -2211,7 +2211,9 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 // 41's (which never touched this file); the plan-45 must_have amendment predicted exactly this.
 //
 // THE AUDITED TREES HAVE NO `matchMedia` FORK. `gameDetail/page.js` calls `window.matchMedia` at
-// exactly two sites (`:2444`, `:2513`, measured 2026-09-22), both inside the game-TITLE overflow
+// exactly two sites (the two `window.matchMedia('(max-width: 767px)')` reads inside the game
+// title's expand handlers in `gameDetail/page.js`; measured 2026-09-22, re-counted 2026-10-16 by
+// plan 88.6.1-52), both inside the game-TITLE overflow
 // handlers on the page body — neither is reachable from any dialog rendered here. One tree, one run
 // per rule set per dialog, no resize.
 //
@@ -3265,5 +3267,54 @@ describe('gameDetail Sessions date filter explains a backwards range (E5, 88.6.1
     fireEvent.change(to, { target: { value: '10000-01-01' } });
     expect(to.value).toBe('10000-01-01');
     expectToDateValid(to);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-52 (D-46 / AC-23, R7-M7) — both gameDetail breadcrumbs reach the house standard:
+// the house focus ring on the Home and group links (DECISION Phase 88.3-17, per site), the ">"
+// separators hidden from assistive tech, and min-w-0 on the nav. Separators are read by TEXT, as
+// groupPlanning/page.test.tsx explains: a role query would pass without the attribute.
+// ---------------------------------------------------------------------------
+const HOUSE_RING_TOKENS = [
+  'focus:outline-hidden',
+  'focus-visible:ring-2',
+  'focus-visible:ring-focus-ring',
+  'focus-visible:ring-offset-2',
+];
+
+function expectHouseBreadcrumb(nav: HTMLElement) {
+  for (const token of ['inline-block', 'max-w-full', 'wrap-break-word', 'min-w-0']) {
+    expect(nav).toHaveClass(token);
+  }
+  const links = within(nav).getAllByRole('link');
+  expect(links).toHaveLength(2);
+  for (const link of links) {
+    for (const token of HOUSE_RING_TOKENS) {
+      expect(link.className.split(/\s+/)).toContain(token);
+    }
+  }
+  const separators = within(nav).getAllByText('>');
+  expect(separators).toHaveLength(2);
+  for (const sep of separators) {
+    expect(sep).toHaveAttribute('aria-hidden', 'true');
+  }
+}
+
+describe('gameDetail breadcrumbs — ring, hidden separators, min-w-0 (D-46 / R7-M7, 88.6.1-52)', () => {
+  it('BC-1: the event view breadcrumb rings Home and the group link, hides both separators and carries min-w-0', async () => {
+    renderEventDetail({ role: 'owner' });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    await within(nav).findByRole('link', { name: 'The Group' });
+    expectHouseBreadcrumb(nav);
+  });
+
+  it('BC-2: the game view breadcrumb rings Home and the group link, hides both separators and carries min-w-0', async () => {
+    renderGameDetail({ role: 'member' });
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    await within(nav).findByRole('link', { name: 'Group' });
+    expectHouseBreadcrumb(nav);
   });
 });

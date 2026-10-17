@@ -2073,8 +2073,24 @@ export default function GameDetailPage() {
                intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
                actually renders, so it is the one the padding-budget e2e loads. */
             <div className="p-3 md:p-6 max-w-6xl mx-auto">
-                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
+                {/* DECISION Phase 88.6.1-52 (D-46 / R7-M7): this breadcrumb and the game view's below
+                    reach the house standard. CHOSEN (a): the house focus ring on both links, per
+                    site (`DECISION Phase 88.3-17`, which chose per-site OVER a global
+                    `a:focus-visible` rule) — 2px ring + 2px offset sits 4px outside the link, inside
+                    the pill's 12px/8px padding and clear of a separator's 8px side margin, so on a
+                    one-line pill it never paints over adjacent text. REJECTED: the inset form (that
+                    is for flush strips and tight boxes; every breadcrumb in the app uses the outset
+                    form). CHOSEN (b): `aria-hidden` on the `>` separators — they are decoration; a
+                    screen reader read "greater than" between crumbs; they look the same. CHOSEN
+                    (c): `min-w-0` on the nav — inert under today's block parent, kept so a future
+                    flex parent cannot let `min-width: auto` beat `max-w-full` and re-open UAT3-D1.
+                    This DEPARTS FROM the UAT3-D1 close-out marker in `groupHomePage/page.js`
+                    ("deliberately NOT added … add it if one ever becomes one"); SPEC Requirement 11
+                    (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place. These
+                    four links plus Profile's Home link (plan 88.6.1-53) are the five D-46 counted.
+                    Removing the ring, the attribute or the cap is a decision, not a cleanup. */}
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                     {effectiveGroupId && singleEvent?.Group?.name && (
                         /* Phase 71.1-02 Blocker 2 fix: only render the group
                            segment when we actually have a group name. The
@@ -2086,9 +2102,9 @@ export default function GameDetailPage() {
                            in-depth so old data paths can never display the
                            literal-word fallback. */
                         <>
-                            <span className="text-content-muted mx-2">{'>'}</span>
+                            <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                             {(userScope === 'group-member' || userScope === 'pending') ? (
-                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors">
+                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                                     {singleEvent.Group.name}
                                 </Link>
                             ) : (
@@ -2103,7 +2119,7 @@ export default function GameDetailPage() {
                             )}
                         </>
                     )}
-                    <span className="text-content-muted mx-2">{'>'}</span>
+                    <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     {/* D-03 / R2 #171 (T-88.6-138, same shape as plan 17's breadcrumb): the
                         weight was the ONLY thing marking the current page, so 700 is KEPT as the
                         hierarchy outcome AND the distinction gains a PROGRAMMATIC cue. Without
@@ -2879,17 +2895,18 @@ export default function GameDetailPage() {
            two branches), not a cleanup. */
         <div className="p-3 md:p-6 max-w-6xl mx-auto">
             {/* Breadcrumbs */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
+            {/* Same ring, hidden separators and `min-w-0` as the event-view breadcrumb — `DECISION Phase 88.6.1-52 (D-46 / R7-M7)`. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 {group_id && (
                     <>
-                        <span className="text-content-muted mx-2">{'>'}</span>
+                        <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                         {(userScope === 'group-member' || userScope === 'pending') ? (
                             /* Group-context (game_id present) view: group-members
                                see the link with the group name (or generic "Group"
                                while loading — graceful, not load-bearing for the
                                game-only flow). */
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors">
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                                 {singleEvent?.Group?.name || 'Group'}
                             </Link>
                         ) : singleEvent?.Group?.name ? (
@@ -2903,7 +2920,7 @@ export default function GameDetailPage() {
                         ) : null}
                     </>
                 )}
-                <span className="text-content-muted mx-2">{'>'}</span>
+                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {/* D-03 / R2 #171 (T-88.6-138): the current-page twin of the single-event
                     breadcrumb above — 700 kept as hierarchy, `aria-current` added so the
                     distinction is not weight-only. */}
@@ -3649,7 +3666,7 @@ export default function GameDetailPage() {
                             </label>
                             <Textarea
                                 id="review_text"
-                                /* Phase 88.6-45 (R7 house rule, `Input.tsx:11-19`): `name` beside `id` on both review
+                                /* Phase 88.6-45 (R7 house rule, `Input.tsx`'s `HOUSE RULE (88-33 Task 8, fork 5` docblock): `name` beside `id` on both review
                                    controls, found by the composed audit (`textarea#review_text[name=?]` / `input#recommended[name=?]:
                                    missing name attribute`). The handlers read `e.target.value` / `.checked`, so inert to behaviour. */
                                 name="review_text"
