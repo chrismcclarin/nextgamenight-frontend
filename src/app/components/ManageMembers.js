@@ -8,7 +8,7 @@ import FriendInvitePanel from './FriendInvitePanel';
 import { toast } from 'sonner';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
@@ -21,6 +21,10 @@ import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 
 // Copy row G1 (Phase 88.6.1 D-30, owner-ratified 2026-10-04): the opener says what its dialog title and its receipt say.
 const RESET_INVITE_LINK_LABEL = 'Reset invite link';
+
+// The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
+const LOAD_OK = Object.freeze({ isError: false });
+const LOAD_FAILED = Object.freeze({ isError: true });
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -208,7 +212,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     received: data === null ? 'null' : typeof data,
                 });
                 setError(new Error("The members request didn't complete."));
-                return;
+                return LOAD_FAILED;
             }
 
             setMembers(data || []);
@@ -221,7 +225,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             // role" — the effect re-runs when identity resolves (selfUuid in deps).
             if (!selfUuid) {
                 setPendingInvites([]);
-                return;
+                return LOAD_OK;
             }
             const currentUserMember = data.find(m => m.id === selfUuid);
             const role = currentUserMember?.UserGroup?.role || null;
@@ -244,6 +248,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             } else {
                 setPendingInvites([]);
             }
+            // The roster loaded; a failed pending-invites read above is swallowed and still OK.
+            return LOAD_OK;
         } catch (error) {
             logger.info('Error fetching members:', errCtx(error));
             if (!isCurrent()) return;
@@ -252,6 +258,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             setError(
                 error instanceof Error ? error : new Error("The members request didn't complete.")
             );
+            return LOAD_FAILED;
         } finally {
             if (isCurrent()) setLoading(false);
         }
@@ -571,6 +578,39 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             <Modal.Header>
                 {canManageMembers ? 'Manage Group Members' : 'Members'}
             </Modal.Header>
+            {/* DECISION Phase 88.6.1-78 (AC-29 / RF1, owner ruling 2026-10-05): a failed REFRESH keeps
+                what loaded (the roster, or the empty-roster sentence of a roster that loaded empty, D-50,
+                ruling Y) and shows plan 88.6.1-70's shared notice with its Retry, gated by
+                `rosterRetained` (a has-loaded flag for this group, never a row count).
+                CHOSEN: one notice mounted for as long as the dialog is open, above the whole roster
+                block (the rows, the empty sentence and the pending invites, which one fetch loads) and
+                outside the dialog's scrolling body (owner ruling #242, the marker below), so its polite
+                region exists before any failure and its recovery survives the rows leaving; no
+                `focusTarget`, because inside a Modal the floor finds this dialog's title, the section
+                heading D-05 names for this host.
+                REJECTED: (a) the full banner above the kept rows, D-09a's own clause, AMENDED by D-51
+                (ratified 2026-10-05): a "couldn't load" banner over a loaded roster contradicts itself;
+                (b) the notice inside the rows branch: its region would be inserted with the rows, and it
+                would unmount with them on an access answer, dropping focus to the dialog container;
+                (c) a ref into the Modal header as `focusTarget`: `ModalHeader` takes no ref, and the
+                floor reaches the same element (plan 88.6.1-42's rejection (a), same reason); (d) a
+                sentence or a notice written in this file (contract C7); (e) the full banner over a
+                roster that loaded empty (D-50); (f) the notice inside the scrolling body (owner ruling
+                #242, the marker below).
+                Changing this is a decision, not a cleanup. */}
+            {/* DECISION Phase 88.6.1-78 (#242, owner 2026-10-14): CHOSEN the notice pinned under the
+                dialog title, between the dialog's header and its scrolling body, so after a failed
+                background refresh the notice and its Retry stay in view however far the member list is
+                scrolled, at the cost of about one member row (~44px) of dialog height while the error
+                shows (its spacing is applied only while it shows, the header's own inset).
+                REJECTED the notice inside the scrolling body under the Invite buttons (this plan as
+                first written): once the person has scrolled to a member and acted, the notice and
+                Retry are above the top of the list and nothing on screen says the list is stale.
+                Precedent: the home group list made the same choice for the same reason (plan
+                88.6.1-77, its notice outside its scrolling list). Mockup
+                https://claude.ai/artifact/JMvFMJXD1M6GkDt6xGBuYi (v2, frame 3).
+                Moving this back into the scrolling body is a decision, not a cleanup. */}
+            <RefreshFailedNotice state={membersErrorState} retained={rosterRetained} className="px-3 pt-3 md:px-6" />
             <Modal.Body>
                 {userRole && userRole !== 'pending' && (
                     <div className="mb-4 pb-4 border-b border-line flex flex-wrap gap-2">
