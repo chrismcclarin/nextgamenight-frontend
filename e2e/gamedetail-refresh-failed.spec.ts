@@ -10,7 +10,10 @@ import { settleAnimations } from './support/inFlight';
 // view's primary action, when fully inside the first screen in the healthy layout, stays fully
 // inside it with the notice's footprint F added. F is the distance from the RF1 line's top to the
 // card's top (its margin included), measured in the failed layout itself, because releasing the
-// identity read can also change what renders above the card (the timezone nudge).
+// identity read can also change what renders above the card (the timezone nudge). Wave 9 gate
+// (2026-10-17, run 39026336968): the EVENT arm takes REACH as a DIRECT measurement in the failed
+// layout instead (the RSVP group's own bottom, once the notice is on screen); see the DECISION marker
+// in expectRf1Layout. The game arm keeps the projection.
 //
 // A FAILED LAYOUT ASSERTION IS A STOP FOR THE OWNER'S MOCKUP, never an ad-hoc restyle (plan 70's
 // contract C8 (d); the revision-lap-3 manifest's reach check).
@@ -102,10 +105,15 @@ function rf1Line(page: Page): { retry: Locator; line: Locator } {
   return { retry, line: retry.locator('..') };
 }
 
+/** REACH input. `bottom` = a PROJECTION: a bottom measured in the healthy layout, plus F (the game
+ *  arm). `direct` = a DIRECT measurement in the failed layout itself, gated on the healthy bottom
+ *  having been inside the first screen (the event arm, wave 9 gate). */
+type Reach = { bottom: number } | { direct: Locator; healthyBottom: number };
+
 async function expectRf1Layout(
   page: Page,
   card: Locator,
-  primary: { bottom: number } | null,
+  primary: Reach | null,
   testInfo: { annotations: Array<{ type: string; description?: string }> },
   label: string
 ) {
@@ -137,6 +145,31 @@ async function expectRf1Layout(
 
   const footprint = cardBox!.y - lineBox!.y;
   expect(footprint, 'the notice has a footprint').toBeGreaterThan(0);
+  // DECISION Phase 88.6.1-74 (wave 9 gate, orchestrator-routed 2026-10-17, CI run 39026336968): the
+  // EVENT arm measures REACH DIRECTLY — the RSVP group's own bottom in the failed layout, after the
+  // notice is on screen and animations settle, against the first screen — OVER the projection
+  // (healthy bottom + F) the game arm still uses. The projection failed there at 584 + 88 = 672 > 667
+  // while the retry screenshot showed the group's real bottom near 549px, inside the screen: the
+  // reference came from a different layout state (Part A), and the fixture's date wraps to two lines
+  // at 375px, so the reference moved with the calendar date. A direct overflow is still a STOP for
+  // the owner's mockup, never a restyle. Going back to the projection here is a decision, not a cleanup.
+  if (primary && 'direct' in primary) {
+    const reach = await primary.direct.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return { bottom: box.bottom + window.scrollY, scrollY: window.scrollY, innerHeight: window.innerHeight };
+    });
+    testInfo.annotations.push({
+      type: `${label} RF1 reach (direct)`,
+      description: `F=${footprint}px, viewport=${viewport!.width}x${viewport!.height}, healthy bottom=${primary.healthyBottom}, failed-layout bottom=${reach.bottom} (scrollY ${reach.scrollY})`,
+    });
+    if (primary.healthyBottom <= viewport!.height) {
+      expect(
+        reach.bottom,
+        `STOP (owner mockup): REACH — with the notice on screen the primary action's bottom is ${reach.bottom}px (measured directly; F=${footprint}px), past the ${reach.innerHeight}px first screen`
+      ).toBeLessThanOrEqual(reach.innerHeight);
+    }
+    return;
+  }
   testInfo.annotations.push({
     type: `${label} RF1 footprint`,
     description: `F=${footprint}px, viewport=${viewport!.width}x${viewport!.height}, primary bottom=${primary ? primary.bottom : 'n/a'}`,
@@ -170,7 +203,9 @@ test('event page: a failed background refresh keeps the event and shows the noti
   await settleAnimations(page.getByRole('main'));
   const rsvpBox = await rsvpGroup.boundingBox();
   expect(rsvpBox, 'the RSVP group has a box').not.toBeNull();
-  const reference = { bottom: rsvpBox!.y + rsvpBox!.height };
+  // Wave 9 gate: Part A now only GATES the direct reach check (was the healthy RSVP group inside the
+  // first screen at all?); the measurement itself is taken in the failed layout (expectRf1Layout).
+  const healthyBottom = rsvpBox!.y + rsvpBox!.height;
   await page.unrouteAll({ behavior: 'ignoreErrors' });
 
   // Part B — the refresh failure.
@@ -251,7 +286,9 @@ test('event page: a failed background refresh keeps the event and shows the noti
 
   await expect(page.getByText("We couldn't load this event")).toHaveCount(0);
   await expect(heading).toBeVisible();
-  await expectRf1Layout(page, card, reference, testInfo, 'event');
+  // Wave 9 gate: the notice is above the KEPT content — the RSVP group is still on the page.
+  await expect(rsvpGroup).toBeVisible();
+  await expectRf1Layout(page, card, { direct: rsvpGroup, healthyBottom }, testInfo, 'event');
 
   // Retry succeeds (the route passes through again): the notice leaves and focus is on the title.
   await retry.click();
