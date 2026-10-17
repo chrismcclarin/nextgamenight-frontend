@@ -291,6 +291,25 @@ export default function AvailabilityForm({
     }
   };
 
+  /* DECISION Phase 88.6.1-39 (carry-in, deferred-items "AvailabilityForm stale server alert"):
+     every submit ATTEMPT clears the previous server-failure line before react-hook-form
+     validates, so at most one failure line is on screen, and announced, at a time. Before this,
+     the line was cleared only inside the accepted submit (`onSubmit`), which react-hook-form never
+     runs on invalid values — a server failure followed by an invalid resubmit left the OLD server
+     line beside the NEW time-slot alert, two lines for two different attempts. The clear runs in
+     the submit event itself, so it commits before validation sets the time-slot error. CHOSEN
+     OVER an `onInvalid` arm on `useAppForm`'s `handleAppSubmit` (a signature change to a hook
+     shared by two forms, for one form's state) and OVER clearing in an effect when `submitCount`
+     moves (it runs after the commit that inserted the new alert, so both lines are on screen for
+     a render). A press refused by the in-flight latch clears nothing that is showing: the line is
+     already cleared at the start of the running submit. The time-slot alert keyed on
+     `submitCount` and both latches are unchanged. Changing this is a decision, not a cleanup. */
+  const submitAvailability = handleAppSubmit(onSubmit);
+  const handleFormSubmit = (e) => {
+    setSubmitError(null);
+    return submitAvailability(e);
+  };
+
   const handleUnavailableToggle = () => {
     setValue('is_unavailable', !isUnavailable);
   };
@@ -438,7 +457,7 @@ export default function AvailabilityForm({
 
   return (
     <>
-    <form onSubmit={handleAppSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleFormSubmit} className="space-y-6">
       {/* Header Section */}
       <div className="border-b border-line pb-4">
         <div className="flex items-center gap-2 text-sm text-content-secondary">
@@ -614,7 +633,9 @@ export default function AvailabilityForm({
           nothing moves focus on failure (the CTA keeps it, 88.6-42); R5 absent at first render.
           Recorded, not changed here: a server failure followed by an invalid resubmit can leave
           this alert beside the time-slot alert (two different outcomes; `onSubmit` never runs on
-          invalid values). */}
+          invalid values). [AMENDED Phase 88.6.1-39 (carry-in): CLOSED — every submit attempt
+          now clears this line before validation (`handleFormSubmit`, see DECISION Phase
+          88.6.1-39 there), so it never stands beside a newer time-slot alert.] */}
       {submitError && (
         <div className="bg-status-error-subtle border border-status-error rounded-btn p-3">
           <p role="alert" className="text-sm text-content-status-error">

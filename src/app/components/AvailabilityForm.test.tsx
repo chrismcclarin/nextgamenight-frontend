@@ -880,6 +880,9 @@ describe('88.6.1-39 carry-in — a new submit attempt clears the previous server
   it('S1: server failure, then an invalid resubmit: only the time-slot alert is on screen', async () => {
     const SERVER_LINE = 'Something went wrong. Refresh the page to try again.';
     const SLOT_LINE = 'Please select at least one time slot, or mark yourself as unavailable';
+    // Arrange the server failure here: an earlier describe leaves this mock resolving, and
+    // clearAllMocks keeps implementations.
+    (availabilityFormAPI.submitResponse as unknown as Mock).mockRejectedValueOnce(new Error('Network down'));
     const user = userEvent.setup();
     render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
     const unavailable = screen.getByRole('checkbox', { name: /unavailable this week/i });
