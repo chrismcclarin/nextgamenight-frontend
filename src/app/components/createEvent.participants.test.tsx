@@ -26,6 +26,8 @@ const fixtures = vi.hoisted(() => ({
     { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', username: 'Alice', email: 'alice@example.com' },
     { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', username: 'Bob', email: 'bob@example.com' },
   ],
+  // Plan 88.6.1-68 (ED5): the EventScheduler stub's latest props.
+  schedulerProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -48,7 +50,13 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 }));
 
 // Scheduling surface — out of scope here and heavy to mount.
-vi.mock('@/app/components/EventScheduler', () => ({ default: () => <div>scheduler</div> }));
+// Plan 88.6.1-68 (ED5): it also records its latest props (the other arms never read them).
+vi.mock('@/app/components/EventScheduler', () => ({
+  default: (props: Record<string, unknown>) => {
+    fixtures.schedulerProps = props;
+    return <div>scheduler</div>;
+  },
+}));
 vi.mock('@/app/components/EventHeatmapBackground', () => ({ default: () => null }));
 vi.mock('@/app/components/GameComboInput', () => ({ default: () => <div>game input</div> }));
 vi.mock('@/app/components/QuickSuggestions', () => ({ default: () => null }));
@@ -77,6 +85,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import CreateEventDefault from './createEvent';
 import { eventsAPI, groupsAPI } from '@/lib/api';
+import { ballotAPI } from '@/lib/api';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
@@ -809,5 +818,44 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
     expect(toastSpies.error).toHaveBeenCalledTimes(1);
     expect(props.modaltoggle).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('create-event-submit')).toBeNull();
+  });
+
+  it('ED4: the reopened dialog reads the game-vote options only after the first update settles', async () => {
+    let server: Record<string, unknown> = v1;
+    vi.mocked(eventsAPI.getEvent).mockImplementation((async () => server) as never);
+    const A = render(<CreateEvent {...baseProps()} editingEvent={v1} />);
+    await screen.findByRole('button', { name: 'Update Event' });
+    fireEvent.change(comments(), { target: { value: 'v2 ballot notes' } });
+    const put = deferred<unknown>();
+    (eventsAPI.updateEvent as Mock).mockImplementationOnce(() => put.promise);
+    fireEvent.submit(screen.getByTestId('create-event-submit').closest('form') as HTMLFormElement);
+    await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(1));
+    server = { ...v1, comments: 'v2 ballot notes' };
+    A.unmount();
+
+    const ballotReadsBefore = vi.mocked(ballotAPI.getBallot).mock.calls.length;
+    render(<CreateEvent {...baseProps()} editingEvent={v1} />);
+    await settle();
+    expect(vi.mocked(ballotAPI.getBallot).mock.calls.length).toBe(ballotReadsBefore);
+
+    await act(async () => {
+      put.resolve({});
+    });
+    await waitFor(() => expect(vi.mocked(ballotAPI.getBallot).mock.calls.length).toBe(ballotReadsBefore + 1));
+    expect(vi.mocked(ballotAPI.getBallot).mock.calls.at(-1)?.[0]).toBe(EV);
+  });
+
+  it('ED5: the visual calendar opens on the saved start date, not the host copy\'s', async () => {
+    // Its own event id, so a write an earlier arm left in flight for EV (only on a failing tree)
+    // cannot hold this read.
+    const id = '77777777-7777-4777-8777-777777777777';
+    const hostCopy = { ...v1, id, start_date: '2026-11-02T19:00:00.000Z' };
+    vi.mocked(eventsAPI.getEvent).mockResolvedValue({ ...v1, id, start_date: '2026-11-16T19:00:00.000Z' } as never);
+    fixtures.schedulerProps = null;
+    render(<CreateEvent {...baseProps()} hideVisualCalendar={false} editingEvent={hostCopy} />);
+    await screen.findByRole('button', { name: 'Update Event' });
+    await waitFor(() => expect(fixtures.schedulerProps).not.toBeNull());
+    const initialDate = fixtures.schedulerProps?.initialDate as Date;
+    expect(initialDate.toISOString().slice(0, 10)).toBe('2026-11-16');
   });
 });
