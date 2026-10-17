@@ -60,6 +60,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import { FriendshipStatusProvider, useFriendshipStatus } from './FriendshipStatusProvider';
+// 88.6.1-72 Task 4: plan 70's REAL retained-content hook (its predicate inside), never mocked.
+import { useRetainedContent } from '@/components/ui/FetchErrorBanner';
 
 interface FriendRequestRow {
   id: string;
@@ -979,5 +981,123 @@ describe('hasLoaded', () => {
     await settleHeld(() => dM.resolve(L(1)));
     expect(ctx.hasLoaded).toBe(false);
     expect(ids()).toEqual([]);
+  });
+});
+
+// Phase 88.6.1-72 Task 4 (owner ruling #11, 2026-10-13): the provider owns the access-or-gone
+// memory. The context exposes receivedRequests, hasLoaded and error; friends and sentRequests are
+// read only through getStatus, which answers 'unknown' while error is set, so their clears are not
+// observable through the context during the error and are pinned by the plan's acceptance counts
+// instead (stated, not hidden).
+const make401 = () => new ApiError('HTTP error! status: 401', 'unauthorized', 401, {});
+
+// What the Requests tab does (plan 88.6.1-72 Task 1), over the REAL hooks: the adapter, then
+// useRetainedContent on the provider's has-loaded fact. It stores its state module-wide (as
+// AdapterProbe stores its adapter) so a test can press its Retry.
+let hostState: FetchErrorState | null = null;
+function RequestsHost() {
+  const { error, retryFriendships, hasLoaded, receivedRequests } = useFriendshipStatus() as unknown as Ctx;
+  const state = useFetchErrorState({
+    isError: Boolean(error),
+    error,
+    refetch: retryFriendships,
+  } as unknown as UseQueryResult);
+  hostState = state;
+  const retained = useRetainedContent(hasLoaded === true, state);
+  if (!retained) return <div data-testid="host-withdrawn" />;
+  return (
+    <div>
+      <span data-testid="host-retained" />
+      {receivedRequests.map((r) => (
+        <span key={r.id} data-testid={`host-row-${r.id}`} />
+      ))}
+    </div>
+  );
+}
+
+// The root-layout shape: the provider stays mounted while the host (the page) comes and goes.
+function HostTree({ show }: { show: boolean }) {
+  return (
+    <FriendshipStatusProvider>
+      <Probe />
+      {show ? <RequestsHost /> : null}
+    </FriendshipStatusProvider>
+  );
+}
+
+const hostRows = () => screen.queryAllByTestId(/^host-row-/);
+
+describe('access or gone answers (owner ruling #11)', () => {
+  it('AO-1. an access answer empties the lists and drops hasLoaded; a transient failure and a superseded access answer keep them', async () => {
+    // (a) a 401 load answer: the provider forgets what the server just refused.
+    const err401 = make401();
+    queueReceived(L(1, 2), err401);
+    await renderProvider({ settle: 'loaded' });
+    expect(ids()).toEqual(['req-1', 'req-2']);
+    expect(ctx.hasLoaded).toBe(true);
+    const a = await capture(() => ctx.refreshFriendships());
+    expect(a.value).toEqual({ isError: true });
+    expect(ids()).toEqual([]);
+    expect(ctx.hasLoaded).toBe(false);
+    // Kept, so the banners still show the register's sign-in line.
+    expect(ctx.error).toBe(err401);
+    cleanup();
+
+    // (b) GUARD: a 500 keeps both (plan 66's HL-3 shape).
+    const err500 = make500();
+    queueReceived(L(1, 2), err500);
+    await renderProvider({ settle: 'loaded' });
+    const b = await capture(() => ctx.refreshFriendships());
+    expect(b.value).toEqual({ isError: true });
+    expect(ids()).toEqual(['req-1', 'req-2']);
+    expect(ctx.hasLoaded).toBe(true);
+    expect(ctx.error).toBe(err500);
+    cleanup();
+
+    // (c) GUARD: a SUPERSEDED access answer writes nothing.
+    const dA = deferred<FriendRequestRow[]>();
+    const dB = deferred<FriendRequestRow[]>();
+    queueReceived(L(1), dA, dB);
+    await renderProvider({ settle: 'list' });
+    expect(ids()).toEqual(['req-1']);
+    const pA = start(() => ctx.refreshFriendships());
+    const pB = start(() => ctx.refreshFriendships());
+    await settleHeld(() => dB.resolve(L(1, 2)));
+    expect((await finish(pB)).value).toEqual({ isError: false });
+    await settleHeld(() => dA.reject(make401()));
+    // The older load resolves the newest load's outcome.
+    expect((await finish(pA)).value).toEqual({ isError: false });
+    expect(ids()).toEqual(['req-1', 'req-2']);
+    expect(ctx.hasLoaded).toBe(true);
+    expect(ctx.error).toBe(null);
+  });
+
+  it('AO-2. after 401, Try again (500) and a remount of the page, the withdrawn state shows, never the pre-401 rows; the next success ends it', async () => {
+    queueReceived(L(1, 2), make401(), make500(), L(2));
+    const utils = render(<HostTree show />);
+    await screen.findByTestId('host-row-req-1');
+
+    // The 401 (a refresh nobody on the page pressed).
+    await capture(() => ctx.refreshFriendships());
+    expect(screen.getByTestId('host-withdrawn')).toBeInTheDocument();
+    expect(hostRows()).toHaveLength(0);
+
+    // Try again answers 500.
+    await capture(() => (hostState as FetchErrorState).retry());
+    expect(screen.getByTestId('host-withdrawn')).toBeInTheDocument();
+    expect(hostRows()).toHaveLength(0);
+
+    // Leave the page and come back: the host's own hook memory starts fresh.
+    utils.rerender(<HostTree show={false} />);
+    expect(screen.queryByTestId('host-withdrawn')).toBeNull();
+    utils.rerender(<HostTree show />);
+    expect(screen.queryByTestId('host-row-req-1')).toBeNull();
+    expect(screen.queryByTestId('host-row-req-2')).toBeNull();
+    expect(screen.getByTestId('host-withdrawn')).toBeInTheDocument();
+
+    // The next success ends the memory.
+    await capture(() => (hostState as FetchErrorState).retry());
+    expect(await screen.findByTestId('host-row-req-2')).toBeInTheDocument();
+    expect(screen.getByTestId('host-retained')).toBeInTheDocument();
   });
 });
