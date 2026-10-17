@@ -52,7 +52,7 @@ import { expectFocusRingClearOfText } from './support/ringGeometry';
 
 // In the 555-01xx fictional range, so it is never a real person's phone, and it still passes the
 // page's own check (`parsePhoneNumber(value, 'US')` then `isValid()`,
-// `src/app/userProfile/page.js:589-590`; `isValid()` is true for this value, run 2026-10-11 and
+// `src/app/userProfile/page.js:613-614`; `isValid()` is true for this value, run 2026-10-11 and
 // again 2026-10-15).
 const FAKE_PHONE = '(201) 555-0123';
 const FAKE_CODE = '123456';
@@ -570,5 +570,56 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(fits, 'horizontal overflow on the availability card').toBe(true);
     expect(removal.count()).toBe(2);
+  });
+
+  test('Save username keeps focus, refuses a second press, then lands on the pencil; Cancel lands there too', async ({ page }, testInfo) => {
+    // The self row with no merged fields, so the last real self body is captured for the release.
+    const self = await patchSelfRow(page, {});
+    backstop = await holdWrites(page);
+    const rename = await holdUntilReleased(page, 'PUT', /\/users\/[^/]+\/username$/);
+    await page.goto('/userProfile');
+
+    const pencil = page.getByRole('button', { name: 'Edit username' });
+    await expect(pencil).toBeVisible({ timeout: 15_000 });
+    await focusByKeyboard(page, pencil);
+    await page.keyboard.press('Enter');
+    // The field takes focus (its autoFocus). Nothing is typed: the current name is kept.
+    await expect(page.getByRole('textbox', { name: 'Username' })).toBeFocused();
+
+    const save = page.getByRole('button', { name: /^(Save|Saving\.\.\.)$/ });
+    await focusByKeyboard(page, save);
+    await page.keyboard.press('Enter');
+    await rename.arrived;
+
+    await expect(save).toBeFocused();
+    await expect(save).toHaveAttribute('aria-disabled', 'true');
+    await expect(save).not.toHaveAttribute('disabled');
+    await expect(save).toHaveText('Saving...');
+    await expectGatedPair(page, save, 'primary', 'dark');
+    // Cancel is a sibling: natively disabled while the save runs (D-35).
+    await expect(save.locator('xpath=..').getByRole('button', { name: 'Cancel' })).toBeDisabled();
+
+    await page.keyboard.press('Enter');
+    expect(rename.count()).toBe(1);
+
+    // Answered with the captured self body: the username is unchanged.
+    await rename.release(self.lastBody() ?? {});
+    await expect(pencil).toBeFocused();
+
+    // Cancel: reopen the editor from the focused pencil, then cancel by keyboard.
+    await page.keyboard.press('Enter');
+    const saveAgain = page.getByRole('button', { name: /^(Save|Saving\.\.\.)$/ });
+    await expect(saveAgain).toBeVisible();
+    const cancel = saveAgain.locator('xpath=..').getByRole('button', { name: 'Cancel' });
+    await focusByKeyboard(page, cancel);
+    await page.keyboard.press('Enter');
+    await expect(pencil).toBeFocused();
+
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow around the username editor').toBe(true);
+    expect(rename.count()).toBe(1);
   });
 });

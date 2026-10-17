@@ -303,6 +303,12 @@ function Profile(){
     const overridesHeadingRef = useRef(null);
     const patternsRetained = useRetainedContent(patternsQuery.data !== undefined, patternsError, { queryKey: availabilityKeys.patterns(self?.id) });
     const patternsFailedWithNothingCached = patternsError.showError && !patternsRetained;
+    // D-35 / Req 5 (88.6.1-59): the username editor's Save latch, and the pencil that both of the
+    // editor's exits land focus on (fallback: plan 18's profile <h1>). See
+    // `DECISION Phase 88.6.1-59 (D-35, username)` at the editor's button row.
+    const saveUsernameInFlightRef = useRef(false);
+    const editUsernamePencilRef = useRef(null);
+    const usernameRecovery = useFocusRecovery({ fallback: profileHeadingRef });
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -1115,7 +1121,12 @@ function Profile(){
         setProfileLoaded(true);
     }, [self, selfQuery.isError, user?.name, user?.email]);
 
-    const handleSaveUsername = async () => {
+    const handleSaveUsername = async (event) => {
+        // D-35 (88.6.1-59): the in-flight refusal, synchronous and FIRST — see
+        // `DECISION Phase 88.6.1-59 (D-35, username)` at the editor's button row.
+        if (saveUsernameInFlightRef.current) return;
+        // The pressed Save, captured before any await: it seeds the focus arm at success.
+        const pressed = event?.currentTarget ?? null;
         if (!user?.sub || !username.trim()) {
             toast.error('Please enter a username');
             return;
@@ -1131,9 +1142,12 @@ function Profile(){
             return;
         }
 
+        saveUsernameInFlightRef.current = true;
+        setSavingUsername(true);
         try {
-            setSavingUsername(true);
             const updatedUser = await usersAPI.updateUsername(selfUuid, username.trim());
+            // Req 5 (88.6.1-59): armed at SUCCESS, before the write that closes the editor.
+            const settle = usernameRecovery.arm({ preferred: () => editUsernamePencilRef.current, from: pressed });
             setUserData(updatedUser);
             // Cache-coherence: PATCH only the changed field. The PUT response is
             // a DEFAULT-scope row (no phone/email), while the immortal self row
@@ -1142,6 +1156,7 @@ function Profile(){
             patchSelfCache(queryClient, { username: updatedUser.username });
             setEditingUsername(false);
             toast.success('Username updated');
+            settle();
         } catch (error) {
             logger.info('Error updating username:', errCtx(error));
             toast.error(
@@ -1151,8 +1166,19 @@ function Profile(){
                 })
             );
         } finally {
+            // Released in `finally` so a FAILED save does not strand the control.
+            saveUsernameInFlightRef.current = false;
             setSavingUsername(false);
         }
+    };
+
+    // Req 5 (88.6.1-59): Cancel removes the editor it sits in, so it arms the same recovery FIRST
+    // (synchronously, at the press), then makes its two unchanged state writes.
+    const handleCancelUsernameEdit = (event) => {
+        const settle = usernameRecovery.arm({ preferred: () => editUsernamePencilRef.current, from: event?.currentTarget ?? null });
+        setEditingUsername(false);
+        setUsername(userData?.username || user.name || user.email?.split('@')[0] || '');
+        settle();
     };
 
     const checkGoogleCalendarStatus = useCallback(async () => {
@@ -1861,21 +1887,35 @@ function Profile(){
                                             placeholder="Enter username"
                                             autoFocus
                                         />
+                                        {/* DECISION Phase 88.6.1-59 (D-35, username): Save's in-flight half is the
+                                            rule of POSITION (`aria-disabled` plus the `saveUsernameInFlightRef`
+                                            refusal as the handler's first statement, released in `finally`); its
+                                            blank-name half is the rule of KIND and stays NATIVE (nobody can save a
+                                            blank name). Cancel is a SIBLING (D-35), so it stays natively disabled
+                                            while saving; but its own click removes the editor, so it arms the same
+                                            recovery first. Both exits land on the Edit-username pencil (the control
+                                            that opened the editor, mounted in the same commit), else the profile
+                                            <h1>.
+                                            REJECTED: (a) native `disabled` for the in-flight half (it drops focus in
+                                            a real browser); (b) focusing the <h1> on a save (the success toast
+                                            already announces the outcome, and one target for Save and Cancel keeps
+                                            the editor's exit predictable); (c) per-host inline focus code (D-04).
+                                            Disclosed visible delta: while saving, Save shows the gated primary pair
+                                            instead of the half-strength wash. Dropping either half of the pair is a
+                                            decision, not a cleanup. */}
                                         <div className="flex gap-2">
                                             <Button
                                                 variant="primary"
                                                 onClick={handleSaveUsername}
-                                                disabled={savingUsername || !username.trim()}
+                                                disabled={!username.trim()}
+                                                aria-disabled={savingUsername ? 'true' : undefined}
                                                 className="whitespace-nowrap"
                                             >
                                                 {savingUsername ? 'Saving...' : 'Save'}
                                             </Button>
                                             <Button
                                                 variant="secondary"
-                                                onClick={() => {
-                                                    setEditingUsername(false);
-                                                    setUsername(userData?.username || user.name || user.email?.split('@')[0] || '');
-                                                }}
+                                                onClick={handleCancelUsernameEdit}
                                                 disabled={savingUsername}
                                                 className="whitespace-nowrap"
                                             >
@@ -1948,6 +1988,7 @@ function Profile(){
                                             measured by `e2e/profile-pencil-ring.spec.ts`. Restoring the offset is
                                             a decision, not a cleanup. */}
                                         <button
+                                            ref={editUsernamePencilRef}
                                             onClick={() => setEditingUsername(true)}
                                             className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             title="Edit username"
@@ -2986,7 +3027,7 @@ function Profile(){
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1401` (recurring) and `:1448`
+                                            `userProfile/page.js:1451` (recurring) and `:1542`
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
