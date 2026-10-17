@@ -14,6 +14,12 @@ import {
 } from '../../components/ui/FetchErrorBanner';
 // Copy rows N5 / N6 (D-30): the bell's own constants for the same provider call, never retyped.
 import { ACCEPT_FRIEND_FAILED_COPY, DECLINE_FRIEND_FAILED_COPY } from '../components/NotificationBell';
+// The friend batch's terminal-409 rule and the invite panel's two shipped lines (one source).
+import {
+    isAlreadyInvitedOrMember,
+    ALL_ALREADY_INVITED_MESSAGE,
+    invitedWithAlreadyMessage,
+} from '../components/friendBatchInviteOutcome';
 // 88-33 Task 1 (r3 triage): this page's fetchers run through a raw
 // Promise.allSettled, NOT react-query, so they bypass the global
 // QueryCache.onError hook entirely and their failures never reached Sentry.
@@ -36,6 +42,12 @@ const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try 
 // Copy row FR1 (owner ruling 2026-10-05, D-47; D-32 R8 straight apostrophe): the Requests tab's
 // full-banner title when the provider's load failed and nothing is retained.
 const FRIEND_REQUESTS_LOAD_FAILED_TITLE = "Couldn't load your friend requests";
+
+// Copy row F7 (owner ruling 2026-10-05, D-47): the found result, heard and not seen; `name` is
+// what the result row shows.
+function foundAnnouncement(name) {
+    return `Found ${name}.`;
+}
 
 // The row among the elements carrying `attribute` whose value is `id` (compared as strings).
 function rowElementFor(attribute, id) {
@@ -743,6 +755,7 @@ function FriendsPage() {
 
         let successCount = 0;
         let failCount = 0;
+        let alreadyCount = 0;
 
         try {
             for (const friendUserId of selectedFriends) {
@@ -753,11 +766,17 @@ function FriendsPage() {
                     await invitesAPI.sendFriendInvite(selectedGroupId, friendUserId);
                     successCount++;
                 } catch (err) {
-                    failCount++;
+                    // 88.6.1-72 (owner ruling 2026-10-05): a terminal 409 is already invited,
+                    // never a failure; the panel's rule, from the shared module.
+                    if (isAlreadyInvitedOrMember(err)) {
+                        alreadyCount++;
+                    } else {
+                        failCount++;
+                    }
                 }
             }
 
-            setBulkInviteResult({ successCount, failCount, groupName });
+            setBulkInviteResult({ successCount, failCount, alreadyCount, groupName });
             setSelectedFriends(new Set());
         } finally {
             bulkInviteInFlightRef.current = false;
@@ -917,18 +936,31 @@ function FriendsPage() {
 
     // The friend batch's outcome, split between the two result regions in the bulk-invite bar
     // (see the marker there): the all-failed outcome is the alert region's, every other outcome
-    // the polite region's. A batch that sent nothing and failed nothing claims nothing.
+    // the polite region's. A batch that sent nothing, failed nothing and found nobody already
+    // invited claims nothing (so the bar never says "Invited 0"). 88.6.1-72: with no failure, a
+    // batch that met anyone already invited or already a member says so in the invite panel's
+    // own lines, with the success tint (the panel's rule: success while nothing failed).
     let batchStatusText = '';
     let batchErrorText = '';
-    if (bulkInviteResult && (bulkInviteResult.successCount > 0 || bulkInviteResult.failCount > 0)) {
+    if (
+        bulkInviteResult &&
+        (bulkInviteResult.successCount > 0 || bulkInviteResult.failCount > 0 || bulkInviteResult.alreadyCount > 0)
+    ) {
         if (bulkInviteResult.failCount > 0 && bulkInviteResult.successCount === 0) {
             batchErrorText = BATCH_INVITE_FAILED_MESSAGE;
+        } else if (bulkInviteResult.failCount === 0 && bulkInviteResult.alreadyCount > 0) {
+            batchStatusText = bulkInviteResult.successCount > 0
+                ? invitedWithAlreadyMessage(bulkInviteResult.successCount, bulkInviteResult.alreadyCount)
+                : ALL_ALREADY_INVITED_MESSAGE;
         } else if (bulkInviteResult.failCount === 0) {
             batchStatusText = `Invited ${bulkInviteResult.successCount} friend(s) to ${bulkInviteResult.groupName}!`;
         } else {
             batchStatusText = `Invited ${bulkInviteResult.successCount} friend(s), ${bulkInviteResult.failCount} failed`;
         }
     }
+
+    // The F7 region's subject: the name the result row shows, while a result is shown.
+    const searchFoundName = searchResult && !searching ? searchResult.username || searchResult.email || '' : '';
 
     const tabs = [
         { key: 'friends', label: 'Friends', count: friends.length },
@@ -1000,6 +1032,21 @@ function FriendsPage() {
                             <p className="text-content-secondary">{searchError}</p>
                         </div>
                     )}
+
+                    {/* DECISION Phase 88.6.1-72 (F7): a found result is announced, screen-reader only,
+                        from a polite region that is always mounted and always visually hidden (owner
+                        ruling 2026-10-05, copy row F7; the gate's shape, not D-22's visible-when-set
+                        prop), chosen OVER moving focus to the result (the person may still be
+                        correcting the address in the field) and OVER a visible line (the row itself is
+                        the visible outcome). Polite, because a found result is not an alert; the miss
+                        stays in the D-42 alert above, unchanged. handleSearch empties the result at its
+                        start, which empties this region, so the same result found twice is announced
+                        twice. Changing this is a decision, not a cleanup. */}
+                    <StatusRegion
+                        id="friends-search-status"
+                        className="sr-only"
+                        message={searchFoundName ? foundAnnouncement(searchFoundName) : ''}
+                    />
 
                     {searchResult && !searching && (
                         <div className="mt-4 p-4 border border-line rounded-lg flex items-center justify-between">

@@ -14,6 +14,11 @@ import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '@/lib/logger';
+import {
+    isAlreadyInvitedOrMember,
+    ALL_ALREADY_INVITED_MESSAGE,
+    invitedWithAlreadyMessage,
+} from './friendBatchInviteOutcome';
 
 // UI-SPEC §6.3 row "FriendInvitePanel.js email-invite `validation` override" — ratified
 // 2026-09-28 (`H3-COPY-RULING`). Declared once; byte-equal to the §6.3 row.
@@ -254,16 +259,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     await invitesAPI.sendFriendInvite(group.id, friendUserId);
                     successCount++;
                 } catch (err) {
-                    // Wave-12 review MED #9: fork-F contract — a terminal 409
-                    // (already a member / invite pending) is not a FAILURE; count
-                    // it separately instead of collapsing into failCount. Prose
-                    // fallback removed post-88-34 deploy (2026-08-21, owner-ruled):
-                    // the ERROR_REGISTRY codes are on the wire, so the code checks
-                    // are the whole contract here — an unrecognized 409 stays in
-                    // failCount rather than being silently counted "already".
-                    const code = err?.code;
-                    const isTerminal409 = code === 'already_member' || code === 'invite_pending';
-                    if (isTerminal409) {
+                    // The terminal-409 rule and its contract (Wave-12 review MED #9) live in ./friendBatchInviteOutcome (88.6.1-72).
+                    if (isAlreadyInvitedOrMember(err)) {
                         alreadyCount++;
                     } else {
                         failCount++;
@@ -547,8 +544,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
             batchStatusText = inviteResult.failCount === 0
                 ? (inviteResult.alreadyCount > 0
                     ? (inviteResult.successCount > 0
-                        ? `Invited ${inviteResult.successCount} — ${inviteResult.alreadyCount} already invited or a member`
-                        : 'Everyone selected was already invited or a member')
+                        ? invitedWithAlreadyMessage(inviteResult.successCount, inviteResult.alreadyCount)
+                        : ALL_ALREADY_INVITED_MESSAGE)
                     : `Invited ${inviteResult.successCount} friend${inviteResult.successCount !== 1 ? 's' : ''}!`)
                 : `Invited ${inviteResult.successCount}, ${inviteResult.failCount} failed`;
         }
@@ -654,8 +651,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                        `bg-red-50 …` beside a token-based sibling, and those raw
                                        literals are light-only values on a card that flips to
                                        `#232d3e`, so they were already wrong in dark mode. The
-                                       IDENTICAL bulk-invite result block at friends/page.js:912-927 (re-pointed 2026-10-15; the
-                                       success tint literal at :916)
+                                       IDENTICAL bulk-invite result block, the friends page's batch result regions (id
+                                       friends-batch-status; re-anchored 88.6.1-72),
                                        already uses status tokens on all three branches, so this
                                        converges the outlier onto shipped precedent rather than
                                        inventing a treatment. Reverting to raw palette is a
