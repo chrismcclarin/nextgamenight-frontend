@@ -1,8 +1,11 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { ballotAPI } from '../../lib/api';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '@/lib/logger';
 
@@ -10,12 +13,14 @@ import { logger, errCtx } from '@/lib/logger';
  * BallotSection - Game voting ballot for an event
  */
 
-// Copy rows E12, E13 and E14 (D-30, ratified by the owner 2026-10-04), hoisted so each
-// ratified string lives in ONE source line for the AC-33 scan. E12 and E13 ship with the
+// Copy rows E12, E13 and E14 (D-30, ratified by the owner 2026-10-04) and E15 (ratified by the
+// owner 2026-10-05, WORDING BATCH 3 item J; manifest key E15, recorded as D-47), hoisted so each
+// ratified string lives in ONE source line for the AC-33 scan. E12, E13 and E15 ship with the
 // straight apostrophe (D-32 R8). E13 serves both pick lists. E14 is heard only: the pick's
-// accessible name while it saves.
+// accessible name while it saves. E15 is the load-failure banner's title.
 const VOTE_SAVE_FAILED_MESSAGE = "We couldn't save your vote. Please try again.";
 const WINNER_SAVE_FAILED_MESSAGE = "We couldn't set the winner. Please try again.";
+const BALLOT_LOAD_FAILED_TITLE = "Couldn't load the game vote";
 function savingPickLabel(gameName) {
   return `${gameName}, saving`;
 }
@@ -86,6 +91,12 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   const [ballot, setBallot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // E15: null, or `{ eventId, caught }` for the current event's failed load (`caught` is the
+  // caught error object). Cleared ONLY by a successful load, never at the start of one, so the
+  // banner stays through its own retry. The field is deliberately NOT named after the error
+  // itself: errorEnvelopeReads.test.ts reads any property of that name as a response-body read,
+  // and this is local state (the rename keeps the envelope gate free of a new exclusion).
+  const [loadError, setLoadError] = useState(null);
   const [votingOptionId, setVotingOptionId] = useState(null);
   const [resolvingOptionId, setResolvingOptionId] = useState(null);
   const resolveInFlightRef = useRef(false);
@@ -115,6 +126,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   const loadSeqRef = useRef(0);
   const loadedEventIdRef = useRef(null);
   const loadedStatusRef = useRef(null);
+  // E15: the class-only capture's latch (one event per failure episode) and the load a retry or
+  // refocus re-attempt shares while it is in flight.
+  const lastReportedKeyRef = useRef(null);
+  const pendingLoadRef = useRef(null);
 
   const isOrganizer = userRole === 'owner' || userRole === 'admin';
   const canVote = userRsvpStatus === 'yes' || userRsvpStatus === 'maybe';
@@ -155,10 +170,29 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       if (isSuperseded()) return 'superseded';
       loadedEventIdRef.current = eventId;
       loadedStatusRef.current = data?.ballot_status ?? null;
+      // A successful load ends the failure episode: the next failure files again.
+      lastReportedKeyRef.current = null;
+      setLoadError(null);
       setBallot(data);
       return 'loaded';
     } catch (err) {
+      logger.info('Error loading ballot:', errCtx(err));
       if (isSuperseded()) return 'superseded';
+      // The class-only capture (plan 88.6.1-32's W006 shape, BrowseMoreModal.js anchor
+      // `lastReportedKeyRef.current !== reportKey`): a wrapped Error naming only the class and
+      // the code, literal tags, latched to one event per failure episode. Never `logger.error`,
+      // which captures the error object and forwards its upstream string (logger.ts). This is
+      // the ONE place the code is read, and it decides nothing that renders.
+      const cls = (err && err.name) || 'Error';
+      const code = err && typeof err.code === 'string' ? ` ${err.code}` : '';
+      const reportKey = `ballot load failed: ${cls}${code}`;
+      if (lastReportedKeyRef.current !== reportKey) {
+        lastReportedKeyRef.current = reportKey;
+        Sentry.captureException(new Error(reportKey), {
+          tags: { feature: 'ballot', op: 'ballot-load' },
+        });
+      }
+      setLoadError({ eventId, caught: err });
       if (loadedEventIdRef.current !== eventId) {
         loadedEventIdRef.current = null;
         loadedStatusRef.current = null;
@@ -173,6 +207,38 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   useEffect(() => {
     fetchBallot();
   }, [fetchBallot]);
+
+  // E15's retry (the banner's Try again and the hook's refocus re-attempt). Stable per eventId,
+  // never rejects (fetchBallot catches everything), and resolves `{ isError }` so plan 21's ONE
+  // retry-outcome rule can tell a failed retry from a success: only 'loaded' is a success, and
+  // 'superseded' counts as not loaded. A load already in flight for the SAME eventId is reused
+  // instead of starting a second GET (review #142); a different eventId never reuses it, and the
+  // sequence guard discards the old one's answer.
+  const retryLoad = useCallback(async () => {
+    let pending = pendingLoadRef.current;
+    if (!pending || pending.eventId !== eventId) {
+      const started = { eventId, promise: fetchBallot() };
+      pendingLoadRef.current = started;
+      started.promise.finally(() => {
+        if (pendingLoadRef.current === started) pendingLoadRef.current = null;
+      });
+      pending = started;
+    }
+    const outcome = await pending.promise;
+    return { isError: outcome !== 'loaded' };
+  }, [eventId, fetchBallot]);
+
+  // The banner shows only for the CURRENT event, and only while no ballot for it is on screen: a
+  // failed follow-up refetch over a kept ballot never shows it (LF-6), and one event's failure is
+  // never shown for another (LF-5). The house adapter for a hand-rolled fetch
+  // (ResponseDashboard.js, anchor `const errorState =`), called above every
+  // early return.
+  const showLoadFailure = !ballot && loadError?.eventId === eventId;
+  const loadErrorState = useFetchErrorState({
+    isError: showLoadFailure,
+    error: showLoadFailure ? loadError.caught : null,
+    refetch: retryLoad,
+  });
 
   const handleToggleVote = async (optionId, from) => {
     if (voteInFlightRef.current || !canVote) return;
@@ -293,6 +359,58 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     return (
       <div className="mt-4 p-4 bg-surface-elevated rounded-card">
         <p className="text-sm text-content-muted">Loading ballot...</p>
+      </div>
+    );
+  }
+
+  /* DECISION Phase 88.6.1-31 (E15 / Req 9): a failed load for the current event renders the
+     house full banner titled `BALLOT_LOAD_FAILED_TITLE` (copy row E15, owner ruling 2026-10-05),
+     with the register line the hook derives from the error's code and its own Try again, IN PLACE
+     of the card, inside a `mt-4` wrapper (the card's own top gap; the same slot the first-load
+     loader takes above).
+     WHY IT IS SAFE TO KEY ON A REJECTION: the server's only "this event has no vote" answer is a
+     200 whose body is `{ ballot_status: null }` (`periodictabletopbackend_v2/Sonnet/routes/
+     ballot.js`, anchor `return res.json({ ballot_status: null });`), which RESOLVES and reaches
+     the unchanged early return below; every way the load can fail rejects. So no status, code or
+     message is read to decide it. The banner must never show on an event that simply has no vote
+     (owner, 2026-10-05). The error is cleared only by a successful load, so the banner and its
+     focused Try again stay mounted through their own retry.
+     REJECTED: (a) a card shell with the Game Vote heading above the banner: at 375px it nests the
+     banner's bordered, padded box inside the card's bordered, padded body under a header row, on
+     every failing card, and its heading asserts a vote exists on an event whose load failed and
+     may have none; heading navigation was its one gain, and the inserted banner alert is
+     announced (D-42); (b) the compact notice: its text is fixed and is not E15; (c) keying on the
+     stored error alone: it would cover a kept ballot after a failed follow-up refetch and show one
+     event's failure for the next; (d) reading the status or the code to decide "no vote": not
+     needed, and the server gives no code for it; (e) a report-context value: none was ratified
+     for this banner (D-31, D-32 R5; plan 88.6.1-55 made the same call) — owed to the owner as a
+     wording item.
+     FOCUS: after a successful Try again the banner (plan 88.6.1-21's hook, plan 88.6.1-70's
+     `focusTarget`) moves focus to the Game Vote heading of the card that replaced it, so a phone
+     reader keeps their place on the card; when the success renders no card (an event with no
+     vote) the ref is empty and the page floor applies. REJECTED: the floor alone (on a phone
+     `main h1` is a screen or more above the card); a per-host focus call (D-04). No per-host focus
+     code here.
+     PER INSTANCE (review #38): a failed load files one class-only Sentry event per failure episode
+     PER INSTANCE, so N failing cards on one page (the Upcoming list mounts one per event,
+     `gameDetail/page.js:3093`, anchor `upcomingEvents.map`) file N events.
+     MULTI-MOUNT (owner ruling #192, OPTION A, owner 2026-10-13): the Upcoming list mounts one
+     instance per upcoming session card (`gameDetail/page.js:1922`, anchor `Ballot Section - game
+     voting`), so a route-wide failure shows N banners and a screen reader hears N assertive
+     announcements (the warning-tone region is assertive, `Banner.tsx`, anchor `const assertive`).
+     CHOSEN: one banner per card, N announcements accepted — the banner's position says which
+     session's vote failed, each Try again retries that vote, and N is small. REJECTED: (B) one
+     list-level report — new words, and it loses the per-session retry; (C) the compact notice —
+     its fixed text is not E15. LF-10 pins two regions for two failing instances.
+     Collapsing these into one report is a decision, not a cleanup. */
+  if (showLoadFailure) {
+    return (
+      <div className="mt-4">
+        <FetchErrorBanner
+          state={loadErrorState}
+          title={BALLOT_LOAD_FAILED_TITLE}
+          focusTarget={gameVoteHeadingRef}
+        />
       </div>
     );
   }
