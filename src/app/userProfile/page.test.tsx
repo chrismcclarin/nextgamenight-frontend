@@ -3551,3 +3551,124 @@ describe('username Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     expect(source.split('usernameRecovery.arm({ preferred: () => editUsernamePencilRef.current').length - 1).toBe(2);
   });
 });
+
+describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps an implementation, so restore the default here.
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+  });
+
+  it('I1: Import Collection keeps its node, reads Importing... under aria-disabled, and three presses neither reopen the dialog nor send a second import', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    fireEvent.click(importBtn);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() => expect(importBtn).toHaveAttribute('aria-disabled', 'true'));
+    expect(importBtn).not.toBeDisabled();
+    expect(importBtn.isConnected).toBe(true);
+    expect(importBtn.textContent).toBe('Importing...');
+
+    // The click handler commits inside act, so a reopened dialog would already be in the document.
+    fireEvent.click(importBtn);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(importBtn);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(1);
+    expect(importBtn).toHaveAttribute('aria-disabled', 'true');
+    expect(importBtn.textContent).toBe('Importing...');
+
+    await act(async () => { pending.resolve({ imported: 0 }); });
+  });
+
+  it('I2: a second Continue before the dialog has gone starts no second import', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    const cont = within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' });
+    // Two native activations before React commits the close: the jsdom model of a double Enter
+    // during the dialog's exit animation.
+    act(() => {
+      cont.click();
+      cont.click();
+    });
+
+    expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(1);
+    await act(async () => { pending.resolve({ imported: 0 }); });
+  });
+
+  it('I3: a failed import releases the latch, keeps its diagnostic, and a second import can start', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({ imported: 0 });
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    fireEvent.click(importBtn);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+
+    await screen.findByText("We couldn't import that collection. Check the username and try again.");
+    expect(loggerMock().info).toHaveBeenCalledWith('Error importing BGG collection:', expect.any(Object));
+    await waitFor(() => expect(importBtn.textContent).toBe('Import Collection'));
+    expect(importBtn).not.toHaveAttribute('aria-disabled');
+    expect(importBtn).not.toBeDisabled();
+
+    fireEvent.click(importBtn);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(2));
+  });
+
+  it('I4: after Continue the dialog restores focus to Import Collection, which is still importing', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    const field = await screen.findByRole('textbox', { name: 'BoardGameGeek username' });
+    await user.type(field, 'someone');
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    // Focuses the button and opens the dialog, so the dialog records it as the opener.
+    await user.click(importBtn);
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() => expect(document.activeElement).toBe(importBtn));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(importBtn).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => { pending.resolve({ imported: 0 }); });
+    // R5 ordering backstop: still there after the held import settles.
+    await waitFor(() => expect(importBtn.textContent).toBe('Import Collection'));
+    expect(document.activeElement).toBe(importBtn);
+  });
+});
