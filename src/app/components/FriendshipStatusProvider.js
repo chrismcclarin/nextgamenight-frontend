@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI } from '../../lib/api';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { isAccessOrGoneError } from '@/components/ui/FetchErrorBanner';
 
 export const FriendshipContext = createContext({
   getStatus: () => 'unknown',
@@ -81,6 +82,15 @@ export function FriendshipStatusProvider({ children }) {
       } catch (err) {
         console.error('FriendshipStatusProvider: failed to load friendship data', err);
         if (seq !== loadSeqRef.current) return latestLoadRef.current;
+        // DECISION Phase 88.6.1-72 (#11, owner 2026-10-13): an access or gone answer to this load empties the three lists and clears the has-loaded fact until the next successful load, so every consumer (the Requests tab, the bell) forgets content the server just refused, across a remount; CHOSEN OVER a page-local memory owner handed to the shared
+        // retained-content hook (the bell would keep its rows) and OVER accepting the gap. The bell's friend-request count going to 0 on a 401 is correct (a signed-out user has no requests to count), not a trade-off. Written by plan 88.6.1-72 because the predicate is plan 70's (orchestrator routing 2026-10-15); a transient failure still keeps
+        // the lists (plan 66's marker below). Keeping the lists on such an answer, or moving this memory into a page, is a decision, not a cleanup.
+        if (isAccessOrGoneError({ showError: true, code: err?.code })) {
+          setFriends([]);
+          setSentRequests([]);
+          setReceivedRequests([]);
+          setHasLoaded(false);
+        }
         setLoadError(err instanceof Error ? err : new Error());
         return { isError: true };
       } finally {
@@ -360,6 +370,7 @@ export function FriendshipStatusProvider({ children }) {
         // the loading flag (a failed first load ends it too); a flag the page observes after mounting; storing the sub a load ran for and comparing it with the signed-in one (same-source, but the
         // FE CI gate against comparing the sub reads every code line, and an alias of the sub only hides the same compare); the resolved self UUID (it can resolve after the lists land); clearing it on a failure.
         // Turning this into a count, storing a sub here, dropping the effect's reset or its list clears, or clearing it on a failure is a decision, not a cleanup.
+        // AMENDED Phase 88.6.1-72 (#11): an access or gone load answer is the one failure that clears it, with the three lists — see the catch.
         hasLoaded,
         isRequestActionPending,
       }}
