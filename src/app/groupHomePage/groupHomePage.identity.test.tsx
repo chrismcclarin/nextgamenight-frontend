@@ -73,12 +73,26 @@ vi.mock('@/app/components/createEvent', () => ({
     return null;
   },
 }));
-vi.mock('@/app/components/ManageMembers', () => ({
-  default: (props: NonNullable<typeof h.manageMembersProps>) => {
-    h.manageMembersProps = props;
-    return null;
-  },
-}));
+// While its `modal` prop is true the ManageMembers stub renders a REAL `Modal` bound to the page's
+// `modal` / `modaltoggle` (Radix hides the page from assistive tech while it is open — RF-8's
+// premise); closed it renders nothing, as the real component does (`if (!modal) return null;`).
+vi.mock('@/app/components/ManageMembers', async () => {
+  const { Modal } = await import('@/app/components/Modal');
+  return {
+    default: (props: NonNullable<typeof h.manageMembersProps>) => {
+      h.manageMembersProps = props;
+      if (!props.modal) return null;
+      return (
+        <Modal open={props.modal} onClose={props.modaltoggle}>
+          <Modal.Header>Manage Members</Modal.Header>
+          <Modal.Body>
+            <button type="button">Stub member</button>
+          </Modal.Body>
+        </Modal>
+      );
+    },
+  };
+});
 vi.mock('@/app/components/GroupGamesList', () => ({
   default: (props: NonNullable<typeof h.gamesListProps>) => {
     h.gamesListProps = props;
@@ -91,6 +105,7 @@ vi.mock('@/app/components/EventCalendar', () => ({
     return (
       <div data-testid="calendar-stub">
         <h2 ref={props.headingRef}>{props.title}</h2>
+        <button type="button">Stub day</button>
       </div>
     );
   },
@@ -183,6 +198,10 @@ function fireVisibility(state: 'visible' | 'hidden') {
   Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
   document.dispatchEvent(new Event('visibilitychange'));
 }
+
+// copy row RF1 / D-47 — the shared refresh notice's sentence (plan 88.6.1-70 owns the one constant;
+// written once here, contract C7).
+const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 
 const EV_A = { id: 'ev-a', start_date: '2026-11-02T19:00:00.000Z' };
 const EV_B = { id: 'ev-b', start_date: '2026-11-09T19:00:00.000Z' };
@@ -687,6 +706,7 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     expect(h.gamesListProps!.members).toHaveLength(3);
     expect(screen.queryAllByText(G7)).toHaveLength(0);
     expect(infoSpy.mock.calls.some(([msg]) => msg === 'Error fetching group members:')).toBe(true);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
     infoSpy.mockRestore();
   });
 
@@ -703,6 +723,7 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     expect(screen.queryByText(/2 members/)).toBeNull();
     expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
     expect(pushSpy).not.toHaveBeenCalled();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
 
     const user = userEvent.setup();
     const callsBefore = membersCalls();
@@ -792,6 +813,7 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     expect(h.calendarProps!.events).toEqual([EV_B]);
     expect(screen.queryAllByText(G8)).toHaveLength(0);
     expect(infoSpy.mock.calls.some(([msg]) => msg === 'Error fetching group events:')).toBe(true);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
     infoSpy.mockRestore();
   });
 
@@ -812,6 +834,7 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
       expect(screen.queryByTestId('calendar-stub')).toBeNull();
       // The events fetch has no removal arm: a 403 here is the banner, never a redirect.
       expect(pushSpy).not.toHaveBeenCalled();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
       cleanup();
     }
   });
@@ -860,5 +883,212 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     });
     await screen.findByTestId('calendar-stub');
     expect(screen.queryAllByText(G8)).toHaveLength(0);
+  });
+});
+
+/* ============================================================================================
+ * 88.6.1-71 Task 2 — a failed REFRESH keeps what was on screen under plan 88.6.1-70's shared notice
+ * (AC-29, RF1, owner ruling 2026-10-05; ruling Y: an events list that loaded empty is retained),
+ * removal first (C10), focus never falls to the page body when the app's own retry withdraws
+ * content (C12, two guards), and the members notice is re-presented when the Manage Members
+ * dialog closes over it (review r2 #236).
+ * ========================================================================================== */
+describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-70 contract C8 / C10 / C12)', () => {
+  const internal = () => new ApiError('Request failed', 'internal', 500);
+  /** The visible RF1 line: the RF1 text outside the `role="status"` node (it is in the DOM twice). */
+  const visibleRf1 = () => screen.getAllByText(RF1).find((el) => !el.closest('[role="status"]'))!;
+  const rf1Region = () => screen.getAllByText(RF1).find((el) => el.closest('[role="status"]'))!.closest('[role="status"]')!;
+  const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const overview = () => screen.getByRole('button', { name: 'Overview' });
+  const loadEvents = async (events: unknown[]) => {
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValueOnce(events);
+    await renderHeaderAt('owner', { inMain: true });
+    await waitFor(() => expect(h.calendarProps!.events).toEqual(events));
+  };
+  const failMembersRefresh = async (err: unknown = internal()) => {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
+    await act(async () => {
+      await h.manageMembersProps!.onMembersUpdated();
+    });
+  };
+  const failEventsRefresh = async (err: unknown = internal()) => {
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(err);
+    await act(async () => {
+      await h.createEventProps!.onEventCreated({ id: 'e-new' });
+    });
+  };
+
+  it('RF-1. a failed members refresh keeps the page and shows RF1 between the header and the tabs; Retry lands on the h1', async () => {
+    await renderHeaderAt('owner', { inMain: true });
+    const regionsBefore = screen.getAllByRole('status');
+    await failMembersRefresh();
+    expect(screen.getAllByText(RF1).length).toBeGreaterThan(0);
+    await waitFor(() => expect(regionsBefore).toContain(rf1Region()));
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+    expect(follows(screen.getByRole('link', { name: 'Plan Game Session' }), visibleRf1())).toBe(true);
+    expect(follows(visibleRf1(), overview())).toBe(true);
+    expect(screen.queryAllByText("Couldn't load this group")).toHaveLength(0);
+
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 })));
+  });
+
+  it('RF-2. a failed events refresh keeps the calendar and shows RF1 above it; Retry lands on the Calendar heading', async () => {
+    await loadEvents([EV_A]);
+    const first = h.calendarProps!.events;
+    const regionsBefore = screen.getAllByRole('status');
+    await failEventsRefresh();
+    expect(screen.getAllByText(RF1).length).toBeGreaterThan(0);
+    await waitFor(() => expect(regionsBefore).toContain(rf1Region()));
+    expect(h.calendarProps!.events).toBe(first);
+    expect(follows(overview(), visibleRf1())).toBe(true);
+    expect(follows(visibleRf1(), screen.getByTestId('calendar-stub'))).toBe(true);
+    expect(screen.queryAllByText("Couldn't load this group's events")).toHaveLength(0);
+
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValueOnce([EV_A, EV_B]);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+    expect(h.calendarProps!.events).toHaveLength(2);
+    await waitFor(() => expect(document.activeElement).toBe(h.calendarProps!.headingRef!.current));
+  });
+
+  it('RF-3. a removal (403) on a members refresh still redirects and never shows RF1 (C10)', async () => {
+    await renderHeaderAt('owner');
+    await failMembersRefresh(new ApiError('Forbidden', 'forbidden', 403));
+    expect(pushSpy.mock.calls.some(([url]) => String(url).startsWith('/?removedFrom='))).toBe(true);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+  });
+
+  it('RF-4. an events list that loaded EMPTY is kept under RF1, never the events banner (ruling Y)', async () => {
+    await loadEvents([]);
+    expect(h.calendarProps!.events).toHaveLength(0);
+    const first = h.calendarProps!.events;
+    const regionsBefore = screen.getAllByRole('status');
+    await failEventsRefresh();
+    expect(screen.getAllByText(RF1).length).toBeGreaterThan(0);
+    await waitFor(() => expect(regionsBefore).toContain(rf1Region()));
+    expect(screen.getByTestId('calendar-stub')).toBeInTheDocument();
+    expect(h.calendarProps!.events).toBe(first);
+    expect(screen.queryAllByText("Couldn't load this group's events")).toHaveLength(0);
+    expect(follows(visibleRf1(), screen.getByTestId('calendar-stub'))).toBe(true);
+  });
+
+  it('RF-5. a network failure on either refresh is RF1 over the kept content (C8 e, the transient half)', async () => {
+    await renderHeaderAt('owner');
+    await failMembersRefresh(new ApiError('offline', 'network', 0));
+    expect(screen.getAllByText(RF1).length).toBeGreaterThan(0);
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+    expect(screen.queryAllByText("Couldn't load this group")).toHaveLength(0);
+    expect(pushSpy).not.toHaveBeenCalled();
+    cleanup();
+
+    await loadEvents([EV_A]);
+    await failEventsRefresh(new ApiError('offline', 'network', 0));
+    expect(screen.getAllByText(RF1).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('calendar-stub')).toBeInTheDocument();
+    expect(h.calendarProps!.events).toEqual([EV_A]);
+    expect(screen.queryAllByText("Couldn't load this group's events")).toHaveLength(0);
+  });
+
+  it('RF-6. a members refresh nobody pressed never drops focus to the body (C8 f / C12)', async () => {
+    // (f1) an unpressed 401 withdraws the page while a control inside it holds focus.
+    await renderHeaderAt('owner', { inMain: true });
+    await failMembersRefresh();
+    expect(screen.getAllByText(RF1).length).toBeGreaterThan(0);
+    const link = screen.getByRole('link', { name: 'Plan Game Session' });
+    act(() => link.focus());
+    expect(document.activeElement).toBe(link);
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new ApiError('Unauthorized', 'unauthorized', 401));
+    await act(async () => {
+      fireVisibility('visible');
+    });
+    await screen.findAllByText("Couldn't load this group");
+    expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
+    expect(screen.queryByText(/2 members/)).toBeNull();
+    await act(async () => {});
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('main')));
+    expect(document.activeElement).not.toBe(document.body);
+    cleanup();
+
+    // (f2) an unpressed success removes the focused Retry.
+    await renderHeaderAt('owner', { inMain: true });
+    await failMembersRefresh();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    act(() => retry.focus());
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
+    await act(async () => {
+      fireVisibility('visible');
+    });
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 })));
+  });
+
+  it('RF-7. an events refresh nobody pressed never drops focus to the body (C8 f / C12)', async () => {
+    // (f1) an unpressed 403 withdraws the calendar while a control inside it holds focus.
+    await loadEvents([EV_A]);
+    await failEventsRefresh();
+    expect(screen.getAllByText(RF1).length).toBeGreaterThan(0);
+    const stubDay = screen.getByRole('button', { name: 'Stub day' });
+    act(() => stubDay.focus());
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(new ApiError('Forbidden', 'forbidden', 403));
+    await act(async () => {
+      fireVisibility('visible');
+    });
+    await screen.findAllByText("Couldn't load this group's events");
+    expect(screen.queryByTestId('calendar-stub')).toBeNull();
+    await act(async () => {});
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Calendar' }))
+    );
+    expect(document.activeElement).not.toBe(screen.getByRole('heading', { level: 1 }));
+    cleanup();
+
+    // (f2) an unpressed success removes the focused Retry.
+    await loadEvents([EV_A]);
+    await failEventsRefresh();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    act(() => retry.focus());
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValueOnce([EV_A, EV_B]);
+    await act(async () => {
+      fireVisibility('visible');
+    });
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+    await waitFor(() => expect(document.activeElement).toBe(h.calendarProps!.headingRef!.current));
+  });
+
+  it('RF-8. a members refresh that fails behind the open Manage Members dialog fills a region the dialog does not hide; the close re-presents nothing', async () => {
+    await renderHeaderAt('owner', { inMain: true });
+    const regionsBefore = screen.getAllByRole('status');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Manage Members' }));
+    await screen.findByRole('dialog');
+    // Measured premise: the dialog hides the page around it (Radix -> aria-hidden's hideOthers)...
+    const link = screen.getByRole('link', { name: 'Plan Game Session', hidden: true });
+    expect(link.closest('[aria-hidden="true"]')).not.toBeNull();
+
+    await failMembersRefresh();
+    // ...but not the notice's live region (the package exempts aria-live elements): the fill is heard.
+    expect(screen.getAllByText(RF1)).toHaveLength(2);
+    const region = rf1Region();
+    expect(regionsBefore).toContain(region);
+    expect(region.closest('[aria-hidden]')).toBeNull();
+
+    act(() => {
+      h.manageMembersProps!.modaltoggle();
+    });
+    // The close re-presents nothing: the same region keeps its text, so the sentence is not spoken twice.
+    expect(screen.getAllByText(RF1)).toHaveLength(2);
+    expect(rf1Region()).toBe(region);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 150));
+    });
+    expect(rf1Region()).toBe(region);
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
   });
 });
