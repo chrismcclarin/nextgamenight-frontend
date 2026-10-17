@@ -127,6 +127,16 @@ test.describe('error recovery controls on a phone (88.6.1-21: AC-10, Req 5, Req 
     const report = page.getByRole('button', { name: 'Report this' });
     await expectTouchTarget(retry, 'full Try again');
     await expectKeyboardRingOnly(page, retry, 'full Try again');
+
+    // Owner ruling 2026-10-05 (plan 88.6.1-69): Report this appears only after a retry has failed.
+    // At the first failure there is none; a failed Try again (mode still 'fail') brings it. The
+    // caller removes this banner at the press and re-inserts it on failure, so the link appearing is
+    // the real-browser proof that the host's memory survived the unmount. Only then is it measured.
+    await expect(report).toHaveCount(0);
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(1, { timeout: 15_000 });
+    await expect(report).toHaveCount(1, { timeout: 15_000 });
     await expectTouchTarget(report, 'Report this');
     await expectKeyboardRingOnly(page, report, 'Report this');
 

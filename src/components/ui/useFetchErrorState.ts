@@ -21,6 +21,12 @@
  *     asks (is this the proxy's CSRF refusal?) is answered by api.ts's `isCsrfRejection`,
  *     so the body's shape stays known in one file.]
  *
+ * [AMENDED Phase 88.6.1-69: besides deriving, the hook now REMEMBERS one fact a
+ * derivation cannot recover — whether a retry the person started has failed
+ * (`retryFailed`) — because the banner that asked may be unmounted by its caller
+ * before the answer arrives. It still re-implements no fetch, silent retry or
+ * escalation.]
+ *
  * Error-only refocus recovery (D-02): the global query client deliberately sets
  * `refetchOnWindowFocus: false` and governs EVERY query, so it must NOT be
  * flipped. This hook owns "are we currently erroring", so it re-attempts the

@@ -25,7 +25,7 @@ vi.mock('next/navigation', () => ({
 
 import { useFetchErrorState } from './useFetchErrorState';
 import type { FetchErrorState } from './useFetchErrorState';
-import { FetchErrorBanner } from './FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice } from './FetchErrorBanner';
 import { FeedbackModalProvider } from '@/app/components/FeedbackModalProvider';
 import { ApiError } from '@/lib/api';
 
@@ -637,5 +637,58 @@ describe('retryFailed — every adapter shape (plan 88.6.1-69)', () => {
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((v) => v === true), JSON.stringify(seen)).toBe(true);
     expect(screen.getByRole('button', { name: 'Report this' })).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 4: the ruling is about the FULL banner. The compact notice and plan 70's RF1 notice carry
+// no report link, before or after a failed retry.
+
+describe('the small notices carry no report link (plan 88.6.1-69)', () => {
+  it('R5. the compact notice after a failed retry renders no Report this (a stub state, then a real hook-driven failed retry)', async () => {
+    const { unmount } = render(
+      <FeedbackModalProvider>
+        <FetchErrorBanner compact state={failedState({ retryFailed: true })} />
+      </FeedbackModalProvider>
+    );
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Report this' })).toBeNull();
+    unmount();
+
+    // The real hook: a person retry fails, so retryFailed is true, and the compact row still has
+    // no report link.
+    const a = makeAdapter(boom('first'));
+    function CompactHost() {
+      const [error, setError] = React.useState<unknown>(boom('first'));
+      a.ctl.setError = setError;
+      const refetch = React.useCallback(() => {
+        setError(boom('second'));
+        return { isError: true };
+      }, []);
+      const state = useFetchErrorState(adapterQuery(error, refetch));
+      a.ctl.state = state;
+      a.ctl.probe.push(state.retryFailed);
+      return state.showError ? <FetchErrorBanner compact state={state} /> : null;
+    }
+    const user = userEvent.setup();
+    render(
+      <FeedbackModalProvider>
+        <CompactHost />
+      </FeedbackModalProvider>
+    );
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('Some personal controls are still unavailable.', { selector: 'span' });
+    expect(a.last(), 'the hook recorded the failed retry').toBe(true);
+    expect(screen.queryByRole('button', { name: 'Report this' })).toBeNull();
+  });
+
+  it('R6. RefreshFailedNotice showing RF1 with retryFailed true renders no Report this', () => {
+    render(
+      <FeedbackModalProvider>
+        <RefreshFailedNotice state={failedState({ code: 'network', retryFailed: true })} retained />
+      </FeedbackModalProvider>
+    );
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Report this' })).toBeNull();
   });
 });
