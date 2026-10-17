@@ -855,7 +855,9 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
     render(<CreateEvent {...baseProps()} hideVisualCalendar={false} editingEvent={hostCopy} />);
     await screen.findByRole('button', { name: 'Update Event' });
     await waitFor(() => expect(fixtures.schedulerProps).not.toBeNull());
-    const initialDate = fixtures.schedulerProps?.initialDate as Date;
+    // Re-read through a cast: TypeScript narrowed the holder to null at the reset above.
+    const recorded = fixtures.schedulerProps as Record<string, unknown> | null;
+    const initialDate = recorded?.initialDate as Date;
     expect(initialDate.toISOString().slice(0, 10)).toBe('2026-11-16');
   });
 });

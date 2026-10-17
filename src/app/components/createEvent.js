@@ -321,10 +321,15 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
   // Load existing ballot options when editing an event
   useEffect(() => {
+    let cancelled = false;
     if (editingEvent && modal) {
       const loadBallot = async () => {
         try {
+          // see DECISION Phase 88.6.1-68 (edit reads the event fresh) — a ballot read before this device's update lands would hand Update the old options.
+          await whenEventWritesSettle(editingEvent.id);
+          if (cancelled) return;
           const ballot = await ballotAPI.getBallot(editingEvent.id);
+          if (cancelled) return;
           if (ballot && ballot.ballot_status !== null && ballot.options && ballot.options.length > 0) {
             setBallotOptions(ballot.options.map(o => ({ game_id: o.game_id || null, game_name: o.game_name })));
           } else {
@@ -332,6 +337,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           }
         } catch (err) {
           // No ballot exists or error fetching -- that's fine
+          if (cancelled) return;
           setBallotOptions([]);
         }
       };
@@ -339,6 +345,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     } else if (!editingEvent) {
       setBallotOptions([]);
     }
+    return () => {
+      cancelled = true;
+    };
   }, [editingEvent, modal]);
 
   // Populate form when editingEvent changes
@@ -1107,7 +1116,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   // the drag selection immediately after the user picks a time slot.
   const calendarInitialDate = useMemo(() => {
     if (prefillDate) return parseISO(prefillDate);
-    if (editingEvent?.start_date) return new Date(editingEvent.start_date);
+    if (editSourceEvent?.start_date) return new Date(editSourceEvent.start_date);
     // Phase 71.2 / Plan 03 hotfix — when arriving from a poll-closed CTA the
     // user has no prefilled slot, but the heatmap response carries weekStart
     // (earliest viable slot date). Anchor the calendar there so the rendered
@@ -1183,7 +1192,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     return new Date();
   }, [
     prefillDate,
-    editingEvent?.start_date,
+    editSourceEvent?.start_date,
     promptId,
     heatmapData?.weekStart,
     heatmapWeekAnchor,
