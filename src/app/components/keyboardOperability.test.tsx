@@ -1433,6 +1433,67 @@ describe('grouplist card button names carry the group name (88.6.1-54 — D-19, 
     // One name source on Invite too: its aria-label, and no title beside it.
     expect(glInvite()).not.toHaveAttribute('title');
   });
+
+  it('NM-3. an empty, blank or missing name falls back to today\'s words; a padded name is trimmed, not replaced (edge R6 empty, backstop)', async () => {
+    await renderGroupCards([
+      nmGroup('nm-e1', ''),
+      nmGroup('nm-e2', '   '),
+      nmGroup('nm-e3'),
+      nmGroup('nm-e4', '  Padded Crew  '),
+    ]);
+
+    // getAllByTestId follows render order, which is the order the API returned.
+    const cards = screen.getAllByTestId('group-card');
+    expect(cards).toHaveLength(4);
+
+    for (const card of cards.slice(0, 3)) {
+      const scoped = within(card);
+      // By role and computed name AND by the attribute that carries it (D-52).
+      expect(scoped.getByRole('button', { name: 'Customize group' })).toHaveAttribute('title', 'Customize group');
+      expect(scoped.getByRole('button', { name: 'Invite member to group' })).toHaveAttribute(
+        'aria-label',
+        'Invite member to group',
+      );
+    }
+
+    // The positive control: the fallback is not what every input gets.
+    const padded = within(cards[3]);
+    expect(padded.getByRole('button', { name: 'Customize Padded Crew' })).toHaveAttribute(
+      'title',
+      'Customize Padded Crew',
+    );
+    expect(padded.getByRole('button', { name: 'Invite member to Padded Crew' })).toHaveAttribute(
+      'aria-label',
+      'Invite member to Padded Crew',
+    );
+  });
+
+  it('NM-4. a name with quotes, an ampersand, angle brackets, an emoji and 100+ characters reaches both labels byte-equal and untruncated (edge R6 encoding, backstop)', async () => {
+    const LONG = 'Bob\'s "Board" & <Crew> 🎲 ' + 'x'.repeat(100);
+    expect(LONG.length).toBeGreaterThan(100);
+    await renderGroupCards([nmGroup('nm-long', LONG)]);
+
+    const card = screen.getByRole('button', { name: LONG }).closest('[data-testid="group-card"]');
+    expect(card, 'the long-named title block sits inside a group card').not.toBeNull();
+    const scoped = within(card as HTMLElement);
+
+    const gear = scoped.getByRole('button', { name: 'Customize ' + LONG });
+    const gearTitle = gear.getAttribute('title');
+    expect(gearTitle).toBe('Customize ' + LONG);
+    expect(gearTitle?.length).toBe('Customize '.length + LONG.length);
+
+    const invite = scoped.getByRole('button', { name: 'Invite member to ' + LONG });
+    const inviteLabel = invite.getAttribute('aria-label');
+    expect(inviteLabel).toBe('Invite member to ' + LONG);
+    expect(inviteLabel?.length).toBe('Invite member to '.length + LONG.length);
+
+    // No hand-made entity escaping: React writes the attribute as text.
+    for (const value of [gearTitle ?? '', inviteLabel ?? '']) {
+      for (const entity of ['&quot;', '&amp;', '&lt;', '&#']) {
+        expect(value, `the label carries a hand-escaped ${entity}`).not.toContain(entity);
+      }
+    }
+  });
 });
 
 /*
