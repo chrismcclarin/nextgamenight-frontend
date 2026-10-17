@@ -406,6 +406,10 @@ async function nextMacrotask() {
   });
 }
 
+function underPointer(overlay: HTMLElement): HTMLElement {
+  return overlay.isConnected ? overlay : document.body;
+}
+
 function overlayOf(dialog: HTMLElement) {
   const overlay = dialog.previousElementSibling as HTMLElement | null;
   expect(overlay, 'the dimmed overlay renders just before the dialog content').not.toBeNull();
@@ -457,11 +461,15 @@ describe('useDismissal — a modal dialog above the surface (plan 88.6.1-80, D-1
 
     // The real press sequence (review #92), once Radix's outside-press listener is registered (it
     // is added one macrotask after the layer mounts). A primary press is deferred by Radix to the
-    // click, so the hook's mousedown still finds the dialog open.
+    // click, so the hook's mousedown still finds the dialog open. The mousedown and click go where a
+    // browser's hit test would send them: the overlay while it is still in the document, else the
+    // page beneath (a detached node's event never reaches the document). Fired with button 1
+    // instead, Radix dismisses at pointerdown, the overlay is gone, and the surface closes too: the
+    // residual recorded in the hook's marker.
     await nextMacrotask();
     fireEvent.pointerDown(overlay, { button: 0 });
-    fireEvent.mouseDown(overlay, { button: 0 });
-    fireEvent.click(overlay, { button: 0 });
+    fireEvent.mouseDown(underPointer(overlay), { button: 0 });
+    fireEvent.click(underPointer(overlay), { button: 0 });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Form' })).toBeNull());
     expect(onDismiss).not.toHaveBeenCalled();
     expect(screen.getByTestId('panel')).toBeInTheDocument();

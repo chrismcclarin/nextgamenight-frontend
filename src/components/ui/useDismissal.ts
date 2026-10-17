@@ -28,8 +28,56 @@
  * triggers' `aria-expanded`. A host-owned state keeps both hosts' state shapes unchanged.
  * Changing the event to a document listener, or the event type to pointerdown, is a decision, not
  * a cleanup.
+ * AMENDED Phase 88.6.1-80: one exemption added — an open modal dialog that does not contain the
+ * container is a layer ABOVE the surface, so a press while it is open, and focus moving into it,
+ * never dismiss the surface. See `DECISION Phase 88.6.1-80 (modal layer above, D-18)` below.
  */
 import * as React from 'react';
+
+/* DECISION Phase 88.6.1-80 (modal layer above, D-18): CHOSEN — a modal dialog (an element carrying
+   aria-modal true: the house Modal, `src/app/components/Modal.tsx`, and BottomSheet,
+   `src/components/ui/BottomSheet.tsx`) that is open and does NOT contain the container is a layer
+   ABOVE the surface. While one is open, no press dismisses the surface — a press inside its content
+   AND a press on its dimmed overlay (rendered outside the content element, `src/components/ui/dialog.tsx`, anchor
+   `<DialogOverlay />`) both belong to that dialog — and focus moving into it is not the person
+   leaving the surface (the page beneath a modal is inert, and the dialog's close restore returns
+   focus to the element that opened it). One Escape or one overlay press closes one layer: the
+   dialog's own. A dialog in its exit animation (data-state closed) no longer counts.
+   The load-bearing fact for the overlay press (review #92): Radix Dialog passes
+   `deferPointerDownOutside: true` (`node_modules/@radix-ui/react-dialog/dist/index.mjs:229`, v1.1.17,
+   spread after the consumer's props, so no prop turns it off), so a PRIMARY-button press outside the
+   content is dismissed at the click, after this hook's mousedown has seen the dialog still open.
+   RESIDUAL, with its size: a NON-primary press on the overlay (mouse middle or right button) is
+   dismissed at pointerdown (`node_modules/@radix-ui/react-dismissable-layer/dist/index.mjs:240-241`,
+   v1.1.13, anchor `if (!deferPointerDownOutside || event.button !== 0) {`), before this hook's
+   mousedown, which then finds no open dialog and dismisses the surface too — that press closes both
+   layers. Touch and primary presses are button 0 and deferred; the cost is the surface closing
+   with the dialog.
+   Escape is untouched: a dialog hosted outside the surface's component tree (the report form,
+   hosted by FeedbackModalProvider at the layout root, plan 88.6.1-69) never delivers its keydown to
+   the container handler, and Radix claims Escape there in the capture phase.
+   The kebab's record of "THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD"
+   (`src/app/components/KebabMenu.js`, a non-Radix layer INSIDE a dialog, where the dialog below
+   still closes first) is untouched: a dialog that contains the container is below it, never above.
+   REJECTED: (a) a React-tree press record (a capture-phase press prop on the container) and a
+   portal-origin rule for keys and focus moves — no consumer needs them once the report form lives
+   in FeedbackModalProvider (orchestrator decision 2026-10-05: a mechanism with no user is not
+   shipped); (b) checking only the press target's nearest modal ancestor — it misses the dimmed
+   overlay, which sits outside the content, so one tap would close two layers; (c) wrapping the
+   surface in Radix's DismissableLayer and its layer stack — a second dismissal engine, where D-18
+   says one hook (plan 05 already rejected floating-ui's useDismiss); (d) an explicit layer tree in
+   context — every dialog primitive would have to register; (e) a deferred focus check on a timer or
+   a microtask — the kebab's focusout record already rejected a deferred check; (f) a
+   default-prevented bail on Escape (KM-7).
+   Changing this is a decision, not a cleanup. */
+const MODAL_LAYER_SELECTOR = '[aria-modal="true"]:not([data-state="closed"])';
+
+/** Every open modal dialog in the container's document that does not contain the container. */
+function openModalLayersAbove(container: HTMLElement): Element[] {
+  return Array.from(container.ownerDocument.querySelectorAll(MODAL_LAYER_SELECTOR)).filter(
+    (dialog) => !dialog.contains(container)
+  );
+}
 
 export interface UseDismissalOptions {
   /** The host's open state. The hook reads it and never writes it. */
@@ -86,6 +134,9 @@ export function useDismissal({
     function handleOutsideMouseDown(event: MouseEvent) {
       const container = containerRef.current;
       if (container && !container.contains(event.target as Node)) {
+        // Plan 88.6.1-80: a press while a modal dialog is open above the surface belongs to that
+        // dialog, inside its content or on its overlay.
+        if (openModalLayersAbove(container).length > 0) return;
         onDismissRef.current();
       }
     }
@@ -159,7 +210,11 @@ export function useDismissal({
     if (!open) return;
     const next = event.relatedTarget;
     if (!next) return;
-    if (containerRef.current && containerRef.current.contains(next as Node)) return;
+    const container = containerRef.current;
+    if (container && container.contains(next as Node)) return;
+    // Plan 88.6.1-80: focus moving into an open modal dialog above the surface is not the person
+    // leaving it.
+    if (container && openModalLayersAbove(container).some((dialog) => dialog.contains(next as Node))) return;
     onDismiss();
   };
 
