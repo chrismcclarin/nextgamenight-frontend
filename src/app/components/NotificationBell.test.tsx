@@ -54,7 +54,13 @@ vi.mock('./UnreadNotificationProvider', () => ({
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
 const { friendMocks } = vi.hoisted(() => ({
-  friendMocks: { acceptRequest: vi.fn(), declineRequest: vi.fn() },
+  friendMocks: {
+    acceptRequest: vi.fn(),
+    declineRequest: vi.fn(),
+    // Plan 88.6.1-66's read-only context fact (one request per row across surfaces); the bell
+    // reads it in every friend-request row's render (plan 88.6.1-44, NA-19).
+    isRequestActionPending: vi.fn((_id: string) => false),
+  },
 }));
 
 vi.mock('./FriendshipStatusProvider', () => ({
@@ -106,6 +112,8 @@ function applyLastUpdater(prev: Array<Record<string, unknown>>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps implementations, so NA-19's override would otherwise leak.
+  friendMocks.isRequestActionPending.mockImplementation(() => false);
   sessionStorage.clear();
   unreadState.invites = [INVITE];
   unreadState.friendRequests = [];
@@ -153,7 +161,7 @@ describe('L-8 — a dead-group 410 on the pending invite', () => {
     renderBell();
     await openBell();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    fireEvent.click(screen.getByRole('button', { name: `Decline invite to ${GROUP_NAME}` }));
 
     await waitFor(() => expect(setInvitesMock).toHaveBeenCalled());
     expect(applyLastUpdater([INVITE])).toEqual([]);
@@ -240,7 +248,7 @@ describe('Phase 88.6-31 — AC-16 (a) telemetry: the four accept/decline failure
     renderBell();
     await openBell();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    fireEvent.click(screen.getByRole('button', { name: `Decline invite to ${GROUP_NAME}` }));
 
     await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
     expect(loggerError().mock.calls[0][0]).toBe('Failed to decline invite:');
@@ -267,7 +275,7 @@ describe('Phase 88.6-31 — AC-16 (a) telemetry: the four accept/decline failure
     declineInvite().mockRejectedValue(deadGroupError());
     renderBell();
     await openBell();
-    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    fireEvent.click(screen.getByRole('button', { name: `Decline invite to ${GROUP_NAME}` }));
     await waitFor(() => expect(setInvitesMock).toHaveBeenCalled());
     expect(loggerError()).not.toHaveBeenCalled();
   });
@@ -283,11 +291,11 @@ describe('Phase 88.6-31 — AC-16 (a) telemetry: the four accept/decline failure
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
     expect(await screen.findByText('Friend Requests')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Accept friend request from Cee' }));
     await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
     expect(loggerError().mock.calls[0][0]).toBe('Failed to accept friend request:');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Decline friend request from Cee' }));
     await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(2));
     expect(loggerError().mock.calls[1][0]).toBe('Failed to decline friend request:');
   });
@@ -813,5 +821,323 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     const h1 = screen.getByRole('heading', { level: 1, name: 'Home' });
     expect(document.activeElement).not.toBe(h1);
     expect(h1).not.toHaveAttribute('tabindex');
+  });
+
+  // Task 2 (W016 rows 7-9, N8, H9 on the other three controls). Friend requests in the mocked
+  // provider, like plan 88.6.1-66's real one, stay listed while their request runs.
+  const FR1 = { id: 'fr-a', Requester: { username: 'Cee' } };
+  const FR2 = { id: 'fr-b', Requester: { username: 'Dee' } };
+
+  function seed(invites: Array<Record<string, unknown>>, friendRequests: Array<Record<string, unknown>>) {
+    unreadState.invites = invites;
+    unreadState.friendRequests = friendRequests;
+    unreadState.totalCount = invites.length + friendRequests.length;
+  }
+
+  async function openOn(sectionText: string) {
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    expect(await screen.findByText(sectionText)).toBeInTheDocument();
+  }
+
+  it('NA-6. invite Decline (AC-12, D-33 row 15, N8): keeps its word and its name while in flight, is aria-disabled not disabled, its Accept sibling is natively disabled, two more presses send nothing', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A, INVITE_B]);
+    const d = deferred();
+    declineInvite().mockReturnValue(d.promise);
+    renderBell();
+    await openBell();
+
+    const rowA = rowFor('Alpha Crew');
+    const declineA = within(rowA).getByRole('button', { name: 'Decline invite to Alpha Crew' });
+    expect(declineA).toHaveAccessibleName('Decline invite to Alpha Crew');
+
+    await user.click(declineA);
+
+    expect(declineA).toHaveTextContent(/^Decline$/);
+    expect(declineA).toHaveAccessibleName('Decline invite to Alpha Crew');
+    expect(declineA).toHaveAttribute('aria-disabled', 'true');
+    expect(declineA).not.toHaveAttribute('disabled');
+    const acceptA = within(rowA).getByRole('button', { name: 'Accept invite to Alpha Crew' });
+    expect(acceptA).toBeDisabled();
+    expect(acceptA).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(declineA);
+    fireEvent.click(declineA);
+    expect(declineInvite()).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      d.resolve({ success: true });
+    });
+    expect(declineA).not.toHaveAttribute('aria-disabled');
+    expect(acceptA).toBeEnabled();
+  });
+
+  it('NA-7. friend Accept then friend Decline (AC-12, N2 + N8): each pressed control stays focusable and refuses a second request; Accept reads Accepting..., Decline keeps its word', async () => {
+    const user = userEvent.setup();
+    seed([], [FR1]);
+    const dA = deferred();
+    friendAccept().mockReturnValue(dA.promise);
+    renderBell();
+    await openOn('Friend Requests');
+
+    const row = rowFor('Cee');
+    const accept = within(row).getByRole('button', { name: 'Accept friend request from Cee' });
+    const decline = within(row).getByRole('button', { name: 'Decline friend request from Cee' });
+
+    await user.click(accept);
+    expect(accept).toHaveAccessibleName('Accepting...');
+    expect(accept).toHaveTextContent(/^Accepting\.\.\.$/);
+    expect(accept).not.toHaveAttribute('aria-label');
+    expect(accept).toHaveAttribute('aria-disabled', 'true');
+    expect(accept).not.toHaveAttribute('disabled');
+    expect(decline).toBeDisabled();
+    fireEvent.click(accept);
+    fireEvent.click(accept);
+    expect(friendAccept()).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      dA.resolve({ alreadyAccepted: false });
+    });
+    expect(accept).not.toHaveAttribute('aria-disabled');
+
+    const dD = deferred();
+    friendDecline().mockReturnValue(dD.promise);
+    await user.click(decline);
+    expect(decline).toHaveTextContent(/^Decline$/);
+    expect(decline).toHaveAccessibleName('Decline friend request from Cee');
+    expect(decline).toHaveAttribute('aria-disabled', 'true');
+    expect(decline).not.toHaveAttribute('disabled');
+    expect(accept).toBeDisabled();
+    fireEvent.click(decline);
+    fireEvent.click(decline);
+    expect(friendDecline()).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      dD.resolve({ alreadyDeclined: false });
+    });
+    expect(decline).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('NA-8. AC-14 on plan 88.6.1-66\'s remove-on-confirm shape: (a) the friend row stays while its Accept works, focus stays until the provider removes it, then lands on the next request; (b) a failure keeps the row and arms nothing', async () => {
+    const user = userEvent.setup();
+    seed([], [FR1, FR2]);
+    const d = deferred();
+    friendAccept().mockReturnValue(d.promise);
+    const { rerender } = renderBell();
+    await openOn('Friend Requests');
+
+    const acceptCee = within(rowFor('Cee')).getByRole('button', { name: 'Accept friend request from Cee' });
+    await user.click(acceptCee);
+    // Held: the row is still listed and the pressed control paints its in-flight words.
+    expect(rowFor('Cee')).toBeInTheDocument();
+    expect(acceptCee).toHaveAccessibleName('Accepting...');
+
+    await act(async () => {
+      d.resolve({ alreadyAccepted: false });
+    });
+    // ORDERING HALF: resolved, not yet removed by the provider.
+    expect(document.activeElement).toBe(acceptCee);
+    expect(screen.getByText('Accepted friend request!')).toBeInTheDocument();
+
+    // The provider's removal, modelled.
+    unreadState.friendRequests = [FR2];
+    unreadState.totalCount = 1;
+    rerender(bellElement());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Accept friend request from Dee' })),
+    );
+    expect(screen.getByRole('region', { name: 'Notifications' })).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+
+    // (b) failure: the row stays, nothing is armed, and a later outside press moves nobody.
+    cleanup();
+    seed([], [FR1, FR2]);
+    friendAccept().mockRejectedValue(new ApiError('HTTP error! status: 500', 'internal', 500, {}));
+    render(
+      <main>
+        <h1>Home</h1>
+        {bellElement()}
+        <p>Outside</p>
+      </main>,
+    );
+    await openOn('Friend Requests');
+    const failedAccept = within(rowFor('Cee')).getByRole('button', { name: 'Accept friend request from Cee' });
+    await user.click(failedAccept);
+    await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
+    expect(rowFor('Cee')).toBeInTheDocument();
+    expect(failedAccept).toHaveAccessibleName('Accept friend request from Cee');
+    expect(failedAccept).not.toHaveAttribute('aria-disabled');
+    // CONFIRM-ONLY in jsdom (C-11).
+    expect(document.activeElement).toBe(failedAccept);
+
+    fireEvent.mouseDown(screen.getByText('Outside'));
+    await act(async () => {});
+    expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull();
+    const h1 = screen.getByRole('heading', { level: 1, name: 'Home' });
+    expect(document.activeElement).not.toBe(h1);
+    expect(h1).not.toHaveAttribute('tabindex');
+  });
+
+  it('NA-9. panel order crosses lists: accepting the last invite lands focus on the first friend request\'s Accept', async () => {
+    const user = userEvent.setup();
+    seed([INVITE_A], [FR1]);
+    acceptInvite().mockResolvedValue({ success: true });
+    const { rerender } = renderBell();
+    await openBell();
+
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    await waitFor(() => expect(setInvitesMock).toHaveBeenCalled());
+
+    unreadState.invites = applyLastUpdater(unreadState.invites);
+    unreadState.totalCount = 1;
+    rerender(bellElement());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Accept friend request from Cee' })),
+    );
+  });
+
+  it('NA-10. AC-14 for Decline: declining the first invite lands on the next row\'s Accept; a dead-group 410 on the last row lands on the panel heading', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A, INVITE_B]);
+    declineInvite().mockResolvedValueOnce({ success: true });
+    const { rerender } = renderBell();
+    await openBell();
+
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Decline invite to Alpha Crew' }));
+    await waitFor(() => expect(setInvitesMock).toHaveBeenCalledTimes(1));
+    unreadState.invites = applyLastUpdater(unreadState.invites);
+    unreadState.totalCount = 1;
+    rerender(bellElement());
+    const acceptBeta = await waitFor(() => {
+      const target = screen.getByRole('button', { name: 'Accept invite to Beta Crew' });
+      expect(document.activeElement).toBe(target);
+      return target;
+    });
+    expect(acceptBeta).toBeInTheDocument();
+
+    declineInvite().mockRejectedValueOnce(deadGroupError());
+    await user.click(within(rowFor('Beta Crew')).getByRole('button', { name: 'Decline invite to Beta Crew' }));
+    await waitFor(() => expect(setInvitesMock).toHaveBeenCalledTimes(2));
+    unreadState.invites = applyLastUpdater(unreadState.invites);
+    unreadState.totalCount = 0;
+    rerender(bellElement());
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(region).getByRole('heading', { name: 'Notifications' })),
+    );
+  });
+
+  it('NA-18. the preferred target skips a natively disabled control: with the next row\'s Decline in flight (its Accept natively disabled), focus lands on that focusable Decline, not on the heading', async () => {
+    const user = userEvent.setup();
+    seedInvites([INVITE_A, INVITE_B]);
+    const heldDecline = deferred();
+    declineInvite().mockReturnValue(heldDecline.promise);
+    acceptInvite().mockResolvedValue({ success: true });
+    const { rerender } = renderBell();
+    await openBell();
+
+    const declineBeta = within(rowFor('Beta Crew')).getByRole('button', { name: 'Decline invite to Beta Crew' });
+    await user.click(declineBeta);
+    expect(declineBeta).toHaveAttribute('aria-disabled', 'true');
+    expect(within(rowFor('Beta Crew')).getByRole('button', { name: 'Accept invite to Beta Crew' })).toBeDisabled();
+
+    await user.click(within(rowFor('Alpha Crew')).getByRole('button', { name: 'Accept invite to Alpha Crew' }));
+    await waitFor(() => expect(setInvitesMock).toHaveBeenCalledTimes(1));
+    unreadState.invites = applyLastUpdater(unreadState.invites);
+    unreadState.totalCount = 1;
+    rerender(bellElement());
+
+    await waitFor(() => expect(document.activeElement).toBe(declineBeta));
+    expect(screen.getByRole('region', { name: 'Notifications' })).toContainElement(declineBeta);
+    await act(async () => {
+      heldDecline.resolve({ success: true });
+    });
+  });
+
+  it('NA-19. one request per row across surfaces (review r3, H-02): a friend request whose request runs from the Friends page is natively disabled on both buttons here and sends nothing; a press made on the bell keeps its rule of POSITION', async () => {
+    seed([], [FR1, FR2]);
+    friendMocks.isRequestActionPending.mockImplementation((id: string) => id === FR1.id);
+    const { rerender } = renderBell();
+    await openOn('Friend Requests');
+
+    const acceptCee = screen.getByRole('button', { name: 'Accept friend request from Cee' });
+    const declineCee = screen.getByRole('button', { name: 'Decline friend request from Cee' });
+    for (const button of [acceptCee, declineCee]) {
+      expect(button).toBeDisabled();
+      expect(button).not.toHaveAttribute('aria-disabled');
+    }
+    fireEvent.click(declineCee);
+    fireEvent.click(acceptCee);
+    expect(friendDecline()).toHaveBeenCalledTimes(0);
+    expect(friendAccept()).toHaveBeenCalledTimes(0);
+    expect(loggerError()).not.toHaveBeenCalled();
+    for (const button of within(rowFor('Dee')).getAllByRole('button')) {
+      expect(button).toBeEnabled();
+      expect(button).not.toHaveAttribute('aria-disabled');
+    }
+
+    friendMocks.isRequestActionPending.mockImplementation(() => false);
+    rerender(bellElement());
+    expect(acceptCee).toBeEnabled();
+    expect(declineCee).toBeEnabled();
+
+    // Second half: the provider's fact turns true for Dee from the moment Dee's Accept is pressed
+    // on the bell (the same press sets it); the pressed control keeps its rule of POSITION.
+    const pending = new Set<string>();
+    const held = deferred();
+    friendMocks.isRequestActionPending.mockImplementation((id: string) => pending.has(id));
+    friendAccept().mockImplementation((id: string) => {
+      pending.add(id);
+      return held.promise;
+    });
+    const acceptDee = screen.getByRole('button', { name: 'Accept friend request from Dee' });
+    fireEvent.click(acceptDee);
+    expect(acceptDee).toHaveAccessibleName('Accepting...');
+    expect(acceptDee).toHaveAttribute('aria-disabled', 'true');
+    expect(acceptDee).not.toHaveAttribute('disabled');
+  });
+
+  it('NA-11. N8 names (SPEC Edge R6 by analogy): (a) eight row buttons carry the eight distinct N8 names, each starting with its visible text; (b) a whitespace group name falls back to the bare word; (c) quotes, an emoji and 120+ letters are carried untruncated', async () => {
+    seed([INVITE_A, INVITE_B], [FR1, FR2]);
+    renderBell();
+    await openBell();
+
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    const buttons = within(region).getAllByRole('button');
+    const names = buttons.map((b) => b.getAttribute('aria-label'));
+    expect(names).toEqual([
+      'Accept invite to Alpha Crew',
+      'Decline invite to Alpha Crew',
+      'Accept invite to Beta Crew',
+      'Decline invite to Beta Crew',
+      'Accept friend request from Cee',
+      'Decline friend request from Cee',
+      'Accept friend request from Dee',
+      'Decline friend request from Dee',
+    ]);
+    expect(new Set(names).size).toBe(8);
+    buttons.forEach((button, i) => {
+      expect(button).toHaveAccessibleName(names[i]!);
+      expect(names[i]!.startsWith(button.textContent ?? '\u0000')).toBe(true);
+    });
+
+    // (b) empty, held out.
+    cleanup();
+    seedInvites([{ id: 'inv-blank', Group: { name: '   ' }, Inviter: { username: 'Ann' } }]);
+    renderBell();
+    await openBell();
+    const blankButtons = within(screen.getByRole('region', { name: 'Notifications' })).getAllByRole('button');
+    expect(blankButtons).toHaveLength(2);
+    expect(blankButtons[0]).toHaveAccessibleName('Accept');
+    expect(blankButtons[1]).toHaveAccessibleName('Decline');
+
+    // (c) encoding, held out.
+    cleanup();
+    const longName = `"Dice" \u{1F3B2} ${'a'.repeat(120)}`;
+    seedInvites([{ id: 'inv-long', Group: { name: longName }, Inviter: { username: 'Ann' } }]);
+    renderBell();
+    await openBell();
+    const longAccept = within(screen.getByRole('region', { name: 'Notifications' })).getAllByRole('button')[0];
+    expect(longAccept).toHaveAttribute('aria-label', `Accept invite to ${longName}`);
+    expect(longAccept).toHaveAccessibleName(`Accept invite to ${longName}`);
   });
 });
