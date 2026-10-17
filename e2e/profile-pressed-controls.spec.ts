@@ -1122,4 +1122,97 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await expect(loaded).toBeVisible();
     await expect(loaded).toBeFocused();
   });
+  // Shared by the two removal tests: the first load answers [ONE, TWO] through the net's GET
+  // answer, the DELETE is held, and the refresh hold is registered only AFTER the first load (a
+  // later registration takes precedence), so it catches the refresh and nothing earlier.
+  async function removeOneWithHeldRefresh(page: Page) {
+    const hold = await holdWrites(page, {
+      answerGet: (url) => (OWNED_GAMES_PATH.test(url.pathname) ? [ONE, TWO] : undefined),
+    });
+    const del = await holdUntilReleased(page, 'DELETE', /\/user-games\/user\/[^/]+\/game\/e2e-game-one$/);
+    await page.goto('/userProfile');
+    await expect(page.getByRole('button', { name: 'Remove E2E Meeple One' })).toBeVisible({ timeout: 15_000 });
+    const refresh = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
+
+    const remove = page.getByRole('button', { name: /^(Remove E2E Meeple One|Remove)$/ });
+    await focusByKeyboard(page, remove);
+    await page.keyboard.press('Enter'); // arms
+    await page.keyboard.press('Enter'); // commits
+    await del.arrived;
+    await expect(remove).toBeFocused();
+    await page.keyboard.press('Enter');
+    // CONFIRM-ONLY: the shared gate's re-entry guard refuses a press while the removal is held.
+    expect(del.count()).toBe(1);
+    await del.release({ message: 'Game removed from your collection' });
+    await refresh.arrived;
+    return { hold, refresh };
+  }
+
+  test('removing a game keeps the list on screen and lands focus on + Add from BGG', async ({ page }) => {
+    const { hold, refresh } = await removeOneWithHeldRefresh(page);
+    backstop = hold;
+    const toggle = page.getByRole('button', { name: '+ Add from BGG' });
+
+    // While the refresh is held: the row left at the server's confirmation (D-54), the rest stays, busy.
+    await expect(page.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
+    await expect(page.getByText('Loading your collection...')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Remove E2E Meeple Two' })).toBeVisible();
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(1);
+    await expect(page.getByRole('heading', { level: 2, name: 'My Game Collection (1)' })).toBeVisible();
+    await expect(toggle).toBeFocused();
+
+    await refresh.release([TWO]);
+    await expect(page.locator('[aria-busy]')).toHaveCount(0);
+    await expect(toggle).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 2, name: 'My Game Collection (1)' })).toBeVisible();
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow on the collection card').toBe(true);
+  });
+
+  test('a failed refresh keeps the list and shows the refresh notice, and Retry brings it up to date', async ({ page }, testInfo) => {
+    const { hold, refresh } = await removeOneWithHeldRefresh(page);
+    backstop = hold;
+    await refresh.release({ error: 'boom' }, 500);
+
+    const collection = collectionCard(page);
+    const retry = collection.getByRole('button', { name: /^(Retry|Retrying…)$/ });
+    await expect(retry).toBeVisible({ timeout: 15_000 });
+    await expect(collection.getByText(RF1)).toHaveCount(2);
+    await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
+    const kept = collection.getByRole('button', { name: 'Remove E2E Meeple Two' });
+    await expect(kept).toBeVisible();
+    await expect(collection.getByRole('heading', { level: 2, name: 'My Game Collection (1)' })).toBeVisible();
+    await expect(collection.getByText(COLLECTION_P8)).toHaveCount(0);
+    await expect(page.locator('[aria-busy]')).toHaveCount(0);
+
+    // Layout (88.6.1-70 contract C8 d). A red here is a STOP for the owner's mockup, never a restyle.
+    await settleAnimations(collection);
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    const retryBox = await retry.boundingBox();
+    const keptBox = await kept.boundingBox();
+    expect(retryBox && keptBox, 'Retry and the kept Remove have boxes').toBeTruthy();
+    if (retryBox && keptBox) {
+      if (viewportWidth < 768) {
+        expect(retryBox.width, 'Retry width').toBeGreaterThanOrEqual(44);
+        expect(retryBox.height, 'Retry height').toBeGreaterThanOrEqual(44);
+      }
+      expect(retryBox.x, 'Retry left edge').toBeGreaterThanOrEqual(0);
+      expect(retryBox.x + retryBox.width, 'Retry right edge').toBeLessThanOrEqual(viewportWidth);
+      expect(retryBox.y + retryBox.height, 'the notice sits above the list').toBeLessThanOrEqual(keptBox.y);
+    }
+    if (testInfo.project.name === 'phone') {
+      expect(viewportWidth).toBe(375);
+    }
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'horizontal overflow with the refresh notice showing').toBe(true);
+
+    const again = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
+    await retry.click();
+    await again.arrived;
+    await again.release([TWO]);
+    await expect(collection.getByText(RF1)).toHaveCount(0, { timeout: 15_000 });
+    await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
+    await expect(collection.getByRole('heading', { level: 2, name: 'My Game Collection (1)' })).toBeFocused();
+  });
 });

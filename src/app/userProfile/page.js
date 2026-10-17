@@ -348,6 +348,9 @@ function Profile(){
     const [ownedGamesError, setOwnedGamesError] = useState(null);
     const ownedGamesRequestRef = useRef(0);
     const collectionLoadedForSelf = Boolean(selfUuid) && ownedGamesLoadedFor === selfUuid;
+    // Plan 88.6.1-67 (Req 5): Remove and Add to Collection land focus on `+ Add from BGG`, else this
+    // card's heading — plan 60's two refs, a second consumer of them, never a second ref.
+    const collectionRecovery = useFocusRecovery({ fallback: collectionHeadingRef });
     const bggUsernameFieldRef = useRef(null);
     const importPromptOpenRef = useRef(false);
     // D-44 (88.6.1-60): the search panel's id, named by its toggle's aria-controls while it exists.
@@ -1541,6 +1544,21 @@ function Profile(){
         }
     };
 
+    /* DECISION Phase 88.6.1-67 (Req 5, collection focus):
+       DEFECT: the second tap commits, the removal takes out the row holding the focused control,
+       and focus fell to <body>.
+       CHOSEN: the `+ Add from BGG` toggle — the add-back control the gate's own body names — else
+       the `My Game Collection` heading (D-05); armed at the server's confirmation (or its 404),
+       just before the row leaves, so a failed remove (the row stays) moves nothing. Focus moves
+       once, when the row leaves; the refresh that follows moves nothing more — failed (RF1 above
+       the remaining rows) or answered "signed out" / "no access" (the remaining rows are
+       withdrawn, they hold no focus, and plan 70's guard has nothing to move). The same two
+       targets plan 60's result timer uses, through the same refs. The same instance serves Add to
+       Collection.
+       REJECTED: (a) the next row's Remove — a destructive control under the finger right after a
+       destructive action (plan 59's ruling); (b) per-host inline focus code (D-04); (c) a minted
+       heading or text (D-05, D-31); (d) second refs on the same elements (an element takes one
+       `ref`; plan 60's are reused). Changing the landing is a decision, not a cleanup. */
     /* DECISION Phase 88.6.1-67 (D-54, remove on confirm):
        CHOSEN: the row leaves the list when the server confirms the removal, or answers 404, not
        when the next read lands; both paths then refresh, so a 404 for a gone identity withdraws
@@ -1564,15 +1582,19 @@ function Profile(){
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
-        // ONE shared step for both confirmed paths (the resolved DELETE and its 404).
+        // ONE shared step for both confirmed paths (the resolved DELETE and its 404): arm the focus
+        // instance FIRST, so it is armed when the row leaves, then drop the row; returns `settle`.
         const dropRemovedGame = () => {
+            const settle = collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current });
             setOwnedGames((games) => games.filter((game) => game.id !== game_id));
+            return settle;
         };
         try {
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
-            dropRemovedGame();
+            const settle = dropRemovedGame();
             await fetchOwnedGames();
             toast.success('Game removed');
+            settle();
         } catch (error) {
             logger.info('Error removing game from collection:', errCtx(error));
             toast.error(
@@ -1581,8 +1603,9 @@ function Profile(){
                 })
             );
             if (error?.status === 404) {
-                dropRemovedGame();
+                const settle = dropRemovedGame();
                 await fetchOwnedGames();
+                settle();
             }
         }
     };
@@ -3887,6 +3910,9 @@ function Profile(){
                         </div>
                     )}
 
+                    {/* 88.6.1-70 contract C12 (a): outside every arm of the zone below, so it stays mounted
+                        when an access answer swaps the retained arm for the P8 banner. Renders nothing. */}
+                    <RetainedContentFocusGuard retained={collectionRetained} focusTarget={collectionHeadingRef} />
                     {/* Owned Games List */}
                     {/* DECISION Phase 88.6.1-61 (AC-29, identity notices): the compact identity notice
                         replaces a zone only when identity failed with NO row
@@ -3944,13 +3970,22 @@ function Profile(){
                            literal (unratified words, D-31 — the D-32 R5 precedent ratified each
                            one); (c) the full banner above retained rows (the owner's 2026-10-05
                            ruling gives a failed refresh the small RF1 notice).
+                           The notice is plan 70's (88.6.1-70 contract C6), mounted here as the
+                           retained arm's first child, outside the busy grid (it holds a live region).
+                           A row control that held focus when an access answer withdrew the rows hands
+                           it to the heading through plan 70's RetainedContentFocusGuard (C12) — a
+                           Remove's own row has already left at the server's confirmation, so the
+                           guard acts on an unpressed withdrawal, not on a Remove.
                            Changing this order is a decision, not a cleanup. */
                         ownedGamesError ? (
                             <FetchErrorBanner state={collectionErrorState} title={COLLECTION_LOAD_FAILED_TITLE} focusTarget={collectionHeadingRef} />
                         ) : (
                             <p className="text-content-secondary">Loading your collection...</p>
                         )
-                    ) : ownedGames.length > 0 ? (
+                    ) : (
+                        <>
+                        <RefreshFailedNotice state={collectionErrorState} retained={collectionRetained} focusTarget={collectionHeadingRef} className="mb-4" />
+                        {ownedGames.length > 0 ? (
                         <div aria-busy={loadingGames || undefined} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
                                 // D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` here was
@@ -4030,6 +4065,8 @@ function Profile(){
                     ) : (
                         // D2 mini-formula (ruled 2026-08-15): muted + sm, no "!".
                         <p className="text-content-muted text-sm">You don't have any games in your collection yet. Search BoardGameGeek to add games.</p>
+                        )}
+                        </>
                     )}
                 </div>
 

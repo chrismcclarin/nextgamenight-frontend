@@ -4658,3 +4658,287 @@ describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)
     expect(text).not.toContain('(0)');
   });
 });
+
+describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  // Copy row RF1 (D-47), written ONCE here (88.6.1-70 contract C7): plan 70's notice renders it
+  // twice while it shows (the visible line and its polite region), so every lookup is an All query.
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  const P8 = "Couldn't load your collection";
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // The unpressed re-attempt: a tab return, the useFetchErrorState.test.tsx idiom.
+  function fireVisible() {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  // Both taps of the two-tap Remove with real focus (userEvent), so the focus hook has a seed.
+  async function twoTapRemove(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(await screen.findByRole('button', { name: `Remove ${name}` }));
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+  }
+
+  function addFromBgg() {
+    return screen.getByRole('button', { name: '+ Add from BGG' });
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    // clearAllMocks keeps implementations and queued once-values, so reset to the harness defaults.
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (userGamesAPI.addOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    (gamesAPI.importFromBGG as Mock).mockReset().mockResolvedValue({ id: 'game-imported' });
+  });
+
+  it('N1: a failed refresh keeps the remaining rows under RF1, less the confirmed removal', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    const brass = screen.getByRole('button', { name: 'Remove Brass' });
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+    expect(screen.queryByText(P8)).toBeNull();
+    expect(screen.queryByText(/You don't have any games in your collection yet/)).toBeNull();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    expect(retry.compareDocumentPosition(brass) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('N2: the RF1 region is on the page before the refresh fails, and the failure fills that node', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+    const before = screen.getAllByRole('status');
+
+    await twoTapRemove(user, 'Catan');
+    let filled: HTMLElement | undefined;
+    await waitFor(() => {
+      filled = screen.getAllByRole('status').find((node) => node.textContent === RF1);
+      expect(filled).toBeDefined();
+    });
+    expect(before).toContain(filled);
+  });
+
+  it('N3: a successful Retry removes the notice and lands focus on the collection heading', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    const again = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500))
+      .mockReturnValueOnce(again.promise);
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(3));
+    await act(async () => { again.resolve([OWNED_GAMES[1]]); });
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My Game Collection (1)' }))
+    );
+  });
+
+  it('R1: a confirmed Remove lands focus on + Add from BGG when the row leaves, before the refresh answers', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    const removal = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    (userGamesAPI.removeOwnedGame as Mock).mockReturnValueOnce(removal.promise);
+    renderProfile();
+
+    const remove = await screen.findByRole('button', { name: 'Remove Catan' });
+    await user.click(remove);
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1));
+    // CONFIRM-ONLY in jsdom: the pressed Remove keeps focus and its row stays while the call is held.
+    expect(document.activeElement).toBe(remove);
+    expect(remove.isConnected).toBe(true);
+
+    await act(async () => { removal.resolve({}); });
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2); // the refresh is still held
+    expect(document.activeElement).not.toBe(document.body);
+
+    await act(async () => { refresh.resolve([OWNED_GAMES[1]]); });
+    await act(async () => {});
+    expect(document.activeElement).toBe(addFromBgg());
+  });
+
+  it('N4: a collection that loaded EMPTY keeps its empty sentence under RF1 after a failed refresh (owner ruling Y)', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 230802, name: 'Azul', year_published: 2017 }]);
+    // `addOwnedGame` keeps the harness default: an answer with NO `game` row, so the add's
+    // confirmation append (Task 3, finding #75) adds nothing and the list stays the empty one.
+    renderProfile();
+    await screen.findByText(/You don't have any games in your collection yet/);
+
+    fireEvent.click(addFromBgg());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^(Add to Collection|Adding\.\.\.)$/ }));
+
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const empty = screen.getByText(/You don't have any games in your collection yet/);
+    expect(screen.queryByText(P8)).toBeNull();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (0)' })).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    expect(retry.compareDocumentPosition(empty) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('E1: a 401 or 403 refresh withdraws the rows for the P8 banner and its register line, never RF1', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    for (const err of [
+      new ApiError('Unauthorized', 'unauthorized', 401),
+      new ApiError('Forbidden', 'forbidden', 403),
+    ]) {
+      const user = userEvent.setup();
+      (userGamesAPI.getOwnedGames as Mock)
+        .mockReset()
+        .mockResolvedValueOnce(OWNED_GAMES)
+        .mockRejectedValueOnce(err);
+      renderProfile();
+
+      await twoTapRemove(user, 'Catan');
+      await screen.findByText(P8);
+      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Remove Brass' })).toBeNull();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
+      const text = screen.getByRole('heading', { name: /^My Game Collection/ }).textContent ?? '';
+      expect(text).toContain('—');
+      expect(text).not.toContain('(1)');
+      expect(text).not.toContain('(2)');
+      await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+      expect(document.activeElement).not.toBe(document.body);
+      cleanup();
+    }
+  });
+
+  it('E2: a 500 or a network failure on the refresh keeps the rows under RF1', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    for (const err of [
+      new ApiError('Server error', 'internal', 500),
+      new ApiError('Network error', 'network', 0),
+    ]) {
+      const user = userEvent.setup();
+      (userGamesAPI.getOwnedGames as Mock)
+        .mockReset()
+        .mockResolvedValueOnce(OWNED_GAMES)
+        .mockRejectedValueOnce(err);
+      renderProfile();
+
+      await twoTapRemove(user, 'Catan');
+      expect(await screen.findAllByText(RF1)).toHaveLength(2);
+      expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+      expect(screen.queryByText(P8)).toBeNull();
+      expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it('R8: a Remove answered 404 lands focus on + Add from BGG and the failed refresh shows RF1 over the rest', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    (userGamesAPI.removeOwnedGame as Mock).mockRejectedValueOnce(
+      new ApiError('Game not found in your collection', 'not_found', 404)
+    );
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+  });
+
+  it('R6: the notice, the guard and the focus instance are wired to plan 60\'s refs, which are declared and attached once', async () => {
+    const src = await pageSource();
+    const count = (needle: string) => src.split(needle).length - 1;
+    expect(src).toContain('useFocusRecovery({ fallback: collectionHeadingRef })');
+    expect(src).toContain('collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current })');
+    expect(src).toContain(
+      '<RefreshFailedNotice state={collectionErrorState} retained={collectionRetained} focusTarget={collectionHeadingRef}'
+    );
+    expect(count('<RetainedContentFocusGuard retained={collectionRetained} focusTarget={collectionHeadingRef} />')).toBe(1);
+    expect(count('ref={collectionHeadingRef}')).toBe(1);
+    expect(count('ref={addFromBggToggleRef}')).toBe(1);
+    expect(count('const addFromBggToggleRef = useRef(null);')).toBe(1);
+    expect(count('const collectionHeadingRef = useRef(null);')).toBe(1);
+    expect(src).not.toContain(RF1);
+  });
+
+  it('G1: an unpressed refresh that withdraws the rows while a row control holds focus lands on the heading', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    (userGamesAPI.getOwnedGames as Mock).mockRejectedValue(new ApiError('Forbidden', 'forbidden', 403));
+    act(() => { screen.getByRole('button', { name: 'Remove Brass' }).focus(); });
+    act(() => { fireVisible(); });
+
+    await screen.findByText(P8);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: /^My Game Collection/ }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByRole('button', { name: 'Remove Brass' })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it("G2: an unpressed refresh that succeeds while the notice's Retry holds focus lands on the heading", async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    act(() => { screen.getByRole('button', { name: 'Retry' }).focus(); });
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([OWNED_GAMES[1]]);
+    act(() => { fireVisible(); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My Game Collection (1)' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+  });
+});
