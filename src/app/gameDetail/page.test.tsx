@@ -3630,3 +3630,264 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     expect(gamesAPI.getGame).toHaveBeenCalledTimes(2);
   });
 });
+
+const GAME_LOAD_FAILED = "We couldn't load this game";
+// A second valid game id (UUID-shaped, so plan 25's guard lets it through to a request).
+const SECOND_GAME_ID = '99999999-9999-4999-8999-999999999999';
+
+// Render the game view and reach a failed same-game refresh (GV-1's state).
+async function reachGameRf1(options: RenderGameDetailOptions = {}) {
+  const r = renderGameDetail(options);
+  await screen.findByRole('heading', { name: 'Wingspan' });
+  (gamesAPI.getGame as Mock).mockRejectedValueOnce(SERVER_500());
+  forceRefresh(r.rerender);
+  await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+  return r;
+}
+
+// A refresh whose primary read answers `error`, from a loaded game view.
+async function refreshGameRejecting(error: unknown, options: RenderGameDetailOptions = {}) {
+  const r = renderGameDetail(options);
+  await screen.findByRole('heading', { name: 'Wingspan' });
+  (gamesAPI.getGame as Mock).mockRejectedValue(error);
+  forceRefresh(r.rerender);
+  return r;
+}
+
+describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', () => {
+  it('GV-1. a failed refresh keeps the game and its lists and shows RF1 (C8 a)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const sessions = (await screen.findByRole('heading', { name: /^Game Sessions \(\d+\)$/ })).textContent;
+    (gamesAPI.getGame as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByText('Game not found')).toBeNull();
+    expect(screen.getByRole('heading', { name: /^Game Sessions \(/ }).textContent).toBe(sessions);
+  });
+
+  it('GV-2. the RF1 region is a status node present before the failure (C8 b)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const before = screen.getAllByRole('status');
+    (gamesAPI.getGame as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(rf1Region()).toBeTruthy());
+    expect(before).toContain(rf1Region());
+  });
+
+  it('GV-3. Retry recovers and focus lands on the game title (C8 c)', async () => {
+    const user = userEvent.setup();
+    await reachGameRf1();
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    const heading = screen.getByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-4. a pressed Retry keeps the notice and focus while held (C2)', async () => {
+    const user = userEvent.setup();
+    await reachGameRf1();
+    const held = deferred(gamesAPI.getGame as Mock);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    const button = await screen.findByRole('button', { name: 'Retrying…' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).toBe(button);
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    await act(async () => held.settle(GAME));
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+  });
+
+  it('GV-5. a failed FIRST load of a second game never shows the first game (C3)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    (gamesAPI.getGame as Mock).mockRejectedValue(SERVER_500());
+    h.search = `game_id=${SECOND_GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledWith(SECOND_GAME_ID));
+    expect(await screen.findByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-5b. a 404 on a second game is "Game not found", never the first game (C3)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    (gamesAPI.getGame as Mock).mockRejectedValue(new ApiError('Not found', 'not_found', 404));
+    h.search = `game_id=${SECOND_GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledWith(SECOND_GAME_ID));
+    expect(await screen.findByText('Game not found')).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+  });
+
+  it('GV-6. a superseded refresh that fails after a newer success shows no RF1 (ordering / R9)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    let failOlder: (e: unknown) => void = () => {};
+    (gamesAPI.getGame as Mock)
+      .mockImplementationOnce(() => new Promise((_, reject) => { failOlder = reject; }))
+      .mockResolvedValueOnce(GAME);
+    forceRefresh(r.rerender, 'auth0|older-sub');
+    forceRefresh(r.rerender, 'auth0|newer-sub');
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledTimes(3));
+    await flushMacrotask();
+    await act(async () => failOlder(SERVER_500()));
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  it('GV-7. a 403 refresh drops the game to the full banner with its register line (C10, C8 e)', async () => {
+    const e403 = new ApiError('Access denied', 'forbidden', 403);
+    await refreshGameRejecting(e403);
+    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(screen.getByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-7b. a 404 refresh is "Game not found" (C10)', async () => {
+    await refreshGameRejecting(new ApiError('Not found', 'not_found', 404));
+    expect(await screen.findByText('Game not found')).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-8. a 401 refresh drops the game to the full banner with its register line (C10, C8 e)', async () => {
+    const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
+    await refreshGameRejecting(e401);
+    expect(await screen.findByText(getFetchErrorMessage(e401))).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-9. a network failure on refresh keeps the game under RF1 (C8 e)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    (gamesAPI.getGame as Mock).mockRejectedValueOnce(new ApiError('Network', 'network', 0));
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+  });
+
+  it('GV-10. a gone (410) refresh is plan 70\'s widened set: the full banner, never RF1 (C10)', async () => {
+    const eGone = new ApiError('Gone', 'gone', 410);
+    await refreshGameRejecting(eGone);
+    expect(await screen.findByText(getFetchErrorMessage(eGone))).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-11. an unpressed 403 withdraws the game while Home holds focus: focus lands on main (C12 a)', async () => {
+    await reachGameRf1({ inMain: true });
+    (gamesAPI.getGame as Mock).mockRejectedValue(new ApiError('Access denied', 'forbidden', 403));
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    within(nav).getByRole('link', { name: 'Home' }).focus();
+    await act(async () => fireVisibility('visible'));
+    await screen.findByText(GAME_LOAD_FAILED);
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('main')));
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-12. an unpressed 404 withdraws the game: focus lands on "Game not found" (C12 a, #338)', async () => {
+    await reachGameRf1({ inMain: true });
+    (gamesAPI.getGame as Mock).mockRejectedValue(new ApiError('Not found', 'not_found', 404));
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    within(nav).getByRole('link', { name: 'Home' }).focus();
+    await act(async () => fireVisibility('visible'));
+    const title = await screen.findByText('Game not found');
+    await waitFor(() => expect(document.activeElement).toBe(title));
+  });
+
+  it('GV-13. Retry holds focus and an unpressed refresh succeeds: focus lands on the title (C12 b)', async () => {
+    await reachGameRf1();
+    screen.getByRole('button', { name: 'Retry' }).focus();
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    await act(async () => fireVisibility('visible'));
+    const heading = screen.getByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-14. a late event run cannot silence the game view\'s RF1 (cross-view supersede, #84)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([SESSION]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    const heldEvent = deferred(eventsAPI.getEvent as Mock);
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(2));
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await act(async () => heldEvent.settle(eventFixture()));
+    await flushMacrotask();
+    (gamesAPI.getGame as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender, 'auth0|third-sub');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  it('GV-15. a late game run cannot silence the event view\'s RF1 (cross-view supersede, M-02)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture());
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
+    const heldGame = deferred(gamesAPI.getGame as Mock);
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledTimes(2));
+    h.search = `event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await act(async () => heldGame.settle(GAME));
+    await flushMacrotask();
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender, 'auth0|third-sub');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+  });
+
+  it('GV-16. a 404 never arms the tab-return re-attempt; a 500 does (review r2 #139)', async () => {
+    await refreshGameRejecting(new ApiError('Not found', 'not_found', 404));
+    await screen.findByText('Game not found');
+    await flushMacrotask();
+    const calls404 = (gamesAPI.getGame as Mock).mock.calls.length;
+    await act(async () => fireVisibility('visible'));
+    await flushMacrotask();
+    expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(calls404);
+    cleanup();
+    h.userSub = 'auth0|self-sub';
+    await reachGameRf1();
+    const calls500 = (gamesAPI.getGame as Mock).mock.calls.length;
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    await act(async () => fireVisibility('visible'));
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(calls500 + 1));
+  });
+
+  // Carry-in (deferred-items.md, "The game view's `fetchGameData` has no per-run generation
+  // guard"): two game ids in flight, the OLDER answer lands last, the newer game stays.
+  it('CARRY-1. a superseded game load never paints over the next game (game-view generation guard)', async () => {
+    let settleOlder: (v: unknown) => void = () => {};
+    (gamesAPI.getGame as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { settleOlder = resolve; })
+    );
+    const r = renderGameDetail();
+    (gamesAPI.getGame as Mock).mockResolvedValue({ ...GAME, id: SECOND_GAME_ID, name: 'Azul' });
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledWith(GAME_ID));
+    h.search = `game_id=${SECOND_GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Azul' })).toBeInTheDocument();
+    await act(async () => settleOlder(GAME));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Azul' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+  });
+});

@@ -218,3 +218,110 @@ test('event page: a failed background refresh keeps the event and shows the noti
   await expect(page.getByRole('main').getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
   await expect(page.locator(':focus')).toHaveText('Game Night');
 });
+
+// No game fixture exists in CI, so the game arm serves a CUSTOM game for a fixed fake id (the
+// custom branch renders the name and no image) and an empty review list; the group's events and
+// roster are real, on the real E2E_GROUP_ID.
+const E2E_FAKE_GAME_ID = '0e2e0000-0000-4000-8000-000000000074';
+const E2E_GAME_PATH = `/gameDetail?game_id=${E2E_FAKE_GAME_ID}&group_id=${E2E_GROUP_ID}`;
+const GAME_GET_PATH = new RegExp(`^/api/games/${E2E_FAKE_GAME_ID}$`);
+const REVIEWS_PREFIX = `/api/game-reviews/game/${E2E_FAKE_GAME_ID}/`;
+const E2E_GAME_NAME = 'E2E Custom Game';
+const E2E_GAME = {
+  id: E2E_FAKE_GAME_ID,
+  name: E2E_GAME_NAME,
+  is_custom: true,
+  bgg_id: null,
+  theme: null,
+  image_url: null,
+  min_players: 2,
+  max_players: 4,
+  playing_time: 45,
+};
+
+/** Routes the fake game and its reviews; `failNext()` answers the next game GET 500 once. */
+async function routeFakeGame(page: Page) {
+  let failNext = false;
+  let issued = 0;
+  let answered = 0;
+  await page.route('**/api/game-reviews/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && new URL(request.url()).pathname.startsWith(REVIEWS_PREFIX)) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route('**/api/games/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && GAME_GET_PATH.test(new URL(request.url()).pathname)) {
+      issued += 1;
+      if (failNext) {
+        failNext = false;
+        await route.fulfill({ status: 500, json: { error: 'e2e refresh failure' } });
+      } else {
+        await route.fulfill({ json: E2E_GAME });
+      }
+      answered += 1;
+      return;
+    }
+    await route.fallback();
+  });
+  return {
+    failNext: () => {
+      failNext = true;
+    },
+    settled: () => issued > 0 && answered === issued,
+  };
+}
+
+test('game page: a failed background refresh keeps the game and shows the notice above it, phone layout intact', async ({
+  page,
+}, testInfo) => {
+  // Part A — the healthy reference layout.
+  await routeFakeGame(page);
+  await page.goto(E2E_GAME_PATH);
+  await expect(page.getByRole('heading', { level: 1, name: E2E_GAME_NAME })).toBeVisible();
+  const cta = page.getByRole('button', { name: 'Plan a game night with this' });
+  await expect(
+    cta,
+    'the reference CTA never showed: the fixture user must be a member of E2E_GROUP_ID (a missing reference, not a layout STOP)'
+  ).toBeVisible({ timeout: 15_000 });
+  await settleAnimations(page.getByRole('main'));
+  const ctaBox = await cta.boundingBox();
+  expect(ctaBox, 'the CTA has a box').not.toBeNull();
+  const reference = { bottom: ctaBox!.y + ctaBox!.height };
+  testInfo.annotations.push({
+    type: 'game reference CTA',
+    description: `x=${ctaBox!.x} y=${ctaBox!.y} w=${ctaBox!.width} h=${ctaBox!.height}`,
+  });
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+
+  // Part B — the refresh failure.
+  const identity = await holdIdentityReads(page);
+  const game = await routeFakeGame(page);
+  await page.goto(E2E_GAME_PATH);
+  const heading = page.getByRole('heading', { level: 1, name: E2E_GAME_NAME });
+  await expect(heading).toBeVisible();
+  await expect.poll(() => identity.heldCount(), { message: 'the identity read is held' }).toBeGreaterThan(0);
+  await expect.poll(() => game.settled(), { message: 'every game GET answered' }).toBe(true);
+
+  game.failNext();
+  await identity.release();
+  const { retry, line } = rf1Line(page);
+  await expect(line).toContainText(RF1, { timeout: 15_000 });
+  // The Game Details card: the element directly after the notice's own wrapper (the notice
+  // renders its polite region, then its line wrapper, then the card follows), checked to hold
+  // the title.
+  const card = line.locator('xpath=../following-sibling::div[1]');
+  await expect(card.getByRole('heading', { level: 1, name: E2E_GAME_NAME })).toBeVisible();
+
+  await expect(page.getByText("We couldn't load this game")).toHaveCount(0);
+  await expect(heading).toBeVisible();
+  await expectRf1Layout(page, card, reference, testInfo, 'game');
+
+  // Retry succeeds (the route passes through again): the notice leaves and focus is on the title.
+  await retry.click();
+  await expect(page.getByRole('main').getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+  await expect(page.locator(':focus')).toHaveText(E2E_GAME_NAME);
+});

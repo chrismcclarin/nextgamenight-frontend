@@ -757,6 +757,11 @@ export default function GameDetailPage() {
     // sign-in redirect acts only on the newest run's answer.
     const eventFetchGenRef = useRef(0);
     const eventErrorGenRef = useRef(0);
+    // 88.6.1-74 (carry-in, contract C4): the game view's per-run generation, plan 25's
+    // eventFetchGenRef shape. Each view's run also bumps the OTHER view's counter (review r2 #84).
+    const gameFetchGenRef = useRef(0);
+    // 88.6.1-74: the game view's <h1> (RF1's focusTarget), filled by attachGameTitle.
+    const gameTitleRef = useRef(null);
     // The event id the clean-slate reset last cleared Recommended Games for (see the DECISION at
     // the reset in fetchEventOnly).
     const suggestionsClearedForEventRef = useRef(null);
@@ -856,6 +861,8 @@ export default function GameDetailPage() {
     const fetchEventOnly = async () => {
         // 88.6.1-25: this run's generation, taken before the first await (see eventFetchGenRef).
         const gen = ++eventFetchGenRef.current;
+        // 88.6.1-74 (review r2 #84): an event run supersedes any in-flight game run too.
+        gameFetchGenRef.current += 1;
         const isCurrentRun = () => gen === eventFetchGenRef.current;
         // 88.6.1-74 (M2-01): a run for a DIFFERENT key forgets which game key last answered; a
         // same-key run keeps it (see gameAnsweredFor).
@@ -1229,157 +1236,236 @@ export default function GameDetailPage() {
         onConfirm: (targetUserDbId) => performRemoveParticipation(targetUserDbId),
     });
 
+    // 88.6.1-74 (contract C3): the game view's per-key reset — every value a game key owns, back to
+    // its `useState` initial value. Never `gameAnsweredFor` (the primary-access and group-401 paths
+    // call this AFTER the answer; a reset there would hold the loader over their banner), and never
+    // `userRole` / `userScope` / `groupMembers` (Phase 87.3-04's unresolved-identity rule; a GROUP
+    // read's access answer resets those itself).
+    const clearGameKeyData = () => {
+        setGame(null);
+        setEvents([]);
+        setEventRsvpStatuses({});
+        setReviews([]);
+        setUserReview(null);
+        setReviewForm({ rating: 2.5, review_text: '', is_recommended: true });
+        setGameError(null);
+        setLoadedFor(null);
+    };
+
     const fetchGameData = async () => {
-        if (!game_id) return;
+        if (!game_id) return undefined;
+        // 88.6.1-74 (carry-in, contract C4, review r2 #84): this run's generation, taken before the
+        // first await. A run that is no longer the newest writes NOTHING after any await and its
+        // finally does nothing. A run of EITHER view supersedes the other view's in-flight run (both
+        // write `loadedFor`, `loadedEntityKeyRef` and `loading`), so this bumps the event view's
+        // counter too. No start-of-run `gameError` clear (C2): the error stays until the newest run
+        // succeeds.
+        const gen = ++gameFetchGenRef.current;
+        eventFetchGenRef.current += 1;
+        const isCurrentRun = () => gen === gameFetchGenRef.current;
+        // PRIMARY rules only (the first-run clear below); a side read's refresh is its own key.
+        const isRefresh = loadedFor === entityKey;
         // 88.6.1-74 (M2-01): a run for a DIFFERENT key forgets which game key last answered; a
         // same-key run keeps it, so an identity re-run shows no loader flash.
         setGameAnsweredFor((k) => (k === entityKey ? k : null));
-        setGameError(null);
 
         // Identity-only re-run (selfUuid resolved after first load of the SAME
         // game): refresh in place — no full-page loading flash (#1/#18).
-        if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
+        // 88.6.1-74 (C3): a NEW key starts from a clean slate, so game B never shows game A.
+        if (loadedEntityKeyRef.current !== entityKey) {
+            setLoading(true);
+            clearGameKeyData();
+        }
         try {
             // Fetch game details using gamesAPI which includes proper API URL and auth
-            const gameData = await gamesAPI.getGame(game_id);
-            setGame(gameData);
+            let gameData;
+            try {
+                gameData = await gamesAPI.getGame(game_id);
+            } catch (error) {
+                logger.info('Error fetching game data:', errCtx(error));
+                if (!isCurrentRun()) return undefined;
+                /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a failed load is TRACKED and rendered as
+                   the shared fetch-error treatment, chosen OVER the silent `console.error` this
+                   shipped with. `game` stays null after a swallowed failure, so the render fell
+                   through to the "Game not found" dead end below — a 500 or a dropped connection was
+                   reported to the person as a definitive statement that the game does not exist, with
+                   no retry and only a back-link. Empty and failed are different facts (UI-SPEC 9.2);
+                   a `not_found` code still reaches the not-found branch, which is the one case where
+                   that copy is TRUE.
 
-            // Only fetch events, reviews, and role when group_id is available
-            if (group_id) {
-                // Fetch events for this game in this group
-                // Use eventsAPI.getGroupEvents which automatically includes Authorization header
-                let eventsData;
-                try {
-                    eventsData = await eventsAPI.getGroupEvents(group_id);
-                } catch (error) {
-                    logger.info('Error fetching events:', errCtx(error));
-                    eventsData = [];
+                   Keep the ERROR object, not a flattened string: useFetchErrorState reads
+                   `ApiError.code` off it.
+                   AMENDED Phase 88.6.1-74 (AC-29 / RF1, owner ruling 2026-10-05): the PRIMARY failure is
+                   still tracked exactly as above. A failed REFRESH keeps the game and its lists and is
+                   shown by RF1 (RefreshFailedNotice, between the breadcrumb and the game card). The
+                   start-of-run `gameError` clear is gone: it hid the notice at the press (contract C2).
+                   A side failure of a read that has not loaded for this key is no longer tracked here:
+                   it rendered nothing, and RF1's "earlier" sentence would be false over data that never
+                   loaded (named trade-off: that case loses this state's tab-return re-attempt; Task 3's
+                   section notices re-arm it per read). `getGame`'s access or gone answers (plan 70's
+                   isAccessOrGoneError) drop the game (C10), and a side read's failure is stored
+                   code-less (P-2 / C11); a group read's access answer is not tracked at all — it
+                   withdraws the group content and keeps the game — except its `unauthorized`, which is
+                   tracked as the primary 401 is (review r2 #311). A run of either view supersedes the
+                   other view's in-flight run (the cross-view generation bump), chosen over a key-compare
+                   guard on `setLoadedFor` alone, which would let the stale run's other writes land
+                   (review r2 #84). Changing this is a decision, not a cleanup. */
+                const code = error instanceof ApiError ? error.code : 'unknown';
+                if (isAccessOrGoneError({ showError: true, code })) {
+                    // C10: an access or gone answer drops the game; the ApiError itself is stored so
+                    // the full banner reads its code.
+                    clearGameKeyData();
+                    setGameError(error);
+                } else {
+                    setGameError(
+                        error instanceof Error ? error : new Error("The game request didn't complete.")
+                    );
                 }
-
-                // Ensure eventsData is an array before filtering
-                if (!Array.isArray(eventsData)) {
-                    /* DECISION Phase 88.6-18 (AC-2, T-84-01): this conversion carries a SHAPE
-                       DESCRIPTOR of the received value, never the value — chosen OVER passing
-                       `eventsData` through as `logger.info`'s ctx the way the other ten
-                       conversions pass `errCtx(err)`. There is no caught error here; the second
-                       argument WAS the response payload, which is exactly the shape
-                       `logger.ts`'s T-84-01 rule forbids reaching the Sentry payload. Re-adding
-                       the payload "so the log is useful" is a decision, not a fix.
-                       Level is `logger.info` and NOT `logger.warn` for the reason AC-2's owner
-                       amendment of 2026-09-13 records: `logger.warn` is `Sentry.captureMessage`,
-                       an EVENT, and under `replaysOnErrorSampleRate: 1.0` an event flushes the
-                       Session Replay buffer. The severity lives in the message, not the channel. */
-                    logger.info('Events data is not an array:', { received: eventsData === null ? 'null' : typeof eventsData });
-                    eventsData = [];
-                }
-
-                const gameEvents = eventsData.filter(event => event.game_id === game_id);
-                setEvents(gameEvents);
-
-                // Fetch RSVP statuses for each event (for BallotSection).
-                // Phase 87.3-04: gate on identity resolution — this whole
-                // per-event my-RSVP derive keys on selfUuid vs nested User.id.
-                // While selfUuid is unresolved, skip it (indeterminate); the
-                // fetch effect's selfUuid dep re-runs this once identity resolves.
-                //
-                // 88-33 Task 7 step 1c (owner-ruled 2026-08-20): the fan-out is
-                // scoped to the UPCOMING partition only — history cards render the
-                // session record without RSVP/ballot UI (see the DECISION marker at
-                // the history render), so fetching per-event RSVP for all history
-                // was an N+1 over deep history with zero readers (r1#15/r3#18).
-                // Same partition predicate as the render's useMemo split.
-                const rsvpFanoutNow = new Date();
-                const upcomingGameEvents = gameEvents.filter(evt =>
-                    evt.status !== 'cancelled' &&
-                    evt.start_date &&
-                    new Date(evt.start_date) > rsvpFanoutNow
-                );
-                if (selfUuid && upcomingGameEvents.length > 0) {
-                    const rsvpStatusMap = {};
-                    await Promise.all(upcomingGameEvents.map(async (evt) => {
-                        try {
-                            const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
-                            const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
-                            rsvpStatusMap[evt.id] = myRsvp?.status || null;
-                        } catch {
-                            rsvpStatusMap[evt.id] = null;
-                        }
-                    }));
-                    setEventRsvpStatuses(rsvpStatusMap);
-                }
-
-                // Fetch reviews for this game in this group
-                // Use gameReviewsAPI.getGameReviews which automatically includes Authorization header
-                // The 3rd arg is the caller's own identity (is-me review marker):
-                // send selfUuid. This runs inside the selfUuid-keyed fetch effect
-                // (deps at L303), so it re-fires with the resolved UUID once
-                // identity lands; before then it sends null (is-me indeterminate).
-                const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, selfUuid || null);
-                setReviews(Array.isArray(reviewsData) ? reviewsData : []);
-
-                // Find current user's review + derive role.
-                // Phase 87.3-04 (D-01): the per-page usersAPI.getUser(user.sub)
-                // self-fetch is REMOVED — selfUuid now comes from the shared
-                // useSelfIdentity() hook. `user?.sub` here only gates "logged in".
-                if (user?.sub) {
-                    // Get user's role in the group
-                    // Use groupsAPI.getGroupMembers which automatically includes Authorization header
-                    const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
-                    if (Array.isArray(fetchedGroupMembers)) {
-                        setGroupMembers(fetchedGroupMembers);
-                        // Phase 87.3-04: gate the scope derive on identity —
-                        // unresolved selfUuid stays indeterminate (never 'none').
-                        if (selfUuid) {
-                            const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
-                            setUserRole(role);
-                            setUserScope(scope);
-                        }
-                    }
-
-                    // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
-                    // keys on nested User.id vs selfUuid. Gated on resolution so an
-                    // unresolved identity reads as "no own review yet" (loading),
-                    // never mislabels someone else's review as mine.
-                    if (selfUuid) {
-                        const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === selfUuid) : null;
-                        if (myReview) {
-                            setUserReview(myReview);
-                            // DECISION quick-260930-w9v: the saved rating is converted to a number here and a
-                            // stored 0 is kept, chosen over Number(...) || 2.5. The API sends the DECIMAL column
-                            // as a string; the review form before Phase 70 was a number input that accepted 0,
-                            // and || 2.5 would show such a review as 2.5 stars and resave it as 2.5 on a
-                            // text-only edit. Only a missing or non-numeric rating takes the 2.5 default.
-                            // StarRatingPicker converts too; both are deliberate.
-                            const savedRating = Number(myReview.rating);
-                            setReviewForm({
-                                rating: myReview.rating != null && Number.isFinite(savedRating) ? savedRating : 2.5,
-                                review_text: myReview.review_text || '',
-                                is_recommended: myReview.is_recommended !== false
-                            });
-                        }
-                    }
-                }
+                return { isError: true };
             }
-        } catch (error) {
-            logger.info('Error fetching game data:', errCtx(error));
-            /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a failed load is TRACKED and rendered as
-               the shared fetch-error treatment, chosen OVER the silent `console.error` this
-               shipped with. `game` stays null after a swallowed failure, so the render fell
-               through to the "Game not found" dead end below — a 500 or a dropped connection was
-               reported to the person as a definitive statement that the game does not exist, with
-               no retry and only a back-link. Empty and failed are different facts (UI-SPEC 9.2);
-               a `not_found` code still reaches the not-found branch, which is the one case where
-               that copy is TRUE.
+            if (!isCurrentRun()) return undefined;
+            setGame(gameData);
+            setLoadedFor(entityKey);
+            // A first run (or a full banner's Try again) gives way to the content at once.
+            if (!isRefresh) setGameError(null);
 
-               Keep the ERROR object, not a flattened string: useFetchErrorState reads
-               `ApiError.code` off it. */
-            setGameError(
-                error instanceof Error ? error : new Error("The game request didn't complete.")
-            );
+            try {
+                // Only fetch events, reviews, and role when group_id is available
+                if (group_id) {
+                    // Fetch events for this game in this group
+                    // Use eventsAPI.getGroupEvents which automatically includes Authorization header
+                    let eventsData;
+                    try {
+                        eventsData = await eventsAPI.getGroupEvents(group_id);
+                    } catch (error) {
+                        logger.info('Error fetching events:', errCtx(error));
+                        eventsData = [];
+                    }
+                    if (!isCurrentRun()) return undefined;
+
+                    // Ensure eventsData is an array before filtering
+                    if (!Array.isArray(eventsData)) {
+                        /* DECISION Phase 88.6-18 (AC-2, T-84-01): this conversion carries a SHAPE
+                           DESCRIPTOR of the received value, never the value — chosen OVER passing
+                           `eventsData` through as `logger.info`'s ctx the way the other ten
+                           conversions pass `errCtx(err)`. There is no caught error here; the second
+                           argument WAS the response payload, which is exactly the shape
+                           `logger.ts`'s T-84-01 rule forbids reaching the Sentry payload. Re-adding
+                           the payload "so the log is useful" is a decision, not a fix.
+                           Level is `logger.info` and NOT `logger.warn` for the reason AC-2's owner
+                           amendment of 2026-09-13 records: `logger.warn` is `Sentry.captureMessage`,
+                           an EVENT, and under `replaysOnErrorSampleRate: 1.0` an event flushes the
+                           Session Replay buffer. The severity lives in the message, not the channel. */
+                        logger.info('Events data is not an array:', { received: eventsData === null ? 'null' : typeof eventsData });
+                        eventsData = [];
+                    }
+
+                    const gameEvents = eventsData.filter(event => event.game_id === game_id);
+                    setEvents(gameEvents);
+
+                    // Fetch RSVP statuses for each event (for BallotSection).
+                    // Phase 87.3-04: gate on identity resolution — this whole
+                    // per-event my-RSVP derive keys on selfUuid vs nested User.id.
+                    // While selfUuid is unresolved, skip it (indeterminate); the
+                    // fetch effect's selfUuid dep re-runs this once identity resolves.
+                    //
+                    // 88-33 Task 7 step 1c (owner-ruled 2026-08-20): the fan-out is
+                    // scoped to the UPCOMING partition only — history cards render the
+                    // session record without RSVP/ballot UI (see the DECISION marker at
+                    // the history render), so fetching per-event RSVP for all history
+                    // was an N+1 over deep history with zero readers (r1#15/r3#18).
+                    // Same partition predicate as the render's useMemo split.
+                    const rsvpFanoutNow = new Date();
+                    const upcomingGameEvents = gameEvents.filter(evt =>
+                        evt.status !== 'cancelled' &&
+                        evt.start_date &&
+                        new Date(evt.start_date) > rsvpFanoutNow
+                    );
+                    if (selfUuid && upcomingGameEvents.length > 0) {
+                        const rsvpStatusMap = {};
+                        await Promise.all(upcomingGameEvents.map(async (evt) => {
+                            try {
+                                const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
+                                const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
+                                rsvpStatusMap[evt.id] = myRsvp?.status || null;
+                            } catch {
+                                rsvpStatusMap[evt.id] = null;
+                            }
+                        }));
+                    if (!isCurrentRun()) return undefined;
+                        setEventRsvpStatuses(rsvpStatusMap);
+                    }
+
+                    // Fetch reviews for this game in this group
+                    // Use gameReviewsAPI.getGameReviews which automatically includes Authorization header
+                    // The 3rd arg is the caller's own identity (is-me review marker):
+                    // send selfUuid. This runs inside the selfUuid-keyed fetch effect
+                    // (deps at L303), so it re-fires with the resolved UUID once
+                    // identity lands; before then it sends null (is-me indeterminate).
+                    const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, selfUuid || null);
+                if (!isCurrentRun()) return undefined;
+                    setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+
+                    // Find current user's review + derive role.
+                    // Phase 87.3-04 (D-01): the per-page usersAPI.getUser(user.sub)
+                    // self-fetch is REMOVED — selfUuid now comes from the shared
+                    // useSelfIdentity() hook. `user?.sub` here only gates "logged in".
+                    if (user?.sub) {
+                        // Get user's role in the group
+                        // Use groupsAPI.getGroupMembers which automatically includes Authorization header
+                        const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
+                        if (!isCurrentRun()) return undefined;
+                        if (Array.isArray(fetchedGroupMembers)) {
+                            setGroupMembers(fetchedGroupMembers);
+                            // Phase 87.3-04: gate the scope derive on identity —
+                            // unresolved selfUuid stays indeterminate (never 'none').
+                            if (selfUuid) {
+                                const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
+                                setUserRole(role);
+                                setUserScope(scope);
+                            }
+                        }
+
+                        // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
+                        // keys on nested User.id vs selfUuid. Gated on resolution so an
+                        // unresolved identity reads as "no own review yet" (loading),
+                        // never mislabels someone else's review as mine.
+                        if (selfUuid) {
+                            const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === selfUuid) : null;
+                            if (myReview) {
+                                setUserReview(myReview);
+                                // DECISION quick-260930-w9v: the saved rating is converted to a number here and a
+                                // stored 0 is kept, chosen over Number(...) || 2.5. The API sends the DECIMAL column
+                                // as a string; the review form before Phase 70 was a number input that accepted 0,
+                                // and || 2.5 would show such a review as 2.5 stars and resave it as 2.5 on a
+                                // text-only edit. Only a missing or non-numeric rating takes the 2.5 default.
+                                // StarRatingPicker converts too; both are deliberate.
+                                const savedRating = Number(myReview.rating);
+                                setReviewForm({
+                                    rating: myReview.rating != null && Number.isFinite(savedRating) ? savedRating : 2.5,
+                                    review_text: myReview.review_text || '',
+                                    is_recommended: myReview.is_recommended !== false
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                // 88.6.1-74: a SIDE read failed after a good game. Logged here (the plan's one added
+                // logger line); it writes nothing on screen and stores no error (Task 3's rule decides
+                // what it shows).
+                logger.info('Error fetching game details:', errCtx(error));
+                if (!isCurrentRun()) return undefined;
+            }
+            if (!isCurrentRun()) return undefined;
+            setGameError(null);
+            return { isError: false };
         } finally {
-            loadedEntityKeyRef.current = entityKey;
-            setGameAnsweredFor(entityKey);
-            setLoading(false);
+            if (isCurrentRun()) {
+                loadedEntityKeyRef.current = entityKey;
+                setGameAnsweredFor(entityKey);
+                setLoading(false);
+            }
         }
     };
 
@@ -1391,11 +1477,25 @@ export default function GameDetailPage() {
         fetchGameDataRef.current = fetchGameData;
     });
     const retryGameData = useCallback(() => fetchGameDataRef.current?.(), []);
+    // 88.6.1-74 (plan 25's hand-off, review r2 #139): the hook re-fetches on every visible
+    // `visibilitychange` while armed, and a 404 is a final answer, so `not_found` never arms it.
+    // Every other code stays armed (access can be granted, a session renewed). Nothing on screen
+    // changes: "Game not found" renders from `!game`, and the banner gate already excludes it.
+    const gameErrorArmedCode = gameError instanceof ApiError ? gameError.code : 'unknown';
+    const gameErrorArmed = Boolean(gameError) && gameErrorArmedCode !== 'not_found';
     const gameErrorState = useFetchErrorState({
-        isError: Boolean(gameError),
+        isError: gameErrorArmed,
         error: gameError,
         refetch: retryGameData,
     });
+    // 88.6.1-74 (contract C10): the game view's `retained`, plan 70's hook over `loadedFor`.
+    const gameRetained = useRetainedContent(loadedFor === entityKey, gameErrorState);
+    // 88.6.1-74: ONE composed ref for both game titles — RF1's focus target and the title-overflow
+    // observer's node.
+    const attachGameTitle = useCallback((node) => {
+        gameTitleRef.current = node;
+        setTitleNode(node);
+    }, []);
 
     // 88.6.1-25 (AC-5): the event view's adapter, copied from the game view's above (the same ref hop,
     // because fetchEventOnly is re-declared every render and the hook needs a STABLE refetch). A
@@ -2034,6 +2134,7 @@ export default function GameDetailPage() {
        ref is still null and focus lands on bare `main`. REJECTED (e): keeping the one-commit "Game
        not found" frame after an in-page key change and keeping the target off it (round 2's shape) —
        the frame is gone instead (the loader gate below, review r3 L-02).
+       The game view's guard (`gameRetained`) is the fragment's second child, on the same target.
        THE INVARIANT: every return from the first early return on keeps a `div` root whose LAST child
        is {retainedFocusGuards}, with the same key. A return added without it, with another root
        element, or with the guards ahead of a sibling silently remounts them or reads a null target
@@ -2044,6 +2145,7 @@ export default function GameDetailPage() {
     const retainedFocusGuards = (
         <Fragment key="retained-focus-guards">
             <RetainedContentFocusGuard retained={eventRetained} focusTarget={withdrawalTitleRef} />
+            <RetainedContentFocusGuard retained={gameRetained} focusTarget={withdrawalTitleRef} />
         </Fragment>
     );
 
@@ -3031,6 +3133,16 @@ export default function GameDetailPage() {
                 <span aria-current="page" className="text-content-primary font-bold">{game.name}</span>
             </nav>
 
+            {/* DECISION Phase 88.6.1-74 (AC-29 / RF1, game view): CHOSEN — plan 70's shared
+                RefreshFailedNotice between the breadcrumb and the game card: above the content it
+                qualifies, beside the title focus returns to. REJECTED (a): inside the game card above
+                the title — the card's padding and its DECISION Phase 88-24 idiom are not this plan's
+                to change. REJECTED (b): below the CTA — it qualifies the whole page, and at 375px it
+                would sit below the first screen. REJECTED (c): the full banner over the retained game
+                (C6 forbids both forms for one state). Moving or removing this is a decision, not a
+                cleanup. */}
+            <RefreshFailedNotice state={gameErrorState} retained={gameRetained} focusTarget={gameTitleRef} className="mb-4" />
+
             {/* Game Details */}
             <div className="card p-3 md:p-6 mb-6">
                 {game.is_custom ? (
@@ -3055,7 +3167,7 @@ export default function GameDetailPage() {
                         <Heading
                             level={1}
                             size="display"
-                            ref={setTitleNode}
+                            ref={attachGameTitle}
                             id="game-title"
                             tabIndex={-1}
                             onClick={(e) => {
@@ -3124,7 +3236,7 @@ export default function GameDetailPage() {
                             <Heading
                                 level={1}
                                 size="display"
-                                ref={setTitleNode}
+                                ref={attachGameTitle}
                                 id="game-title"
                                 tabIndex={-1}
                                 onClick={(e) => {
