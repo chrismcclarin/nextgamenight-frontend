@@ -115,6 +115,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // Owner-only kebab on each non-owner active row sets this; null = closed.
     const [transferTarget, setTransferTarget] = useState(null); // { id (member UUID), name } or null
     const [transferring, setTransferring] = useState(false);
+    // The pressed Transfer ownership's latch: see DECISION Phase 88.6.1-50 at the transfer footer.
+    const transferInFlightRef = useRef(false);
     // Invite modal + reset-link state — buttons live in the Manage Members header,
     // the actual invite UI is the existing FriendInvitePanel modal.
     const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -985,6 +987,26 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </p>
             </Modal.Body>
             <Modal.Footer>
+                {/* DECISION Phase 88.6.1-50 (W016 rows 12-13 / D-35): the pressed control stays
+                    focusable. Chosen: aria-disabled plus a synchronous first-line REF refusal
+                    (transferInFlightRef) on the control the user pressed, Transfer ownership,
+                    released only in its handler's finally. The sibling Cancel KEEPS its native
+                    in-flight disabled: it is a sibling nobody pressed (the rule of POSITION,
+                    DECISION Phase 88.6-22 in FriendInvitePanel.js).
+
+                    Rejected, each with its reason: native disabled on the pressed confirm (it
+                    leaves the focus order mid-request, and after a failure a keyboard or switch
+                    user has nothing focused to come back to, on the one path here that cannot be
+                    undone); the transferring state flag as the refusal (it lands after a second
+                    synchronous press has already dispatched); gating the Cancel the same way
+                    (this dialog keeps the focusable confirm plus a live Escape and header close,
+                    DECISION Phase 88-12 (AR R2-M11) above, so nobody is stranded); an opacity
+                    utility for the busy look (the DR-C gated primary pair paints it, from the
+                    .btn-primary aria-disabled rule in globals.css). Disclosed visible delta:
+                    while working the button shows the gated primary pair instead of the old 50%
+                    wash. MATCHED PAIR: GroupSettings' DECISION Phase 88.6.1-43 (W016 rows 10-11,
+                    18-19), same ref shape, same release. Changing this is a decision, not a
+                    cleanup. */}
                 <Modal.Action
                     variant="secondary"
                     disabled={transferring}
@@ -994,9 +1016,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </Modal.Action>
                 <Modal.Action
                     variant="primary"
-                    disabled={transferring}
+                    aria-disabled={transferring || undefined}
                     onClick={async () => {
+                        if (transferInFlightRef.current) return;
                         if (!transferTarget) return;
+                        transferInFlightRef.current = true;
                         setTransferring(true);
                         try {
                             await groupsAPI.transferOwnership(group_id, transferTarget.id);
@@ -1007,6 +1031,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             logger.info('Transfer ownership failed:', errCtx(err));
                             toast.error(getFetchErrorMessage(err));
                         } finally {
+                            transferInFlightRef.current = false;
                             setTransferring(false);
                         }
                     }}

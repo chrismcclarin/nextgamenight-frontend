@@ -1,4 +1,7 @@
-import { test, expect, type APIResponse, type Route } from '@playwright/test';
+import { test, expect, type APIResponse, type Page, type Route } from '@playwright/test';
+
+import { forceLightMode } from './support/contrast';
+import { expectGatedPair, holdWrites, type WriteHold } from './support/inFlight';
 
 /**
  * Phase 88.6.1-42 (D-09a, Req 9; Req 5 H1, D-05 as amended by D-57) — Manage Members at 375px.
@@ -71,6 +74,27 @@ async function realRoster(route: Route): Promise<{ response: APIResponse; body: 
   return { response, body: Array.isArray(json) ? json : [] };
 }
 
+/**
+ * Answer every members GET with the real roster plus the rows `extraRows` returns, appended (any
+ * other method on that path falls back). `extraRows` runs AFTER the real read and BEFORE the
+ * answer, so a test can hold a read there. The ONE augmentation in this file (Phase 88.6.1-50
+ * hoisted it out of the remove test when the transfer test needed it too; never a second copy).
+ */
+async function routeAugmentedRoster(
+  page: Page,
+  extraRows: () => unknown[] | Promise<unknown[]>,
+): Promise<void> {
+  await page.route(isMembersRead, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    const { response, body } = await realRoster(route);
+    const extra = await extraRows();
+    await route.fulfill({ response, json: [...body, ...extra] });
+  });
+}
+
 test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone project)', () => {
   test.skip(({ isMobile }) => !isMobile, 'D-09a / Req 5 H1 phone proof — phone project only');
 
@@ -113,17 +137,11 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
       removed = true;
       await route.fulfill({ status: 200, json: {} });
     });
-    await page.route(isMembersRead, async (route) => {
-      if (route.request().method() !== 'GET') {
-        await route.fallback();
-        return;
-      }
-      const { response, body } = await realRoster(route);
+    await routeAugmentedRoster(page, async () => {
       if (!removed) {
         // SYNTH_NEXT sits directly AFTER SYNTH, so the removed row's next neighbour never
         // depends on what the seeded group holds.
-        await route.fulfill({ response, json: [...body, SYNTH, SYNTH_NEXT] });
-        return;
+        return [SYNTH, SYNTH_NEXT];
       }
       if (!postRemovalHeld) {
         // The FIRST read after the removal is the dialog's own refresh: hold it.
@@ -131,7 +149,7 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
         markPostRemovalArrived();
         await postRemovalGate;
       }
-      await route.fulfill({ response, json: [...body, SYNTH_NEXT] });
+      return [SYNTH_NEXT];
     });
 
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
@@ -203,5 +221,86 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
       () => document.documentElement.scrollWidth <= window.innerWidth,
     );
     expect(fits, 'the failed first load causes no horizontal page scroll').toBe(true);
+  });
+});
+
+// Phase 88.6.1-50 (W016 rows 12-13 / D-35; Req 4, AC-12): a pressed Transfer ownership at 375px.
+// WHAT IT PROVES THAT JSDOM CANNOT (C-11: jsdom never blurs a natively disabled element): in
+// Chromium at phone width the pressed confirm keeps focus while the transfer runs, carries
+// aria-disabled with no disabled attribute, paints the gated primary pair at opacity 1, and a
+// second Enter sends no second request. It also presses Cancel in the stacked transfer dialog
+// first and proves the roster dialog survives with focus back on the kebab that opened it (the
+// production path the wave 5 Modal.tsx stacked-dismiss guard covers; TR3 is its unit pin).
+// WHY IT IS SAFE, twice over: holdWrites is registered BEFORE navigation and holds every
+// non-GET request in the browser, unanswered (nothing is handed on, nothing passes through), and
+// the transfer target is the synthetic member, whose id is not in the database. The test asserts
+// the hold caught exactly ONE transfer POST, which proves the hold saw it.
+// The fixture user OWNS the seeded group (the transfer item renders only for the owner), so the
+// Leave Group confirm is unreachable here; its focus claim rests on the identical mechanism.
+const TRANSFER_PATH = /\/groups\/[^/]+\/transfer-ownership$/;
+
+test.describe('Phase 88.6.1-50 — a pressed Transfer ownership keeps focus at 375px (phone project)', () => {
+  test.skip(({ isMobile }) => !isMobile, 'W016 rows 12-13 phone proof — phone project only');
+
+  let hold: WriteHold;
+
+  test.beforeEach(async ({ page }) => {
+    // Order matters: the theme init script, then the hold BEFORE any navigation, then the
+    // augmentation (registered after the hold, so it runs first on a members GET and every other
+    // request falls back into the hold).
+    await forceLightMode(page);
+    hold = await holdWrites(page);
+    await routeAugmentedRoster(page, () => [SYNTH]);
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    const manage = page.getByRole('button', { name: 'Manage Members' });
+    await expect(manage).toBeVisible({ timeout: 15_000 });
+    await manage.tap();
+  });
+
+  // Same reason as the describe above (DECISION Phase 88.6.1-42 wave 5 CI gate): drop this
+  // test's routes before fixture teardown closes the page under a running handler.
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('a pressed Transfer ownership keeps focus and refuses a second press at 375px', async ({ page }) => {
+    const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+
+    const trigger = dialog.getByRole('button', { name: 'Member actions for E2E Removable' });
+    const transferDialog = page.getByRole('dialog', { name: /Transfer ownership to E2E Removable\?/ });
+    const openTransfer = async () => {
+      await trigger.tap();
+      await dialog.getByRole('button', { name: 'Transfer ownership to this member' }).tap();
+      await expect(transferDialog).toBeVisible();
+    };
+
+    // The stacked Cancel: only the transfer dialog closes, and focus returns to its opener.
+    await openTransfer();
+    await transferDialog.getByRole('button', { name: 'Cancel', exact: true }).tap();
+    await expect(transferDialog).toHaveCount(0);
+    await expect(trigger, 'focus returns to the kebab that opened the transfer dialog').toBeFocused();
+    await expect(dialog, 'the roster dialog survives a Cancel in the dialog stacked on it').toBeVisible();
+
+    // The press.
+    await openTransfer();
+    await transferDialog.getByRole('button', { name: 'Transfer ownership', exact: true }).click();
+    // A missing request is a failure, never a skip.
+    await expect.poll(() => hold.count('POST', TRANSFER_PATH), { timeout: 15_000 }).toBe(1);
+
+    const pressed = transferDialog.getByRole('button', { name: /^Transferring/ });
+    await expect(pressed).toBeFocused();
+    await expect(pressed).toHaveAttribute('aria-disabled', 'true');
+    await expect(pressed).not.toHaveAttribute('disabled');
+    await expectGatedPair(page, pressed, 'primary', 'light');
+    await expect(transferDialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+
+    await page.keyboard.press('Enter');
+    // An ABSENCE check: there is no positive signal to wait for, so wait a fixed 500ms.
+    await page.waitForTimeout(500);
+    expect(hold.count('POST', TRANSFER_PATH), 'a second Enter sends no second transfer').toBe(1);
+    await expect(pressed).toBeFocused();
+    await expect(pressed).toHaveAttribute('aria-disabled', 'true');
   });
 });
