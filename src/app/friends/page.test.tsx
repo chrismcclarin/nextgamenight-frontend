@@ -220,6 +220,10 @@ beforeEach(() => {
   (friendshipsAPI.sendRequest as Mock).mockReset().mockResolvedValue({});
   (friendshipsAPI.removeFriend as Mock).mockReset().mockResolvedValue({});
   (friendshipsAPI.searchUserByEmail as Mock).mockReset().mockResolvedValue(null);
+  // 88.6.1-72: the two list mocks too, so a one-shot answer an arm leaves unconsumed cannot leak
+  // into the next arm (renderFriends sets each one's standing answer).
+  (friendshipsAPI.getFriends as Mock).mockReset().mockResolvedValue([]);
+  (friendshipsAPI.getSentRequests as Mock).mockReset().mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -418,6 +422,17 @@ describe('send friend request — conflict/validation copy (D2)', () => {
   });
 });
 
+// 88.6.1-72 Task 2: the remove gate's own polite region, the element rendered immediately before
+// the Add Friend card. Every loaded render of the Friends tab now also carries the RF1 notice's
+// region (and the Add Friend card the found-result region), so a bare status query is ambiguous;
+// the expected texts below are unchanged.
+function gateStatus(): HTMLElement {
+  const card = screen.getByRole('heading', { name: 'Add Friend' }).closest('div.card');
+  const region = card?.previousElementSibling as HTMLElement | null;
+  expect(region).toHaveAttribute('role', 'status');
+  return region as HTMLElement;
+}
+
 describe('remove friend (two-tap tier)', () => {
   /** The row's remove control, by its resting accessible name. */
   const removeButton = (name: string) =>
@@ -446,7 +461,7 @@ describe('remove friend (two-tap tier)', () => {
     expect(armed).toHaveTextContent('Tap again to confirm');
     expect(armed).toHaveAttribute('aria-pressed', 'true');
     // The live region names the target so a row switch re-announces.
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(gateStatus()).toHaveTextContent(
       'Press again to confirm: Remove Dana'
     );
   });
@@ -483,7 +498,7 @@ describe('remove friend (two-tap tier)', () => {
     expect(button).toHaveTextContent('Remove');
     expect(button).toHaveAttribute('aria-label', 'Remove Dana');
     expect(button).not.toHaveAttribute('aria-pressed');
-    expect(screen.getByRole('status')).toHaveTextContent('');
+    expect(gateStatus()).toHaveTextContent('');
     expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
@@ -502,7 +517,7 @@ describe('remove friend (two-tap tier)', () => {
     const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
     expect(armed).toHaveAttribute('aria-pressed', 'true');
     expect(removeButton('Dana')).not.toHaveAttribute('aria-pressed');
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(gateStatus()).toHaveTextContent(
       'Press again to confirm: Remove Sam'
     );
   });
@@ -1762,5 +1777,241 @@ describe('friends — the Requests tab tells the truth (88.6.1-72, owner rulings
     fireEvent.click(friendsTabButton());
     expect(await screen.findByText('Dana')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+// Phase 88.6.1-72 Task 2 (orchestrator consistency decision 2026-10-05: one treatment per page;
+// 88.6.1-70 contract C1-C12). The Friends and Sent lists keep their rows under RF1 after a failed
+// refresh; the full banner only while nothing is retained. Reuses Task 1's RF1, rf1Line, rf1Region,
+// precedes and fireVisibility.
+const FRIENDS_TITLE = "Couldn't load your friends";
+const SENT_TITLE = "Couldn't load your sent requests";
+const sentTabButton = () => screen.getByRole('button', { name: /^Sent/ });
+
+// The Friends list refreshes after an accept made on the Requests tab, and that refresh is
+// answered `err`; the test is back on the Friends tab when this returns.
+async function friendsRefreshFails(err: unknown, friends: Array<Record<string, unknown>> = [FRIENDSHIP]) {
+  providerCtx.receivedRequests = [SAM_REQUEST];
+  const utils = renderFriends({ friends });
+  if (friends.length > 0) await screen.findByText('Dana');
+  else await screen.findByRole('heading', { name: 'No friends yet' });
+  // After the mount's own call, so the mount does not consume it.
+  (friendshipsAPI.getFriends as Mock).mockRejectedValueOnce(err);
+  // Relative counts: an arm that runs this twice (after a cleanup) keeps the earlier calls.
+  const calls = (friendshipsAPI.getFriends as Mock).mock.calls.length;
+  fireEvent.click(requestsTab());
+  fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+  await waitFor(() => expect(friendshipsAPI.getFriends as Mock).toHaveBeenCalledTimes(calls + 1));
+  fireEvent.click(friendsTabButton());
+  return utils;
+}
+
+// The Sent list refreshes after a send, and that refresh is answered `err`; the test is on the
+// Sent tab when this returns.
+async function sentRefreshFails(err: unknown, sent: Array<Record<string, unknown>> = [ALEX_SENT]) {
+  const utils = renderFriends({ friends: [], sent });
+  await screen.findByRole('heading', { name: 'No friends yet' });
+  fireEvent.click(sentTabButton());
+  if (sent.length > 0) await screen.findByText('Alex');
+  else await screen.findByText('No sent friend requests.');
+  const send = await searchTo(RILEY_HIT, 'riley@example.com');
+  (friendshipsAPI.getSentRequests as Mock).mockRejectedValueOnce(err);
+  const calls = (friendshipsAPI.getSentRequests as Mock).mock.calls.length;
+  fireEvent.click(send);
+  await waitFor(() => expect(friendshipsAPI.getSentRequests as Mock).toHaveBeenCalledTimes(calls + 1));
+  return utils;
+}
+
+describe('friends — one treatment per page: Friends and Sent keep their rows under RF1 (88.6.1-72)', () => {
+  it('RF-F1. a failed friends refresh keeps the rows under RF1, spoken from a region that was already there (C8 a, b)', async () => {
+    // The refresh is held until the Friends tab shows, so the failure lands while the notice's
+    // region is on screen (the tab's panel remounts on every return, so a failure that landed
+    // while another tab showed would reach a NEW region; that mid-failure mount is RF-F4's shape).
+    providerCtx.receivedRequests = [SAM_REQUEST];
+    renderFriends();
+    await screen.findByText('Dana');
+    const refresh = deferred<unknown>();
+    (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(refresh.promise);
+    fireEvent.click(requestsTab());
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(friendshipsAPI.getFriends as Mock).toHaveBeenCalledTimes(2));
+    fireEvent.click(friendsTabButton());
+    await screen.findByText('Dana');
+    const before = screen.getAllByRole('status');
+
+    await act(async () => {
+      refresh.reject(new ApiError('offline', 'network', 0));
+    });
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText('Dana')).toBeInTheDocument();
+    const region = rf1Region();
+    expect(before.find((n) => n === region)).toBe(region);
+    expect(screen.queryByText(FRIENDS_TITLE)).toBeNull();
+    expect(precedes(rf1Line() as Node, screen.getByText('Dana'))).toBe(true);
+  });
+
+  it('RF-F2. Retry recovers the friends list and lands focus on the Friends tab (C8 c, Edge R5)', async () => {
+    await friendsRefreshFails(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    (friendshipsAPI.getFriends as Mock).mockResolvedValueOnce([FRIENDSHIP, FRIENDSHIP_2]);
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    act(() => retry.focus());
+    fireEvent.click(retry);
+    expect(await screen.findByText('Sam')).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    await waitFor(() => expect(document.activeElement).toBe(friendsTabButton()));
+  });
+
+  it('RF-F3. the notice survives its own Retry: still shown while the retry runs (C2)', async () => {
+    await friendsRefreshFails(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const held = deferred<unknown>();
+    (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(held.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(rf1Line()).not.toBeNull();
+    expect(screen.getByRole('button', { name: /Retrying/ })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Dana')).toBeInTheDocument();
+
+    await act(async () => {
+      held.resolve([FRIENDSHIP]);
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Retrying/ })).toBeNull());
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('RF-F4. a friends list that loaded EMPTY is retained: RF1 above No friends yet, never the banner (C3, owner ruling Y)', async () => {
+    await friendsRefreshFails(new ApiError('offline', 'network', 0), []);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const empty = screen.getByRole('heading', { name: 'No friends yet' });
+    expect(screen.queryByText(FRIENDS_TITLE)).toBeNull();
+    expect(precedes(rf1Line() as Node, empty)).toBe(true);
+  });
+
+  it('RF-F5. a first-load banner survives its own Try again, then lands focus on the Friends tab (C2 + C6)', async () => {
+    renderFriends({ loadError: new ApiError('boom', 'network', 500) });
+    await screen.findByText(FRIENDS_TITLE);
+    const held = deferred<unknown>();
+    (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(held.promise);
+    const tryAgain = screen.getByRole('button', { name: /Try again/ });
+    act(() => tryAgain.focus());
+    fireEvent.click(tryAgain);
+    expect(screen.getByText(FRIENDS_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText('Loading friends...')).toBeNull();
+
+    await act(async () => {
+      held.resolve([FRIENDSHIP]);
+    });
+    expect(await screen.findByText('Dana')).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(friendsTabButton()));
+  });
+
+  it('RF-F6. a 401 or 403 friends refresh withdraws the rows behind the banner with the register line; a 500 keeps them under RF1 (C8 e, C10)', async () => {
+    for (const err of [
+      new ApiError('Unauthorized', 'unauthorized', 401),
+      new ApiError('Forbidden', 'forbidden', 403),
+    ]) {
+      await friendsRefreshFails(err);
+      expect(await screen.findByText(FRIENDS_TITLE)).toBeInTheDocument();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
+      expect(screen.queryByText('Dana')).toBeNull();
+      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      cleanup();
+    }
+
+    await friendsRefreshFails(new ApiError('Server error', 'internal', 500));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText('Dana')).toBeInTheDocument();
+    expect(screen.queryByText(FRIENDS_TITLE)).toBeNull();
+  });
+
+  it('RF-F7. a friends refresh NOBODY pressed: a withdrawal lands focus on the Friends tab; a success with Retry focused too (C8 f, C12)', async () => {
+    // (f1) A row control holds focus; the tab-return re-attempt is answered 403.
+    await friendsRefreshFails(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const removeDana = screen.getByRole('button', { name: 'Remove Dana' });
+    act(() => removeDana.focus());
+    (friendshipsAPI.getFriends as Mock).mockRejectedValueOnce(new ApiError('Forbidden', 'forbidden', 403));
+    act(() => fireVisibility('visible'));
+    expect(await screen.findByText(FRIENDS_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText('Dana')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(friendsTabButton()));
+    expect(document.activeElement).not.toBe(document.body);
+    cleanup();
+
+    // (f2) The notice's Retry holds focus; the tab-return re-attempt succeeds.
+    await friendsRefreshFails(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    act(() => retry.focus());
+    (friendshipsAPI.getFriends as Mock).mockResolvedValueOnce([FRIENDSHIP]);
+    act(() => fireVisibility('visible'));
+    await waitFor(() => expect(document.activeElement).toBe(friendsTabButton()));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByText('Dana')).toBeInTheDocument();
+  });
+
+  it('RF-S1. a failed sent refresh keeps the rows under RF1; Retry recovers them (C8 a, c)', async () => {
+    await sentRefreshFails(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText('Alex')).toBeInTheDocument();
+    expect(screen.queryByText(SENT_TITLE)).toBeNull();
+
+    (friendshipsAPI.getSentRequests as Mock).mockResolvedValueOnce([ALEX_SENT, RILEY_SENT]);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    // Positive signal: Riley's row joined the list (each sent row carries one Pending pill).
+    await waitFor(() => expect(screen.getAllByText('Pending')).toHaveLength(2));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('RF-S2. a 401 or 403 sent refresh withdraws the rows behind the banner with the register line; a 500 keeps them under RF1 (C8 e, C10)', async () => {
+    for (const err of [
+      new ApiError('Unauthorized', 'unauthorized', 401),
+      new ApiError('Forbidden', 'forbidden', 403),
+    ]) {
+      await sentRefreshFails(err);
+      expect(await screen.findByText(SENT_TITLE)).toBeInTheDocument();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
+      expect(screen.queryByText('Alex')).toBeNull();
+      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      cleanup();
+    }
+
+    await sentRefreshFails(new ApiError('Server error', 'internal', 500));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText('Alex')).toBeInTheDocument();
+    expect(screen.queryByText(SENT_TITLE)).toBeNull();
+  });
+
+  it('RF-S3. a sent list that loaded EMPTY is retained: RF1 above No sent friend requests., never the banner (owner ruling Y)', async () => {
+    await sentRefreshFails(new ApiError('Server error', 'internal', 500), []);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const empty = screen.getByText('No sent friend requests.');
+    expect(screen.queryByText(SENT_TITLE)).toBeNull();
+    expect(precedes(rf1Line() as Node, empty)).toBe(true);
+  });
+
+  it('RF-S4. a sent refresh NOBODY pressed: a withdrawal or a success with Retry focused lands focus on the Sent tab (C8 f, C12)', async () => {
+    // The Sent rows hold no focusable control, so (f1) focuses the notice's Retry, the only control
+    // inside the tab's retained arm. No guard plant here: with Retry focused the notice's own watch
+    // moves focus too, so the guard's teeth are Q8's and RF-F7's (recorded, not hidden).
+    await sentRefreshFails(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    act(() => screen.getByRole('button', { name: 'Retry' }).focus());
+    (friendshipsAPI.getSentRequests as Mock).mockRejectedValueOnce(new ApiError('Forbidden', 'forbidden', 403));
+    act(() => fireVisibility('visible'));
+    expect(await screen.findByText(SENT_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText('Alex')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(sentTabButton()));
+    expect(document.activeElement).not.toBe(document.body);
+    cleanup();
+
+    await sentRefreshFails(new ApiError('offline', 'network', 0));
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    act(() => screen.getByRole('button', { name: 'Retry' }).focus());
+    (friendshipsAPI.getSentRequests as Mock).mockResolvedValueOnce([ALEX_SENT]);
+    act(() => fireVisibility('visible'));
+    await waitFor(() => expect(document.activeElement).toBe(sentTabButton()));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByText('Alex')).toBeInTheDocument();
   });
 });

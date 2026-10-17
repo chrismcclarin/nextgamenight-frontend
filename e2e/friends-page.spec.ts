@@ -385,4 +385,63 @@ test.describe('friends page — what the Requests tab and the batch say (88.6.1-
     await expectInsideViewport(page, status, 'the batch line');
     await expect(page.locator('#friends-batch-error')).toHaveText('');
   });
+  test('(7) a failed friends refresh keeps the friend under RF1, in place at 375 (C8 d); Retry brings it back and lands on the Friends tab', async ({ page }, testInfo) => {
+    const friend = { id: 'e2e-friends-fr-1', friend: { id: '8861a072-0000-4000-8000-0000000000a4', username: 'E2E Friend' } };
+    const request = { id: 'e2e-friends-rf1-f', Requester: { id: '8861a072-0000-4000-8000-0000000000a5', username: 'E2E Requester F' } };
+    let acceptFulfilled = false;
+    let healFriends = false;
+    await page.route(
+      (url) => isFriendshipList(url, 'status', 'accepted'),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        if (acceptFulfilled && !healFriends) {
+          await route.fulfill({ status: 500, json: {} });
+          return;
+        }
+        await route.fulfill({ status: 200, json: [friend] });
+      },
+    );
+    await routeReceived(page, () => ({ status: 200, json: [request] }));
+    await routeAccept(page, request.id, 200, () => {
+      acceptFulfilled = true;
+    });
+    await openRequests(page);
+    await expect(page.getByText('E2E Requester F', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Accept', exact: true }).click();
+
+    const tab = friendsTab(page);
+    await tab.click();
+    const line = rf1Line(page);
+    await expect(line).toBeVisible({ timeout: 15_000 });
+    await expect(line).toHaveCount(1);
+    const row = page.getByText('E2E Friend', { exact: true });
+    await expect(row).toBeVisible();
+    await expect(page.getByText("Couldn't load your friends", { exact: true })).toHaveCount(0);
+
+    const retry = page.getByRole('button', { name: 'Retry', exact: true });
+    await expect(retry).toBeVisible();
+    await settleAnimations(page.locator('main'));
+    await expectInsideViewport(page, line, 'the RF1 line');
+    await expectInsideViewport(page, retry, 'the RF1 Retry');
+    await expectNoSidewaysScroll(page);
+    const lineBox = await boxOf(line, 'the RF1 line');
+    const rowBox = await boxOf(row, 'the retained friend');
+    expect(lineBox.y, `the notice starts at ${lineBox.y}px; the friend at ${rowBox.y}px`).toBeLessThan(rowBox.y);
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+      const retryBox = await boxOf(retry, 'the RF1 Retry');
+      expect(retryBox.width, `Retry measured ${retryBox.width}px wide`).toBeGreaterThanOrEqual(44);
+      expect(retryBox.height, `Retry measured ${retryBox.height}px tall`).toBeGreaterThanOrEqual(44);
+    }
+
+    healFriends = true;
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    await expect(line).toHaveCount(0, { timeout: 15_000 });
+    await expect(row).toBeVisible();
+    await expect(tab).toBeFocused();
+  });
 });
