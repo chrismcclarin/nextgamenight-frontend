@@ -54,12 +54,17 @@ const DEFAULT_PREFS = {
 /**
  * Mutable self row the mocked identity hook returns. Held in `vi.hoisted` so a
  * test can vary it (e.g. flip `sms_enabled`) BEFORE render without re-mocking.
- * `preferences` is derived from `notification_preferences`, and the whole
- * Notification Preferences card is gated on it — an identity row without it
- * renders no toggles at all.
+ * The Notification Preferences card is gated on `preferences`, which the page's
+ * init sets from the row (`notification_preferences`, or the app's defaults when
+ * the row carries none) and, since 88.6.1-61, never sets when there is no row —
+ * so with no row the card is absent.
  */
 const h = vi.hoisted(() => ({
   self: undefined as undefined | Record<string, unknown>,
+  // Plan 88.6.1-61: the identity query's error, read by the mocked `useSelfIdentity` (isError / error).
+  selfError: null as null | Error,
+  // Plan 88.6.1-61: ONE stable refetch for the identity query, so a case can supply the row on Retry.
+  refetchSelf: vi.fn(),
   /**
    * Availability rows the mocked `useQuery` returns. Held here (not baked into
    * the mock) so the two-tap delete pins can render real rows without a
@@ -113,8 +118,8 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({
     self: h.self,
     selfUuid: h.self?.id as string | undefined,
-    query: { isError: false, error: null, isPending: !h.self, refetch: vi.fn() },
-    isPending: !h.self,
+    query: { isError: Boolean(h.selfError), error: h.selfError, isPending: !h.self && !h.selfError, refetch: h.refetchSelf },
+    isPending: !h.self && !h.selfError,
   }),
 }));
 
@@ -283,21 +288,32 @@ export function renderProfile(
   selfOverrides: Record<string, unknown> = {},
   options: { wrapper?: React.ComponentType<{ children: React.ReactNode }> } = {}
 ) {
-  h.self = {
+  h.self = harnessSelfRow(selfOverrides);
+  return render(<Profile />, options);
+}
+
+/**
+ * The harness identity row with `overrides` merged over it — ONE builder, shared by
+ * `renderProfile` and the 88.6.1-61 cases that hand the page a row only after it rendered
+ * without one.
+ */
+function harnessSelfRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
     id: SELF_UUID,
     user_id: 'auth0|self',
     username: 'Self',
     sms_enabled: false,
     phone_verified: false,
     notification_preferences: DEFAULT_PREFS,
-    ...selfOverrides,
+    ...overrides,
   };
-  return render(<Profile />, options);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   h.self = undefined;
+  h.selfError = null;
+  h.refetchSelf.mockReset();
   h.patterns = [];
   h.patternsError = null;
   h.patternsPending = false;
@@ -4187,5 +4203,100 @@ describe('BGG import result timer focus (88.6.1-60: Req 5, owner design 2026-10-
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+});
+
+describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  // The user's own settings, deliberately unlike DEFAULT_PREFS (Event Updates email off, a
+  // one-day reminder), so a page that shows or sends the defaults fails on sight.
+  const REAL_PREFS = {
+    event_created: { email: true, sms: false },
+    reminder: { email: true, sms: false, window_hours: 24 },
+    event_updated: { email: false, sms: false },
+    event_cancelled: { email: true, sms: false },
+  };
+  const TOGGLED = { ...REAL_PREFS, event_created: { email: false, sms: false } };
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps an implementation, so restore the default here.
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([]);
+  });
+
+  it('I1: a kept row whose refetch failed shows and saves the real settings, never the defaults', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    h.selfError = new Error('boom');
+    renderProfile({ notification_preferences: REAL_PREFS });
+
+    const updates = await screen.findByRole('switch', { name: 'Event Updates email notifications' });
+    expect(updates).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('combobox', { name: 'Remind me' })).toHaveValue('24');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'New Event email notifications' }));
+    await waitFor(() => expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledTimes(1));
+    expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledWith(SELF_UUID, TOGGLED);
+  });
+
+  it('I2: a kept row whose refetch failed names the user from the row', async () => {
+    h.selfError = new Error('boom');
+    renderProfile({ username: 'RealName' });
+    expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+  });
+
+  it('I4: a row arriving after a failed first load initializes the page and the card appears with the real settings', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    h.selfError = new Error('boom');
+    const view = render(<Profile />);
+    // Positive signal first: the no-row fallback ran (the identity notices are up).
+    await screen.findAllByRole('button', { name: 'Retry' });
+    expect(screen.queryByRole('heading', { name: 'Notification Preferences' })).toBeNull();
+
+    h.selfError = null;
+    h.self = harnessSelfRow({ username: 'RealName', notification_preferences: REAL_PREFS });
+    view.rerender(<Profile />);
+
+    await screen.findByRole('heading', { name: 'Notification Preferences' });
+    expect(screen.getByRole('switch', { name: 'Event Updates email notifications' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('switch', { name: 'New Event email notifications' }));
+    await waitFor(() => expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledTimes(1));
+    expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledWith(SELF_UUID, TOGGLED);
+  });
+
+  it('I5: with no identity row the Notification Preferences card is hidden, not filled with defaults', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    // The calendar zone and the collection zone each show the identity notice.
+    expect(await screen.findAllByRole('button', { name: 'Retry' })).toHaveLength(2);
+
+    expect(screen.queryByRole('heading', { name: 'Notification Preferences' })).toBeNull();
+    expect(screen.queryAllByRole('switch')).toHaveLength(0);
+    expect(screen.queryByText('Choose how you receive notifications')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Timezone' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Availability Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Self' })).toBeInTheDocument();
+    expect(usersAPI.updateNotificationPreferences).not.toHaveBeenCalled();
+  });
+
+  it('I6: a row arriving while the username editor is open keeps the typed name, and Cancel restores the row name', async () => {
+    h.selfError = new Error('boom');
+    const view = render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit username' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Username', exact: true }), { target: { value: 'Typed Name' } });
+
+    h.selfError = null;
+    h.self = harnessSelfRow({ username: 'RealName', notification_preferences: REAL_PREFS });
+    view.rerender(<Profile />);
+    // Positive signal: the row init ran (the card only mounts from it).
+    await screen.findByRole('heading', { name: 'Notification Preferences' });
+
+    expect(screen.getByRole('textbox', { name: 'Username', exact: true })).toHaveValue('Typed Name');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
   });
 });
