@@ -3400,6 +3400,31 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
   });
 
+  // Wave 8 CI gate (run 39026336968, the spec's DIAG trail): the event view renders its record as
+  // soon as the primary read succeeds (the `singleEvent` branch precedes the loader gate), while the
+  // run's side reads are still in flight. In CI, identity resolved in that window: the same-key re-run
+  // found no settled run for this key, took the new-key reset, flashed the loader over the event, and
+  // its 500 landed on an empty page (the full banner). The e2e order: the first load's primary has
+  // answered, its roster read is still out, identity resolves, the re-run's event read answers 500.
+  it('EV-21. identity resolving while the first load\'s side reads are in flight keeps the event (no loader flash) and a failed re-run shows RF1', async () => {
+    const r = renderEventDetail({ identityPending: true });
+    const roster = deferred(groupsAPI.getGroupMembers as Mock);
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(1));
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    h.selfUuid = SELF_UUID;
+    r.rerender(<GameDetailPage />);
+    // The re-run starts in that commit: the event stays and the loader never replaces it.
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Loading game night...' })).toBeNull();
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    // The superseded first run's late roster answer writes nothing over the re-run's outcome.
+    await act(async () => roster.settle([]));
+    expect(screen.getAllByText(RF1)).toHaveLength(2);
+  });
+
   it('EV-1. a failed refresh keeps the event and shows RF1 with one Retry (C8 a)', async () => {
     await reachEventRf1();
     expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
