@@ -221,3 +221,37 @@ describe('T-88.6-71 — the availability level reaches the cell RESTING accessib
     ).toBeInTheDocument();
   });
 });
+
+// Plan 88.6.1-85 Task 2 (owner ruling 2026-10-18, the sibling of close ruling P-94): the visual reads
+// "M/T/W", the reader reads "Monday, Tuesday, Wednesday". Each day columnheader is NAMED with the
+// full weekday and the day number while its visible letter and number stay as they are. Expected
+// names are written as literals, never re-derived with date-fns. The week of 2026-06-29 (a Monday,
+// under the mocked zone UTC) holds two two-digit days and five single-digit ones.
+describe('EventHeatmapBackground — the day header is named with the full day (88.6.1-85 Task 2, owner ruling 2026-10-18)', () => {
+  const EXPECTED_DAY_NAMES = [
+    'Monday 29', 'Tuesday 30', 'Wednesday 1', 'Thursday 2', 'Friday 3', 'Saturday 4', 'Sunday 5',
+  ];
+  // HD-1 and HD-2 read the same render, so the named half and the visible half cannot drift.
+  const renderChart = () =>
+    render(<EventHeatmapBackground heatmapData={heatmapData} loading={false} anchorDate="2026-06-29" />);
+
+  it('HD-1 resolves the seven day headers by role and computed name, Monday 29 .. Sunday 5, in DOM order', () => {
+    renderChart();
+    // By COMPUTED accessible name, never the raw attribute: a label on a wrapper while another
+    // element takes the columnheader role, or one overridden by aria-labelledby, fails here.
+    const resolved = EXPECTED_DAY_NAMES.map((name) => screen.getByRole('columnheader', { name }));
+    const all = screen.getAllByRole('columnheader');
+    expect(all).toHaveLength(7);
+    resolved.forEach((el, i) => {
+      expect(all[i]).toBe(el);
+    });
+  });
+
+  it('HD-2 the same render still shows the letter and the number, M29 first and S5 seventh', () => {
+    // CONFIRM-ONLY half: green before and after this plan. The visible spans are unchanged.
+    renderChart();
+    const all = screen.getAllByRole('columnheader');
+    expect(all[0].textContent).toBe('M29');
+    expect(all[6].textContent).toBe('S5');
+  });
+});

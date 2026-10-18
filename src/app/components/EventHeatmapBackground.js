@@ -1,10 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
+import { format } from 'date-fns';
 import { useTimezone } from '../components/TimezoneProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import ReadCell from './heatmap/ReadCell';
 import { slotCellName } from './heatmap/slotCellName';
+import { SPOKEN_DAY_NAME_FORMAT } from './SchedulerWeekStrip';
 
 // The grid's screen-reader name (owner ruling #178, 2026-10-13, option A). Screen-reader only.
 const HEATMAP_GRID_LABEL = 'Group availability';
@@ -51,7 +53,7 @@ function toTzHour(d, timezone) {
  * Sunday midnight while memoized names stayed on the old one. No data yields an empty table.
  */
 function deriveWeek(heatmapData, anchorDate, timezone) {
-  if (!heatmapData) return { slotMap: new Map(), conflictMap: new Map(), dates: [], names: [] };
+  if (!heatmapData) return { slotMap: new Map(), conflictMap: new Map(), dates: [], dayNames: [], names: [] };
   const { slots, totalMembers, gcalConflicts = [] } = heatmapData;
 
   // Build a lookup keyed by viewer-timezone date and hour (backend returns UTC dates/hours)
@@ -78,10 +80,14 @@ function deriveWeek(heatmapData, anchorDate, timezone) {
   const monday = new Date(anchorY, anchorM - 1, anchorD - mondayOffset);
 
   const dates = [];
+  // Each column header's spoken name ("Monday 29", "Wednesday 1"), from the SAME local `Date` whose
+  // day number the header prints (88.6.1-85 Task 2).
+  const dayNames = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(d.getDate() + i);
     dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    dayNames.push(format(d, SPOKEN_DAY_NAME_FORMAT));
   }
 
   // Build conflict lookup keyed by "tzDateStr_tzHour"
@@ -106,7 +112,7 @@ function deriveWeek(heatmapData, anchorDate, timezone) {
     })
   );
 
-  return { slotMap, conflictMap, dates, names };
+  return { slotMap, conflictMap, dates, dayNames, names };
 }
 
 /**
@@ -149,7 +155,7 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
   const { selfUuid } = useSelfIdentity();
   // Review #137: declared ABOVE the early returns so hook order never changes. Keyed on the props
   // and context the week derives from - never on a per-render array, or it would never hit.
-  const { slotMap, conflictMap, dates, names } = useMemo(
+  const { slotMap, conflictMap, dates, dayNames, names } = useMemo(
     () => deriveWeek(heatmapData, anchorDate, timezone),
     [heatmapData, anchorDate, timezone]
   );
@@ -283,8 +289,21 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
           <div role="presentation" />
           {dates.map((date, i) => {
             const dayNum = parseInt(date.split('-')[2], 10);
+            // DECISION Phase 88.6.1-85 Task 2 (owner ruling 2026-10-18, the P-94 sibling): CHOSEN -
+            // the full weekday and day number spoken via `aria-label` on this columnheader, the
+            // visible letter and number unchanged (the owner's words: the visual reads "M/T/W", the
+            // reader reads "Monday, Tuesday, Wednesday"). The name comes from the one `deriveWeek`
+            // derivation, so the header can never speak a different week than the cells (plan
+            // 88.6.1-24's rule, above `deriveWeek`); the format is the shared SPOKEN_DAY_NAME_FORMAT,
+            // so this header, the time picker's header and the phone strip speak alike. REJECTED:
+            // (a) visually hidden text inside the header - on iOS a clipped text child is what
+            // VoiceOver lands on instead of the name (research APPENDIX-AT.md AT-1), and it changes
+            // the header's textContent; (b) a per-render `new Date(...)` from the `date` string here
+            // - a second derivation of the week, which plan 88.6.1-24 retired; (c) changing the
+            // letters - the owner kept them. DECISION Phase 88.6-26 (the weight, below) is not
+            // touched. Changing this is a decision, not a cleanup.
             return (
-              <div key={date} role="columnheader" className="text-center">
+              <div key={date} role="columnheader" aria-label={dayNames[i]} className="text-center">
                 {/* DECISION Phase 88.6-26 (D-03 / W35): weight 700 here, chosen OVER 400 and over
                     keeping today's 500. D-03 would fold this to 400 on the stated ground that the
                     emphasis is "already carried by COLOUR" — that is FALSE at this cell: this weekday
