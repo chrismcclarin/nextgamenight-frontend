@@ -34,6 +34,15 @@ import { expectNoApiWrites, holdWrites, settleAnimations } from './support/inFli
 // and holds every write (support/inFlight.ts). It never answers 401 / 403: the access-answer and
 // tab-return focus cases are jsdom only (ResponseDashboard.test.tsx, RD-RF-7, RD-RF-8, RD-RF-10).
 // If a layout assertion fails in CI, that is a STOP for the owner's mockup, never a restyle.
+//
+// Phase 88.6.1-86 adds test 5 (close ruling P-14, owner 2026-10-17; Req 9): while the FIRST
+// respondents GET is out, the card says the owner's loading line, inside the viewport with no
+// sideways scroll, and the line leaves when the roster lands. The GET is held in the browser by a
+// route registered AFTER mockDashboard (so it runs first) that hands every request on with
+// route.fallback() to mockDashboard's synthetic answer, never to the backend; every write is held
+// (support/inFlight.ts). The jsdom half (placement outside the pulse block, the failed-first-load
+// arm) is ResponseDashboard.test.tsx, RD-L1..RD-L3. A layout failure in CI is a STOP for the
+// owner, never a restyle.
 
 // Seeded fixture group (the fixture user OWNS it, so the admin-only Remind renders) — same
 // fallback idiom as padding-budget.spec.ts:69.
@@ -349,6 +358,62 @@ test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
     }
     await expect(card.getByText(RF1, { exact: true }).filter({ visible: true })).toHaveCount(0);
     await expect(card.getByRole('heading', { name: /^Responses:/ })).toBeFocused();
+    expectNoApiWrites(hold);
+  });
+
+  // Copy row P14 (close ruling P-14, plan 88.6.1-86), written once in this spec: three ASCII dots.
+  const LOADING_RESPONSES = 'Loading responses...';
+
+  test(`Loading line (plan 88.6.1-86): while the first respondents GET is out, the card says "${LOADING_RESPONSES}" inside the viewport with no sideways scroll; it leaves when the roster lands`, async ({ page }, testInfo) => {
+    // The write hold FIRST, so every write that no later handler answers is held (never sent).
+    const hold = await holdWrites(page);
+    await mockDashboard(page);
+    // Registered AFTER mockDashboard, so Playwright runs it first: it holds the FIRST respondents
+    // GET until the test releases it, then hands that request and every later one to
+    // mockDashboard's synthetic answer with route.fallback() (never continued to the backend).
+    let releaseFirst!: () => void;
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let respondentsGets = 0;
+    await page.route(
+      (url) => url.pathname.endsWith(`/prompts/${PROMPT_ID}/respondents`),
+      async (route) => {
+        if (route.request().method() === 'GET') {
+          respondentsGets += 1;
+          if (respondentsGets === 1) await firstReleased;
+        }
+        await route.fallback();
+      },
+    );
+
+    try {
+      await page.goto(`/groupPlanning?group_id=${E2E_GROUP_ID}`);
+      const line = page.getByText(LOADING_RESPONSES, { exact: true });
+      // A missing line is a failure, never a skip.
+      await expect(line).toBeVisible({ timeout: 15_000 });
+      expect(respondentsGets, 'the first respondents GET is the one being held').toBe(1);
+
+      const viewport = page.viewportSize();
+      expect(viewport, 'the page has a viewport').not.toBeNull();
+      if (testInfo.project.name === 'phone') expect(viewport!.width).toBe(375);
+      const lineBox = await measuredBox(line, 'the loading line');
+      expect(lineBox.x, `the line starts at ${lineBox.x}px`).toBeGreaterThanOrEqual(0);
+      expect(
+        lineBox.x + lineBox.width,
+        `the line ends at ${lineBox.x + lineBox.width}px in a ${viewport!.width}px viewport`,
+      ).toBeLessThanOrEqual(viewport!.width);
+      const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        innerWidth: window.innerWidth,
+      }));
+      expect(scrollWidth, 'the page must not scroll sideways').toBeLessThanOrEqual(innerWidth);
+    } finally {
+      releaseFirst();
+    }
+
+    await expect(page.getByRole('heading', { name: /^Responses:/ })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(LOADING_RESPONSES, { exact: true })).toHaveCount(0);
     expectNoApiWrites(hold);
   });
 });
