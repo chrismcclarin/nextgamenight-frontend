@@ -217,6 +217,9 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // copy row P78c (close ruling P-78, owner 2026-10-17) — the members notice's spoken sentence: its
 // section name, then RF1. Written once here; the region carries it, the visible line stays RF1.
 const MEMBERS_SPOKEN = "Members: Couldn't refresh. Showing what loaded earlier.";
+// copy row P78a (close ruling P-78, owner 2026-10-17) — the events notice's spoken sentence: the
+// calendar's own title, then RF1. Written once here.
+const CALENDAR_SPOKEN = "Calendar: Couldn't refresh. Showing what loaded earlier.";
 
 const EV_A = { id: 'ev-a', start_date: '2026-11-02T19:00:00.000Z' };
 const EV_B = { id: 'ev-b', start_date: '2026-11-09T19:00:00.000Z' };
@@ -1126,6 +1129,18 @@ describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-
     expect(screen.getAllByText(RF1), 'RF1 by exact text once: the visible line').toHaveLength(1);
     expect(visibleRf1().closest('.sr-only')).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(MEMBERS_SPOKEN);
+  });
+
+  it('SN-2. a failed events refresh says "Calendar:" first in its region and in its Retry description; the visible line stays RF1', async () => {
+    await loadEvents([EV_A]);
+    const regionsBefore = screen.getAllByRole('status');
+    await failEventsRefresh();
+    await waitFor(() => expect(rf1Region().textContent).toBe(CALENDAR_SPOKEN));
+    expect(regionsBefore, 'the SAME region node').toContain(rf1Region());
+    expect(screen.getAllByText(RF1), 'RF1 by exact text once: the visible line').toHaveLength(1);
+    expect(visibleRf1().closest('.sr-only')).toBeNull();
+    expect(follows(visibleRf1(), screen.getByTestId('calendar-stub'))).toBe(true);
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(CALENDAR_SPOKEN);
   });
 });
 

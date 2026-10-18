@@ -209,14 +209,23 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
 // ONCE in this describe's scope. While the notice shows, the sentence is in the DOM twice (the
 // visible line and the notice's status region), so RF1 queries count both or scope to one.
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+// copy row P78b (close ruling P-78, owner 2026-10-17) — the games notice's spoken sentence: the
+// section heading's text, then RF1. Since plan 88.6.1-88 the region holds this and the visible line
+// holds RF1 alone, so RF1 by exact text is found ONCE.
+const GAMES_SPOKEN = "Group Games: Couldn't refresh. Showing what loaded earlier.";
 const BANNER_TITLE = "We couldn't load this group's games";
 const WINGSPAN = { id: 'game-1', name: 'Wingspan', play_count: 2 };
 
 const rf1Region = () =>
-  Array.from(document.querySelectorAll('[role="status"]')).find((n) => n.textContent === RF1);
+  Array.from(document.querySelectorAll('[role="status"]')).find((n) => n.textContent === GAMES_SPOKEN);
 // The visible RF1 line: the RF1 text node that sits in no status region.
 const rf1Line = () => screen.getAllByText(RF1).find((n) => !n.closest('[role="status"]'));
-const waitForRf1 = () => waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+// Re-pointed by plan 88.6.1-88 (close ruling P-78): RF1 once by exact text, and the region filled.
+const waitForRf1 = () =>
+  waitFor(() => {
+    expect(screen.getAllByText(RF1)).toHaveLength(1);
+    expect(rf1Region()).toBeDefined();
+  });
 const follows = (a: Node, b: Node) =>
   Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 const groupGamesHeading = () => screen.getByRole('heading', { name: 'Group Games' });
@@ -322,6 +331,37 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     expect(follows(line, screen.getByRole('heading', { name: 'Wingspan' }))).toBe(true);
   });
 
+  // Close ruling P-78 (owner 2026-10-17, plan 88.6.1-88): the games notice says its section first,
+  // to a screen reader only; the section name is the heading's own text.
+  it('SN-3. a failed refresh over retained cards: the region says "Group Games:" first and describes the Retry; both Group Games headings still render', async () => {
+    render(
+      <GroupGamesList
+        {...anyProps({ games: [WINGSPAN], groupId: 'g1', userRole: 'member', onAddEvent: vi.fn(), errorState: failing(), retained: true })}
+      />
+    );
+    const region = await waitFor(() => {
+      const r = Array.from(document.querySelectorAll('[role="status"]')).find((n) => (n.textContent ?? '').endsWith(RF1));
+      expect(r, 'the notice region is filled').toBeDefined();
+      return r!;
+    });
+    expect(region.textContent).toBe(GAMES_SPOKEN);
+    expect(screen.getAllByText(RF1), 'RF1 by exact text once: the visible line').toHaveLength(1);
+    expect(rf1Line()!.closest('.sr-only')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(GAMES_SPOKEN);
+    // The list arm's heading.
+    expect(screen.getAllByRole('heading', { name: 'Group Games' })).toHaveLength(1);
+    cleanup();
+
+    // The first-load banner arm's heading (nothing retained: the full banner, no notice).
+    render(
+      <GroupGamesList
+        {...anyProps({ games: undefined, groupId: 'g1', userRole: 'member', onAddEvent: vi.fn(), errorState: failing() })}
+      />
+    );
+    expect(screen.getByText(BANNER_TITLE)).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: 'Group Games' })).toHaveLength(1);
+  });
+
   it('GG-2. a failed FIRST load (games undefined, nothing retained) shows the banner, never the empty state or RF1', () => {
     render(
       <GroupGamesList
@@ -341,7 +381,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     const before = screen.getAllByRole('status');
 
     rerender(<GroupGamesList {...anyProps({ ...props, errorState: failing() })} />);
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitForRf1();
     expect(screen.getByRole('heading', { name: 'Wingspan' })).toBe(card);
     const region = rf1Region();
     expect(region).toBeDefined();

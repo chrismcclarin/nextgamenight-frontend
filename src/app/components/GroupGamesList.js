@@ -10,6 +10,9 @@ import { Heading } from '../../components/ui/Heading';
 import { SelectControl } from '../../components/ui/Input';
 import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
 
+// The section's heading, and the refresh notice's spoken section name (copy row P78b, close ruling P-78).
+const GROUP_GAMES_TITLE = 'Group Games';
+
 const SORT_ASCENDING_LABEL = 'Sort order: ascending';
 const SORT_DESCENDING_LABEL = 'Sort order: descending';
 
@@ -309,6 +312,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
             retained={retained}
             focusTarget={gamesFocusRef}
             className={hasGames ? 'mb-4' : 'mt-8'}
+            sectionName={GROUP_GAMES_TITLE}
         />
     ) : null;
 
@@ -322,7 +326,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
     if (errorState?.showError && !retained) {
         return (
             <div className="mt-8">
-                <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mb-4">Group Games</Heading>
+                <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mb-4">{GROUP_GAMES_TITLE}</Heading>
                 <FetchErrorBanner
                     state={errorState}
                     title="We couldn't load this group's games"
@@ -393,7 +397,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
 
     return (
         <div>
-            <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mt-8 mb-4">Group Games</Heading>
+            <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mt-8 mb-4">{GROUP_GAMES_TITLE}</Heading>
             {refreshNotice}
 
             {/* Sorting Controls */}

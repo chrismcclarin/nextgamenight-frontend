@@ -1610,6 +1610,7 @@ function GroupHomePage(){
                         retained={eventsRetained}
                         focusTarget={calendarHeadingRef}
                         className="mb-4"
+                        sectionName={CALENDAR_TITLE}
                     />
                     <EventCalendar
                         refreshKey={eventsRefreshKey}
