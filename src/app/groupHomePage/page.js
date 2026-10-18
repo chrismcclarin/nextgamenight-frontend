@@ -45,6 +45,8 @@ const LOAD_FAILED = Object.freeze({ isError: true });
 const GROUP_LOAD_FAILED_TITLE = "Couldn't load this group";
 const GROUP_EVENTS_LOAD_FAILED_TITLE = "Couldn't load this group's events";
 const CALENDAR_TITLE = "Calendar";
+// Copy row P78c (close ruling P-78, owner 2026-10-17): the members notice's spoken section name — the member list has no heading of its own.
+const MEMBERS_SECTION_NAME = 'Members';
 
 // A groups home page
 function GroupHomePage(){
@@ -1530,6 +1532,7 @@ function GroupHomePage(){
                 state={membersErrorState}
                 retained={membersRetained}
                 className="mb-4"
+                sectionName={MEMBERS_SECTION_NAME}
             />
 
             {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}

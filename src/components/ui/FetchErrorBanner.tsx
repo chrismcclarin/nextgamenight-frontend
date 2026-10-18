@@ -349,6 +349,10 @@ interface NoticeRowProps {
   handleRetry: (event: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>;
   /** C12 (b): arms the same recovery hook when the `Retry` takes focus. */
   watchFocus: () => void;
+  /** Screen-reader-only text said before `text` (an `sr-only` child of the described line), so the
+   *  `Retry`'s description and a swipe through the page carry it; absent, the line is `text` alone.
+   *  Only `RefreshFailedNotice` passes it (its `sectionName`, close ruling P-78). */
+  spokenPrefix?: string;
 }
 
 /* DECISION Phase 88.6.1-70 (one row): ONE row element for the small notices — the compact
@@ -359,6 +363,7 @@ interface NoticeRowProps {
    sentence, so a `Retry` beside the identity notice is told apart from RF1's with no new words.
    Two RF1 notices on ONE page still read alike; naming the list needs words, which stays the
    owner's wording question (D-31; plan 88.6.1-70 Routed finding 2).
+   AMENDED Phase 88.6.1-88: a `spokenPrefix` now tells them apart for a screen reader; the row's class strings are unchanged.
    REJECTED: (a) a second row markup for RF1 — two class strings that drift apart, and a third
    opening tag carrying the retry handler, which reds the floor suite's `bannerRetries` count, or,
    renamed, an RF1 `Retry` the floor suite never sees; (b) merging a caller `className` into this
@@ -366,11 +371,32 @@ interface NoticeRowProps {
    deliberate addition, not a style change), so a consumer's spacing lives on the RF1 wrapper
    instead. The prop is named `handleRetry` ON PURPOSE: the floor suite anchors on the button's
    handler attribute. Changing this is a decision, not a cleanup. */
-function NoticeRow({ text, retrying, handleRetry, watchFocus }: NoticeRowProps) {
+function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: NoticeRowProps) {
   const textId = React.useId();
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
-      <span id={textId}>{text}</span>
+      {/* DECISION Phase 88.6.1-88 (close ruling P-78): with a `spokenPrefix` the described line is
+          an `sr-only` prefix span then an INNER span holding `text` alone. CHOSEN over one text
+          node of prefix plus sentence (the prefix would show) and over an `aria-label` on the line
+          (a plain span's label is not reliably read, and reading in place would miss it); the inner
+          span keeps one element whose text is exactly the sentence, which the e2e visible-line
+          locators match. With no prefix the line renders `text` directly, as before (RN-22).
+          The separating space is a text node BETWEEN the two spans, not the prefix's trailing
+          space: an accessible name trims each element's own text, so a space left inside the
+          `sr-only` span is dropped and the Retry's description runs the words together (measured,
+          RN-20 / SN-1); the space is the GOV.UK visually-hidden-prefix shape, and at the start of
+          the visible line it collapses, so nothing moves.
+          Changing this is a decision, not a cleanup. */}
+      <span id={textId}>
+        {spokenPrefix ? (
+          <>
+            <span className="sr-only">{spokenPrefix.trimEnd()}</span>{' '}
+            <span>{text}</span>
+          </>
+        ) : (
+          text
+        )}
+      </span>
       {/* DECISION Phase 88.6.1-21 (WR-503 / AC-10): all three link-buttons in this file
           (this `Retry`, and `Try again` / `Report this` in the full branch) declare the
           house PHONE-SCOPED link-button floor `min-h-11 md:min-h-0`
@@ -863,6 +889,8 @@ export interface RefreshFailedNoticeProps {
   focusTarget?: React.RefObject<HTMLElement | null>;
   /** Outer spacing only (e.g. `mb-4`), on a wrapper rendered ONLY while the notice shows. */
   className?: string;
+  /** Spoken only: the section this notice qualifies, said before the sentence (close ruling P-78). Absent = unchanged. */
+  sectionName?: string;
 }
 
 /* DECISION Phase 88.6.1-70 (AC-29 / RF1, owner ruling 2026-10-05): a failed REFRESH over content
@@ -899,6 +927,11 @@ export interface RefreshFailedNoticeProps {
    (e) the primitive owning an outer margin — placement differs per site, so spacing is the
        consumer's `className`, rendered only while shown (a healthy page gains no box at 375px);
    (f) naming the list in the spoken sentence — new words (D-31; Routed finding 2).
+       AMENDED Phase 88.6.1-88 (close ruling P-78, owner 2026-10-17): the words are ratified; a
+       caller that passes `sectionName` gets it said first, in the region and in the Retry's
+       description, never visibly. CHOSEN over the region alone (the three Retry buttons would
+       still be described alike, Routed finding 2) and over per-site wrappers (a second region and
+       retry machinery).
    Changing any of these is a decision, not a cleanup. */
 /**
  * RefreshFailedNotice — the shared "failed refresh over retained content" notice (copy row RF1,
@@ -963,7 +996,9 @@ export interface RefreshFailedNoticeProps {
  * and passes no `title` and no `reportContext`. A consumer TEST writes the sentence once,
  * commented as copy row RF1 / D-47, and expects it TWICE while the notice shows and its region is
  * not quiet (visible line plus region): query with `getAllByText`, or scope to the
- * `role="status"` node.
+ * `role="status"` node. AMENDED Phase 88.6.1-88 (close ruling P-78): with `sectionName` the region
+ * holds the prefixed sentence and the visible line the sentence alone, so a consumer test expects
+ * the sentence ONCE by exact text and the region's text equal to the prefixed sentence.
  *
  * C8 — the tests every consumer carries: (a) a failed refresh keeps the retained content, shows
  * RF1, and the full banner's title is absent; (b) the RF1 region is one of the `role="status"`
@@ -1068,7 +1103,7 @@ export interface RefreshFailedNoticeProps {
  *
  * A site plan cites these items as 88.6.1-70 contract C1-C12.
  */
-export function RefreshFailedNotice({ state, retained, focusTarget, className }: RefreshFailedNoticeProps) {
+export function RefreshFailedNotice({ state, retained, focusTarget, className, sectionName }: RefreshFailedNoticeProps) {
   // C10, enforced here and never silently: an access or gone answer is not a refresh failure.
   const blocked = isAccessOrGoneError(state);
   const shown = state.showError && retained && !blocked;
@@ -1085,10 +1120,12 @@ export function RefreshFailedNotice({ state, retained, focusTarget, className }:
   if (state.showError && retained && blocked) {
     return <FetchErrorBanner state={state} focusTarget={focusTarget} />;
   }
+  // Close ruling P-78: the section name, said first and only to a screen reader (copy row P78).
+  const spokenPrefix = sectionName ? `${sectionName}: ` : '';
   return (
     <>
       <StatusRegion politeness="polite" className="sr-only">
-        {shown && !regionQuiet ? REFRESH_FAILED_NOTICE : ''}
+        {shown && !regionQuiet ? `${spokenPrefix}${REFRESH_FAILED_NOTICE}` : ''}
       </StatusRegion>
       {shown ? (
         <div className={className}>
@@ -1097,6 +1134,7 @@ export function RefreshFailedNotice({ state, retained, focusTarget, className }:
             retrying={retrying}
             handleRetry={handleRetry}
             watchFocus={watchFocus}
+            spokenPrefix={spokenPrefix}
           />
         </div>
       ) : null}

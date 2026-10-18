@@ -82,6 +82,8 @@ interface NoticeHostProps {
   controls?: HostControls;
   withTarget?: boolean;
   className?: string;
+  // Close ruling P-78 (plan 88.6.1-88): the spoken section name, passed straight through.
+  sectionName?: string;
 }
 
 // The contract's usage shape, cut down: a section heading the notice hands focus to, the notice
@@ -95,6 +97,7 @@ function NoticeHost({
   controls,
   withTarget = true,
   className,
+  sectionName,
 }: NoticeHostProps) {
   const [failed, setFailed] = React.useState(initialFailed);
   const [rows, setRows] = React.useState(['Ann']);
@@ -124,6 +127,7 @@ function NoticeHost({
             retained={retained}
             focusTarget={withTarget ? headingRef : undefined}
             className={className}
+            sectionName={sectionName}
           />
         </div>
         <ul>
@@ -272,6 +276,75 @@ describe('RefreshFailedNotice — tracer (plan 88.6.1-70, RF1 / D-47)', () => {
     expect(document.activeElement).toBe(button);
     expect(button).toHaveTextContent('Retry');
     expect(button).not.toHaveAttribute('aria-disabled');
+  });
+
+  // Close ruling P-78 (owner 2026-10-17, plan 88.6.1-88): a caller that passes `sectionName` has
+  // its section said first, to a screen reader only — in the one polite region and in the Retry's
+  // description — while the visible line stays RF1. The prefixed sentences are copy rows P78 and
+  // P78a-c; the section names here are the harness's own.
+  it('RN-20. sectionName: the SAME region says the section first, the Retry is described by it, nothing visible is added', () => {
+    const { retry } = pressableRetry();
+    const controls: HostControls = {};
+    render(<NoticeHost retry={retry} initialFailed={false} controls={controls} sectionName="Members" />);
+    const region = politeRegionIn(slot());
+    expect(region).not.toBeNull();
+
+    act(() => controls.setFailed?.(true));
+    expect(politeRegionIn(slot()), 'the SAME region node').toBe(region);
+    expect(region?.textContent, 'the region says the section first').toBe(`Members: ${RF1}`);
+    const exact = screen.getAllByText(RF1);
+    expect(exact, 'RF1 by exact text once: the visible line').toHaveLength(1);
+    expect(exact[0].closest('[role="status"]'), 'the visible line is not the region').toBeNull();
+    expect(exact[0].closest('.sr-only'), 'the visible line is not sr-only').toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(`Members: ${RF1}`);
+    // Nothing visible added: every element whose own text holds the section prefix sits inside an
+    // sr-only node (the region, and the described line's sr-only child).
+    const holders = Array.from(document.body.querySelectorAll('*')).filter((el) =>
+      Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').includes('Members:'))
+    );
+    expect(holders.length, 'the prefix is in the DOM').toBeGreaterThanOrEqual(2);
+    for (const el of holders) expect(el.closest('.sr-only'), `"${el.textContent}" is visible`).not.toBeNull();
+  });
+
+  it('RN-21. sectionName: a failed Retry empties the SAME region and refills it with the prefixed sentence', async () => {
+    const user = userEvent.setup();
+    const { retry, pending } = pressableRetry();
+    render(<NoticeHost retry={retry} sectionName="Calendar" />);
+    const region = politeRegionIn(slot()) as HTMLElement;
+    // Mounted mid-failure: the region fills after the dwell (quietOnMount), with the prefix.
+    await waitFor(() => expect(region.textContent).toBe(`Calendar: ${RF1}`));
+    const button = screen.getByRole('button', { name: 'Retry' });
+
+    await user.click(button);
+    expect(region.textContent, 'emptied in flight').toBe('');
+    await act(async () => {
+      pending[0].resolve({ isError: true });
+    });
+    await waitFor(() => expect(region.textContent, 'refilled with the prefixed sentence').toBe(`Calendar: ${RF1}`));
+    expect(politeRegionIn(slot()), 'the SAME node').toBe(region);
+    expect(document.activeElement).toBe(button);
+    expect(button).toHaveAccessibleDescription(`Calendar: ${RF1}`);
+    expect(screen.getAllByText(RF1), 'the visible line is RF1 alone').toHaveLength(1);
+  });
+
+  it('RN-22. no sectionName: the region says RF1 alone and the described line holds the text only, no element child', () => {
+    // CONFIRM-ONLY guard (green before and after plan 88.6.1-88): the mounts that pass no
+    // sectionName keep today's DOM. The described line is found by the Retry's aria-describedby
+    // (getElementById: a React useId id holds colons, which a "#" selector would have to escape).
+    const { retry } = pressableRetry();
+    const controls: HostControls = {};
+    render(<NoticeHost retry={retry} initialFailed={false} controls={controls} />);
+    const region = politeRegionIn(slot());
+    act(() => controls.setFailed?.(true));
+    expect(region?.textContent).toBe(RF1);
+    const button = screen.getByRole('button', { name: 'Retry' });
+    const describedBy = button.getAttribute('aria-describedby') ?? '';
+    const described = document.getElementById(describedBy) as HTMLElement;
+    expect(described).not.toBeNull();
+    expect(described.children, 'no element child').toHaveLength(0);
+    expect(described.outerHTML, 'byte-identical to the unprefixed line').toBe(`<span id="${describedBy}">${RF1}</span>`);
+    expect(button).toHaveAccessibleDescription(RF1);
+    expect(screen.getAllByText(RF1), 'one constant, two carriers').toHaveLength(2);
   });
 });
 

@@ -214,6 +214,9 @@ function fireVisibility(state: 'visible' | 'hidden') {
 // copy row RF1 / D-47 — the shared refresh notice's sentence (plan 88.6.1-70 owns the one constant;
 // written once here, contract C7).
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+// copy row P78c (close ruling P-78, owner 2026-10-17) — the members notice's spoken sentence: its
+// section name, then RF1. Written once here; the region carries it, the visible line stays RF1.
+const MEMBERS_SPOKEN = "Members: Couldn't refresh. Showing what loaded earlier.";
 
 const EV_A = { id: 'ev-a', start_date: '2026-11-02T19:00:00.000Z' };
 const EV_B = { id: 'ev-b', start_date: '2026-11-09T19:00:00.000Z' };
@@ -907,9 +910,14 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
  * ========================================================================================== */
 describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-70 contract C8 / C10 / C12)', () => {
   const internal = () => new ApiError('Request failed', 'internal', 500);
-  /** The visible RF1 line: the RF1 text outside the `role="status"` node (it is in the DOM twice). */
+  /** The visible RF1 line: the RF1 text outside the `role="status"` node. */
   const visibleRf1 = () => screen.getAllByText(RF1).find((el) => !el.closest('[role="status"]'))!;
-  const rf1Region = () => screen.getAllByText(RF1).find((el) => el.closest('[role="status"]'))!.closest('[role="status"]')!;
+  // Re-pointed by plan 88.6.1-88 (close ruling P-78): a notice's region now says its section name
+  // first, so the region is the innermost `role="status"` node whose text ENDS with RF1.
+  const rf1Region = () =>
+    Array.from(document.querySelectorAll('[role="status"]')).find(
+      (el) => (el.textContent ?? '').endsWith(RF1) && !el.querySelector('[role="status"]')
+    )!;
   const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   const overview = () => screen.getByRole('button', { name: 'Overview' });
   const loadEvents = async (events: unknown[]) => {
@@ -1086,7 +1094,9 @@ describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-
 
     await failMembersRefresh();
     // ...but not the notice's live region (the package exempts aria-live elements): the fill is heard.
-    expect(screen.getAllByText(RF1)).toHaveLength(2);
+    // Re-pointed by plan 88.6.1-88: RF1 once by exact text (the visible line), the region the prefixed sentence.
+    expect(screen.getAllByText(RF1)).toHaveLength(1);
+    expect(rf1Region().textContent).toBe(MEMBERS_SPOKEN);
     const region = rf1Region();
     expect(regionsBefore).toContain(region);
     expect(region.closest('[aria-hidden]')).toBeNull();
@@ -1095,13 +1105,27 @@ describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-
       h.manageMembersProps!.modaltoggle();
     });
     // The close re-presents nothing: the same region keeps its text, so the sentence is not spoken twice.
-    expect(screen.getAllByText(RF1)).toHaveLength(2);
+    expect(screen.getAllByText(RF1)).toHaveLength(1);
+    expect(rf1Region().textContent).toBe(MEMBERS_SPOKEN);
     expect(rf1Region()).toBe(region);
     await act(async () => {
       await new Promise((r) => setTimeout(r, 150));
     });
     expect(rf1Region()).toBe(region);
     expect(screen.getByText(/2 members/)).toBeInTheDocument();
+  });
+
+  // Close ruling P-78 (owner 2026-10-17, plan 88.6.1-88): each group-page refresh notice says its
+  // section first, to a screen reader only.
+  it('SN-1. a failed members refresh says "Members:" first in its region and in its Retry description; the visible line stays RF1', async () => {
+    await renderHeaderAt('owner', { inMain: true });
+    const regionsBefore = screen.getAllByRole('status');
+    await failMembersRefresh();
+    await waitFor(() => expect(rf1Region().textContent).toBe(MEMBERS_SPOKEN));
+    expect(regionsBefore, 'the SAME region node').toContain(rf1Region());
+    expect(screen.getAllByText(RF1), 'RF1 by exact text once: the visible line').toHaveLength(1);
+    expect(visibleRf1().closest('.sr-only')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(MEMBERS_SPOKEN);
   });
 });
 
