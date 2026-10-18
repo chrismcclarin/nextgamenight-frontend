@@ -10,6 +10,8 @@ import { test, expect, type Locator, type Page, type Route } from '@playwright/t
 //   answers 200 with something that is not JSON (the parse-failure route), and the backend's own
 //   JSON 500 (plan 88.6.1-23's status guard). Neither ever shows the advice to tap the link again,
 //   and each fits the viewport with no horizontal scroll.
+// - A4 (plan 88.6.1-87, close ruling P-77): the backend's post-consume 404 for an event that is
+//   gone, carrying its token event_not_found, shows the cancelled state, never the retap advice.
 // - Group restore page (`/restore/group/[token]`): the loading line names what is loading (copy
 //   row L2) and fits; a failed preview shows the retryable error state, which fits; and a keyboard
 //   Try again keeps focus on the loading line while the retry is in flight, then lands it on the
@@ -29,6 +31,10 @@ import { test, expect, type Locator, type Page, type Route } from '@playwright/t
 const R3_DETAIL =
   "We couldn't confirm your RSVP — the connection timed out. Sign in and open the event to check your answer.";
 const R9_DETAIL = "We couldn't confirm your RSVP. Sign in and open the event to check your answer.";
+// Copy rows P77a / P77b (close ruling P-77, owner 2026-10-18), straight apostrophe.
+const EVENT_GONE_HEADLINE = 'This game night was cancelled';
+const EVENT_GONE_DETAIL =
+  "The event this link was for no longer exists, so there is nothing to answer. If you think that's a mistake, ask the organizer.";
 const RSVP_PATH = '/rsvp/e2e-not-a-real-rsvp-token?e=e2e-event&u=e2e-user&s=yes';
 const CHECKING_LINK = 'Checking your restore link...';
 const RESTORE_ERROR_HEADING = 'Unable to restore this group';
@@ -163,6 +169,41 @@ test.describe('RSVP and restore token pages — failure states at phone width (8
     await expectR9(page);
     // Backend prose is never the display string.
     await expect(page.getByText('Something went wrong processing your RSVP.')).toHaveCount(0);
+  });
+
+  test('A4. RSVP: the post-consume 404 shows the cancelled state, never the retap advice (88.6.1-87)', async ({
+    page,
+  }) => {
+    // The body is the backend's after plan 88.6.1-87 Task 1 (`Sonnet/routes/rsvp.js`, GET
+    // /respond, anchor `event_not_found`; owner ruling D4): respondViaToken keys on status 404
+    // AND this token, so a body without it would pin the red error card, not the amber one.
+    await routeRespond(page, (route) =>
+      route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ error: 'event_not_found' }),
+      }),
+    );
+
+    await page.goto(RSVP_PATH);
+
+    await expect(
+      page.getByRole('heading', { level: 1, name: EVENT_GONE_HEADLINE, exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    const detail = page.getByText(EVENT_GONE_DETAIL, { exact: true });
+    await expect(detail).toBeVisible();
+    await expectInsideViewport(page, detail);
+    await expect(page.getByText(/try clicking the RSVP link/)).toHaveCount(0);
+    // `toContainText`, never `toBeVisible`: the region is sr-only.
+    await expect(page.getByTestId('rsvp-page-status')).toContainText(EVENT_GONE_DETAIL);
+
+    const home = page.getByRole('link', { name: 'Go to Home' });
+    const homeBox = await home.boundingBox();
+    expect(homeBox, 'the Go to Home link has no layout box').not.toBeNull();
+    expect(homeBox!.height, 'the Go to Home link is shorter than 44px').toBeGreaterThanOrEqual(44);
+
+    await expectNoHorizontalScroll(page);
   });
 
   test('B. restore: the L2 loading line and the error state fit, and a keyboard Try again lands focus on the settled heading (88.6.1-36)', async ({
