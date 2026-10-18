@@ -634,3 +634,85 @@ describe('rsvp/[token] — D-25 / R3 / R9: a request that did not complete, or a
     }
   });
 });
+
+// Plan 88.6.1-87 (close ruling P-77, owner 2026-10-18, his word "ratified"; key per owner ruling
+// D4 "Option A"). The backend's post-consume 404 for an event that is gone now carries the token
+// event_not_found, and respondViaToken rejects ApiError('not_found', 404) for it ONLY (pinned in
+// src/lib/api.test.ts Y5..Y8). This page enters EVENT_GONE on the instance plus that code and
+// shows the owner's words on the amber link-state card (owner ruling "amber", 2026-10-18). The
+// two literals are written once here, copy rows P77a / P77b, straight apostrophe (D-32 R8).
+// G1 and G3 were RED before the page change; G2 and G4 are regression pins, green before and
+// after. The page suite mocks respondViaToken, so it never sees a status or a body token.
+const EVENT_GONE_HEADLINE = 'This game night was cancelled';
+const EVENT_GONE_DETAIL =
+  "The event this link was for no longer exists, so there is nothing to answer. If you think that's a mistake, ask the organizer.";
+
+describe('rsvp/[token] — the event is gone (88.6.1-87, close ruling P-77)', () => {
+  it('G1. a not_found rejection shows the ratified headline and detail, Go to Home, and the same words in the one region', async () => {
+    respond().mockRejectedValue(new ApiError('rsvp respond: the event no longer exists', 'not_found', 404));
+
+    render(<RsvpPage />);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: EVENT_GONE_HEADLINE })
+    ).toBeInTheDocument();
+    expect(screen.getByText(EVENT_GONE_DETAIL)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      `${EVENT_GONE_HEADLINE} ${EVENT_GONE_DETAIL}`
+    );
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.queryByText(/try clicking the RSVP link/)).toBeNull();
+    expect(screen.queryByText('Something went wrong')).toBeNull();
+  });
+
+  it('G2. REGRESSION PIN: a RESOLVED prose body still shows the error copy (the page never reads the prose)', async () => {
+    // Green before and after: the legacy body resolves (api.test.ts Y8) and this page has no
+    // discriminant for it, so it stays on ERROR with the retap detail, never EVENT_GONE.
+    respond().mockResolvedValue({ error: 'Event not found' });
+
+    render(<RsvpPage />);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' })
+    ).toBeInTheDocument();
+    expect(screen.getByText(RETAP_DETAIL)).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_GONE_HEADLINE)).toBeNull();
+  });
+
+  it('G3. the LOADING to EVENT_GONE flip fills the SAME slot-0 region (node identity)', async () => {
+    let rejectRespond: (e: unknown) => void = () => {};
+    respond().mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectRespond = reject;
+      })
+    );
+
+    render(<RsvpPage />);
+    await screen.findByText('Recording your RSVP...');
+    const regionBefore = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(regionBefore.textContent).toBe('');
+
+    await act(async () => {
+      rejectRespond(new ApiError('rsvp respond: the event no longer exists', 'not_found', 404));
+    });
+    await screen.findByRole('heading', { level: 1, name: EVENT_GONE_HEADLINE });
+
+    const regionAfter = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(regionAfter).toBe(regionBefore);
+    expect(regionAfter.textContent).toBe(`${EVENT_GONE_HEADLINE} ${EVENT_GONE_DETAIL}`);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('G4. REGRESSION PIN: a duck-typed not_found object that is not an ApiError instance stays on the error copy', async () => {
+    // U5's rule: the arms read the instance, so a plain object named ApiError never enters
+    // EVENT_GONE. Green before and after.
+    respond().mockRejectedValue({ name: 'ApiError', code: 'not_found', message: 'x' });
+
+    render(<RsvpPage />);
+
+    await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+    expect(screen.getByText(RETAP_DETAIL)).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_GONE_HEADLINE)).toBeNull();
+  });
+});

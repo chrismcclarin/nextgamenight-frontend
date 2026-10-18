@@ -1220,9 +1220,47 @@ describe('88.6.1-23 / R9 mechanism — a server error on the RSVP link rejects a
     }
   });
 
-  // The 404 'Event not found' (BE `routes/rsvp.js:288`) is deliberately NOT pinned here: it
-  // still resolves, and its page wording is an open owner item (revision-lap-3-manifest.md:87,
-  // anchor `OWNER WORDING STILL OWED (small): the RSVP link page`), not this plan's.
+  // ADDED by plan 88.6.1-87 (close ruling P-77, owner 2026-10-18; key per owner ruling D4
+  // "Option A"), replacing the note that this 404 was deliberately not pinned. The backend's
+  // post-consume missing-event 404 now carries the token event_not_found (BE
+  // `Sonnet/routes/rsvp.js`, GET /respond, anchor `event_not_found`), and respondViaToken
+  // rejects ApiError('not_found', 404) for that parsed body ONLY. Y5 was RED before the fix
+  // (the 404 resolved); Y6 is a confirm-only boundary; Y7 and Y8 are regression pins, green
+  // before and after, made RED by the plant that loosens the discriminant to the status alone.
+  it('Y5: a 404 carrying the token event_not_found rejects ApiError(not_found, 404) with the constant message and nothing of the body', async () => {
+    vi.stubGlobal('fetch', answer(404, '{"error":"event_not_found"}'));
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'not_found', status: 404, message: 'rsvp respond: the event no longer exists' });
+    expect((caught as ApiError).details).toBeUndefined();
+    expect((caught as ApiError).upstreamMessage).toBeUndefined();
+    expect(JSON.stringify(errCtx(caught))).not.toContain('event_not_found');
+  });
+
+  it('Y6 (CONFIRM-ONLY boundary): an HTML 404 still rejects internal, status 404 (the parse runs first, R9)', async () => {
+    vi.stubGlobal('fetch', answer(404, '<html><body>Not Found</body></html>'));
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 404 });
+  });
+
+  // Railway's edge answers a detached or misrouted domain with its own JSON 404 (probed
+  // 2026-10-18, `x-railway-fallback: true`, no `error` key). It parses, and it must never tell
+  // anyone their game night was cancelled: no token was consumed.
+  it('Y7: Railway edge fallback JSON 404 (no error key) RESOLVES, never rejects not_found', async () => {
+    const body = '{"status":"error","code":404,"message":"Application not found","request_id":"x"}';
+    vi.stubGlobal('fetch', answer(404, body));
+    await expect(rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes')).resolves.toEqual(JSON.parse(body));
+  });
+
+  // The prose prohibition's pin: the legacy body the backend sent before plan 87 (and still
+  // sends until its deploy) resolves exactly as before, so the page stays on its ERROR card.
+  it('Y8: the legacy prose 404 body RESOLVES, never rejects not_found', async () => {
+    const body = '{"error":"Event not found"}';
+    vi.stubGlobal('fetch', answer(404, body));
+    await expect(rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes')).resolves.toEqual(JSON.parse(body));
+  });
+
   it('Y3 (CONFIRM-ONLY boundary): every body below 500 the page reads still resolves; a non-JSON 502 still rejects internal', async () => {
     const BODIES: Array<[number, string]> = [
       [403, '{"error":"account_not_found","message":"fixture"}'],

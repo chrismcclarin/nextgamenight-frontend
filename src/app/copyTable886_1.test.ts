@@ -157,6 +157,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'C8', text: 'Group availability', site: 'app/components/EventHeatmapBackground.js', kind: 'chunk' },
   // Ratified 2026-10-17 to 2026-10-18 at the phase close (close ledger rows; plan 88.6.1-65 Task 2)
   { id: 'P14', text: 'Loading responses...', site: 'app/components/ResponseDashboard.js', kind: 'chunk' },
+  { id: 'P77a', text: 'This game night was cancelled', site: 'app/rsvp/[token]/page.js', kind: 'chunk' },
+  { id: 'P77b', text: "The event this link was for no longer exists, so there is nothing to answer. If you think that's a mistake, ask the organizer.", site: 'app/rsvp/[token]/page.js', kind: 'chunk' },
   // Not changing (the copy table's list; deferred register :238)
   { id: 'NC-1', text: 'Press again to confirm: {item}', site: 'app/components/KebabMenu.js', kind: 'fragments', fragments: ['Press again to confirm: ', ''] },
   { id: 'NC-2', text: 'Confirmation cancelled.', site: 'app/components/KebabMenu.js', kind: 'chunk' },
@@ -175,7 +177,7 @@ const EXPECTED_IDS = [
   // owner rulings 2026-10-13 to 2026-10-15
   'GD1', 'GD2', 'E16', 'E17', 'E18', 'GD3', 'GD4', 'N9', 'N10', 'G9', 'F8a', 'F8b', 'C8',
   // close rulings 2026-10-17 to 2026-10-18
-  'P14',
+  'P14', 'P77a', 'P77b',
 ];
 
 // Rows that ship no literal of their own.
@@ -350,11 +352,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (96 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (98 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(96);
+    expect(ids).toHaveLength(98);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });

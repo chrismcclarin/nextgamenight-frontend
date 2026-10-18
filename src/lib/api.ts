@@ -1252,6 +1252,9 @@ export const rsvpAPI = {
  * Uses direct fetch without Auth0 token injection
  */
 const RSVP_RESPOND_TRANSPORT_FAILURE = 'rsvp respond request did not complete';
+// Plan 88.6.1-87 (close ruling P-77): the message of the not_found rejection below. A log
+// message only, never rendered: the RSVP page renders its copy by page state.
+const RSVP_RESPOND_EVENT_GONE = 'rsvp respond: the event no longer exists';
 
 export const rsvpPublicAPI = {
   // Respond to RSVP via magic link token (no auth required) — direct-to-backend
@@ -1297,12 +1300,34 @@ export const rsvpPublicAPI = {
     // would also drop the 403 / 410 bodies. The per-status predicate skips only the body
     // nothing reads.
     // Widening this below 500, or reading the 5xx body, is a decision, not a cleanup.
+    // AMENDED Phase 88.6.1-87 (close ruling P-77, owner 2026-10-18; key per owner ruling D4 Option A):
+    // the app's own JSON 404 carrying the token event_not_found (BE
+    // `periodictabletopbackend_v2/Sonnet/routes/rsvp.js` GET /respond, plan 88.6.1-87 Task 1, sent
+    // after the token is consumed) now rejects `not_found`, read only after the parse so an HTML
+    // 404 stays `internal`. The TOKEN is what is required, not the parse: Railway's edge answers a
+    // detached or misrouted domain with its own JSON 404 (probed 2026-10-18,
+    // `x-railway-fallback: true`, no `error` key), and that must never tell anyone a game night
+    // was cancelled. The reasoning above holds: the only 404 that throws carries the token the
+    // page now keys on, and the four reads are the 403 and 410 bodies, which still resolve. The
+    // same 404 also answers an event soft-deleted with its group and restorable for 30 days,
+    // owner-accepted 2026-10-18 ("a") under the detail's hedge, with the BE improvement routed to
+    // Phase 93 (`.planning/deferred/phase-93.md`, entry
+    // `GET /rsvp/respond: the 404 for a missing event`).
+    // REJECTED (a): keying on the 404 parsing (Railway's fallback above). REJECTED (b): reading
+    // the 404 body's prose (a backend string is never a discriminant). REJECTED (c): accepting
+    // both bodies while the BE deploys (D4: the BE deploys first, and until then the case keeps
+    // today's card). REJECTED (d): a status field on the resolved body (a body-shape change the
+    // binding constraint above forbids).
     if (res.status >= 500) throw new ApiError(RSVP_RESPOND_TRANSPORT_FAILURE, 'internal', res.status);
     // NO res.ok throw — rsvp/[token]/page.js reads `result.error` off the parsed 410 body
     // to tell "cancelled" from "already happened", and D62 branch B keeps that read.
     // [AMENDED Phase 88.6.1-23 (R9 mechanism): except a status of 500 or above, which rejects
     // internal above — no 5xx body carries a discriminant the page reads.]
-    return guardedJson(text, res.status, RSVP_RESPOND_TRANSPORT_FAILURE);
+    // [AMENDED Phase 88.6.1-87 (P-77): and except a parsed 404 carrying the backend token
+    // event_not_found, which rejects not_found below; every other 404 resolves as before.]
+    const body = guardedJson(text, res.status, RSVP_RESPOND_TRANSPORT_FAILURE);
+    if (res.status === 404 && body?.error === 'event_not_found') throw new ApiError(RSVP_RESPOND_EVENT_GONE, 'not_found', 404);
+    return body;
   },
 };
 

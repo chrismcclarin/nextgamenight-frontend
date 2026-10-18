@@ -23,6 +23,9 @@ const PAGE_STATES = {
   UNCONFIRMED_NETWORK: 'unconfirmed_network',
   // Plan 88.6.1-36 (D-25, owner R9 ruling 2026-10-05): entered on an ApiError with code `internal`.
   UNCONFIRMED_INTERNAL: 'unconfirmed_internal',
+  // Plan 88.6.1-87 (close ruling P-77): the backend's own 404, carrying its token, after the
+  // link was used. Entered on an ApiError with code `not_found`.
+  EVENT_GONE: 'event_gone',
 };
 
 /**
@@ -77,12 +80,32 @@ const EXPIRED_LINK_HEADLINE = 'This link has already been used';
 const EXPIRED_LINK_DETAIL = 'Each RSVP link works once. Sign in and open the event to change your answer.';
 const ACCOUNT_NOT_FOUND_HEADLINE = "We couldn't find your account";
 const ACCOUNT_NOT_FOUND_DETAIL = 'Sign in and open the event to RSVP.';
+/* DECISION Phase 88.6.1-87 (close ruling P-77, owner 2026-10-18): CHOSEN — owner-ruled
+   2026-10-18 ("amber"), shown at 375px (88.6.1-65-RULINGS-INFLIGHT.md, section
+   "Planner flag (a), P-77 look"): the ratified pair as a LINK_STATE_COPY entry (the amber card
+   the cancelled 410 also draws; no new markup, the shipped "Go to Home"). This amends in place
+   DECISION 88.6.1-36 REJECTED (a) (in the catch below, anchor "REJECTED (a): adding the states
+   to"), which had called the amber clock glyph a Phase 88.9 look change, for this one state
+   only. Keyed on the not_found code, which respondViaToken gives only to a 404 carrying the
+   backend token event_not_found (owner ruling D4). The generic "ask the organizer" because no
+   organizer name reaches this page. The same answer also covers an event soft-deleted with its
+   group and restorable for 30 days: owner-accepted 2026-10-18 ("a"), the words and their hedge
+   stand, the BE improvement routed to Phase 93 (.planning/deferred/phase-93.md, entry
+   "GET /rsvp/respond: the 404 for a missing event").
+   REJECTED (a): the ERROR branch with the new words (a red error card for a cancelled game
+   night, beside an amber card for the cancelled 410).
+   REJECTED (b): a name in the sentence (the 404 body has none and the page holds only the
+   link's ids).
+   REJECTED (c): keying on the body text (backend prose). */
+const EVENT_GONE_HEADLINE = 'This game night was cancelled';
+const EVENT_GONE_DETAIL = "The event this link was for no longer exists, so there is nothing to answer. If you think that's a mistake, ask the organizer.";
 const LINK_STATE_COPY = {
   [PAGE_STATES.EXPIRED_LINK]: { headline: EXPIRED_LINK_HEADLINE, detail: EXPIRED_LINK_DETAIL },
   [PAGE_STATES.ACCOUNT_NOT_FOUND]: {
     headline: ACCOUNT_NOT_FOUND_HEADLINE,
     detail: ACCOUNT_NOT_FOUND_DETAIL,
   },
+  [PAGE_STATES.EVENT_GONE]: { headline: EVENT_GONE_HEADLINE, detail: EVENT_GONE_DETAIL },
 };
 
 /**
@@ -291,7 +314,10 @@ export default function RsvpPage() {
            own copy inside one branch (`LINK_STATE_COPY`).
            REJECTED (a): adding the states to `LINK_STATE_COPY` — that branch draws the amber
            clock glyph, a look change that belongs to Phase 88.9; the ERROR branch already has
-           the right glyph, headline and link, so only the detail changes.
+           the right glyph, headline and link, so only the detail changes. AMENDED Phase
+           88.6.1-87 — owner-ruled 2026-10-18 ("amber"), shown at 375px: the deleted-event state
+           (EVENT_GONE) draws the LINK_STATE_COPY branch; UNCONFIRMED_NETWORK and
+           UNCONFIRMED_INTERNAL stay on the ERROR branch, where this rejection still holds.
            REJECTED (b): ONE unconfirmed state plus a second state value (or an `errorInfo`
            field) holding the cause — two writes per failure that must agree, and the detail
            would no longer follow from `pageState`.
@@ -313,11 +339,16 @@ export default function RsvpPage() {
            discriminant. Only a status under 500 can resolve (`DECISION Phase 88.6.1-23 (R9
            mechanism)` in `lib/api.ts`), so the backend's own server error reaches R9, not that
            copy. What still resolves there: the backend's refusals before the token is used (the
-           two 400s and the signature-mismatch 403), where that copy is true, and the
-           post-consume 404 `Event not found`, where it is not — that case awaits owner wording
-           and is left on that copy deliberately until the words exist; do not route it to R9,
-           which tells the person to open an event that no longer exists. */
-        if (err instanceof ApiError && err.code === 'network') {
+           two 400s and the signature-mismatch 403), where that copy is true. The post-consume
+           404 no longer resolves there once it carries the backend token. AMENDED Phase
+           88.6.1-87 (close ruling P-77, owner 2026-10-18; key per owner ruling D4) — a 404 whose
+           body carries `event_not_found` rejects `not_found` and enters EVENT_GONE with the
+           owner's words; a 404 without that token (the backend before its deploy, Railway's
+           edge fallback) still resolves and stays on this copy; neither is routed to R9, which
+           tells the person to open an event that no longer exists. */
+        if (err instanceof ApiError && err.code === 'not_found') {
+          setPageState(PAGE_STATES.EVENT_GONE);
+        } else if (err instanceof ApiError && err.code === 'network') {
           setPageState(PAGE_STATES.UNCONFIRMED_NETWORK);
         } else if (err instanceof ApiError && err.code === 'internal') {
           setPageState(PAGE_STATES.UNCONFIRMED_INTERNAL);

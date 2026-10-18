@@ -301,17 +301,28 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
   // `mapErrorToCode`'s validation hint reads `body.details.errors`, and `extractFieldErrors`
   // has one arm. Both self-constructed non-JSON bodies were reshaped onto `message` in the
   // same commit.
+  // 3 → 4 on 2026-10-18 (plan 88.6.1-87, owner ruling D4): the fourth read is respondViaToken's
+  // token discriminant on its direct /rsvp/respond fetch. AC-9's rule that a new `.error` read
+  // fails assertion 1 is honoured by rostering this read BY NAME: the route answers raw
+  // `{ error }` tokens (its four siblings too), so there is no envelope `code` to read instead
+  // until Phase 93.
   'lib/api.ts': {
-    sites: 3,
+    sites: 4,
     why:
-      'The envelope seam itself, down to THREE. (1) extractUpstreamMessage is AC-4 arm A: ' +
+      'The envelope seam itself, down to THREE, then FOUR. (1) extractUpstreamMessage is AC-4 arm A: ' +
       "the ONE by-name exemption, populating a NON-RENDERED ApiError field forwarded to " +
       "Sentry extra by queryClient.ts:162 and read by nothing else (owner ruling " +
       "2026-09-09 a; assertion 6 pins the site and the no-render property). (2) and (3) are " +
       'the raw-fetch prefill helpers, whose availabilityPrefill bodies carry no code and no ' +
       'message at any of their eight emit sites (re-opened at source 2026-09-17) — RETAINED ' +
       'under D62 branch B with Phase 93 owning the backend code. The three apiFetch alias ' +
-      'arms the SPEC cited as :300/:309/:316 are DONE: dropped by plan 88.6-42.',
+      'arms the SPEC cited as :300/:309/:316 are DONE: dropped by plan 88.6-42. (4) ADDED ' +
+      '2026-10-18 by plan 88.6.1-87: respondViaToken reads body.error on its direct ' +
+      '/rsvp/respond fetch (not an apiFetch alias arm) to key a parsed 404 carrying the token ' +
+      'event_not_found to ApiError not_found, the RSVP page EVENT_GONE card (owner ruling ' +
+      '2026-10-18 D4 "Option A", close ruling P-77). A Phase 93 blocking precondition like the ' +
+      'others: BAPI-03 moves it to code (.planning/deferred/phase-93.md, entry ' +
+      '"GET /rsvp/respond: the 404 for a missing event").',
     owner: {
       kind: 'owner',
       date: '2026-09-09',
@@ -541,7 +552,8 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     // Stated positively as well as by difference, so the census this plan asserts is
     // readable straight off a failure rather than reconstructed from a violations list.
     expect(MEASURED).toEqual({
-      'lib/api.ts': 3,
+      // 3 → 4 on 2026-10-18 (plan 88.6.1-87, owner ruling D4): respondViaToken's token discriminant.
+      'lib/api.ts': 4,
       // 2 → 4 on 2026-09-29 (plan 88.6-58 task 7): the two 403 discriminants joined the two 410s.
       'app/rsvp/[token]/page.js': 4,
       // 2 → 1 on 2026-09-29 (plan 88.6-62, review round 2 #11): the guard reads success, not error.
@@ -549,7 +561,8 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     });
     const total = Object.values(MEASURED).reduce((a, b) => a + b, 0);
     // 9 → 8 on 2026-09-29 (plan 88.6-62, review round 2 #11): the AvailabilityForm guard read.
-    expect(total, '7 → 9 on 2026-09-29 (plan 88.6-58 task 7); 9 → 8 the same day (plan 88.6-62)').toBe(8);
+    // 8 → 9 on 2026-10-18 (plan 88.6.1-87, owner ruling D4): respondViaToken's token discriminant.
+    expect(total, '7 → 9 on 2026-09-29 (plan 88.6-58 task 7); 9 → 8 the same day (plan 88.6-62); 8 → 9 on 2026-10-18 (plan 88.6.1-87)').toBe(9);
     expect(Object.keys(ENVELOPE_READ_ROSTER).sort()).toEqual(Object.keys(MEASURED).sort());
   });
 
@@ -616,9 +629,10 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
   it('6. AC-4 arm A — ONE by-name construction site, and the field it fills renders nowhere', () => {
     // Added by plan 88.6-42 task 1 (2026-09-17). Assertions 1-3 pin the COUNT; this one pins
     // WHICH read the count permits and what the value it produces is allowed to do. Without
-    // it, "lib/api.ts: 3" would permit a THIRD apiFetch-path alias read to be reintroduced
+    // it, "lib/api.ts: 4" would permit a further apiFetch-path alias read to be reintroduced
     // under the same number, which is precisely the exemption-as-cover failure this suite
-    // exists to prevent.
+    // exists to prevent. ("lib/api.ts: 3" → "lib/api.ts: 4" on 2026-10-18, plan 88.6.1-87,
+    // owner ruling D4.)
     const apiSrc = withoutComments(fs.readFileSync(path.join(SRC, 'lib/api.ts'), 'utf8'));
 
     // (a) THE NAMED SITE. The one sanctioned legacy read on the apiFetch path lives in
@@ -628,11 +642,13 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
       /function extractUpstreamMessage\(body: any\): string \| undefined \{\s*return typeof body\?\.error === 'string' \? body\.error : undefined;\s*\}/,
     );
 
-    // (b) …and the three rostered reads in this file are that one plus the two raw-fetch
-    // prefill helpers, and nothing else. Stated by RECEIVER so a new `body.error` anywhere
-    // in the module reds here as well as on the count.
+    // (b) …and the four rostered reads in this file are that one, the two raw-fetch
+    // prefill helpers and respondViaToken's token discriminant, and nothing else. Stated by
+    // RECEIVER so a new `body.error` anywhere in the module reds here as well as on the count.
+    // (three → four, and a second `body.error`, on 2026-10-18: plan 88.6.1-87, owner ruling D4.)
     const apiHits = BY_FILE.get('lib/api.ts') ?? [];
     expect(apiHits.map((hit) => `${hit.receiver}.${hit.prop}`).sort()).toEqual([
+      'body.error',
       'body.error',
       'err.error',
       'err.error',
