@@ -53,7 +53,7 @@ import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityCol
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
 import { maxAvailabilityPerDay, peakHourForDay } from './heatmap/dayAggregate';
 import { slotCellName } from './heatmap/slotCellName';
-import SchedulerWeekStrip, { stripTabId } from './SchedulerWeekStrip';
+import SchedulerWeekStrip, { SPOKEN_DAY_NAME_FORMAT, stripTabId } from './SchedulerWeekStrip';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import {
   usePaintGesture,
@@ -1177,7 +1177,10 @@ export default function EventScheduler({
          BECAUSE "the scheduler's header is a paired today ternary". The negative margin cancels the
          cell's padding so the tint covers the whole header rather than a chip around the label —
          a chip does not clear the D3 bar. A new seam would change a shared engine with other
-         consumers to style one of them. Removing the bleed shrinks the treatment: a decision. */
+         consumers to style one of them. Removing the bleed shrinks the treatment: a decision.
+         AMENDED Phase 88.6.1-85 (close ruling P-94): WeekGrid gained a NAME seam (SEAM 7,
+         `dayHeaderLabel`), so the header is spoken as the full day; it styles nothing, and the
+         styling seam rejected above stays rejected. */
   const renderDayHeader = useCallback(
     (col: number) => {
       const day = columnDates[col];
@@ -1192,6 +1195,14 @@ export default function EventScheduler({
         </span>
       );
     },
+    [columnDates]
+  );
+
+  // SEAM 7 (88.6.1-85, close ruling P-94): the header's spoken name, "Monday 5" / "Monday 19", from
+  // the same `Date` the visible 'dd EEE' prints and the format the phone strip's tabs speak. Stable
+  // over `columnDates` (SEAM 2's MEMO-STABILITY rule).
+  const dayHeaderLabel = useCallback(
+    (col: number) => format(columnDates[col], SPOKEN_DAY_NAME_FORMAT),
     [columnDates]
   );
 
@@ -1359,6 +1370,7 @@ export default function EventScheduler({
             ariaLabel="Group availability by day and time"
             getCell={getCell}
             renderDayHeader={renderDayHeader}
+            dayHeaderLabel={dayHeaderLabel}
             gutterHeaderRole="presentation"
             overlay={dragOverlay}
             gestureHandlers={gestureHandlers}

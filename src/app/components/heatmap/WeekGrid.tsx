@@ -133,6 +133,25 @@ interface WeekGridBaseProps {
    */
   renderDayHeader?: (col: number) => React.ReactNode;
   /**
+   * SEAM 7 (88.6.1-85) — an opt-in spoken name for each day column header.
+   *
+   * DECISION Phase 88.6.1-85 (close ruling P-94, owner 2026-10-17): CHOSEN — an opt-in spoken name
+   * for each day column header, rendered as `aria-label` on WeekGrid's own `role="columnheader"`
+   * element; absent = no attribute, so the header markup is byte-identical for a caller that does
+   * not pass it. The visible header (SEAM 2's content, or `dayLabels`) is unchanged. REJECTED:
+   * (a) an `aria-label` inside `renderDayHeader`'s content — that content is a plain span, a
+   * generic element ARIA does not let be named, and the label must sit on the columnheader
+   * WeekGrid owns; (b) visually hidden text inside the header — it changes the header's
+   * `textContent`, which the scheduler harness pins to `'dd EEE'` in files DECISION 88.1-09 (on
+   * SEAM 6 below) calls uneditable, and on iOS a clipped text child is what VoiceOver lands on
+   * instead of the name (research `APPENDIX-AT.md` AT-1); (c) changing the visible text — the
+   * owner kept "19 Mon". Changing this is a decision, not a cleanup.
+   *
+   * MEMO-STABILITY: pass a stable callback (`useCallback`), as for SEAM 2. It is read in the
+   * header row only, never by the memoised cells.
+   */
+  dayHeaderLabel?: (col: number) => string;
+  /**
    * SEAM 3 (88.1-02, D-01) — overlay slot. Rendered as the LAST child of the grid body, which
    * carries `relative`, so absolutely-positioned content resolves against the full-size scrolled
    * content and travels with the scroll rather than sticking to the viewport.
@@ -288,6 +307,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
     cellClassName,
     gutterPx = 32,
     renderDayHeader,
+    dayHeaderLabel,
     overlay,
     scrollContainerRef,
     gutterHeaderRole = 'columnheader',
@@ -494,6 +514,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
             <div
               key={`h-${col}`}
               role="columnheader"
+              aria-label={dayHeaderLabel ? dayHeaderLabel(col) : undefined}
               className="sticky top-0 z-20 bg-surface-card text-center py-2 text-sm text-content-secondary border-b border-line"
             >
               {renderDayHeader ? renderDayHeader(col) : (dayLabels?.[col] ?? '')}

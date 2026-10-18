@@ -39,6 +39,11 @@ export interface SchedulerWeekStripProps {
   idPrefix: string;
 }
 
+// The ONE spoken day-name format ("Monday 5", "Monday 19"): the strip's tab names and the
+// scheduler's day column headers both read it, so the two day names cannot drift (88.6.1-85,
+// close ruling P-94). The `d` token, not `dd`: a single-digit day is spoken "5", never "05".
+export const SPOKEN_DAY_NAME_FORMAT = 'EEEE d';
+
 /*
  * DECISION Phase 88.1-12 (CONTEXT D-03 reinterpretation + the strip's ARIA role), two choices, one
  * marker because the second only exists because of the first:
@@ -114,7 +119,7 @@ function StripDayCell({
   // The rendered cell is three unlabelled fragments ("M", "22", "4"). The full name is assembled
   // from the SAME values the cell renders, so the aggregate is never colour-plus-bare-number to a
   // screen reader.
-  const dayName = format(date, 'EEEE d');
+  const dayName = format(date, SPOKEN_DAY_NAME_FORMAT);
   const availability =
     totalMembers > 0
       ? `${aggregate} of ${totalMembers} available`

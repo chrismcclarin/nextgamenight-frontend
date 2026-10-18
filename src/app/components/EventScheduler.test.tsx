@@ -2107,3 +2107,55 @@ describe('EventScheduler — W46 live-region half: one polite, always-mounted St
     expect(region().textContent).toBe(label);
   });
 });
+
+// Plan 88.6.1-85 (close ruling P-94, owner 2026-10-17): VoiceOver read the time picker's day header
+// as "19 mon" because its only name was the visible 'dd EEE' abbreviation. Each day columnheader is
+// now NAMED with the full weekday and the day number ("Monday 5", never "05"), through WeekGrid's
+// SEAM 7, while the visible text stays 'dd EEE'. Expected names come from the file's own
+// WEEKDAY_NAMES table and plain getters, never date-fns (see the note above WEEKDAY_NAMES). No
+// existing pin in this file was edited; the columnHeaders() helper still reads the visible text.
+describe('EventScheduler — the day header is named with the full day (88.6.1-85, close ruling P-94)', () => {
+  // Wednesday 2026-10-07, local noon: its week runs Monday 5 .. Sunday 11, so it holds five
+  // single-digit days and two two-digit days.
+  const WEEK_OF_OCT_5 = new Date(2026, 9, 7, 12, 0, 0);
+  // Monday 2026-10-05, local noon: a single-digit day for the day view.
+  const MONDAY_OCT_5 = new Date(2026, 9, 5, 12, 0, 0);
+  const spokenDay = (d: Date) => `${WEEKDAY_NAMES[d.getDay()]} ${d.getDate()}`;
+  // DH-2 and DH-3 read the same render, so the named half and the visible half cannot drift.
+  const renderMondayDayView = () =>
+    render(<EventScheduler initialDate={MONDAY_OCT_5} defaultView="day" />);
+
+  it('DH-1 names the seven day columnheaders Monday 5 .. Sunday 11, in DOM order', () => {
+    render(<EventScheduler initialDate={WEEK_OF_OCT_5} />);
+    const expected = Array.from({ length: 7 }, (_, i) => spokenDay(new Date(2026, 9, 5 + i, 12, 0, 0)));
+    // The literal list too, so the getter path cannot quietly agree with a wrong week.
+    expect(expected).toEqual([
+      'Monday 5', 'Tuesday 6', 'Wednesday 7', 'Thursday 8', 'Friday 9', 'Saturday 10', 'Sunday 11',
+    ]);
+    const resolved = expected.map((name) => screen.getByRole('columnheader', { name }));
+    const all = screen.getAllByRole('columnheader');
+    expect(all).toHaveLength(7);
+    resolved.forEach((el, i) => {
+      expect(all[i]).toBe(el);
+    });
+  });
+
+  it('DH-2 the day view on a single-digit day names its one columnheader Monday 5', () => {
+    renderMondayDayView();
+    const header = screen.getByRole('columnheader', { name: spokenDay(MONDAY_OCT_5) });
+    expect(spokenDay(MONDAY_OCT_5)).toBe('Monday 5');
+    const all = screen.getAllByRole('columnheader');
+    expect(all).toHaveLength(1);
+    expect(all[0]).toBe(header);
+    // The named element is the one that still shows the short visible text.
+    expect(header.textContent).toBe('05 Mon');
+  });
+
+  it('DH-3 the same render still shows the visible header text 05 Mon, the text the dd EEE pins read', () => {
+    // CONFIRM-ONLY half: green before and after this plan. The visible text is unchanged, so every
+    // existing columnHeaders() pin keyed on format(day, 'dd EEE') keeps passing unedited.
+    renderMondayDayView();
+    expect(columnHeaders()).toEqual(['05 Mon']);
+    expect(columnHeaders()).toEqual([format(MONDAY_OCT_5, 'dd EEE')]);
+  });
+});
