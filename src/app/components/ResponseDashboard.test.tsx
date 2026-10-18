@@ -981,3 +981,75 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
   });
 });
 
+// Phase 88.6.1-86 — close ruling P-14 (owner 2026-10-17), Req 9 (AC-27): while nothing has loaded
+// for the current prompt, the Responses card names what is loading with a visible line in the
+// calendar loader's plain-paragraph shape, in the slot the heading will take, OUTSIDE the pulsing
+// skeleton block. The skeleton keeps its test id (the four assertions above read it).
+describe('ResponseDashboard — the first load names what is loading (88.6.1-86, close ruling P-14)', () => {
+  // Copy row P14 (AC-33), written once here: three ASCII dots, byte for byte.
+  const LOADING_RESPONSES = 'Loading responses...';
+  const LOAD_TITLE = "We couldn't load the respondents.";
+  const THREE = [
+    { user_id: 'm1', username: 'Member One', has_responded: true, slot_count: 2 },
+    { user_id: 'm2', username: 'Member Two', has_responded: false, last_reminded_at: null },
+    { user_id: 'm3', username: 'Member Three', has_responded: true, slot_count: 1 },
+  ];
+
+  function deferred<T = unknown>() {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it('RD-L1. the line shows while the first load is out, visibly, outside the pulsing skeleton and before it in the card', () => {
+    api.getRespondents.mockImplementation(() => new Promise(() => {}));
+    render(<ResponseDashboard {...baseProps} />);
+
+    const line = screen.getByText(LOADING_RESPONSES);
+    const skeleton = screen.getByTestId('response-dashboard-skeleton');
+    expect(line).toBeInTheDocument();
+    // It does not pulse: it sits outside the skeleton block, as its sibling in the same card,
+    // ahead of it (the heading's slot).
+    expect(skeleton.contains(line)).toBe(false);
+    expect(line.parentElement).toBe(skeleton.parentElement);
+    expect(line.compareDocumentPosition(skeleton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // A visible line, not screen-reader-only text.
+    expect(line).not.toHaveClass('sr-only');
+    expect(line.closest('.sr-only')).toBeNull();
+  });
+
+  it('RD-L2. the line leaves when the roster lands', async () => {
+    const held = deferred();
+    api.getRespondents.mockImplementationOnce(() => held.promise);
+    render(<ResponseDashboard {...baseProps} />);
+    expect(screen.getByText(LOADING_RESPONSES)).toBeInTheDocument();
+
+    await act(async () => {
+      held.resolve(THREE);
+    });
+    // Positive signal first (CF-26), then the absence.
+    expect(await screen.findByRole('heading', { name: /^Responses:/ })).toBeInTheDocument();
+    expect(screen.getByText('Member One')).toBeInTheDocument();
+    expect(screen.queryByText(LOADING_RESPONSES)).toBeNull();
+  });
+
+  it('RD-L3. a failed first load shows the banner and no loading line (error before loading, unchanged)', async () => {
+    const held = deferred();
+    api.getRespondents.mockImplementationOnce(() => held.promise);
+    render(<ResponseDashboard {...baseProps} />);
+    expect(screen.getByText(LOADING_RESPONSES)).toBeInTheDocument();
+
+    await act(async () => {
+      held.reject(await codedError('internal', 500));
+    });
+    // Positive signal first (CF-26), then the absence.
+    expect(await screen.findByText(LOAD_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(LOADING_RESPONSES)).toBeNull();
+    expect(screen.queryByTestId('response-dashboard-skeleton')).toBeNull();
+  });
+});
+

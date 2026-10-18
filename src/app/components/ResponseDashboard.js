@@ -14,6 +14,9 @@ import { logger } from '@/lib/logger';
 import { formatDateTime } from '../../lib/datetime';
 import { useTimezone } from './TimezoneProvider';
 
+// Copy row P14 (close ruling P-14, owner 2026-10-17; D-30 hoisted constant; D-32 R8 has nothing to normalise — no apostrophe).
+const RESPONSES_LOADING_LABEL = 'Loading responses...';
+
 /**
  * ResponseDashboard - Shows who has/hasn't responded to an availability prompt
  *
@@ -496,13 +499,23 @@ export default function ResponseDashboard({
     return (
       <>
         <div className="bg-surface-card rounded-card border border-line p-4">
+          {/* DECISION Phase 88.6.1-86 (close ruling P-14, owner 2026-10-17): CHOSEN — the
+              ratified loading line in the slot of the heading bar (the Responses heading lands
+              here once the roster loads), outside the pulse, in the plain-paragraph shape of the
+              calendar's loader (`EventCalendar.js`, anchor `Loading calendar...`); the three row
+              bars keep pulsing below it. REJECTED: (a) the line above the heading bar (two
+              heading-shaped rows, one of them blank); (b) the line inside the `animate-pulse`
+              block (the words would pulse in and out of contrast); (c) `sr-only` text (the owner
+              ratified a visible line in the calendar loader's shape); (d) a live region (no app
+              loader announces itself; the line is read where it sits). Changing this is a
+              decision, not a cleanup. */}
+          <p className="text-content-secondary mb-4">{RESPONSES_LOADING_LABEL}</p>
           {/* `data-testid` is a REQUIREMENT here, not decoration: the skeleton's outer node had
               nothing addressable on it, so the "a refocus retry does not replace the banner with
               the skeleton" assertion was unwritable. Asserting on `animate-pulse` instead was
               rejected — that is a styling utility, and pinning a test to it makes a token rename
               a test failure. */}
           <div className="animate-pulse" data-testid="response-dashboard-skeleton">
-            <div className="h-6 bg-surface-elevated rounded-sm w-1/3 mb-4"></div>
             <div className="space-y-3">
               <div className="h-10 bg-surface-elevated rounded-sm"></div>
               <div className="h-10 bg-surface-elevated rounded-sm"></div>
