@@ -251,7 +251,7 @@ import { auditFormControls } from '../../test-utils/formControlAudit';
 import { ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
-import { QueryClientContext } from '@tanstack/react-query';
+import { QueryClientContext, hashKey } from '@tanstack/react-query';
 import { UNAVAILABLE_COPY } from '@/app/components/EmailAddressSection';
 
 /** Accessor for the mocked house logger — AC-2's channel on this surface. */
@@ -3427,6 +3427,11 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
           JSON.stringify(availabilityKeys.patterns(h.self?.id as string | undefined))
             ? h.patternsEntry
             : undefined,
+        // P5 A-79: useRetainedContent looks its query up by hash (`get`), so the fake answers both.
+        get: (hash: string) =>
+          hash === hashKey(availabilityKeys.patterns(h.self?.id as string | undefined))
+            ? h.patternsEntry
+            : undefined,
       }),
     };
     const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -3485,6 +3490,32 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
       expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Schedule' }))
     );
     expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+  });
+
+  it('D1b (A-74, Safari shape): a Delete tapped twice without ever taking focus still lands focus on + Add Schedule', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    h.patterns = PATTERNS;
+    const pending = deferred();
+    (availabilityAPI.deleteAvailability as Mock).mockReturnValue(pending.promise);
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patterns = [PATTERNS[1]];
+      return { isError: false };
+    });
+    renderProfile();
+
+    const del = await screen.findByRole('button', { name: 'Delete Monday schedule' });
+    // iOS Safari does not focus a tapped button: nothing is focused for either tap.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(del);
+    fireEvent.click(del);
+    expect(document.activeElement).toBe(document.body);
+    await waitFor(() => expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon'));
+
+    await act(async () => { pending.resolve({}); });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Schedule' }))
+    );
     expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
   });
 
@@ -4814,6 +4845,24 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
     );
   });
 
+  it('R1b (A-74, Safari shape): a Remove tapped twice without ever taking focus still lands focus on + Add from BGG', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    renderProfile();
+
+    const remove = await screen.findByRole('button', { name: 'Remove Catan' });
+    // iOS Safari does not focus a tapped button: nothing is focused for either tap.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(remove);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    await act(async () => { refresh.resolve([OWNED_GAMES[1]]); });
+  });
+
   it('R1: a confirmed Remove lands focus on + Add from BGG when the row leaves, before the refresh answers', async () => {
     const user = userEvent.setup();
     const { userGamesAPI } = await import('@/lib/api');
@@ -4941,7 +4990,8 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
     const src = await pageSource();
     const count = (needle: string) => src.split(needle).length - 1;
     expect(src).toContain('useFocusRecovery({ fallback: collectionHeadingRef })');
-    expect(src).toContain('collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current })');
+    // AMENDED (88.6.1 code review A-74): the Remove arm now also passes the gate's pressed control.
+    expect(src).toContain('collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: opts?.from ?? null })');
     expect(src).toContain(
       '<RefreshFailedNotice state={collectionErrorState} retained={collectionRetained} focusTarget={collectionHeadingRef}'
     );
@@ -5171,7 +5221,8 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     const count = (text: string, needle: string) => text.split(needle).length - 1;
     // AMENDED (88.6.1 code review A-73): Remove arms with `preferred` alone; Add also passes the
     // pressed button as `from` (consumer contract (1)). Still ONE instance, two arm sites.
-    expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current })')).toBe(1);
+    // AMENDED again (A-74): Remove now passes the gate's pressed control as `from` too.
+    expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: opts?.from ?? null })')).toBe(1);
     expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: pressed })')).toBe(1);
     expect(src).toContain('addGameInFlightRef');
     expect(count(src, "const ADDING_TO_COLLECTION_LABEL = 'Adding...';")).toBe(1);
@@ -5476,6 +5527,8 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
           JSON.stringify(filters?.queryKey) === JSON.stringify(['users', 'self', h.authUser.sub])
             ? selfEntry
             : undefined,
+        // P5 A-79: useRetainedContent looks its query up by hash (`get`), so the fake answers both.
+        get: (hash: string) => (hash === hashKey(['users', 'self', h.authUser.sub]) ? selfEntry : undefined),
       }),
     };
     const wrapper = ({ children }: { children: React.ReactNode }) => (

@@ -1683,7 +1683,9 @@ function Profile(){
        presented as current, and an older read in flight could restore the dropped game; reading
        the BE's 404 prose to tell the two 404s apart was rejected too (prose is not a contract).
        Putting the removal back behind the refresh is a decision, not a cleanup. */
-    const removeGameFromCollection = async (game_id) => {
+    // `opts.from` (88.6.1 code review A-74): the pressed Remove, handed over by the two-tap gate —
+    // iOS Safari does not focus a tapped button, so the arm below needs it as its seed.
+    const removeGameFromCollection = async (game_id, opts) => {
         if (!user?.sub) return;
         if (!selfUuid) {
             toast.error('Still loading your account — please try again in a moment.');
@@ -1692,7 +1694,7 @@ function Profile(){
         // ONE shared step for both confirmed paths (the resolved DELETE and its 404): arm the focus
         // instance FIRST, so it is armed when the row leaves, then drop the row; returns `settle`.
         const dropRemovedGame = () => {
-            const settle = collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current });
+            const settle = collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: opts?.from ?? null });
             setOwnedGames((games) => games.filter((game) => game.id !== game_id));
             return settle;
         };
@@ -1741,7 +1743,7 @@ function Profile(){
            armed copy (gameDetail see-all). Reverting to the default here re-opens walk
            row 381; that is a decision, not a consistency cleanup. */
         armedLabel: 'Remove',
-        onConfirm: (gameId) => removeGameFromCollection(gameId),
+        onConfirm: (gameId, ctx) => removeGameFromCollection(gameId, ctx),
     });
 
     // The old hand-rolled patterns fetcher (silent-retry + window-refocus
@@ -1915,15 +1917,22 @@ function Profile(){
        `availabilityRecovery`; armed at SUCCESS, so a failed delete (the row stays) moves nothing.
        REJECTED: (a) the next row's Delete — it puts a destructive control under the user's finger
        right after a destructive action, and these lists are short; (b) per-host inline focus code
-       (D-04, by tenet); (c) a minted heading (D-05). Changing this is a decision, not a cleanup. */
-    const performDeletePattern = async (patternId) => {
+       (D-04, by tenet); (c) a minted heading (D-05). Changing this is a decision, not a cleanup.
+       AMENDED 2026-10-19 (88.6.1 code review A-74): the arm moves to the START of the action,
+       before the DELETE's await (useFocusRecovery consumer contract (1)), seeded with the pressed
+       Delete the two-tap gate now hands over (`ctx.from`; iOS Safari does not focus a tapped
+       button), and settles in `finally`. "A failed delete moves nothing" still holds: the row
+       stays, so the watched Delete is still connected and the hook does not act. */
+    const performDeletePattern = async (patternId, opts) => {
+        const rowType = availabilityPatterns.find((p) => p.id === patternId)?.type;
+        const settle = availabilityRecovery.arm({
+            preferred: () => (rowType === 'specific_override' ? addOverrideToggleRef.current : addScheduleToggleRef.current),
+            from: opts?.from ?? null,
+        });
         try {
             await availabilityAPI.deleteAvailability(patternId);
-            const rowType = availabilityPatterns.find((p) => p.id === patternId)?.type;
-            const settle = availabilityRecovery.arm({ preferred: () => (rowType === 'specific_override' ? addOverrideToggleRef.current : addScheduleToggleRef.current) });
             await patternsQuery.refetch();
             toast.success('Pattern deleted');
-            settle();
         } catch (error) {
             logger.info('Error deleting pattern:', errCtx(error));
             toast.error(
@@ -1931,6 +1940,8 @@ function Profile(){
                     fallback: "We couldn't delete that entry. Please try again.",
                 })
             );
+        } finally {
+            settle();
         }
     };
 
@@ -1943,7 +1954,7 @@ function Profile(){
         title: 'Delete this availability pattern?',
         body: 'It stops counting towards your availability. You can add it again.',
         confirmLabel: 'Delete',
-        onConfirm: (patternId) => performDeletePattern(patternId),
+        onConfirm: (patternId, ctx) => performDeletePattern(patternId, ctx),
     });
 
     const getDayName = (dayOfWeek) => {
