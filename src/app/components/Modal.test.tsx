@@ -904,4 +904,11 @@ describe('Modal padding scale (fork 6)', () => {
     // Optical centering of the glyph inside the taller box.
     expect(close.className).toContain('leading-none');
   });
+
+  it('88.6.1 code review A-44: the header close carries the stable `data-modal-close` hook (consumers never match its label text)', () => {
+    renderModal();
+    const close = screen.getByRole('button', { name: 'Close' });
+    expect(close).toHaveAttribute('data-modal-close');
+    expect(document.querySelectorAll('[data-modal-close]')).toHaveLength(1);
+  });
 });

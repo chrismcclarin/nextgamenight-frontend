@@ -1254,7 +1254,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     if (!input || !dialog) return;
     const active = document.activeElement;
     const onDefaultTarget =
-      active === dialog || (dialog.contains(active) && active.getAttribute('aria-label') === 'Close');
+      // 88.6.1 code review A-44: matched by Modal's stable `data-modal-close` hook, never by its
+      // 'Close' label text (a rename would silently end this focus policy).
+      active === dialog || (dialog.contains(active) && active.hasAttribute('data-modal-close'));
     if (onDefaultTarget) input.focus();
   }, [modal, bodyGateOpen]);
 

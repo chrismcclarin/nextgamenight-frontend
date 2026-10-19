@@ -935,6 +935,28 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
+  it('A-44 (88.6.1 code review): the late initial focus does not depend on the close button\'s label text', async () => {
+    const user = userEvent.setup();
+    let releaseMembers: (v: unknown) => void = () => {};
+    api.getGroupMembers.mockReturnValueOnce(
+      new Promise((r) => {
+        releaseMembers = r;
+      })
+    );
+    render(<AuditHost />);
+    await user.click(screen.getByRole('button', { name: 'Plan Game Session' }));
+    await screen.findByRole('dialog');
+    const close = screen.getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    // A future rename (a translation, 'Close dialog'): the focus policy must survive it.
+    close.setAttribute('aria-label', 'Close dialog');
+    await act(async () => {
+      releaseMembers(fixtures.members);
+    });
+    await screen.findByText('Alice');
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Game')));
+  });
+
   it('ED7 (88.6.1-68, #233): in EDIT mode the wait for the fresh read is marked busy, and focus reaches the game input when the form arrives', async () => {
     const editFixture = {
       id: '77777777-7777-4777-8777-777777777777',

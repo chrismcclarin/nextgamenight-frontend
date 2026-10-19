@@ -473,7 +473,12 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
           below even WCAG 2.5.8's 24px, on all 19 `Modal.Header` call sites in 16 files (the
           same grep as the header marker above, measured 2026-10-15). Header grows ~68px ->
           ~84px. */}
+      {/* 88.6.1 code review A-44: `data-modal-close` is the STABLE hook a consumer uses to ask "is
+          focus still on the header close?" (createEvent.js's late initial focus), so no consumer
+          matches the label text, which a rename or translation would silently break. Removing it is
+          a decision, not a cleanup. */}
       <DialogClose
+        data-modal-close=""
         aria-label="Close"
         aria-disabled={closeDisabled || undefined}
         className={cn(
