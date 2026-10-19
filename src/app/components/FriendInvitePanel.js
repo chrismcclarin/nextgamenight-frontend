@@ -525,6 +525,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         const generation = openGenerationRef.current;
         try {
             await navigator.clipboard.writeText(inviteUrl);
+            // 88.6.1 code review (F1 note under CR-1 / A-25, 2026-10-19): a resolution that settles after the close
+            // sets nothing either — the same generation guard QRCodeModal.js carries on its success arm.
+            if (openGenerationRef.current !== generation) return;
             setCopyFailed(false);
             setCopied(true);
             setCopySeq((n) => n + 1);

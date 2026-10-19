@@ -945,6 +945,35 @@ describe('FriendInvitePanel — pressed controls, focus and the copy timer (88.6
     expect(failRegion()?.textContent).toBe('');
     expect(screen.queryByRole('link', { name: INVITE_LINK })).toBeNull();
   });
+
+  it('K7: a copy that RESOLVES after the close sets nothing on the reopened panel (the success twin of K6)', async () => {
+    const user = userEvent.setup();
+    let resolveWrite: () => void = () => {};
+    const writeText = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve;
+        })
+    );
+    stubClipboard(writeText);
+    const { rerender, onClose, onMemberAdded } = renderPanel();
+    const at = (open: boolean) => (
+      <FriendInvitePanel group={GROUP} open={open} onClose={onClose} onMemberAdded={onMemberAdded} />
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Copy Invite Link' }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    rerender(at(false));
+    await act(async () => {
+      resolveWrite();
+    });
+    rerender(at(true));
+    // Without the generation check the late resolve flips the label to Copied! and announces on the closed
+    // panel, and the reopened panel shows that stale state.
+    expect(await screen.findByRole('button', { name: 'Copy Invite Link' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copied!' })).toBeNull();
+    expect(document.getElementById('invite-link-copied-status')?.textContent).toBe('');
+  });
 });
 
 describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
