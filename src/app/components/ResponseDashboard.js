@@ -269,8 +269,11 @@ export default function ResponseDashboard({
      #237: the skeleton no longer acknowledges a press, so `refreshing` drives a word-free busy cue
      (the icon spins, the roster list is aria-busy) while the PRESSED request is out; the tab-return
      re-attempt and the notice's Retry (which has its own `Retrying…`) do not set it. */
-  const handleRefresh = async () => {
-    const settle = refreshRecovery.arm();
+  // 88.6.1 code review: `from: event.currentTarget` per useFocusRecovery's consumer contract (1) —
+  // Safari does not focus a tapped button, and a bare `arm()` then seeded from <body> and disarmed,
+  // so an access answer that withdrew the roster dropped focus to <body>.
+  const handleRefresh = async (event) => {
+    const settle = refreshRecovery.arm({ from: event?.currentTarget ?? null });
     setRefreshing(true);
     try {
       await fetchRespondents();

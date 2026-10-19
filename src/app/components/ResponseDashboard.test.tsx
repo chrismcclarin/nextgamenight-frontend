@@ -916,6 +916,24 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
+  it('RD-RF-7b. a Refresh clicked WITHOUT taking focus (the Safari pointer shape) still never drops focus to <body> on a 401 (hook contract (1), from: event.currentTarget)', async () => {
+    api.getRespondents.mockResolvedValueOnce(THREE);
+    renderInMain();
+    await screen.findByText('Member One');
+    const held = deferred();
+    api.getRespondents.mockImplementationOnce(() => held.promise);
+    // No focus() and no userEvent: the clicked button never takes focus.
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    fireEvent.click(refreshButton());
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      held.reject(await codedError('unauthorized', 401));
+    });
+    expect(await screen.findByText(LOAD_TITLE)).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(planningH1()));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it('RD-RF-8. a 403 refresh withdraws the roster, and a later 500 does not bring it back (C8 e, C10 memory)', async () => {
     const user = userEvent.setup();
     const e403 = await codedError('forbidden', 403);
