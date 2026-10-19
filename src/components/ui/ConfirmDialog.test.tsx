@@ -282,8 +282,24 @@ describe('useConfirmAction — two-tap tier', () => {
     });
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onConfirm).toHaveBeenCalledWith('alex');
+    expect(onConfirm).toHaveBeenCalledWith('alex', { from: screen.getByTestId('trigger-alex') });
     expect(screen.getByTestId('armed')).toHaveTextContent('none');
+  });
+
+  // 88.6.1 code review A-74: WebKit does not focus a clicked button, so the consumer's
+  // useFocusRecovery arm needs the pressed control from the click, not document.activeElement.
+  it('hands onConfirm the pressed trigger as `from` even when focus never left <body>', async () => {
+    const onConfirm = vi.fn();
+    render(<TwoTapHarness onConfirm={onConfirm} />);
+    const trigger = screen.getByTestId('trigger-bo');
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(trigger);
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+    expect(document.activeElement, 'the WebKit shape: no focus on the trigger').toBe(document.body);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm.mock.calls[0][1]).toEqual({ from: trigger });
   });
 
   // AR DEC-2 — the pin that exists because the adopter surfaces are list rows.
