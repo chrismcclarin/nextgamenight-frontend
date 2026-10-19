@@ -48,6 +48,10 @@ const SELECTION_SUMMARY_TAIL = 'slots selected';
 // when the grid is empty AND no Clear All just happened (D-33 row 17) — CHOSEN OVER returning to
 // the instruction at once (A4 would vanish before a sighted user read it, and the instruction
 // never says anything was cleared). Changing this is a decision, not a cleanup.
+// AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): "Clear All" above
+// now means BOTH clears — the Clear All button and unchecking the All box. Both empty the grid, so
+// both show and speak A4 until the next paint; the instruction's reason above applies equally to
+// Uncheck All, which used to speak the zero count while the line fell back to the instruction.
 const GESTURE_HINT_DESKTOP = 'Click and drag to select your available times';
 const GESTURE_HINT_PHONE = 'Tap a time to select it. Press and hold, then drag, to select several.';
 const ALL_CLEARED_TEXT = 'All times cleared.';
@@ -114,7 +118,7 @@ export default function AvailabilityGrid({
   const gestureChangedRef = useRef(false);
   // The last request the summary effect has spoken.
   const handledSummaryRef = useRef(0);
-  // True from a Clear All until the next paint: the line shows A4 instead of the instruction
+  // True from a Clear All (or an Uncheck All, CR-7) until the next paint: the line shows A4 instead of the instruction
   // (see DECISION Phase 88.6.1-39 (D-16, copy rows A1 / A4) at the module constants).
   const [justCleared, setJustCleared] = useState(false);
   useEffect(() => {
@@ -328,11 +332,16 @@ export default function AvailabilityGrid({
   // The owner ruling of 2026-08-02 superseded the driver semantics — the
   // broadcast is removed and `allChecked` is now DERIVED from the painted grid
   // — but the paint-on-toggle expectation 71-05 established still stands.
+  // AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): the uncheck arm
+  // reaches the same empty grid as Clear All, so it now says what Clear All says — it speaks and
+  // shows A4 (`announce(ALL_CLEARED_TEXT)` + `setJustCleared(true)`, the handleClearAll pair)
+  // instead of requesting the zero-count summary. The check arm still requests the count.
   const toggleSelectAll = useCallback(() => {
     if (allChecked) {
       // Uncheck All clears every painted slot — symmetric with the check path.
       onChange?.([]);
-      setSummaryRequest((n) => n + 1);
+      announce(ALL_CLEARED_TEXT);
+      setJustCleared(true);
     } else {
       // Paint every slot in the grid that isn't already painted.
       const additions = [];
@@ -349,7 +358,7 @@ export default function AvailabilityGrid({
         setSummaryRequest((n) => n + 1);
       }
     }
-  }, [allChecked, days, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
+  }, [allChecked, days, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange, announce]);
 
   // Format time label for the row. Pure hour/minute -> "h:mm a" (byte-identical
   // to the prior `format(date, 'h:mm a')` output) with no `setHours` — the label
@@ -752,6 +761,8 @@ export default function AvailabilityGrid({
   //     (keyboard select, a day box, All). And only when the gesture changed the selection —
   //     CHOSEN OVER a debounce on value changes (timing-based: it speaks mid-drag when a finger
   //     pauses, and cannot tell a scroll from a paint) and OVER per-cell announcements (R3-M20).
+  //     AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): "All" here is
+  //     CHECKING the All box; unchecking it speaks A4 through `announce` directly, as Clear All does.
   // (d) The text is read from the value of the render in which the request landed — the
   //     committed selection — CHOSEN OVER computing it inside the release listener (a tap's own
   //     commit has not reached the prop yet, research AT-3) and OVER computing it from the array
@@ -785,6 +796,8 @@ export default function AvailabilityGrid({
   // AMENDED Phase 88.6.1-39 (D-33 row 17, copy row A4): an accepted press now also speaks
   // "All times cleared." and shows it on the line under the grid until the next paint (see
   // DECISION Phase 88.6.1-39 (D-16, copy rows A1 / A4) at the module constants).
+  // AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): unchecking the
+  // All box (toggleSelectAll's allChecked arm) now uses this same pair, so the two clears agree.
   const handleClearAll = useCallback(() => {
     if (value.length === 0) return;
     onChange?.([]);

@@ -671,7 +671,11 @@ describe('88.6.1-39 (D-16 / D-33 rows 11 and 17, copy rows A1 / A3 / A4) — wha
     expect(summaryLine().textContent).toBe(DESKTOP_HINT);
   });
 
-  it('C39-2: a day checkbox and the All checkbox each speak the count once; unchecking All shows the instruction, not A4', () => {
+  // AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): unchecking
+  // All empties the grid exactly as Clear All does, so it now says the same thing — A4 in the
+  // region AND on the line — and the counts return on the next paint (was: the zero count was
+  // spoken while the line fell straight back to the instruction).
+  it('C39-2: a day checkbox and the All checkbox each speak the count once; unchecking All shows and speaks A4, like Clear All', () => {
     renderHarness(2);
     const region = screen.getByRole('status');
     const [allBox, day0] = screen.getAllByRole('checkbox');
@@ -681,9 +685,13 @@ describe('88.6.1-39 (D-16 / D-33 rows 11 and 17, copy rows A1 / A3 / A4) — wha
     fireEvent.click(allBox);
     expect(region.textContent).toBe('56 preferred, 0 if need be slots selected');
     fireEvent.click(allBox); // uncheck: clears everything
-    expect(region.textContent).toBe(SUMMARY_ZERO);
-    expect(summaryLine().textContent).toBe(DESKTOP_HINT);
+    expect(region.textContent, 'Uncheck All must say what happened').toBe(ALL_CLEARED);
+    expect(summaryLine().textContent).toBe(ALL_CLEARED);
     expect(screen.getByRole('status')).toBe(region);
+
+    mouseTap(slotCellsAt(0)); // the next paint brings the counts back
+    expect(summaryLine().textContent).toBe(SUMMARY_ONE);
+    expect(region.textContent).toBe(SUMMARY_ONE);
   });
 
   it('C39-3: on a phone the line gives the tap and press-and-hold instruction (A1), and nothing is spoken', () => {
