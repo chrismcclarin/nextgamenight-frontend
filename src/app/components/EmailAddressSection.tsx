@@ -1588,10 +1588,24 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
         enterVerified();
         return;
       }
+      /* 88.6.1 code review A-15: an `expired` answer carries `pending_email_change: null` (the
+         server's re-read filters on `expires_at > now()`), and `applyToCache` just wrote that
+         null — so in a session that sent the code, the expiry effect would ALSO see pending go
+         null on this commit and write EXPIRED a second time, re-inserting the keyed alert and
+         speaking the sentence twice. This null is one the section caused, so it is armed through
+         the ONE arming decision the Verify drift arm uses (`shouldSuppressOwnNull`), and the
+         effect spends it instead of writing. The effect's two other writes are done here so the
+         screen is unchanged: the action lane was cleared before the request, and the sent line
+         is cleared below. */
+      const ownExpiryNull =
+        body.outcome === 'expired' &&
+        shouldSuppressOwnNull([body as SelfRowSnapshot], sentThisSessionRef.current, sawPendingRef.current);
+      if (ownExpiryNull) localNullSuppressRef.current += 1;
       setState('awaiting-code');
       if (body.outcome === 'expired') {
         setCodeError(EXPIRED_CODE_ERROR);
         setResendPromoted(true);
+        if (ownExpiryNull) setSentLine(null);
         // A verdict on the code: FormField associates it, so the move lets it be spoken.
         setFocusTarget('code');
       } else if (body.outcome === 'address_taken') {

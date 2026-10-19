@@ -23,7 +23,7 @@
 // sweep below walks the rendered DOM instead.
 import * as React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -1304,6 +1304,49 @@ describe('EmailAddressSection — code-review fixes 2026-09-05', () => {
 
     await waitFor(() => expect(api.verifyEmailChange).toHaveBeenCalled());
     expect(screen.getByText(NEW)).toBeInTheDocument();
+  });
+
+  it('A-15: an expired Verify in a session that SENT the code inserts the expired alert ONCE, not twice', async () => {
+    const user = userEvent.setup();
+    const { container } = renderAwaiting();
+    // A send this session (sentThisSession) over a live pending row (sawPending): the main flow.
+    api.resendEmailChangeCode.mockResolvedValue(body());
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+    await waitFor(() => expect(api.resendEmailChangeCode).toHaveBeenCalled());
+
+    // The row goes null only when the server answers (switched any earlier, the typing renders
+    // would see it and the effect's genuine "goes null" arm would speak first).
+    api.verifyEmailChange.mockImplementation(async () => {
+      mockSelf.mockReturnValue(selfState(ROW({ pending_email_change: null })));
+      return body({ outcome: 'expired', pending_email_change: null, verification_sent: false });
+    });
+    const inserted: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const r of records) {
+        r.addedNodes.forEach((n) => {
+          if ((n.textContent ?? '').includes('That code has expired')) inserted.push(n);
+        });
+      }
+    });
+    observer.observe(container, { childList: true, subtree: true });
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(screen.getByText('That code has expired')).toBeInTheDocument());
+    const first = screen.getByText('That code has expired');
+    await act(async () => {});
+    await act(async () => {});
+    observer.takeRecords().forEach((r) =>
+      r.addedNodes.forEach((n) => {
+        if ((n.textContent ?? '').includes('That code has expired')) inserted.push(n);
+      })
+    );
+    observer.disconnect();
+    expect(screen.getByText('That code has expired')).toBe(first);
+    expect(inserted).toHaveLength(1);
+    // The screen the effect would have left is unchanged: Resend promoted, still awaiting a code.
+    expect(screen.getByRole('button', { name: 'Resend code' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument();
   });
 });
 
