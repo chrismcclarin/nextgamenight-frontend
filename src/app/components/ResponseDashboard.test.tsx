@@ -929,6 +929,25 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     expect(region.textContent).toBe('');
   });
 
+  it('RD-RF-5f. a new prompt does not inherit a stale "Responses refreshed." when the region remounts (scoped check 3, nit 2)', async () => {
+    const user = userEvent.setup();
+    api.getRespondents.mockResolvedValueOnce(THREE);
+    const view = renderInMain();
+    await screen.findByText('Member One');
+    api.getRespondents.mockResolvedValueOnce(THREE);
+    await user.click(refreshButton());
+    await waitFor(() => expect(refreshRegion(statusNodes()).textContent).toBe(REFRESHED));
+
+    // The prompt changes: the skeleton replaces the content (the region unmounts), then prompt-2
+    // loads and the region remounts. Without a clear on the prompt change it remounts carrying
+    // prompt-1's success line, beside prompt-2's roster, for a line-by-line reader.
+    api.getRespondents.mockResolvedValueOnce(TWO_NEW);
+    view.rerenderPrompt('prompt-2');
+    await screen.findByText('New Member Four');
+    expect(refreshRegion(statusNodes()).textContent).toBe('');
+    expect(screen.queryByText(REFRESHED)).toBeNull();
+  });
+
   it('RD-RF-5e. a Retry from the notice sets nothing in the refresh region', async () => {
     const user = userEvent.setup();
     await loadThenFailRefresh(user, await codedError('internal', 500));

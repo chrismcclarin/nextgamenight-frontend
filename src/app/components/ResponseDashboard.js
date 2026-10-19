@@ -219,6 +219,12 @@ export default function ResponseDashboard({
     setError(null);
     // W031: a new prompt starts a new failure episode (the catch's latch).
     lastReportedKeyRef.current = null;
+    // Scoped check 3, nit 2 (CR-3 / A-42): the refresh line belongs to the prompt whose press wrote it.
+    // The skeleton unmounts the region on a prompt change and the roster remounts it; without this
+    // clear it remounts carrying the old prompt's "Responses refreshed." beside the new roster for a
+    // line-by-line reader. Emptying announces nothing (EMPTY-FIRST). The press paths clear on failure
+    // themselves, and the tab-return re-attempt only runs after a failure, so no other path strands it.
+    setRefreshStatus('');
     fetchRespondents();
     // The cleanup this effect did not have. It bumps the generation on unmount AND on a
     // `promptId` change, so no in-flight response can write state after teardown or after the

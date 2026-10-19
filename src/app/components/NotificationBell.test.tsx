@@ -1475,6 +1475,17 @@ describe('CR-2 / A-33 — the pending count is the triggers\' description', () =
     ).toHaveAccessibleDescription('None pending');
   });
 
+  it('the description span is out of the reading order (hidden) and still the description (scoped check 3, nit 1)', () => {
+    unreadState.totalCount = 3;
+    render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
+    const trigger = screen.getByRole('button', { name: 'Invites notifications' });
+    expect(trigger).toHaveAccessibleDescription('3 pending');
+    const span = document.getElementById(trigger.getAttribute('aria-describedby') as string) as HTMLElement;
+    // Without `hidden` a line-by-line reader meets "3 pending" a second time as loose text.
+    expect(span).not.toBeVisible();
+    expect(span.hidden).toBe(true);
+  });
+
   it('the row badge is hidden from assistive tech', () => {
     unreadState.totalCount = 3;
     render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);

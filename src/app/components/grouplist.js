@@ -56,13 +56,6 @@ import { logger, errCtx } from '../../lib/logger';
    88.6.1-76's scrubber keeps only the static prefix ("Customize ", "Invite member to ") and
    redacts the rest, so its prefix list must follow any change to these two templates.
    Changing this is a decision, not a cleanup. */
-// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
-// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
-// notices that share its page are told apart by ear — in the region and in the Retry's
-// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
-// visible heading (the review's lead): the ruling fixed short names per page.
-// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
-const GROUPS_SECTION_NAME = 'Groups';
 const CUSTOMIZE_GROUP_FALLBACK = 'Customize group';
 const INVITE_MEMBER_FALLBACK = 'Invite member to group';
 const groupNameForLabel = (name) => (typeof name === 'string' ? name.trim() : '');
@@ -74,6 +67,14 @@ const inviteMemberLabel = (name) => {
   const n = groupNameForLabel(name);
   return n ? `Invite member to ${n}` : INVITE_MEMBER_FALLBACK;
 };
+
+// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
+// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
+// notices that share its page are told apart by ear — in the region and in the Retry's
+// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
+// visible heading (the review's lead): the ruling fixed short names per page.
+// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
+const GROUPS_SECTION_NAME = 'Groups';
 
 // The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
 const LOAD_OK = Object.freeze({ isError: false });

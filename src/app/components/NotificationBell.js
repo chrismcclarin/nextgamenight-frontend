@@ -706,8 +706,11 @@ function NotificationBell({ user, variant = 'icon', label }) {
           queries in the unit and e2e suites depend on them, and a name that changes with the count
           would also break Voice Control's stable target. The description carries the REAL count
           (never the visual 9+ cap), and the visible badges are aria-hidden so nothing is read
-          twice. Changing any of this is a decision, not a cleanup. */}
-      <span id={countDescriptionId} className="sr-only">
+          twice. AMENDED 2026-10-19 (scoped check 3, nit 1): the span is `hidden`, not sr-only —
+          a referenced hidden node still supplies the description (accname step 2A), while an
+          sr-only span is also met a second time as loose text by a line-by-line reader.
+          Changing any of this is a decision, not a cleanup. */}
+      <span id={countDescriptionId} hidden>
         {totalCount > 0 ? pendingCountCopy(totalCount) : NONE_PENDING_COPY}
       </span>
 
