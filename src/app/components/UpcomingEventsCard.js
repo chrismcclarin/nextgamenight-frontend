@@ -115,8 +115,10 @@ function formatRelativeDateTime(dateStr, timezone) {
  *   the empty state, so any gating stays at the call site.
  * @param {(event: Object) => void} [props.onEventClick=null] - Phase 88.1-20 (WR-02):
  *   optional caller-owned row activation, so any host-specific teardown stays at the
- *   call site — the 11a BottomSheet must CLOSE before it navigates, and the desktop
- *   column has nothing to close. When omitted the card navigates itself, unchanged.
+ *   call site. When omitted the card navigates itself, unchanged. AMENDED 2026-10-19
+ *   (88.6.1 code review A-40 / IN-09): no caller passes it today — the 11a phone sheet that
+ *   needed it (it had to CLOSE before navigating) was removed in Phase 88.5, and the one
+ *   remaining mount (the desktop column, `UserHomePage.js`) has nothing to close.
  * @param {boolean} [props.busy=false] - Plan 88.6.1-62 (Req 9): the host's refresh is in flight;
  *   marks the rows wrapper (or the retained empty state) `aria-busy` in place. No live region
  *   lives inside either.
@@ -165,7 +167,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
   };
 
   return (
-    <div className="card p-3 md:p-6 mb-4">
+    <div className="card p-3 md:p-6 mb-4" data-upcoming-events-card="">
       {/* DECISION Phase 88.6-28 (D-04/§4.4 size-less-headings row, §4.5): this card title moves
           onto the `Heading` primitive at `level={3} size="body"` — 16px, the size-less-heading
           rung — and takes its 700 from the primitive's cva base.
@@ -282,6 +284,14 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                      This does NOT touch WR-03's actual fix, which is that the row is a real
                      `<button>` (keyboard-reachable) rather than a click-handling div. D-13 reverses
                      the height, not the element.
+
+                     AMENDED 2026-10-19 Phase 88.6.1-62 (88.6.1 code review A-40 / IN-09): the phone
+                     sheet cited above (`UserHomePage.js:348`) no longer exists — Phase 88.5 removed it
+                     (see the `DECISION Phase 88.5 (SPEC Req 1) — A SURFACE REVERSAL` marker in
+                     `userHome/UserHomePage.js`). This card's only mount is the `hidden md:flex` desktop
+                     column, so it renders at md and up only, which is what the 88.6.1-62 toggle marker
+                     below relies on. The phone half of `min-h-11 md:min-h-0` is therefore INERT today:
+                     it is kept, not deleted, so a future phone mount inherits the 44px floor.
 
                      WHY A UTILITY OPT-OUT WORKS HERE AND WOULD NOT ON A `.btn`: `globals.css`
                      :1173-1177 applies the phone floor as an UNLAYERED `.btn { min-height: 2.75rem }`,

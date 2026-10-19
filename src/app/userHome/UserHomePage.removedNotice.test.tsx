@@ -204,6 +204,22 @@ describe('the removed-from-group notice is spoken from a region that was already
     expect(document.activeElement).not.toBe(document.body);
   });
 
+  it('RB4b (WR-08, Safari shape): a Dismiss tap that never focused the button still lands focus on main, never <body>', async () => {
+    h.selfUuid = SELF_UUID;
+    h.search = 'removedFrom=Weekend%20Warriors';
+    const main = document.body.appendChild(document.createElement('main'));
+    render(homeElement(), { container: main });
+
+    await screen.findByText(/no longer a member of/);
+    const dismiss = screen.getByRole('button', { name: 'Dismiss' });
+    // iOS Safari does not focus a tapped button: activeElement is still <body> at arm time.
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(dismiss);
+
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(main));
+  });
+
   it('RB5 (guard, confirm-only): after Dismiss a re-render with the same props does not bring the sentence back', async () => {
     h.selfUuid = SELF_UUID;
     h.search = 'removedFrom=Weekend%20Warriors';

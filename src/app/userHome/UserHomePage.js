@@ -110,8 +110,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     const removedNoticeShown = removedBannerVisible && Boolean(removedFromName);
     // No `fallback`: the notice belongs to no section, so Dismiss lands on the page floor (`main`).
     const removedNoticeRecovery = useFocusRecovery();
-    const dismissRemovedNotice = () => {
-        const settle = removedNoticeRecovery.arm();
+    // 88.6.1 code review WR-08: `from: event.currentTarget` (consumer contract (1)) — iOS Safari
+    // does not focus a tapped button, so a bare `arm()` would seed from <body> and disarm.
+    const dismissRemovedNotice = (event) => {
+        const settle = removedNoticeRecovery.arm({ from: event?.currentTarget ?? null });
         setRemovedBannerVisible(false);
         settle();
     };
@@ -143,7 +145,12 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         // Mount-fire gate: wait for the caller's own Users.id UUID. selfUuid is
         // in the dep array (async-resolution rule) so the fetch fires once
         // identity resolves, not only at initial mount.
-        if (!selfUuid) return;
+        if (!selfUuid) {
+            // 88.6.1 code review A-66 / WR-10: no run starts, so settle any Retry waiting on one
+            // with `undefined` (an unknown outcome) — otherwise its promise would hang until unmount.
+            settlePendingUpcomingRetries(pendingUpcomingRetriesRef, undefined);
+            return;
+        }
         let cancelled = false;
         // Plan 88.6.1-62: `{ isError }` for the Retry callers this run settles (contract C4).
         let outcome = { isError: true };
@@ -153,7 +160,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         // r2 #226: arm the shared recovery only while focus sits in the retained list (the card or
         // the open sheet); the run's commit then never leaves it on the top of the document.
         const active = document.activeElement;
-        const cardRoot = upcomingHeadingRef.current?.parentElement ?? null;
+        // 88.6.1 code review IN-17: the card root by its own marker attribute, not the heading's
+        // direct parent — wrapping the heading must not silently turn this check false.
+        const cardRoot = upcomingHeadingRef.current?.closest('[data-upcoming-events-card]') ?? null;
         const focusInUpcomingList =
             upcomingRetainedRef.current &&
             Boolean(active) &&
