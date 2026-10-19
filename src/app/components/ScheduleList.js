@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import KebabMenu from './KebabMenu';
@@ -48,6 +48,9 @@ export default function ScheduleList({
   const recovery = useFocusRecovery({ fallback: focusFallbackRef });
   const confirmOpenerRef = useRef(null);
   const confirmCancelRef = useRef(null);
+  // The confirm prompt's id, read by Cancel's aria-describedby (A-43 announce, marker below).
+  // Only one confirm row is open at a time per list, so one id per instance is enough.
+  const confirmPromptId = useId();
 
   // The control that opened the confirm, read AFTER the open commits: on the phone path that is
   // the Schedule actions trigger KebabMenu restored focus to. Never written when the confirm
@@ -59,7 +62,11 @@ export default function ScheduleList({
      — Cancel, the safe default for a destructive confirm. REJECTED — Confirm Delete (one stray
      Enter deletes); the prompt paragraph (needs an added tabindex and is not actionable). The
      capture runs FIRST in the same effect, so Cancel still returns to the opener. Changing the
-     target is a decision, not a cleanup. */
+     target is a decision, not a cleanup.
+     AMENDED 2026-10-19 (88.6.1 code review A-43 announce): landing on Cancel alone was heard as
+     "Cancel, button" with no word of what was being confirmed. Cancel now carries
+     `aria-describedby` pointing at the EXISTING prompt paragraph, so the focus move reads the
+     prompt sentence too (no new copy). Dropping the description is a decision, not a cleanup. */
   useEffect(() => {
     if (deleteConfirm === null) return;
     const active = document.activeElement;
@@ -284,7 +291,7 @@ export default function ScheduleList({
                 {/* §4.5 emphasis outcome: 400 + a colour token. `font-medium` (500) is deleted
                     rather than promoted to 700 — this is body prose inside an already-tinted
                     error box, not hierarchy, and it already carries its colour token. */}
-                <p className="text-content-status-error mb-3">
+                <p id={confirmPromptId} className="text-content-status-error mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>
                 <div className="flex gap-2">
@@ -297,6 +304,7 @@ export default function ScheduleList({
                   </Button>
                   <Button
                     ref={confirmCancelRef}
+                    aria-describedby={confirmPromptId}
                     variant="secondary"
                     size="default"
                     onClick={handleCancelDelete}

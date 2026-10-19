@@ -54,4 +54,14 @@ describe('ScheduleList — opening the delete confirm moves focus into it (A-43)
     fireEvent.click(within(list).getByRole('button', { name: 'Delete' }));
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
   });
+
+  it('the focused Cancel is described by the confirm prompt, so the move announces what is being confirmed (A-43 announce)', () => {
+    render(<ScheduleList schedules={[SCHEDULE]} onDelete={vi.fn()} />);
+    const del = screen.getByRole('button', { name: 'Delete' });
+    del.focus();
+    fireEvent.click(del);
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(document.activeElement).toBe(cancel);
+    expect(cancel).toHaveAccessibleDescription(/^Delete .+\? This will stop sending prompts\.$/);
+  });
 });
