@@ -375,7 +375,7 @@ describe('invite/game/[token] — R8 page announcement and Retry focus (plan 88.
     expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(`Wingspan ${FIXTURE_DATE}`);
   });
 
-  it('F1 (Req 5): after a Retry, focus lands on the settled heading — and nowhere while in flight', async () => {
+  it('F1 (Req 5): after a Retry, focus is on the loading line in flight, then on the settled heading', async () => {
     const user = userEvent.setup();
     const held = deferred();
     preview().mockRejectedValueOnce(networkError()).mockReturnValueOnce(held.promise);
@@ -384,9 +384,10 @@ describe('invite/game/[token] — R8 page announcement and Retry focus (plan 88.
 
     await screen.findByRole('heading', { name: /couldn't join game night/i });
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    await screen.findByText('Loading your game night invite...');
-    // Ordering backstop: the page moves focus nowhere while the retry is in flight.
-    expect(document.activeElement).toBe(document.body);
+    // A-64 (88.6.1 code review): the line that replaced the pressed Retry takes focus in flight
+    // and speaks by taking it, as on the restore page — never <body>.
+    const line = await screen.findByText('Loading your game night invite...');
+    await waitFor(() => expect(document.activeElement).toBe(line));
 
     await act(async () => {
       held.resolve(FIXTURE);

@@ -231,6 +231,9 @@ function GameInvitePage() {
   // Req 5: the settled branch's <h1> (only one renders at a time) and the one-shot Retry arm.
   // See the DECISION Phase 88.6.1-19 (R8 / Req 5) marker at the fragment below.
   const settledHeadingRef = useRef(null);
+  // The pending card's line (loading or joining — one <p>, its label swaps). After a Retry it
+  // replaces the pressed button, so it takes focus in flight (A-64, 88.6.1 code review).
+  const pendingLineRef = useRef(null);
   const retryFocusArmedRef = useRef(false);
 
   // R8 idempotency: while this flag is on the page region reads '' (the announcement's leading
@@ -262,11 +265,16 @@ function GameInvitePage() {
     setRetryKey((k) => k + 1);
   };
 
-  // The focus edge for a Retry: acts ONCE, on the first settled render after the press, and only
-  // when the press left focus nowhere (the Retry button unmounted under the user).
+  // The focus edge for a Retry. In flight the arm STAYS on and, when focus is lost (the Retry
+  // button unmounted under the user), the pending line takes it — never a floor in flight, or
+  // focus would not read as lost at settle. On the first settled render the arm is dropped and,
+  // only when focus is lost (the pending line has just unmounted), the settled heading takes it.
   useEffect(() => {
     if (!retryFocusArmedRef.current) return;
-    if (authLoading || status === 'loading' || status === 'joining') return;
+    if (authLoading || status === 'loading' || status === 'joining') {
+      if (isFocusLost()) focusElement(pendingLineRef.current);
+      return;
+    }
     retryFocusArmedRef.current = false;
     if (!isFocusLost()) return;
     if (!focusElement(settledHeadingRef.current)) focusPageFloor();
@@ -338,7 +346,7 @@ function GameInvitePage() {
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4 text-center">
           <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
-          <p className="text-content-primary">{label}</p>
+          <p ref={pendingLineRef} className="text-content-primary">{label}</p>
         </div>
       </div>
     );
@@ -575,6 +583,15 @@ function GameInvitePage() {
      pressed. CHOSEN: the settled branch's <h1> takes focus ONCE, on the first settled render
      after a Retry, and only when focus is lost (`isFocusLost`, plan 88.6.1-04's one definition);
      a heading that will not take focus falls to the shared `focusPageFloor`, never <body>.
+     AMENDED 2026-10-19 (88.6.1 code review A-64): while the retry is IN FLIGHT the pending line
+     (the loading / joining <p> that replaced the pressed Retry) takes focus, only when focus is
+     lost, and the arm stays on until settle — the restore page's in-flight arm
+     (`restore/group/[token]/page.tsx`, `DECISION Phase 88.6.1-36`), so one Retry-removes-the-
+     button rule has one treatment. Focus is the ONE channel for that line; the region stays ''
+     (the dwell below is unchanged). REJECTED: leaving focus on <body> in flight — a silent wait
+     on a slow phone request (WCAG 4.1.3) and a keyboard user parked nowhere; a floor in flight —
+     focus would sit on a connected `main` and not read as lost at settle, so the heading move
+     would never fire.
      REJECTED (a) keeping Retry mounted with aria-disabled across the request — a success still
      replaces the branch and removes it, so the heading move is needed anyway; it would drop
      today's loading card (a visible change) and need an in-flight label the owner has not
@@ -592,7 +609,10 @@ function GameInvitePage() {
      `if (errName === 'TypeError'`). (f) delaying the request instead
      of the region fill — it slows every retry for a screen-reader-only concern. (g) importing
      plan 88.6.1-21's module-private constant — the two files share no dependency; both cite the
-     same appendix line instead, so the values cannot drift silently.
+     same appendix line instead, so the values cannot drift silently. [AMENDED Phase 88.6.1-82,
+     recorded 2026-10-19 (88.6.1 code review A-63): (g) is SUPERSEDED — the constant now lives on
+     `StatusRegion` and this page imports it (see the note above `joinParts` at the top of the
+     file); the import is what ships, not a rejected alternative.]
      Changing any of this is a decision, not a cleanup. */
   return (
     <>
