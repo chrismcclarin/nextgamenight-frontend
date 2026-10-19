@@ -364,6 +364,10 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
   // Copy row RF1 / D-47: plan 88.6.1-70's REFRESH_FAILED_NOTICE (C7). While the notice shows it is in
   // the DOM twice: the visible line and the one polite region.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  // 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this notice passes `sectionName`,
+  // so its polite region and the Retry's description say "Open polls: " first and the visible line
+  // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
+  const SPOKEN = "Open polls: Couldn't refresh. Showing what loaded earlier.";
 
   function makeClient() {
     return new QueryClient({
@@ -426,7 +430,10 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
     (promptAPI.getOpenPrompts as unknown as Mock).mockRejectedValue(new Error('boom'));
     await client.refetchQueries({ queryKey: promptKeys.openPolls('g1') });
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
     expect(screen.queryByText("We couldn't load the check-ins")).toBeNull();
     // TanStack retains `data` across a refetch error, so a number the user can still trust
     // must not be replaced with nothing.
@@ -447,7 +454,10 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
     (promptAPI.getOpenPrompts as unknown as Mock).mockRejectedValue(new Error('boom'));
     await client.refetchQueries({ queryKey: promptKeys.openPolls('g1') });
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
     expect(screen.queryByText("We couldn't load the check-ins")).toBeNull();
     expect(screen.getByText('No open polls')).toBeInTheDocument();
   });

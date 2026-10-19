@@ -27,6 +27,14 @@ import { Heading } from '../../components/ui/Heading';
 import { toast } from 'sonner';
 import { logger, errCtx } from '@/lib/logger';
 
+// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
+// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
+// notices that share its page are told apart by ear — in the region and in the Retry's
+// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
+// visible heading (the review's lead): the ruling fixed short names per page.
+// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
+const PROMPT_SCHEDULE_SECTION_NAME = 'Prompt schedule';
+
 /**
  * PromptScheduleManager - Main container for schedule management
  * Renders the schedule list and create/edit form (list-only as of Phase 81 CHKIN-04;
@@ -300,6 +308,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
             retained={hasRetainedSettings}
             focusTarget={headingRef}
             className="mb-4"
+            sectionName={PROMPT_SCHEDULE_SECTION_NAME}
           />
           {/* List view (the only view as of Phase 81 CHKIN-04) */}
           <ScheduleList

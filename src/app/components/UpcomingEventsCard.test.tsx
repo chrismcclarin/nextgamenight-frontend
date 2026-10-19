@@ -201,6 +201,10 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
   // Copy row RF1 / D-47 (plan 88.6.1-70's REFRESH_FAILED_NOTICE), written once here (contract
   // C7). While the notice shows it is in the DOM twice: the visible line and its polite region.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  // 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this notice passes `sectionName`,
+  // so its polite region and the Retry's description say "Upcoming game nights: " first and the visible line
+  // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
+  const SPOKEN = "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.";
   const LOAD_TITLE = "We couldn't load your upcoming events";
   const failed = {
     showError: true,
@@ -229,7 +233,8 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
     passDwell();
 
     const copies = within(card()).getAllByText(RF1);
-    expect(copies).toHaveLength(2);
+    expect(copies).toHaveLength(1);
+    expect(within(card()).getByText(SPOKEN)).toBeInTheDocument();
     expect(within(card()).getByText('Alpha Game')).toBeInTheDocument();
     expect(within(card()).getByText('Beta Game')).toBeInTheDocument();
     const line = copies.find((n) => !n.closest('[role="status"]'));
@@ -238,6 +243,15 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
     expect(precedes(line as Node, firstRow)).toBe(true);
     expect(screen.queryByText(LOAD_TITLE)).not.toBeInTheDocument();
     expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
+  });
+
+  it('U1-CR6 (CR-6 / A-22): the notice names Upcoming game nights in its region and in the Retry description, never visibly', () => {
+    renderCard({ events: TWO_ROWS, retained: true, errorState: failed });
+    passDwell();
+    const region = within(card()).getAllByRole('status').find((n) => n.textContent === SPOKEN);
+    expect(region, 'the region holds the named sentence').toBeDefined();
+    expect(within(card()).getAllByText(RF1)).toHaveLength(1);
+    expect(within(card()).getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(SPOKEN);
   });
 
   it('U2 (R9 empty, nothing loaded): the full banner stands alone, never RF1 or the empty state', () => {
@@ -255,7 +269,8 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
     passDwell();
 
     const copies = within(card()).getAllByText(RF1);
-    expect(copies).toHaveLength(2);
+    expect(copies).toHaveLength(1);
+    expect(within(card()).getByText(SPOKEN)).toBeInTheDocument();
     const empty = within(card()).getByText('Nothing on the calendar');
     const line = copies.find((n) => !n.closest('[role="status"]')) as Node;
     expect(precedes(line, empty)).toBe(true);
@@ -303,7 +318,7 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
 
     const holder = within(card())
       .getAllByRole('status')
-      .find((n) => n.textContent === RF1);
+      .find((n) => n.textContent === SPOKEN);
     expect(holder, 'a status node carries RF1').toBeDefined();
     expect(before).toContain(holder);
   });

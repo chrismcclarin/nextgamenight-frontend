@@ -308,6 +308,10 @@ describe('OpenPollsList: ending a check-in (Req 4, D-24, R5)', () => {
 // the notice shows and its region is not quiet it is in the DOM twice: the visible line and the one
 // polite region.
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+// 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this notice passes `sectionName`,
+// so its polite region and the Retry's description say "Open polls: " first and the visible line
+// holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
+const SPOKEN = "Open polls: Couldn't refresh. Showing what loaded earlier.";
 const FULL_TITLE = "We couldn't load the check-ins";
 
 describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 notice (88.6.1-75, AC-29 / D-47)', () => {
@@ -363,7 +367,10 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     const { client } = renderList();
     await failRefetchOverRows(client, e500());
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
     expect(screen.getByText('Started by Ana')).toBeInTheDocument();
     expect(screen.getByText('Started by Ben')).toBeInTheDocument();
     expect(screen.queryByText(FULL_TITLE)).toBeNull();
@@ -379,9 +386,12 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     await failRefetchOverRows(client, e500());
     // Wait until BOTH copies are in (a region inserted mid-failure fills only after plan 70's
     // dwell), so the identity check below is what decides this test.
-    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
 
-    const region = screen.getAllByRole('status').find((n) => n.textContent === RF1);
+    const region = screen.getAllByRole('status').find((n) => n.textContent === SPOKEN);
     expect(region, 'a status region carries the RF1 sentence').toBeDefined();
     // Node identity (FE-TESTING-CONVENTIONS C-6): the region was in the DOM while healthy.
     expect(before).toContain(region);
@@ -391,7 +401,10 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     vi.mocked(promptAPI.getOpenPrompts).mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never);
     const { client, expandControl } = renderHosted();
     await failRefetchOverRows(client, e500());
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
 
     vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_B] } as never);
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -404,6 +417,15 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
+  it('RF-CR6 (CR-6 / A-22): the notice names Open polls in its region and in the Retry description, never visibly', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never);
+    const { client } = renderList();
+    await failRefetchOverRows(client, e500());
+    await waitFor(() => expect(screen.getAllByRole('status').find((n) => n.textContent === SPOKEN)).toBeDefined());
+    expect(screen.getAllByText(RF1)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(SPOKEN);
+  });
+
   it('RF-4. a list that loaded EMPTY stays under the RF1 notice, with one Start a check-in (owner ruling Y)', async () => {
     vi.mocked(promptAPI.getOpenPrompts).mockResolvedValueOnce({ prompts: [] } as never);
     const { client } = renderList();
@@ -413,7 +435,10 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
       await client.refetchQueries({ queryKey: key });
     });
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
     expect(screen.getByText('No check-ins running')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '+ Start a check-in' })).toHaveLength(1);
     expect(screen.queryByText(FULL_TITLE)).toBeNull();
@@ -469,7 +494,10 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     const { client } = renderList();
     await failRefetchOverRows(client, new ApiError('Network', 'network', 0));
 
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
     expect(screen.getByText('Started by Ana')).toBeInTheDocument();
     expect(screen.getByText('Started by Ben')).toBeInTheDocument();
     expect(screen.queryByText(FULL_TITLE)).toBeNull();
@@ -479,7 +507,10 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     vi.mocked(promptAPI.getOpenPrompts).mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never);
     const { client, expandControl } = renderHosted();
     await failRefetchOverRows(client, e500());
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
 
     const e403 = new ApiError('Access denied', 'forbidden', 403);
     vi.mocked(promptAPI.getOpenPrompts).mockRejectedValue(e403);
@@ -496,7 +527,10 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     vi.mocked(promptAPI.getOpenPrompts).mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never);
     const { client, expandControl } = renderHosted();
     await failRefetchOverRows(client, e500());
-    expect(await screen.findAllByText(RF1)).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
 
     act(() => screen.getByRole('button', { name: 'Retry' }).focus());
     vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_B] } as never);

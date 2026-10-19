@@ -56,6 +56,13 @@ import { logger, errCtx } from '../../lib/logger';
    88.6.1-76's scrubber keeps only the static prefix ("Customize ", "Invite member to ") and
    redacts the rest, so its prefix list must follow any change to these two templates.
    Changing this is a decision, not a cleanup. */
+// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
+// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
+// notices that share its page are told apart by ear — in the region and in the Retry's
+// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
+// visible heading (the review's lead): the ruling fixed short names per page.
+// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
+const GROUPS_SECTION_NAME = 'Groups';
 const CUSTOMIZE_GROUP_FALLBACK = 'Customize group';
 const INVITE_MEMBER_FALLBACK = 'Invite member to group';
 const groupNameForLabel = (name) => (typeof name === 'string' ? name.trim() : '');
@@ -444,7 +451,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
           is the top of the page, far from the list on a phone; (f) the full banner over a list
           that loaded empty — D-50: the owner ruled a loaded-empty list is retained content.
           Changing this is a decision, not a cleanup. */}
-      <RefreshFailedNotice state={groupsErrorState} retained={groupsRetained} focusTarget={groupsHeadingRef} className="mb-4" />
+      <RefreshFailedNotice state={groupsErrorState} retained={groupsRetained} focusTarget={groupsHeadingRef} className="mb-4" sectionName={GROUPS_SECTION_NAME} />
 
       <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
         {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary

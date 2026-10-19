@@ -459,6 +459,10 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
   // the one polite region). The positive signal waits for BOTH copies (waitFor + getAllByText):
   // findAllByText resolves at the first match, so a region that fills a moment later would read 1.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  // 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this notice passes `sectionName`,
+  // so its polite region and the Retry's description say "Prompt schedule: " first and the visible line
+  // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
+  const SPOKEN = "Prompt schedule: Couldn't refresh. Showing what loaded earlier.";
   const FULL_TITLE = "We couldn't load your schedules";
 
   const getSettings = () => promptSettingsAPI.getGroupPromptSettings as unknown as Mock;
@@ -506,7 +510,10 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
     const pause = await screen.findByRole('button', { name: 'Pause' });
     const before = screen.queryAllByRole('status');
     fireEvent.click(pause);
-    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
     return { ...rendered, before };
   }
 
@@ -523,9 +530,16 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
     expect(rowHeading()).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ New Schedule' })).toBeInTheDocument();
     expect(screen.queryByText(FULL_TITLE)).toBeNull();
-    const region = screen.getAllByRole('status').find((n) => n.textContent === RF1);
+    const region = screen.getAllByRole('status').find((n) => n.textContent === SPOKEN);
     expect(region).toBeDefined();
     expect(before).toContain(region);
+  });
+
+  it('M1-CR6 (CR-6 / A-22): the notice names the Prompt schedule in its region and in the Retry description, never visibly', async () => {
+    await reachRetainedFailure();
+    await waitFor(() => expect(screen.getAllByRole('status').find((n) => n.textContent === SPOKEN)).toBeDefined());
+    expect(screen.getAllByText(RF1)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(SPOKEN);
   });
 
   it('M2. a second Pause press while the first toggle is in flight sends nothing; the pressed button is aria-disabled', async () => {
@@ -655,7 +669,10 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
       renderWithClient();
       fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
 
-      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+      await waitFor(() => {
+        expect(screen.getAllByText(RF1)).toHaveLength(1);
+        expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+      });
       expect(rowHeading()).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '+ New Schedule' })).toBeInTheDocument();
       expect(screen.queryByText(FULL_TITLE)).toBeNull();
@@ -671,10 +688,13 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
     getSettings().mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
     await act(() => client.invalidateQueries());
 
-    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
     expect(screen.getByRole('heading', { name: 'No schedules yet' })).toBe(empty);
     expect(screen.queryByText(FULL_TITLE)).toBeNull();
-    const region = screen.getAllByRole('status').find((n) => n.textContent === RF1);
+    const region = screen.getAllByRole('status').find((n) => n.textContent === SPOKEN);
     expect(before).toContain(region);
     const retry = screen.getByRole('button', { name: 'Retry' });
     expect(retry.compareDocumentPosition(empty) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

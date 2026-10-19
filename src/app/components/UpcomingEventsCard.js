@@ -8,6 +8,16 @@ import { Heading } from '../../components/ui/Heading';
 import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
 import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
 
+// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
+// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
+// notices that share its page are told apart by ear — in the region and in the Retry's
+// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
+// visible heading (the review's lead): the ruling fixed short names per page.
+// The home page's phone Calendar sheet mounts its own notice (UserHomePage.js) and stays unnamed:
+// it is a titled dialog, alone on screen.
+// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
+const UPCOMING_SECTION_NAME = 'Upcoming game nights';
+
 /**
  * Format event date/time in relative + compact format with timezone support.
  * - Today: "Today 7pm EST"
@@ -233,6 +243,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
               retained={retained}
               focusTarget={upcomingHeadingRef}
               className="mt-2"
+              sectionName={UPCOMING_SECTION_NAME}
             />
           ) : null}
           {upcomingEvents.length === 0 ? (

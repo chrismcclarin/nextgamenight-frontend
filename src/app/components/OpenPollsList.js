@@ -19,6 +19,14 @@ import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRe
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { toast } from 'sonner';
 
+// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
+// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
+// notices that share its page are told apart by ear — in the region and in the Retry's
+// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
+// visible heading (the review's lead): the ruling fixed short names per page.
+// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
+const OPEN_POLLS_SECTION_NAME = 'Open polls';
+
 /**
  * OpenPollsList — Phase 71.2 (POLL-01 / D-UI-01..04)
  *
@@ -246,6 +254,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
             retained={pollsRetained}
             focusTarget={focusFallbackRef}
             className="mb-4"
+            sectionName={OPEN_POLLS_SECTION_NAME}
           />
           {prompts.length === 0 ? (
             // D-UI-03: unified empty-state COPY for ALL roles (admin/member alike);

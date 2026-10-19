@@ -19,6 +19,17 @@ import { Heading } from '../../components/ui/Heading';
 import { CalendarLoadingCard } from './CalendarLoadingCard';
 import { logger, errCtx } from '../../lib/logger';
 
+// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
+// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
+// notices that share its page are told apart by ear — in the region and in the Retry's
+// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
+// visible heading (the review's lead): the ruling fixed short names per page.
+// A MODULE CONSTANT over a host prop: the notice renders only in self-fetch mode
+// (`externalEvents === null`), whose one host is the home page; the group page passes external
+// events and mounts its own named notice, so it stays byte-identical with no prop to thread.
+// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
+const CALENDAR_SECTION_NAME = 'Calendar';
+
 /* DECISION Phase 88.6.1-73 (headingRef) [orchestrator request 2026-10-05, for plan 88.6.1-71]:
    CHOSEN — a NAMED optional object-ref prop, `headingRef` (`React.RefObject<HTMLElement | null>`),
    attached to the calendar's title heading in EVERY branch that renders one (the identity-failure
@@ -551,7 +562,7 @@ export default function EventCalendar({
       {/* RF1 (88.6.1-70 contract C6): mounted unconditionally in the branch that renders the
           retained calendar, above the view. The mode gate is not a `showError` gate: the mode
           is fixed per mount, and an external-events calendar never fetches. */}
-      {externalEvents === null && <RefreshFailedNotice state={fetchErrorState} retained={retained} focusTarget={calendarHeadingRef} className="mb-4" />}
+      {externalEvents === null && <RefreshFailedNotice state={fetchErrorState} retained={retained} focusTarget={calendarHeadingRef} className="mb-4" sectionName={CALENDAR_SECTION_NAME} />}
 
       {effectiveViewMode === 'month' ? (
         <CalendarMonthView

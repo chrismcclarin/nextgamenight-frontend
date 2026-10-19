@@ -1276,6 +1276,10 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
   // Copy row RF1 / D-47 (plan 88.6.1-70's REFRESH_FAILED_NOTICE), written once here (contract
   // C7). While the notice shows it is in the DOM twice: the visible line and its polite region.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  // 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): the CARD's notice passes
+  // `sectionName`, so its region holds CARD_SPOKEN and RF1 by exact text is found ONCE in the card;
+  // the sheet's notice (a titled dialog, alone on screen) is unnamed and still holds RF1 twice.
+  const CARD_SPOKEN = "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.";
   const CARD_LOAD_TITLE = "We couldn't load your upcoming events";
   const SHEET_LOAD_TITLE = "We couldn't load your calendar";
   const PAIR = [FUTURE_EVENT, FUTURE_LATER];
@@ -1301,8 +1305,13 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
       .getAllByText(RF1)
       .find((n) => !n.closest('[role="status"]')) as HTMLElement;
   // The positive RF1 signal waits for BOTH copies (plan 88.6.1-30's lesson).
-  const waitForRf1 = (scope: () => HTMLElement) =>
-    waitFor(() => expect(within(scope()).getAllByText(RF1)).toHaveLength(2));
+  const waitForRf1 = (scope: () => HTMLElement, spoken: string = CARD_SPOKEN) =>
+    waitFor(() => {
+      const root = scope();
+      const regions = Array.from(root.querySelectorAll('[role="status"]')).filter((n) => n.textContent === spoken);
+      expect(regions).toHaveLength(1);
+      expect(within(root).getAllByText(RF1)).toHaveLength(spoken === RF1 ? 2 : 1);
+    });
 
   // A string `name` in a Testing Library role query is already an exact, whole-name match, so the
   // notice's `Retry` never collides with the full banner's `Try again`.
@@ -1365,7 +1374,7 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     expect(calendarButton()).toHaveAccessibleName('Calendar');
 
     const dialog = await openCalendarSheet(user);
-    await waitForRf1(() => dialog);
+    await waitForRf1(() => dialog, RF1);
     const sheetRow = within(dialog).getByText('Catan');
     expect(precedes(rf1Line(dialog), sheetRow)).toBe(true);
     expect(within(dialog).queryByText(SHEET_LOAD_TITLE)).toBeNull();
@@ -1463,7 +1472,7 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     expect(within(card()).queryByText(CARD_LOAD_TITLE)).toBeNull();
 
     const dialog = await openCalendarSheet(user);
-    await waitForRf1(() => dialog);
+    await waitForRf1(() => dialog, RF1);
     const emptyLine = within(dialog).getByText(/^no (upcoming )?events$/i);
     expect(precedes(rf1Line(dialog), emptyLine)).toBe(true);
     expect(within(dialog).queryByText(SHEET_LOAD_TITLE)).toBeNull();
@@ -1587,7 +1596,7 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     const { fn, user } = await loadPairThenFail(err500());
     await waitForRf1(card);
     const dialog = await openCalendarSheet(user);
-    await waitForRf1(() => dialog);
+    await waitForRf1(() => dialog, RF1);
     act(() => within(dialog).getByRole('button', { name: 'Retry' }).focus());
     fn.mockResolvedValueOnce([FUTURE_LATER]);
 

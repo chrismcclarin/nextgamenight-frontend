@@ -65,6 +65,10 @@ const listProps: any = { user: { sub: 'auth0|self' } };
 // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE), written once here (contract C7). While
 // shown it is in the DOM twice: the visible line and the polite region.
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+// 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this notice passes `sectionName`,
+// so its polite region and the Retry's description say "Groups: " first and the visible line
+// holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
+const SPOKEN = "Groups: Couldn't refresh. Showing what loaded earlier.";
 const LOAD_TITLE = "We couldn't load your groups";
 
 const ALPHA = { id: 'g-alpha', name: 'Alpha Crew', Users: [], Events: [] };
@@ -94,11 +98,15 @@ const yourGroups = () => screen.getByRole('heading', { name: 'Your Groups' });
 const titleBlock = (name: string) => screen.getByRole('button', { name });
 const cardOf = (el: Element) => el.closest('[data-testid="group-card"]');
 const rf1Region = () =>
-  Array.from(document.querySelectorAll('[role="status"]')).find((n) => n.textContent === RF1);
+  Array.from(document.querySelectorAll('[role="status"]')).find((n) => n.textContent === SPOKEN);
 // The visible RF1 line: the RF1 text node that sits in no status region.
 const rf1Line = () => screen.getAllByText(RF1).find((n) => !n.closest('[role="status"]'));
 // The positive RF1 signal waits for BOTH copies (plan 88.6.1-30's lesson).
-const waitForRf1 = () => waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+const waitForRf1 = () =>
+  waitFor(() => {
+    expect(screen.getAllByText(RF1)).toHaveLength(1);
+    expect(rf1Region()).toBeDefined();
+  });
 const follows = (a: Node, b: Node) =>
   Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
@@ -187,10 +195,10 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     const user = userEvent.setup();
     await user.click(retry);
     await waitFor(() => expect(h.getUserGroups).toHaveBeenCalledTimes(3));
-    await waitFor(() => expect(texts.lastIndexOf(RF1)).toBeGreaterThan(texts.indexOf('')));
+    await waitFor(() => expect(texts.lastIndexOf(SPOKEN)).toBeGreaterThan(texts.indexOf('')));
     observer.disconnect();
     expect(texts.indexOf(''), 'the region emptied after the press').toBeGreaterThanOrEqual(0);
-    expect(region.textContent).toBe(RF1);
+    expect(region.textContent).toBe(SPOKEN);
     expect(rf1Region()).toBe(region);
     expect(document.activeElement).toBe(retry);
     expect(retry).toHaveTextContent('Retry');
@@ -219,6 +227,13 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     const line = rf1Line() as HTMLElement;
     expect(line, 'the visible RF1 line').toBeDefined();
     expect(follows(line, empty), 'the line precedes "No groups yet"').toBe(true);
+  });
+
+  it('RF-CR6 (CR-6 / A-22): the notice names Groups in its region and in the Retry description, never visibly', async () => {
+    await loadCardsThenFail(ERR_500);
+    await waitForRf1();
+    expect(rf1Region()!.textContent).toBe(SPOKEN);
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(SPOKEN);
   });
 
   it('RF-5. a failed refresh with a network error keeps the cards under RF1 (C8 e, the transient half)', async () => {

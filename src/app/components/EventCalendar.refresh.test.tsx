@@ -163,6 +163,10 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
   // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE), written once here (contract C7). It is
   // in the DOM twice while shown: the visible line and the polite region.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  // 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this notice passes `sectionName`,
+  // so its polite region and the Retry's description say "Calendar: " first and the visible line
+  // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
+  const SPOKEN = "Calendar: Couldn't refresh. Showing what loaded earlier.";
   const E1 = { id: 'e1', start_date: '2026-10-20T18:00:00.000Z' };
   const E2 = { id: 'e2', start_date: '2026-10-22T18:00:00.000Z' };
   const EA = { id: 'eA', start_date: '2026-10-23T18:00:00.000Z' };
@@ -193,9 +197,14 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
   const homeH1 = () => screen.getByRole('heading', { level: 1, name: 'Home' });
   const calendarH2 = () => screen.getByRole('heading', { level: 2, name: DEFAULT_TITLE });
   const rf1Region = () =>
-    Array.from(document.querySelectorAll('[role="status"]')).find((n) => n.textContent === RF1);
-  // The positive RF1 signal waits for BOTH copies (plan 88.6.1-30's lesson).
-  const waitForRf1 = () => waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    Array.from(document.querySelectorAll('[role="status"]')).find((n) => n.textContent === SPOKEN);
+  // The positive RF1 signal waits for BOTH copies (plan 88.6.1-30's lesson): the visible line
+  // (RF1 once by exact text) and the filled region (SPOKEN).
+  const waitForRf1 = () =>
+    waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(rf1Region()).toBeDefined();
+    });
 
   // A refresh is a rerender with the next refreshKey, as the home host does.
   async function loadThenRefresh(failure: unknown, extra: CalendarProps = {}) {
@@ -279,8 +288,15 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     await act(async () => {
       held.reject(server500());
     });
-    await waitFor(() => expect(region.textContent).toBe(RF1));
+    await waitFor(() => expect(region.textContent).toBe(SPOKEN));
     expect(document.activeElement).toBe(retry);
+  });
+
+  it('EC-RF-CR6 (CR-6 / A-22): the self-fetch notice names the Calendar in its region and in the Retry description, never visibly', async () => {
+    await loadThenRefresh(server500());
+    await waitForRf1();
+    expect(rf1Region()!.textContent).toBe(SPOKEN);
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(SPOKEN);
   });
 
   it('EC-RF-5. a failed FIRST load is the full banner, never RF1 (confirm-only)', async () => {
@@ -442,7 +458,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     await act(async () => {
       held.reject(server500());
     });
-    await waitFor(() => expect(region.textContent).toBe(RF1));
+    await waitFor(() => expect(region.textContent).toBe(SPOKEN));
     expect(document.activeElement).toBe(retry);
     expect(eventsMock()).toHaveBeenCalledTimes(callsBefore + 1);
   });
