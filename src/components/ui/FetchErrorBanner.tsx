@@ -1230,6 +1230,11 @@ export interface RetainedContentFocusGuardProps {
  * a root of the same type in each under ONE stable key identical in every return. React calls
  * `getSnapshotBeforeUpdate` only on an instance it UPDATES; a guard React remounts in that commit
  * is born with `retained` false, takes no snapshot, and focus falls to the page body (AG-11).
+ * The SECOND-child form is one case of a wider rule (88.6.1-89): a
+ * fixed index N of a top-level fragment in each — the same index in every return, with no
+ * conditional sibling before it, because React matches unkeyed fragment children by index.
+ * Example: `groupHomePage/page.js` renders its members guard as the second child and its group
+ * guard as the third child of every top-level fragment.
  */
 export class RetainedContentFocusGuard extends React.Component<RetainedContentFocusGuardProps> {
   getSnapshotBeforeUpdate(prevProps: RetainedContentFocusGuardProps): Element | null {

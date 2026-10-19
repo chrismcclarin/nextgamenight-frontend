@@ -101,6 +101,13 @@ function GroupHomePage(){
     const eventsRunRef = useRef(0);
     const membersInFlightRef = useRef(null);
     const eventsInFlightRef = useRef(null);
+    // 88.6.1-89 (close ruling P-79): the group record's own load, tracked in the members load's
+    // shape — its error, the group id its newest success loaded for (C3), a run counter and the
+    // pending run a retry joins. See the marker on getGroup.
+    const [groupError, setGroupError] = useState(null);
+    const [groupLoadedFor, setGroupLoadedFor] = useState(null);
+    const groupRunRef = useRef(0);
+    const groupInFlightRef = useRef(null);
     // The calendar section's heading: plan 88.6.1-73's `headingRef` on the calendar, and the events
     // failure arm's own heading, so it always names the section heading on screen.
     const calendarHeadingRef = useRef(null);
@@ -158,18 +165,77 @@ function GroupHomePage(){
         router.push(`/?removedFrom=${encodeURIComponent(name)}`);
     };
 
+    /* DECISION Phase 88.6.1-89 (close ruling P-79, owner 2026-10-17 "reuse"): CHOSEN — the group
+       record's load is TRACKED in the members load's shape (its rules and reasons are the DECISION
+       block above `getGroupMembers`: newest wins, the error kept until the newest run succeeds,
+       each run resolving LOAD_OK / LOAD_FAILED, a retry joining the pending run, LOG FIRST, the
+       removal redirect taken by the newest run only), and ONE page-load banner for a failing
+       members load or group load, members first, whose Try again re-runs every failing load —
+       instead of the silent catch that shipped, which left the page to open under the fallback
+       header 'Group' with no word that anything had failed.
+       The thrown error is stored as is (C10: wrapping an ApiError turns a 401 into `unknown`).
+       ORDER, load-bearing: this run's promise is published BEFORE the first await. One tab return
+       reaches retryGroup TWICE in one dispatch (the group's own error state and the page-load
+       state each add a visibilitychange listener while erroring, and each calls its refetch
+       synchronously), and only a ref already set when the first call suspends lets the second
+       join it, so one tab return sends one group request. Moving the assignment below the await
+       is a regression, not a tidy-up.
+       REJECTED: (a) a second G7 gate for the group record — two banners can swap under a focused
+       Try again, and an outage that failed both loads would need two presses; (b) treating any
+       failure as a removal — the members block's REJECTED (c), unchanged; (c) an RF1 notice for a
+       failed group refresh over a kept header — no ratified words name the header (D-51's list
+       names the group page's members and events only), so a non-access failure of a refresh
+       after a settings save keeps the header and stays silent, as today — ROUTED to Phase 92
+       (`.planning/deferred/phase-92.md`, entry `A failed (non-access) group REFRESH after a
+       settings save`), where this page is rewritten; (d) a page-local Promise.race deadline for
+       one of three loads — a second timeout mechanism beside the one Phase 93 adds app-wide.
+       STATED LIMIT, OWNED BY PHASE 93 (review r2 M1): the first paint now waits on the group load
+       as it already waits on the members load, and `lib/api.ts` has no deadline (its comment
+       whose sentence reads `NOTHING in this module had one, apiFetch included`), so a request
+       that never settles holds the group loading line with no banner and no retry — the same
+       exposure the members gate has today. The app-wide deadline is an
+       OWNED RESIDUAL of Phase 93
+       (`.planning/deferred/phase-93.md`, the apiFetch-timeout entry that api.ts comment names),
+       where the group load has been added to that entry.
+       The group focus guard is the THIRD child of every top-level fragment so the members guard
+       stays the second (the C12 marker's position rule; RetainedContentFocusGuard's Position rule
+       in FetchErrorBanner.tsx names this shape).
+       Changing this is a decision, not a cleanup. */
     const getGroup = async () => {
-        if (!Router) return;
+        if (!Router) return undefined;
+        const run = ++groupRunRef.current;
+        const groupId = Router;
+        // JOIN: published BEFORE the first await (the ORDER rule above), until the run settles.
+        let outcome;
+        let finishRun;
+        const thisRun = new Promise((resolve) => {
+            finishRun = resolve;
+        });
+        groupInFlightRef.current = thisRun;
         try {
             // Use groupsAPI.getGroup which automatically includes Authorization header
             const data = await groupsAPI.getGroup(Router);
+            if (run !== groupRunRef.current) return undefined;
             setGroup(data);
+            setGroupError(null);
+            setGroupLoadedFor(groupId);
+            outcome = LOAD_OK;
+            return outcome;
         } catch (error) {
-            if (isRemovedFromGroupError(error)) {
-                redirectToHomeAsRemoved();
-                return;
+            if (run === groupRunRef.current) {
+                if (isRemovedFromGroupError(error)) {
+                    redirectToHomeAsRemoved();
+                    return undefined;
+                }
             }
             logger.info('Error fetching group:', errCtx(error));
+            if (run !== groupRunRef.current) return undefined;
+            setGroupError(error instanceof Error ? error : new Error("The group request didn't complete."));
+            outcome = LOAD_FAILED;
+            return outcome;
+        } finally {
+            finishRun(outcome);
+            if (groupInFlightRef.current === thisRun) groupInFlightRef.current = null;
         }
     };
 
@@ -501,9 +567,11 @@ function GroupHomePage(){
     // block); the direct callers (a role change, a settings save, a created event) never join.
     const membersFetchRef = useRef(null);
     const eventsFetchRef = useRef(null);
+    const groupFetchRef = useRef(null);
     useEffect(() => {
         membersFetchRef.current = getGroupMembers;
         eventsFetchRef.current = fetchGroupEvents;
+        groupFetchRef.current = getGroup;
     });
     const retryMembers = useCallback(
         () => membersInFlightRef.current ?? membersFetchRef.current?.(),
@@ -513,6 +581,7 @@ function GroupHomePage(){
         () => eventsInFlightRef.current ?? eventsFetchRef.current?.(),
         []
     );
+    const retryGroup = useCallback(() => groupInFlightRef.current ?? groupFetchRef.current?.(), []);
     const membersErrorState = useFetchErrorState({
         isError: Boolean(membersError),
         error: membersError,
@@ -523,10 +592,43 @@ function GroupHomePage(){
         error: eventsError,
         refetch: retryEvents,
     });
+    const groupErrorState = useFetchErrorState({ isError: Boolean(groupError), error: groupError, refetch: retryGroup });
     // 88.6.1-70 contract C10: the ONLY derivation of `retained` on this page — false on a first
     // load, and false after an access or gone answer until the next success.
     const membersRetained = useRetainedContent(membersLoadedFor === Router, membersErrorState);
     const eventsRetained = useRetainedContent(eventsLoadedFor === Router, eventsErrorState);
+    const groupRetained = useRetainedContent(groupLoadedFor === Router, groupErrorState);
+    // 88.6.1-89 (close ruling P-79): ONE page-load state for the two loads whose failure leaves
+    // nothing of the group to show — the members load first, then the group record (the marker
+    // on getGroup). Its Try again re-runs every load that is failing, and resolves LOAD_FAILED if
+    // any still fails, LOAD_OK when all succeed, else nothing (C4). `membersErrorState` itself is
+    // unchanged and still drives the members notice and `membersRetained`.
+    const membersBlocking = membersErrorState.showError && !membersRetained;
+    const groupBlocking = groupErrorState.showError && !groupRetained;
+    const membersBlockingRef = useRef(false);
+    const groupBlockingRef = useRef(false);
+    useEffect(() => {
+        membersBlockingRef.current = membersBlocking;
+        groupBlockingRef.current = groupBlocking;
+    });
+    const retryPageLoad = useCallback(async () => {
+        // Both retries start in this synchronous turn, before the first await, so each joins a
+        // pending run of its own load (the ORDER rule in the marker on getGroup).
+        const runs = [];
+        if (membersBlockingRef.current) runs.push(retryMembers());
+        if (groupBlockingRef.current) runs.push(retryGroup());
+        if (runs.length === 0) return undefined;
+        const results = await Promise.all(runs);
+        if (results.some((result) => result?.isError === true)) return LOAD_FAILED;
+        if (results.every((result) => result?.isError === false)) return LOAD_OK;
+        return undefined;
+    }, [retryMembers, retryGroup]);
+    const pageLoadError = membersBlocking ? membersError : groupBlocking ? groupError : null;
+    const pageLoadErrorState = useFetchErrorState({
+        isError: Boolean(pageLoadError),
+        error: pageLoadError,
+        refetch: retryPageLoad,
+    });
     /* DECISION Phase 88.6.1-71 (C12, focus when content leaves): CHOSEN — plan 88.6.1-70's shared
        guard, one per `retained` value. The members guard is the SECOND child of a fragment in
        every markup return of this component, so ONE instance survives the switch from the page
@@ -540,8 +642,12 @@ function GroupHomePage(){
        when it runs, so focus lands on the group's heading, a screen above the section on a phone
        (plant E2); (c) a members target: no element of the group stays on screen under G7;
        (d) focus code of this page's own (D-04).
+       AMENDED Phase 88.6.1-89: the group guard is the THIRD child in every return — the fixed-fragment-index placement that RetainedContentFocusGuard's Position rule in FetchErrorBanner.tsx names.
        Changing any of these is a decision, not a cleanup. */
     const membersFocusGuard = <RetainedContentFocusGuard retained={membersRetained} />;
+    // 88.6.1-89: the group record's guard, the THIRD child of every top-level fragment (the C12
+    // marker above, the marker on getGroup). No target: nothing of the group survives under G7.
+    const groupFocusGuard = <RetainedContentFocusGuard retained={groupRetained} />;
 
     // PR2-L11 (SPEC Req 7): getGroup + fetchGroupEvents do NOT depend on selfUuid,
     // so they live in an effect keyed only on [Router, user?.sub, ...] — they fire
@@ -610,15 +716,19 @@ function GroupHomePage(){
     // full banner. Checked BEFORE the paint gate (the members fetch's DECISION block, REJECTED (d)).
     // No focusTarget: this screen has no section, so the floor (`main`, or the group's h1 once the
     // page returns) is the honest target.
-    if (membersErrorState.showError && !membersRetained) {
+    // AMENDED 88.6.1-89 (close ruling P-79): the gate reads the page-load state — the members load
+    // OR the group record's load failing with nothing retained, members first — so one banner and
+    // one Try again cover both (the marker on getGroup, REJECTED (a)).
+    if (pageLoadErrorState.showError) {
         return (
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
                     <div className="w-full max-w-xl">
-                        <FetchErrorBanner state={membersErrorState} title={GROUP_LOAD_FAILED_TITLE} />
+                        <FetchErrorBanner state={pageLoadErrorState} title={GROUP_LOAD_FAILED_TITLE} />
                     </div>
                 </div>
                 {membersFocusGuard}
+                {groupFocusGuard}
             </>
         );
     }
@@ -629,7 +739,9 @@ function GroupHomePage(){
     // and `setGroup(data)` would otherwise flash group content for a
     // removed user, (b) the games endpoint 403s in the brief window
     // between mount and redirect.
-    if (!membershipChecked) {
+    // AMENDED 88.6.1-89: the gate also waits for the group record's first load to settle, so a
+    // first-load failure is shown by the page-load gate above it and never withdraws a painted page.
+    if (!membershipChecked || (groupLoadedFor !== Router && !groupError)) {
         return (
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
@@ -640,6 +752,7 @@ function GroupHomePage(){
                     <FetchErrorBanner state={selfIdentityErrorState} compact />
                 </div>
                 {membersFocusGuard}
+                {groupFocusGuard}
             </>
         );
     }
@@ -651,6 +764,7 @@ function GroupHomePage(){
                     <p className="text-content-secondary">Loading games...</p>
                 </div>
                 {membersFocusGuard}
+                {groupFocusGuard}
             </>
         );
     }
@@ -832,6 +946,7 @@ function GroupHomePage(){
         // friends/page consume the same receivedRequests state.
         // The fragment carries the members focus guard as its SECOND child, in every return
         // (the C12 DECISION block at `membersFocusGuard`); the page's markup is not re-indented.
+        // The group focus guard is its THIRD child, in every return (88.6.1-89).
         <>
         <div className="p-4 md:p-6">
             {/* Breadcrumbs.
@@ -1718,6 +1833,7 @@ function GroupHomePage(){
             )}
         </div>
         {membersFocusGuard}
+        {groupFocusGuard}
         </>
     );
 }

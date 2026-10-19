@@ -50,6 +50,8 @@ const h = vi.hoisted(() => ({
     modaltoggle: () => void;
     onMembersUpdated: () => Promise<unknown>;
   },
+  // What the GroupSettings stub last rendered with (88.6.1-89: its `onUpdate` is a group refresh).
+  groupSettingsProps: null as null | { onUpdate: () => void },
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -129,19 +131,25 @@ vi.mock('@/app/components/GroupLibrary', () => ({ default: () => null }));
 // stub reproduces only the contract the gating turns on: KM-21's zero-items-renders-no-trigger
 // rule (`keyboardOperability.test.tsx`), plus a button per item.
 vi.mock('@/app/components/KebabMenu', () => ({
-  default: ({ ariaLabel, items }: { ariaLabel: string; items: { label: string }[] }) =>
+  default: ({ ariaLabel, items }: { ariaLabel: string; items: { label: string; onClick?: () => void }[] }) =>
     items.length === 0 ? null : (
       <div>
         <button type="button" aria-label={ariaLabel} />
         {items.map((i) => (
-          <button type="button" key={i.label}>
+          // 88.6.1-89: the item's own onClick, so a test can open Group settings through it.
+          <button type="button" key={i.label} onClick={i.onClick}>
             {i.label}
           </button>
         ))}
       </div>
     ),
 }));
-vi.mock('@/app/components/GroupSettings', () => ({ default: () => null }));
+vi.mock('@/app/components/GroupSettings', () => ({
+  default: (props: NonNullable<typeof h.groupSettingsProps>) => {
+    h.groupSettingsProps = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -176,6 +184,7 @@ beforeEach(() => {
   h.gamesListProps = null;
   h.calendarProps = null;
   h.manageMembersProps = null;
+  h.groupSettingsProps = null;
   (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(ROSTER);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
@@ -1262,5 +1271,198 @@ describe('groupHomePage games retention (88.6.1-56: C3 + C10)', () => {
     });
     await waitFor(() => expect(h.gamesListProps!.games).toEqual([GAME]));
     expect(h.gamesListProps!.errorState.showError).toBe(false);
+  });
+});
+
+// ============================================================================================
+// 88.6.1-89 Task 1 — the group record's own load (close ruling P-79, owner 2026-10-17 "reuse"):
+// a failed group load (not a removal) shows the group banner with Try again instead of a page
+// headed by the fallback name; one page-load banner for the members and group loads; the first
+// paint waits for the group's first load; the group focus guard keeps focus off the body (C12).
+// ============================================================================================
+describe("groupHomePage — the group record's own load (88.6.1-89, close ruling P-79)", () => {
+  // copy row G7 — written once here.
+  const G7 = "Couldn't load this group";
+  const internal = () => new ApiError('Request failed', 'internal', 500);
+  const groupCalls = () => (groupsAPI.getGroup as Mock).mock.calls.length;
+  const membersCalls = () => (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+  const gamesCalls = () => (listsAPI.getGroupGames as Mock).mock.calls.length;
+  const resolveIdentity = () => {
+    h.selfUuid = SELF_UUID;
+    h.isPending = false;
+  };
+  /** Open Group settings through the kebab's item, so the GroupSettings stub records its props. */
+  const openSettings = async () => {
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Group settings' }));
+    await waitFor(() => expect(h.groupSettingsProps).not.toBeNull());
+  };
+
+  it('GL-1. a failed first group load shows the group banner and its line, with Try again, and no page', async () => {
+    resolveIdentity();
+    const err = internal();
+    (groupsAPI.getGroup as Mock).mockRejectedValue(err);
+    render(<GroupHomePage />);
+    await screen.findAllByText(G7);
+    expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Group' })).toBeNull();
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  it('GL-2. Try again re-runs the group load and the page appears, focus inside main', async () => {
+    resolveIdentity();
+    (groupsAPI.getGroup as Mock)
+      .mockRejectedValueOnce(internal())
+      .mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
+    renderInMain();
+    await screen.findAllByText(G7);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    expect(groupCalls()).toBe(2);
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    expect(screen.getByRole('heading', { level: 1, name: 'My Group' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.querySelector('main')!.contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it('GL-3. a removal (403) on the group load still redirects and never shows the group banner', async () => {
+    // CONFIRM-ONLY: green before and after — the removal stays the newest run's first decision.
+    resolveIdentity();
+    (groupsAPI.getGroup as Mock).mockRejectedValue({ status: 403 });
+    render(<GroupHomePage />);
+    await waitFor(() =>
+      expect(pushSpy.mock.calls.some(([url]) => String(url).startsWith('/?removedFrom='))).toBe(true)
+    );
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+  });
+
+  it('GL-4. both loads failed: ONE banner, and one press re-runs both and brings the page', async () => {
+    resolveIdentity();
+    (groupsAPI.getGroup as Mock).mockRejectedValue(internal());
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(internal());
+    render(<GroupHomePage />);
+    await screen.findAllByText(G7);
+    await waitFor(() => expect(groupCalls()).toBe(1));
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(ROSTER);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    expect(groupCalls()).toBe(2);
+    expect(membersCalls()).toBe(2);
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+  });
+
+  it('GL-5. a 401 on a group refresh replaces the loaded page with the group banner; focus lands in main, never the body (C12)', async () => {
+    await renderHeaderAt('owner', { inMain: true });
+    await openSettings();
+    const manage = screen.getByRole('button', { name: 'Manage Members' });
+    act(() => manage.focus());
+    expect(document.activeElement).toBe(manage);
+
+    const err = new ApiError('x', 'unauthorized', 401);
+    (groupsAPI.getGroup as Mock).mockRejectedValueOnce(err);
+    await act(async () => {
+      h.groupSettingsProps!.onUpdate();
+    });
+    await screen.findAllByText(G7);
+    expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
+    expect(manage.isConnected).toBe(false);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.querySelector('main')!.contains(document.activeElement)).toBe(true);
+    // C-5, the named node: nothing of the group survives under G7 (no h1), so the floor is main.
+    expect(document.activeElement).toBe(document.querySelector('main'));
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  it('GL-6. a 500 on a group refresh keeps the page and shows no group banner', async () => {
+    // pins today's behaviour; routed to Phase 92 (P-127)
+    // CONFIRM-ONLY: green before and after.
+    const infoSpy = vi.spyOn(logger, 'info');
+    await renderHeaderAt('owner');
+    await openSettings();
+    (groupsAPI.getGroup as Mock).mockRejectedValueOnce(internal());
+    await act(async () => {
+      h.groupSettingsProps!.onUpdate();
+    });
+    await waitFor(() =>
+      expect(infoSpy.mock.calls.some(([msg]) => msg === 'Error fetching group:')).toBe(true)
+    );
+    expect(screen.getByRole('link', { name: 'Plan Game Session' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'My Group' })).toBeInTheDocument();
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    infoSpy.mockRestore();
+  });
+
+  it('GL-7. while the group first load is held the page has not painted; a late failure shows the banner, an answer shows the name', async () => {
+    for (const outcome of ['reject', 'resolve'] as const) {
+      resolveIdentity();
+      const held = deferred<unknown>();
+      (groupsAPI.getGroup as Mock).mockReturnValueOnce(held.promise);
+      const gamesBefore = gamesCalls();
+      renderInMain();
+      // Members confirmed (the games request goes only after that), and the games answered.
+      await waitFor(() => expect(gamesCalls()).toBeGreaterThan(gamesBefore));
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+      expect(screen.getByText('Loading group…')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Group' })).toBeNull();
+      // C12 while held: nothing inside main can take focus, so the late answer has no focused
+      // node to withdraw (jsdom's resting active element IS the body, so a bare "not the body"
+      // check cannot be the proof here).
+      const main = document.querySelector('main')!;
+      expect(within(main as HTMLElement).queryAllByRole('button')).toHaveLength(0);
+      expect(within(main as HTMLElement).queryAllByRole('link')).toHaveLength(0);
+
+      if (outcome === 'reject') {
+        await act(async () => {
+          held.reject(new ApiError('x', 'internal', 500));
+        });
+        await screen.findAllByText(G7);
+        expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
+      } else {
+        await act(async () => {
+          held.resolve({ id: 'GROUP1', name: 'My Group' });
+        });
+        await screen.findByRole('link', { name: 'Plan Game Session' });
+        expect(screen.getByRole('heading', { level: 1, name: 'My Group' })).toBeInTheDocument();
+      }
+      cleanup();
+    }
+  });
+
+  it('GL-8. one tab return over a failed group load sends one group request, and a Try again during it joins it', async () => {
+    const user = userEvent.setup();
+    resolveIdentity();
+    (groupsAPI.getGroup as Mock).mockRejectedValueOnce(internal());
+    render(<GroupHomePage />);
+    await screen.findAllByText(G7);
+    const before = groupCalls();
+    const held = deferred<unknown>();
+    (groupsAPI.getGroup as Mock).mockReturnValueOnce(held.promise);
+    // Two listeners are active here (the group's own state and the page-load state's); the
+    // second call JOINS the first.
+    await act(async () => {
+      fireVisibility('visible');
+    });
+    expect(groupCalls()).toBe(before + 1);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(groupCalls()).toBe(before + 1);
+    await act(async () => {
+      held.resolve({ id: 'GROUP1', name: 'My Group' });
+    });
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    expect(groupCalls()).toBe(before + 1);
   });
 });
