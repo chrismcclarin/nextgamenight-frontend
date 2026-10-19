@@ -709,6 +709,20 @@ function FriendsPage() {
                 // post-PR-C (roster user_id aliases to the UUID / friend user_id
                 // is dropped — a flat-keyed join would silently mismatch, D-07).
                 const memberUserIds = memberList.map(m => m.id);
+                /* DECISION 88.6.1 code review A-55: the write below natively disables the checkbox of
+                   every friend the group already holds (the rule of KIND, DECISION Phase 88.6.1-40), and
+                   a browser drops a focused control that becomes disabled to <body>. So, BEFORE the write,
+                   a focused checkbox whose friend is a member hands focus to its own row's Remove button,
+                   the next control in that row. CHOSEN OVER aria-disabled on the checkbox (it would overturn
+                   the rule-of-KIND marker for every gated checkbox to fix one transition) and OVER the
+                   shared focus-recovery hook (it recovers a REMOVED control; a disabled one stays
+                   connected, so the hook reads the user as having moved on). Dropping this hand-off is a
+                   decision, not a cleanup. */
+                const focused = typeof document !== 'undefined' ? document.activeElement : null;
+                const focusedMemberId = focused?.getAttribute?.('data-bulk-invite-friend');
+                if (focusedMemberId && memberUserIds.includes(focusedMemberId)) {
+                    focused.closest('[data-friend-row]')?.querySelector('button')?.focus();
+                }
                 setGroupMembers(memberUserIds);
                 // Read the selection as it is NOW (an updater), not as it was when the load
                 // started, so a check made during the load for a non-member survives.
@@ -1402,6 +1416,8 @@ function FriendsPage() {
                                                                 name={`bulk-invite-${friendship.id}`}
                                                                 type="checkbox"
                                                                 aria-label={`Select ${friend.username}`}
+                                                                // Read by the members load's focus hand-off (A-55).
+                                                                data-bulk-invite-friend={friendUserId}
                                                                 checked={isInGroup || selectedFriends.has(friendUserId)}
                                                                 disabled={checkboxDisabled}
                                                                 onChange={() => toggleFriendSelection(friendUserId)}

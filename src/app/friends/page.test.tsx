@@ -986,6 +986,27 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     expect(screen.queryByText(/Invited 0/)).toBeNull();
   });
 
+  it('B-focus: a FOCUSED checkbox whose friend turns out to be a member hands focus to that row\'s Remove before it is disabled (88.6.1 code review A-55)', async () => {
+    await renderWithGroups(
+      [adminGroup('g1', 'Test Group'), adminGroup('g2', 'Other Group')],
+      'g1'
+    );
+    const held = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(held.promise);
+    fireEvent.change(screen.getByLabelText('Invite to group'), { target: { value: 'g2' } });
+    const dana = screen.getByRole('checkbox', { name: 'Select Dana' });
+    act(() => dana.focus());
+    expect(document.activeElement).toBe(dana);
+
+    await act(async () => {
+      held.resolve([{ id: FRIEND_UUID }]);
+    });
+    await screen.findByText('(already in group)');
+    expect(dana).toBeDisabled();
+    // Never body (a browser blurs a natively disabled focused control): the row's own next control.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove Dana' }));
+  });
+
   it('B-stale: an older group\'s late members answer neither prunes the selection nor ends the load (newest wins, review r3 L-05)', async () => {
     await renderWithGroups(
       [adminGroup('g1', 'Test Group'), adminGroup('g2', 'Other Group'), adminGroup('g3', 'Third Group')],
