@@ -56,6 +56,14 @@ async function wrapperHeight(page: Page) {
   return page.locator(REGION).evaluate((el) => (el.parentElement as HTMLElement).getBoundingClientRect().height);
 }
 
+// DECISION Phase 88.6.1 code review WR-02: no capture of any kind on this spec, chosen OVER the
+// shared failure screenshot and the retry trace (playwright.config.ts use.screenshot
+// 'only-on-failure', use.trace 'on-first-retry', retries 1 in CI), which this spec's header
+// promised it did not take. the page is the e2e account's real home page, and a retry trace records its real network responses, and CI uploads test-results from a public repository: the
+// e2e/friend-invite-panel-header.spec.ts rule (DECISION Phase 88.6.1-27). Re-enabling capture
+// here is a decision, not a cleanup.
+test.use({ screenshot: 'off', trace: 'off', video: 'off' });
+
 test.describe('Phase 88.6.1-82 — the removed-from-group notice (phone project)', () => {
   test.skip(({ isMobile }) => !isMobile, 'phone-tenet requirement — phone project only');
 

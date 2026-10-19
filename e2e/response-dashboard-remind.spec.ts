@@ -210,8 +210,12 @@ test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
     await expect(pressed).not.toHaveAttribute('disabled');
     await expect(pressed).toHaveText('Sending...');
 
-    // The per-row latch refuses a second press.
+    // The per-row latch refuses a second press. An ABSENCE check: a second POST, if one were sent,
+    // would not have reached the route yet, so give it a bounded window first (the
+    // e2e/feedback-submit.spec.ts reasoning: proving a request did NOT happen needs elapsed time;
+    // 88.6.1 code review IN-03).
     await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
     expect(mocks.posts()).toBe(1);
 
     mocks.release();

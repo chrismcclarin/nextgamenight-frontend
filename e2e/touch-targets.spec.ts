@@ -9,6 +9,8 @@ import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './suppo
 // A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
 // a spec file, so importing it adds no collected suite.
 import { focusByKeyboard } from './support/contrast';
+// 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
+import { expectNoApiWrites, holdWrites } from './support/inFlight';
 
 /**
  * Phase 87.8 Plan 08 — SPEC R4 (44x44 effective hit areas) + SPEC R6 (pressed-state
@@ -2164,19 +2166,13 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
   });
 
   // 88.6.1-48 (T-88.6.1-962): the toggle arms below only flip client-side state and open a panel.
-  // This recorder fails the arm on any POST / PUT / PATCH / DELETE to an `/api/` path while they
-  // press, so a press that started writing to the fixture account would be caught, not shipped.
-  function recordApiWrites(page: Page): string[] {
-    const writes: string[] = [];
-    page.on('request', (request) => {
-      const method = request.method();
-      const { pathname } = new URL(request.url());
-      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && pathname.startsWith('/api/')) {
-        writes.push(`${method} ${pathname}`);
-      }
-    });
-    return writes;
-  }
+  // Each arm fails on any POST / PUT / PATCH / DELETE to an `/api/` path while they press, so a
+  // press that started writing to the fixture account would be caught, not shipped.
+  // [88.6.1 code review WR-03: the arms used a request RECORDER that only observed, so such a
+  // write still reached the shared CI fixture account before the arm failed. They now use the
+  // shared write HOLD (./support/inFlight holdWrites + expectNoApiWrites, DECISION Phase
+  // 88.6.1-43), which keeps the write inside the browser. It is registered where the recorder
+  // was, after the page has loaded, so the scope is unchanged: the presses, not the page load.]
 
   test('R4 (88.6.1-48, AC-19 / D-21): the Profile Days-of-Week toggles and All measure >= 44x44 at 375px and report pressed state', async ({ page }) => {
     await page.goto('/userProfile');
@@ -2190,7 +2186,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       await assertMin44(button, `"${(await button.textContent())?.trim()}" (Days of Week, 375px)`);
     }
 
-    const writes = recordApiWrites(page);
+    const hold = await holdWrites(page);
     const group = page.getByRole('group', { name: 'Days of Week' });
     const mon = group.getByRole('button', { name: 'Mon', exact: true });
     await mon.click();
@@ -2206,7 +2202,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       'the page scrolls sideways at 375px with the Days row open',
     ).toBe(true);
     // Save Schedule is never pressed; nothing above may write.
-    expect(writes, 'a toggle press sent a write to the API').toEqual([]);
+    // A toggle press would have sent a write to the API (held in the browser, never sent).
+    expectNoApiWrites(hold);
   });
 
   test('R4 (88.6.1-48, AC-19 / D-21): the group Library owner chips measure >= 44x44 at 375px and report pressed state', async ({ page }) => {
@@ -2225,7 +2222,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     }
     await expect(allChip).toHaveAttribute('aria-pressed', 'true');
 
-    const writes = recordApiWrites(page);
+    const hold = await holdWrites(page);
     const member = chips.nth(1);
     await member.click();
     await expect(member).toHaveAttribute('aria-pressed', 'true');
@@ -2239,7 +2236,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       'the page scrolls sideways at 375px on the Library tab',
     ).toBe(true);
-    expect(writes, 'an owner-chip press sent a write to the API').toEqual([]);
+    // An owner-chip press would have sent a write to the API (held in the browser, never sent).
+    expectNoApiWrites(hold);
   });
 
   test('R4 (88.6.1-48, AC-19 / D-44): the group games Filter is a disclosure and measures >= 44x44 at 375px', async ({ page }) => {
@@ -2252,7 +2250,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await expect(filter).toHaveAttribute('aria-expanded', 'false');
     await expect(filter).not.toHaveAttribute('aria-controls');
 
-    const writes = recordApiWrites(page);
+    const hold = await holdWrites(page);
     await filter.click();
     await expect(filter).toHaveAttribute('aria-expanded', 'true');
     const panelId = await filter.getAttribute('aria-controls');
@@ -2265,7 +2263,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await filter.click();
     await expect(filter).toHaveAttribute('aria-expanded', 'false');
     await expect(filter).not.toHaveAttribute('aria-controls');
-    expect(writes, 'a Filter press sent a write to the API').toEqual([]);
+    // A Filter press would have sent a write to the API (held in the browser, never sent).
+    expectNoApiWrites(hold);
   });
 
   test('R4 (88.6.1-48, AC-19 / D-31): the group games sort toggle is named in words and measures >= 44x44 at 375px', async ({ page }) => {
@@ -2279,7 +2278,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await expect(sort).toHaveAccessibleName('Sort order: ascending');
     await expect(sort).toHaveAttribute('title', 'Ascending (click to reverse)');
 
-    const writes = recordApiWrites(page);
+    const hold = await holdWrites(page);
     await sort.click();
     await expect(sort).toHaveAccessibleName('Sort order: descending');
     await expect(sort).toHaveAttribute('title', 'Descending (click to reverse)');
@@ -2290,7 +2289,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       'the page scrolls sideways at 375px on the Overview tab',
     ).toBe(true);
-    expect(writes, 'a sort press sent a write to the API').toEqual([]);
+    // A sort press would have sent a write to the API (held in the browser, never sent).
+    expectNoApiWrites(hold);
   });
 });
 

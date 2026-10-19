@@ -140,6 +140,14 @@ async function noHorizontalPageScroll(page: Page): Promise<void> {
   expect(scrollWidth, 'the page must not scroll sideways at 375px').toBeLessThanOrEqual(innerWidth);
 }
 
+// DECISION Phase 88.6.1 code review WR-02: no capture of any kind on this spec, chosen OVER the
+// shared failure screenshot and the retry trace (playwright.config.ts use.screenshot
+// 'only-on-failure', use.trace 'on-first-retry', retries 1 in CI), which this spec's header
+// promised it did not take. the Email card shows the e2e account's real address, and a retry trace records the real self-row response this spec fetches with route.fetch(), and CI uploads test-results from a public repository: the
+// e2e/friend-invite-panel-header.spec.ts rule (DECISION Phase 88.6.1-27). Re-enabling capture
+// here is a decision, not a cleanup.
+test.use({ screenshot: 'off', trace: 'off', video: 'off' });
+
 test.describe('Email change — an answer the app cannot read (88.6.1-13)', () => {
   // Every spec joins BOTH projects (`journeys` and `phone` share `testMatch`); this is a
   // phone-tenet check measured at 375px, so the desktop project skips it.

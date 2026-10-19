@@ -1,7 +1,7 @@
-import { test, expect, type Request, type Route } from '@playwright/test';
+import { test, expect, type Route } from '@playwright/test';
 
 import { assertTheme } from './support/contrast';
-import { expectGatedPair } from './support/inFlight';
+import { expectGatedPair, expectNoApiWrites, holdWrites } from './support/inFlight';
 
 // Phase 88.6.1-47 (D-35 / AC-12, copy row E6): the event page's Share Game QR button, seen in a
 // real browser at 375px (the phone project, iPhone SE 375x667, dark).
@@ -30,15 +30,26 @@ import { expectGatedPair } from './support/inFlight';
 //     spec supplies ONE custom participant: a typed-in name with no account (user_id null), so no
 //     invite or friend affordance can fire for it;
 //   - every other request passes through unmodified.
-// A write recorder logs every POST / PUT / PATCH / DELETE whose URL path starts with /api/
-// (method and path only, never a body) and the test's LAST assertion is that it is empty, so a
-// later change that adds a write on page load or on the press reds this spec instead of reaching
-// the shared CI fixture account silently. No body is ever logged or attached, and nothing on
-// this page is screenshotted (the QR dialog paints an invite link).
+// The shared write HOLD (e2e/support/inFlight.ts holdWrites, DECISION Phase 88.6.1-43) is
+// registered before the events route, so every POST / PUT / PATCH / DELETE stays inside the
+// browser, and the test's LAST assertion (expectNoApiWrites) is that none reached /api/, so a
+// later change that adds a write on page load or on the press reds this spec without ever
+// reaching the shared CI fixture account. [88.6.1 code review WR-03: it was a recorder that only
+// observed, so a regressed write landed on the fixture before the test failed.] No body is ever
+// logged or attached, and nothing on this page is captured (the QR dialog paints an invite
+// link): see the capture-off DECISION below.
 //
 // PHONE ONLY, and CI ONLY like every spec here (C-14): the phone project needs the setup
 // project's login, whose credentials exist only in CI. Typecheck and listing are the local
 // proof; the CI e2e job is the proof. Selectors are role, label and text only.
+
+// DECISION Phase 88.6.1 code review WR-02: no capture of any kind on this spec, chosen OVER the
+// shared failure screenshot and the retry trace (playwright.config.ts use.screenshot
+// 'only-on-failure', use.trace 'on-first-retry', retries 1 in CI). The QR dialog paints an
+// invite link, a retry trace records network responses, and CI uploads test-results from a
+// public repository: the e2e/friend-invite-panel-header.spec.ts rule (DECISION Phase 88.6.1-27).
+// Re-enabling capture here is a decision, not a cleanup.
+test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
 test.skip(
   ({ isMobile }) => !isMobile,
@@ -56,7 +67,6 @@ const SHARE = 'Share Game QR';
 // Copy row E6, byte-equal to 88.6.1-COPY-TABLE.html (three ASCII dots).
 const LOADING = 'Loading QR code...';
 const FAKE_INVITE_URL = 'https://example.test/e2e-qr';
-const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const EVENT_GET_PATH = /^\/api\/events\/[^/]+$/;
 
 const CUSTOM_PARTICIPANT = {
@@ -69,13 +79,9 @@ const CUSTOM_PARTICIPANT = {
 test('Share Game QR stays focused and single-flight while the QR loads, and the QR dialog hands focus back (D-35, AC-12) — 375px', async ({
   page,
 }) => {
-  // The write recorder, before navigation.
-  const writes: string[] = [];
-  page.on('request', (request: Request) => {
-    const method = request.method();
-    const { pathname } = new URL(request.url());
-    if (WRITE_METHODS.has(method) && pathname.startsWith('/api/')) writes.push(`${method} ${pathname}`);
-  });
+  // The write hold, before navigation and before the events route (Playwright runs the newest
+  // matching handler first, so the events route's fallback lands in the hold).
+  const hold = await holdWrites(page);
 
   // The one events route, before navigation.
   const heldTokens: Route[] = [];
@@ -172,5 +178,7 @@ test('Share Game QR stays focused and single-flight while the QR loads, and the 
     'no horizontal overflow at 375px',
   ).toBe(true);
 
-  expect(writes, 'no write left the browser on page load or on the press').toEqual([]);
+  // No write reached /api/ on page load or on the press (held in the browser, never sent).
+  expectNoApiWrites(hold);
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
