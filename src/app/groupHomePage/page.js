@@ -150,6 +150,9 @@ function GroupHomePage(){
 
     // GROUP-05 (Plan 69-04): detect "user is no longer a member" signals and
     // redirect to the home banner consumer at `/?removedFrom=<name>`.
+    // AMENDED 2026-10-19 (88.6.1 code review CR-4 / A-69, owner ratified): the param now carries
+    // the group's ID (`/?removedFrom=<groupId>`), never its name — the home page reads it as
+    // presence only and shows a fixed sentence, so no free text travels in the URL.
     //
     // apiFetch (src/lib/api.js) throws Error(message) only — there's no
     // exposed `.status`, so we match on common 403/404/membership phrases.
@@ -176,9 +179,10 @@ function GroupHomePage(){
         );
     };
 
-    const redirectToHomeAsRemoved = (groupName) => {
-        const name = groupName || Group?.name || 'this group';
-        router.push(`/?removedFrom=${encodeURIComponent(name)}`);
+    const redirectToHomeAsRemoved = () => {
+        // `removed` only if no id is in hand (the page cannot load without `?id=`, so this is a
+        // belt for a future caller, not a live path).
+        router.push(`/?removedFrom=${encodeURIComponent(Router || 'removed')}`);
     };
 
     /* DECISION Phase 88.6.1-89 (close ruling P-79, owner 2026-10-17 "reuse"): CHOSEN — the group

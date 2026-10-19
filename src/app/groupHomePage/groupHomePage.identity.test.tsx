@@ -1026,7 +1026,9 @@ describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-
   it('RF-3. a removal (403) on a members refresh still redirects and never shows RF1 (C10)', async () => {
     await renderHeaderAt('owner');
     await failMembersRefresh(new ApiError('Forbidden', 'forbidden', 403));
-    expect(pushSpy.mock.calls.some(([url]) => String(url).startsWith('/?removedFrom='))).toBe(true);
+    // 88.6.1 code review CR-4 / A-69: the redirect carries the group's ID, never its name — the
+    // home page treats the param as presence only and shows a fixed sentence.
+    expect(pushSpy).toHaveBeenCalledWith('/?removedFrom=GROUP1');
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     expect(screen.getByText(/2 members/)).toBeInTheDocument();
   });

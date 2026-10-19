@@ -51,6 +51,14 @@ import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 // loaded for the current identity (every consumer filters into a new array before sorting).
 const NO_UPCOMING_EVENTS = [];
 
+// DECISION 88.6.1 code review CR-4 / A-69 (owner ratified 2026-10-19): the removed-from-group
+// notice is ONE fixed sentence, chosen OVER naming the group from the `removedFrom` query value —
+// that value is whatever the link says, so naming it let any link put its own free text inside a
+// first-party banner (and, since plan 82, a live region). The param is PRESENCE ONLY. Rejected
+// also: capping/pattern-checking the name (still attacker text) and resolving the name from the
+// id (the group is one the person just lost access to). Changing this is a decision, not a cleanup.
+const REMOVED_FROM_GROUP_TEXT = "You're no longer a member of that group.";
+
 // Plan 88.6.1-62 (88.6.1-70 contract C4): resolve every Retry caller waiting on the upcoming
 // run with that run's outcome, and empty the list. Module-level so the fetch effect reads no
 // component function (its dependency list stays exactly as it was).
@@ -98,16 +106,21 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
     // GROUP-05 (display half): show soft acknowledgment banner when arriving from
     // a 403 redirect set by Plan 69-04 (router.push('/?removedFrom=...')).
-    const removedFromName = searchParams?.get('removedFrom') || null;
+    // AMENDED 2026-10-19 (88.6.1 code review CR-4 / A-69, owner ratified): the param's VALUE (now
+    // the group id) is never read for display — only whether it is present. The param is left in
+    // the URL: clearing it with router.replace would empty `searchParams` and cancel the D-42
+    // dwell timer below before the notice is shown; with the sentence fixed, a replayed link
+    // shows nothing the link chose.
+    const removedFromPresent = Boolean(searchParams?.get('removedFrom'));
     const [removedBannerVisible, setRemovedBannerVisible] = useState(false);
     // Plan 88.6.1-82 (D-42): the flag is set ONLY by this timer, after the empty region has been
     // on the page for REGION_EMPTY_DWELL_MS — never during render, never synchronously here.
     useEffect(() => {
-        if (!removedFromName) return undefined;
+        if (!removedFromPresent) return undefined;
         const timer = setTimeout(() => setRemovedBannerVisible(true), REGION_EMPTY_DWELL_MS);
         return () => clearTimeout(timer);
-    }, [removedFromName]);
-    const removedNoticeShown = removedBannerVisible && Boolean(removedFromName);
+    }, [removedFromPresent]);
+    const removedNoticeShown = removedBannerVisible && removedFromPresent;
     // No `fallback`: the notice belongs to no section, so Dismiss lands on the page floor (`main`).
     const removedNoticeRecovery = useFocusRecovery();
     // 88.6.1 code review WR-08: `from: event.currentTarget` (consumer contract (1)) — iOS Safari
@@ -622,11 +635,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 }
             >
                 <StatusRegion srOnlyWhenEmpty data-testid="removed-from-group-status">
-                    {removedNoticeShown ? (
-                        <>
-                            You&apos;re no longer a member of <strong>{removedFromName}</strong>.
-                        </>
-                    ) : null}
+                    {removedNoticeShown ? REMOVED_FROM_GROUP_TEXT : null}
                 </StatusRegion>
                 {removedNoticeShown && (
                     <button

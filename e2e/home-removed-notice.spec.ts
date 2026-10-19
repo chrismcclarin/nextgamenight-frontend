@@ -11,7 +11,9 @@ declare global {
 
 /**
  * Phase 88.6.1 plan 82 (Req 8 / Req 5, D-22 / D-42 / D-31 / D-04 / D-07) — the home page's
- * removed-from-group notice ("You're no longer a member of {group}."), proven at 375x667.
+ * removed-from-group notice ("You're no longer a member of that group."), proven at 375x667.
+ * 88.6.1 code review CR-4 / A-69: `removedFrom` is presence only — the free text this spec puts in
+ * the URL must NOT appear on the page.
  *
  * What it proves in a real browser: the notice's polite region is attached EMPTY on arrival and
  * the shipped sentence arrives LATER inside that same region (a polite region inserted already
@@ -19,8 +21,8 @@ declare global {
  * overflows the phone width; Dismiss empties the region and focus lands on `main`, never <body>;
  * and with nothing to say the region's wrapper takes 0px.
  *
- * Read-only: no write is made, and the group name comes from the URL this spec sets itself,
- * never from the backend. CI-run only (the `e2e` job, phone project). It takes no screenshot and
+ * Read-only: no write is made, and the `removedFrom` value is one this spec sets itself, never
+ * from the backend. CI-run only (the `e2e` job, phone project). It takes no screenshot and
  * makes no attachment (DECISION 88.6-59).
  */
 
@@ -74,7 +76,8 @@ test.describe('Phase 88.6.1-82 — the removed-from-group notice (phone project)
     await page.goto('/?removedFrom=' + encodeURIComponent('Removed Check Group'));
 
     const region = page.locator(REGION);
-    await expect(region).toHaveText("You're no longer a member of Removed Check Group.");
+    await expect(region).toHaveText("You're no longer a member of that group.");
+    await expect(page.getByText('Removed Check Group')).toHaveCount(0);
 
     const trace = await page.evaluate(() => window.__removedNoticeTrace ?? []);
     const firstAttach = trace.findIndex((entry) => entry.kind === 'attach');
@@ -84,7 +87,7 @@ test.describe('Phase 88.6.1-82 — the removed-from-group notice (phone project)
       (entry, index) =>
         index > firstAttach &&
         entry.kind === 'fill' &&
-        entry.text === "You're no longer a member of Removed Check Group."
+        entry.text === "You're no longer a member of that group."
     );
     expect(laterFill, 'the sentence never arrived inside the already-attached region').toBeGreaterThan(firstAttach);
 

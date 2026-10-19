@@ -1,5 +1,10 @@
 // Plan 88.6.1-82 Task 1 (Req 8 / Req 5, D-22 / D-42 / D-31 / D-04 / D-07) — the
-// removed-from-group notice ("You're no longer a member of {group}.").
+// removed-from-group notice ("You're no longer a member of that group.").
+//
+// 88.6.1 code review CR-4 / A-69 (owner ratified 2026-10-19): `removedFrom` is PRESENCE ONLY. The
+// value used to be painted (and, since plan 82, spoken) as the group's name, so any link could put
+// its own free text inside a first-party banner. The sentence is now fixed; RB2 / RB6 pin that
+// nothing from the URL reaches the DOM.
 //
 // Before this plan the notice was a status box INSERTED already holding its text, one commit
 // after mount (a polite region inserted populated is not announced by NVDA, JAWS or VoiceOver
@@ -122,7 +127,7 @@ describe('the removed-from-group notice is spoken from a region that was already
     });
     const filled = screen.getByTestId('removed-from-group-status');
     expect(filled).toBe(region);
-    expect(filled.textContent).toBe("You're no longer a member of Weekend Warriors.");
+    expect(filled.textContent).toBe("You're no longer a member of that group.");
     expect(filled).not.toHaveClass('sr-only');
 
     records.push(...observer.takeRecords());
@@ -133,7 +138,7 @@ describe('the removed-from-group notice is spoken from a region that was already
     expect(fill).toBeDefined();
   });
 
-  it('RB2 (D-31 by reuse): the heard sentence is the one visible node; Dismiss and the box sit outside the region', () => {
+  it('RB2 (D-31 by reuse; CR-4 / A-69): the heard sentence is the one visible node, fixed text with no child element; Dismiss and the box sit outside the region', () => {
     vi.useFakeTimers();
     h.selfUuid = SELF_UUID;
     h.search = `removedFrom=${encodeURIComponent("Tom & Jerry's <Table>")}`;
@@ -147,11 +152,9 @@ describe('the removed-from-group notice is spoken from a region that was already
     expect(matches).toHaveLength(1);
     expect(matches[0]).toBe(region);
 
-    expect(region.children).toHaveLength(1);
-    const strong = region.children[0];
-    expect(strong.tagName).toBe('STRONG');
-    expect(strong.textContent).toBe("Tom & Jerry's <Table>");
-    expect(strong.children).toHaveLength(0);
+    expect(region.textContent).toBe("You're no longer a member of that group.");
+    expect(region.children).toHaveLength(0);
+    expect(document.body.textContent).not.toContain('Tom & Jerry');
 
     const dismiss = screen.getByRole('button', { name: 'Dismiss' });
     expect(region.contains(dismiss)).toBe(false);
@@ -218,6 +221,22 @@ describe('the removed-from-group notice is spoken from a region that was already
 
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(main));
+  });
+
+  it('RB6 (CR-4 / A-69): free text in `removedFrom` never reaches the page or the live region', () => {
+    vi.useFakeTimers();
+    h.selfUuid = SELF_UUID;
+    const spoof = 'Game Night - your account is suspended, call 555-0100';
+    h.search = `removedFrom=${encodeURIComponent(spoof)}`;
+    render(homeElement());
+    act(() => {
+      vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    });
+
+    const region = screen.getByTestId('removed-from-group-status');
+    expect(region.textContent).toBe("You're no longer a member of that group.");
+    expect(document.body.textContent).not.toContain('suspended');
+    expect(document.body.textContent).not.toContain('555-0100');
   });
 
   it('RB5 (guard, confirm-only): after Dismiss a re-render with the same props does not bring the sentence back', async () => {
