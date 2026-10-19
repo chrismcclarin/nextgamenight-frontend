@@ -1301,7 +1301,10 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     await waitFor(() => expect(status.textContent).toBe('Accepted friend request!'));
   });
 
-  it('NA-17. SPEC Edge R8 empty: both regions start empty every time the panel opens — a failure is cleared by a close, and an outcome that settles while the panel is closed never shows on the next open', async () => {
+  // AMENDED 2026-10-19 (88.6.1 code review A-26 / A-30, orchestrator ruling; SPEC Edge R8 amended): arm (b) now pins
+  // the opposite of what it did — a FAILURE that settles while the panel is closed is kept for the next open (written
+  // after the reopened panel mounts its empty region, so it is announced), and a later close-and-reopen clears it.
+  it('NA-17. SPEC Edge R8 empty: both regions start empty every time the panel opens — a failure is cleared by a close, a failure that settles while the panel is closed is shown on the next open, and a confirmation that settles while closed never shows', async () => {
     const user = userEvent.setup();
     // (a) a failure, then close and reopen.
     seedInvites([INVITE_A]);
@@ -1329,6 +1332,11 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
       held.reject(teapot());
     });
     await waitFor(() => expect(loggerError()).toHaveBeenCalledTimes(1));
+    await openBell();
+    await waitFor(() => expect(alertNode().textContent).toBe(N3));
+    expect(alertNode()).not.toHaveClass('sr-only');
+    // Shown once: the next close and reopen clears it, as for a failure seen while open.
+    closeWithEscape();
     await openBell();
     expect(alertNode().textContent).toBe('');
     expect(alertNode()).toHaveClass('sr-only');

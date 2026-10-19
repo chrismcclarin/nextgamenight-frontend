@@ -165,11 +165,33 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // "WHY useEffect AND NOT useLayoutEffect") and OVER a plain effect (the reopened panel would
   // paint the stale line for one frame). No trigger handler is touched. Moving this into a handler
   // or an effect is a decision, not a cleanup.
+  // AMENDED 2026-10-19 (88.6.1 code review A-26 / A-30; SPEC Edge R8 amended by the orchestrator): R8's "start empty"
+  // covers a line from an EARLIER open, not a failure that settled while the panel was closed — erasing that one lost an
+  // outcome the person never saw (logged, user told nothing). Such a failure is HELD (heldFailure) and written into the
+  // assertive region by the effect below, after the reopened panel has mounted the region empty, so it is announced
+  // (the house empty-first idiom). CHOSEN OVER a toast while closed (a second announcement channel for one bell) and
+  // over showing it in the render-phase clear (the region would mount already filled and stay silent). A confirmation
+  // that settles while closed still never shows (it reports what the person asked for). The render-phase clear itself
+  // is unchanged.
   const [shownOpen, setShownOpen] = useState(isOpen);
   if (shownOpen !== isOpen) {
     setShownOpen(isOpen);
     setActionFailure('');
     if (isOpen) setConfirmation(null);
+  }
+  const [heldFailure, setHeldFailure] = useState('');
+  const isOpenRef = useRef(isOpen);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+    if (isOpen && heldFailure) {
+      setActionFailure(heldFailure);
+      setHeldFailure('');
+    }
+  }, [isOpen, heldFailure]);
+  // Every row-action failure arm writes through here: into the region while the panel is open, held while it is closed.
+  function reportActionFailure(message) {
+    if (isOpenRef.current) setActionFailure(message);
+    else setHeldFailure(message);
   }
   const dropdownRef = useRef(null);
   // Whichever trigger renders (row or icon, one per variant) — Escape returns focus here.
@@ -436,7 +458,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         setConfirmation({ text: `${groupName} is no longer available.`, tone: 'muted' });
       } else {
         logger.error('Failed to accept invite:', err);
-        setActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_INVITE_FAILED_COPY }));
+        reportActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_INVITE_FAILED_COPY }));
       }
     } finally {
       endRowAction(key);
@@ -461,7 +483,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
       } else {
         logger.error('Failed to decline invite:', err);
-        setActionFailure(getFetchErrorMessage(err, { fallback: DECLINE_INVITE_FAILED_COPY }));
+        reportActionFailure(getFetchErrorMessage(err, { fallback: DECLINE_INVITE_FAILED_COPY }));
       }
     } finally {
       endRowAction(key);
@@ -485,7 +507,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
     } catch (err) {
       logger.error('Failed to accept friend request:', err);
       if (err?.requestRowRemoved) settle = armRowRecovery(pressedEl);
-      setActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_FRIEND_FAILED_COPY }));
+      reportActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_FRIEND_FAILED_COPY }));
     } finally {
       endRowAction(key);
       settle?.();
@@ -505,7 +527,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
     } catch (err) {
       logger.error('Failed to decline friend request:', err);
       if (err?.requestRowRemoved) settle = armRowRecovery(pressedEl);
-      setActionFailure(getFetchErrorMessage(err, { fallback: DECLINE_FRIEND_FAILED_COPY }));
+      reportActionFailure(getFetchErrorMessage(err, { fallback: DECLINE_FRIEND_FAILED_COPY }));
     } finally {
       endRowAction(key);
       settle?.();
