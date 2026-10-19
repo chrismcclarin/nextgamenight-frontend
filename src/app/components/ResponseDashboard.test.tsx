@@ -631,6 +631,27 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     expect(tokens).not.toContain('disabled:opacity-50');
   });
 
+  it('IN-12 (88.6.1 code review): a Remind that settles after promptId changed writes nothing into the new poll\'s roster', async () => {
+    api.getRespondents.mockResolvedValue([memberA]);
+    const d = deferred();
+    api.sendReminder.mockImplementationOnce(() => d.promise);
+    const user = userEvent.setup();
+    const { rerender } = render(<ResponseDashboard {...baseProps} />);
+    await screen.findByText('Member A');
+    await user.click(remindIn('Member A'));
+    expect(api.sendReminder).toHaveBeenCalledWith('prompt-1', 'uA');
+
+    // The host swaps to a newly opened poll while the reminder for the OLD one is in flight.
+    rerender(<ResponseDashboard {...baseProps} promptId="prompt-2" />);
+    await waitFor(() => expect(api.getRespondents).toHaveBeenCalledWith('prompt-2'));
+    await screen.findByText('Member A');
+
+    await act(async () => { d.resolve({}); });
+    // POSITIVE settle signal: the latch released (finally is unconditional), so the button is back.
+    await waitFor(() => expect(remindIn('Member A')).toHaveTextContent(/^Remind$/));
+    expect(within(rowOf('Member A')).queryByText(/^Reminded/)).toBeNull();
+  });
+
   it('the failure path keeps the button: back to "Remind", no aria-disabled, no disabled, one toast (confirm-only)', async () => {
     api.getRespondents.mockResolvedValue([memberA]);
     api.sendReminder.mockRejectedValue(await codedError('forbidden', 403));

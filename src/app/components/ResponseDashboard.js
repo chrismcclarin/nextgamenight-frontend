@@ -299,8 +299,15 @@ export default function ResponseDashboard({
     remindInFlightRef.current.add(userId);
     setRemindingUserIds((prev) => [...prev, userId]);
 
+    // 88.6.1 code review IN-12: the component-scope generation guard the fetch already reads. The
+    // `promptId` effect bumps it, so a reminder that settles after the host moved to another poll
+    // writes nothing into that poll's roster (and arms no focus recovery); the `finally` release
+    // stays unconditional so the latch never sticks.
+    const generation = generationRef.current;
+
     try {
       await promptAPI.sendReminder(promptId, userId);
+      if (generation !== generationRef.current) return;
 
       /* DECISION Phase 88.6.1-11 (Req 5) [D-04 / D-05; D-06 is the precedent for focusing settled
          text]: a successful remind unmounts the focused button (the row then shows its
@@ -606,10 +613,18 @@ export default function ResponseDashboard({
         </ul>
       )}
 
-      {/* Refresh button */}
+      {/* Refresh button.
+          DECISION Phase 88.6.1 code review A-35 / A-41 (floor) [SPEC Constraints: 44x44 on every
+          control this phase touches]: CHOSEN — a 44px minimum height (`min-h-11`, label centred)
+          with the top margin cut from 16px to 4px and a -12px bottom margin, so the label sits
+          where it did and the card's bottom spacing does not grow (the sibling Remind's
+          negative-margin floor, DECISION Phase 88.6.1-11 (floor) below). REJECTED — the plain
+          minimum height alone (the card grows by 24px, a look change in a non-look phase).
+          Pinned by `controlSizeFloor.test.tsx` subject `responseDashboardRefresh`. Changing the
+          margins is a decision, not a cleanup. */}
       <button
         onClick={handleRefresh}
-        className="mt-4 text-sm text-content-muted hover:text-content-secondary active:opacity-75 flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        className="mt-1 -mb-3 min-h-11 text-sm text-content-muted hover:text-content-secondary active:opacity-75 inline-flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
       >
         <RefreshIcon className={refreshing ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />
         Refresh

@@ -609,6 +609,17 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: "GroupGamesList's sort-direction arrow, width (D-21; the arrow is under 44px wide)",
     },
+    // 88.6.1 code review A-35 / A-41: the roster's Refresh button, rewired by plan 73 (handleRefresh),
+    // takes the same 44px floor as its sibling Remind (DECISION Phase 88.6.1-11 (floor)). Width is
+    // not pinned: the icon plus the word 'Refresh' is wider than 44px at text-sm.
+    responseDashboardRefresh: {
+      anchor: 'onClick={handleRefresh}',
+      expectedFile: 'app/components/ResponseDashboard.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "ResponseDashboard's `Refresh` button, height (SPEC Constraints 44x44 floor)",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */
