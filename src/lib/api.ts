@@ -829,6 +829,13 @@ export async function apiFetch<T = unknown>(
    shows R9 (plan 88.6.1-36's `internal` arm). "ONE scoped exception" in the bracket above now
    reads: validateToken is the one helper that throws on a 4xx, and respondViaToken throws on
    5xx only. See the DECISION Phase 88.6.1-23 (R9 mechanism) marker at the guard.]
+   [AMENDED 2026-10-19 (88.6.1 code review A-80): since plan 88.6.1-87 (close ruling P-77, owner
+   ruling D4 "Option A") respondViaToken ALSO rejects `ApiError('not_found')` for a parsed 404
+   whose body carries the backend token `event_not_found`; every other status below 500 still
+   resolves its parsed body. So the bracket above reads: respondViaToken rejects `internal` for a
+   status of 500 or above, and `not_found` for that one token-keyed 404; the 4xx throws are
+   validateToken's (by code) and respondViaToken's one token-keyed 404. The four 403 / 410 reads
+   the page depends on still resolve. See the 88.6.1-87 amendment at respondViaToken's guard.]
 
    AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review MEDLOW-2, owner ruling
    `FIX-NOW-SET-RULING: as-recommended`): the census above was FIVE and is SIX. The sixth,
@@ -1318,7 +1325,12 @@ export const rsvpPublicAPI = {
     // both bodies while the BE deploys (D4: the BE deploys first, and until then the case keeps
     // today's card). REJECTED (d): a status field on the resolved body (a body-shape change the
     // binding constraint above forbids).
-    if (res.status >= 500) throw new ApiError(RSVP_RESPOND_TRANSPORT_FAILURE, 'internal', res.status);
+    // [AMENDED 2026-10-19 (88.6.1 code review IN-14): the 5xx rejection carries the message every
+    // other helper's server error carries (`extractErrorMessage` with no body read, "HTTP error!
+    // status: N") over RSVP_RESPOND_TRANSPORT_FAILURE, which describes a request that did NOT
+    // complete; this one completed with a server error, and the page's breadcrumb read like a
+    // network drop. Code and status are unchanged.]
+    if (res.status >= 500) throw new ApiError(extractErrorMessage(null, res.status), 'internal', res.status);
     // NO res.ok throw — rsvp/[token]/page.js reads `result.error` off the parsed 410 body
     // to tell "cancelled" from "already happened", and D62 branch B keeps that read.
     // [AMENDED Phase 88.6.1-23 (R9 mechanism): except a status of 500 or above, which rejects
@@ -1712,7 +1724,8 @@ export const magicAuthAPI = {
     // One of TWO scoped exceptions to the DECISION Phase 88.6-42 binding constraint (see its
     // 2026-09-29 amendment and its 88.6.1-23 R9 bracket): validateToken throws on any non-OK
     // answer whose code is not `token_invalid` (a 4xx included), and respondViaToken throws on a
-    // status of 500 or above only. Here, a coded ApiError means a 400 that is not a dead link, a
+    // status of 500 or above and, since plan 88.6.1-87 (P-77), on a parsed 404 carrying the
+    // backend token `event_not_found` (AMENDED 2026-10-19, 88.6.1 code review A-80). Here, a coded ApiError means a 400 that is not a dead link, a
     // 429 or a 5xx renders the register's validation / rate_limited / internal line instead of
     // the invalid-link copy. No new `.error` read: the upstream string rides on
     // `extractUpstreamMessage`, the one sanctioned read (errorEnvelopeReads assertion 6).

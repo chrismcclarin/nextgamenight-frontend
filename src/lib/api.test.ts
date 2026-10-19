@@ -1200,7 +1200,8 @@ describe('88.6.1-23 / R9 mechanism — a server error on the RSVP link rejects a
     vi.stubGlobal('fetch', answer(500, '{"error":"Something went wrong processing your RSVP."}'));
     const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
     expect(caught).toBeInstanceOf(ApiError);
-    expect(caught).toMatchObject({ code: 'internal', status: 500, message: 'rsvp respond request did not complete' });
+    // 88.6.1 code review IN-14: the server-error message, not the transport-failure one.
+    expect(caught).toMatchObject({ code: 'internal', status: 500, message: 'HTTP error! status: 500' });
     expect((caught as ApiError).details).toBeUndefined();
     expect((caught as ApiError).upstreamMessage).toBeUndefined();
     expect(Object.prototype.hasOwnProperty.call(caught, 'cause')).toBe(false);
@@ -1215,7 +1216,7 @@ describe('88.6.1-23 / R9 mechanism — a server error on the RSVP link rejects a
       expect(caught, String(status)).toMatchObject({
         code: 'internal',
         status,
-        message: 'rsvp respond request did not complete',
+        message: `HTTP error! status: ${status}`,
       });
     }
   });
