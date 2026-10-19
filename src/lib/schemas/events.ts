@@ -238,8 +238,10 @@ export type Ballot = z.infer<typeof BallotSchema>;
 //
 // HELD (re-derived, unchanged — anchored on text anyway, see the rule above):
 //   utils/publicUserAttrs.js:69          `const PUBLIC_USER_ATTRS = Object.freeze(…)`
-//   routes/rsvp.js:523                   write-echo `attributes: [...PUBLIC_USER_ATTRS]`
-//   routes/rsvp.js:565                   GET-roster `attributes: [...PUBLIC_USER_ATTRS]`
+//   routes/rsvp.js (POST write echo, `EventRsvp.findByPk(rsvp.id, {`)
+//                                        write-echo `attributes: [...PUBLIC_USER_ATTRS]`
+//   routes/rsvp.js (GET /event/:event_id, `EventRsvp.findAll({`)
+//                                        GET-roster `attributes: [...PUBLIC_USER_ATTRS]`
 //   routes/eventBrings.js:40             `{ model: User, attributes: [...PUBLIC_USER_ATTRS] }`
 //   routes/friendships.js:36 / :41       Requester / Addressee includes
 //   models/User.js:137-141               the `picture_url` column definition
@@ -250,10 +252,14 @@ export type Ballot = z.infer<typeof BallotSchema>;
 //   routes/events.js:47   -> :66   the custom-participant null. This file cited the
 //                                  SAME literal twice, at two different lines, and
 //                                  disagreed with itself.
-//   routes/rsvp.js:519-524 -> :574 the `const summary = { yes: 0, … }` seed. The
+//   routes/rsvp.js:519-524 -> `const summary = { yes: 0, maybe: 0, no: 0 };` (the seed). The
 //                                  cited range is the write-echo `findByPk` block —
 //                                  a plausible-looking cite pointing at the wrong code.
-//   routes/rsvp.js:536    -> :591  `return res.json({ rsvps: shapedRsvps, summary });`
+//   routes/rsvp.js:536    -> `return res.json({ rsvps: shapedRsvps, summary });`
+//   AMENDED 2026-10-19 (88.6.1 code review, after the A-70 BE edit moved rsvp.js again):
+//   the rsvp.js entries above are re-pointed from line numbers to their text anchors (the
+//   quoted literals, each verified present in routes/rsvp.js on 2026-10-19), because the
+//   corrected lines :523/:565/:574/:591 had drifted to 562/604/613/630.
 //   src/lib/queryClient.ts:105,:110 -> :122 (retry predicate) and :150 (error shaper).
 //                                  FRONTEND, and drifted too — line cites rot on this
 //                                  side of the boundary as well, just more visibly.

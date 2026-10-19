@@ -215,7 +215,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     rsvpAPI: {
       ...actual.rsvpAPI,
       // Neutral default = the "no RSVPs yet" state, shaped exactly like the route
-      // (routes/rsvp.js:536 returns { rsvps, summary } with all three counts).
+      // (routes/rsvp.js, anchor `return res.json({ rsvps: shapedRsvps, summary });`, returns all three counts).
       getEventRsvps: vi.fn(() =>
         Promise.resolve({ rsvps: [], summary: { yes: 0, maybe: 0, no: 0 } })
       ),

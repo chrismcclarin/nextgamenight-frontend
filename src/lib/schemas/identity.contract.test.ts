@@ -157,9 +157,11 @@ export const CAPTURED_RSVP_BODY = {
   reminder_sent_at: null,
   createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',
-  // routes/rsvp.js:565 (roster) and :523 (write echo) both widened by plan 08.
-  // NOTE where the field is NOT: the shaper only writes `json.user_id` at the
-  // top level (rsvp.js:530-532), so there is no TOP-LEVEL picture_url on an
+  // routes/rsvp.js, roster (`EventRsvp.findAll({`) and write echo (`EventRsvp.findByPk(rsvp.id, {`),
+  // both `attributes: [...PUBLIC_USER_ATTRS]` — widened by plan 08.
+  // NOTE where the field is NOT: the shapers only write `user_id` at the top level
+  // (rsvp.js anchors `shaped.user_id = shaped.User?.id;` and `json.user_id = json.User?.id;`),
+  // so there is no TOP-LEVEL picture_url on an
   // RSVP row — it rides nested, and the nestedUser key list is what pins it.
   User: { id: U1, username: 'alice', picture_url: AVATAR },
 };
