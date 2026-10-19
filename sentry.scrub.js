@@ -105,6 +105,14 @@ const BEARER = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
 // control. REJECTED: leaving the value class as it was. It ate the escaping backslash of the
 // closing quote, so the output read \"[REDACTED]" with its closing quote half-escaped.
 // Removing the backslash allowance or the quote-escape exception is a decision, not a cleanup.
+// 88.6.1 code review (REVIEW IN-01): an `Authorization` pair whose value is a scheme and a
+// credential (`Authorization: Basic dXNlcjpwYXNz`). SECRET_KV's value side stops at the first
+// whitespace, so it took the scheme word and left the credential in clear. This rule runs FIRST
+// and takes the scheme AND the credential, with SECRET_KV's quote handling (`scrubString`
+// re-emits an unpartnered quote the same way). Bearer is caught earlier by BEARER. NOT COVERED:
+// Digest, whose value is a list of quoted parameters; the app never sends one.
+const AUTHORIZATION_SCHEME_KV =
+  /\bauthorization\b(\\?["'])?\s*[=:]\s*(\\?["'])?(?:basic|negotiate)\s+(?:[^&\s"'\\]|\\(?!["']))+/gi;
 const SECRET_KV =
   /\b((?:[a-z0-9]+[_-]){0,3}[a-z0-9]*(?:token|secret|password)|authorization|api[_-]?key)\b(\\?["'])?\s*[=:]\s*(\\?["'])?(?:[^&\s"'\\]|\\(?!["']))+/gi;
 // long digit runs (phone numbers, etc.).
@@ -157,6 +165,24 @@ const SECRET_KEY_RE = /token|email|phone|secret|password|authorization|api[_-]?k
 // Removing a character from this set, or giving one family its own class again, is a decision,
 // not a cleanup.
 const TOKEN_SEGMENT_END = String.raw`/?#\s"'\x60()[\]{}<>,;`;
+
+// DECISION Phase 88.6.1 code review A-08 (token segment open): every token pattern lets ONE opening
+// quote, backtick, bracket or angle bracket sit between the route prefix and the token, and
+// keeps it (second capture group, re-emitted as `$2`). WHY: the token class ends at
+// TOKEN_SEGMENT_END and needs one character, so a token that STARTS with one of these
+// (`/invite/group/"<hex>"`, the shape `${JSON.stringify(token)}` builds, or `/invite/group/(<hex>)`)
+// matched nothing and passed whole; the long-hex backstop needs a slash right before the hex,
+// so it missed it too. CHOSEN over (a) dropping the openers from TOKEN_SEGMENT_END, which
+// reopens the P-10 swallowed-closer bug, and (b) consuming the opener into the placeholder,
+// which unbalances the quotes. In the rsvp entry the opener sits BEFORE the sibling lookahead,
+// so a quoted sibling (`/rsvp/"event"`) is still a sibling. Removing the opener group is a
+// decision, not a cleanup.
+const TOKEN_SEGMENT_OPEN = String.raw`"'\x60(\[{<`;
+// The opener group as each builder writes it. The lookahead keeps an already-redacted segment
+// as it is: the placeholder itself starts with `[`, and scrubUrl, scrubTransaction and the
+// replay walker each run a string through scrubString twice, so without it a second pass reads
+// `/invite/group/[REDACTED]` as an opener plus a token and nests the placeholder.
+const TOKEN_OPEN = String.raw`(?!\[REDACTED\])([${TOKEN_SEGMENT_OPEN}]?)`;
 
 // DECISION Phase 88.6.1-76 (P-09, names in element selectors).
 // WHAT. Sentry writes every DOM selector with htmlTreeAsString, which always appends the
@@ -232,7 +258,11 @@ const TOKEN_SEGMENT_END = String.raw`/?#\s"'\x60()[\]{}<>,;`;
 // narrowing it to one channel is a decision, not a cleanup.
 // No flags on purpose: it matches only the FIRST opener, and the SDK writes attribute names in
 // lower case.
-const FIRST_NAMED_ATTRIBUTE = /\[(aria-label|title|alt)="([\s\S]*)$/;
+// AMENDED 2026-10-19 (88.6.1 code review, REVIEW WR-01): the opener's quote may carry ONE
+// leading backslash, the same allowance the 88.6.1-76 escaped-quotes marker gives SECRET_KV,
+// because a selector serialised a SECOND time reads [aria-label=\"Customize Alice\"] and passed
+// whole. The backslash is kept in the output, so the escaped shape stays escaped.
+const FIRST_NAMED_ATTRIBUTE = /\[(aria-label|title|alt)=(\\?)"([\s\S]*)$/;
 const NAMED_ATTRIBUTE_PREFIXES = Object.freeze([
   // The bell's friend and invite rows (copy row N8; plan 88.6.1-44).
   'Accept friend request from ',
@@ -257,13 +287,13 @@ const NAME_ATTRIBUTE_KEYS = new Set(['aria-label', 'title', 'alt']);
 function redactNamedAttributes(str) {
   // The replay-leaf guard (marker (v)): these string functions run on every replay Custom
   // event, so a string with no attribute value in it returns at once.
-  if (str.indexOf('="') === -1) return str;
-  return str.replace(FIRST_NAMED_ATTRIBUTE, (_m, attr, value) => {
+  if (str.indexOf('="') === -1 && str.indexOf('=\\"') === -1) return str;
+  return str.replace(FIRST_NAMED_ATTRIBUTE, (_m, attr, esc, value) => {
     let keep = '';
     for (const prefix of NAMED_ATTRIBUTE_PREFIXES) {
       if (prefix.length > keep.length && value.startsWith(prefix)) keep = prefix;
     }
-    return `[${attr}="${keep}${REDACTED}"]`;
+    return `[${attr}=${esc}"${keep}${REDACTED}${esc}"]`;
   });
 }
 
@@ -364,7 +394,7 @@ function redactNamedAttributes(str) {
    (`/invite/group/<hex>` -> `/invite/[REDACTED]/<hex>`) while the tokenless `/invite/accept`
    was over-redacted. Appending would have reproduced exactly that: first, and the token
    survives; last, and the route identity is destroyed. */
-const TOKEN_PATH_PATTERNS_FE_ROUTES = [
+const TOKEN_PATH_FAMILIES_FE_ROUTES = [
   // Longest prefix first. The FULL route prefix is INSIDE the capture group and there is
   // NO leading path separator outside it — a separator outside the group is EATEN by the
   // replacement, turning `https://x/invite/group/<tok>` into `https://xinvite/[REDACTED]`.
@@ -383,10 +413,13 @@ const TOKEN_PATH_PATTERNS_FE_ROUTES = [
   // placeholder (plan 58 ledger row P-10). No minted token contains any of them (the backend
   // generator cites are in the P-10 marker on TOKEN_SEGMENT_END). Each entry below is a
   // `new RegExp` over that one constant, with its capture group still FIRST in the source.]
-  new RegExp(String.raw`(availability-form\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
-  new RegExp(String.raw`(restore\/group\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
-  new RegExp(String.raw`(invite\/group\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
-  new RegExp(String.raw`(invite\/game\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
+  // [AMENDED 2026-10-19, 88.6.1 code review A-08 / A-10: each family is now a BUILDER over a
+  // separator S and an end set E, so the plain entries here and the percent-encoded twins in
+  // TOKEN_PATH_PATTERNS_ENCODED come from ONE definition. The capture group is still FIRST.]
+  (S, E) => String.raw`(availability-form${S})${TOKEN_OPEN}[^${E}]+`,
+  (S, E) => String.raw`(restore${S}group${S})${TOKEN_OPEN}[^${E}]+`,
+  (S, E) => String.raw`(invite${S}group${S})${TOKEN_OPEN}[^${E}]+`,
+  (S, E) => String.raw`(invite${S}game${S})${TOKEN_OPEN}[^${E}]+`,
   // `rsvp` is the ONE GREEDY FAMILY and carries a tokenless-sibling exclusion.
   // `src/app/rsvp/` contains only `[token]`, so the full route prefix is the bare `rsvp/` —
   // and bare `rsvp/` eats two LIVE authenticated siblings, `/rsvp/event/<id>` (api.ts:1087,
@@ -426,24 +459,51 @@ const TOKEN_PATH_PATTERNS_FE_ROUTES = [
   // `https://x.app/a/b:/rsvp/<t>` (both pinned).
   // Moving the lookbehind before the capture group, widening its parent-segment allowlist
   // beyond path characters, or widening the sibling list, is a decision, not a cleanup.
-  new RegExp(
-    String.raw`(rsvp\/)(?<![A-Za-z0-9._~%-]\/[A-Za-z0-9._~%-]+\/rsvp\/)(?!(?:event|respond)(?:[${TOKEN_SEGMENT_END}]|$))[^${TOKEN_SEGMENT_END}]+`,
-    'gi'
-  ),
+  // [A-10: the encoded twin is built with `nested` false and so has NO nested-path lookbehind:
+  // its allowlist holds `%`, so an encoded `?` or `=` (%3F, %3D) would pose as a parent segment
+  // and leak the token. Without it, an encoded NESTED rsvp path is over-redacted, failing safe.]
+  (S, E, nested) =>
+    String.raw`(rsvp${S})${nested ? String.raw`(?<![A-Za-z0-9._~%-]${S}[A-Za-z0-9._~%-]+${S}rsvp${S})` : ''}${TOKEN_OPEN}(?!(?:event|respond)(?:[${E}]|$))[^${E}]+`,
 ];
 
-const TOKEN_PATH_PATTERNS_API_PATHS = [
-  new RegExp(String.raw`(groups\/invite-preview\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
-  new RegExp(String.raw`(groups\/restore-preview\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
-  new RegExp(String.raw`(events\/invite-preview\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
-  new RegExp(String.raw`(invites\/info\/)[^${TOKEN_SEGMENT_END}]+`, 'gi'),
+const TOKEN_PATH_FAMILIES_API_PATHS = [
+  (S, E) => String.raw`(groups${S}invite-preview${S})${TOKEN_OPEN}[^${E}]+`,
+  (S, E) => String.raw`(groups${S}restore-preview${S})${TOKEN_OPEN}[^${E}]+`,
+  (S, E) => String.raw`(events${S}invite-preview${S})${TOKEN_OPEN}[^${E}]+`,
+  (S, E) => String.raw`(invites${S}info${S})${TOKEN_OPEN}[^${E}]+`,
 ];
+
+const plainTokenPattern = (family) => new RegExp(family(String.raw`\/`, TOKEN_SEGMENT_END, true), 'gi');
+const TOKEN_PATH_PATTERNS_FE_ROUTES = TOKEN_PATH_FAMILIES_FE_ROUTES.map(plainTokenPattern);
+const TOKEN_PATH_PATTERNS_API_PATHS = TOKEN_PATH_FAMILIES_API_PATHS.map(plainTokenPattern);
 
 // token-bearing URL path segments (magic-link / invite tokens), all live families.
 const TOKEN_PATH_PATTERNS = [
   ...TOKEN_PATH_PATTERNS_API_PATHS,
   ...TOKEN_PATH_PATTERNS_FE_ROUTES,
 ];
+
+// DECISION Phase 88.6.1 code review A-10 (percent-encoded token routes): every family above ALSO
+// matches with `%2F` (either case, the `i` flag) as its separator, because a sign-in link
+// carries the route encoded inside returnTo (`returnTo=${encodeURIComponent(`/invite/group/${token}`)}`
+// in src/app/invite/group/[token]/page.js and src/app/invite/game/[token]/page.js), and
+// event.message, exception values and breadcrumb messages reach scrubString only, never the
+// query strip in scrubUrl. DERIVED from the same builders as the plain entries, never a fourth
+// hand-written list (the rule R-7 set for TOKEN_HREF_BLOCK in sentry.client.config.js; this
+// module cannot import TOKEN_ROUTE_PREFIXES, a .ts module, so it derives from its own family
+// list, which the set-equality arm in src/lib/sentry.scrub.test.ts pins to that list). The
+// encoded token ends at TOKEN_SEGMENT_END plus `%` and `&`, because the next encoded separator
+// (%2F, %3F, %23, %26) starts with `%`, an encoded route sits inside a query whose own `&` ends
+// it, and no minted token holds either. REJECTED: `(?:\/|%2F)` inside
+// the plain entries, which puts a group inside the capture group and breaks the set-equality
+// arm's parser, and a decodeURIComponent pre-pass, rejected for the EMAIL rule already (it
+// throws on a malformed `%`). NOT COVERED: a doubly encoded route (%252F), and a token in an
+// encoded QUERY (`%3Ftoken%3D…`), which no call site builds. Dropping the encoded twins is a
+// decision, not a cleanup.
+const TOKEN_PATH_PATTERNS_ENCODED = [
+  ...TOKEN_PATH_FAMILIES_API_PATHS,
+  ...TOKEN_PATH_FAMILIES_FE_ROUTES,
+].map((family) => new RegExp(family('%2F', `${TOKEN_SEGMENT_END}%&`, false), 'gi'));
 
 /* The generic long-hex backstop. NEW in 88.6-13 — no hex rule of ANY width existed here
    before (`grep -nE '0-9a-f\]\{|a-f0-9\]\{'` over this module returned nothing).
@@ -497,10 +557,24 @@ const LONG_HEX_PATH_SEGMENT = new RegExp(String.raw`(\/)[0-9a-f]{32,}(?=$|[${TOK
 //    of a run, quadratic on the replay leaf (seconds on the main thread for an 80,000-letter
 //    string). Each of the three starts carries a start-anchor lookbehind, so a match is
 //    attempted only where a scheme, host or path run BEGINS, and `scrubUrl` skips the replace
-//    when the string holds no `#`; the fragment rule is linear on its own (the long-input
-//    case times this constant). `scrubUrl` as a whole is linear on these runs only because the
+//    when the string holds no `#`. `scrubUrl` as a whole is linear on these runs only because the
 //    EMAIL local part is ALSO bounded, by a different mechanism: the `{1,64}` cap (the 88.6.1-08
 //    amendment on the EMAIL marker), not a start anchor;
+//    AMENDED 2026-10-19 (88.6.1 code review A-05 / A-06 / A-11): the start anchors alone do NOT
+//    make the rule linear. A run dense in starts (`a.b/a.b/…`, `=/=/…`, `a://a://…`) begins a
+//    valid start at every separator, and each start that has no `#` after it in its run
+//    rescanned the run to its end and failed: 0.7 to 2.7 s for 40,000 to 80,000 characters
+//    (measured 2026-10-19). WHAT BOUNDS IT NOW is `stripUrlFragments`: one linear pass splits the
+//    string into maximal runs of fragment characters; a run with no `#` is returned untouched
+//    without any regex; a run with a `#` runs the start-anchored rule only over its head, up to
+//    and including its LAST `#`, plus the one character before the run (the lookbehind context).
+//    Inside that head every valid start reaches a `#`, so the first valid start succeeds and no
+//    start can fail by rescanning, which is what made it quadratic. A match never crosses a run
+//    (every class in the rule excludes the run terminators), the fragment always eats to the end
+//    of its run, and so the output is byte-identical to the old global replace (differential
+//    check over random strings, 2026-10-19). The long-input pins time `stripUrlFragments` on
+//    start-dense shapes as well as the letter run. Going back to one global replace of the
+//    whole string is a decision, not a cleanup;
 //  - a scheme or a slash start only: a scheme-less host (`www.nextgamenight.app/cb#…`) and a
 //    path after `,` or `:` kept their fragment whole.
 // ACCEPTED COSTS: navigation breadcrumbs lose in-page anchors such as `#vote`, and a dotted
@@ -508,8 +582,28 @@ const LONG_HEX_PATH_SEGMENT = new RegExp(String.raw`(\/)[0-9a-f]{32,}(?=$|[${TOK
 // (diagnostic only; threat T-88.6.1-171).
 // Removing a start anchor or the # guard, or dropping a start alternative, is a decision, not a
 // cleanup.
-const URL_FRAGMENT =
-  /((?:(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/|(?<![a-z0-9.-])[a-z0-9-]+(?:\.[a-z0-9-]+)+\/|(?:^|(?<=[\s("'=,:]))\/)[^\s#"<>\x60]*)#[^\s"<>\x60]*/gi;
+// The fragment rule's start, without its fragment tail: the three anchored starts, then the run
+// up to the first `#`. Not global: `stripUrlFragments` runs it once per head (see the marker).
+const URL_FRAGMENT_START =
+  /((?:(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/|(?<![a-z0-9.-])[a-z0-9-]+(?:\.[a-z0-9-]+)+\/|(?:^|(?<=[\s("'=,:]))\/)[^\s#"<>\x60]*)#/i;
+// A maximal run of fragment characters: everything but whitespace, a double quote, `<`, `>`
+// and a backtick (the WHATWG fragment percent-encode set named in the marker).
+const URL_FRAGMENT_RUN = /[^\s"<>\x60]+/g;
+
+function stripUrlFragments(str) {
+  return str.replace(URL_FRAGMENT_RUN, (run, offset, whole) => {
+    const lastHash = run.lastIndexOf('#');
+    if (lastHash === -1) return run;
+    // One character of context before the run, so the lookbehinds and `^` see exactly what
+    // they saw in the whole string. That character is never a start character (it ends the
+    // previous run), so a match always begins inside the run.
+    const ctx = offset > 0 ? 1 : 0;
+    const head = whole.slice(offset - ctx, offset + lastHash + 1);
+    const m = URL_FRAGMENT_START.exec(head);
+    if (!m) return run;
+    return `${run.slice(0, m.index - ctx)}${m[1]}#${REDACTED}`;
+  });
+}
 
 /**
  * Redact PII patterns within a free-text string. Surrounding non-PII text is
@@ -524,6 +618,9 @@ function scrubString(str, opts) {
     // The whole pair goes; a quote whose partner sat OUTSIDE the match is re-emitted, so the
     // quotes stay balanced (`{"k":"v"}` -> `{"[REDACTED]"}`, `k: "v"` -> `"[REDACTED]"`). See
     // the W007 marker on SECRET_KV.
+    .replace(AUTHORIZATION_SCHEME_KV, (_m, keyQuote, valueQuote) =>
+      (valueQuote && !keyQuote ? valueQuote : '') + REDACTED + (keyQuote && !valueQuote ? keyQuote : '')
+    )
     .replace(SECRET_KV, (_m, _key, keyQuote, valueQuote) =>
       (valueQuote && !keyQuote ? valueQuote : '') + REDACTED + (keyQuote && !valueQuote ? keyQuote : '')
     )
@@ -541,13 +638,21 @@ function scrubString(str, opts) {
   // every `breadcrumb.message`, all of `extra`/`contexts` via `deepScrub`, AND the replay
   // relative-path branch. SLASH-GUARDED — see marker (v); removing the guard is a decision,
   // not a cleanup.
-  if (out.indexOf('/') === -1) return out;
   // Prefix-PRESERVING: `$1` keeps the route identity and only the token segment goes. Do
   // NOT fold these into the flat `.replace(X, REDACTED)` chain above — that yields
   // `https://x/[REDACTED]`, destroys the route identity, and still passes both a
   // `not.toContain(JWT)` and a redaction-placeholder `toContain` assertion.
-  for (const re of TOKEN_PATH_PATTERNS) {
-    out = out.replace(re, `$1${REDACTED}`);
+  // `$2` is the kept opening quote or bracket (the A-08 marker on TOKEN_SEGMENT_OPEN).
+  if (out.indexOf('/') !== -1) {
+    for (const re of TOKEN_PATH_PATTERNS) {
+      out = out.replace(re, `$1$2${REDACTED}`);
+    }
+  }
+  // The encoded twins (A-10 marker), guarded the same way: no `%2` / `%2f`, no encoded route.
+  if (out.indexOf('%2') !== -1) {
+    for (const re of TOKEN_PATH_PATTERNS_ENCODED) {
+      out = out.replace(re, `$1$2${REDACTED}`);
+    }
   }
   return out;
 }
@@ -575,9 +680,9 @@ function scrubUrl(url) {
   }
   // 88.6.1-08 (W007 fragments): AFTER the query strip, so a `?…#…` URL keeps `?[REDACTED]`,
   // and BEFORE the hex backstop. The `#` guard keeps a string with no fragment from ever
-  // running the regex (see the URL_FRAGMENT marker; removing it is a decision).
+  // running the regex (see the W007 fragments marker; removing it is a decision).
   if (out.indexOf('#') !== -1) {
-    out = out.replace(URL_FRAGMENT, `$1#${REDACTED}`);
+    out = stripUrlFragments(out);
   }
   // The generic long-hex backstop lives HERE ONLY, never in `scrubString` — Sentry's own
   // `trace_id` is a bare 32-hex string. See the constant's own note.
@@ -604,20 +709,26 @@ function isUrlLike(value) {
  * pattern-scrubbed (so PII is caught by VALUE even when the key looks innocent).
  * Mutates in place and returns the same reference.
  */
-function deepScrub(value, keyHint) {
+// 88.6.1 code review A-09: `secretAncestor` carries a matching key DOWN the walk, so every
+// string leaf under `{ token: { value } }` or `{ password: [{ v }] }` is the placeholder. Before
+// it, the object branch dropped the incoming key and recursed with each child's own key, so a
+// nested credential left unless a VALUE rule happened to match it. deepScrubRecording carries
+// the same flag. Dropping the flag is a decision, not a cleanup.
+function deepScrub(value, keyHint, secretAncestor) {
+  const secret = Boolean(secretAncestor || (keyHint && SECRET_KEY_RE.test(keyHint)));
   if (typeof value === 'string') {
-    if (keyHint && SECRET_KEY_RE.test(keyHint)) return REDACTED;
+    if (secret) return REDACTED;
     return scrubString(value);
   }
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i += 1) {
-      value[i] = deepScrub(value[i], keyHint);
+      value[i] = deepScrub(value[i], keyHint, secret);
     }
     return value;
   }
   if (value && typeof value === 'object') {
     for (const k of Object.keys(value)) {
-      value[k] = deepScrub(value[k], k);
+      value[k] = deepScrub(value[k], k, secret);
     }
     return value;
   }
@@ -758,10 +869,12 @@ function scrubRecordingEvent(replayEvent) {
  * title and alt, which is replay's attribute map. The event walker deliberately does not; see
  * the P-09 marker.]
  */
-function deepScrubRecording(value, keyHint) {
+function deepScrubRecording(value, keyHint, secretAncestor) {
+  // A-09: a matching key redacts every string leaf below it (see deepScrub).
+  const secret = Boolean(secretAncestor || (keyHint && SECRET_KEY_RE.test(keyHint)));
   if (typeof value === 'string') {
     // NAME_ATTRIBUTE_KEYS: replay's attribute map (88.6.1-76, P-09; this walker ONLY, see the marker).
-    if (keyHint && (SECRET_KEY_RE.test(keyHint) || NAME_ATTRIBUTE_KEYS.has(keyHint))) return REDACTED;
+    if (secret || (keyHint && NAME_ATTRIBUTE_KEYS.has(keyHint))) return REDACTED;
     // Treat URL-looking strings (and anything with a query or token segment) via
     // scrubUrl; everything else via scrubString.
     if (isUrlLike(value)) {
@@ -771,13 +884,13 @@ function deepScrubRecording(value, keyHint) {
   }
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i += 1) {
-      value[i] = deepScrubRecording(value[i], keyHint);
+      value[i] = deepScrubRecording(value[i], keyHint, secret);
     }
     return value;
   }
   if (value && typeof value === 'object') {
     for (const k of Object.keys(value)) {
-      value[k] = deepScrubRecording(value[k], k);
+      value[k] = deepScrubRecording(value[k], k, secret);
     }
     return value;
   }
@@ -806,7 +919,11 @@ function deepScrubRecording(value, keyHint) {
    AMENDED 2026-10 (88.6.1-76, R3-M5): the value walk is UNCHANGED; a key-name DENY rule is
    ADDED beside it (SECRET_KEY_RE, so a string, or each string element of an array, under a
    matching key becomes the placeholder, and a nested object goes through deepScrub with its
-   key). That is not the allowlist rejected above, and it makes this walker match deepScrub and
+   key). [AMENDED 2026-10-19, 88.6.1 code review A-09 / IN-02: that sentence was false when
+   written. deepScrub dropped the key at its object branch, so a nested object under a matching
+   key came back in clear, and the array loop skipped object elements. deepScrub now carries the
+   key down (secretAncestor) and the array loop walks object elements, so the sentence holds.]
+   That is not the allowlist rejected above, and it makes this walker match deepScrub and
    deepScrubRecording. REJECTED: staying value-only, because the first Sentry.startSpan with
    attributes would bypass a rule the module header calls universal.
    Narrowing the walk to named keys is a decision, not a cleanup. */
@@ -826,6 +943,8 @@ function scrubSpanJson(span) {
       } else if (Array.isArray(v)) {
         for (let i = 0; i < v.length; i += 1) {
           if (typeof v[i] === 'string') v[i] = secretKey ? REDACTED : scrubSpanDataString(v[i]);
+          // 88.6.1 code review IN-02: an object element is walked too, as deepScrub would.
+          else if (v[i] && typeof v[i] === 'object') deepScrub(v[i], k);
         }
       } else if (v && typeof v === 'object') {
         // A nested object goes through the event walker, as the R3-M5 fix text says.
@@ -858,8 +977,8 @@ export {
   scrubTransaction,
   REDACTED,
   // Exported for the 88.6.1-08 long-input timing pin only, as REDACTED is; no runtime config
-  // imports it.
-  URL_FRAGMENT,
+  // imports it. (It replaced the URL_FRAGMENT constant in the 88.6.1 code review, A-11.)
+  stripUrlFragments,
   // Exported SEPARATELY from the API-path entries so the set-equality arm in
   // `src/lib/sentry.scrub.test.ts` has an FE-ROUTE subject to compare against
   // `TOKEN_ROUTE_PREFIXES`. The cross-module import lives in the TEST, never here — this
@@ -867,4 +986,6 @@ export {
   // not import a `.ts` module.
   TOKEN_PATH_PATTERNS_FE_ROUTES,
   TOKEN_PATH_PATTERNS_API_PATHS,
+  // The percent-encoded twins (A-10), exported for the test arm that pins them to the plain list.
+  TOKEN_PATH_PATTERNS_ENCODED,
 };

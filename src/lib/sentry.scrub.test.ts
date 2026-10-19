@@ -21,7 +21,8 @@ import {
   scrubTransaction,
   TOKEN_PATH_PATTERNS_FE_ROUTES,
   TOKEN_PATH_PATTERNS_API_PATHS,
-  URL_FRAGMENT,
+  TOKEN_PATH_PATTERNS_ENCODED,
+  stripUrlFragments,
 } from '../../sentry.scrub.js';
 // The cross-module import lives HERE, never inside `sentry.scrub.js` — that module's
 // docblock promises pure functions safe to unit-test in isolation, and it must not import
@@ -449,11 +450,31 @@ describe('W007 — scrubUrl strips URL fragments (88.6.1-08)', () => {
     // green against a quadratic regex. The 500 ms ceiling sits several times below every
     // measured RED and several times above the slowest measured GREEN.
     const L = `invite ${'a'.repeat(50000)}#`;
-    // (i) the fragment RULE alone, timed on the exported constant: `scrubUrl` ends in
+    // (i) the fragment RULE alone, timed on the exported step: `scrubUrl` ends in
     // `scrubString`, so timing it would also pay for EMAIL.
     let t0 = performance.now();
-    expect(L.replace(URL_FRAGMENT, `$1#${R}`)).toBe(L);
-    expect(performance.now() - t0, '(i) URL_FRAGMENT on a long letter run').toBeLessThan(500);
+    expect(stripUrlFragments(L)).toBe(L);
+    expect(performance.now() - t0, '(i) stripUrlFragments on a long letter run').toBeLessThan(500);
+    // (i-b) 88.6.1 code review A-05 / A-06 / A-11: START-DENSE runs. Every separator begins a
+    // valid start, and under the old single global replace each start with no `#` after it in its
+    // run rescanned the run to its end: 1.1 to 2.8 s each, measured 2026-10-19 through scrubUrl.
+    // Now 2 to 8 ms. The 300 ms ceiling sits far below every RED and far above every GREEN.
+    const DENSE: Array<[string, string]> = [
+      ['a.b/ run, # after it', `${'a.b/'.repeat(10000)} #x`],
+      ['=/ run, # after it', `${'=/'.repeat(20000)} #x`],
+      ['a:// run, # after it', `${'a://'.repeat(10000)} #x`],
+      ['# before an a.b/ run', `#https://${'a.b/'.repeat(20000)}`],
+      ['# before a ,/x run', `#${',/x'.repeat(20000)}`],
+      ['# before an x:/ run', `#${'x:/'.repeat(20000)}`],
+    ];
+    for (const [label, input] of DENSE) {
+      t0 = performance.now();
+      scrubUrl(input);
+      expect(performance.now() - t0, `(i-b) scrubUrl on a start-dense run: ${label}`).toBeLessThan(300);
+    }
+    // The dense shapes still redact what they must: a fragment inside a start-dense run.
+    expect(scrubUrl(`${'a.b/'.repeat(3)}cb#tok`)).toBe(`${'a.b/'.repeat(3)}cb#${R}`);
+    expect(scrubUrl(`see /a#b/c#d x/y#z`)).toBe(`see /a#${R} x/y#z`);
     // (ii) the EMAIL start: a long run of local-part characters with no address in it.
     const A = 'a'.repeat(50000);
     t0 = performance.now();
@@ -1153,5 +1174,102 @@ describe('scrubSpanJson / scrubTransaction — performance egress (R2 H-1)', () 
     expect(out.trace_id).toBe(TRACE_ID);
     expect(out.span_id).toBe('a1b2c3d4e5f60718');
     expect(out.parent_span_id).toBe('b1b2c3d4e5f60718');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1 adversarial code review fix batch (2026-10-19). Each case was RED against the tree
+// before its fix (measured with the module under node and with this file).
+// ---------------------------------------------------------------------------
+describe('88.6.1 code review — scrub gaps closed', () => {
+  it('A-08: a token that starts with an opening quote or bracket is redacted, and the opener is kept', () => {
+    // Before: the token class needs one non-terminator right after the prefix, so these
+    // matched nothing and the token passed whole (the long-hex backstop needs a slash first).
+    for (const [prefix, token] of SHARED_FAMILIES) {
+      for (const [open, close] of [['"', '"'], ["'", "'"], ['\x60', '\x60'], ['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]) {
+        expect(scrubString(`x /${prefix}${open}${token}${close} y`), `family ${prefix} opener ${open}`).toBe(
+          `x /${prefix}${open}${R}${close} y`
+        );
+      }
+    }
+    expect(scrubUrl(`https://x/invite/group/"${HEX64}"`)).toBe(`https://x/invite/group/"${R}"`);
+    // A quoted rsvp SIBLING is still a sibling: the opener sits before the sibling lookahead.
+    expect(scrubString('/rsvp/"event"')).toBe('/rsvp/"event"');
+    expect(scrubString('/rsvp/(respond)')).toBe('/rsvp/(respond)');
+    // Idempotent: the placeholder starts with `[`, and scrubUrl runs scrubString after itself.
+    expect(scrubString(`/invite/group/${R}`)).toBe(`/invite/group/${R}`);
+    expect(scrubUrl(scrubUrl(`https://x/invite/group/[${HEX64}]`))).toBe(`https://x/invite/group/[${R}]`);
+  });
+
+  it('A-10: a percent-encoded token route is redacted in free text (every family, either case of %2F)', () => {
+    // Before: `scrubString('/api/auth/login?returnTo=%2Frsvp%2F<token>')` came back unchanged.
+    expect(scrubString(`/api/auth/login?returnTo=%2Frsvp%2F${RSVP_TOKEN}`)).toBe(
+      `/api/auth/login?returnTo=%2Frsvp%2F${R}`
+    );
+    expect(scrubString(`returnTo=%2finvite%2fgroup%2f${HEX64}&x=1`)).toBe(`returnTo=%2finvite%2fgroup%2f${R}&x=1`);
+    for (const [prefix, token] of SHARED_FAMILIES) {
+      const enc = prefix.split('/').join('%2F');
+      expect(scrubString(`login failed: returnTo=%2F${enc}${token}%3Fu%3D1 now`), `encoded family ${prefix}`).toBe(
+        `login failed: returnTo=%2F${enc}${R}%3Fu%3D1 now`
+      );
+    }
+    // The encoded siblings stay siblings.
+    expect(scrubString('returnTo=%2Frsvp%2Fevent%2F12')).toBe('returnTo=%2Frsvp%2Fevent%2F12');
+    // The encoded twins are DERIVED from the plain list, one for one, in the same order, so a
+    // new family cannot be added to one and not the other.
+    const groupOf = (re: RegExp) => re.source.slice(re.source.indexOf('(') + 1, re.source.indexOf(')'));
+    const plain = [...TOKEN_PATH_PATTERNS_API_PATHS, ...TOKEN_PATH_PATTERNS_FE_ROUTES].map((re: RegExp) =>
+      groupOf(re).replace(/\\\//g, '/')
+    );
+    const encoded = TOKEN_PATH_PATTERNS_ENCODED.map((re: RegExp) => groupOf(re).replace(/%2F/g, '/'));
+    expect(encoded).toEqual(plain);
+    expect(encoded).toHaveLength(9);
+  });
+
+  it('REVIEW WR-01: a selector serialised a second time (=\\") loses its name too, escapes kept', () => {
+    // Before: both the fast-path guard and the opener needed a bare `="`, so this passed whole.
+    expect(scrubString('payload {\\"sel\\":\\"button[aria-label=\\"Customize Alice Smith\\"]\\"}')).toBe(
+      `payload {\\"sel\\":\\"button[aria-label=\\"Customize ${R}\\"]`
+    );
+    expect(scrubString('button[aria-label=\\"Customize Alice\\"]')).toBe(`button[aria-label=\\"Customize ${R}\\"]`);
+    expect(scrubUrl('img[alt=\\"Zoë?x=1\\"]')).toBe(`img[alt=\\"${R}\\"]`);
+    // The plain shape is unchanged.
+    expect(scrubString('button[aria-label="Customize Weekend Warriors"]')).toBe(`button[aria-label="Customize ${R}"]`);
+  });
+
+  it('REVIEW IN-01: an Authorization pair with a Basic or Negotiate scheme loses the credential, not just the scheme', () => {
+    // Before: `[REDACTED] dXNlcjpwYXNz`.
+    expect(scrubString('Authorization: Basic dXNlcjpwYXNz')).toBe(R);
+    expect(scrubString('{"authorization":"Basic dXNlcjpwYXNz"}')).toBe(`{"${R}"}`);
+    expect(scrubString('authorization=Negotiate YIIabc&x=1')).toBe(`${R}&x=1`);
+    // NEGATIVE: the scheme words in prose are not a credential.
+    expect(scrubString('basic information here')).toBe('basic information here');
+  });
+
+  it('A-09 / IN-02: a credential nested under a secret key is redacted by all three walkers', () => {
+    // Before: deepScrub's object branch dropped the incoming key, so each of these came back
+    // with the token in clear (none of the values matches a value pattern on its own).
+    const ev = scrubEvent({ extra: { token: { value: RSVP_TOKEN, list: [ALPHA] } } } as never) as {
+      extra: { token: { value: string; list: string[] } };
+    };
+    expect(ev.extra.token.value).toBe(R);
+    expect(ev.extra.token.list).toEqual([R]);
+    const rec = scrubRecordingEvent({ data: { payload: { password: { v: ALPHA } } } }) as {
+      data: { payload: { password: { v: string } } };
+    };
+    expect(rec.data.payload.password.v).toBe(R);
+    const span = scrubSpanJson({ data: { token: { v: RSVP_TOKEN }, list: [{ secret: ALPHA }, 'plain'] } }) as {
+      data: { token: { v: string }; list: Array<{ secret: string } | string> };
+    };
+    expect(span.data.token.v).toBe(R);
+    // IN-02: an object element of an array is walked, as deepScrub walks it.
+    expect(span.data.list).toEqual([{ secret: R }, 'plain']);
+    // NEGATIVE: a harmless key keeps its value, and Sentry's own trace id still links.
+    const ok = scrubEvent({ extra: { note: { value: ALPHA } }, contexts: { trace: { trace_id: TRACE_ID } } } as never) as {
+      extra: { note: { value: string } };
+      contexts: { trace: { trace_id: string } };
+    };
+    expect(ok.extra.note.value).toBe(ALPHA);
+    expect(ok.contexts.trace.trace_id).toBe(TRACE_ID);
   });
 });
