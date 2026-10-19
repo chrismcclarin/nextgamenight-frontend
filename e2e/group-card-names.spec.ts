@@ -54,25 +54,32 @@ test.describe('Phase 88.6.1-54 — group card button names carry the group name 
 
     // Every card against its OWN heading. textContent, never innerText, so a CSS text transform
     // cannot change what is compared.
+    // 88.6.1 code review A-04 / REVIEW IN-04: each control is FOUND without its expected name (the
+    // Invite button by its visible words "Invite Member", the gear by its glyph), so a card whose
+    // button regressed to a generic name is asserted, and fails, instead of being skipped. The
+    // counter counts only cards where at least one named control was actually asserted.
     let checkedCards = 0;
     for (let i = 0; i < cardCount; i += 1) {
       const card = cards.nth(i);
       const heading = ((await card.locator('h3').first().textContent()) ?? '').trim();
+      let asserted = false;
 
-      const invite = card.getByRole('button', { name: /^Invite member to /i });
+      const invite = card.getByRole('button').filter({ hasText: 'Invite Member' });
       if ((await invite.count()) > 0) {
         await expect(invite.first()).toHaveAccessibleName('Invite member to ' + heading);
+        asserted = true;
       }
 
-      const gear = card.getByRole('button', { name: /^Customize /i });
+      const gear = card.getByRole('button').filter({ hasText: '\u2699' });
       if ((await gear.count()) > 0) {
         await expect(gear.first()).toHaveAccessibleName('Customize ' + heading);
         await expect(gear.first()).toHaveAttribute('title', 'Customize ' + heading);
         await expect(gear.first()).not.toHaveAttribute('aria-label');
+        asserted = true;
       }
 
-      checkedCards += 1;
+      if (asserted) checkedCards += 1;
     }
-    expect(checkedCards, 'every rendered card was checked').toBeGreaterThanOrEqual(1);
+    expect(checkedCards, 'cards whose Invite or gear name was asserted').toBeGreaterThanOrEqual(1);
   });
 });

@@ -154,6 +154,8 @@ test.describe('Group settings — pressed controls keep focus and send one write
     // DIAGNOSTIC (orchestrator, wave 5 gate, 2026-10-16): CI run 38972642726 found no button named
     // "Deleting..." here although the gate keeps `pending` true and the jsdom pin PC7 passes. Measured
     // WITHOUT the accessibility tree so the locator cannot hide what it measures (plan 37's Test D shape).
+    // The dump rides ONLY as the message of the focus assertion below (88.6.1 code review A-03
+    // removed an always-true soft assertion that carried the same text and could never fail).
     const measured = await page.evaluate(() => {
       const describe = (el: Element | null) =>
         el ? `${el.tagName.toLowerCase()}${el.getAttribute('role') ? `[role=${el.getAttribute('role')}]` : ''}` : null;
@@ -177,7 +179,6 @@ test.describe('Group settings — pressed controls keep focus and send one write
       }));
       return { buttons, dialogs, active: describe(document.activeElement), activeText: (document.activeElement?.textContent ?? '').trim().slice(0, 40) };
     });
-    expect.soft(true, `measured after Cancel: ${JSON.stringify(measured)}`).toBe(true);
     const opener = page.getByRole('button', { name: 'Deleting...', exact: true });
     await expect(opener, `measured after Cancel: ${JSON.stringify(measured)}`).toBeFocused();
     await expect(opener).toHaveAttribute('aria-disabled', 'true');
