@@ -576,6 +576,29 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     expect(glyph).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('A-23 (WCAG 2.4.3): a successful attach hands focus to Remove screenshot, never the dialog container or body', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const input = fileInput();
+    input.focus();
+    await user.upload(input, goodFile('shot.png'));
+    const remove = await screen.findByRole('button', { name: /remove screenshot/i });
+    await waitFor(() => expect(document.activeElement).toBe(remove));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('A-23 (guard): a REJECTED file keeps the input mounted and moves focus nowhere', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const input = fileInput();
+    input.focus();
+    await user.upload(input, overSizeFile('huge.png'));
+    expect(screen.queryByRole('button', { name: /remove screenshot/i })).toBeNull();
+    expect(document.activeElement).toBe(input);
+  });
+
   // ---- the attach-success region (V-18) ----
 
   it('NODE IDENTITY, D-22 house shape — the attach region exists, is `status` (never `alert`), EMPTY and sr-only before any attach; the SAME node carries copy row F1, visible, after', async () => {

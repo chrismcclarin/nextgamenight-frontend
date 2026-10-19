@@ -223,6 +223,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       e.target.value = '';
       return;
     }
+    // A-23: hand focus to `Remove screenshot` once the commit that unmounts the focused input lands.
+    focusRemoveAfterAttachRef.current = true;
     setScreenshot(file);
     setAttachStatus(screenshotAttachedCopy(file.name));
   };
@@ -274,6 +276,25 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
     focusInputAfterRemoveRef.current = true;
     removeScreenshot();
   };
+
+  /* DECISION Phase 88.6.1 code review A-23 (WCAG 2.4.3, D-04): the MIRROR of R2 #195 above. A
+     successful attach sets `screenshot`, which swaps the focused `sr-only peer` file input out for
+     the preview row, so focus fell to the Radix dialog container and the next Tab restarted there.
+     CHOSEN: hand focus to the preview row's `Remove screenshot` control — the control that now
+     occupies the input's position and the one that undoes the attach — through the same
+     latch-in-an-effect spelling, set ONLY on the success path of `handleFileChange` (a rejected
+     file keeps the input mounted and focused, and the post-success reset only ever clears
+     `screenshot`). REJECTED: (a) leaving focus to Radix's container fallback — that is the
+     defect; (b) useFocusRecovery here — the target is known and in the same component, and the
+     Remove direction already uses this latch, so the two directions stay one idiom. Changing this
+     is a decision, not a cleanup. */
+  const focusRemoveAfterAttachRef = useRef(false);
+  const removeScreenshotButtonRef = useRef(null);
+  useEffect(() => {
+    if (!screenshot || !focusRemoveAfterAttachRef.current) return;
+    focusRemoveAfterAttachRef.current = false;
+    if (removeScreenshotButtonRef.current) removeScreenshotButtonRef.current.focus();
+  }, [screenshot]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -643,6 +664,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                     declares no `flex-shrink`) and stays — it is live layout inside the
                     `flex items-center gap-3` row. */}
                 <Button
+                  ref={removeScreenshotButtonRef}
                   variant="ghost"
                   size="icon"
                   onClick={handleRemoveClick}
