@@ -138,8 +138,10 @@ test.describe('Recurring Check-ins and Start a check-in at 375px (88.6.1-30)', (
 
     const { trigger, list } = await openScheduleMenu(page);
     await activate(page, list.getByRole('button', { name: 'Delete', exact: true }));
-    // KebabMenu restored focus to its trigger after the item ran; the confirm row is open.
-    await expect(trigger).toBeFocused();
+    // The confirm row is open and ScheduleList moved focus onto its Cancel control (88.6.1 code
+    // review A-43: opening the inline confirm focuses Cancel so a keyboard or VoiceOver user lands
+    // inside the row it just revealed; KebabMenu's trigger restore ran first and was superseded).
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
     await activate(page, page.getByRole('button', { name: 'Cancel', exact: true }));
 
     await expect(trigger).toBeFocused();

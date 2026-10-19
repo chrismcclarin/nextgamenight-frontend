@@ -339,8 +339,10 @@ describe('PromptScheduleManager — Recurring Check-ins focus never falls to <bo
 
     deleteButton.focus();
     fireEvent.click(deleteButton);
-    // Opening the confirm moves nothing (the held-out control: green before and after the fix).
-    expect(document.activeElement).toBe(deleteButton);
+    // AMENDED 2026-10-19 (88.6.1 code review A-43): opening the confirm now moves focus INTO it, onto
+    // Cancel (DECISION Phase 88.6.1 code review A-43 in ScheduleList.js). The R5 ordering this arm
+    // backstops is unchanged: focus reaches the heading only when the removal commits, and once.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
 
     const confirm = screen.getByRole('button', { name: 'Confirm Delete' });
     confirm.focus();
@@ -388,8 +390,9 @@ describe('PromptScheduleManager — Recurring Check-ins focus never falls to <bo
     expect(listId).toBeTruthy();
     const list = document.getElementById(listId as string) as HTMLElement;
     fireEvent.click(within(list).getByRole('button', { name: 'Delete' }));
-    // KebabMenu restored focus to its trigger after the item ran.
-    expect(document.activeElement).toBe(trigger);
+    // KebabMenu restored focus to its trigger after the item ran; the confirm captured it as the
+    // opener and then moved focus onto its Cancel (A-43, 2026-10-19).
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
 
     const cancel = screen.getByRole('button', { name: 'Cancel' });
     cancel.focus();
@@ -435,6 +438,9 @@ describe('PromptScheduleManager — Recurring Check-ins focus never falls to <bo
     // No focus() calls: the pointer shape where the clicked button never took focus.
     fireEvent.click(deleteButton);
     const confirm = screen.getByRole('button', { name: 'Confirm Delete' });
+    // A-43 (2026-10-19): opening the confirm focuses its Cancel; blur it to restore the shape this
+    // arm tests, a Confirm Delete pressed while focus is on <body>.
+    (document.activeElement as HTMLElement).blur();
     expect(document.activeElement).toBe(document.body);
     fireEvent.click(confirm);
 

@@ -2,7 +2,7 @@
 // pinned through its host in `PromptScheduleManager.test.tsx` (T1-T6); this file pins what the
 // list renders on its own.
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentType } from 'react';
 
@@ -33,5 +33,25 @@ describe('ScheduleList — the in-flight Pause/Resume looks unavailable, not onl
     expect(pause).toHaveAttribute('aria-disabled', 'true');
     // The KebabMenu / ResponseDashboard Remind precedent: the gated look is `aria-disabled:opacity-50`.
     expect(pause.className.split(/\s+/)).toContain('aria-disabled:opacity-50');
+  });
+});
+
+describe('ScheduleList — opening the delete confirm moves focus into it (A-43)', () => {
+  it('desktop Delete: focus lands on the confirm row\'s Cancel (the safe default; T3 in PromptScheduleManager.test.tsx pins Cancel\'s return)', () => {
+    render(<ScheduleList schedules={[SCHEDULE]} onDelete={vi.fn()} />);
+    const del = screen.getByRole('button', { name: 'Delete' });
+    del.focus();
+    fireEvent.click(del);
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(document.activeElement).toBe(cancel);
+  });
+
+  it('phone kebab Delete: focus lands on Cancel after KebabMenu restored its trigger', () => {
+    render(<ScheduleList schedules={[SCHEDULE]} onDelete={vi.fn()} />);
+    const trigger = screen.getByRole('button', { name: 'Schedule actions' });
+    fireEvent.click(trigger);
+    const list = document.getElementById(trigger.getAttribute('aria-controls') as string) as HTMLElement;
+    fireEvent.click(within(list).getByRole('button', { name: 'Delete' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
   });
 });

@@ -8,6 +8,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import { focusElement } from '../../components/ui/focusPageFloor';
 
 // Day of week helper
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -46,10 +47,19 @@ export default function ScheduleList({
   // survives deleting the last schedule (the list then renders its empty state).
   const recovery = useFocusRecovery({ fallback: focusFallbackRef });
   const confirmOpenerRef = useRef(null);
+  const confirmCancelRef = useRef(null);
 
   // The control that opened the confirm, read AFTER the open commits: on the phone path that is
   // the Schedule actions trigger KebabMenu restored focus to. Never written when the confirm
   // closes (see the D-04 marker below).
+  /* DECISION Phase 88.6.1 code review A-43: once the opener is captured, focus moves INTO the
+     confirm row, onto Cancel, through the shared `focusElement` (D-04). Before this, opening the
+     confirm moved nothing: a screen-reader user who picked Delete (on a phone, from the kebab)
+     heard the menu close and nothing more, with a destructive confirmation now on screen. CHOSEN
+     — Cancel, the safe default for a destructive confirm. REJECTED — Confirm Delete (one stray
+     Enter deletes); the prompt paragraph (needs an added tabindex and is not actionable). The
+     capture runs FIRST in the same effect, so Cancel still returns to the opener. Changing the
+     target is a decision, not a cleanup. */
   useEffect(() => {
     if (deleteConfirm === null) return;
     const active = document.activeElement;
@@ -57,6 +67,7 @@ export default function ScheduleList({
       active instanceof HTMLElement && active.isConnected && active !== document.body
         ? active
         : null;
+    focusElement(confirmCancelRef.current);
   }, [deleteConfirm]);
 
   const handleDeleteClick = (schedule) => {
@@ -285,6 +296,7 @@ export default function ScheduleList({
                     Confirm Delete
                   </Button>
                   <Button
+                    ref={confirmCancelRef}
                     variant="secondary"
                     size="default"
                     onClick={handleCancelDelete}
