@@ -43,7 +43,7 @@ import { groupsAPI, ApiError, isCsrfRejection, type RestorePreview } from '@/lib
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
-import { StatusRegion } from '@/components/ui/StatusRegion';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 import { formatLongDate } from '@/lib/datetime';
 
@@ -111,6 +111,11 @@ const RESTORED_DETAIL = "You're the owner now. Taking you to the group...";
 const ALREADY_RESTORED_HEADLINE = 'Someone else already brought this group back';
 const ERROR_HEADLINE = 'Unable to restore this group';
 
+/** Join the non-empty parts of an announcement with one space (never a trailing space). */
+function joinParts(...parts: Array<string | null | undefined>): string {
+  return parts.filter(Boolean).join(' ');
+}
+
 /**
  * Read the live group's id off a raw error body.
  *
@@ -122,11 +127,6 @@ const ERROR_HEADLINE = 'Unable to restore this group';
  * and it fails SILENTLY: the state renders, the redirect never fires, and
  * nothing errors anywhere.
  */
-/** Join the non-empty parts of an announcement with one space (never a trailing space). */
-function joinParts(...parts: Array<string | null | undefined>): string {
-  return parts.filter(Boolean).join(' ');
-}
-
 function readGroupId(details: unknown): string | null {
   if (details && typeof details === 'object' && 'group_id' in details) {
     const id = (details as { group_id?: unknown }).group_id;
@@ -197,6 +197,27 @@ function RestoreGroupPage() {
   const settledHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const inFlightLineRef = useRef<HTMLParagraphElement | null>(null);
   const outcomeFocusArmedRef = useRef(false);
+
+  // R8 idempotency (A-61, 88.6.1 code review): while this flag is on the slot-0 region reads ''.
+  // A Try again (preview or acceptance) turns it on; a REGION_EMPTY_DWELL_MS timer turns it off.
+  // STATE, not a ref, because the timer's end is what refills the region when an instant failure
+  // committed first. It gates ONLY the region's text — never the request, the branch or focus.
+  // See the DWELL paragraph of the DECISION Phase 88.6.1-36 marker at the fragment.
+  const [regionDwell, setRegionDwell] = useState(false);
+  const regionDwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+  }, []);
+
+  /** Start (or restart, on a repeat press) the region's empty hold. */
+  function startRegionDwell() {
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+    setRegionDwell(true);
+    regionDwellTimerRef.current = setTimeout(() => {
+      regionDwellTimerRef.current = null;
+      setRegionDwell(false);
+    }, REGION_EMPTY_DWELL_MS);
+  }
 
   useEffect(() => {
     // Reset on mount: strict-mode's dev mount-unmount-remount cycle would
@@ -347,6 +368,7 @@ function RestoreGroupPage() {
   /** M-6: re-run the preview fetch after a retryable failure. */
   function retryPreview() {
     outcomeFocusArmedRef.current = true;
+    startRegionDwell();
     setRecovery(null);
     setError(null);
     setStatus('loading');
@@ -355,6 +377,7 @@ function RestoreGroupPage() {
 
   /** R-3: re-fire the acceptance after a retryable failure (unlatched below). */
   function retryAccept() {
+    startRegionDwell();
     setRecovery(null);
     setError(null);
     handleTakeOver();
@@ -531,7 +554,9 @@ function RestoreGroupPage() {
   // The already-restored hand-off line is left out: it changes mid-read (R-7). Every part is a
   // string this page already renders; a caught error's message is never read.
   let announcement = '';
-  if (isLoadingView || status === 'accepting') {
+  if (regionDwell) {
+    announcement = '';
+  } else if (isLoadingView || status === 'accepting') {
     announcement = '';
   } else if (showPreview && preview) {
     announcement = joinParts(
@@ -794,6 +819,16 @@ function RestoreGroupPage() {
      REJECTED (b): plan 88.6.1-04's recovery hook — it acts on the first focus-losing commit, the
      in-flight one, before the outcome heading exists.
      REJECTED (c): focusing on first load — nothing the user operated was removed.
+
+     THE DWELL — AMENDED 2026-10-19 (88.6.1 code review A-61): after a Try again (preview or
+     acceptance) the region stays '' until the outcome has committed AND `REGION_EMPTY_DWELL_MS`
+     has passed — ported from `invite/game/[token]/page.js` (`DECISION Phase 88.6.1-19`, THE REGION
+     DWELL), the one constant imported from `StatusRegion`, not repeated. Source: AT-4,
+     `research/APPENDIX-AT.md` (`emptyRegionSettleDelay`, WebKit re-announces identical text only
+     after the region has stayed empty that long). REJECTED: relying on the round trip for the gap
+     — an offline failure rejects in milliseconds (`publicFetch`'s TypeError arm in `api.ts`), so
+     the same failure text came back in the same tick and VoiceOver stayed silent. The first
+     take-over press is NOT held: its outcome text always differs from the preview it replaces.
 
      R3-A29 verdicts for this file's two hand-rolled status spinners. The LOADING spinner is KEPT
      with its status role and the L2 label: on first load it is present from the first paint and

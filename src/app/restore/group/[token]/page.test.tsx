@@ -946,7 +946,66 @@ describe('restore/group/[token] — slot-0 region and outcome focus (plan 88.6.1
     });
     await screen.findByRole('heading', { level: 1, name: 'Unable to restore this group' });
     expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
-    expect(region.textContent).toBe(first);
+    // Positive wait: the REGION_EMPTY_DWELL_MS hold may still be running when the heading returns.
+    await waitFor(() => expect(region.textContent).toBe(first));
+  });
+
+  // A-61 (88.6.1 code review): the fast-fail case B1 cannot reach — an offline Try again rejects in
+  // milliseconds (`publicFetch`'s TypeError arm), so without a dwell the region is refilled with the
+  // same text in the same tick, which WebKit does not re-announce. Shape copied from invite/game's
+  // `B1-fast`.
+  it('B1-fast (preview Try again, offline). the region stays empty for at least 100 ms before the same text returns', async () => {
+    getPreview()
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0))
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0));
+    renderPage();
+
+    await screen.findByRole('heading', { level: 1, name: 'Unable to restore this group' });
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    const first = region.textContent;
+    expect(first).toBe(
+      "Unable to restore this group We couldn't check this link. It may be a connection problem — please try again."
+    );
+
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    const pressedAt = performance.now();
+    await act(async () => {
+      retry.click();
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Unable to restore this group' });
+    expect(region.textContent, 'the region must read empty right after an instant failure').toBe('');
+
+    await waitFor(() => expect(region.textContent).toBe(first));
+    expect(performance.now() - pressedAt).toBeGreaterThanOrEqual(100);
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+  });
+
+  it('B1-fast (take-over Try again, offline). the region stays empty for at least 100 ms before the same text returns', async () => {
+    signedIn();
+    accept()
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0))
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0));
+    renderPage();
+    await tapTakeOver();
+
+    await screen.findByRole('heading', { level: 1, name: 'Unable to restore this group' });
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    const first = region.textContent;
+    expect(first).toBe(
+      'Unable to restore this group Something went wrong bringing this group back. Please try again.'
+    );
+
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    const pressedAt = performance.now();
+    await act(async () => {
+      retry.click();
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Unable to restore this group' });
+    expect(region.textContent, 'the region must read empty right after an instant failure').toBe('');
+
+    await waitFor(() => expect(region.textContent).toBe(first));
+    expect(performance.now() - pressedAt).toBeGreaterThanOrEqual(100);
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
   });
 
   it('F1 (Req 5; R5 ordering backstop). take-over: focus is on the accepting line in flight, then on the outcome heading', async () => {
