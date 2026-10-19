@@ -568,6 +568,8 @@ function FriendsPage() {
             setRequestActionError({
                 id: friendshipId,
                 message: getFetchErrorMessage(err, { fallback: ACCEPT_FRIEND_FAILED_COPY }),
+                // The provider's own mark: its reconcile removed this row inside the failing call (A-54).
+                rowRemoved: Boolean(err?.requestRowRemoved),
             });
         } finally {
             requestActionInFlightRef.current.delete(friendshipId);
@@ -594,6 +596,7 @@ function FriendsPage() {
             setRequestActionError({
                 id: friendshipId,
                 message: getFetchErrorMessage(err, { fallback: DECLINE_FRIEND_FAILED_COPY }),
+                rowRemoved: Boolean(err?.requestRowRemoved),
             });
         } finally {
             requestActionInFlightRef.current.delete(friendshipId);
@@ -1509,10 +1512,17 @@ function FriendsPage() {
                             chosen OVER a line cleared only by the next press (it outlived the row it
                             named, repeated FR1's line above a list no longer shown, and was announced
                             again as new on every return to the tab; review #83, #238). Changing this
-                            is a decision, not a cleanup. */}
+                            is a decision, not a cleanup.
+                            AMENDED 2026-10-19 (88.6.1 code review A-54): a request the provider reconciled
+                            away INSIDE the failing call (its requestRowRemoved mark: someone handled it
+                            elsewhere, or a 500 followed a committed accept) keeps its line, as the bell does
+                            for the same call; otherwise the row vanished, focus moved on and the failure read
+                            as success. It still clears on the next press, on a tab change and when FR1 shows;
+                            a row a LATER load removes still takes its line with it. */}
                         {requestActionError &&
                             !requestsFullBannerShown &&
-                            receivedRequests.some((r) => r.id === requestActionError.id) && (
+                            (requestActionError.rowRemoved ||
+                                receivedRequests.some((r) => r.id === requestActionError.id)) && (
                                 <p role="alert" className="text-content-status-error text-sm mb-4">{requestActionError.message}</p>
                             )}
                         {friendshipCtxLoading ? (

@@ -1782,6 +1782,34 @@ describe('friends — the Requests tab tells the truth (88.6.1-72, owner rulings
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  // 88.6.1 code review A-54: L3 shows the line first and removes the row in a LATER render (a later
+  // load reconciling it away), which still holds. Production's own order inside the failing call is the
+  // reverse: the provider's reconcile removes the row, marks the error requestRowRemoved, then rethrows.
+  it('L5. a failure whose row the provider reconciled away INSIDE the call still shows its line, and focus is not dropped (A-54)', async () => {
+    const utils = await openRequestsTab([SAM_REQUEST, RILEY_REQUEST]);
+    await screen.findByText('Sam');
+    providerCtx.acceptRequest.mockImplementationOnce(async () => {
+      // The provider's order: the row leaves receivedRequests, then the marked error is rethrown.
+      providerCtx.receivedRequests = [RILEY_REQUEST];
+      utils.rerender(<FriendsPage />);
+      const err = boom() as Error & { requestRowRemoved?: boolean };
+      err.requestRowRemoved = true;
+      throw err;
+    });
+    const samAccept = within(requestRow('Sam')).getByRole('button', { name: 'Accept' });
+    act(() => samAccept.focus());
+    fireEvent.click(samAccept);
+
+    expect((await screen.findByRole('alert')).textContent).toBe(N5);
+    expect(screen.queryByText('Sam')).toBeNull();
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+
+    // The next press clears it, as for any request-action line.
+    providerCtx.acceptRequest.mockResolvedValueOnce({ alreadyAccepted: false });
+    fireEvent.click(within(requestRow('Riley')).getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
   it('L4. the same tab change clears the Friends tab remove line (#83, review r3 L-20)', async () => {
     (friendshipsAPI.removeFriend as Mock).mockRejectedValue(boom());
     renderFriends();
