@@ -503,3 +503,26 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     }
   });
 });
+
+// 88.6.1 code review A-34: a label swap on the focused control does not announce (UI-SPEC §7.3, the
+// house rule restated at FriendInvitePanel.js), so the new sort order is spoken through a polite
+// region that is mounted EMPTY and filled only by a press, with the ratified S1 words.
+describe('GroupGamesList sort toggle announces the new order (A-34)', () => {
+  const sortRegion = () => document.getElementById('group-games-sort-status');
+
+  it('S3: the region is mounted empty, and each press writes the new order in the S1 words', async () => {
+    const user = userEvent.setup();
+    render(<GroupGamesList {...anyProps({ games: [WINGSPAN], groupId: 'g1', members: [] })} />);
+    const region = sortRegion();
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region?.textContent).toBe('');
+
+    await user.click(screen.getByRole('button', { name: 'Sort order: ascending' }));
+    expect(sortRegion()).toBe(region);
+    expect(region?.textContent).toBe('Sort order: descending');
+
+    await user.click(screen.getByRole('button', { name: 'Sort order: descending' }));
+    expect(region?.textContent).toBe('Sort order: ascending');
+  });
+});

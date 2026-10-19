@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { SelectControl } from '../../components/ui/Input';
 import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 
 // The section's heading, and the refresh notice's spoken section name (copy row P78b, close ruling P-78).
 const GROUP_GAMES_TITLE = 'Group Games';
@@ -102,6 +103,15 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
     const { timezone } = useTimezone();
     const [sortBy, setSortBy] = useState('name');
     const [sortOrder, setSortOrder] = useState('asc');
+    // What the sort region below says after a press ('' until the first one) — see the A-34 marker there.
+    const [sortAnnouncement, setSortAnnouncement] = useState('');
+    // The arrow's press: the reversed order, with the sort region written to match. Called inside the
+    // `onClick={() => setSortOrder(` call, which controlSizeFloor.test.tsx anchors on.
+    const nextSortOrderAnnounced = () => {
+        const next = sortOrder === 'asc' ? 'desc' : 'asc';
+        setSortAnnouncement(next === 'asc' ? SORT_ASCENDING_LABEL : SORT_DESCENDING_LABEL);
+        return next;
+    };
     const [filterOpen, setFilterOpen] = useState(false);
     const [filterWinner, setFilterWinner] = useState('');
     const [filterPicker, setFilterPicker] = useState('');
@@ -448,12 +458,20 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                         Changing any of this is a decision, not a cleanup. */}
                     <button
                         aria-label={sortOrder === 'asc' ? SORT_ASCENDING_LABEL : SORT_DESCENDING_LABEL}
-                        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                        onClick={() => setSortOrder(nextSortOrderAnnounced())}
                         className="px-3 py-2 min-h-11 md:min-h-0 min-w-11 md:min-w-0 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
                         title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
                         <span aria-hidden="true">{sortOrder === 'asc' ? '\u2191' : '\u2193'}</span>
                     </button>
+                    {/* DECISION 88.6.1 code review A-34: the new order is announced through this polite
+                        region, mounted EMPTY and written only by a press, in the ratified S1 words (the
+                        two hoisted constants). CHOSEN OVER relying on the button's name swap alone: a
+                        label change on the focused control does not announce (UI-SPEC §7.3, restated at
+                        FriendInvitePanel.js), so the list re-sorted with no word. No clear-at-start is
+                        needed: the two values alternate, so every press changes the text. Removing the
+                        region is a decision, not a cleanup. */}
+                    <StatusRegion id="group-games-sort-status" className="sr-only" message={sortAnnouncement} />
                 </div>
                 {/* DECISION Phase 88.6.1-48 (D-21 / D-44): Filter is a DISCLOSURE — it shows and
                     hides a panel — so it carries `aria-expanded` plus an `aria-controls` that is
