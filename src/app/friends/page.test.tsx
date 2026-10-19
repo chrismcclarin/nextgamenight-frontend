@@ -1239,6 +1239,20 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     );
   });
 
+  it('R2b (A-74, Safari shape): a Remove friend tapped twice without ever taking focus still lands focus on the next row, not <body>', async () => {
+    renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
+    const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    // iOS Safari does not focus a tapped button: nothing is focused for either tap.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    expect(document.activeElement).toBe(document.body);
+    await waitFor(() => expect(screen.queryByText('Dana')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove Sam' }))
+    );
+  });
+
   it('R3: after the last removal focus lands on the Friends tab button (Req 5 empty)', async () => {
     renderFriends();
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });

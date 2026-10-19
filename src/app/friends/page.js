@@ -607,10 +607,13 @@ function FriendsPage() {
 
     // Remove friend — the COMMIT half only. It is unreachable except through the
     // gate below, which is what makes the first tap non-destructive.
-    const performRemoveFriend = async (friendshipId) => {
+    // `opts.from` (88.6.1 code review A-74 follow-up): the pressed Remove, handed over by the
+    // two-tap gate — iOS Safari does not focus a tapped button, so the arm below needs it as its seed.
+    const performRemoveFriend = async (friendshipId, opts) => {
         // Runs synchronously inside the second tap, so this arms before the first await.
         const settle = removeRecovery.arm({
             preferred: neighbourControl(rowElementFor('data-friend-row', friendshipId)),
+            from: opts?.from ?? null,
         });
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'remove' }));
         setRemoveError(null);
@@ -667,7 +670,7 @@ function FriendsPage() {
         title: 'Remove this friend?',
         body: "They'll drop off your friends list. You can send a new request by email any time.",
         confirmLabel: 'Remove',
-        onConfirm: (friendshipId) => performRemoveFriend(friendshipId),
+        onConfirm: (friendshipId, ctx) => performRemoveFriend(friendshipId, ctx),
     });
 
     // Check if a user is already a friend. `userId` is the SEARCHED user's
