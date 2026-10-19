@@ -74,11 +74,14 @@ export default function AutoPromptBehaviorBanner({ focusFallbackRef } = {}) {
        (WCAG 2.5.3 Label in Name, review #241); REJECTED — (d) a separate screen-reader name, which
        a voice-control user saying the visible words cannot reach (banner context in the name would
        be new screen-reader wording, an owner copy ruling, D-31).
-       Changing this is a decision, not a cleanup. */
+       Changing this is a decision, not a cleanup.
+       AMENDED 2026-10-19 (88.6.1 code review A-12 / WR-05): armed `from` the pressed button, per the
+       hook's consumer contract (1) — a WebKit tap does not focus `Got it`, and an arm seeded from
+       document.activeElement then watched nothing, so the hand-off above never ran on iOS Safari. */
     const dismissRecovery = useFocusRecovery({ fallback: focusFallbackRef });
 
-    const handleDismiss = () => {
-        const settle = dismissRecovery.arm();
+    const handleDismiss = (event) => {
+        const settle = dismissRecovery.arm({ from: event?.currentTarget ?? null });
         if (typeof window !== 'undefined') {
             localStorage.setItem(STORAGE_KEY, '1');
         }

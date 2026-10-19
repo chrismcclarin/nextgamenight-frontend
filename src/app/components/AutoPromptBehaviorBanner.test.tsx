@@ -125,6 +125,21 @@ describe('Got it keeps focus (88.6.1-79, Req 5)', () => {
     );
   });
 
+  it('AB3: an UNFOCUSED tap (iOS Safari: focus stays on body) still lands focus on the Check-ins control (88.6.1 code review A-12)', async () => {
+    render(<Host />);
+    const gotIt = await screen.findByRole('button', { name: 'Got it' });
+    expect(document.activeElement).toBe(document.body);
+    // element.click() does not focus the button, as a WebKit tap does not.
+    await act(async () => {
+      gotIt.click();
+    });
+
+    expect(screen.queryByRole('button', { name: 'Got it' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Check-ins' }))
+    );
+  });
+
   it('AB2: with no host target, focus lands on the page floor (main h1), never body', async () => {
     render(
       <main>
