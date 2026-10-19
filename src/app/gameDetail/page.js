@@ -1158,43 +1158,75 @@ export default function GameDetailPage() {
             setEffectiveGroupId(derivedGroupId || null);
 
             if (derivedGroupId && user?.sub) {
-                // Fetch group members — used for current-user role + per-row
-                // role badge in the See-all modal. Members come back as User
-                // objects with id (UUID), user_id (Auth0 string), and
-                // UserGroup.role attached via the through-table.
-                const fetchedGroupMembers = await groupsAPI.getGroupMembers(derivedGroupId);
-                if (!isCurrentRun()) return;
-                if (Array.isArray(fetchedGroupMembers)) {
-                    // Phase 71.1 GAMP-09: derive both userRole + userScope via
-                    // unified resolver. Plan 71.1-01's caller-self-row contract
-                    // guarantees the caller's row is present (with UserGroup=null
-                    // for game-only callers).
-                    // Phase 87.3-04: gate the is-me scope derive on identity
-                    // resolution — while selfUuid is unresolved leave userScope
-                    // at its prior/default value (loading/indeterminate), NEVER
-                    // downgrade to 'none'. The fetch effect's selfUuid dep re-runs
-                    // this flow once identity resolves.
-                    // AMENDED Phase 88.6.1-74 (roster access answer): the rule covers an UNRESOLVED
-                    // identity only. The roster's own access or gone answer and the primary read's
-                    // C10 drop are server answers, so they return userRole / userScope /
-                    // groupMembers to their initial values; see DECISION Phase 88.6.1-74 (C1, side
-                    // reads).
-                    if (selfUuid) {
-                        const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
-                        setUserRole(role);
-                        setUserScope(scope);
+                try {
+                    // Fetch group members — used for current-user role + per-row
+                    // role badge in the See-all modal. Members come back as User
+                    // objects with id (UUID), user_id (Auth0 string), and
+                    // UserGroup.role attached via the through-table.
+                    const fetchedGroupMembers = await groupsAPI.getGroupMembers(derivedGroupId);
+                    if (!isCurrentRun()) return;
+                    if (Array.isArray(fetchedGroupMembers)) {
+                        // Phase 71.1 GAMP-09: derive both userRole + userScope via
+                        // unified resolver. Plan 71.1-01's caller-self-row contract
+                        // guarantees the caller's row is present (with UserGroup=null
+                        // for game-only callers).
+                        // Phase 87.3-04: gate the is-me scope derive on identity
+                        // resolution — while selfUuid is unresolved leave userScope
+                        // at its prior/default value (loading/indeterminate), NEVER
+                        // downgrade to 'none'. The fetch effect's selfUuid dep re-runs
+                        // this flow once identity resolves.
+                        // AMENDED Phase 88.6.1-74 (roster access answer): the rule covers an UNRESOLVED
+                        // identity only. The roster's own access or gone answer and the primary read's
+                        // C10 drop are server answers, so they return userRole / userScope /
+                        // groupMembers to their initial values; see DECISION Phase 88.6.1-74 (C1, side
+                        // reads).
+                        if (selfUuid) {
+                            const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
+                            setUserRole(role);
+                            setUserScope(scope);
+                        }
+                        // Cache the roster so handleLeaveEvent can resolve the
+                        // caller's User.id UUID without a second fetch.
+                        setGroupMembers(fetchedGroupMembers);
+                        // Build map keyed by User.id (UUID) since EventParticipation
+                        // rows expose user_id-as-UUID after the flatten step.
+                        const byId = {};
+                        for (const m of fetchedGroupMembers) {
+                            if (m.id) byId[m.id] = m;
+                        }
+                        setGroupMembersByUserId(byId);
+                        stampRead('roster');
                     }
-                    // Cache the roster so handleLeaveEvent can resolve the
-                    // caller's User.id UUID without a second fetch.
-                    setGroupMembers(fetchedGroupMembers);
-                    // Build map keyed by User.id (UUID) since EventParticipation
-                    // rows expose user_id-as-UUID after the flatten step.
-                    const byId = {};
-                    for (const m of fetchedGroupMembers) {
-                        if (m.id) byId[m.id] = m;
+                } catch (error) {
+                    // 88.6.1-25 (P-2): the roster's own catch; the event stays rendered and the page
+                    // state is not touched.
+                    // AMENDED 2026-10-19 (88.6.1 code review A-48): this catch moved INSIDE the side-read
+                    // block, OVER the outer catch it used to be, so a roster failure falls through to the
+                    // RSVP-list and brings reads instead of skipping them — skipped, the RSVP list was
+                    // never attempted, `rsvpList` never recorded, and the event-view ballot told a viewer
+                    // who had said Yes to "RSVP Yes or Maybe to vote". Each side read now has its own catch.
+                    logger.info('Error fetching event members:', errCtx(error));
+                    if (!isCurrentRun()) return undefined;
+                    const rosterCode = error instanceof ApiError ? error.code : 'unknown';
+                    if (rosterCode !== 'unauthorized' && isAccessOrGoneError({ showError: true, code: rosterCode })) {
+                        // DECISION Phase 88.6.1-74 (C1, side reads) — review r2 #316: the roster's OWN access
+                        // or gone answer resets only the roster-derived member state and keeps the event; no
+                        // error of any kind. Its `unauthorized` is an ordinary side failure (review r3 M-01).
+                        setGroupMembers([]);
+                        setGroupMembersByUserId({});
+                        setUserRole(null);
+                        setUserScope('none');
+                        setReadLoadedFor((prev) => {
+                            if (!('roster' in prev)) return prev;
+                            const next = { ...prev };
+                            delete next.roster;
+                            return next;
+                        });
+                        setSectionLoadError((prev) => (prev.roster === null ? prev : { ...prev, roster: null }));
+                    } else {
+                        // DECISION Phase 88.6.1-74 (C1, side reads): record the roster failure.
+                        sideFailures.roster = error;
                     }
-                    setGroupMembersByUserId(byId);
-                    stampRead('roster');
                 }
                 // Fetch RSVP status — both for the current viewer (already
                 // wired into RsvpSection) and as a per-participant map keyed
@@ -1236,31 +1268,6 @@ export default function GameDetailPage() {
                     setBringersSet(bSet);
                     stampRead('brings');
                 }
-            }
-        } catch (error) {
-            // 88.6.1-25 (P-2): only a side fetch (roster) can reach this catch now; the event
-            // stays rendered and the page state is not touched.
-            logger.info('Error fetching event members:', errCtx(error));
-            if (!isCurrentRun()) return undefined;
-            const rosterCode = error instanceof ApiError ? error.code : 'unknown';
-            if (rosterCode !== 'unauthorized' && isAccessOrGoneError({ showError: true, code: rosterCode })) {
-                // DECISION Phase 88.6.1-74 (C1, side reads) — review r2 #316: the roster's OWN access
-                // or gone answer resets only the roster-derived member state and keeps the event; no
-                // error of any kind. Its `unauthorized` is an ordinary side failure (review r3 M-01).
-                setGroupMembers([]);
-                setGroupMembersByUserId({});
-                setUserRole(null);
-                setUserScope('none');
-                setReadLoadedFor((prev) => {
-                    if (!('roster' in prev)) return prev;
-                    const next = { ...prev };
-                    delete next.roster;
-                    return next;
-                });
-                setSectionLoadError((prev) => (prev.roster === null ? prev : { ...prev, roster: null }));
-            } else {
-                // DECISION Phase 88.6.1-74 (C1, side reads): record the roster failure.
-                sideFailures.roster = error;
             }
         } finally {
             // A superseded run neither clears `loading` nor stamps the entity (RESEARCH M-1.2).
@@ -2512,6 +2519,14 @@ export default function GameDetailPage() {
        ref is still null and focus lands on bare `main`. REJECTED (e): keeping the one-commit "Game
        not found" frame after an in-page key change and keeping the target off it (round 2's shape) —
        the frame is gone instead (the loader gate below, review r3 L-02).
+       AMENDED 2026-10-19 (88.6.1 code review A-56): the two full-banner screens — the event banner
+       (iii) and the game view's failed-load banner, the screens access answers withdraw to most —
+       now carry the target too, on the banner's box (`withdrawalTitleRef` on the wrapper `div`;
+       focusElement gives it tabindex -1), so focus lands on the banner that says what happened and
+       offers Try again, OVER bare `main` (what it was). REJECTED: a ref on the banner's own title —
+       it is a span inside FetchErrorBanner, which takes no title ref, and widening a shared primitive
+       for one page is out of proportion; a visually hidden h2 repeating the title — a second copy of
+       words the banner's live region already speaks.
        The game view's guard (`gameRetained`) is the fragment's second child, on the same target.
        A THIRD guard, for the group content (`groupContentRetained`, aimed at the game title), sits
        INSIDE the game view as its root's FIRST child: a group withdrawal keeps the game view, so an
@@ -3417,7 +3432,9 @@ export default function GameDetailPage() {
     if (!game_id && !singleEvent && eventErrorState.showError && eventErrorState.code !== 'not_found') {
         return (
             <div className="flex items-center justify-center min-h-screen">
-                <div className="w-full max-w-md px-6">
+                {/* A-56 (88.6.1 code review): the banner's box is the withdrawal target (the
+                    DECISION Phase 88.6.1-74 (C12) marker, AMENDED 2026-10-19). */}
+                <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={eventErrorState}
                         title={EVENT_LOAD_FAILED_TITLE}
@@ -3456,7 +3473,8 @@ export default function GameDetailPage() {
     if (!game && gameErrorState.showError && gameErrorState.code !== 'not_found') {
         return (
             <div className="flex items-center justify-center min-h-screen">
-                <div className="w-full max-w-md px-6">
+                {/* A-56: the banner's box is the withdrawal target (see the event banner above). */}
+                <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={gameErrorState}
                         title="We couldn't load this game"

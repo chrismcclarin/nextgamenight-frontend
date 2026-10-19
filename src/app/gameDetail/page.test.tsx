@@ -3597,6 +3597,21 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
+  // A-56 (88.6.1 code review): the event banner (iii) carries the withdrawal target too.
+  it('EV-14b. an unpressed gone (410) withdraws the event to the banner while Home holds focus: focus lands on the banner (C12 a)', async () => {
+    await reachEventRf1({ inMain: true });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(new ApiError('Gone', 'gone', 410));
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    within(nav).getByRole('link', { name: 'Home' }).focus();
+    await act(async () => fireVisibility('visible'));
+    const bannerTitle = await screen.findByText(EVENT_LOAD_FAILED);
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.querySelector('main'));
+      expect(document.activeElement?.contains(bannerTitle)).toBe(true);
+    });
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
   it('EV-15. Retry holds focus and an unpressed refresh succeeds: focus lands on the heading (C12 b)', async () => {
     await reachEventRf1();
     screen.getByRole('button', { name: 'Retry' }).focus();
@@ -3841,14 +3856,19 @@ describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', ()
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
-  it('GV-11. an unpressed 403 withdraws the game while Home holds focus: focus lands on main (C12 a)', async () => {
+  // AMENDED 2026-10-19 (88.6.1 code review A-56): focus lands on the banner that explains the
+  // withdrawal (its box carries the withdrawal target), no longer on bare `main`.
+  it('GV-11. an unpressed 403 withdraws the game while Home holds focus: focus lands on the banner (C12 a)', async () => {
     await reachGameRf1({ inMain: true });
     (gamesAPI.getGame as Mock).mockRejectedValue(new ApiError('Access denied', 'forbidden', 403));
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     within(nav).getByRole('link', { name: 'Home' }).focus();
     await act(async () => fireVisibility('visible'));
-    await screen.findByText(GAME_LOAD_FAILED);
-    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('main')));
+    const bannerTitle = await screen.findByText(GAME_LOAD_FAILED);
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.querySelector('main'));
+      expect(document.activeElement?.contains(bannerTitle)).toBe(true);
+    });
     expect(screen.queryByText('Wingspan')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
@@ -4410,6 +4430,19 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(calls + 1);
     expect(screen.getByTestId('ballot-section')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryAllByText(REPLIES_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  // A-48 (88.6.1 code review): the roster read has its own catch, so its failure no longer skips the
+  // RSVP-list and brings reads — skipped, the ballot told a viewer who had said Yes to RSVP first.
+  it('SR-24b. a first-load roster 500 still reads the RSVP list and brings: the ballot carries the viewer\'s Yes', async () => {
+    renderEventDetail({ role: 'member' });
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(SERVER_500());
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [{ User: { id: SELF_UUID }, status: 'yes' }] });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await waitFor(() => expect(rsvpAPI.getEventRsvps).toHaveBeenCalled());
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('ballot-section')).toHaveAttribute('data-rsvp-status', 'yes'));
   });
 
   it('SR-25. brings that failed and never loaded show the E18 notice; a user-triggered Set clears it', async () => {
