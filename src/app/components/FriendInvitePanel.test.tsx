@@ -18,7 +18,7 @@
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`, and the
 // config's `jsx-in-js` pre-transform handles the `.js` component under test.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -863,17 +863,87 @@ describe('FriendInvitePanel — pressed controls, focus and the copy timer (88.6
     expect(clearSpy).toHaveBeenCalledWith(pending);
   });
 
-  it('K4: a rejected clipboard write announces nothing and keeps the label (a guard, green by design)', async () => {
+  // AMENDED 2026-10-19 (88.6.1 code review CR-1 / A-25, owner ratified): K4 pinned the silent
+  // failure as a guard; the failure is now shown and announced, with the link as text.
+  const failRegion = () => document.getElementById('invite-link-copy-failed-status');
+  const COPY_FAILED = "Couldn't copy the link. Press and hold the link to copy it.";
+  const INVITE_LINK = 'https://example.test/join/tok';
+
+  it('K4: a rejected clipboard write shows and announces the failure sentence, with the link as text', async () => {
     const user = userEvent.setup();
     stubClipboard(vi.fn().mockRejectedValue(new Error('denied')));
     const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined);
     renderPanel();
 
-    await user.click(await screen.findByRole('button', { name: 'Copy Invite Link' }));
+    await screen.findByRole('button', { name: 'Copy Invite Link' });
+    const before = failRegion();
+    expect(before?.textContent).toBe('');
+    expect(screen.queryByRole('link', { name: INVITE_LINK })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
     await waitFor(() => expect(info).toHaveBeenCalledTimes(1));
     expect(info.mock.calls[0][0]).toBe('Failed to copy link:');
+    expect(failRegion()).toBe(before);
+    expect(before?.textContent).toBe(COPY_FAILED);
+    expect(before).toHaveAttribute('role', 'status');
+    expect(before).not.toHaveClass('sr-only');
+    expect(screen.getByRole('link', { name: INVITE_LINK })).toHaveAttribute('href', INVITE_LINK);
     expect(copyRegion()?.textContent).toBe('');
     expect(screen.getByRole('button', { name: 'Copy Invite Link' })).toBeInTheDocument();
+  });
+
+  it('K5: the next successful copy clears the failure sentence and the link', async () => {
+    const user = userEvent.setup();
+    stubClipboard(
+      vi.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValueOnce(undefined)
+    );
+    vi.spyOn(logger, 'info').mockImplementation(() => undefined);
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: 'Copy Invite Link' }));
+    await waitFor(() => expect(failRegion()?.textContent).toBe(COPY_FAILED));
+    await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
+    await screen.findByRole('button', { name: 'Copied!' });
+    expect(failRegion()?.textContent).toBe('');
+    expect(screen.queryByRole('link', { name: INVITE_LINK })).toBeNull();
+    expect(copyRegion()?.textContent).toBe(COPIED);
+  });
+
+  it('K6: closing clears the failure, and a rejection that settles after the close stays silent', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(logger, 'info').mockImplementation(() => undefined);
+    let rejectWrite: (e: Error) => void = () => {};
+    const writeText = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('denied'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectWrite = reject;
+          })
+      );
+    stubClipboard(writeText);
+    const { rerender, onClose, onMemberAdded } = renderPanel();
+    const at = (open: boolean) => (
+      <FriendInvitePanel group={GROUP} open={open} onClose={onClose} onMemberAdded={onMemberAdded} />
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Copy Invite Link' }));
+    await waitFor(() => expect(failRegion()?.textContent).toBe(COPY_FAILED));
+    rerender(at(false));
+    rerender(at(true));
+    await user.click(await screen.findByRole('button', { name: 'Copy Invite Link' }));
+    expect(writeText).toHaveBeenCalledTimes(2);
+    expect(failRegion()?.textContent).toBe('');
+
+    rerender(at(false));
+    await act(async () => {
+      rejectWrite(new Error('late'));
+    });
+    rerender(at(true));
+    await screen.findByRole('button', { name: 'Copy Invite Link' });
+    expect(failRegion()?.textContent).toBe('');
+    expect(screen.queryByRole('link', { name: INVITE_LINK })).toBeNull();
   });
 });
 

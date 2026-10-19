@@ -12,11 +12,19 @@ import { logger, errCtx } from '@/lib/logger';
 const LINK_COPIED_ANNOUNCEMENT = 'Invite link copied to the clipboard.';
 // How long the visible label reads Copied! after a successful copy.
 const COPIED_LABEL_MS = 2000;
+// Copy ruling CR-1 (88.6.1 code review A-25, owner ratified 2026-10-19; D-30 placement rule: a
+// hoisted constant at the site; D-32 R8 straight apostrophe). Shared byte-for-byte with the
+// FriendInvitePanel twin, which hoists the same constant.
+const COPY_FAILED_MESSAGE = "Couldn't copy the link. Press and hold the link to copy it.";
 
 function QRCodeModal({ isOpen, onClose, url, title }) {
   const [copied, setCopied] = useState(false);
   // Bumped once per successful copy; keys the announcement text so a repeat copy re-announces.
   const [copySeq, setCopySeq] = useState(0);
+  // CR-1 / A-25: a refused clipboard write; bumped sequence keys the sentence so a repeat
+  // failure re-announces (the copySeq idiom).
+  const [copyFailed, setCopyFailed] = useState(false);
+  const [failSeq, setFailSeq] = useState(0);
 
   // DECISION Phase 88.6.1-12 (Req 11, copy-confirmation timer): the label timer's handle is
   // HELD IN A REF and cleared before every re-arm, when the dialog closes and on unmount (the
@@ -43,6 +51,7 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
     if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
     copiedTimerRef.current = null;
     setCopied(false);
+    setCopyFailed(false);
   }, [isOpen]);
 
   useEffect(
@@ -58,6 +67,7 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
     try {
       await navigator.clipboard.writeText(url);
       if (openGenerationRef.current !== generation) return;
+      setCopyFailed(false);
       setCopied(true);
       setCopySeq((n) => n + 1);
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
@@ -89,6 +99,14 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
          Converted IN PLACE: this is a catch inside an event handler, not a render body, so no
          latch is needed. */
       logger.info('Failed to copy link:', errCtx(err));
+      // CR-1 / A-25: the generation guard above applies to the failure too, so a rejection
+      // that settles after the close shows and announces nothing.
+      if (openGenerationRef.current !== generation) return;
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = null;
+      setCopied(false);
+      setCopyFailed(true);
+      setFailSeq((n) => n + 1);
     }
   };
 
@@ -208,6 +226,30 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
         <StatusRegion className="sr-only">
           <span key={copySeq}>{copied ? LINK_COPIED_ANNOUNCEMENT : ''}</span>
         </StatusRegion>
+
+        {/* DECISION Phase 88.6.1 code review CR-1 / A-25 (owner ratified 2026-10-19): a refused
+            clipboard write is SHOWN and ANNOUNCED from a SECOND polite region in the house empty
+            shape (srOnlyWhenEmpty: mounted empty, out of flow until it speaks, visible once set),
+            chosen OVER reusing the sr-only success region above, whose marker keeps it sr-only for
+            its whole life because a visible success would repeat the button's Copied! label; a
+            failure has no such twin, so it must be visible. The sentence tells the person to press
+            and hold THE LINK, and this dialog otherwise shows only the QR code, so in the failure
+            state the URL is rendered as a plain link under the sentence, OUTSIDE the atomic region
+            (the URL is data, not copy, and is not read out with the sentence). REJECTED: a
+            read-only input (a long-press on an anchor offers Copy Link on both phone platforms).
+            Cleared by the next successful copy and on close; a late rejection after the close sets
+            nothing (the generation guard). Changing any of this is a decision, not a cleanup. */}
+        <StatusRegion srOnlyWhenEmpty className="mb-3 text-content-status-error">
+          <span key={failSeq}>{copyFailed ? COPY_FAILED_MESSAGE : ''}</span>
+        </StatusRegion>
+        {copyFailed && url ? (
+          <a
+            href={url}
+            className="block mb-3 text-sm text-content-link underline break-all focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          >
+            {url}
+          </a>
+        ) : null}
 
         {/* Close Button.
             88.6-33 (§3.2/§3.3): `<Button variant="secondary" size="default">`. `w-full` survives

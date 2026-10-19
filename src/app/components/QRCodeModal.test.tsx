@@ -111,11 +111,25 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 }
 
-function region(): HTMLElement {
-  const found = screen.getByRole('dialog').querySelectorAll('[role="status"].sr-only');
-  expect(found).toHaveLength(1);
-  return found[0] as HTMLElement;
+// AMENDED 2026-10-19 (88.6.1 code review CR-1 / A-25): the dialog now holds TWO polite regions,
+// the sr-only copy announcement first and the copy-failure line second (DOM order).
+function regions(): HTMLElement[] {
+  const found = screen.getByRole('dialog').querySelectorAll('[role="status"]');
+  expect(found).toHaveLength(2);
+  return Array.from(found) as HTMLElement[];
 }
+
+function region(): HTMLElement {
+  const r = regions()[0];
+  expect(r).toHaveClass('sr-only');
+  return r;
+}
+
+function failRegion(): HTMLElement {
+  return regions()[1];
+}
+
+const COPY_FAILED = "Couldn't copy the link. Press and hold the link to copy it.";
 
 function dialogAt(isOpen: boolean, url: string = INVITE_URL) {
   return (
@@ -241,22 +255,87 @@ describe('QRCodeModal — the copy outcome (88.6.1-12)', () => {
     expect(clearTimeoutSpy).toHaveBeenCalledWith(pending[0]);
   });
 
-  it('E1: a rejected write announces nothing and keeps the existing breadcrumb', async () => {
+  // AMENDED 2026-10-19 (88.6.1 code review CR-1 / A-25, owner ratified): a rejected write was
+  // silent; it now shows and announces the ratified failure sentence plus the link as text.
+  it('E1: a rejected write shows and announces the failure sentence, with the link as text', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockRejectedValue(new Error('denied'));
     stubClipboard(writeText);
     const info = vi.spyOn(logger, 'info').mockImplementation(() => {});
     render(dialogAt(true));
     const before = region();
+    const failBefore = failRegion();
+    expect(failBefore.textContent).toBe('');
+    expect(screen.queryByRole('link')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
-    // Positive signal first (CF-26), then the absences.
     await waitFor(() => expect(info).toHaveBeenCalledTimes(1));
     expect(info).toHaveBeenCalledWith('Failed to copy link:', expect.any(Object));
 
+    // The failure is spoken from the region that was already mounted and empty, and shown.
+    expect(failRegion()).toBe(failBefore);
+    expect(failBefore.textContent).toBe(COPY_FAILED);
+    expect(failBefore).toHaveAttribute('aria-live', 'polite');
+    expect(failBefore).not.toHaveClass('sr-only');
+    const link = screen.getByRole('link', { name: INVITE_URL });
+    expect(link).toHaveAttribute('href', INVITE_URL);
+    // The success announcement stays empty and the label never claims a copy.
     expect(region()).toBe(before);
     expect(before.textContent).toBe('');
     expect(screen.getByRole('button', { name: 'Copy Invite Link' })).toBeInTheDocument();
+  });
+
+  it('E1b: the next successful copy clears the failure sentence and the link', async () => {
+    const user = userEvent.setup();
+    const writeText = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('denied'))
+      .mockResolvedValueOnce(undefined);
+    stubClipboard(writeText);
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    render(dialogAt(true));
+
+    await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
+    await waitFor(() => expect(failRegion().textContent).toBe(COPY_FAILED));
+
+    await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
+    await screen.findByRole('button', { name: 'Copied!' });
+    expect(failRegion().textContent).toBe('');
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(region().textContent).toBe(G3);
+  });
+
+  it('E1c: closing clears the failure, and a rejection that settles after the close stays silent', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    const writeText = vi.fn().mockRejectedValueOnce(new Error('denied'));
+    stubClipboard(writeText);
+    const { rerender } = render(dialogAt(true));
+    await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
+    await waitFor(() => expect(failRegion().textContent).toBe(COPY_FAILED));
+
+    rerender(dialogAt(false));
+    rerender(dialogAt(true));
+    expect(failRegion().textContent).toBe('');
+    expect(screen.queryByRole('link')).toBeNull();
+
+    // A late rejection: pressed while open, settled after the close.
+    let rejectWrite: (e: Error) => void = () => {};
+    writeText.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectWrite = reject;
+        })
+    );
+    await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
+    expect(writeText).toHaveBeenCalledTimes(2);
+    rerender(dialogAt(false));
+    await act(async () => {
+      rejectWrite(new Error('late'));
+    });
+    rerender(dialogAt(true));
+    expect(failRegion().textContent).toBe('');
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('E2: with no link the copy writes nothing and announces nothing', async () => {

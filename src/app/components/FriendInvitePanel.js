@@ -36,6 +36,10 @@ const FRIEND_REQUEST_FAILED_MESSAGE = "We couldn't send that request.";
 const LINK_COPIED_ANNOUNCEMENT = 'Invite link copied to the clipboard.';
 // How long the visible label reads Copied! after a successful copy.
 const COPIED_LABEL_MS = 2000;
+// Copy ruling CR-1 (88.6.1 code review A-25, owner ratified 2026-10-19; D-30 placement rule: a
+// hoisted constant at the site; D-32 R8 straight apostrophe). Byte-identical to the QR dialog's
+// constant of the same name (its twin).
+const COPY_FAILED_MESSAGE = "Couldn't copy the link. Press and hold the link to copy it.";
 
 // `openedFrom` is the entry point this panel was opened from: 'create' is the
 // auto-open immediately after a group is created (createGroup.js) and swaps in
@@ -80,6 +84,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     const [copied, setCopied] = useState(false);
     // Bumped once per successful copy; keys the announcement text so a repeat copy re-announces.
     const [copySeq, setCopySeq] = useState(0);
+    // CR-1 / A-25: a refused clipboard write; the sequence keys the sentence so a repeat failure
+    // re-announces (the copySeq idiom).
+    const [copyFailed, setCopyFailed] = useState(false);
+    const [failSeq, setFailSeq] = useState(0);
 
     /* DECISION Phase 88.6-22 (R3 #149, the rule of KIND + the rule of POSITION): every gated
        BUTTON on this surface carries `aria-disabled` plus a SYNCHRONOUS first-line ref latch
@@ -138,6 +146,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
 
     // The copy label's 2 s handle; see the copy-announcement marker in the QR section.
     const copiedTimerRef = useRef(null);
+    // CR-1 / A-25: bumped on every close, so a clipboard rejection that settles after the panel
+    // closed shows nothing on a reopen (the QR dialog's generation guard).
+    const openGenerationRef = useRef(0);
 
     // The Req 5 recovery target when Add Friend's prompt unmounts with the focused button.
     const inviteByEmailHeadingRef = useRef(null);
@@ -202,6 +213,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
             if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
             copiedTimerRef.current = null;
             setCopied(false);
+            openGenerationRef.current += 1;
+            setCopyFailed(false);
         }
     }, [open]);
 
@@ -509,8 +522,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
 
     const handleCopyLink = async () => {
         if (!inviteUrl) return;
+        const generation = openGenerationRef.current;
         try {
             await navigator.clipboard.writeText(inviteUrl);
+            setCopyFailed(false);
             setCopied(true);
             setCopySeq((n) => n + 1);
             if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
@@ -520,6 +535,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
             }, COPIED_LABEL_MS);
         } catch (err) {
             logger.info('Failed to copy link:', errCtx(err));
+            // CR-1 / A-25: a rejection that settles after the close sets nothing.
+            if (openGenerationRef.current !== generation) return;
+            if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+            copiedTimerRef.current = null;
+            setCopied(false);
+            setCopyFailed(true);
+            setFailSeq((n) => n + 1);
         }
     };
 
@@ -1008,6 +1030,35 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                         >
                                             <span key={copySeq}>{copied ? LINK_COPIED_ANNOUNCEMENT : ''}</span>
                                         </StatusRegion>
+                                        {/* DECISION Phase 88.6.1 code review CR-1 / A-25 (owner ratified
+                                            2026-10-19): a refused clipboard write is SHOWN and ANNOUNCED
+                                            from a SECOND polite region in the house empty shape
+                                            (srOnlyWhenEmpty), chosen OVER reusing the sr-only success
+                                            region above, which stays sr-only for its whole life because a
+                                            visible success would repeat the button's Copied! label; a
+                                            failure has no such twin. This section otherwise shows only the
+                                            QR code, and the sentence says to press and hold THE LINK, so
+                                            in the failure state the URL is rendered as a plain link under
+                                            the sentence, outside the atomic region (data, not copy).
+                                            Cleared by the next successful copy and on close; a rejection
+                                            that settles after the close sets nothing. The shape is the QR
+                                            dialog's, so the app keeps one copy idiom. Changing any of this
+                                            is a decision, not a cleanup. */}
+                                        <StatusRegion
+                                            id="invite-link-copy-failed-status"
+                                            srOnlyWhenEmpty
+                                            className="mt-2 w-full text-center text-content-status-error"
+                                        >
+                                            <span key={failSeq}>{copyFailed ? COPY_FAILED_MESSAGE : ''}</span>
+                                        </StatusRegion>
+                                        {copyFailed ? (
+                                            <a
+                                                href={inviteUrl}
+                                                className="mt-1 block w-full text-center text-sm text-content-link underline break-all focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                                            >
+                                                {inviteUrl}
+                                            </a>
+                                        ) : null}
                                         {/* DECISION Phase 88.6.1-27 (Req 14, W015, LATENT-AND-DEAD-RULING):
                                             this panel has no invite-link reset. The admin flag that
                                             gated one here was never passed by any of the three hosts,
