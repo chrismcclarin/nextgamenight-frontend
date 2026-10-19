@@ -13,6 +13,7 @@ import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { logger, errCtx } from '@/lib/logger';
 import {
     isAlreadyInvitedOrMember,
@@ -46,6 +47,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     const { user } = useUser();
     // FE-18 cutover: exclude-self keys on the resolved Users.id UUID (async).
     const { selfUuid } = useSelfIdentity();
+    // 88.6.1 code review A-17: Add Friend sends through the app-wide provider (see handleAddFriend).
+    const { sendRequest: sendFriendRequest } = useFriendshipStatus();
 
     const [friends, setFriends] = useState([]);
     const [loadingFriends, setLoadingFriends] = useState(true);
@@ -271,13 +274,14 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
 
             setInviteResult({ successCount, failCount, alreadyCount, firstFailure });
             setSelectedFriends(new Set());
-            setInviting(false);
 
             if (successCount > 0 && onMemberAdded) {
                 onMemberAdded();
             }
         } finally {
-            // Released in `finally` so a FAILED pass does not strand the control.
+            // Released in `finally` so a FAILED pass does not strand the control. The in-flight label and its
+            // aria-disabled are released here too (88.6.1 code review IN-07): the two halves of one gate on one path.
+            setInviting(false);
             bulkInviteInFlightRef.current = false;
         }
     };
@@ -429,7 +433,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         }
     };
 
-    const handleAddFriend = async () => {
+    const handleAddFriend = async (event) => {
         // The in-flight refusal, synchronous and FIRST — see the latch marker above. There was
         // NO in-flight guard here before: the shipped `disabled={addingFriend}` was the only
         // thing stopping a second press, so moving it to `aria-disabled` without this latch
@@ -446,13 +450,23 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
            dialog title (further from where the user stood). No heading is minted — this one
            already exists. A programmatic focus may draw the browser's ring on the heading
            (RESEARCH P-11); the shipped recovery targets do the same. Changing this is a
-           decision, not a cleanup. */
-        const settle = addFriendRecovery.arm();
+           decision, not a cleanup.
+           AMENDED 2026-10-19 (88.6.1 code review A-16 / WR-05): armed `from` the pressed button, per the
+           hook's consumer contract (1) — a WebKit tap does not focus it, and an arm seeded from
+           document.activeElement then watched nothing, so the hand-off never happened on iOS Safari. */
+        const settle = addFriendRecovery.arm({ from: event?.currentTarget ?? null });
         setAddingFriend(true);
         // Emptied at every attempt, so a repeat failure is a change the lane announces again.
         setFriendRequestError('');
         try {
-            await friendshipsAPI.sendRequest(friendPrompt.id);
+            // DECISION 88.6.1 code review A-17: sent through the provider's send-and-sync (FriendshipStatusProvider's
+            // sendRequestAndSync), CHOSEN OVER the raw friendshipsAPI.sendRequest this site used to call, which left the
+            // provider's sentRequests without the new request, so member chips and name popovers app-wide kept offering
+            // + add friend (plan 88.6.1-66's rule: every confirmed list edit starts a load). The provider resolves its
+            // 409 (already pending / already friends) like a success, which lands on the same sent line the conflict arm
+            // below shows; that arm stays as the backstop for a conflict that reaches here. Going back to the raw call
+            // is a decision, not a cleanup.
+            await sendFriendRequest(friendPrompt.id);
             setFriendRequestSent(true);
         } catch (err) {
             // Silently fail — they may already have a pending request
@@ -478,6 +492,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
             // the retry and drops focus); writing the failure into the email send lane (that
             // lane describes the Send button, a different action). Only the error's code is
             // read here. Changing any of this is a decision, not a cleanup.
+            // AMENDED 2026-10-19 (88.6.1 code review A-17): the send now goes through the provider, whose
+            // handleSendRequest resolves a 409 before it reaches this catch; the outcome is the same sent line
+            // (point (1) and (3) unchanged), and this conflict arm stays as the backstop.
             if (err?.code === 'conflict') {
                 setFriendRequestSent(true);
             } else {

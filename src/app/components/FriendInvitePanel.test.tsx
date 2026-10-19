@@ -73,6 +73,9 @@ vi.mock('@/lib/api', async (importOriginal) => {
       getFriends: vi.fn().mockResolvedValue([]),
       searchUserByEmail: vi.fn().mockResolvedValue(null),
       sendRequest: vi.fn().mockResolvedValue({}),
+      // The real FriendshipStatusProvider wraps every render (88.6.1 code review A-17): its load reads these.
+      getSentRequests: vi.fn().mockResolvedValue([]),
+      getReceivedRequests: vi.fn().mockResolvedValue([]),
     },
     groupsAPI: {
       ...actual.groupsAPI,
@@ -88,6 +91,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import FriendInvitePanel from './FriendInvitePanel';
+import { FriendshipStatusProvider } from './FriendshipStatusProvider';
 import { friendshipsAPI, groupsAPI } from '@/lib/api';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -129,6 +133,8 @@ export function renderPanel(options: RenderPanelOptions = {}) {
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(members);
   const onClose = vi.fn();
   const onMemberAdded = vi.fn();
+  // Wrapped in the REAL app-wide provider, as layout.js mounts it: Add Friend sends through its
+  // send-and-sync (88.6.1 code review A-17). `wrapper` survives a rerender.
   const utils = render(
     <FriendInvitePanel
       group={group}
@@ -136,7 +142,8 @@ export function renderPanel(options: RenderPanelOptions = {}) {
       onClose={onClose}
       onMemberAdded={onMemberAdded}
       openedFrom={openedFrom}
-    />
+    />,
+    { wrapper: FriendshipStatusProvider as React.ComponentType<{ children: React.ReactNode }> }
   );
   return { onClose, onMemberAdded, ...utils };
 }
@@ -732,6 +739,43 @@ describe('FriendInvitePanel — pressed controls, focus and the copy timer (88.6
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(document.getElementById('invite-friend-request-status')).toHaveTextContent('Friend request sent!');
+  });
+
+  it('F1b: an UNFOCUSED tap (the iOS Safari shape: focus stays on body) still lands focus on the heading (88.6.1 code review A-16)', async () => {
+    const { friendshipsAPI: api } = await import('@/lib/api');
+    (api.sendRequest as Mock).mockResolvedValue({});
+    const add = await openAddFriendPrompt();
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    // fireEvent.click does not focus the button, as a WebKit tap does not.
+    fireEvent.click(add);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Invite by Email' }))
+    );
+  });
+
+  it('F1c: a sent request goes through the app-wide provider, which re-reads the friendship lists; a failure does not (88.6.1 code review A-17)', async () => {
+    const { friendshipsAPI: api, ApiError } = await import('@/lib/api');
+    (api.sendRequest as Mock)
+      .mockRejectedValueOnce(new ApiError('Network down', 'network', 0))
+      .mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    const add = await openAddFriendPrompt();
+    await waitFor(() => expect(api.getSentRequests).toHaveBeenCalledTimes(1));
+
+    await user.click(add);
+    await waitFor(() => expect(document.getElementById('invite-friend-request-error')?.textContent).not.toBe(''));
+    expect(api.getSentRequests).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Add Friend' }));
+    await waitFor(() =>
+      expect(document.getElementById('invite-friend-request-status')).toHaveTextContent('Friend request sent!')
+    );
+    expect(api.sendRequest).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(api.getSentRequests).toHaveBeenCalledTimes(2));
+    expect(api.getFriends).toHaveBeenCalledTimes(3);
   });
 
   it('F2: the already-pending answer (a 409 the client maps to conflict) also lands focus on the heading (Req 5)', async () => {
