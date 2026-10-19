@@ -617,6 +617,36 @@ describe('ConfirmDialog — dialog tier', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): an optional `pendingLabel`
+  // replaces the confirm's visible text while pending — the label swap the page controls use —
+  // so a screen reader on the focused confirm hears that the commit is running. Default-off.
+  it('with pendingLabel, the pending confirm shows the pending text and stays focusable (CR-5 / A-75)', () => {
+    renderConfirmDialog({ pending: true, pendingLabel: 'Deleting\u2026', confirmDisabled: () => true });
+    const confirmButton = screen.getByRole('button', { name: 'Deleting\u2026' });
+    expect(confirmButton).toHaveAttribute('aria-disabled', 'true');
+    expect(confirmButton).not.toHaveAttribute('disabled');
+    expect(confirmButton).toHaveClass('btn-danger');
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  it('pendingLabel is inert while not pending, and no pendingLabel keeps the verb while pending (CR-5 / A-75)', () => {
+    const { rerender, onCancel, onConfirm } = renderConfirmDialog({ pendingLabel: 'Deleting\u2026' });
+    expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled');
+    rerender(
+      <ConfirmDialog
+        tier="dialog"
+        open
+        pending
+        title="Delete this session?"
+        confirmLabel="Delete"
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+        confirmDisabled={() => true}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('passes an axe audit on the OPEN dialog', async () => {
     renderConfirmDialog();
     expect(await axe(screen.getByRole('dialog'))).toHaveNoViolations();
@@ -853,14 +883,17 @@ describe('ConfirmDialog — typed tier', () => {
 // ConfirmDialog — so the in-flight refusal is exercised end to end, not by a stub.
 function PendingDialogHarness({
   onConfirm,
+  pendingLabel,
 }: {
   onConfirm: UseConfirmActionConfig['onConfirm'];
+  pendingLabel?: string;
 }) {
   const confirm = useConfirmAction({
     tier: 'dialog',
     title: 'Delete this session?',
     body: 'The play record, scores and who was there are deleted for everyone.',
     confirmLabel: 'Delete',
+    pendingLabel,
     onConfirm,
   });
   return (
@@ -912,6 +945,38 @@ describe('ConfirmDialog — a pending commit through the real hook (AC-9, R123 /
       await gate.promise;
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+});
+
+describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', () => {
+  it('the pressed confirm swaps to the pending text in place, keeps focus, and returns to the verb on a failed commit', async () => {
+    const gate = deferred();
+    const onConfirm = vi.fn(() => gate.promise.then(() => {
+      throw new Error('commit failed');
+    }));
+    render(<PendingDialogHarness onConfirm={onConfirm} pendingLabel={'Deleting\u2026'} />);
+
+    fireEvent.click(screen.getByTestId('open'));
+    const confirmButton = screen.getByRole('button', { name: 'Delete' });
+    confirmButton.focus();
+
+    await act(async () => {
+      fireEvent.click(confirmButton);
+    });
+
+    const pendingConfirm = screen.getByRole('button', { name: 'Deleting\u2026' });
+    expect(pendingConfirm).toBe(confirmButton);
+    expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).toBe(pendingConfirm);
+
+    await act(async () => {
+      gate.resolve();
+      await gate.promise.catch(() => undefined);
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled')
+    );
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });
 

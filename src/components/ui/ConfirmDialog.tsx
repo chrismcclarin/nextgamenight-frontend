@@ -103,6 +103,13 @@ export interface ConfirmDialogProps {
   body?: React.ReactNode;
   /** The verb alone: "Remove", "Delete", "Disconnect". Never "OK"/"Yes". */
   confirmLabel: string;
+  /**
+   * Optional, default-off: the confirm's visible text WHILE `pending` ("Disconnecting…"),
+   * replacing `confirmLabel` until the commit settles — the label swap the page controls use,
+   * so a screen reader on the focused confirm hears the commit is running (88.6.1 code review
+   * CR-5 / A-75). Omitted, the confirm keeps `confirmLabel` throughout. Owner-ratified copy only.
+   */
+  pendingLabel?: string;
   /** @default 'Cancel' */
   cancelLabel?: string;
   /** `typed` tier: the phrase that must be entered exactly. */
@@ -137,6 +144,7 @@ export function ConfirmDialog({
   title,
   body,
   confirmLabel,
+  pendingLabel,
   cancelLabel = 'Cancel',
   expectedPhrase,
   blockerPanel,
@@ -294,7 +302,14 @@ export function ConfirmDialog({
              starts; the refusal that stops a second REQUEST is the hook's pendingRef
              (useConfirmAction.ts runConfirm, `if (pendingRef.current) return;`), and a caller
              not using the hook must pass `pending`. Disclosed visible delta: while pending the
-             confirm shows the gated danger pair instead of the 50% wash. */
+             confirm shows the gated danger pair instead of the 50% wash.
+             AMENDED 2026-10-19 (88.6.1 code review CR-5 / A-75, owner ratified): aria-disabled
+             alone is announced inconsistently (VoiceOver iOS often says nothing), so while pending
+             the confirm's TEXT may swap to an optional `pendingLabel` — the same node, still
+             focused, so the name change is what a screen reader hears. Chosen OVER a status
+             region inside the dialog (a second idiom; the page controls already speak in-flight
+             by a label swap). Default-off: a gate that passes no `pendingLabel` keeps
+             `confirmLabel` while pending, byte-identical to before. */
           <Button
             variant="danger"
             onClick={() => {
@@ -304,7 +319,7 @@ export function ConfirmDialog({
             disabled={!pending && confirmDisabled(committedValue)}
             aria-disabled={pending || undefined}
           >
-            {confirmLabel}
+            {pending && pendingLabel ? pendingLabel : confirmLabel}
           </Button>
         ) : null}
       </Modal.Footer>

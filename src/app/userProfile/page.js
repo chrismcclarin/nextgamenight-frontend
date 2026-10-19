@@ -56,6 +56,10 @@ import { focusElement, focusPageFloor } from '../../components/ui/focusPageFloor
 // shared name+message builder (88.6-13); the raw Error is never passed as `ctx`.
 import { logger, errCtx } from '../../lib/logger';
 
+// 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): the Disconnect Google Calendar
+// confirm's text while the disconnect is in flight (ConfirmDialog's pendingLabel).
+const DISCONNECT_CALENDAR_PENDING_LABEL = 'Disconnecting…';
+
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
     { key: 'reminder', label: 'Event Reminders', description: 'Before upcoming events' },
@@ -1442,6 +1446,7 @@ function Profile(){
         title: 'Disconnect Google Calendar?',
         body: 'Future events stop syncing. Events already on your calendar stay.',
         confirmLabel: 'Disconnect',
+        pendingLabel: DISCONNECT_CALENDAR_PENDING_LABEL,
         onConfirm: performDisconnectGoogleCalendar,
     });
 

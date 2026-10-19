@@ -67,6 +67,12 @@ export interface UseConfirmActionConfig {
   body?: React.ReactNode;
   /** The verb alone: "Remove", "Delete", "Disconnect". Never "OK"/"Yes". */
   confirmLabel: string;
+  /**
+   * `dialog`/`typed` only, optional: the confirm's text while the commit is pending
+   * ("Disconnecting…"). Passed through `dialogProps`; see ConfirmDialog's `pendingLabel`.
+   * Ignored by `two-tap`. (88.6.1 code review CR-5 / A-75)
+   */
+  pendingLabel?: string;
   /** Cancel copy. @default 'Cancel' */
   cancelLabel?: string;
   /** `typed` tier only: the phrase that must be entered EXACTLY. */
@@ -118,6 +124,7 @@ export interface ConfirmDialogState {
   title: string;
   body?: React.ReactNode;
   confirmLabel: string;
+  pendingLabel?: string;
   cancelLabel: string;
   expectedPhrase?: string;
   onCancel: () => void;
@@ -211,6 +218,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     title,
     body,
     confirmLabel,
+    pendingLabel,
     cancelLabel = 'Cancel',
     expectedPhrase,
     armedLabel = DEFAULT_ARMED_LABEL,
@@ -433,6 +441,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       title,
       body,
       confirmLabel,
+      pendingLabel,
       cancelLabel,
       expectedPhrase,
       onCancel: cancel,
@@ -446,6 +455,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       title,
       body,
       confirmLabel,
+      pendingLabel,
       cancelLabel,
       expectedPhrase,
       cancel,

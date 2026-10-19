@@ -695,6 +695,31 @@ describe('userProfile destructive gates (Req 11)', () => {
     );
   });
 
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): while the disconnect is in
+  // flight the pressed confirm reads "Disconnecting…" (ConfirmDialog's pendingLabel).
+  it('the pending disconnect confirm reads the ratified pending label until it settles (CR-5)', async () => {
+    const { googleCalendarAPI } = await import('@/lib/api');
+    (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connected: true,
+    });
+    let settle!: () => void;
+    (googleCalendarAPI.disconnect as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<void>((resolve) => { settle = resolve; })
+    );
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Disconnecting\u2026' });
+    expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
+    expect(within(dialog).queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
+
+    settle();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('cancel on the disconnect dialog aborts — the API is never reached', async () => {
     const { googleCalendarAPI } = await import('@/lib/api');
     (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({

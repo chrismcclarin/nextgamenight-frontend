@@ -364,6 +364,29 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     expect(after.value).toBe('member');
   });
 
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): while the grant is in flight
+  // the pressed confirm reads "Promoting…" (ConfirmDialog's pendingLabel) and stays focusable.
+  it('promote: the pending confirm reads the ratified pending label until the grant settles (CR-5)', async () => {
+    let settle!: () => void;
+    (groupsAPI.updateUserRole as Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => { settle = resolve; })
+    );
+    await openMembersModal();
+    const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'admin' } });
+    const dialog = await screen.findByRole('dialog', { name: 'Make Target an admin?' });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Make admin' }));
+    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Promoting\u2026' });
+    expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
+    expect(within(dialog).queryByRole('button', { name: 'Make admin' })).not.toBeInTheDocument();
+
+    settle();
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Make Target an admin?' })).not.toBeInTheDocument()
+    );
+  });
+
   it('demotion stays UNGATED — an admin->member change calls the API directly', async () => {
     (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
       ROSTER[0],
