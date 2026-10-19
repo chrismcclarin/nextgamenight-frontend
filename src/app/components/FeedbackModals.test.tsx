@@ -59,7 +59,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import { feedbackAPI, ApiError } from '@/lib/api';
 import FeedbackButton from './FeedbackButton';
 import FeedbackForm from './FeedbackForm';
-import { FeedbackModalProvider, useFeedbackModal } from './FeedbackModalProvider';
+import { FeedbackModalProvider, useFeedbackModal, useFeedbackReport } from './FeedbackModalProvider';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -439,5 +439,51 @@ describe('FeedbackButton — F2 at the unknown arm (88.6.1-33, D-30)', () => {
       await screen.findByText('Something went wrong on our end. Please try again shortly.')
     ).toBeInTheDocument();
     expect(screen.queryByText(F2)).toBeNull();
+  });
+});
+
+// WR-04 (88.6.1 code review), confirm-only: the review held that the form -> success swap unmounts
+// the FORM dialog, whose late close-autofocus would spend the stored opener before the real close.
+// Measured here: the swap keeps the same dialog node, and the real close lands on the opener.
+// RP-3/RP-4 (FetchErrorBanner.report.test.tsx) close only via Escape; this pins the success path.
+describe('report host — a successful send returns focus to Report this (WR-04, confirm-only)', () => {
+  function ReportOpener() {
+    const openReport = useFeedbackReport();
+    return (
+      <main>
+        <h1>Page</h1>
+        <button
+          type="button"
+          onClick={(event) =>
+            openReport?.({ subject: 'Broken list', description: 'It broke.', invoker: event.currentTarget })
+          }
+        >
+          Report this
+        </button>
+      </main>
+    );
+  }
+
+  it('WR-04: after the success panel closes, focus lands on the opener, never the page h1 or body', async () => {
+    const user = userEvent.setup();
+    render(
+      <FeedbackModalProvider>
+        <ReportOpener />
+      </FeedbackModalProvider>
+    );
+    const opener = screen.getByRole('button', { name: 'Report this' });
+    await user.click(opener);
+    const formDialog = await screen.findByRole('dialog', { name: 'Report Bug or Suggest Feature' });
+    await user.click(screen.getByRole('button', { name: 'Submit' }));
+    await screen.findByText(/Thank You/i);
+    // The premise WR-04 rested on does not hold: both of FeedbackForm's returns are `<Modal open>` at
+    // the same position, so React keeps ONE dialog instance across the swap — the form dialog never
+    // unmounts and fires no close-autofocus while the report is open. Pinned, because a `key` on
+    // either return would make the review's scenario real.
+    expect(screen.getByRole('dialog')).toBe(formDialog);
+    // The 2 s success timer closes the panel through the provider's closeReport.
+    await waitFor(() => expect(screen.queryByText(/Thank You/i)).toBeNull(), { timeout: 4000 });
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    expect(document.activeElement).not.toBe(screen.getByRole('heading', { level: 1, name: 'Page' }));
   });
 });
