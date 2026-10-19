@@ -91,7 +91,9 @@ function toggleOptionVote(ballot, optionId, voted) {
    1px `sr-only` box can never extend the page's scrollable overflow. */
 export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus }) {
   const [ballot, setBallot] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Loading only with a real event id: fetchBallot returns before its finally when there is none, so a
+  // true here would never clear (88.6.1 code review IN-06; the reset below follows the same rule).
+  const [loading, setLoading] = useState(() => Boolean(eventId));
   const [error, setError] = useState(null);
   // E15: null, or `{ eventId, caught }` for the current event's failed load (`caught` is the
   // caught error object). Cleared ONLY by a successful load, never at the start of one, so the
@@ -113,13 +115,16 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
      state, which leaves a stale ballot for every setBallot updater to edit; (c) keeping the old
      card until the new GET answers (the bug). Accepted: a pick focused at the moment of a switch
      is removed with the card, and the switch is a navigation the user started elsewhere.
-     Changing this is a decision, not a cleanup. */
+     Changing this is a decision, not a cleanup.
+     AMENDED 2026-10-19 (88.6.1 code review IN-06): the loader shows only for a real id
+     (`setLoading(Boolean(eventId))`); a switch to no id drops the old ballot and shows nothing, never a
+     loader that no fetch will end. */
   const [ballotEventId, setBallotEventId] = useState(eventId);
   if (ballotEventId !== eventId) {
     setBallotEventId(eventId);
     setBallot(null);
     setError(null);
-    setLoading(true);
+    setLoading(Boolean(eventId));
   }
   const resolveInFlightRef = useRef(false);
   const voteInFlightRef = useRef(false);
@@ -255,7 +260,9 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   // never shown for another (LF-5). The house adapter for a hand-rolled fetch
   // (ResponseDashboard.js, anchor `const errorState =`), called above every
   // early return.
-  const showLoadFailure = !ballot && loadError?.eventId === eventId;
+  // `Boolean(loadError)` first: with no stored failure and no eventId, `undefined === undefined` read as a
+  // failure and the adapter dereferenced null (88.6.1 code review IN-06).
+  const showLoadFailure = !ballot && Boolean(loadError) && loadError.eventId === eventId;
   const loadErrorState = useFetchErrorState({
     isError: showLoadFailure,
     error: showLoadFailure ? loadError.caught : null,

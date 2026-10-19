@@ -1029,3 +1029,23 @@ describe('BallotSection — a failed load says so, and an event with no vote sti
     expect(alerts[1].contains(alerts[0])).toBe(false);
   });
 });
+
+// 88.6.1 code review IN-06: the loading arm depends on a real event id, so an eventId that becomes
+// falsy (unreachable today: both mounts pass event.id) can never leave the card on "Loading ballot..."
+// (fetchBallot returns before the finally that clears loading).
+describe('BallotSection without an event id (IN-06)', () => {
+  it('IN6: an eventId that becomes undefined renders no loader, and a mount with none renders none either', async () => {
+    queueBallots([OPEN_BALLOT]);
+    const { rerender } = render(<BallotSection {...ballotProps('event-1')} />);
+    await screen.findByRole('heading', { name: 'Game Vote' });
+
+    rerender(<BallotSection {...ballotProps(undefined as unknown as string)} />);
+    await act(async () => {});
+    expect(screen.queryByText('Loading ballot...')).toBeNull();
+
+    cleanup();
+    render(<BallotSection {...ballotProps(undefined as unknown as string)} />);
+    await act(async () => {});
+    expect(screen.queryByText('Loading ballot...')).toBeNull();
+  });
+});
