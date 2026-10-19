@@ -48,7 +48,11 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
 }));
 
-vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+// errCtx stays REAL (88.6.1 code review A-14 / A-38: the providers' load catches now call it).
+vi.mock('@/lib/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/logger')>()),
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}));
 
 interface FriendRequestRow {
   id: string;

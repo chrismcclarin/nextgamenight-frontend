@@ -51,7 +51,11 @@ vi.mock('./UnreadNotificationProvider', () => ({
 // (`AvailabilityForm.test.tsx`, `ScheduleForm.test.tsx`, `GroupSettings.test.tsx`,
 // `NextGameNightCard.test.tsx` all mock `@/lib/logger` exactly this way) — reused rather than
 // re-invented, and NO second test file is added.
-vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+// errCtx stays REAL (88.6.1 code review A-14 / A-38: the providers' load catches now call it).
+vi.mock('@/lib/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/logger')>()),
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}));
 
 const { friendMocks } = vi.hoisted(() => ({
   friendMocks: {
