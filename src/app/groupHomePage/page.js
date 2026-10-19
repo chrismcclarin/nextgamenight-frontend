@@ -86,7 +86,10 @@ function GroupHomePage(){
     // resolves. Without this, getGroup()/games/events fetches race the
     // membership lookup and the page paints with partial data before the
     // redirect fires for removed users.
-    const [membershipChecked, setMembershipChecked] = useState(false);
+    // AMENDED 2026-10-19 (88.6.1 code review A-57): stored as the group id the check passed FOR
+    // (`membershipChecked` is derived below `Router`), so a same-mount switch to another group
+    // re-closes the gate instead of painting the new group with the old group's member data.
+    const [membershipCheckedFor, setMembershipCheckedFor] = useState(null);
 
     // Calendar state
     const [groupEvents, setGroupEvents] = useState([]);
@@ -94,8 +97,13 @@ function GroupHomePage(){
     // keeps its error until its newest run succeeds, the group id its newest success loaded for
     // (88.6.1-70 contract C3 — never a row count), a run counter (newest wins) and the pending
     // run a retry joins (review r2 #81).
-    const [membersError, setMembersError] = useState(null);
-    const [eventsError, setEventsError] = useState(null);
+    // AMENDED 2026-10-19 (88.6.1 code review A-57): each error is stored with the group id it was
+    // read FOR, `{ groupId, error }` — groupPlanning's `roleRecord` shape — and read through the
+    // derivations below `Router`, so an error and its slot's `retained` value change together on a
+    // same-mount group switch (history back/forward): group A's failure can never show as group
+    // B's banner. Each setter takes the run's own group id.
+    const [membersErrorRecord, setMembersErrorRecord] = useState(null);
+    const [eventsErrorRecord, setEventsErrorRecord] = useState(null);
     const [membersLoadedFor, setMembersLoadedFor] = useState(null);
     const [eventsLoadedFor, setEventsLoadedFor] = useState(null);
     const membersRunRef = useRef(0);
@@ -105,7 +113,7 @@ function GroupHomePage(){
     // 88.6.1-89 (close ruling P-79): the group record's own load, tracked in the members load's
     // shape — its error, the group id its newest success loaded for (C3), a run counter and the
     // pending run a retry joins. See the marker on getGroup.
-    const [groupError, setGroupError] = useState(null);
+    const [groupErrorRecord, setGroupErrorRecord] = useState(null);
     const [groupLoadedFor, setGroupLoadedFor] = useState(null);
     const groupRunRef = useRef(0);
     const groupInFlightRef = useRef(null);
@@ -129,6 +137,12 @@ function GroupHomePage(){
 
     const searchParams = useSearchParams();
     const Router = searchParams.get('id');
+    // A-57: the per-group reads of the records above — null when the record is another group's.
+    const errorFor = (record) => (record && record.groupId === Router ? record.error : null);
+    const membersError = errorFor(membersErrorRecord);
+    const eventsError = errorFor(eventsErrorRecord);
+    const groupError = errorFor(groupErrorRecord);
+    const membershipChecked = membershipCheckedFor !== null && membershipCheckedFor === Router;
     const prefillDate = searchParams.get('date');
     const prefillTime = searchParams.get('time');
     const shouldCreateEvent = searchParams.get('create_event') === 'true';
@@ -218,7 +232,7 @@ function GroupHomePage(){
             const data = await groupsAPI.getGroup(Router);
             if (run !== groupRunRef.current) return undefined;
             setGroup(data);
-            setGroupError(null);
+            setGroupErrorRecord(null);
             setGroupLoadedFor(groupId);
             outcome = LOAD_OK;
             return outcome;
@@ -231,7 +245,10 @@ function GroupHomePage(){
             }
             logger.info('Error fetching group:', errCtx(error));
             if (run !== groupRunRef.current) return undefined;
-            setGroupError(error instanceof Error ? error : new Error("The group request didn't complete."));
+            setGroupErrorRecord({
+                groupId,
+                error: error instanceof Error ? error : new Error("The group request didn't complete."),
+            });
             outcome = LOAD_FAILED;
             return outcome;
         } finally {
@@ -314,7 +331,7 @@ function GroupHomePage(){
                 logger.info('Group members data is not an array:', {
                     received: data === null ? 'null' : typeof data,
                 });
-                setMembersError(new Error("The group members request didn't complete."));
+                setMembersErrorRecord({ groupId, error: new Error("The group members request didn't complete.") });
                 outcome = LOAD_FAILED;
                 return outcome;
             }
@@ -334,8 +351,8 @@ function GroupHomePage(){
             // the paint gate so the rest of the page renders.
             setUserList(data);
             setUserRole(currentUserMember.UserGroup.role);
-            setMembershipChecked(true);
-            setMembersError(null);
+            setMembershipCheckedFor(groupId);
+            setMembersErrorRecord(null);
             setMembersLoadedFor(groupId);
             outcome = LOAD_OK;
             return outcome;
@@ -348,9 +365,10 @@ function GroupHomePage(){
             }
             logger.info('Error fetching group members:', errCtx(error));
             if (run !== membersRunRef.current) return undefined;
-            setMembersError(
-                error instanceof Error ? error : new Error("The group members request didn't complete.")
-            );
+            setMembersErrorRecord({
+                groupId,
+                error: error instanceof Error ? error : new Error("The group members request didn't complete."),
+            });
             outcome = LOAD_FAILED;
             return outcome;
         } finally {
@@ -396,16 +414,17 @@ function GroupHomePage(){
             const data = await eventsAPI.getGroupEvents(groupId, { includeRsvpSummary: true });
             if (run !== eventsRunRef.current) return undefined;
             setGroupEvents(data || []);
-            setEventsError(null);
+            setEventsErrorRecord(null);
             setEventsLoadedFor(groupId);
             outcome = LOAD_OK;
             return outcome;
         } catch (error) {
             logger.info('Error fetching group events:', errCtx(error));
             if (run !== eventsRunRef.current) return undefined;
-            setEventsError(
-                error instanceof Error ? error : new Error("The group events request didn't complete.")
-            );
+            setEventsErrorRecord({
+                groupId,
+                error: error instanceof Error ? error : new Error("The group events request didn't complete."),
+            });
             outcome = LOAD_FAILED;
             return outcome;
         } finally {

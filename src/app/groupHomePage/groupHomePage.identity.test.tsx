@@ -767,6 +767,40 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     expect(screen.getByText(/2 members/)).toBeInTheDocument();
   });
 
+  // A-57 (88.6.1 code review): each slot's error and the membership check belong to the group they
+  // were read for, so a same-mount switch to another group (history back/forward) never shows
+  // group A's failure as group B's banner, nor paints B with A's member data.
+  it("MB-8. a switch to another group while A's members refresh is failing shows B's loading line, not A's banner", async () => {
+    const { rerender } = await renderHeaderAt('owner');
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(internal());
+    await act(async () => {
+      await h.manageMembersProps!.onMembersUpdated();
+    });
+    // A's refresh failed over a loaded list: the list is kept, no banner.
+    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+
+    const bMembers = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(bMembers.promise);
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP2', name: 'Other Group' });
+    h.search = 'id=GROUP2';
+    rerender(<GroupHomePage />);
+
+    // B's group record lands while B's members are still open: B is LOADING, never A's banner,
+    // and never B's header over A's member list.
+    await waitFor(() => expect(groupsAPI.getGroup).toHaveBeenCalledWith('GROUP2'));
+    await act(async () => {});
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    expect(screen.queryByText(/2 members/)).toBeNull();
+
+    await act(async () => {
+      bMembers.resolve(ROSTER3);
+    });
+    await screen.findByText(/3 members/);
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+  });
+
   it('EV-1. a failed first events load shows the Calendar heading and the events banner, never an empty calendar', async () => {
     (eventsAPI.getGroupEvents as Mock).mockRejectedValue(internal());
     await renderHeaderAt('owner');
