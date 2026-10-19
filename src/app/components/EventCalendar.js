@@ -16,6 +16,7 @@ import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { CalendarLoadingCard } from './CalendarLoadingCard';
 import { logger, errCtx } from '../../lib/logger';
 
 /* DECISION Phase 88.6.1-73 (headingRef) [orchestrator request 2026-10-05, for plan 88.6.1-71]:
@@ -444,11 +445,7 @@ export default function EventCalendar({
   }
 
   // The loading card, one element for its two returns below (no heading renders in it).
-  const loadingCard = (
-    <div className="card p-3 md:p-6">
-      <p className="text-content-secondary">Loading calendar...</p>
-    </div>
-  );
+  const loadingCard = <CalendarLoadingCard />;
 
   /* §6.2 — THE ERROR BRANCH IS CHECKED BEFORE THE EMPTY ONE, and the ORDER here is the whole
      fix. It sits after the identity branch above (a failure that means the fetch never fired)

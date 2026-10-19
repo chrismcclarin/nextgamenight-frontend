@@ -1466,3 +1466,72 @@ describe("groupHomePage — the group record's own load (88.6.1-89, close ruling
     expect(groupCalls()).toBe(before + 1);
   });
 });
+
+// ============================================================================================
+// 88.6.1-89 Task 2 — the calendar names its first load (close ruling P-80, owner 2026-10-17
+// "reuse"): until the group's first events answer, the calendar's place shows its section
+// heading and the calendar's own loading line, never an empty month.
+// ============================================================================================
+describe('groupHomePage — the calendar names its first load (88.6.1-89, close ruling P-80)', () => {
+  // copy row P80 — written once here.
+  const CALENDAR_LOADING = 'Loading calendar...';
+  const G8 = "Couldn't load this group's events";
+  const calendarHeading = () => screen.getByRole('heading', { level: 2, name: 'Calendar' });
+
+  it('CL-1. while the first events load is held, the Calendar heading and the loading line hold its place; the answer brings the calendar', async () => {
+    const held = deferred<unknown>();
+    (eventsAPI.getGroupEvents as Mock).mockReturnValueOnce(held.promise);
+    await renderHeaderAt('owner');
+    const line = screen.getByText(CALENDAR_LOADING);
+    const heading = calendarHeading();
+    expect(heading.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId('calendar-stub')).toBeNull();
+
+    await act(async () => {
+      held.resolve([EV_A]);
+    });
+    await screen.findByTestId('calendar-stub');
+    expect(h.calendarProps!.events).toEqual([EV_A]);
+    expect(screen.queryByText(CALENDAR_LOADING)).toBeNull();
+  });
+
+  it('CL-2. a held first load that then fails shows the events banner under the same Calendar heading, never an empty calendar', async () => {
+    const held = deferred<unknown>();
+    (eventsAPI.getGroupEvents as Mock).mockReturnValueOnce(held.promise);
+    await renderHeaderAt('owner');
+    expect(screen.getByText(CALENDAR_LOADING)).toBeInTheDocument();
+    const heading = calendarHeading();
+    expect(screen.queryByTestId('calendar-stub')).toBeNull();
+
+    await act(async () => {
+      held.reject(new ApiError('Request failed', 'internal', 500));
+    });
+    const [title] = await screen.findAllByText(G8);
+    expect(calendarHeading()).toBe(heading);
+    expect(heading.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(CALENDAR_LOADING)).toBeNull();
+    expect(screen.queryByTestId('calendar-stub')).toBeNull();
+  });
+
+  it('CL-3. a held refresh after a load keeps the calendar and shows no loading line', async () => {
+    // CONFIRM-ONLY: green before and after — the line is keyed on the first load (C3), never a
+    // refresh.
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValueOnce([EV_A]);
+    await renderHeaderAt('owner');
+    await waitFor(() => expect(h.calendarProps!.events).toEqual([EV_A]));
+    const held = deferred<unknown>();
+    (eventsAPI.getGroupEvents as Mock).mockReturnValueOnce(held.promise);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = h.createEventProps!.onEventCreated({ id: 'e-new' });
+    });
+    expect(screen.getByTestId('calendar-stub')).toBeInTheDocument();
+    expect(screen.queryByText(CALENDAR_LOADING)).toBeNull();
+    await act(async () => {
+      held.resolve([EV_A, EV_B]);
+      await pending;
+    });
+    expect(h.calendarProps!.events).toEqual([EV_A, EV_B]);
+    expect(screen.queryByText(CALENDAR_LOADING)).toBeNull();
+  });
+});

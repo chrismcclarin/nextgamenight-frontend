@@ -20,6 +20,7 @@ import {
 import { cn } from '../../lib/cn';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
+import { CalendarLoadingCard } from '../components/CalendarLoadingCard';
 import PendingMemberBanner from '../components/PendingMemberBanner';
 import GroupLibrary from '../components/GroupLibrary';
 import KebabMenu from '../components/KebabMenu';
@@ -1705,7 +1706,23 @@ function GroupHomePage(){
               <>
                 {/* Group Calendar. The failure arm is checked FIRST: a failed request also has
                     zero events, so the calendar would read as an empty group (the events fetch's
-                    DECISION block). */}
+                    DECISION block); then the first-load line (88.6.1-89).
+                    DECISION Phase 88.6.1-89 (close ruling P-80, owner 2026-10-17 "reuse"): CHOSEN —
+                    the calendar's own loading card, byte for byte (CalendarLoadingCard, moved out
+                    of EventCalendar.js), between the failure arm and the calendar, keyed on
+                    eventsLoadedFor (C3, never a row count), so a refresh over loaded events never
+                    shows it; in external-events mode the calendar leaves loading to its parent.
+                    The section's level-2 Calendar heading is KEPT above the card: both other arms
+                    show it (the failure arm's own, the calendar's through headingRef), so a
+                    heading-navigating screen-reader user finds the section during the load, and
+                    calendarHeadingRef points at a node in every state (review r2 M25).
+                    REJECTED: a loading prop on the calendar (the events block's REJECTED (b): it
+                    would widen a component two pages mount for a fetch only this page owns); a
+                    copy of the card here (two copies of one loader drift); a named export from
+                    EventCalendar.js (this page's suite stubs that whole module, so the page could
+                    not render the real card under test); the card alone without the section
+                    heading (the section would vanish from the outline while it loads).
+                    Changing any of these is a decision, not a cleanup. */}
                 {eventsErrorState.showError && !eventsRetained ? (
                     <div>
                         <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
@@ -1716,6 +1733,13 @@ function GroupHomePage(){
                             title={GROUP_EVENTS_LOAD_FAILED_TITLE}
                             focusTarget={calendarHeadingRef}
                         />
+                    </div>
+                ) : eventsLoadedFor !== Router ? (
+                    <div>
+                        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
+                            {CALENDAR_TITLE}
+                        </Heading>
+                        <CalendarLoadingCard />
                     </div>
                 ) : (
                     <>

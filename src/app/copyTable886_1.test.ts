@@ -163,6 +163,7 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'P78c', text: "Members: Couldn't refresh. Showing what loaded earlier.", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['Members'], code: ['sectionName={MEMBERS_SECTION_NAME}'] },
   { id: 'P78a', text: "Calendar: Couldn't refresh. Showing what loaded earlier.", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['Calendar'], code: ['sectionName={CALENDAR_TITLE}'] },
   { id: 'P78b', text: "Group Games: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/GroupGamesList.js', kind: 'concat', parts: ['Group Games'], code: ['sectionName={GROUP_GAMES_TITLE}'] },
+  { id: 'P80', text: 'Loading calendar...', site: 'app/components/CalendarLoadingCard.tsx', kind: 'chunk' },
   // Not changing (the copy table's list; deferred register :238)
   { id: 'NC-1', text: 'Press again to confirm: {item}', site: 'app/components/KebabMenu.js', kind: 'fragments', fragments: ['Press again to confirm: ', ''] },
   { id: 'NC-2', text: 'Confirmation cancelled.', site: 'app/components/KebabMenu.js', kind: 'chunk' },
@@ -181,7 +182,7 @@ const EXPECTED_IDS = [
   // owner rulings 2026-10-13 to 2026-10-15
   'GD1', 'GD2', 'E16', 'E17', 'E18', 'GD3', 'GD4', 'N9', 'N10', 'G9', 'F8a', 'F8b', 'C8',
   // close rulings 2026-10-17 to 2026-10-18
-  'P14', 'P77a', 'P77b', 'P78', 'P78c', 'P78a', 'P78b',
+  'P14', 'P77a', 'P77b', 'P78', 'P78c', 'P78a', 'P78b', 'P80',
 ];
 
 // Rows that ship no literal of their own.
@@ -208,6 +209,8 @@ const IMPORTERS: Importer[] = [
   { importer: 'E9/R6', file: 'app/components/BringGamePicker.js', constant: 'EMPTY_COLLECTION_LINE', minUses: 2 },
   { importer: 'N5r', file: 'app/friends/page.js', constant: 'ACCEPT_FRIEND_FAILED_COPY', from: '../components/NotificationBell', minUses: 1, noCopyOf: ["We couldn't accept that friend request. Please try again."] },
   { importer: 'N6r', file: 'app/friends/page.js', constant: 'DECLINE_FRIEND_FAILED_COPY', from: '../components/NotificationBell', minUses: 1, noCopyOf: ["We couldn't decline that friend request. Please try again."] },
+  { importer: 'P80', file: 'app/groupHomePage/page.js', constant: 'CalendarLoadingCard', from: '../components/CalendarLoadingCard', minUses: 1, noCopyOf: ['Loading calendar...'] },
+  { importer: 'P80', file: 'app/components/EventCalendar.js', constant: 'CalendarLoadingCard', from: './CalendarLoadingCard', minUses: 1, noCopyOf: ['Loading calendar...'] },
 ];
 
 type RetiredScope = 'tree' | string[];
@@ -356,11 +359,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (102 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (103 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(102);
+    expect(ids).toHaveLength(103);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });
