@@ -198,7 +198,9 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // RE-DERIVED by plan 88.6.1-67 (Task 3, 2026-10-17): 237 -> 239. A second hoisted copy constant
     // with its comment line (`ADDING_TO_COLLECTION_LABEL`, copy row P7) landed above it.
     // RE-DERIVED by plan 88.6.1-63 (task 3): 239 -> 240, pushed down by one import line (selfIdentityFailedWithNoRow).
-    declaredAt: 240,
+    // RE-DERIVED 2026-10-19 (code review CR-5 / A-75, commit 9883474): 240 -> 244. A hoisted copy constant with
+    // its DECISION comment (`DISCONNECT_CALENDAR_PENDING_LABEL`, copy row CR5a) landed above it. Kept as a line number.
+    declaredAt: 244,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +

@@ -5,7 +5,7 @@
 //    sixteen, the 2026-10-13..15 review rulings D-59 / D-64, and the "Not changing" strings) is
 //    pinned at the file that DEFINES it, byte-equal after ONE normalisation: the table's U+2019
 //    is written here as a straight apostrophe (D-32 R8). Ellipses are NOT normalised (CP-4a):
-//    A5 and E8 use U+2026, every other row three ASCII dots;
+//    A5, E8, CR3a, CR5a and CR5b use U+2026, every other row three ASCII dots;
 //  - no non-comment source text (string, template chunk or JSX text) holds U+2019 (R8);
 //  - every retired literal is gone from its scope;
 //  - RF1 is defined in exactly one file, and every consumer plan's test or spec types it once
@@ -175,6 +175,22 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'NC-2', text: 'Confirmation cancelled.', site: 'app/components/KebabMenu.js', kind: 'chunk' },
   { id: 'NC-3', text: '{n} results available', site: 'components/ui/Combobox.tsx', kind: 'fragments', fragments: [' result', '', 's', ' available'] },
   { id: 'NC-4', text: 'Invite link copied to the clipboard.', site: 'app/components/FriendInvitePanel.js', kind: 'chunk' },
+  // Code-review rulings CR-1..CR-7 (owner 2026-10-19, "ratify all"; close ledger §I, COPY-TABLE.html group
+  // "Ratified 2026-10-19"). CR-7 reuses A4 and adds no row. CR3a, CR5a and CR5b use U+2026 (see the header).
+  { id: 'CR1a', text: "Couldn't copy the link. Press and hold the link to copy it.", site: 'app/components/QRCodeModal.js', kind: 'chunk' },
+  { id: 'CR1b', text: "Couldn't copy the link. Press and hold the link to copy it.", site: 'app/components/FriendInvitePanel.js', kind: 'chunk' },
+  { id: 'CR2a', text: '{n} pending', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['', ' pending'] },
+  { id: 'CR2b', text: 'None pending', site: 'app/components/NotificationBell.js', kind: 'chunk' },
+  { id: 'CR3a', text: 'Refreshing responses…', site: 'app/components/ResponseDashboard.js', kind: 'chunk' },
+  { id: 'CR3b', text: 'Responses refreshed.', site: 'app/components/ResponseDashboard.js', kind: 'chunk' },
+  { id: 'CR4', text: "You're no longer a member of that group.", site: 'app/userHome/UserHomePage.js', kind: 'chunk' },
+  { id: 'CR5a', text: 'Disconnecting…', site: 'app/userProfile/page.js', kind: 'chunk' },
+  { id: 'CR5b', text: 'Promoting…', site: 'app/components/ManageMembers.js', kind: 'chunk' },
+  { id: 'P78d', text: "Calendar: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/EventCalendar.js', kind: 'concat', parts: ['Calendar'], code: ['sectionName={CALENDAR_SECTION_NAME}'] },
+  { id: 'P78e', text: "Groups: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/grouplist.js', kind: 'concat', parts: ['Groups'], code: ['sectionName={GROUPS_SECTION_NAME}'] },
+  { id: 'P78f', text: "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/UpcomingEventsCard.js', kind: 'concat', parts: ['Upcoming game nights'], code: ['sectionName={UPCOMING_SECTION_NAME}'] },
+  { id: 'P78g', text: "Open polls: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/OpenPollsList.js', kind: 'concat', parts: ['Open polls'], code: ['sectionName={OPEN_POLLS_SECTION_NAME}'] },
+  { id: 'P78h', text: "Prompt schedule: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/PromptScheduleManager.js', kind: 'concat', parts: ['Prompt schedule'], code: ['sectionName={PROMPT_SCHEDULE_SECTION_NAME}'] },
 ];
 
 // The exact roster: a dropped or renamed row fails.
@@ -190,6 +206,9 @@ const EXPECTED_IDS = [
   // close rulings 2026-10-17 to 2026-10-18
   'P14', 'P77a', 'P77b', 'P78', 'P78c', 'P78a', 'P78b', 'P80',
   'P82a', 'P82b', 'P82c', 'P82d', 'P82e',
+  // code-review rulings 2026-10-19 ("ratify all")
+  'CR1a', 'CR1b', 'CR2a', 'CR2b', 'CR3a', 'CR3b', 'CR4', 'CR5a', 'CR5b',
+  'P78d', 'P78e', 'P78f', 'P78g', 'P78h',
 ];
 
 // Rows that ship no literal of their own.
@@ -368,11 +387,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (108 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (122 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(108);
+    expect(ids).toHaveLength(122);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });
