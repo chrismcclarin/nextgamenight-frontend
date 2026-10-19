@@ -22,7 +22,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
+import { readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 const E2E = path.resolve(SRC, '..', 'e2e');
@@ -164,6 +164,12 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'P78a', text: "Calendar: Couldn't refresh. Showing what loaded earlier.", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['Calendar'], code: ['sectionName={CALENDAR_TITLE}'] },
   { id: 'P78b', text: "Group Games: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/GroupGamesList.js', kind: 'concat', parts: ['Group Games'], code: ['sectionName={GROUP_GAMES_TITLE}'] },
   { id: 'P80', text: 'Loading calendar...', site: 'app/components/CalendarLoadingCard.tsx', kind: 'chunk' },
+  // close ruling P-82 (owner 2026-10-18, "ratify all 5"): the report form's Where-line on five banners (88.6.1-91)
+  { id: 'P82a', text: 'friends page — friend requests fetch', site: 'app/friends/page.js', kind: 'chunk' },
+  { id: 'P82b', text: 'userProfile — game collection fetch', site: 'app/userProfile/page.js', kind: 'chunk' },
+  { id: 'P82c', text: 'Game detail page — game vote fetch', site: 'app/components/BallotSection.js', kind: 'chunk' },
+  { id: 'P82d', text: 'Group home page — group and members fetch', site: 'app/groupHomePage/page.js', kind: 'chunk' },
+  { id: 'P82e', text: 'Group home page — events fetch', site: 'app/groupHomePage/page.js', kind: 'chunk' },
   // Not changing (the copy table's list; deferred register :238)
   { id: 'NC-1', text: 'Press again to confirm: {item}', site: 'app/components/KebabMenu.js', kind: 'fragments', fragments: ['Press again to confirm: ', ''] },
   { id: 'NC-2', text: 'Confirmation cancelled.', site: 'app/components/KebabMenu.js', kind: 'chunk' },
@@ -183,6 +189,7 @@ const EXPECTED_IDS = [
   'GD1', 'GD2', 'E16', 'E17', 'E18', 'GD3', 'GD4', 'N9', 'N10', 'G9', 'F8a', 'F8b', 'C8',
   // close rulings 2026-10-17 to 2026-10-18
   'P14', 'P77a', 'P77b', 'P78', 'P78c', 'P78a', 'P78b', 'P80',
+  'P82a', 'P82b', 'P82c', 'P82d', 'P82e',
 ];
 
 // Rows that ship no literal of their own.
@@ -361,11 +368,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (103 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (108 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(103);
+    expect(ids).toHaveLength(108);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });
@@ -378,6 +385,53 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     const tpl = RATIFIED_ROWS.find((r) => r.id === 'N9')!;
     expect(rowMatches(tpl, readSrc(tpl.site))).toBe(true);
     expect(rowMatches({ ...tpl, fragments: ['Declined invite to ', '!'] }, readSrc(tpl.site))).toBe(false);
+  });
+});
+
+// Close ruling P-82: each ratified Where-line must ride on the banner it names, not merely exist
+// somewhere in the file (a chunk row alone would pass with the words on the wrong banner).
+const REPORT_CONTEXTS = [
+  { id: 'P82a', site: 'app/friends/page.js', title: 'FRIEND_REQUESTS_LOAD_FAILED_TITLE', context: 'friends page — friend requests fetch' },
+  { id: 'P82b', site: 'app/userProfile/page.js', title: 'COLLECTION_LOAD_FAILED_TITLE', context: 'userProfile — game collection fetch' },
+  { id: 'P82c', site: 'app/components/BallotSection.js', title: 'BALLOT_LOAD_FAILED_TITLE', context: 'Game detail page — game vote fetch' },
+  { id: 'P82d', site: 'app/groupHomePage/page.js', title: 'GROUP_LOAD_FAILED_TITLE', context: 'Group home page — group and members fetch' },
+  { id: 'P82e', site: 'app/groupHomePage/page.js', title: 'GROUP_EVENTS_LOAD_FAILED_TITLE', context: 'Group home page — events fetch' },
+];
+
+// Every FetchErrorBanner opening tag in the comment-stripped source whose text holds the title.
+function bannerTagsTitled(src: string, title: string): string[] {
+  const code = withoutComments(src);
+  const tags: string[] = [];
+  let at = code.indexOf('<FetchErrorBanner');
+  while (at >= 0) {
+    const tag = readOpeningTag(code, at);
+    if (tag !== null && tag.includes(`title={${title}}`)) tags.push(tag);
+    at = code.indexOf('<FetchErrorBanner', at + 1);
+  }
+  return tags;
+}
+
+// true when exactly one banner carries the title, and that one carries the Where-line.
+function contextPlaced(src: string, title: string, context: string): boolean {
+  const tags = bannerTagsTitled(src, title);
+  return tags.length === 1 && tags[0].includes(`reportContext="${context}"`);
+}
+
+describe('P-82: each ratified Where-line rides on the banner it names (close ruling P-82, 88.6.1-91)', () => {
+  it.each(REPORT_CONTEXTS)('$id: the banner titled $title carries its Where-line', (rc) => {
+    const tags = bannerTagsTitled(readSrc(rc.site), rc.title);
+    expect(tags, `${rc.site}: banners titled ${rc.title}`).toHaveLength(1);
+    expect(tags[0]).toContain(`reportContext="${rc.context}"`);
+  });
+
+  it('anti-vacuity: the placement matcher refuses a Where-line one character off', () => {
+    const rc = REPORT_CONTEXTS.find((r) => r.id === 'P82e')!;
+    const src = readSrc(rc.site);
+    expect(contextPlaced(src, rc.title, rc.context)).toBe(true);
+    expect(contextPlaced(src, rc.title, rc.context.replace('events', 'eventz'))).toBe(false);
+    const altered = src.replace(`reportContext="${rc.context}"`, `reportContext="${rc.context.replace('events', 'event')}"`);
+    expect(altered).not.toBe(src);
+    expect(contextPlaced(altered, rc.title, rc.context)).toBe(false);
   });
 });
 

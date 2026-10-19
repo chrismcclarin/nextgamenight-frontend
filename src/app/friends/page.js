@@ -1524,6 +1524,7 @@ function FriendsPage() {
                             <FetchErrorBanner
                                 state={requestsErrorState}
                                 title={FRIEND_REQUESTS_LOAD_FAILED_TITLE}
+                                reportContext="friends page — friend requests fetch"
                                 focusTarget={requestsTabRef}
                             />
                         ) : (

@@ -725,7 +725,7 @@ function GroupHomePage(){
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
                     <div className="w-full max-w-xl">
-                        <FetchErrorBanner state={pageLoadErrorState} title={GROUP_LOAD_FAILED_TITLE} />
+                        <FetchErrorBanner state={pageLoadErrorState} title={GROUP_LOAD_FAILED_TITLE} reportContext="Group home page — group and members fetch" />
                     </div>
                 </div>
                 {membersFocusGuard}
@@ -1731,6 +1731,7 @@ function GroupHomePage(){
                         <FetchErrorBanner
                             state={eventsErrorState}
                             title={GROUP_EVENTS_LOAD_FAILED_TITLE}
+                            reportContext="Group home page — events fetch"
                             focusTarget={calendarHeadingRef}
                         />
                     </div>

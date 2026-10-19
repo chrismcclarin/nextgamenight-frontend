@@ -405,8 +405,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
      stored error alone: it would cover a kept ballot after a failed follow-up refetch and show one
      event's failure for the next; (d) reading the status or the code to decide "no vote": not
      needed, and the server gives no code for it; (e) a report-context value: none was ratified
-     for this banner (D-31, D-32 R5; plan 88.6.1-55 made the same call) — owed to the owner as a
-     wording item.
+     for this banner (D-31, D-32 R5; plan 88.6.1-55 made the same call) — AMENDED Phase 88.6.1-91: ratified by the owner 2026-10-18 (close ruling P-82) and set.
      FOCUS: after a successful Try again the banner (plan 88.6.1-21's hook, plan 88.6.1-70's
      `focusTarget`) moves focus to the Game Vote heading of the card that replaced it, so a phone
      reader keeps their place on the card; when the success renders no card (an event with no
@@ -431,6 +430,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
         <FetchErrorBanner
           state={loadErrorState}
           title={BALLOT_LOAD_FAILED_TITLE}
+          reportContext="Game detail page — game vote fetch"
           focusTarget={gameVoteHeadingRef}
         />
       </div>

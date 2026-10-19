@@ -4103,7 +4103,8 @@ function Profile(){
                            REJECTED: (a) the compact notice (its fixed sentence is about personal
                            controls, not the collection); (b) a `reportContext` / `reportSubject`
                            literal (unratified words, D-31 — the D-32 R5 precedent ratified each
-                           one); (c) the full banner above retained rows (the owner's 2026-10-05
+                           one) — AMENDED Phase 88.6.1-91 (close ruling P-82, owner 2026-10-18): the reportContext words are now ratified
+                           and set; reportSubject stays unset (not ratified); (c) the full banner above retained rows (the owner's 2026-10-05
                            ruling gives a failed refresh the small RF1 notice).
                            The notice is plan 70's (88.6.1-70 contract C6), mounted here as the
                            retained arm's first child, outside the busy grid (it holds a live region).
@@ -4113,7 +4114,7 @@ function Profile(){
                            guard acts on an unpressed withdrawal, not on a Remove.
                            Changing this order is a decision, not a cleanup. */
                         ownedGamesError ? (
-                            <FetchErrorBanner state={collectionErrorState} title={COLLECTION_LOAD_FAILED_TITLE} focusTarget={collectionHeadingRef} />
+                            <FetchErrorBanner state={collectionErrorState} title={COLLECTION_LOAD_FAILED_TITLE} reportContext="userProfile — game collection fetch" focusTarget={collectionHeadingRef} />
                         ) : (
                             <p className="text-content-secondary">Loading your collection...</p>
                         )
