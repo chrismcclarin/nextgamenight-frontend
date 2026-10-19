@@ -89,6 +89,7 @@ import { ballotAPI } from '@/lib/api';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { logger } from '@/lib/logger';
 
 // createEvent is a JS component whose inferred prop types come from its defaults
 // (`editingEvent = null` infers `null`); cast to a permissive type so the edit-mode arm can pass
@@ -753,6 +754,98 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
     fireEvent.submit(submit.closest('form') as HTMLFormElement);
     await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(2));
     expect((eventsAPI.updateEvent as Mock).mock.calls[1][1]).toMatchObject({ comments: 'v2 notes' });
+  });
+
+  // 88.6.1 code review A-36 (= REVIEW WR-06): the settle-wait is bounded by the same JOIN_WINDOW_MS as
+  // the payload join (F4), so a HUNG update never holds every later Edit dialog on its loading line.
+  // Each arm uses its own event id and releases its hung write at the end, because the in-flight map
+  // is module scope and would otherwise hold later arms' reads.
+  async function hangAnUpdate(id: string) {
+    const ev = { ...v1, id };
+    vi.mocked(eventsAPI.getEvent).mockResolvedValue(ev as never);
+    const A = render(<CreateEvent {...baseProps()} editingEvent={ev} />);
+    await screen.findByRole('button', { name: 'Update Event' });
+    const put = deferred<unknown>();
+    (eventsAPI.updateEvent as Mock).mockImplementationOnce(() => put.promise);
+    fireEvent.submit(screen.getByTestId('create-event-submit').closest('form') as HTMLFormElement);
+    await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(1));
+    A.unmount();
+    return { ev, put };
+  }
+
+  it('ED7: a hung update reopened PAST the 30-second window reads the event and opens the form', async () => {
+    // Only Date is faked (the F4 idiom): the window compares start times read with Date.now().
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-17T19:00:00Z'));
+      const { ev, put } = await hangAnUpdate('66666666-6666-4666-8666-666666666666');
+      const readsBefore = vi.mocked(eventsAPI.getEvent).mock.calls.length;
+      vi.setSystemTime(new Date('2026-10-17T19:00:31Z'));
+      render(<CreateEvent {...baseProps()} editingEvent={ev} />);
+      await waitFor(() => expect(vi.mocked(eventsAPI.getEvent).mock.calls.length).toBe(readsBefore + 1));
+      expect(await screen.findByRole('button', { name: 'Update Event' })).toBeInTheDocument();
+      expect(screen.queryByText('Loading game night...')).toBeNull();
+      await act(async () => {
+        put.resolve({});
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ED7b: a hung update reopened INSIDE the window waits only for what is left of it, then reads', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-17T19:00:00Z'));
+      const { ev, put } = await hangAnUpdate('55555555-5555-4555-8555-555555555555');
+      const readsBefore = vi.mocked(eventsAPI.getEvent).mock.calls.length;
+      // 29.85 seconds in: 150ms of the window are left, which the wait spends on a real timer.
+      vi.setSystemTime(new Date('2026-10-17T19:00:29.850Z'));
+      render(<CreateEvent {...baseProps()} editingEvent={ev} />);
+      await settle(20);
+      expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+      expect(vi.mocked(eventsAPI.getEvent).mock.calls.length).toBe(readsBefore);
+      await waitFor(() => expect(vi.mocked(eventsAPI.getEvent).mock.calls.length).toBe(readsBefore + 1));
+      expect(await screen.findByRole('button', { name: 'Update Event' })).toBeInTheDocument();
+      await act(async () => {
+        put.resolve({});
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ED8 (88.6.1 code review A-37): a failed ballot-option save on Update says so in the receipt, never "Event updated"', async () => {
+    const id = '44444444-4444-4444-8444-444444444444';
+    const ev = { ...v1, id };
+    vi.mocked(eventsAPI.getEvent).mockResolvedValue(ev as never);
+    vi.mocked(ballotAPI.getBallot).mockResolvedValueOnce({
+      ballot_status: 'open',
+      options: [{ game_id: null, game_name: 'Catan' }, { game_id: null, game_name: 'Azul' }],
+    } as never);
+    const updateBallotOptions = vi.spyOn(ballotAPI, 'updateBallotOptions').mockRejectedValueOnce(new Error('ballot down'));
+    const loggerError = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    try {
+      const props = baseProps();
+      render(<CreateEvent {...props} editingEvent={ev} />);
+      await screen.findByRole('button', { name: 'Update Event' });
+      await waitFor(() => expect(ballotAPI.getBallot).toHaveBeenCalledWith(id));
+      await settle();
+      fireEvent.submit(screen.getByTestId('create-event-submit').closest('form') as HTMLFormElement);
+      await waitFor(() => expect(updateBallotOptions).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
+      expect(toastSpies.error).toHaveBeenCalledWith('Event updated but ballot options could not be saved.');
+      expect(toastSpies.success).not.toHaveBeenCalledWith('Event updated');
+      // The 88-16 order: the receipt fires before the close.
+      expect(toastSpies.error.mock.invocationCallOrder[0]).toBeLessThan(
+        (props.modaltoggle as Mock).mock.invocationCallOrder[0],
+      );
+      // The failure is a Sentry EVENT, not a breadcrumb.
+      expect(loggerError).toHaveBeenCalledWith('Error updating ballot options:', expect.any(Error));
+    } finally {
+      updateBallotOptions.mockRestore();
+      loggerError.mockRestore();
+    }
   });
 
   it('ED2: reopened after the update landed but before the host refreshed, it shows the saved values', async () => {

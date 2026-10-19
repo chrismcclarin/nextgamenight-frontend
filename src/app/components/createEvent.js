@@ -83,14 +83,33 @@ const pendingEventWrites = new Map();
    edit made on ANOTHER device between this read and the Update is not detected; a server-side
    version check is the complete answer and is outside this frontend phase. The map holds settle
    promises keyed by event id, never a payload, and is never logged or sent. Removing the wait or
-   the read is a decision, not a cleanup. */
+   the read is a decision, not a cleanup.
+   AMENDED 2026-10-19 (88.6.1 code review A-36 / REVIEW WR-06): the wait is BOUNDED by
+   JOIN_WINDOW_MS, for the reason DECISION Phase 88.6.1-81 bounds its join: `apiFetch` has no
+   timeout, so an unbounded wait let one hung update hold every later Edit dialog for the event on
+   its loading line until a reload. Each write records when it started; the wait gives each one at
+   most what is left of its own window, never rejects, and then the read goes ahead. The read still
+   comes from the server, so no form is ever built from the host's copy. REJECTED: an unbounded wait
+   (the lockout above); a window that rejects or ends the opening (it would report a failure for an
+   update that may still succeed). Removing the bound is a decision, not a cleanup. */
 const eventWritesInFlight = new Map();
-// Resolves once every edit write this device has in flight for the event right now has settled
-// (each entry is a promise that only ever resolves).
+// Resolves once every edit write this device has in flight for the event right now has settled,
+// or once that write's JOIN_WINDOW_MS has run out, whichever is first (each entry's promise only
+// ever resolves, and so does this one).
 function whenEventWritesSettle(eventId) {
   const writes = eventWritesInFlight.get(eventId);
   if (!writes || writes.size === 0) return Promise.resolve();
-  return Promise.all([...writes]).then(() => undefined);
+  const now = Date.now();
+  const bounded = [...writes]
+    .filter((write) => now - write.startedAt < JOIN_WINDOW_MS)
+    .map((write) => {
+      let timer;
+      const windowLeft = new Promise((resolve) => {
+        timer = setTimeout(resolve, JOIN_WINDOW_MS - (now - write.startedAt));
+      });
+      return Promise.race([write.written, windowLeft]).then(() => clearTimeout(timer));
+    });
+  return Promise.all(bounded).then(() => undefined);
 }
 // Registers one edit write for the event and returns the function that settles and removes it.
 function registerEventWrite(eventId) {
@@ -98,13 +117,14 @@ function registerEventWrite(eventId) {
   const written = new Promise((resolve) => {
     settle = resolve;
   });
+  const entry = { written, startedAt: Date.now() };
   if (!eventWritesInFlight.has(eventId)) eventWritesInFlight.set(eventId, new Set());
-  eventWritesInFlight.get(eventId).add(written);
+  eventWritesInFlight.get(eventId).add(entry);
   return () => {
     settle();
     const writes = eventWritesInFlight.get(eventId);
     if (!writes) return;
-    writes.delete(written);
+    writes.delete(entry);
     if (writes.size === 0) eventWritesInFlight.delete(eventId);
   };
 }
@@ -991,6 +1011,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         }
 
         let data;
+        // 88.6.1 code review A-37: set when an update's ballot step fails, so the receipt says so.
+        let ballotSaveFailed = false;
         if (joinedWrite) {
           // A JOINER: the same write is already in flight, so this press sends nothing.
           try {
@@ -1028,7 +1050,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             try {
               await ballotAPI.updateBallotOptions(editingEvent.id, trimmedBallotOptions);
             } catch (ballotErr) {
-              logger.info('Error updating ballot options:', errCtx(ballotErr));
+              // 88.6.1 code review A-37: a Sentry EVENT (was a `logger.info` breadcrumb) — the
+              // person's ballot change was dropped, which nothing else records.
+              logger.error('Error updating ballot options:', ballotErr);
+              ballotSaveFailed = true;
               if (noNewerSessionOpen()) {
                 setBallotError('Event updated but ballot options could not be saved.');
               }
@@ -1078,8 +1103,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
            every host's created-callback now only refreshes (gameDetail's three, groupHomePage's) and
            groupPlanning passes none, so the close after a success is this component's
            `modaltoggle()` alone. "Refetch or unmount; none navigates" is still true. */
+        /* AMENDED 2026-10-19 (88.6.1 code review A-37): when an update's ballot step failed, the
+           receipt is that failure (the existing ballot-notice sentence) through `toast.error`, IN
+           PLACE OF 'Event updated', at the same position (toast, then close). The inline
+           `ballotError` notice could never show: it is set and then cleared by the reset below in
+           the same run, and the dialog closes. REJECTED: keeping the dialog open on a ballot
+           failure (the event itself DID update, so the close and the host's refresh stay). */
         if (!joinedWrite) {
-          toast.success(editingEvent ? 'Event updated' : 'Event created');
+          if (ballotSaveFailed) {
+            toast.error('Event updated but ballot options could not be saved.');
+          } else {
+            toast.success(editingEvent ? 'Event updated' : 'Event created');
+          }
         }
         if (sessionIsCurrent()) {
           modaltoggle();
