@@ -1286,6 +1286,33 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     expectFocusNotLost();
   });
 
+  // 88.6.1 code review follow-up (contract (1) audit of performRejectMember's bare arm()): the
+  // confirm runs from inside the reject dialog, so the arm seeds from the dialog's own focus and the
+  // hook follows the dialog's close restore (useFocusRecovery.ts contract (5)); no `from` is needed.
+  it('F4b: a reject whose opener and confirm are pressed WITHOUT focus (the Safari tap) still lands on the title (confirm-only; Phase 91.1 deletes this control)', async () => {
+    await openMembersModal();
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(
+      ROSTER.filter((m) => m.id !== PENDING_UUID)
+    );
+    const opener = (await screen.findByText('Reject')).closest('button') as HTMLElement;
+    act(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(opener);
+    await screen.findByRole('dialog', { name: 'Reject Pend?' });
+    const confirm = screen.getByRole('button', { name: 'Reject' });
+    act(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(groupsAPI.rejectMember as Mock).toHaveBeenCalledWith(GROUP_ID, PENDING_UUID)
+    );
+    await waitFor(() => expect(document.activeElement).toBe(title()));
+    expectFocusNotLost();
+  });
+
   it('F4: a dialog-tier reject lands on the still-open Manage Members title (confirm-only; Phase 91.1 deletes this control)', async () => {
     const user = userEvent.setup();
     await openMembersModal();
