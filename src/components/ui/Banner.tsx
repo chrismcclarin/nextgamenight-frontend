@@ -90,7 +90,9 @@ export interface BannerProps
      — it duplicates the text, and 29 text queries in 13 consumer suites would find two matches;
      (b) moving the buttons below the box — a look change; (c) making Banner non-live for
      everyone — its other two mounts (EmailAddressSection, AutoPromptBehaviorBanner) rely on its
-     region. Omitting the prop renders the original markup, so those two are unchanged. */
+     region. Omitting the prop renders the original markup. AMENDED 2026-10-19 (88.6.1 code review
+     A-71): AutoPromptBehaviorBanner now passes `actions` too (its "Got it" button left the atomic
+     region); EmailAddressSection is the one mount that still omits the prop. */
   /**
    * Controls rendered inside the box, below the message, OUTSIDE the live region — a control
    * inside an `aria-atomic` region re-announces the whole region when its label changes.
