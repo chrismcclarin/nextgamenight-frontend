@@ -41,6 +41,11 @@ export const DECLINE_FRIEND_FAILED_COPY = "We couldn't decline that friend reque
 // section "### #205"; the ids are plan 88.6.1-44's proposal): a successful Decline is announced in
 // the same confirmation slot, tone and 3 s clear as the accept lines.
 const DECLINED_FRIEND_REQUEST_COPY = "Declined friend request.";
+
+// Copy ruling CR-2 (88.6.1 code review A-33, owner ratified 2026-10-19): the triggers' spoken
+// description of the unread count, the REAL count (never the badge's 9+).
+const pendingCountCopy = (count) => `${count} pending`;
+const NONE_PENDING_COPY = 'None pending';
 const declinedInviteCopy = (groupName) => `Declined invite to ${groupName}.`;
 
 /* DECISION Phase 88.6.1-44 (N8, D-19 shape, Req 6): each row button is named for what it acts on
@@ -145,6 +150,8 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // The panel heading's id, derived from panelId (no second useId call): the section names itself
   // through it (DECISION Phase 88.6.1-28, D-18, D-33 row 21, at the panel below).
   const headingId = `${panelId}-heading`;
+  // The count description's id, derived the same way (CR-2 / A-33, the marker at the span below).
+  const countDescriptionId = `${panelId}-count`;
   // Per-row in-flight record: { [rowKey(kind, id)]: 'accept' | 'decline' } (see rowKey above).
   const [actionLoading, setActionLoading] = useState({});
   // The latch: row keys whose request is running. A ref, so a second synchronous press sees it.
@@ -574,7 +581,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
   );
 
   const countBadge = totalCount > 0 ? (
-    <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
+    <span aria-hidden="true" className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
       {totalCount > 9 ? '9+' : totalCount}
     </span>
   ) : null;
@@ -621,6 +628,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
           onClick={() => setIsOpen(!isOpen)}
           className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
+          aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
           // `aria-controls` is present ONLY while the panel exists (plan 88.6-59, MEDLOW-30).
           aria-expanded={isOpen}
@@ -674,6 +682,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
           // subtree at `Header.js`'s container. See the DECISION marker on the row label below.
           className="relative text-white hover:text-amber-400 transition-colors p-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label="Notifications"
+          aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
           // `aria-controls` is present ONLY while the panel exists (plan 88.6-59, MEDLOW-30).
           aria-expanded={isOpen}
@@ -683,12 +692,24 @@ function NotificationBell({ user, variant = 'icon', label }) {
 
           {/* Red badge with count — absolute-positioned over the bell */}
           {totalCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+            <span aria-hidden="true" className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
               {totalCount > 9 ? '9+' : totalCount}
             </span>
           )}
         </button>
       )}
+
+      {/* DECISION Phase 88.6.1 code review CR-2 / A-33 (owner ratified 2026-10-19, WCAG 1.3.1 /
+          4.1.2): the unread count reaches assistive tech as BOTH triggers' DESCRIPTION, from this
+          always-rendered sr-only span, chosen OVER putting the count in the accessible NAME: the
+          names "Notifications" / "Invites notifications" are the D-19 names and dozens of exact-name
+          queries in the unit and e2e suites depend on them, and a name that changes with the count
+          would also break Voice Control's stable target. The description carries the REAL count
+          (never the visual 9+ cap), and the visible badges are aria-hidden so nothing is read
+          twice. Changing any of this is a decision, not a cleanup. */}
+      <span id={countDescriptionId} className="sr-only">
+        {totalCount > 0 ? pendingCountCopy(totalCount) : NONE_PENDING_COPY}
+      </span>
 
       {/* Dropdown panel — positioning differs by variant:
           - row variant (mobile hamburger): render inline so the panel expands

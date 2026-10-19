@@ -1436,3 +1436,49 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     expect(friendAlert.textContent).toBe('');
   });
 });
+
+// 88.6.1 code review CR-2 / A-33 (owner ratified 2026-10-19): the unread count reaches assistive
+// tech as each trigger's DESCRIPTION, the real count (never the badge's 9+), while both names stay
+// byte-identical (the exact-name queries across the suites and e2e depend on them).
+describe('CR-2 / A-33 — the pending count is the triggers\' description', () => {
+  it('row trigger with two pending items is described "2 pending" and keeps its name', () => {
+    unreadState.invites = [INVITE, { ...INVITE, id: 'inv-2' }];
+    unreadState.totalCount = 2;
+    render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
+    const trigger = screen.getByRole('button', { name: 'Invites notifications' });
+    expect(trigger).toHaveAccessibleName('Invites notifications');
+    expect(trigger).toHaveAccessibleDescription('2 pending');
+  });
+
+  it('icon trigger with twelve pending is described by the real count, not 9+', () => {
+    unreadState.totalCount = 12;
+    renderBell();
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+    expect(trigger).toHaveAccessibleName('Notifications');
+    expect(trigger).toHaveAccessibleDescription('12 pending');
+    // The visible badge is hidden from assistive tech, so nothing reads 9+.
+    const badge = within(trigger).getByText('9+');
+    expect(badge).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('nothing pending: both variants are described "None pending"', () => {
+    unreadState.invites = [];
+    unreadState.totalCount = 0;
+    const { unmount } = renderBell();
+    expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAccessibleDescription(
+      'None pending'
+    );
+    unmount();
+    render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
+    expect(
+      screen.getByRole('button', { name: 'Invites notifications' })
+    ).toHaveAccessibleDescription('None pending');
+  });
+
+  it('the row badge is hidden from assistive tech', () => {
+    unreadState.totalCount = 3;
+    render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
+    const trigger = screen.getByRole('button', { name: 'Invites notifications' });
+    expect(within(trigger).getByText('3')).toHaveAttribute('aria-hidden', 'true');
+  });
+});

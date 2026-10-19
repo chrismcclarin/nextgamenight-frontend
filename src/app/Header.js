@@ -273,9 +273,14 @@ function Header(){
                                 - ring-2 ring-surface-header gives the dot a header-bg halo
                                   so it visually separates from the white hamburger lines
                                   (Slack/Discord/Linear pattern).
-                                - aria-hidden because it's decorative; the menu contents
-                                  announce the unread state to screen readers, and the
-                                  button's aria-label "Toggle menu" stays unchanged.
+                                - aria-hidden because it's decorative; the button's
+                                  aria-label "Toggle menu" stays unchanged.
+                                  AMENDED 2026-10-19 (88.6.1 code review CR-2 / A-33): the
+                                  menu contents did NOT announce the unread state (the
+                                  Invites row's name is fixed). The count now reaches
+                                  screen readers as the Invites row trigger's description
+                                  ("N pending" / "None pending", NotificationBell.js at the
+                                  CR-2 DECISION marker), read when the menu is opened.
                                 - Inherits md:hidden from the parent button — desktop
                                   renders zero hamburger UI and therefore zero dot.
                                 - No animation per CONTEXT D (badge appears/disappears
