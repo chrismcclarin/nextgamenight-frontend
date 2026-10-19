@@ -1243,7 +1243,7 @@ export const rsvpAPI = {
   //
   // DECISION Phase 88.5 (RESEARCH B-2): this was typed apiFetch-of-RsvpList — an
   // ARRAY — which was simply wrong. The route returns an OBJECT,
-  // `{ rsvps, summary }` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js:591,
+  // `{ rsvps, summary }` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js, anchor
   // `return res.json({ rsvps: shapedRsvps, summary });`).
   // The wrong type survived because every consumer was `.js` (src/app/components/RsvpSection.js:166-167,
   // `setRsvps(data.rsvps || [])`; src/app/gameDetail/page.js:723 and :977, `rsvpAPI.getEventRsvps(`;
@@ -1269,9 +1269,9 @@ export const rsvpPublicAPI = {
   //
   // T-88.6-123 (#103, routed here from plan 24 by D41): `eventId` and `status` are now
   // percent-encoded like the `token` and `userId` arms beside them, which always were.
-  // DEFENCE-IN-DEPTH, not a live hole — verified at source: Sonnet/routes/rsvp.js:212
-  // (`['yes', 'maybe', 'no'].includes(status)`) allow-lists the status and :217-220
-  // (`generateRsvpToken(eventId, userId, status)`) recomputes the HMAC over (eventId, userId, status)
+  // DEFENCE-IN-DEPTH, not a live hole — verified at source: Sonnet/routes/rsvp.js (anchor
+  // `['yes', 'maybe', 'no'].includes(status)`) allow-lists the status and the anchor
+  // `const expectedToken = generateRsvpToken(eventId, userId, status);` recomputes the HMAC over (eventId, userId, status)
   // and 403s on mismatch. The asymmetry is closed because a reader would otherwise tidy it
   // the WRONG way, by dropping the two encodings that are there.
   respondViaToken: async (token: string, eventId: string, userId: string, status: string) => {

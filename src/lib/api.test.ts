@@ -1172,7 +1172,7 @@ describe('88.6.1-23 / W062 rider MEDLOW-18 — a timeout is told apart from othe
 
 // ADDED by plan 88.6.1-23 task 2 (the R9 mechanism; owner ruling 2026-10-05, copy key R9,
 // `.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/planning-briefs/revision-lap-3-manifest.md:48`).
-// The backend's own failure on GET /rsvp/respond is a JSON 500 (BE `routes/rsvp.js:358`,
+// The backend's own failure on GET /rsvp/respond is a JSON 500 (BE `routes/rsvp.js`,
 // anchor `Something went wrong processing your RSVP.`), which respondViaToken RESOLVED, so the
 // RSVP page fell to its generic copy and told the person to tap a single-use link the backend
 // may already have consumed. A status of 500 or above now rejects ApiError('internal') at

@@ -176,7 +176,7 @@ export default function RsvpPage() {
      single-shot submit latch (`submittedRef`) plus an unmount-scoped write guard
      (`unmountedRef`), the shape `invite/group/[token]/page.js` ships under its
      `DECISION Phase 88.6-23 (AC-13)` marker. WHY — the token is single-use (the backend
-     consumes it, `Sonnet/routes/rsvp.js:252` `SingleUseToken.consumeByNonce(token)`, before the
+     consumes it, `Sonnet/routes/rsvp.js` anchor `SingleUseToken.consumeByNonce(token)`, before the
      work that records the RSVP), and StrictMode (on by default for the App Router;
      `next.config.js` sets no `reactStrictMode`) ran this effect twice in development: run 1's
      answer was dropped by its own cleanup, run 2 landed on the spent token, and the page showed
@@ -233,8 +233,9 @@ export default function RsvpPage() {
 
            THE CONSTRAINT, so a later sweep cannot mistake this for an oversight.
            `periodictabletopbackend_v2/Sonnet/routes/rsvp.js` emits HTTP 410 with
-           `{ error: 'event_cancelled', group_id }` (:293-296) or
-           `{ error: 'event_passed', event_name, group_id }` (:302-306) — verified 2026-09-16 —
+           `{ error: 'event_cancelled', group_id }` (anchor `error: 'event_cancelled',`) or
+           `{ error: 'event_passed', event_name, group_id }` (anchor `error: 'event_passed',`) —
+           verified 2026-09-16; anchors over line cites since 2026-10-19 (88.6.1 code review A-70) —
            with NO `code` and NO `message`. A mechanical "read `body.code` instead" edit makes
            BOTH branches below unreachable and drops this page to its generic
            `PAGE_STATES.ERROR`: a silent, user-visible regression on the magic-link RSVP flow,
@@ -305,7 +306,7 @@ export default function RsvpPage() {
            or an answer under 500 that could not be read) enters UNCONFIRMED_INTERNAL (R9, the
            owner's ruling of 2026-10-05). In all of these the request may have reached the app,
            which consumes the single-use token before the work that can fail
-           (`Sonnet/routes/rsvp.js:252`), so the RSVP may be recorded and tapping the link again
+           (`Sonnet/routes/rsvp.js`, anchor `consumeByNonce(token)`), so the RSVP may be recorded and tapping the link again
            would land on the used-link state; R9 is true whether or not the token was spent.
            Keyed on `instanceof` plus `code`, never on the message, which plan 88.6.1-23 changes
            for a timeout.

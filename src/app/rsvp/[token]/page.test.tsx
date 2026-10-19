@@ -209,8 +209,8 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
     // for them at all. So a `code`-only body reaching the generic error screen IS the shipped
     // contract today, and this assertion documents it rather than reporting a defect.
     //
-    // WHAT CHANGES IT: Phase 93 landing the backend `code` on Sonnet/routes/rsvp.js:293-296 and
-    // :302-306 is the precondition, recorded as a blocking entry in
+    // WHAT CHANGES IT: Phase 93 landing the backend `code` on the Sonnet/routes/rsvp.js 410 bodies
+    // (anchors `error: 'event_cancelled',` and `error: 'event_passed',`) is the precondition, recorded as a blocking entry in
     // `.planning/deferred/phase-93.md` under `[cleanup] Retighten`. When that lands, this
     // assertion INVERTS — `event_passed` by code must then reach EVENT_PASSED — and it must be
     // inverted deliberately, in the same change, never deleted to make a red go away.

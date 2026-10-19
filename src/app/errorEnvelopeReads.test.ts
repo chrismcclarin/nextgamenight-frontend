@@ -346,15 +346,17 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
   'app/rsvp/[token]/page.js': {
     // 2 → 4 on 2026-09-29 (plan 88.6-58 task 7, review MEDLOW-16, ITEM-16-COPY-RULING
     // ratified): two more `result.error ===` discriminant reads for the 403 bodies
-    // `expired_link` (Sonnet/routes/rsvp.js:260-263) and `account_not_found` (:235-238).
+    // `expired_link` and `account_not_found` (Sonnet/routes/rsvp.js, anchors
+    // `error: 'expired_link',` and `error: 'account_not_found',`; line cites replaced by anchors
+    // 2026-10-19, 88.6.1 code review A-70, because BE edits above them keep moving them).
     // Those DO carry a `message`, which the page deliberately does not render (R1). Same
     // disposition, same removal condition — Phase 93 lands the BE `code` on all FOUR.
     sites: 4,
     why:
       'A DOMAIN DISCRIMINANT, not a legacy alias. The backend branches VERBATIM, re-read at ' +
-      'source 2026-09-16 — Sonnet/routes/rsvp.js:293-296 is ' +
+      'source 2026-09-16 — Sonnet/routes/rsvp.js (anchor error: [event_cancelled], in GET /respond) is ' +
       'res.status(410).json({ error: [event_cancelled], group_id: event.Group?.id || ' +
-      'event.group_id }) and :302-306 is res.status(410).json({ error: [event_passed], ' +
+      'event.group_id }) and the anchor error: [event_passed] is res.status(410).json({ error: [event_passed], ' +
       'event_name: event.Game?.name || [Game Session], group_id: event.Group?.id || ' +
       'event.group_id }), with the string literals bracketed here only to keep this roster ' +
       'quote-safe. ' +
@@ -373,7 +375,8 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       kind: 'owner',
       date: '2026-09-09',
       ruling:
-        'D62 branch B — FE-only; Phase 93 owns adding code to Sonnet/routes/rsvp.js:292-306 ' +
+        'D62 branch B — FE-only; Phase 93 owns adding code to the two GET /respond 410 bodies in ' +
+        'Sonnet/routes/rsvp.js (anchors error: [event_cancelled] and error: [event_passed]) ' +
         'and Sonnet/routes/availabilityResponse.js:77-80,:119-122 as the precondition for ' +
         'removing the error alias',
     },
@@ -475,7 +478,8 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       kind: 'owner',
       date: '2026-09-09',
       ruling:
-        'D62 branch B — FE-only; Phase 93 owns adding code to Sonnet/routes/rsvp.js:292-306 ' +
+        'D62 branch B — FE-only; Phase 93 owns adding code to the two GET /respond 410 bodies in ' +
+        'Sonnet/routes/rsvp.js (anchors error: [event_cancelled] and error: [event_passed]) ' +
         'and Sonnet/routes/availabilityResponse.js:77-80,:119-122 as the precondition for ' +
         'removing the error alias',
     },
