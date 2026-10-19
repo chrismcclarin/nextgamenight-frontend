@@ -3967,6 +3967,42 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
   });
 });
 
+describe('BGG search answer and result-count region (88.6.1 code review A-68 / A-76)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  afterEach(async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+  });
+  async function openAndSearch(query: string) {
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add from BGG' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: query } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  }
+
+  it('A-68: a search that answers with no body reads as zero results, never a search failure', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce(null);
+    renderProfile();
+    await openAndSearch('nothing');
+    await waitFor(() =>
+      expect(toastMock()).toHaveBeenCalledWith('No games found. Try a different search term.')
+    );
+    expect(toastMock().error).not.toHaveBeenCalled();
+  });
+
+  it('A-76: Hide Search empties the screen-reader result count, so no stale count outlives the panel', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 1, name: 'Azul', year_published: 2017 }]);
+    renderProfile();
+    await openAndSearch('azul');
+    const line = await screen.findByText('Found 1 game.');
+    const region = line.closest('[role="status"]') as HTMLElement;
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Search' }));
+    await waitFor(() => expect(region.textContent).toBe(''));
+    expect(screen.queryByText('Found 1 game.')).toBeNull();
+  });
+});
+
 describe('BGG import result timer (88.6.1-60: Req 11)', () => {
   type Mock = ReturnType<typeof vi.fn>;
   let setSpy: ReturnType<typeof vi.spyOn> | undefined;
@@ -4535,7 +4571,8 @@ describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)
     expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
     expect(screen.queryByText(P8)).toBeNull();
-    expect(toastMock().error).toHaveBeenCalledTimes(1);
+    // A-67 / WR-11: a 404 is a confirmed removal, so no error toast beside the row leaving.
+    expect(toastMock().error).not.toHaveBeenCalled();
   });
 
   it('R7b: a Remove answered 404 for a gone account withdraws the rest of the list behind the banner', async () => {
@@ -5051,6 +5088,30 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     expect(screen.getByRole('button', { name: 'Already Owned' })).toBeDisabled();
   });
 
+  it('A3b (A-73 / WR-09, Safari shape): an Add tap that never focused the button still lands focus on + Add from BGG, and the result count is emptied', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValueOnce({ id: 'game-azul' });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    searchFor('azul');
+    const region = (await screen.findByText('Found 1 game.')).closest('[role="status"]') as HTMLElement;
+    const add = await screen.findByRole('button', { name: ADD_NAME });
+    // iOS Safari does not focus a tapped button: nothing is focused when the press lands.
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(add);
+
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(region.textContent).toBe('');
+    await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
+  });
+
   it('A3: a successful add closes the panel before the refresh and lands focus on + Add from BGG', async () => {
     const user = userEvent.setup();
     const { userGamesAPI, gamesAPI } = await import('@/lib/api');
@@ -5108,7 +5169,10 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
       .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
       .join('\n');
     const count = (text: string, needle: string) => text.split(needle).length - 1;
-    expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current })')).toBe(2);
+    // AMENDED (88.6.1 code review A-73): Remove arms with `preferred` alone; Add also passes the
+    // pressed button as `from` (consumer contract (1)). Still ONE instance, two arm sites.
+    expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current })')).toBe(1);
+    expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: pressed })')).toBe(1);
     expect(src).toContain('addGameInFlightRef');
     expect(count(src, "const ADDING_TO_COLLECTION_LABEL = 'Adding...';")).toBe(1);
     expect(src).not.toContain('Adding…');
@@ -5249,6 +5313,9 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const view = await healthy();
     // Positive signal: the collection list renders live over the healthy row.
     await screen.findByRole('button', { name: 'Remove Catan' });
+    // A-65 positive signals: the preferences card and the availability lists are live over the row.
+    expect(screen.getByRole('heading', { level: 2, name: 'Notification Preferences' })).toBeInTheDocument();
+    expect(within(availabilityCard()).queryAllByRole('button', { name: 'Retry' })).toHaveLength(0);
     h.selfError = err;
     await commit(view.rerender);
 
@@ -5264,7 +5331,16 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const card = collectionCard();
     expect(within(card).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(within(card).queryAllByRole('button', { name: /^Remove / })).toHaveLength(0);
+    // A-65 (C10): no live control below the header acts on the withdrawn row — the Notification
+    // Preferences card leaves, and the availability list shows its existing compact notice.
+    expect(screen.queryByRole('heading', { name: 'Notification Preferences' })).toBeNull();
+    expect(within(availabilityCard()).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   }
+  const availabilityCard = () => {
+    const card = screen.getByRole('heading', { level: 2, name: 'Availability Settings' }).closest('.card');
+    if (!(card instanceof HTMLElement)) throw new Error('no availability card');
+    return card;
+  };
 
   it('K4: a 401 over the kept row withdraws it; the page keeps one h1 (the session name) above the register line', async () => {
     await withdrawnCase(new ApiError('Unauthorized', 'unauthorized', 401));
@@ -5272,6 +5348,24 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
 
   it('K5: a 403 over the kept row withdraws it; the page keeps one h1 (the session name) above the register line', async () => {
     await withdrawnCase(new ApiError('Forbidden', 'forbidden', 403));
+  });
+
+  it('K5b (IN-15): with no session name the withdrawn arm still renders the page h1, from the email', async () => {
+    const original = h.authUser;
+    h.authUser = { ...original, name: undefined };
+    try {
+      const view = renderProfile({ username: 'RealName' });
+      await screen.findByRole('heading', { level: 1, name: 'RealName' });
+      const forbidden = new ApiError('Forbidden', 'forbidden', 403);
+      h.selfError = forbidden;
+      await commit(view.rerender);
+      await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+      const headings = screen.getAllByRole('heading', { level: 1 });
+      expect(headings).toHaveLength(1);
+      expect(headings[0]).toHaveAccessibleName('self');
+    } finally {
+      h.authUser = original;
+    }
   });
 
   it('K6: a network failure keeps the name under RF1', async () => {

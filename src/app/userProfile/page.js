@@ -356,6 +356,17 @@ function Profile(){
        already carries the full banner (one failure surface per card, C6); (n) gating the profile
        init effect — the kept row is the user's own last server-confirmed settings, and the server
        rejects a write made with the dead session.
+       AMENDED 2026-10-19 (88.6.1 code review A-65): the "no live control below the header" claim
+       above was not true as shipped — only the collection and the Email card read
+       `identityWithdrawn`, so the Notification Preferences card kept the withdrawn row's settings
+       with live toggles, and both availability lists kept their rows with live Delete controls.
+       CHOSEN: the preferences card is absent while withdrawn (`preferences && !identityWithdrawn`,
+       the same absence it already has with no row), and the Schedules and Specific Dates lists take
+       their existing compact notice (`selfFailedWithNothingCached || identityWithdrawn`), as the
+       collection does. Still live, deliberately and as in the no-row state: the `+ Add Schedule` /
+       `+ Add Override` toggles and their forms, which hold no row data (the server rejects their
+       write). REJECTED: leaving the preferences and lists live and narrowing this marker's claim
+       instead — the C10 rule above is that an access or gone answer never keeps the rows.
        Changing this is a decision, not a cleanup. */
     const identityRetained = useRetainedContent(self !== undefined, selfIdentityErrorState, { queryKey: selfQueryKey });
     const identityWithdrawn = self !== undefined && !identityRetained;
@@ -1529,7 +1540,8 @@ function Profile(){
             } else if (found > 1) {
                 setBggFoundAnnouncement(bggFoundManyLabel(found));
             }
-            if (results.length === 0) {
+            // 88.6.1 code review A-68: the computed count — `results` may be null (guarded above).
+            if (found === 0) {
                 toast('No games found. Try a different search term.');
             }
         } catch (error) {
@@ -1562,10 +1574,14 @@ function Profile(){
         }
     };
 
-    const addGameToCollection = async (game_id) => {
+    const addGameToCollection = async (game_id, event) => {
         // D-35 (88.6.1-67): the in-flight refusal, synchronous and FIRST — see
         // `DECISION Phase 88.6.1-67 (D-35, Add to Collection)` at the Add button.
         if (addGameInFlightRef.current) return;
+        // 88.6.1 code review A-73 / WR-09: the pressed Add, captured BEFORE any await and passed as
+        // `from` (useFocusRecovery consumer contract (1)) — iOS Safari does not focus a tapped
+        // button, so a seed read from `document.activeElement` after the await is <body>.
+        const pressed = event?.currentTarget ?? null;
         if (!user?.sub) return;
         if (!selfUuid) {
             toast.error('Still loading your account — please try again in a moment.');
@@ -1583,7 +1599,7 @@ function Profile(){
             }
             
             const added = await userGamesAPI.addOwnedGame(selfUuid, gameId);
-            const settle = collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current });
+            const settle = collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: pressed });
             /* Part of `DECISION Phase 88.6.1-67 (D-35, Add to Collection)` (at the Add button).
                At the add's CONFIRMATION, before the refresh:
                - the answer's `game` row joins the list (D-54's rule, as Remove; finding #75), placed
@@ -1610,6 +1626,8 @@ function Profile(){
                 ));
             }
             setShowBggSearch(false);
+            // 88.6.1 code review A-76: the result count leaves with the panel it counted.
+            setBggFoundAnnouncement('');
             setBggSearchQuery('');
             setBggSearchResults([]);
             addGameInFlightRef.current = false;
@@ -1686,16 +1704,20 @@ function Profile(){
             settle();
         } catch (error) {
             logger.info('Error removing game from collection:', errCtx(error));
+            // 88.6.1 code review A-67 / WR-11: keyed on `ApiError.code` (DECISION Phase 88-25), and a
+            // 404 toasts nothing — it is a confirmed removal (D-54 above), so an error toast beside
+            // the row leaving misreported it; a gone-identity 404 speaks through the refresh (C10).
+            if (error?.code === 'not_found') {
+                const settle = dropRemovedGame();
+                await fetchOwnedGames();
+                settle();
+                return;
+            }
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't remove that game. Please try again.",
                 })
             );
-            if (error?.status === 404) {
-                const settle = dropRemovedGame();
-                await fetchOwnedGames();
-                settle();
-            }
         }
     };
 
@@ -2271,7 +2293,9 @@ function Profile(){
                     {identityWithdrawn ? (
                         <div className="flex flex-col gap-3 md:gap-4">
                             <Heading ref={profileHeadingRef} level={1} size="display" className="text-content-primary">
-                                {user.name}
+                                {/* 88.6.1 code review IN-15: the no-row fallback chain, so a session with
+                                    no `name` still renders the page's one h1 (Heading drops empty children). */}
+                                {user?.name || user?.email?.split('@')[0] || 'User'}
                             </Heading>
                             <FetchErrorBanner state={selfIdentityErrorState} />
                         </div>
@@ -3045,7 +3069,7 @@ function Profile(){
 
                 {/* Notification Preferences Section — absent while identity has no row, on purpose:
                     see `DECISION Phase 88.6.1-61 (Req 11, identity init)`. */}
-                {preferences && (
+                {preferences && !identityWithdrawn && (
                 <div className="card p-3 md:p-6 mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-1">Notification Preferences</Heading>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
@@ -3553,8 +3577,9 @@ function Profile(){
                                 target (the floor is the page's h1, far above on a phone).
                                 This marker names copy rows by id and spells no user-facing sentence. Changing
                                 any of these is a decision, not a cleanup. */}
-                            {selfFailedWithNothingCached ? (
+                            {selfFailedWithNothingCached || identityWithdrawn ? (
                                 // AC-29 (88.6.1-61): no identity row — see `DECISION Phase 88.6.1-61 (AC-29, identity notices)`.
+                                // A-65: an access or gone answer over a kept row too — see `DECISION Phase 88.6.1-79`.
                                 <FetchErrorBanner state={selfIdentityErrorState} compact focusTarget={schedulesHeadingRef} />
                             ) : loadingPatterns ? (
                                 <p className="text-content-secondary">Loading schedules...</p>
@@ -3710,8 +3735,9 @@ function Profile(){
                             )}
 
                             {/* AC-29 / RF1 (88.6.1-59): see `DECISION Phase 88.6.1-59 (AC-29 / RF1)` at the schedules list. */}
-                            {selfFailedWithNothingCached ? (
+                            {selfFailedWithNothingCached || identityWithdrawn ? (
                                 // AC-29 (88.6.1-61): no identity row — see `DECISION Phase 88.6.1-61 (AC-29, identity notices)`.
+                                // A-65: an access or gone answer over a kept row too — see `DECISION Phase 88.6.1-79`.
                                 <FetchErrorBanner state={selfIdentityErrorState} compact focusTarget={overridesHeadingRef} />
                             ) : loadingPatterns ? (
                                 <p className="text-content-secondary">Loading overrides...</p>
@@ -3828,7 +3854,11 @@ function Profile(){
                             <Button
                                 ref={addFromBggToggleRef}
                                 variant="primary"
-                                onClick={() => setShowBggSearch(!showBggSearch)}
+                                onClick={() => {
+                                    // 88.6.1 code review A-76: Hide Search empties the result count too.
+                                    if (showBggSearch) setBggFoundAnnouncement('');
+                                    setShowBggSearch(!showBggSearch);
+                                }}
                                 aria-expanded={showBggSearch}
                                 {...(showBggSearch ? { 'aria-controls': bggSearchPanelId } : {})}
                                 className="whitespace-nowrap"
@@ -4025,7 +4055,7 @@ function Profile(){
                                                 <Button
                                                     variant="primary"
                                                     type="button"
-                                                    onClick={() => addGameToCollection(result.bgg_id)}
+                                                    onClick={(event) => addGameToCollection(result.bgg_id, event)}
                                                     disabled={isAlreadyOwned || (addingBggId !== null && !isAddingThis)}
                                                     aria-disabled={isAddingThis ? 'true' : undefined}
                                                     className="whitespace-nowrap shrink-0"
