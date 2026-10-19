@@ -102,14 +102,35 @@ export default function AutoPromptBehaviorBanner({ focusFallbackRef } = {}) {
        does NOT exist in globals.css, so Tailwind emitted no rule and the label rendered in the
        inherited colour. `text-content-link` is the real token for an actionable label.
 
-       The dismiss button lives INSIDE Banner's children, following the shipped
-       `FetchErrorBanner` precedent (its "Try again"/"Report this" sit there too) rather than a
-       new `action` slot on the primitive for a single consumer. */
+       AMENDED 2026-10-19 (88.6.1 code review A-71): the dismiss button now renders in Banner's
+       `actions` slot (plan 88.6.1-21), not its `children` — children sit inside the aria-atomic
+       live region, and Banner's contract is that controls never do. The slot renders in the same
+       column below the message, so the layout is unchanged. Moving it back into `children` is a
+       decision, not a cleanup. */
     return (
         <Banner
             tone="info"
             title="Heads up — recurring poll behavior changed."
             className="mb-4"
+            actions={
+                <div className="mt-2">
+                    <button
+                        type="button"
+                        onClick={handleDismiss}
+                        /* `font-medium` DELETED (Phase 88.6-34, §4.5 EMPHASIS): this is the row's
+                           named precedent case — a link-styled button that ALREADY carries
+                           `text-content-link underline`, so the colour and the underline are doing the
+                           work and the weight was a third, redundant signal. `text-sm` STAYS: this is
+                           a bare `<button>`, NOT a `.btn`, so the size utility is LIVE (not dead the
+                           way it would be on a `Button`), and Label 14 is the right rung for an
+                           actionable label. `min-h-11` STAYS — it is this control's per-CTA 44px
+                           floor, and it is not supplied by anything else here. */
+                        className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm text-content-link underline transition-colors hover:no-underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                    >
+                        Got it
+                    </button>
+                </div>
+            }
         >
             <p className="text-content-secondary">
                 Recurring schedules now auto-close as soon as everyone has responded,
@@ -117,23 +138,6 @@ export default function AutoPromptBehaviorBanner({ focusFallbackRef } = {}) {
                 instead of an event being auto-created. Your recurring schedule
                 itself is unchanged &mdash; the next cycle will fire normally.
             </p>
-            <div className="mt-2">
-                <button
-                    type="button"
-                    onClick={handleDismiss}
-                    /* `font-medium` DELETED (Phase 88.6-34, §4.5 EMPHASIS): this is the row's
-                       named precedent case — a link-styled button that ALREADY carries
-                       `text-content-link underline`, so the colour and the underline are doing the
-                       work and the weight was a third, redundant signal. `text-sm` STAYS: this is
-                       a bare `<button>`, NOT a `.btn`, so the size utility is LIVE (not dead the
-                       way it would be on a `Button`), and Label 14 is the right rung for an
-                       actionable label. `min-h-11` STAYS — it is this control's per-CTA 44px
-                       floor, and it is not supplied by anything else here. */
-                    className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm text-content-link underline transition-colors hover:no-underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                >
-                    Got it
-                </button>
-            </div>
         </Banner>
     );
 }

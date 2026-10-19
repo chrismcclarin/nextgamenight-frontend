@@ -91,6 +91,15 @@ describe('AutoPromptBehaviorBanner info treatment (D-33)', () => {
     const btn = screen.getByRole('button', { name: 'Got it' });
     expect(btn.className).toContain('min-h-11');
   });
+
+  it('A-71: Got it sits OUTSIDE the aria-atomic live region (Banner `actions`), while the message stays inside it', () => {
+    render(<AutoPromptBehaviorBanner />);
+    const region = screen.getByRole('status');
+    expect(region).toHaveAttribute('aria-atomic', 'true');
+    expect(region).toHaveTextContent(/recurring poll behavior changed/i);
+    const btn = screen.getByRole('button', { name: 'Got it' });
+    expect(btn.closest('[aria-atomic]')).toBeNull();
+  });
 });
 
 // Phase 88.6.1-79 (Req 5, D-04 / D-05 / D-07): `Got it` removes the banner together with the
