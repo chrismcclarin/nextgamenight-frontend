@@ -918,6 +918,9 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
     const close = screen.getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
     expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
+    // 88.6.1 code review A-45: the loading line itself is never inside the busy subtree, which some
+    // screen readers leave out of the virtual buffer until it settles.
+    expect(screen.getByText('Loading group members...').closest('[aria-busy]')).toBeNull();
 
     await act(async () => {
       releaseMembers(fixtures.members);
@@ -966,6 +969,8 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
     });
     expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }));
+    // 88.6.1 code review A-45 (edit-mode twin): the loading line sits outside the busy subtree.
+    expect(screen.getByText('Loading game night...').closest('[aria-busy]')).toBeNull();
 
     await act(async () => {
       releaseRead(editFixture);

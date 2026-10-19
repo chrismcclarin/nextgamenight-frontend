@@ -1180,7 +1180,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
        won). Chosen OVER stabilising this memo's identity (rejected: identity churn is the
        re-sync half, closed in `EventScheduler.tsx`; it leaves the VALUE wrong, and the value is
        what seeds `currentDate` when the scheduler mounts after the fetch has landed).
-       BOTH halves are needed and neither subsumes the other: the render's `{loading ? (` gates the
+       BOTH halves are needed and neither subsumes the other: the render's `{!bodyGateOpen ? null : (` gates the
        form on the group-members fetch while the heatmap fetch `useEffect` runs independently, so seeding vs
        re-syncing is a race between two network calls, and a navigated-away week still needs the
        scheduler-side guard. Week view is unaffected — Monday and today render the same week.
@@ -1323,11 +1323,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           `p-3 md:p-6` or the R2 75px budget arithmetic above breaks. */}
       <Modal.Body>
         {/* Plan 88.6.1-68 (#233): a layout-neutral region this component owns (Modal.Body forwards
-            className only), marked busy while the gate is closed. */}
-        <div aria-busy={!bodyGateOpen || undefined}>
-        {!bodyGateOpen ? (
+            className only), marked busy while the gate is closed.
+            AMENDED 2026-10-19 (88.6.1 code review A-45): the loading line now renders BEFORE the busy
+            region, not inside it. ARIA lets assistive tech hold back a busy subtree until it
+            settles, so the one sentence saying why the dialog is empty could be the one a
+            screen-reader user cannot reach (ResponseDashboard's loading line, DECISION
+            Phase 88.6.1-86, already sits outside its busy area). The region stays busy, and empty,
+            until the form arrives in it. */}
+        {!bodyGateOpen && (
           <p className="text-content-primary">{editingEvent ? LOADING_GAME_NIGHT_LABEL : 'Loading group members...'}</p>
-        ) : (
+        )}
+        <div aria-busy={!bodyGateOpen || undefined}>
+        {!bodyGateOpen ? null : (
           <>
         {/* Phase 62-02: nudge user to set profile TZ before editing/creating
             so saved start_date is stamped against a stable canonical TZ. */}
