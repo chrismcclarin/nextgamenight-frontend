@@ -18,6 +18,13 @@
 // jsdom. A failed overlap, reachability, size or sideways-scroll assertion is a STOP for the
 // owner's mockup (88.6.1-70 contract C8 (d)), never an ad-hoc restyle.
 //
+// Tests 5-6 (88.6.1-89, close rulings P-79 / P-80): a failed FIRST load of the group record itself
+// (not a removal) shows "Couldn't load this group" with a reachable "Try again" that recovers,
+// never a page headed by the fallback name; and while the group's first events request is out the
+// calendar's place says "Loading calendar..." under its Calendar heading, never an empty month.
+// Their red halves are GL-1 and CL-1 in jsdom. Test 5 fails GETs only; test 6 holds the events
+// GETs in the browser and then continues them to the backend.
+//
 // Shared-fixture rules: the seeded group is shared with other specs. Every write is held in the
 // browser by holdWrites (registered before navigation), and the afterEach fails the test if an
 // /api write reached that hold. Tests 1-2 fail GETs only, in the browser, with a synthetic 500.
@@ -35,11 +42,15 @@ const GROUP_TITLE = "Couldn't load this group";
 const EVENTS_TITLE = "Couldn't load this group's events";
 // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE), written once here (contract C7).
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+// Copy row P80 (close ruling P-80): the calendar's own loading line, written once here.
+const CALENDAR_LOADING = 'Loading calendar...';
 
 // The browser calls the same-origin BFF (src/lib/api.ts): the members list is
 // `GET /api/groups/<id>/users`, the group's events `GET /api/events/group/<id>?…`.
 const isMembersRead = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/users`);
 const isEventsRead = (url: URL) => url.pathname.includes(`/events/group/${E2E_GROUP_ID}`);
+// 88.6.1-89: the group record itself, `GET /api/groups/<id>` (`groupsAPI.getGroup`).
+const isGroupRead = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}`);
 // The writes tests 3-4 fulfil: `PUT /api/groups/<id>/settings` and `POST /api/events`.
 const isSettingsWrite = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/settings`);
 const isEventsCollection = (url: URL) => url.pathname.endsWith('/events');
@@ -272,6 +283,66 @@ test.describe('group home load failures — phone', () => {
     await expect(line).toHaveCount(0, { timeout: 15_000 });
     await expect(heading).toBeVisible();
     await expect(heading).toBeFocused();
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('group record first-load failure shows the group banner (88.6.1-89, P-79)', async ({ page }) => {
+    let mode: Mode = 'fail';
+    await failGets(page, isGroupRead, () => mode, 'group');
+
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
+    await expect(page.getByText(GROUP_TITLE, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('link', { name: 'Plan Game Session' })).toHaveCount(0);
+    const tryAgain = page.getByRole('button', { name: 'Try again', exact: true });
+    await expectReachable(page, tryAgain);
+    await expectNoSidewaysScroll(page);
+
+    mode = 'pass';
+    await tryAgain.click();
+    await expect(page.getByRole('link', { name: 'Plan Game Session' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(GROUP_TITLE, { exact: true })).toHaveCount(0);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('the calendar names its first load (88.6.1-89, P-80)', async ({ page }) => {
+    // Every events GET that arrives before the release waits for it, then continues to the
+    // backend; a GET after the release continues at once. Any other method falls back into the
+    // hold (the afterEach catches it).
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const held = { count: 0 };
+    await page.route(isEventsRead, async (route: Route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      held.count += 1;
+      await released;
+      await route.continue();
+    });
+
+    try {
+      await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+      await expect(page.locator('html')).toHaveClass(/dark/);
+
+      await expect(page.getByRole('link', { name: 'Plan Game Session' })).toBeVisible({ timeout: 15_000 });
+      await expect.poll(() => held.count, { message: 'the first events GET is held', timeout: 15_000 }).toBeGreaterThan(0);
+      const loading = page.getByText(CALENDAR_LOADING, { exact: true });
+      await expect(loading).toBeVisible();
+      await expect(page.getByRole('heading', { level: 2, name: 'Calendar', exact: true })).toBeVisible();
+      await expectReachable(page, loading);
+      await expectNoSidewaysScroll(page);
+
+      release();
+      await expect(page.getByRole('button', { name: /^(List|Month) View$/ }).first()).toBeVisible({ timeout: 15_000 });
+      await expect(loading).toHaveCount(0);
+    } finally {
+      release();
+    }
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 });
