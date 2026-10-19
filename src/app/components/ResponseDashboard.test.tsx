@@ -853,6 +853,94 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  // 88.6.1 code review CR-3 / A-42 (owner ratified 2026-10-19, WCAG 4.1.3): a PRESSED Refresh is
+  // heard while it runs and when it succeeds, from one polite region mounted empty before the
+  // press, outside the aria-busy list; a failure adds nothing (RF1 speaks it).
+  const REFRESHING = 'Refreshing responses…';
+  const REFRESHED = 'Responses refreshed.';
+  const statusNodes = () => Array.from(document.querySelectorAll('[role="status"]'));
+  const refreshRegion = (before: Element[]) => {
+    const found = before.filter((n) => n.getAttribute('data-testid') === 'response-dashboard-refresh-status');
+    expect(found).toHaveLength(1);
+    return found[0];
+  };
+
+  it('RD-RF-5b. a pressed Refresh announces Refreshing, then Refreshed, from the region present before the press; a repeat press re-announces', async () => {
+    const user = userEvent.setup();
+    api.getRespondents.mockResolvedValueOnce(THREE);
+    renderInMain();
+    await screen.findByText('Member One');
+    const before = statusNodes();
+    const region = refreshRegion(before);
+    expect(region.textContent).toBe('');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+    expect(screen.getByRole('list').contains(region)).toBe(false);
+
+    const held = deferred();
+    api.getRespondents.mockImplementationOnce(() => held.promise);
+    await user.click(refreshButton());
+    expect(region.textContent).toBe(REFRESHING);
+    await act(async () => {
+      held.resolve(THREE);
+    });
+    await waitFor(() => expect(region.textContent).toBe(REFRESHED));
+    expect(statusNodes().includes(region)).toBe(true);
+
+    // A repeat press changes the text again (Refreshing, then Refreshed), so it is heard again.
+    const held2 = deferred();
+    api.getRespondents.mockImplementationOnce(() => held2.promise);
+    await user.click(refreshButton());
+    expect(region.textContent).toBe(REFRESHING);
+    await act(async () => {
+      held2.resolve(THREE);
+    });
+    await waitFor(() => expect(region.textContent).toBe(REFRESHED));
+  });
+
+  it('RD-RF-5c. a failed pressed Refresh leaves the refresh region empty; RF1 alone speaks the failure', async () => {
+    const user = userEvent.setup();
+    api.getRespondents.mockResolvedValueOnce(THREE);
+    renderInMain();
+    await screen.findByText('Member One');
+    const region = refreshRegion(statusNodes());
+
+    api.getRespondents.mockRejectedValueOnce(await codedError('internal', 500));
+    await user.click(refreshButton());
+    await waitForRf1();
+    expect(region.textContent).toBe('');
+    expect(screen.queryByText(REFRESHED)).toBeNull();
+  });
+
+  it('RD-RF-5d. the tab-return re-attempt and the notice\'s Retry set nothing in the refresh region', async () => {
+    const user = userEvent.setup();
+    await loadThenFailRefresh(user, await codedError('internal', 500));
+    await waitForRf1();
+    const region = refreshRegion(statusNodes());
+    expect(region.textContent).toBe('');
+
+    // The tab-return re-attempt, nobody pressed: it succeeds and still says nothing here.
+    api.getRespondents.mockResolvedValueOnce(THREE);
+    const callsBefore = api.getRespondents.mock.calls.length;
+    fireVisibility('hidden');
+    fireVisibility('visible');
+    await waitFor(() => expect(api.getRespondents.mock.calls.length).toBeGreaterThan(callsBefore));
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+    expect(region.textContent).toBe('');
+  });
+
+  it('RD-RF-5e. a Retry from the notice sets nothing in the refresh region', async () => {
+    const user = userEvent.setup();
+    await loadThenFailRefresh(user, await codedError('internal', 500));
+    await waitForRf1();
+    const region = refreshRegion(statusNodes());
+
+    api.getRespondents.mockResolvedValueOnce(TWO_NEW);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('New Member Four');
+    expect(region.textContent).toBe('');
+  });
+
   it('RD-RF-6. a new prompt never shows the previous prompt\'s roster or failure, not even for one commit (C3, the stamped error)', async () => {
     const user = userEvent.setup();
     const view = await loadThenFailRefresh(user, await codedError('internal', 500));

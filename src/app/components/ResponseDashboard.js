@@ -9,6 +9,7 @@ import {
 } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger } from '@/lib/logger';
 import { formatDateTime } from '../../lib/datetime';
@@ -16,6 +17,11 @@ import { useTimezone } from './TimezoneProvider';
 
 // Copy row P14 (close ruling P-14, owner 2026-10-17; D-30 hoisted constant; D-32 R8 has nothing to normalise — no apostrophe).
 const RESPONSES_LOADING_LABEL = 'Loading responses...';
+// Copy ruling CR-3 (88.6.1 code review A-42, owner ratified 2026-10-19; D-30 placement rule: a
+// hoisted constant at the site): what a PRESSED Refresh says while it runs and when it succeeds.
+// The ellipsis is the single character U+2026.
+const REFRESHING_RESPONSES_COPY = 'Refreshing responses…';
+const RESPONSES_REFRESHED_COPY = 'Responses refreshed.';
 
 /**
  * ResponseDashboard - Shows who has/hasn't responded to an availability prompt
@@ -51,6 +57,8 @@ export default function ResponseDashboard({
   // Review #237 (Phase 88.6.1-73): true while a PRESSED 'Refresh' is out; drives the word-free
   // busy cue (the icon's spin and the list's aria-busy). Only the press sets it.
   const [refreshing, setRefreshing] = useState(false);
+  // CR-3 / A-42: the spoken line of a PRESSED Refresh (the marker at the region in the render).
+  const [refreshStatus, setRefreshStatus] = useState('');
   // D-35 (Phase 88.6.1-11): the rows whose reminder is in flight, one entry per row.
   const [remindingUserIds, setRemindingUserIds] = useState([]);
   const { timezone } = useTimezone();
@@ -275,10 +283,15 @@ export default function ResponseDashboard({
   const handleRefresh = async (event) => {
     const settle = refreshRecovery.arm({ from: event?.currentTarget ?? null });
     setRefreshing(true);
+    setRefreshStatus(REFRESHING_RESPONSES_COPY);
+    let result;
     try {
-      await fetchRespondents();
+      result = await fetchRespondents();
     } finally {
       setRefreshing(false);
+      // CR-3 / A-42: only a current-generation success is announced; a failure (RF1 speaks it) or
+      // a superseded run (undefined) empties the line, so nothing is said twice.
+      setRefreshStatus(result && result.isError === false ? RESPONSES_REFRESHED_COPY : '');
       settle();
     }
   };
@@ -632,6 +645,21 @@ export default function ResponseDashboard({
         <RefreshIcon className={refreshing ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />
         Refresh
       </button>
+      {/* DECISION Phase 88.6.1 code review CR-3 / A-42 (owner ratified 2026-10-19, WCAG 4.1.3):
+          a PRESSED Refresh is heard from this ONE polite region, mounted empty with the roster
+          (EMPTY-FIRST) and OUTSIDE the aria-busy list, which most screen readers do not announce
+          and which is absent when the roster is empty. It says Refreshing responses… when the
+          press starts and Responses refreshed. when it succeeds; a repeat press re-announces
+          because the text changes back to Refreshing first. A failure EMPTIES it and says
+          nothing, chosen OVER a failure line here, because RefreshFailedNotice already speaks
+          the failure and a second line would double-announce. The tab-return re-attempt and the
+          notice's Retry (its own Retrying…) never write here: nobody pressed Refresh. sr-only for
+          its whole life, chosen OVER srOnlyWhenEmpty, because the sighted cue (the spin and the
+          new count) already exists and a visible line would be a look change. Changing any of
+          this is a decision, not a cleanup. */}
+      <StatusRegion className="sr-only" data-testid="response-dashboard-refresh-status">
+        {refreshStatus}
+      </StatusRegion>
     </div>
     {retainedGuard}
     </>
