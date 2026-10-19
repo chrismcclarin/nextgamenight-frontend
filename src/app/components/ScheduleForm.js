@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
-import { promptSettingsAPI } from '../../lib/api';
+import { promptSettingsAPI, gamesAPI } from '../../lib/api';
 import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, DEADLINE_DAY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
 import { useAppForm } from '../../lib/useAppForm';
 import { FormField } from './form/FormField';
@@ -88,6 +88,7 @@ export default function ScheduleForm({
     control,
     watch,
     setValue,
+    getValues,
     reset,
     formState: { errors, isSubmitting, submitCount },
   } = useAppForm(scheduleSchema, {
@@ -171,23 +172,40 @@ export default function ScheduleForm({
       // CHKIN-03 silent fallback: if the user submits with an empty template name,
       // synthesize the auto-generated default rather than blocking the save or
       // showing an inline error. Template names are cosmetic admin labels.
+      // 88.6.1 code review A-39: `game_name` is read from the form, not from `data` — it is a
+      // transient UI field outside `scheduleSchema`, and the schema resolver strips it from `data`,
+      // so `data.game_name` was always undefined here.
+      const typedGameName = getValues('game_name')?.trim() || '';
       let templateName = data.template_name?.trim();
       if (!templateName) {
-        const gameName = data.game_name || 'Game TBD';
+        const gameName = typedGameName || 'Game TBD';
         const dayName = DAYS_OF_WEEK.find(d => d.value === data.schedule_day_of_week)?.label || '';
         templateName = `${gameName} - ${dayName} ${data.schedule_time}`;
       }
 
-      // Normalize game_id: empty string -> null
-      const normalizedData = {
-        ...data,
-        game_id: data.game_id || null,
-        template_name: templateName,
-      };
-      // Strip transient UI-only field — backend doesn't expect it.
-      delete normalizedData.game_name;
-
       try {
+        /* 88.6.1 code review A-39: a typed-but-unpicked game name is RESOLVED to a game id (an
+           existing or new custom game) before saving, the way createEvent.js's onSubmit does
+           (anchor `gamesAPI.resolveGame(newEvent.game_name.trim())`), because the backend's
+           schedule takes only `game_id`. Before this, the name was dropped and the schedule saved
+           as Game TBD while its auto-filled template name and the field's placeholder said the
+           typed game was kept. A failed resolve saves nothing and lands in the catch below, on
+           the same `serverError` alert as a failed save. */
+        let gameId = data.game_id || null;
+        if (!gameId && typedGameName) {
+          const resolvedGame = await gamesAPI.resolveGame(typedGameName);
+          gameId = resolvedGame.id;
+        }
+
+        // Normalize game_id: empty string -> null
+        const normalizedData = {
+          ...data,
+          game_id: gameId,
+          template_name: templateName,
+        };
+        // Strip transient UI-only field — backend doesn't expect it.
+        delete normalizedData.game_name;
+
         if (isEditMode) {
           await promptSettingsAPI.updateSchedule(groupId, existingSchedule.id, normalizedData);
         } else {
@@ -403,7 +421,10 @@ export default function ScheduleForm({
                    non-UUID string through to the backend). `GameComboInput` emits a database id
                    or `null`, never an empty string. The game error paragraph below stays as a
                    schema guard, now reachable only by a non-UUID id, which no `GameComboInput`
-                   path emits. */
+                   path emits.
+                   AMENDED 2026-10-19 (88.6.1 code review A-39): `null` here no longer means the
+                   save is Game TBD when a name was typed — `onSubmit` resolves the typed name to a
+                   game id first (see the note there). Only a blank field saves as Game TBD. */
                 setValue('game_id', game_id ?? null, { shouldValidate: true });
                 setValue('game_name', game_name || '', { shouldValidate: false });
               }}

@@ -20,6 +20,8 @@ vi.mock('../../lib/api', async (importOriginal) => ({
     createSchedule: vi.fn().mockRejectedValue(new Error('Server boom')),
     updateSchedule: vi.fn(),
   },
+  // 88.6.1 code review A-39: a typed-but-unpicked game name is resolved to a game id before saving.
+  gamesAPI: { resolveGame: vi.fn() },
 }));
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }));
 // ScheduleForm consumes useSelfIdentity (87.5-11: feeds selfUuid to GameComboInput's
@@ -76,7 +78,7 @@ vi.mock('./MemberSelector', () => ({
 import type { ComponentType } from 'react';
 import ScheduleFormDefault from './ScheduleForm';
 import { logger } from '@/lib/logger';
-import { promptSettingsAPI } from '../../lib/api';
+import { promptSettingsAPI, gamesAPI } from '../../lib/api';
 
 // ScheduleForm is a JS component; its inferred prop type marks every prop
 // required. Cast to a permissive type so the test can render with only the
@@ -338,12 +340,20 @@ describe('88.6-63 (review round 2 #25) — the submit is aria-disabled + latched
 
 // Plan 88.6.1-26 (Requirement 11 class, found at plan time). The game field wrote `game_id: ''`
 // on every keystroke, and `z.string().uuid()` rejects an empty string, so a typed-but-unpicked
-// game blocked the save with the unratified `Invalid UUID`. `onSubmit` already normalises a
-// missing game to `null` (Game TBD); the field now writes `null` itself.
-describe('88.6.1-26 — a typed game name saves as Game TBD (game field)', () => {
+// game blocked the save with the unratified `Invalid UUID`. The field now writes `null` itself.
+// AMENDED 2026-10-19 (88.6.1 code review A-39): a typed name is no longer dropped to Game TBD —
+// `onSubmit` resolves it to a game id the way createEvent.js does (`gamesAPI.resolveGame`), because
+// the backend's schedule takes only `game_id`. Only a blank field saves as Game TBD.
+describe('88.6.1-26 / A-39 — a typed game name is resolved and kept (game field)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('G1: typing a game name and saving sends game_id null and shows no Invalid UUID', async () => {
+  const GAME_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const UNKNOWN_COPY = 'Something went wrong. Refresh the page to try again.';
+  const createMock = () => promptSettingsAPI.createSchedule as unknown as ReturnType<typeof vi.fn>;
+  const resolveMock = () => gamesAPI.resolveGame as unknown as ReturnType<typeof vi.fn>;
+
+  it('G1: typing a game name and saving resolves it and sends that game id, with no Invalid UUID', async () => {
+    resolveMock().mockResolvedValueOnce({ id: GAME_ID, name: 'Board Night Special' });
     const user = userEvent.setup();
     render(<ScheduleForm groupId="g1" />);
 
@@ -351,10 +361,32 @@ describe('88.6.1-26 — a typed game name saves as Game TBD (game field)', () =>
     await user.click(screen.getByRole('button', { name: /create schedule/i }));
 
     await waitFor(() => expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1));
-    const payload = (promptSettingsAPI.createSchedule as unknown as ReturnType<typeof vi.fn>).mock
-      .calls[0][1];
-    expect(payload.game_id).toBeNull();
+    expect(gamesAPI.resolveGame).toHaveBeenCalledWith('Board Night Special');
+    const payload = createMock().mock.calls[0][1];
+    expect(payload.game_id).toBe(GAME_ID);
+    expect(payload).not.toHaveProperty('game_name');
     expect(screen.getByRole('dialog').textContent).not.toMatch(/Invalid UUID/i);
+  });
+
+  it('G2: a failed resolve saves nothing and shows the register line in the form alert', async () => {
+    resolveMock().mockRejectedValueOnce(new Error('resolve down'));
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    await user.type(screen.getByTestId('game-combo'), 'Board Night Special');
+    await user.click(screen.getByRole('button', { name: /create schedule/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(UNKNOWN_COPY));
+    expect(promptSettingsAPI.createSchedule).not.toHaveBeenCalled();
+  });
+
+  it('G3: a blank game field resolves nothing and saves as Game TBD (game_id null) (confirm-only)', async () => {
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+    await user.click(screen.getByRole('button', { name: /create schedule/i }));
+    await waitFor(() => expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1));
+    expect(gamesAPI.resolveGame).not.toHaveBeenCalled();
+    expect(createMock().mock.calls[0][1].game_id).toBeNull();
   });
 });
 
