@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { holdWrites } from './support/inFlight';
 
 // Phase 88.6.1-45 (AC-18 + D-08a, copy row H5) — the header's one Main navigation landmark and
 // the layered Escape, in a real browser.
@@ -68,13 +69,29 @@ test.describe('header main nav — phone (375, the hamburger)', () => {
       .getByRole('navigation', { name: 'Main', exact: true })
       .getByRole('link', { name: 'Friends', exact: true });
 
+    // 88.6.1 code review A-02: the panel needs a focusable row action so focus can sit INSIDE it
+    // when Escape is pressed (focus left on the row made `toBeFocused(row)` pass with the restore
+    // deleted). The pending-invites read is answered in the browser with one synthetic invite by
+    // the shared holdWrites net, which also holds every write; it must be registered before a
+    // navigation, so the page is loaded again here.
+    await holdWrites(page, {
+      answerGet: (url) =>
+        url.pathname.endsWith('/invites/pending')
+          ? [{ id: 'e2e-nav-invite', Group: { name: 'E2E Nav Escape' }, Inviter: { username: 'E2E Host' } }]
+          : undefined,
+    });
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
     await menuButton.click();
     await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
     await row.click();
     await expect(region).toBeVisible();
 
     // First Escape: the bell claims it (useDismissal default-prevents it) and Header bails.
-    await row.focus();
+    const action = region.getByRole('button', { name: 'Accept invite to E2E Nav Escape', exact: true });
+    await action.focus();
+    await expect(action).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(region).toHaveCount(0);
     await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
@@ -85,6 +102,7 @@ test.describe('header main nav — phone (375, the hamburger)', () => {
     await page.keyboard.press('Escape');
     await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
     await expect(menuButton).toBeFocused();
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 });
 

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { holdWrites } from './support/inFlight';
 
 // Phase 88.6.1-28 (D-18, AC-17, register R128) — the notification bell's panel in a real browser.
 //
@@ -18,13 +19,36 @@ import { test, expect } from '@playwright/test';
 // The hamburger's own state after an Escape is plan 88.6.1-45's assertion (D-08a: Header bails
 // on a default-prevented Escape), NOT this spec's — the phone test deliberately asserts nothing
 // about whether the menu stayed open.
+//
+// 88.6.1 code review A-02: the Escape arms move focus INTO the open region first, onto a row
+// action, and only then press Escape. The bell never moves focus on open, so an Escape pressed
+// with focus still on the trigger passed with the focus restore deleted. Focus inside the panel
+// is the keyboard user's case (WCAG 2.4.3): the focused control unmounts with the panel and
+// focus must come back to the trigger. The pending-invites list is answered in the browser with
+// one synthetic invite (the shared holdWrites net, which also holds every write, so nothing this
+// spec does reaches the shared CI database), so the panel always has a focusable row action.
+const PANEL_INVITE = {
+  id: 'e2e-bell-panel-invite',
+  Group: { name: 'E2E Bell Panel' },
+  Inviter: { username: 'E2E Host' },
+};
+const answerPendingInvites = (url: URL): unknown =>
+  url.pathname.endsWith('/invites/pending') ? [PANEL_INVITE] : undefined;
+const PANEL_ACTION = 'Accept invite to E2E Bell Panel';
 
 test.describe('notification bell panel — phone (row variant in the hamburger)', () => {
   // Runs ONLY in the phone project. Both journeys and phone glob every e2e/*.spec.ts, so each
   // describe is guarded in both directions (the e2e/feedback-stacking.spec.ts shape).
   test.skip(({ isMobile }) => !isMobile, 'phone-project block — desktop coverage lives in the describe below');
 
+  test.afterEach(async ({ page }) => {
+    // The held writes are never answered; drop the net before teardown (the bell-actions shape).
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test.beforeEach(async ({ page }) => {
+    // Registered BEFORE the first navigation (inFlight.ts: a route added after goto misses the load).
+    await holdWrites(page, { answerGet: answerPendingInvites });
     await page.goto('/');
     // D-11 dark-theme pre-assertion (e2e/feedback-stacking.spec.ts): the reused storageState can
     // carry a stored theme key that outranks the config's colorScheme.
@@ -54,17 +78,16 @@ test.describe('notification bell panel — phone (row variant in the hamburger)'
     await menuButton.focus();
     await expect(region).toHaveCount(0);
 
-    // Reopen, then Escape closes it without dropping focus to the body.
+    // Reopen, move focus INTO the panel, then Escape closes it and focus comes back to the row
+    // (A-02: the focused row action unmounts with the panel, so only the restore puts focus there).
     await row.click();
     await expect(region).toBeVisible();
-    await row.focus();
+    const action = region.getByRole('button', { name: PANEL_ACTION, exact: true });
+    await action.focus();
+    await expect(action).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(region).toHaveCount(0);
-    await expect
-      .poll(() => page.evaluate(() => document.activeElement !== document.body), {
-        message: 'after Escape, focus must land on a control (the row or the hamburger toggle), never the body',
-      })
-      .toBe(true);
+    await expect(row).toBeFocused();
   });
 });
 
@@ -72,7 +95,13 @@ test.describe('notification bell panel — desktop (icon variant in the nav)', (
   // Runs ONLY in the journeys project — same both-directions guard as above.
   test.skip(({ isMobile }) => isMobile, 'desktop-project block — phone coverage lives in the describe above');
 
+  test.afterEach(async ({ page }) => {
+    // The held writes are never answered; drop the net before teardown (the bell-actions shape).
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test.beforeEach(async ({ page }) => {
+    await holdWrites(page, { answerGet: answerPendingInvites });
     await page.goto('/');
     // D-11 dark-theme pre-assertion (e2e/feedback-stacking.spec.ts).
     await expect(page.locator('html')).toHaveClass(/dark/);
@@ -84,6 +113,12 @@ test.describe('notification bell panel — desktop (icon variant in the nav)', (
 
     await bell.click();
     await expect(region).toBeVisible();
+
+    // A-02: focus moves INTO the region before the Escape, so the last assertion can fail.
+    const action = region.getByRole('button', { name: PANEL_ACTION, exact: true });
+    await action.focus();
+    await expect(action).toBeFocused();
+    await expect(bell).not.toBeFocused();
 
     await page.keyboard.press('Escape');
     await expect(region).toHaveCount(0);

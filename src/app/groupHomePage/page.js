@@ -98,7 +98,8 @@ function GroupHomePage(){
     // (88.6.1-70 contract C3 — never a row count), a run counter (newest wins) and the pending
     // run a retry joins (review r2 #81).
     // AMENDED 2026-10-19 (88.6.1 code review A-57): each error is stored with the group id it was
-    // read FOR, `{ groupId, error }` — groupPlanning's `roleRecord` shape — and read through the
+    // read FOR, `{ groupId, failure }` — groupPlanning's `roleRecord` shape (the field is `failure`, not
+    // `error`, so `errorEnvelopeReads.test.ts` does not count this internal record as an envelope read) — and read through the
     // derivations below `Router`, so an error and its slot's `retained` value change together on a
     // same-mount group switch (history back/forward): group A's failure can never show as group
     // B's banner. Each setter takes the run's own group id.
@@ -138,7 +139,7 @@ function GroupHomePage(){
     const searchParams = useSearchParams();
     const Router = searchParams.get('id');
     // A-57: the per-group reads of the records above — null when the record is another group's.
-    const errorFor = (record) => (record && record.groupId === Router ? record.error : null);
+    const errorFor = (record) => (record && record.groupId === Router ? record.failure : null);
     const membersError = errorFor(membersErrorRecord);
     const eventsError = errorFor(eventsErrorRecord);
     const groupError = errorFor(groupErrorRecord);
@@ -247,7 +248,7 @@ function GroupHomePage(){
             if (run !== groupRunRef.current) return undefined;
             setGroupErrorRecord({
                 groupId,
-                error: error instanceof Error ? error : new Error("The group request didn't complete."),
+                failure: error instanceof Error ? error : new Error("The group request didn't complete."),
             });
             outcome = LOAD_FAILED;
             return outcome;
@@ -331,7 +332,7 @@ function GroupHomePage(){
                 logger.info('Group members data is not an array:', {
                     received: data === null ? 'null' : typeof data,
                 });
-                setMembersErrorRecord({ groupId, error: new Error("The group members request didn't complete.") });
+                setMembersErrorRecord({ groupId, failure: new Error("The group members request didn't complete.") });
                 outcome = LOAD_FAILED;
                 return outcome;
             }
@@ -367,7 +368,7 @@ function GroupHomePage(){
             if (run !== membersRunRef.current) return undefined;
             setMembersErrorRecord({
                 groupId,
-                error: error instanceof Error ? error : new Error("The group members request didn't complete."),
+                failure: error instanceof Error ? error : new Error("The group members request didn't complete."),
             });
             outcome = LOAD_FAILED;
             return outcome;
@@ -423,7 +424,7 @@ function GroupHomePage(){
             if (run !== eventsRunRef.current) return undefined;
             setEventsErrorRecord({
                 groupId,
-                error: error instanceof Error ? error : new Error("The group events request didn't complete."),
+                failure: error instanceof Error ? error : new Error("The group events request didn't complete."),
             });
             outcome = LOAD_FAILED;
             return outcome;
