@@ -1201,6 +1201,22 @@ describe('88.6.1 code review — scrub gaps closed', () => {
     expect(scrubUrl(scrubUrl(`https://x/invite/group/[${HEX64}]`))).toBe(`https://x/invite/group/[${R}]`);
   });
 
+  it('A-08 follow-up: a literal Next.js route template `[token]` is a route name, not a token, and passes unchanged', () => {
+    // Before: the `[` opener made `/invite/group/[token]` read as an opener plus the token
+    // `token]`, so route templates (transactions, chunk paths) came back `[[REDACTED]]`.
+    for (const route of ['invite/group', 'invite/game', 'rsvp', 'availability-form', 'restore/group']) {
+      expect(scrubUrl(`/${route}/[token]`), `template ${route}`).toBe(`/${route}/[token]`);
+      expect(scrubString(`/${route}/[token]`), `template ${route}`).toBe(`/${route}/[token]`);
+      expect(scrubTransaction({ transaction: `/${route}/[token]` })).toEqual({ transaction: `/${route}/[token]` });
+    }
+    expect(scrubString('/_next/static/chunks/app/invite/group/[token]/page-x.js')).toBe(
+      '/_next/static/chunks/app/invite/group/[token]/page-x.js'
+    );
+    // The A-08 positive half stays: a REAL token in brackets is still redacted, opener kept.
+    expect(scrubUrl(`/invite/group/[${HEX64}]`)).toBe(`/invite/group/[${R}]`);
+    expect(scrubString(`/invite/group/[${HEX64}]`)).toBe(`/invite/group/[${R}]`);
+  });
+
   it('A-10: a percent-encoded token route is redacted in free text (every family, either case of %2F)', () => {
     // Before: `scrubString('/api/auth/login?returnTo=%2Frsvp%2F<token>')` came back unchanged.
     expect(scrubString(`/api/auth/login?returnTo=%2Frsvp%2F${RSVP_TOKEN}`)).toBe(

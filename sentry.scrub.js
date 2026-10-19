@@ -177,12 +177,20 @@ const TOKEN_SEGMENT_END = String.raw`/?#\s"'\x60()[\]{}<>,;`;
 // which unbalances the quotes. In the rsvp entry the opener sits BEFORE the sibling lookahead,
 // so a quoted sibling (`/rsvp/"event"`) is still a sibling. Removing the opener group is a
 // decision, not a cleanup.
+// AMENDED 2026-10-19 (88.6.1 code review A-08 follow-up): with `[` an opener, a literal Next.js
+// route template (`/invite/group/[token]` in a transaction name or a chunk path) read as an
+// opener plus the token `token]` and came back `[[REDACTED]]`. The TOKEN_OPEN lookahead below
+// now also skips the literal parameter segment `[token]` (the dynamic-segment name of every
+// token route under src/app), so a template passes unchanged while a real bracketed token is
+// still redacted. CHOSEN over dropping `[` from the opener set, which reopens the bracketed-token
+// leak this marker closed.
 const TOKEN_SEGMENT_OPEN = String.raw`"'\x60(\[{<`;
 // The opener group as each builder writes it. The lookahead keeps an already-redacted segment
 // as it is: the placeholder itself starts with `[`, and scrubUrl, scrubTransaction and the
 // replay walker each run a string through scrubString twice, so without it a second pass reads
-// `/invite/group/[REDACTED]` as an opener plus a token and nests the placeholder.
-const TOKEN_OPEN = String.raw`(?!\[REDACTED\])([${TOKEN_SEGMENT_OPEN}]?)`;
+// `/invite/group/[REDACTED]` as an opener plus a token and nests the placeholder. It also skips
+// the literal route template segment `[token]` (A-08 follow-up, marker above).
+const TOKEN_OPEN = String.raw`(?!\[(?:REDACTED|token)\])([${TOKEN_SEGMENT_OPEN}]?)`;
 
 // DECISION Phase 88.6.1-76 (P-09, names in element selectors).
 // WHAT. Sentry writes every DOM selector with htmlTreeAsString, which always appends the
