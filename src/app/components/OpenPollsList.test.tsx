@@ -239,6 +239,42 @@ describe('OpenPollsList: ending a check-in (Req 4, D-24, R5)', () => {
     );
   });
 
+  // 88.6.1 code review follow-up (contract (1) audit of the bare arm() in handleClose): an End
+  // committed with focus on <body> (the WebKit tap shape) still recovers. The arm needs no `from`
+  // here: End is a KebabMenu item, and KebabMenu's restoreFocusToTrigger hands focus to the row's
+  // trigger, which the hook follows (useFocusRecovery.ts contract (1), its KebabMenu clause).
+  it('9b. an End committed with focus on body still floors to the page h1 once the row is gone (contract (1) KebabMenu clause, confirm-only)', async () => {
+    const refetch = deferred<{ prompts: unknown[] }>();
+    const close = deferred<unknown>();
+    vi.mocked(promptAPI.getOpenPrompts)
+      .mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never)
+      .mockImplementationOnce(() => refetch.promise as never);
+    vi.mocked(promptAPI.closePrompt).mockImplementationOnce(() => close.promise as never);
+    renderList((list) => (
+      <main>
+        <h1>Plan Game Session</h1>
+        {list}
+      </main>
+    ));
+    await screen.findByText('Started by Ana');
+
+    const list = openKebab(triggers()[0]);
+    fireEvent.click(within(list).getByRole('button', { name: 'End check-in' }));
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(within(list).getByRole('button', { name: 'Tap again to end' }));
+    await act(async () => {
+      close.resolve({});
+    });
+    await act(async () => {
+      refetch.resolve({ prompts: [ROW_B] });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Started by Ana')).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Plan Game Session' }));
+    });
+  });
+
   it('9. with no host target, focus floors to the page main h1 once the row is gone (R5 empty)', async () => {
     const refetch = deferred<{ prompts: unknown[] }>();
     const close = deferred<unknown>();
