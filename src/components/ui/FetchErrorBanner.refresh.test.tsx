@@ -1113,6 +1113,43 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
     }
   });
 
+  it('AG-15. a TanStack source is looked up by hash, never by a QueryCache scan per render (88.6.1 code review A-79)', async () => {
+    const key = ['ag15-members'];
+    let queryFn: () => Promise<string[]> = () => Promise.resolve(['Ann']);
+    const refetchRef: { current: (() => Promise<unknown>) | null } = { current: null };
+    function TanStackConsumer() {
+      const query = useQuery({ queryKey: key, queryFn: () => queryFn() });
+      refetchRef.current = query.refetch;
+      const errorState = useFetchErrorState(query);
+      const retained = useRetainedContent(query.data !== undefined, errorState, { queryKey: key });
+      return retained ? <p>Ann kept</p> : errorState.showError ? <p>withdrawn</p> : <p>Loading</p>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
+    // Unrelated cached queries, so a scan would have work to do.
+    client.setQueryData(['ag15-other', 1], 1);
+    client.setQueryData(['ag15-other', 2], 2);
+    const findSpy = vi.spyOn(client.getQueryCache(), 'find');
+    const { unmount } = render(
+      <QueryClientProvider client={client}>
+        <TanStackConsumer />
+      </QueryClientProvider>
+    );
+    try {
+      await screen.findByText('Ann kept');
+      // The memory still lives with the cached query: a 403 withdraws the rows.
+      queryFn = () => Promise.reject(new ApiError('x', 'forbidden', 403));
+      await act(async () => {
+        await refetchRef.current?.();
+      });
+      await screen.findByText('withdrawn');
+      expect(findSpy, 'no QueryCache.find during render').not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      unmount();
+      client.clear();
+    }
+  });
+
   it('AG-14. a source whose queryKey is undefined is NO source: it keeps its own rows beside a withdrawn TanStack consumer', async () => {
     const keyA = ['ag14-a'];
     let queryFnA: () => Promise<string[]> = () => Promise.resolve(['Ann']);

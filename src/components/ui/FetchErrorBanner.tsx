@@ -36,7 +36,7 @@
  * pressed never drops a focused control to the page body.
  */
 import * as React from 'react';
-import { QueryClientContext, type QueryKey } from '@tanstack/react-query';
+import { QueryClientContext, hashKey, type QueryKey } from '@tanstack/react-query';
 
 import { Banner } from './Banner';
 import { Icon } from './Icon';
@@ -861,10 +861,13 @@ export function useRetainedContent(
   const queryKey = source?.queryKey;
   // An undefined key is never looked up: query-core skips the key test for it, so the lookup
   // would answer with the first cached query, an unrelated entry (AG-14).
+  // DECISION 88.6.1 code review A-29 / A-79: the cache's own O(1) hash lookup over
+  // `getQueryCache().find({ queryKey, exact: true })`, which copies the whole cache and re-hashes
+  // the key once per cached query on EVERY host render. Equivalent only while no
+  // `queryKeyHashFn` is configured (`grep -rn queryKeyHashFn src` = 0 on 2026-10-19), because a
+  // query's cache hash is then `hashKey(queryKey)`; configuring one means returning to `find`.
   const query =
-    client && queryKey !== undefined
-      ? client.getQueryCache().find({ queryKey, exact: true })
-      : undefined;
+    client && queryKey !== undefined ? client.getQueryCache().get(hashKey(queryKey)) : undefined;
   if (query) {
     // Idempotent writes: a StrictMode double render or a discarded render leaves the same memory.
     if (accessNow) accessEndedByQuery.set(query, true);
