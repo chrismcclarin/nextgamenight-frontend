@@ -825,6 +825,7 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
     } as never);
     const updateBallotOptions = vi.spyOn(ballotAPI, 'updateBallotOptions').mockRejectedValueOnce(new Error('ballot down'));
     const loggerError = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const loggerInfo = vi.spyOn(logger, 'info').mockImplementation(() => {});
     try {
       const props = baseProps();
       render(<CreateEvent {...props} editingEvent={ev} />);
@@ -840,11 +841,14 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
       expect(toastSpies.error.mock.invocationCallOrder[0]).toBeLessThan(
         (props.modaltoggle as Mock).mock.invocationCallOrder[0],
       );
-      // The failure is a Sentry EVENT, not a breadcrumb.
-      expect(loggerError).toHaveBeenCalledWith('Error updating ballot options:', expect.any(Error));
+      // The failure stays a BREADCRUMB (`logger.info` + errCtx), not a Sentry event: which failure
+      // classes earn an event is Phase 88.9's reporting inventory (SPEC Boundaries), not this phase's.
+      expect(loggerInfo).toHaveBeenCalledWith('Error updating ballot options:', { name: 'Error', message: 'ballot down' });
+      expect(loggerError).not.toHaveBeenCalledWith('Error updating ballot options:', expect.anything());
     } finally {
       updateBallotOptions.mockRestore();
       loggerError.mockRestore();
+      loggerInfo.mockRestore();
     }
   });
 

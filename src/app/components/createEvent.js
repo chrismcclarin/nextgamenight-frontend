@@ -1050,9 +1050,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             try {
               await ballotAPI.updateBallotOptions(editingEvent.id, trimmedBallotOptions);
             } catch (ballotErr) {
-              // 88.6.1 code review A-37: a Sentry EVENT (was a `logger.info` breadcrumb) — the
-              // person's ballot change was dropped, which nothing else records.
-              logger.error('Error updating ballot options:', ballotErr);
+              // 88.6.1 code review A-37: stays a breadcrumb; the user-facing fix is the toast receipt.
+              // Whether this failure class earns a Sentry event belongs to Phase 88.9's reporting inventory.
+              logger.info('Error updating ballot options:', errCtx(ballotErr));
               ballotSaveFailed = true;
               if (noNewerSessionOpen()) {
                 setBallotError('Event updated but ballot options could not be saved.');
