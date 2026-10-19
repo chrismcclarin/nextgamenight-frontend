@@ -389,12 +389,16 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
 
     let pA!: Promise<unknown>;
     let pB!: Promise<unknown>;
-    // Two reads for the SAME group; the second models the hook's error-only refocus refetch,
-    // which bypasses the Retry button's latch.
+    // Two reads for the SAME group. AMENDED 2026-10-19 (88.6.1 code review A-60): a retry now
+    // JOINS a read already in flight, so the second read is the identity-keyed effect's own
+    // re-run (a new `user` object), which calls the read directly and never joins.
     act(() => {
       pA = h.compactState!.retry();
-      pB = h.compactState!.retry();
     });
+    h.AUTH = { user: { ...h.USER }, isLoading: false };
+    rerender(<GroupPlanningPage />);
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledTimes(4));
+    pB = h.compactState!.retry();
 
     dB.resolve([OWNER_ROW]);
     let rB: unknown;
@@ -435,6 +439,34 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
     expect(rC).toBeUndefined();
     expect(lastRole()).toBe('admin');
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // A-60 (88.6.1 code review): the house JOIN idiom (groupHomePage's `…InFlightRef.current ??`).
+  it('R7: a tab return during a pending role read, then a Retry press, sends ONE members request', async () => {
+    const user = userEvent.setup();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('members request failed', 'internal', 500));
+    render(<GroupPlanningPage />);
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledTimes(2));
+
+    const held = deferred<unknown[]>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValue(held.promise);
+    const before = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+
+    // The hook's error-only refocus re-attempt starts a role read…
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(before + 1);
+    // …and the person's press while it is open joins it instead of sending another.
+    await user.click(retry);
+    expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(before + 1);
+
+    await act(async () => {
+      held.resolve([OWNER_ROW]);
+    });
+    await waitFor(() => expect(lastRole()).toBe('owner'));
+    expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(before + 1);
   });
 });
 

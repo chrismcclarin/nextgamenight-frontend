@@ -69,6 +69,8 @@ export default function GroupPlanningPage() {
     const roleError = roleRecord.groupId === groupId ? roleRecord.error : null;
     const groupIdRef = useRef(groupId);
     const roleRunRef = useRef(0);
+    // The open role read's promise, or null (see `retryRole`).
+    const roleInFlightRef = useRef(null);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -190,24 +192,32 @@ export default function GroupPlanningPage() {
         const forGroup = groupId;
         // Superseded: a newer role read started, or the page moved to another group.
         const superseded = () => run !== roleRunRef.current || groupIdRef.current !== forGroup;
-        try {
-            const members = await groupsAPI.getGroupMembers(forGroup);
-            if (superseded()) return undefined;
-            const me = (members || []).find(m => m.id === selfUuid);
-            setRoleRecord({ groupId: forGroup, role: me?.UserGroup?.role ?? null, error: null });
-            return LOAD_OK;
-        } catch (err) {
-            // LOG FIRST, then the superseded return: an overtaken read that really failed is
-            // still a failed request (the house order, plan 88.6.1-71's members/events catches).
-            logger.info('Error fetching user role:', errCtx(err));
-            if (superseded()) return undefined;
-            setRoleRecord({
-                groupId: forGroup,
-                role: null,
-                error: err instanceof Error ? err : new Error("The role request didn't complete."),
-            });
-            return LOAD_FAILED;
-        }
+        // The run's promise is published SYNCHRONOUSLY, before its await, so a Retry pressed while
+        // it is open joins it (`retryRole` below; A-60, 88.6.1 code review).
+        const thisRun = (async () => {
+            try {
+                const members = await groupsAPI.getGroupMembers(forGroup);
+                if (superseded()) return undefined;
+                const me = (members || []).find(m => m.id === selfUuid);
+                setRoleRecord({ groupId: forGroup, role: me?.UserGroup?.role ?? null, error: null });
+                return LOAD_OK;
+            } catch (err) {
+                // LOG FIRST, then the superseded return: an overtaken read that really failed is
+                // still a failed request (the house order, plan 88.6.1-71's members/events catches).
+                logger.info('Error fetching user role:', errCtx(err));
+                if (superseded()) return undefined;
+                setRoleRecord({
+                    groupId: forGroup,
+                    role: null,
+                    error: err instanceof Error ? err : new Error("The role request didn't complete."),
+                });
+                return LOAD_FAILED;
+            } finally {
+                if (roleInFlightRef.current === thisRun) roleInFlightRef.current = null;
+            }
+        })();
+        roleInFlightRef.current = thisRun;
+        return thisRun;
     };
 
     /* Adapters onto the shared fetch-error pair, matching the shipped 88-14/88-18 shape
@@ -230,7 +240,12 @@ export default function GroupPlanningPage() {
     });
     const retryGroup = useCallback(() => fetchGroupRef.current?.(), []);
     const retryHeatmap = useCallback(() => fetchHeatmapRef.current?.(), []);
-    const retryRole = useCallback(() => fetchUserRoleRef.current?.(), []);
+    // DECISION 88.6.1 code review A-60: a role Retry (the person's press OR the hook's tab-return
+    // re-attempt) JOINS a role read already in flight — groupHomePage's idiom
+    // (`membersInFlightRef.current ?? …`) — OVER starting a second members request that newest-wins
+    // would only throw away. The identity-keyed effect calls `fetchUserRole` directly and never
+    // joins, so a new identity still supersedes the open read. Changing this is a decision, not a cleanup.
+    const retryRole = useCallback(() => roleInFlightRef.current ?? fetchUserRoleRef.current?.(), []);
 
     const groupErrorState = useFetchErrorState({
         isError: Boolean(groupError),
