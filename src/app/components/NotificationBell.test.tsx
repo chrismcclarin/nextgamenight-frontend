@@ -193,6 +193,43 @@ describe('L-8 — a dead-group 410 on the pending invite', () => {
   });
 });
 
+// 88.6.1 code review A-28: the backend answers 404 'Pending invite not found' once an invite is no
+// longer pending (answered by email, on another device or tab). The friend rows beside these treat
+// the same answer as handled elsewhere; the group-invite rows now do too.
+describe('a stale-invite 404 (already answered elsewhere)', () => {
+  function staleInviteError() {
+    return new ApiError('Pending invite not found', 'not_found', 404, { error: 'Pending invite not found' });
+  }
+
+  it('Accept: drops the row, shows no failure line, files no error event, and signals the groups refresh', async () => {
+    acceptInvite().mockRejectedValue(staleInviteError());
+    renderBell();
+    await openBell();
+
+    fireEvent.click(screen.getByRole('button', { name: `Accept invite to ${GROUP_NAME}` }));
+
+    await waitFor(() => expect(setInvitesMock).toHaveBeenCalled());
+    expect(applyLastUpdater([INVITE])).toEqual([]);
+    expect(screen.getByRole('alert').textContent).toBe('');
+    expect(logger.error as unknown as Mock).not.toHaveBeenCalled();
+    // Accepted elsewhere is the common case: the home list picks up the membership.
+    expect(sessionStorage.getItem('nggroups:refresh')).toBe('1');
+  });
+
+  it('Decline: drops the row silently, with no failure line and no error event', async () => {
+    declineInvite().mockRejectedValue(staleInviteError());
+    renderBell();
+    await openBell();
+
+    fireEvent.click(screen.getByRole('button', { name: `Decline invite to ${GROUP_NAME}` }));
+
+    await waitFor(() => expect(setInvitesMock).toHaveBeenCalled());
+    expect(applyLastUpdater([INVITE])).toEqual([]);
+    expect(screen.getByRole('alert').textContent).toBe('');
+    expect(logger.error as unknown as Mock).not.toHaveBeenCalled();
+  });
+});
+
 describe('the { text, tone } confirmation shape', () => {
   it('a successful Accept renders the success-toned confirmation with the group name', async () => {
     acceptInvite().mockResolvedValue({ success: true });

@@ -456,6 +456,22 @@ function NotificationBell({ user, variant = 'icon', label }) {
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
         const groupName = invite.Group?.name || invite.group_name || 'This group';
         setConfirmation({ text: `${groupName} is no longer available.`, tone: 'muted' });
+      } else if (err?.status === 404) {
+        /* DECISION 88.6.1 code review A-28: the backend's 404 'Pending invite not found' (routes/invites.js, the
+           accept and decline handlers) is its "no longer pending" answer: the invite was already answered by email,
+           on another device or in another tab. CHOSEN: treat it as handled elsewhere, the friend rows' stale-404 rule
+           (FriendshipStatusProvider.js, the `is404` arms) — drop the row, arm the row recovery, no failure line, no
+           error event, and send the groups-refresh signal so a membership created elsewhere shows. REJECTED: the
+           register's not_found failure line (it told the person their already-answered invite failed and left a
+           dead row whose second press failed again); a confirmation (Joined would be false when it was declined
+           elsewhere, and a new "already answered" line is new copy). The decline arm below does the same, silently,
+           as its 410 arm does. Showing a failure for this 404 again is a decision, not a cleanup. */
+        settle = armRowRecovery(pressedEl);
+        ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('nggroups:refresh', '1');
+          window.dispatchEvent(new CustomEvent('nggroups:refresh'));
+        }
       } else {
         logger.error('Failed to accept invite:', err);
         reportActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_INVITE_FAILED_COPY }));
@@ -478,7 +494,8 @@ function NotificationBell({ user, variant = 'icon', label }) {
     } catch (err) {
       // L-8: dead-group 410 — removing the row is exactly what the user asked
       // for, so no notice needed.
-      if (err?.status === 410) {
+      // A stale-invite 404 is answered elsewhere: removed silently too (see the accept arm's A-28 marker).
+      if (err?.status === 410 || err?.status === 404) {
         settle = armRowRecovery(pressedEl);
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
       } else {
