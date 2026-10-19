@@ -154,7 +154,8 @@ beforeEach(() => {
   lastList = [];
   retryRefs = [];
   mockApi.getPendingInvites.mockImplementation(answer);
-  // The provider's existing catch logs to the console; keep the run's output readable.
+  // Keep the run's output readable. (Since the 88.6.1 code review A-38 the provider's catch reports through the
+  // logger, not the console; the spy stays for any React console noise.)
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 

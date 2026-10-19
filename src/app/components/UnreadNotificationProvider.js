@@ -4,6 +4,7 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { logger, errCtx } from '../../lib/logger';
 
 /**
  * Unread notification count — single source of truth (MOB-08, Plan 77-01).
@@ -76,7 +77,9 @@ export function UnreadNotificationProvider({ children }) {
       setError(null);
       return { isError: false };
     } catch (err) {
-      console.error('Failed to fetch invites:', err.message);
+      // 88.6.1 code review A-38 / WR-07 (convert-on-touch, ROADMAP :28): a breadcrumb, not logger.error — the bell's
+      // N7 banner report path files the event, and a tab-return retry would otherwise file one event per return.
+      logger.info('Failed to fetch invites:', errCtx(err));
       setInvites([]);
       setError(err instanceof Error ? err : new Error());
       return { isError: true };

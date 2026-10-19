@@ -5,6 +5,7 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI } from '../../lib/api';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { isAccessOrGoneError } from '@/components/ui/FetchErrorBanner';
+import { logger, errCtx } from '@/lib/logger';
 
 export const FriendshipContext = createContext({
   getStatus: () => 'unknown',
@@ -80,7 +81,12 @@ export function FriendshipStatusProvider({ children }) {
         setHasLoaded(true);
         return { isError: false };
       } catch (err) {
-        console.error('FriendshipStatusProvider: failed to load friendship data', err);
+        // AMENDED 2026-10-19 (88.6.1 code review A-14 / A-19 / A-24): convert-on-touch (ROADMAP :28) — the raw
+        // console.error became a breadcrumb through the scrubber (errCtx keeps only name + message), the AC-2 level
+        // EventCalendar uses, and the file left the no-console allowlist. Recorded BEFORE the supersession check, so a
+        // failure that happened is still recorded. logger.error was not taken: a background load failing on every
+        // tab return would file one event per return, and the banner's own report path files the event.
+        logger.info('FriendshipStatusProvider: failed to load friendship data', errCtx(err));
         if (seq !== loadSeqRef.current) return latestLoadRef.current;
         // DECISION Phase 88.6.1-72 (#11, owner 2026-10-13): an access or gone answer to this load empties the three lists and clears the has-loaded fact until the next successful load, so every consumer (the Requests tab, the bell) forgets content the server just refused, across a remount; CHOSEN OVER a page-local memory owner handed to the shared
         // retained-content hook (the bell would keep its rows) and OVER accepting the gap. The bell's friend-request count going to 0 on a 401 is correct (a signed-out user has no requests to count), not a trade-off. Written by plan 88.6.1-72 because the predicate is plan 70's (orchestrator routing 2026-10-15); a transient failure still keeps
@@ -103,12 +109,17 @@ export function FriendshipStatusProvider({ children }) {
   }, [user?.sub]);
 
   useEffect(() => {
+    // AMENDED 2026-10-19 (88.6.1 code review A-18): the reset also restarts `loading` (true while a user is signed in,
+    // so getStatus withholds through the new user's first load instead of classifying the emptied lists as 'none') and
+    // clears the previous user's load error. A signed-out call never reaches the loader's finally, so it is set here.
+    setLoading(Boolean(user?.sub));
+    setLoadError(null);
     setHasLoaded(false);
     setFriends([]);
     setSentRequests([]);
     setReceivedRequests([]);
     loadFriendshipData();
-  }, [loadFriendshipData]);
+  }, [loadFriendshipData, user?.sub]);
 
   const getStatus = useCallback(
     (targetUserId) => {
@@ -371,6 +382,7 @@ export function FriendshipStatusProvider({ children }) {
         // FE CI gate against comparing the sub reads every code line, and an alias of the sub only hides the same compare); the resolved self UUID (it can resolve after the lists land); clearing it on a failure.
         // Turning this into a count, storing a sub here, dropping the effect's reset or its list clears, or clearing it on a failure is a decision, not a cleanup.
         // AMENDED Phase 88.6.1-72 (#11): an access or gone load answer is the one failure that clears it, with the three lists — see the catch.
+        // AMENDED 2026-10-19 (88.6.1 code review A-18): the same reset now also restarts `loading` and clears the load error, so the previous user's settled flags never classify the new user's emptied lists.
         hasLoaded,
         isRequestActionPending,
       }}

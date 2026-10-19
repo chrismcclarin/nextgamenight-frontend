@@ -909,6 +909,52 @@ describe('getStatus during the first load', () => {
   });
 });
 
+describe('a change of signed-in user (88.6.1 code review A-18)', () => {
+  beforeEach(() => {
+    mockApi.getFriends.mockResolvedValue([{ friend: { id: U_F } }]);
+  });
+
+  it('US-1. after a user switch getStatus withholds (unknown, loading) until the new user\'s first load settles', async () => {
+    const dB = deferred<FriendRequestRow[]>();
+    queueReceived([], dB);
+    const { rerender } = await renderProvider({ settle: 'loaded' });
+    expect(ctx.getStatus(U_F)).toBe('accepted');
+
+    mockAuth.sub = 'auth0|other';
+    rerender(tree());
+    // The lists are emptied for the new user; the gap must withhold, never answer none.
+    await waitFor(() => expect(ctx.hasLoaded).toBe(false));
+    expect(ctx.loading).toBe(true);
+    expect(ctx.getStatus(U_F)).toBe('unknown');
+    expect(ctx.getStatus(U_T)).toBe('unknown');
+
+    await settleHeld(() => dB.resolve([]));
+    await waitFor(() => expect(ctx.loading).toBe(false));
+    expect(ctx.getStatus(U_F)).toBe('accepted');
+  });
+
+  it('US-2. the previous user\'s load error does not carry over a switch or a sign-out', async () => {
+    const dB = deferred<FriendRequestRow[]>();
+    queueReceived(makeNet(), dB);
+    const { rerender } = await renderProvider({ settle: 'error' });
+
+    mockAuth.sub = 'auth0|other';
+    rerender(tree());
+    await waitFor(() => expect(screen.getByTestId('provider-error')).toHaveTextContent('none'));
+    expect(ctx.loading).toBe(true);
+    await settleHeld(() => dB.resolve([]));
+
+    cleanup();
+    mockAuth.sub = 'auth0|self';
+    queueReceived(makeNet());
+    const second = await renderProvider({ settle: 'error' });
+    mockAuth.sub = '';
+    second.rerender(tree());
+    await waitFor(() => expect(screen.getByTestId('provider-error')).toHaveTextContent('none'));
+    expect(ctx.loading).toBe(false);
+  });
+});
+
 describe('hasLoaded', () => {
   it('HL-1. a list that loaded EMPTY has loaded (never a row count)', async () => {
     queueReceived([]);
