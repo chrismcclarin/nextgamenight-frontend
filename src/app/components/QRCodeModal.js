@@ -114,7 +114,7 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
             DECISION Phase 88.6-33 (D48): this `×` STAYS BARE — left byte-unchanged while the
             modal's two other controls migrated to `<Button>` in the same commit. Chosen OVER
             `<Button size="icon" variant="ghost">`, for three independently sufficient reasons:
-              1. `.btn`'s UNLAYERED `padding: 0.5rem 1rem` (`src/app/globals.css:2298`,
+              1. `.btn`'s UNLAYERED `padding: 0.5rem 1rem` (`src/app/globals.css`, anchor
                  `padding: 0.5rem 1rem;` inside the `.btn {` rule) widens this tuned
                  44px box to roughly 56px and shifts the glyph centre OFF the fleet-header edge
                  the 88-33 Task 3 correction above deliberately set. A layered utility cannot
@@ -180,7 +180,7 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
 
         {/* Copy Invite Link Button.
             88.6-33 (§3.2/§3.3): `<Button variant="primary" size="default">`. `py-2.5` was DEAD
-            under unlayered `.btn`'s `padding` (`src/app/globals.css:2298`,
+            under unlayered `.btn`'s `padding` (`src/app/globals.css`, anchor
             `padding: 0.5rem 1rem;`) and is deleted rather than
             moved; `w-full`, `text-center` and `mb-3` all SURVIVE — `.btn` declares no width, no
             `text-align` and no margin, so none of the three was ever dead. */}

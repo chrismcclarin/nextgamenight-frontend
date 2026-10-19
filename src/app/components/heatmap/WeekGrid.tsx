@@ -284,7 +284,9 @@ const DEFAULT_CELL_CLASS = 'h-12 sm:h-14 border border-line';
  * both target geometries (~117px columns in the create-event modal's real 896px `max-w-4xl`).
  *
  * The idiom is copied from the owner-passed sibling `EventHeatmapBackground.js` (anchor
- * `gridTemplateColumns: '28px repeat(7, 1fr)'`), including `className="contents"` on the per-row
+ * `gridTemplateColumns: '28px repeat(7, 1fr)'` — THAT file's 28px gutter, still correct there; this
+ * grid's own default is 32 since the 88.6.1 wave 4 CI gate, see `gutterPx`), including
+ * `className="contents"` on the per-row
  * wrapper (anchor `className="contents" role="row"`, which that file also wears since
  * 88.6.1-24) so keeping `role="row"` does not break the single grid.
  *

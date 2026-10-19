@@ -83,16 +83,16 @@ export default function KebabMenu({
      inert the background, deliberately keeps every `[aria-live]` element AND its
      whole ancestor chain unhidden (its own source cites theKashey/aria-hidden#10).
      Two of this component's six render sites are inside the shipped `Modal`
-     (`ManageMembers.js:650` (`<KebabMenu`) and `:698` (`<KebabMenu`), under the
-     `Modal` at `:449` (`<Modal open={modal}`)), so an inline live region there
+     (both `ManageMembers.js` sites, anchor `<KebabMenu`, under the
+     `Modal` at anchor `<Modal open={modal}`), so an inline live region there
      makes the ENCLOSING dialog an ancestor-of-a-kept-target: opening the nested
      invite panel over it no longer sets `aria-hidden="true"` on the members modal,
      which is the shipped BLK-88-12-01 property `ManageMembers.modals.test.tsx`
      pins. Demonstrated: inline = that suite red on "leaves the invite panel live
      and the parent modal aria-hidden"; portaled = green.
      Body level is ALSO the shape the carve-out is designed for, and the shape this
-     codebase already uses by hand — `ManageMembers.js:949-957` (`.statusNode}`) mounts
-     its four `statusNode`s OUTSIDE its `<Modal>` (which closes at `:816`, `</Modal>`) for exactly this
+     codebase already uses by hand — `ManageMembers.js` (anchor `.statusNode}`) mounts
+     its four `statusNode`s OUTSIDE its `<Modal>` (which closes at anchor `</Modal>`) for exactly this
      reason. A shared six-site component cannot ask its hosts to do that, so it does
      it itself.
      REJECTED, kept not deleted: (a) leaving it inline and relaxing the modals
@@ -145,10 +145,10 @@ export default function KebabMenu({
      THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD, and the plan text for it
      was WRONG — corrected here from a live measurement (2026-09-15,
      `keyboardOperability.test.tsx` KM-7), not from the plan. At two of the six
-     render sites — `ManageMembers.js:650` (`<KebabMenu`, the desktop owner-only
-     transfer kebab) and `:698` (`<KebabMenu`, the mobile member actions), which
-     render inside the shipped `Modal` at `ManageMembers.js:449`
-     (`<Modal open={modal}`) — Radix's `Dialog` (`Modal.tsx:227-228`,
+     render sites — `ManageMembers.js`'s two `<KebabMenu` mounts (the desktop owner-only
+     transfer kebab and the mobile member actions), which
+     render inside the shipped `Modal` at `ManageMembers.js`
+     anchor `<Modal open={modal}` — Radix's `Dialog` (`Modal.tsx:227-228`,
      `<Dialog open={open}` / `<DialogContent`) binds Escape on `document` in the
      CAPTURE phase (`@radix-ui/react-use-escape-keydown`), which runs BEFORE any
      container handler and dismisses the dialog.
@@ -168,7 +168,7 @@ export default function KebabMenu({
 
   /* The trigger restore (the hook's `restoreFocusToTrigger`) is GUARDED on the
      trigger still being in the document, because a committing Remove can unmount
-     its own row and take the trigger with it (`ManageMembers.js:247-248`,
+     its own row and take the trigger with it (`ManageMembers.js`, anchor
      `removeUserFromGroup` then `await fetchMembers();`).
 
      SAID PLAINLY: on that path this guard is exactly equivalent to NO restore —
@@ -243,7 +243,7 @@ export default function KebabMenu({
            WHY IT IS STILL RIGHT HERE, and it turns entirely on the region being
            per INSTANCE (see the region's own note above): the only shipped
            destructive item's label is the row-invariant 'Remove'
-           (`ManageMembers.js:721`, `label: 'Remove'`), but arming row 3 after row 1 writes into a
+           (`ManageMembers.js`, anchor `label: 'Remove'`), but arming row 3 after row 1 writes into a
            DIFFERENT component instance's own region, which goes from empty to
            armed text — a change, so it announces. Measured 2026-09-14: every
            shipped menu carries AT MOST ONE twoTap item, so there is no in-instance
@@ -291,7 +291,7 @@ export default function KebabMenu({
 
        Delete must NOT become 'twoTap + keepOpen' on the strength of this flag —
        the two-tap tiers in `gameDetail/page.js:1426-1430` (`D-40 + D-07: explicitly NOT
-       the two-tap tier`) and `ManageMembers.js:710` (`DECISION Phase 88 AR-DEC-3`) reason
+       the two-tap tier`) and `ManageMembers.js` (anchor `DECISION Phase 88 AR-DEC-3`) reason
        from the CURRENT auto-close and
        are unchanged by a per-item opt-out.
 
@@ -329,16 +329,16 @@ export default function KebabMenu({
 
           THE GATE'S YIELD, MEASURED 2026-09-14 and written here because a wrong
           rationale at a site is inherited as fact: it does NOT thin the per-row
-          count on either surface that can announce. `ManageMembers.js:551` (`role !== 'pending').map`)
-          maps the members and the mobile kebab at `:698` (`<KebabMenu`) ALWAYS carries the
+          count on either surface that can announce. `ManageMembers.js` (anchor `role !== 'pending').map`)
+          maps the members and the mobile kebab (its second `<KebabMenu`) ALWAYS carries the
           `twoTap: true` Remove (`:723`, `twoTap: true`); `OpenPollsList.js:179`
           (`prompts.map`) / `:281` (`prompt.can_close === true`) / `:282` (`<KebabMenu`) is the
           same shape. So the predicate is TRUE for every row and the region IS per row on
           both surfaces — that is the accepted design, and it is precisely what makes
           the item-label announcement sound. What the gate buys is exactly one thing:
           an instance that can NEVER announce carries no region — the shipped example
-          is the desktop owner-only transfer kebab at `ManageMembers.js:650` (`<KebabMenu`),
-          whose single item has no twoTap (`:654`, `label: 'Transfer ownership to this member'`).
+          is the desktop owner-only transfer kebab in `ManageMembers.js` (its first `<KebabMenu`),
+          whose single item has no twoTap (anchor `label: 'Transfer ownership to this member'`).
 
           The "one region per SURFACE" reading is WRONG and is not restated here:
           `useConfirmAction.ts:124` says "Render it ONCE, unconditionally,
@@ -386,7 +386,7 @@ export default function KebabMenu({
           no keyboard close path at all. Claiming it was worse than claiming nothing.
           REJECTED: implementing the full WAI-ARIA menu contract. It would require re-tiering
           the two destructive items to `ConfirmDialog`, reopening AR-DEC-3
-          (`ManageMembers.js:710`, `DECISION Phase 88 AR-DEC-3`), for ~90-120 lines. If it is
+          (`ManageMembers.js`, anchor `DECISION Phase 88 AR-DEC-3`), for ~90-120 lines. If it is
           ever chosen, the engine is `@floating-ui/react` — the house engine (`Combobox.tsx:43`,
           `DECISION Phase 88-08 (OI-6)`) — and NEVER Radix
           DropdownMenu, which is not a dependency and portals by default.
@@ -461,7 +461,7 @@ export default function KebabMenu({
                  The index is ALREADY this component's identity basis for arming
                  (`armedIndex`), so a positional key makes the DOM key and the state
                  key agree, and the one conditionally-spread item
-                 (`ManageMembers.js:728`, `...(userRole === 'owner' ? [{`) is spread LAST, so indices never shift
+                 (`ManageMembers.js`, anchor `...(userRole === 'owner' ? [{`) is spread LAST, so indices never shift
                  and a positional key cannot mis-pair a node with a different action.
                  Re-deriving the key from the label later is a REGRESSION, not a
                  cleanup. No `id` field is introduced: measured, zero of the 6 shipped

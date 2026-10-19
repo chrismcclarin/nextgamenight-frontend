@@ -54,8 +54,8 @@ export default function PromptScheduleSection({
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   // AC-7: the header's `aria-controls` target. `useId` rather than a literal so two mounted
-  // sections cannot collide on one id — the idiom already shipped at `CalendarListView.js:186`
-  // (`const uid = useId();`) and `ParticipantRow.js:13` (`const rowId = useId();`).
+  // sections cannot collide on one id — the idiom already shipped in `CalendarListView.js`
+  // (anchor `const uid = useId();`) and `ParticipantRow.js` (anchor `const rowId = useId();`).
   const panelId = `prompt-schedule-panel-${useId()}`;
   // H4 focus fallback for Check-ins (D-05): the section has no heading, so its own expand control
   // is the target and none is minted. See DECISION Phase 88.6.1-29 (D-04, D-05, H4) in OpenPollsList.js.
@@ -159,13 +159,13 @@ export default function PromptScheduleSection({
      any interactive failure surface would nest a control inside a control and its retry click
      would bubble to the header's `onClick` and toggle the section. The failure ALREADY has
      exactly one surface — `OpenPollsList`'s banner on the SAME open-polls key
-     (`OpenPollsList.js:200-204` (`<FetchErrorBanner`), DECISION-marked at `:70-75`
-     (`DECISION Phase 88-18 (Req 6 / T-88-18-01`)) — and UI-SPEC §6.2 allows exactly
+     (`OpenPollsList.js`, anchor `<FetchErrorBanner`, DECISION-marked at anchor
+     `DECISION Phase 88-18 (Req 6 / T-88-18-01`) — and UI-SPEC §6.2 allows exactly
      one live region per failure.
 
      WHY THE COLLAPSED-AND-FAILED STATE SURFACING NOTHING IS ACCEPTED, and the fact it rests on:
      the only PRODUCTION mount passes `defaultExpanded={true}`
-     (`src/app/groupPlanning/page.js:441` (`<PromptScheduleSection`); the production-only command
+     (`src/app/groupPlanning/page.js`, anchor `<PromptScheduleSection`; the production-only command
      `grep -rnE '<PromptScheduleSection(\s|$|>)' src --include='*.js' | grep -vE '\.(test|spec)\.'`
      prints exactly one line, that mount), so a first failure lands with the panel OPEN and the
      banner visible. The silent state is reachable only after the user DELIBERATELY collapses the
@@ -174,8 +174,8 @@ export default function PromptScheduleSection({
      must carry the failure itself.
 
      DO NOT re-tone the `openPollCount === 0` span below into a failure chip — re-merging the
-     empty and failed states is the exact defect this closes, and `OpenPollsList.js:70-75`
-     (`DECISION Phase 88-18 (Req 6 / T-88-18-01`) forbids
+     empty and failed states is the exact defect this closes, and `OpenPollsList.js`
+     (anchor `DECISION Phase 88-18 (Req 6 / T-88-18-01`) forbids
      it by name ("do not re-merge these two branches").
 
      WEIGHT (R3 / UI-SPEC §4.5, V-6): both chips moved `font-medium` -> `font-bold`. §4.5's
