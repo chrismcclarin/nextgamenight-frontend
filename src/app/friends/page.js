@@ -20,6 +20,7 @@ import {
     isAlreadyInvitedOrMember,
     ALL_ALREADY_INVITED_MESSAGE,
     invitedWithAlreadyMessage,
+    allFailedBatchLine,
 } from '../components/friendBatchInviteOutcome';
 // 88-33 Task 1 (r3 triage): this page's fetchers run through a raw
 // Promise.allSettled, NOT react-query, so they bypass the global
@@ -35,10 +36,6 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '../../lib/logger';
-
-// D-32 R2 (R8: straight apostrophe), byte-identical to the line this page already showed; the
-// same name as the FriendInvitePanel twin's constant.
-const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try again.";
 
 // Copy row FR1 (owner ruling 2026-10-05, D-47; D-32 R8 straight apostrophe): the Requests tab's
 // full-banner title when the provider's load failed and nothing is retained.
@@ -758,6 +755,7 @@ function FriendsPage() {
         let successCount = 0;
         let failCount = 0;
         let alreadyCount = 0;
+        let firstFailure = null;
 
         try {
             for (const friendUserId of selectedFriends) {
@@ -774,11 +772,13 @@ function FriendsPage() {
                         alreadyCount++;
                     } else {
                         failCount++;
+                        if (!firstFailure) firstFailure = err;
+                        logger.info('Error sending friend invite:', errCtx(err));
                     }
                 }
             }
 
-            setBulkInviteResult({ successCount, failCount, alreadyCount, groupName });
+            setBulkInviteResult({ successCount, failCount, alreadyCount, groupName, firstFailure });
             setSelectedFriends(new Set());
         } finally {
             bulkInviteInFlightRef.current = false;
@@ -942,6 +942,8 @@ function FriendsPage() {
     // invited claims nothing (so the bar never says "Invited 0"). 88.6.1-72: with no failure, a
     // batch that met anyone already invited or already a member says so in the invite panel's
     // own lines, with the success tint (the panel's rule: success while nothing failed).
+    // 88.6.1-90 (close ruling P-92): the all-failed line is the first failure's register line, R2
+    // when it has no code — the panel's rule, from the shared module.
     let batchStatusText = '';
     let batchErrorText = '';
     if (
@@ -949,7 +951,7 @@ function FriendsPage() {
         (bulkInviteResult.successCount > 0 || bulkInviteResult.failCount > 0 || bulkInviteResult.alreadyCount > 0)
     ) {
         if (bulkInviteResult.failCount > 0 && bulkInviteResult.successCount === 0) {
-            batchErrorText = BATCH_INVITE_FAILED_MESSAGE;
+            batchErrorText = allFailedBatchLine(bulkInviteResult.firstFailure);
         } else if (bulkInviteResult.failCount === 0 && bulkInviteResult.alreadyCount > 0) {
             batchStatusText = bulkInviteResult.successCount > 0
                 ? invitedWithAlreadyMessage(bulkInviteResult.successCount, bulkInviteResult.alreadyCount)

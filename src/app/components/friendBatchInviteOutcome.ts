@@ -5,7 +5,12 @@
    strings and a predicate) and OVER a second copy on the page (two copies of a shipped line drift
    apart, and the copy scan would find two sources for one sentence). D-30's placement rule is kept
    in spirit: the strings sit beside the two surfaces that show them, not in a central copy file.
-   Changing this is a decision, not a cleanup. */
+   Changing this is a decision, not a cleanup.
+   AMENDED Phase 88.6.1-90 (close ruling P-92, owner 2026-10-18): R2 and the all-failed line rule
+   live here too, so the Friends page tells the same reason the panel does; both twin constants are
+   gone. REJECTED: R2 on the page for mixed reasons (the two surfaces would disagree for one batch). */
+
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 
 // Wave-12 review MED #9: fork-F contract — a terminal 409
 // (already a member / invite pending) is not a FAILURE; count
@@ -26,4 +31,17 @@ export const ALL_ALREADY_INVITED_MESSAGE = 'Everyone selected was already invite
 
 export function invitedWithAlreadyMessage(successCount: number, alreadyCount: number): string {
   return `Invited ${successCount} — ${alreadyCount} already invited or a member`;
+}
+
+// D-32 R2 (ratified 2026-10-04; straight apostrophe, R8): an all-failed friend batch whose first failure has no code.
+export const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try again.";
+
+/**
+ * The all-failed friend batch's line: the FIRST non-terminal failure's register line, or R2
+ * (BATCH_INVITE_FAILED_MESSAGE) when that failure carries no code. This is DECISION Phase
+ * 88.6-22's rule (kept in FriendInvitePanel.js), shared so the invite panel and the Friends page
+ * say the same thing for the same batch (88.6.1-90, close ruling P-92).
+ */
+export function allFailedBatchLine(firstFailure: unknown): string {
+  return getFetchErrorMessage(firstFailure, { fallback: BATCH_INVITE_FAILED_MESSAGE });
 }

@@ -113,7 +113,7 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'X3', text: "We couldn't send that request.", site: 'app/components/ClickableMemberName.js', kind: 'chunk' },
   // D-32 (R6 shares E9's row; R7 is P2's row; R8 is the U+2019 test below)
   { id: 'R1', text: "We couldn't start that check-in. Please try again.", site: 'app/components/StartPollModal.js', kind: 'chunk' },
-  { id: 'R2', text: "We couldn't send those invites. Please try again.", site: 'app/components/FriendInvitePanel.js', kind: 'chunk' },
+  { id: 'R2', text: "We couldn't send those invites. Please try again.", site: 'app/components/friendBatchInviteOutcome.ts', kind: 'chunk' },
   { id: 'R3', text: "We couldn't confirm your RSVP — the connection timed out. Sign in and open the event to check your answer.", site: 'app/rsvp/[token]/page.js', kind: 'chunk' },
   { id: 'R4', text: 'Press and hold, then drag to schedule across the peak', site: 'app/components/tutorial/simulated/ScheduleDemo.js', kind: 'chunk' },
   { id: 'R5', text: 'Game detail page — event fetch', site: 'app/gameDetail/page.js', kind: 'chunk' },
@@ -211,6 +211,8 @@ const IMPORTERS: Importer[] = [
   { importer: 'N6r', file: 'app/friends/page.js', constant: 'DECLINE_FRIEND_FAILED_COPY', from: '../components/NotificationBell', minUses: 1, noCopyOf: ["We couldn't decline that friend request. Please try again."] },
   { importer: 'P80', file: 'app/groupHomePage/page.js', constant: 'CalendarLoadingCard', from: '../components/CalendarLoadingCard', minUses: 1, noCopyOf: ['Loading calendar...'] },
   { importer: 'P80', file: 'app/components/EventCalendar.js', constant: 'CalendarLoadingCard', from: './CalendarLoadingCard', minUses: 1, noCopyOf: ['Loading calendar...'] },
+  { importer: 'R2', file: 'app/components/FriendInvitePanel.js', constant: 'allFailedBatchLine', from: './friendBatchInviteOutcome', minUses: 1, noCopyOf: ["We couldn't send those invites. Please try again."] },
+  { importer: 'R2', file: 'app/friends/page.js', constant: 'allFailedBatchLine', from: '../components/friendBatchInviteOutcome', minUses: 1, noCopyOf: ["We couldn't send those invites. Please try again."] },
 ];
 
 type RetiredScope = 'tree' | string[];

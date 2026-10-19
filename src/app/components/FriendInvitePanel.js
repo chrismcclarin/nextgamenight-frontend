@@ -18,6 +18,7 @@ import {
     isAlreadyInvitedOrMember,
     ALL_ALREADY_INVITED_MESSAGE,
     invitedWithAlreadyMessage,
+    allFailedBatchLine,
 } from './friendBatchInviteOutcome';
 
 // UI-SPEC §6.3 row "FriendInvitePanel.js email-invite `validation` override" — ratified
@@ -25,8 +26,6 @@ import {
 const INVALID_EMAIL_MESSAGE = "That doesn't look like a valid email address. Check it and try again.";
 // Copy row G2 (88.6.1-COPY-TABLE.html, ratified 2026-10-04; D-30 site constant, D-32 R8 ASCII apostrophe).
 const INVITE_SEND_FAILED_MESSAGE = "We couldn't send that invite. Please try again.";
-// D-32 R2 (ratified 2026-10-04; ASCII apostrophe, R8): an all-failed friend batch with no code.
-const BATCH_INVITE_FAILED_MESSAGE = "We couldn't send those invites. Please try again.";
 // Copy row X3, reused at Add Friend by the owner's ruling of 2026-10-05 (D-47; D-32 R8 ASCII
 // apostrophe). Plan 88.6.1-37 hoists the same row as SEND_REQUEST_FAILED_MESSAGE at the member
 // plus button: two site constants by D-30's placement rule, not a shared module.
@@ -243,7 +242,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         // them would mean choosing between N messages with no rule for which to show.
         //
         // AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (Req 8; D-22; D-32 R2): the
-        // all-failed branch now passes a fallback, R2 (BATCH_INVITE_FAILED_MESSAGE above), so a
+        // all-failed branch now passes a fallback, R2 (now in ./friendBatchInviteOutcome with this rule, 88.6.1-90), so a
         // code-less first failure no longer reads the register's unknown line
         // (which told the user to refresh the page); a coded first failure keeps its register
         // line. The friends page twin already ships the same sentence. Where the outcome is
@@ -265,6 +264,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     } else {
                         failCount++;
                         if (!firstFailure) firstFailure = err;
+                        logger.info('Error sending friend invite:', errCtx(err));
                     }
                 }
             }
@@ -539,7 +539,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     let batchErrorText = '';
     if (inviteResult) {
         if (inviteResult.failCount > 0 && inviteResult.successCount === 0) {
-            batchErrorText = getFetchErrorMessage(inviteResult.firstFailure, { fallback: BATCH_INVITE_FAILED_MESSAGE });
+            batchErrorText = allFailedBatchLine(inviteResult.firstFailure);
         } else {
             batchStatusText = inviteResult.failCount === 0
                 ? (inviteResult.alreadyCount > 0

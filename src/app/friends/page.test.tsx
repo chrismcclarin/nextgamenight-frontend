@@ -2037,6 +2037,57 @@ describe('friends — one treatment per page: Friends and Sent keep their rows u
 // result is announced (copy row F7).
 const searchStatus = () => document.getElementById('friends-search-status');
 
+describe("friends — an all-failed batch tells the first failure's reason (88.6.1-90, close ruling P-92)", () => {
+  // The invite panel's rule (DECISION Phase 88.6-22, FriendInvitePanel.js), from the shared
+  // module: the FIRST non-terminal failure's register line, R2 when that failure has no code.
+  // Register lines are read through getFetchErrorMessage, never typed.
+  const R2 = "We couldn't send those invites. Please try again.";
+
+  it('P92-1. an all-failed batch coded network shows the network line in the alert region, never R2', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
+    const failure = new ApiError('Network down', 'network', 0);
+    (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(failure);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(inviteButton());
+
+    await waitFor(() => expect(errorRegion()?.textContent).toBe(getFetchErrorMessage(failure)));
+    expect(errorRegion()?.textContent).not.toBe(R2);
+    expect(errorRegion()?.className.split(/\s+/)).toContain('bg-status-error-subtle');
+    expect(statusRegion()?.textContent).toBe('');
+  });
+
+  it('P92-2. two failures, the first coded network and the second code-less: the first reason is told', async () => {
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1', { friends: [FRIENDSHIP, FRIENDSHIP_2] });
+    const first = new ApiError('Network down', 'network', 0);
+    (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(first).mockRejectedValueOnce(new Error('x'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Sam' }));
+    fireEvent.click(inviteButton());
+
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(errorRegion()?.textContent).toBe(getFetchErrorMessage(first)));
+    expect(errorRegion()?.textContent).not.toBe(R2);
+    expect(statusRegion()?.textContent).toBe('');
+  });
+
+  it('P92-3. two failures, the first code-less and the second coded network: R2, never the network line', async () => {
+    // The other half of the first-failure rule: green on a page that always shows R2, and the
+    // guard against keeping the first CODED failure instead of the first failure (its RED is a
+    // plant, recorded in the plan's SUMMARY).
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1', { friends: [FRIENDSHIP, FRIENDSHIP_2] });
+    const second = new ApiError('Network down', 'network', 0);
+    (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(new Error('x')).mockRejectedValueOnce(second);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Sam' }));
+    fireEvent.click(inviteButton());
+
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(errorRegion()?.textContent).toBe(R2));
+    expect(errorRegion()?.textContent).not.toBe(getFetchErrorMessage(second));
+    expect(statusRegion()?.textContent).toBe('');
+  });
+});
+
 describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)', () => {
   it('K1. a batch with one sent and one already pending reads the panel line, success tint (owner ruling 2026-10-05)', async () => {
     await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1', { friends: [FRIENDSHIP, FRIENDSHIP_2] });
@@ -2072,7 +2123,13 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dana' }));
     fireEvent.click(inviteButton());
 
-    await waitFor(() => expect(errorRegion()?.textContent).toBe("We couldn't send those invites. Please try again."));
+    // AMENDED IN PLACE by 88.6.1-90 (close ruling P-92, owner 2026-10-18): the expected text was
+    // R2; an all-failed batch now tells its first failure's register line, so a coded 409 reads
+    // the conflict line (read through getFetchErrorMessage, never typed). The GUARD is unchanged:
+    // the batch is still a FAILURE, heard from the alert region, the polite one empty.
+    await waitFor(() =>
+      expect(errorRegion()?.textContent).toBe(getFetchErrorMessage(new ApiError('x', 'conflict', 409)))
+    );
     expect(statusRegion()?.textContent).toBe('');
   });
 
