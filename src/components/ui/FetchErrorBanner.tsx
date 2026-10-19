@@ -43,7 +43,7 @@ import { Icon } from './Icon';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
 import { logger, errCtx } from '@/lib/logger';
-import type { FetchErrorCode, FetchErrorState } from './useFetchErrorState';
+import { RETRY_OUTCOME_WINDOW_MS, type FetchErrorCode, type FetchErrorState } from './useFetchErrorState';
 import { useFocusRecovery } from './useFocusRecovery';
 import { DIALOG_ROLE_SELECTOR, focusElement, focusPageFloor, isFocusLost, isOpenDialog } from './focusPageFloor';
 
@@ -104,15 +104,10 @@ const REFRESH_FAILED_NOTICE = "Couldn't refresh. Showing what loaded earlier.";
 
 // REGION_EMPTY_DWELL_MS (the compact region's empty dwell, AT-4) is imported from `./StatusRegion` (moved there by plan 88.6.1-82); RETRY_OUTCOME_WINDOW_MS below is at least that value.
 
-/**
- * How long a retry's outcome may wait for the COMMITTED state to agree with it before it is
- * dropped (Phase 88.6.1-21, round-2 review #23). Explicitly longer than one TanStack commit (a
- * single zero-delay macrotask, `@tanstack/query-core` `notifyManager.js:3`,
- * `var defaultScheduler = systemSetTimeoutZero;`) plus a React render on a throttled phone, and
- * short enough that a contradicted outcome holds the compact region quiet for one second at most.
- * See the `DECISION Phase 88.6.1-21 (AC-11 / D-42)` marker at the full branch.
- */
-export const RETRY_OUTCOME_WINDOW_MS = 1000;
+// RETRY_OUTCOME_WINDOW_MS (how long a retry's outcome may wait for the committed state to agree,
+// Phase 88.6.1-21, round-2 review #23) is declared in `./useFetchErrorState`, which also expires
+// its own settled attempts with it (88.6.1 code review A-78), and re-exported here unchanged.
+export { RETRY_OUTCOME_WINDOW_MS } from './useFetchErrorState';
 
 /** An outcome read from the retry's own result, waiting for the committed state to agree. */
 type RetryOutcome = 'none' | 'awaitFailed' | 'awaitSucceeded';

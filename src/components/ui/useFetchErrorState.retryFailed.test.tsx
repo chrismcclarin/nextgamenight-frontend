@@ -25,7 +25,7 @@ vi.mock('next/navigation', () => ({
 
 import { useFetchErrorState } from './useFetchErrorState';
 import type { FetchErrorState } from './useFetchErrorState';
-import { FetchErrorBanner, RefreshFailedNotice } from './FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RETRY_OUTCOME_WINDOW_MS } from './FetchErrorBanner';
 import { FeedbackModalProvider } from '@/app/components/FeedbackModalProvider';
 import { ApiError } from '@/lib/api';
 
@@ -690,5 +690,145 @@ describe('the small notices carry no report link (plan 88.6.1-69)', () => {
     );
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Report this' })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1 code review A-77 / A-78 (IN-16): a tab return must not cancel the person's held retry at
+// a query that holds data, and a settled verdict the committed state never confirms expires.
+
+function RetainedHost({
+  queryFn,
+  probe,
+  stateRef,
+  queryRef,
+}: {
+  queryFn: () => Promise<string[]>;
+  probe: Array<boolean | undefined>;
+  stateRef: { current: FetchErrorState | null };
+  queryRef: { current: UseQueryResult<string[]> | null };
+}) {
+  const query = useQuery({ queryKey: ['retryFailed', 'retained'], queryFn });
+  queryRef.current = query;
+  const state = useFetchErrorState(query);
+  probe.push(state.retryFailed);
+  stateRef.current = state;
+  return <main>{query.data ? <p>{query.data.join(',')}</p> : null}</main>;
+}
+
+describe('retryFailed — tab return and settled-verdict expiry (88.6.1 code review A-77, A-78)', () => {
+  it('H17. a tab return during the person\'s held retry at a query holding data joins it: the retry succeeds and the flag never rises', async () => {
+    const { runs, queryFn } = drivenQueryFn();
+    const probe: Array<boolean | undefined> = [];
+    const stateRef: { current: FetchErrorState | null } = { current: null };
+    const queryRef: { current: UseQueryResult<string[]> | null } = { current: null };
+    render(
+      <QueryClientProvider client={testClient()}>
+        <RetainedHost queryFn={queryFn} probe={probe} stateRef={stateRef} queryRef={queryRef} />
+      </QueryClientProvider>
+    );
+    await act(async () => {
+      runs[0].resolve(['a']);
+    });
+    await screen.findByText('a');
+    // A background refetch fails over the held data: isError true, data kept.
+    await act(async () => {
+      void queryRef.current!.refetch();
+    });
+    await act(async () => {
+      runs[1].reject(boom('refresh'));
+    });
+    await flushFrame();
+    expect(stateRef.current!.showError).toBe(true);
+    expect(screen.getByText('a')).toBeInTheDocument();
+
+    // The person retries; the request is held.
+    const from = probe.length;
+    let retried!: Promise<unknown>;
+    act(() => {
+      retried = stateRef.current!.retry();
+    });
+    expect(runs).toHaveLength(3);
+    // They leave and come back while it is in flight.
+    await act(async () => {
+      fireVisible();
+    });
+    await flushFrame();
+    expect(queryFn, 'the tab return joined the held fetch instead of starting another').toHaveBeenCalledTimes(3);
+    // The held request succeeds.
+    await act(async () => {
+      runs[2].resolve(['b']);
+      await retried;
+    });
+    await flushFrame();
+    expect(stateRef.current!.showError).toBe(false);
+    const seen = probe.slice(from);
+    expect(seen.every((v) => v === false), `every render after the press: ${JSON.stringify(seen)}`).toBe(true);
+  });
+
+  it('H18. an awaitFailed the committed state contradicts expires: a later, unrelated failure does not raise the flag', async () => {
+    const a = makeAdapter(boom('first'));
+    a.renderHost();
+    // The result says failed while the committed state clears (the disagreement).
+    a.ctl.impl = (setError) => {
+      setError(null);
+      return { isError: true };
+    };
+    const p = a.press();
+    await act(async () => {
+      await p;
+    });
+    await flushFrame();
+    expect(a.ctl.state!.showError).toBe(false);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_OUTCOME_WINDOW_MS + 100));
+    });
+    // A fresh failure arrives with no press.
+    const from = a.mark();
+    await act(async () => {
+      a.ctl.setError(boom('unrelated'));
+    });
+    await flushFrame();
+    expect(a.ctl.state!.showError).toBe(true);
+    const seen = a.ctl.probe.slice(from);
+    expect(seen.every((v) => v === false), `after the unrelated failure: ${JSON.stringify(seen)}`).toBe(true);
+  });
+
+  it('H19. an awaitSucceeded the committed state contradicts expires: a later tab return is tracked and keeps the earned flag', async () => {
+    const a = makeAdapter(boom('first'));
+    a.renderHost();
+    await earnTheFlag(a, 'person');
+    // The result says succeeded while the error stays (the disagreement).
+    a.ctl.impl = () => ({ isError: false });
+    const p = a.press();
+    await act(async () => {
+      await p;
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_OUTCOME_WINDOW_MS + 100));
+    });
+    expect(a.last(), 'the earned flag stands while the failure persists').toBe(true);
+    // A never-loaded-shaped tab return: isError false while in flight, then it fails again.
+    const held = deferred();
+    a.ctl.impl = async (setError) => {
+      setError(null);
+      try {
+        await held.promise;
+      } catch (e) {
+        setError(e);
+      }
+    };
+    const from = a.mark();
+    await act(async () => {
+      fireVisible();
+    });
+    await flushFrame();
+    await act(async () => {
+      held.reject(boom('tab'));
+    });
+    await flushFrame();
+    expect(a.ctl.state!.showError).toBe(true);
+    const kept = a.ctl.probe.slice(from);
+    expect(kept.every((v) => v === true), `kept: ${JSON.stringify(kept)}`).toBe(true);
   });
 });

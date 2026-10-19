@@ -50,6 +50,19 @@ export type FetchErrorCode = ApiErrorCode;
 // `const useIsomorphicLayoutEffect`).
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
 
+/**
+ * How long a retry's outcome may wait for the COMMITTED state to agree with it before it is
+ * dropped (Phase 88.6.1-21, round-2 review #23). Explicitly longer than one TanStack commit (a
+ * single zero-delay macrotask, `@tanstack/query-core` `notifyManager.js:3`,
+ * `var defaultScheduler = systemSetTimeoutZero;`) plus a React render on a throttled phone, and
+ * short enough that a contradicted outcome holds the compact region quiet for one second at most.
+ * Read by `FetchErrorBanner`'s outcome window (which re-exports it under the same name) and by
+ * this hook's settled-attempt expiry (88.6.1 code review A-78 / IN-16). Declared HERE, not in the
+ * banner, because the banner imports this module and seven suites mock the banner: one
+ * declaration, no import cycle, no mock that has to carry it.
+ */
+export const RETRY_OUTCOME_WINDOW_MS = 1000;
+
 export interface FetchErrorState {
   /** True once the query has surfaced a visible error (retries exhausted). */
   showError: boolean;
@@ -423,7 +436,16 @@ export function useFetchErrorState<TData = unknown, TError = unknown>(
     const id = ++attemptIdRef.current;
     const errorAtStart = latestErrorRef.current;
     setAttempt((current) => current ?? { id, byPerson: false, errorAtStart, phase: 'inFlight' });
-    Promise.resolve(refetch()).then(
+    // DECISION 88.6.1 code review A-77: `cancelRefetch: false` over the bare `refetch()` (whose
+    // TanStack 5 default is `cancelRefetch: true`). For a query that holds data, the default
+    // silently CANCELS a fetch already in flight (`@tanstack/query-core` `query.js`, anchor
+    // `this.cancel({ silent: true })`), so a tab return during the person's held retry resolved
+    // that retry early with the still-erroring result and raised `retryFailed` over a request that
+    // might yet succeed (SPEC Prohibition 2). With `false` the re-attempt JOINS the in-flight fetch,
+    // the same option TanStack's own focus and reconnect refetches pass. Every hand-rolled adapter
+    // passed as `refetch` (census 2026-10-19: 30 adapter sites in 13 files) is a zero-parameter function, so
+    // the options object is ignored there. Dropping the option is a decision, not a cleanup.
+    Promise.resolve(refetch({ cancelRefetch: false })).then(
       (result) => settleAttempt(id, verdictPhase(result)),
       () => settleAttempt(id, 'awaitUnknown')
     );
@@ -455,10 +477,31 @@ export function useFetchErrorState<TData = unknown, TError = unknown>(
     }
   }, [attempt, isError, error, retryFailed]);
 
+  // DECISION 88.6.1 code review A-78 / IN-16: a SETTLED attempt whose own result the committed
+  // state never confirms expires after `RETRY_OUTCOME_WINDOW_MS`, without raising or lowering the
+  // flag (the banner's outcome window, applied here). Without it an `awaitFailed` that met a
+  // healthy commit stayed forever, blocked the episode-end reset, kept tab-return attempts
+  // untracked (`current ?? …`), and raised `retryFailed` on a LATER, unrelated failure; a stuck
+  // `awaitSucceeded` read a never-loaded tab-return's `pending` as a success and lowered a flag the
+  // person had earned. Only the two KNOWN verdicts expire: `awaitUnknown` deliberately waits for a
+  // new committed error however long the adapter's run takes (REJECTED (b) above; a resolve-before-
+  // fetch adapter settles long before its run ends), so a timer there would under-report.
+  React.useEffect(() => {
+    if (attempt === null || (attempt.phase !== 'awaitFailed' && attempt.phase !== 'awaitSucceeded')) return;
+    const { id, phase } = attempt;
+    const timer = setTimeout(() => {
+      setAttempt((current) => (current !== null && current.id === id && current.phase === phase ? null : current));
+    }, RETRY_OUTCOME_WINDOW_MS);
+    return () => clearTimeout(timer);
+  }, [attempt]);
+
   // Error-only refocus recovery — scoped to THIS query, active ONLY while
   // erroring, and independent of the global `refetchOnWindowFocus: false`.
   // AMENDED Phase 88.6.1-69: the re-attempt runs on EVERY visible return while erroring, as
   // before (even while a person's retry is in flight), now through `startAutomaticAttempt`.
+  // AMENDED 2026-10-19 (88.6.1 code review A-77): "even while a person's retry is in flight" was
+  // harmless only for a query with no data; at a query that holds data the bare refetch cancelled
+  // that retry. It now joins it (`cancelRefetch: false`, the marker in `startAutomaticAttempt`).
   React.useEffect(() => {
     if (!showError) return;
     const handleVisibility = () => {
