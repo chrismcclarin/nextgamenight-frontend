@@ -15,6 +15,10 @@ import type { EmailChangeResponse, User } from './schemas/users';
 import type { AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
 import { logger } from '@/lib/logger';
+// The repo-root scrubber (imports nothing, so no cycle). This module is its first `src/`
+// importer; the direction rule in src/lib/sentry.scrub.test.ts (the scrubber never imports a
+// `.ts` module) is kept. Used ONLY by `capErrorText` below (88.6.1-23, W063).
+import { scrubString } from '../../sentry.scrub.js';
 
 // Absolute backend origin. Used ONLY by PUBLIC/unauthenticated callers that must
 // bypass the BFF proxy (magic-link, invite-preview, public RSVP respond,
@@ -134,7 +138,7 @@ export type ApiErrorCode =
   // queryClient.ts, and its own arm in classifyDeleteError.
   | 'not_provisioned'
   // Phase 88.8 post-merge (round 6 #11/#14/#15/#16/#17): registered BE-side in
-  // ERROR_REGISTRY as `unsupported_address` @400 (utils/errors.js:104), returned by
+  // ERROR_REGISTRY as `unsupported_address` @400 (utils/errors.js:104, `unsupported_address:`), returned by
   // POST /users/:user_id/email when the requested address matches the app's OWN
   // synthetic-account sentinel (the broad NIX-AUTH0 predicate). DELIBERATELY DISTINCT
   // from `validation`: that code is the shape/length/body-key verdict, and the Email
@@ -164,14 +168,23 @@ export class ApiError extends Error {
    * Rendering this anywhere is a defect, not a simplification.
    */
   readonly upstreamMessage?: string;
+  /**
+   * @param options the platform's own `ErrorOptions` (88.6.1-23, W062 rider MEDLOW-18), used by
+   * `timedPublicFetch` to keep a transport failure's `cause`. Built without it, an ApiError has
+   * NO own `cause` property (its shape is unchanged). A cause reaches Sentry only as a linked
+   * exception on an EVENT (the `linkedErrors` integration's default key is `cause`), where
+   * `scrubEvent` scrubs every exception value like any other; `errCtx` (name and message only)
+   * never forwards it into a breadcrumb.
+   */
   constructor(
     message: string,
     code: ApiErrorCode,
     status: number,
     details?: unknown,
-    upstreamMessage?: string
+    upstreamMessage?: string,
+    options?: ErrorOptions
   ) {
-    super(message);
+    super(message, options);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
@@ -179,6 +192,39 @@ export class ApiError extends Error {
     this.upstreamMessage = upstreamMessage;
     Object.setPrototypeOf(this, ApiError.prototype); // instanceof works post-transpile
   }
+}
+
+/**
+ * Is this the same-origin BFF proxy's own CSRF refusal (not a backend 403)?
+ *
+ * DECISION Phase 88.6.1-07 (D-24 / MEDLOW-9): ONE structural predicate at the seam. The proxy's
+ * CSRF gate (`src/app/api/[...path]/route.ts`, anchor `csrf_rejected: true`) answers an
+ * unsafe-method call with a code-less 403, so `mapErrorToCode` resolves it to `'forbidden'`
+ * exactly like a backend refusal. The body carries `csrf_rejected: true` as a TOP-LEVEL key, and
+ * `ApiError.details` is the WHOLE parsed body (apiFetch's throw site, anchor
+ * `The single throw site (D-07)`), so the key is read at `details.csrf_rejected`. Strict on the
+ * instance, on the status (403, the proxy's only status for this body) and on the boolean
+ * (`=== true`; a string `'true'` or a `1` is not the proxy's body).
+ *
+ * REJECTED (i): a type-predicate return (`err is ApiError`). The false branch would narrow every
+ * non-CSRF ApiError away in typed callers.
+ * REJECTED (ii): matching the prose `'Cross-origin request rejected'` (88.6-23's own "WHY NOT
+ * MATCH THE PROSE": the message is display text, and the body's error key is not read here).
+ * REJECTED (iii): reading through `getEnvelopeDetails`, which returns the ENVELOPE's nested
+ * `details`. This key is not there; it is top-level in the body.
+ * REJECTED (iv): a new `ApiErrorCode` member (88.6-23's "WHY NOT AN ENVELOPE `code`").
+ *
+ * Readers: `getFetchErrorMessage` (`useFetchErrorState.ts`, this plan) resolves a flagged 403's
+ * MESSAGE through the `unknown` arm while `err.code` stays `'forbidden'`; the restore page's
+ * direct 403 arm (plan 88.6.1-36); invite/accept's wrong-email check (plan 88.6.1-35).
+ * Loosening the strict checks, or remapping the code in mapErrorToCode instead, is a decision,
+ * not a cleanup.
+ */
+export function isCsrfRejection(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status !== 403) return false;
+  const details = err.details;
+  if (typeof details !== 'object' || details === null) return false;
+  return (details as { csrf_rejected?: unknown }).csrf_rejected === true;
 }
 
 /**
@@ -316,8 +362,9 @@ export function mapErrorToCode(body: any, status: number): ApiErrorCode {
   // Validation hint, CANONICAL SHAPE ONLY. Phase 88.6 plan 42 moved this arm off
   // the TOP-LEVEL `errors[]` legacy mirror onto the sanctioned Phase 85/86
   // `details.errors`. BEHAVIOUR-NEUTRAL for the unconverted producers measured
-  // 2026-09-17 — routes/invites.js:216, routes/friendships.js:278 and
-  // routes/availability.js:55-64 all emit their top-level `errors[]` on a 400,
+  // 2026-09-17 — routes/invites.js:216 and routes/friendships.js:278 (both
+  // `res.status(400).json({ errors: errors.array() })`) and routes/availability.js:55-64
+  // (`errors: errors.array().map`) all emit their top-level `errors[]` on a 400,
   // and statusToCode(400) already returns 'validation'. The Array.isArray guard
   // stays: a malformed `details.errors` must not produce 'validation' and must
   // not throw (AC-9).
@@ -332,8 +379,12 @@ export function mapErrorToCode(body: any, status: number): ApiErrorCode {
 // NON-RENDERED `ApiError` field for Sentry. Both self-constructed non-JSON error
 // bodies (publicFetch and apiFetch) were reshaped onto `message` in the SAME
 // commit, so a proxy/gateway failure still surfaces its text here.
+// [AMENDED Phase 88.6.1-23 (W063): the same envelope-only value is now coerced with `String`
+// (exactly as `Error`'s constructor would coerce a non-string) and passed through
+// `capErrorText`, so a JSON envelope message is redacted and then capped at 200 characters
+// where it is BUILT, like the non-JSON text below. No alias arm is added.]
 function extractErrorMessage(body: any, status: number): string {
-  return body?.message ?? `HTTP error! status: ${status}`;
+  return capErrorText(String(body?.message ?? `HTTP error! status: ${status}`));
 }
 
 // DECISION Phase 88.6-42 (AC-4): the backend's own error string is retained on a
@@ -341,7 +392,7 @@ function extractErrorMessage(body: any, status: number): string {
 // delete (arm B), which would have dropped that string from the event ENTIRELY
 // for the ~455 unconverted raw-`{ error }` routes until Phase 93, leaving only
 // "HTTP error! status: N" to read. GROUPING is unchanged either way: that capture
-// (queryClient.ts:162) carries tags and no Sentry fingerprint (measured 2026-09-17: the
+// (src/lib/queryClient.ts:179, `Sentry.captureException(error, upstreamMessage`) carries tags and no Sentry fingerprint (measured 2026-09-17: the
 // three grep hits for that word under src/ are all prose), and Sentry's default
 // grouping does not key on extra — so the field buys per-event READABILITY, not
 // issue separation. `ApiError.message` is the display contract and does NOT read
@@ -353,11 +404,12 @@ function extractErrorMessage(body: any, status: number): string {
 // this MOVES a string that already egresses today, it opens no channel. Before
 // this plan `extractErrorMessage` already returned `body.message ?? body.error`
 // (api.ts:308-309 pre-edit), that message was already thrown (api.ts:441
-// pre-edit) and queryClient.ts:162 already captured it. Arm A relocates it off
+// pre-edit) and `queryCacheOnError`'s capture (src/lib/queryClient.ts) already captured it. Arm A relocates it off
 // the display path onto a non-rendered field — same string, same destination,
-// narrower blast radius. The bound on it is sentry.scrub.js:171-172, which
+// narrower blast radius. The bound on it is sentry.scrub.js's `deepScrub`, which
 // deep-scrubs `event.extra`; the shape mirrored is the T-84-05 {path, code}
-// forward at queryClient.ts:150-158.
+// forward in `queryCacheOnError`'s ZodError branch (src/lib/queryClient.ts, anchor
+// `T-84-05: NEVER forward the raw ZodError`).
 //
 // This is the ONE sanctioned legacy-key read left in this module's apiFetch path
 // and the ONE by-name exemption in the R9 roster. It returns a STRING or
@@ -397,7 +449,7 @@ function fieldErrorText(err: any): string {
 }
 
 /* DECISION Phase 88.6-62 (review round 2 #3, T-84-01): a NON-JSON error body is capped at
-   NON_JSON_ERROR_TEXT_CAP characters WHERE IT IS RESHAPED, through this ONE helper, at BOTH
+   ERROR_TEXT_CAP characters WHERE IT IS RESHAPED, through this ONE helper, at BOTH
    reshape sites (publicFetch and apiFetch). Plan 42 keyed that text onto `message`
    (T-88.6-118) so a gateway failure still surfaces it — which made it `ApiError.message`, and
    that reaches TWO sinks: every `errCtx(err)` breadcrumb (logger.ts `errCtx`, name + message)
@@ -408,15 +460,56 @@ function fieldErrorText(err: any): string {
    28 files, comments included, measured 2026-09-29). REJECTED: capping only publicFetch's
    site, which the review first named — apiFetch carries nearly every errCtx consumer, so one
    site bounds neither sink for them. 200 keeps a gateway page's diagnostic first line.
-   Raising the cap or dropping a site is a decision, not a cleanup. */
-const NON_JSON_ERROR_TEXT_CAP = 200;
+   Raising the cap or dropping a site is a decision, not a cleanup.
+   [AMENDED Phase 88.6.1-23 (W063): the cap is now ONE exported helper, `capErrorText` below,
+   that REDACTS (scrubString) before it cuts, applied at every builder of a body-derived error
+   message in BOTH files: this module (the non-JSON reshape, the JSON envelope message through
+   `extractErrorMessage`, apiFetch's joined field errors, and the two prefill throws) and
+   AvailabilityForm.js's submit guard. The constant is renamed ERROR_TEXT_CAP, because it no
+   longer caps only non-JSON text (its former non-JSON-only name described only that). Every
+   other sentence above stands, the decline of an `errCtx` edit included.] */
+const ERROR_TEXT_CAP = 200;
+
+// DECISION Phase 88.6.1-23 (W063 / AC-34): CHOSEN — one cap where every body-derived error
+// message is BUILT. In this module: the non-JSON reshape, the JSON envelope message (apiFetch,
+// publicFetch and validateToken, through `extractErrorMessage`), the joined field errors, and
+// the two prefill throws (`prefillFromGcal`, `prefillFromSaved`; plain Errors, r2 #28). Outside
+// it: AvailabilityForm.js's submit guard (r2 #158), which is why this helper is exported. This
+// extends 88.6-62's own rule ("capping where the value is BUILT bounds both at once") to the
+// JSON path.
+// CHOSEN — redact-then-cut (r2 #108). `scrubString` runs on the whole text first, so an email
+// or a token is replaced whole, and only then is the text cut.
+// REJECTED (a): editing `errCtx`. It is owner-ruled (`R2-FIXNOW-SET-RULING`, 2026-09-29), and
+// on the merits it cannot tell a body-derived message from this module's own diagnostics.
+// REJECTED (b): capping in the ApiError constructor. That truncates this module's own long
+// hand-built diagnostics (the HTML-branch configuration message runs past 200 characters) and
+// every caller-built ApiError.
+// REJECTED (c): capping `details`. Consumers read structured fields off it, and it never
+// reaches `errCtx`.
+// REJECTED (d): capping `upstreamMessage`. Not this sink: it rides only to Sentry `extra` on an
+// event (the owner's AC-4 ruling), which the scrubber deep-walks.
+// REJECTED (e): the blind cut (cut, and leave redaction to `beforeSend`). The pattern scrubber
+// matches whole patterns only (EMAIL needs the TLD, JWT needs three segments), so a cut that
+// lands inside one leaves a fragment neither rule can match, and the fragment reaches
+// breadcrumbs and Sentry unredacted.
+// REJECTED (f): the whitespace back-off (cut at the last whitespace before character 200). It
+// would turn the #3 gateway text (`HUGE` in api.test.ts) into a marker-only string and lose the
+// gateway diagnostic the 88.6-62 cap keeps on purpose. Redact-then-cut leaves #3 and the W063
+// repeated-letter arms byte-unchanged, because they carry no PII.
+// ' [truncated]' is not user-facing: no surface renders `ApiError.message` (the tree-wide
+// "never displayed" test in fetchErrorTreatment.test.ts). Idempotent: an already-capped string
+// comes back identical.
+// Raising the cap, dropping a builder, or cutting before redacting is a decision, not a cleanup.
+export function capErrorText(text: string): string {
+  const scrubbed: string = scrubString(text);
+  return scrubbed.length > ERROR_TEXT_CAP
+    ? `${scrubbed.slice(0, ERROR_TEXT_CAP)} [truncated]`
+    : scrubbed;
+}
 
 /** The self-constructed error body for a non-JSON error response (keyed `message`, capped). */
 function nonJsonErrorBody(responseText: string, status: number): { message: string } {
-  const capped =
-    responseText.length > NON_JSON_ERROR_TEXT_CAP
-      ? `${responseText.slice(0, NON_JSON_ERROR_TEXT_CAP)} [truncated]`
-      : responseText;
+  const capped = capErrorText(responseText);
   return { message: capped || `HTTP error! status: ${status}` };
 }
 
@@ -557,10 +650,14 @@ export async function apiFetch<T = unknown>(
       // If there are validation errors, format them nicely for the message.
       const fieldErrors = extractFieldErrors(errorData);
       if (fieldErrors && fieldErrors.length > 0) {
-        const errorMessages = fieldErrors
-          .map(fieldErrorText)
-          .filter(Boolean)
-          .join('. ');
+        // 88.6.1-23 (W063): the joined text is a second builder of a body-derived message, so
+        // it is capped where it is built too; an empty join still falls through below.
+        const errorMessages = capErrorText(
+          fieldErrors
+            .map(fieldErrorText)
+            .filter(Boolean)
+            .join('. ')
+        );
         const msg = errorMessages || extractErrorMessage(errorData, response.status);
         throw new ApiError(
           msg,
@@ -593,7 +690,7 @@ export async function apiFetch<T = unknown>(
     // Sentry.captureException -- chosen OVER an event here, and OVER deleting the log
     // entirely. An event at this catch fires for every expected 401/404/410 (it sees
     // every ApiError this module throws) and duplicates QueryCache.onError
-    // (queryClient.ts:167). AC-2's convert-on-touch level is logger.info phase-wide as
+    // (`queryCacheOnError`, src/lib/queryClient.ts:141; its capture at :179). AC-2's convert-on-touch level is logger.info phase-wide as
     // of the owner ruling of 2026-09-13, so this is the RULE rather than an exception to
     // it -- but it was independently the right call here and the reasoning is kept for
     // whoever revisits the fetch boundary. If an event is ever wanted here it must be
@@ -605,7 +702,7 @@ export async function apiFetch<T = unknown>(
     // throws that message is extractErrorMessage output -- which, after this same commit
     // reshaped the non-JSON bodies onto the message key, is the ENTIRE RAW RESPONSE TEXT
     // on a non-JSON error response. Forwarding it would put a whole response body into a
-    // Sentry BREADCRUMB: a T-84-01 violation (logger.ts:8-13). So this call carries the
+    // Sentry BREADCRUMB: a T-84-01 violation (logger.ts:8-13, `Info-Disclosure threat T-84-01`). So this call carries the
     // endpoint, the error NAME and -- when it is an ApiError -- its status and code, and
     // NOTHING derived from the response body. The full url is not carried either
     // (T-88.6-124, defence in depth complementing AC-1 beforeSend scrub, never a
@@ -615,6 +712,11 @@ export async function apiFetch<T = unknown>(
     // both reshape sites, which bounds the errCtx breadcrumbs every CONSUMER files and the
     // captured exception value. The decline of errCtx at THIS site STANDS: 200 characters
     // of a response body are still body text, and this breadcrumb needs none of it.]
+    // [AMENDED Phase 88.6.1-23 (W063): "bounds the errCtx breadcrumbs every CONSUMER files"
+    // was true only of NON-JSON text until this plan; a JSON envelope message and the joined
+    // field errors rode uncapped. From this plan on every body-derived message is redacted and
+    // then capped where it is built (`capErrorText`), so the sentence holds for both. The
+    // decline of errCtx at THIS site still STANDS.]
     //
     // AMENDED Phase 88.6-57 (CR-501, 88.6-REVIEW.md, 2026-09-28): "the full url is not
     // carried" was true of the ORIGIN and FALSE of the QUERY STRING until this plan --
@@ -628,7 +730,7 @@ export async function apiFetch<T = unknown>(
     //
     // NOT A PRECEDENT AGAINST THE AC-4 FIELD ABOVE: that field is a STRING forwarded to
     // Sentry extra on an EVENT that already egresses today and is deep-scrubbed at
-    // sentry.scrub.js:171-172. This site would carry the raw response TEXT into a
+    // sentry.scrub.js's `deepScrub`. This site would carry the raw response TEXT into a
     // breadcrumb that does not egress today. Different site, different payload, different
     // existing baseline -- both rules stand, and neither licenses the other. Restoring
     // errCtx here is a decision, not a consistency fix.
@@ -674,12 +776,17 @@ export async function apiFetch<T = unknown>(
    why they ALSO lacked res.ok and a guarded success parse. The app-wide absence is an
    OWNED RESIDUAL with Phase 93 named in .planning/deferred/phase-93.md.
 
-   WHY THIS IS NOT COSMETIC: AvailabilityForm.js sets setIsPrefilling(true) BEFORE the
-   await and clears it ONLY in finally, and both pre-fill buttons are disabled on that
-   flag. A request that never settles leaves TWO PERMANENTLY DISABLED BUTTONS on the
-   SMS/email magic-link flow, with no recovery short of a reload, on the phone-primary
-   surface. An AbortError that is SWALLOWED re-creates exactly that state, which is why it
-   is MAPPED to a rejection here and never absorbed.
+   WHY THIS IS NOT COSMETIC: AvailabilityForm.js marks a pre-fill in flight BEFORE the
+   await (prefillSource names the running source, and the prefillInFlightRef latch is set)
+   and clears both ONLY in finally. While they are set, the PRESSED pre-fill button is
+   aria-disabled (it keeps focus, and the latch refuses its presses) and the OTHER button is
+   natively disabled. A request that never settles leaves BOTH PRE-FILL BUTTONS PERMANENTLY
+   UNUSABLE on the SMS/email magic-link flow, with no recovery short of a reload, on the
+   phone-primary surface. An AbortError that is SWALLOWED re-creates exactly that state,
+   which is why it is MAPPED to a rejection here and never absorbed.
+   (Corrected in place by plan 88.6.1-49, 2026-10-16 Pacific: this paragraph named the
+   boolean flag plan 88.6.1-26 replaced with prefillSource, and said both buttons were
+   disabled on it. The mechanism changed; the conclusion did not.)
 
    BINDING CONSTRAINT -- NO res.ok THROW is added to any of the five, and no resolved body
    SHAPE changes. Every consumer reads the parsed body's fields directly
@@ -704,6 +811,31 @@ export async function apiFetch<T = unknown>(
    helpers also keep their resolved shapes. Every transport failure out of all six is now an
    `ApiError('network')` and every unparseable body an `ApiError('internal')` (see
    `timedPublicFetch` / `guardedJson` below).]
+   [AMENDED Phase 88.6.1-23 (R3-M7/M9): "every non-OK status EXCEPT 400" and "400 is kept
+   resolving" now read by CODE: validateToken throws for every non-OK answer whose code
+   (`mapErrorToCode`) is not `token_invalid`, and resolves a `token_invalid` answer whatever its
+   status. The page's invalid-link branch still owns exactly the backend's `token_invalid`
+   answer; a second 400 on the route no longer renders as a dead link. See the DECISION Phase
+   88.6.1-23 (R3-M7/M9) marker in validateToken.]
+
+   [AMENDED Phase 88.6.1-23 (R9 mechanism, owner ruling 2026-10-05): `respondViaToken` is a
+   SECOND scoped exception, 5xx ONLY — a status of 500 or above rejects `ApiError('internal')`
+   before the parse (and before any body read: its timedPublicFetch call skips a 5xx body), and
+   every status below 500 still resolves its parsed body unchanged. The binding constraint above
+   is a CONSEQUENCE constraint for the bodies a consumer reads; the RSVP page reads only 403 and
+   410 discriminants, and no 5xx body carries one. What it fixes: the app's own JSON 500 on
+   `/rsvp/respond` RESOLVED and fell to the page's generic copy, which tells the person to tap
+   a single-use link the backend may already have consumed; the owner ruled that a server error
+   shows R9 (plan 88.6.1-36's `internal` arm). "ONE scoped exception" in the bracket above now
+   reads: validateToken is the one helper that throws on a 4xx, and respondViaToken throws on
+   5xx only. See the DECISION Phase 88.6.1-23 (R9 mechanism) marker at the guard.]
+   [AMENDED 2026-10-19 (88.6.1 code review A-80): since plan 88.6.1-87 (close ruling P-77, owner
+   ruling D4 "Option A") respondViaToken ALSO rejects `ApiError('not_found')` for a parsed 404
+   whose body carries the backend token `event_not_found`; every other status below 500 still
+   resolves its parsed body. So the bracket above reads: respondViaToken rejects `internal` for a
+   status of 500 or above, and `not_found` for that one token-keyed 404; the 4xx throws are
+   validateToken's (by code) and respondViaToken's one token-keyed 404. The four 403 / 410 reads
+   the page depends on still resolve. See the 88.6.1-87 amendment at respondViaToken's guard.]
 
    AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review MEDLOW-2, owner ruling
    `FIX-NOW-SET-RULING: as-recommended`): the census above was FIVE and is SIX. The sixth,
@@ -735,6 +867,11 @@ const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
  * routes do not carry" was false for the validate route. (2) The body is read INSIDE the
  * deadline, so a response whose headers arrive and whose body then stalls rejects at 20 s
  * instead of hanging; the helper therefore returns `{ res, text }`.]
+ * [AMENDED Phase 88.6.1-23 (MEDLOW-18): "they are collapsed onto `failureMessage` rather than
+ * discriminated here" now has ONE exception — a timeout (this helper's own deadline fired)
+ * carries the suffix " (timed out after 20000 ms)" — and every failure keeps the caught value
+ * as the ApiError's platform `cause`. See the DECISION Phase 88.6.1-23 (W062 rider MEDLOW-18)
+ * marker at the catch.]
  *
  * DECISION Phase 88.6-62 (review round 2 #4/#13): the body read is FOLDED into this timed
  * helper (the review's first-named option) and the timer is still cleared in `finally`, so
@@ -743,20 +880,85 @@ const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
  * clears). REJECTED: `AbortSignal.timeout` (a second deadline mechanism beside the controller
  * the six helpers already share). Reading the body outside this helper again is a decision,
  * not a cleanup — it re-opens the stalled-body hang on the magic-link critical path.
+ * [AMENDED Phase 88.6.1-23 (R3-M3 / D-26): every sentence above stands. The helper gains ONE
+ * opt-in, `skipErrorBody` (a boolean, or a predicate over the status), so a caller that
+ * DISCARDS a non-OK body is not held by it.]
+ *
+ * DECISION Phase 88.6.1-23 (R3-M3 / D-26): CHOSEN — one opt-in, a boolean or a per-status
+ * predicate, that lets a caller which DISCARDS a non-OK body (for every status, or for the
+ * statuses the predicate names) skip reading it. When it says skip, the helper never reads the
+ * body, cancels it through this helper's own controller and returns `{ res, text: '' }`. The
+ * read still exists only in this helper, so the 88.6-62 rule above ("reading the body outside
+ * this helper again is a decision") is honoured, not bypassed. `getExistingResponse` passes
+ * the boolean (it returns `null` for every non-OK answer), and `respondViaToken` passes a
+ * predicate that is true for 500 and above only (nothing reads its 5xx body; see its
+ * DECISION Phase 88.6.1-23 (R9 mechanism) marker).
+ * REJECTED (a): a fetch-then-read split under the same controller at the call site (the
+ * register's second option). It puts a second body-handling path outside this helper, which is
+ * what 88.6-62 forbids.
+ * REJECTED (b): leaving the unread body un-cancelled. Nothing would ever drain it, and it can
+ * hold the connection.
+ * REJECTED (c): `res.body.cancel()`. A second cancellation mechanism beside the controller, and
+ * `body` can be null.
+ * REJECTED (d): skipping a body a helper READS. `respondViaToken` reads `result.error` off its
+ * 403 / 410 bodies and the prefill helpers read their error copy off a non-OK body (DECISION
+ * Phase 88.6-42's D62 branch B), so none of them takes the boolean form; respondViaToken's
+ * predicate stays false below 500, so its 403 / 410 bodies are still read.
+ * Turning the opt-in on for another helper or another status, or reading the body outside this
+ * helper, is a decision, not a cleanup.
  */
 async function timedPublicFetch(
   url: string,
   init: RequestInit,
-  failureMessage: string
+  failureMessage: string,
+  { skipErrorBody = false }: { skipErrorBody?: boolean | ((status: number) => boolean) } = {}
 ): Promise<{ res: Response; text: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PUBLIC_TRANSPORT_TIMEOUT_MS);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
+    const skip =
+      !res.ok && (typeof skipErrorBody === 'function' ? skipErrorBody(res.status) : skipErrorBody);
+    if (skip) {
+      // Cancel the unread body through the one mechanism this helper owns (REJECTED (b), (c)).
+      controller.abort();
+      return { res, text: '' };
+    }
     const text = await res.text();
     return { res, text };
-  } catch {
-    throw new ApiError(failureMessage, 'network', 0);
+  } catch (caught) {
+    // DECISION Phase 88.6.1-23 (W062 rider MEDLOW-18): CHOSEN — keep the caught value as the
+    // platform `cause`, and tell a timeout apart by its MESSAGE, keyed on this helper's own
+    // deadline (its controller's signal is aborted; the skip path above returns and never
+    // throws, so the timer is the only thing that can have aborted it). The message is built
+    // from constants only: the helper's failure constant and PUBLIC_TRANSPORT_TIMEOUT_MS.
+    // REJECTED (a): a distinct `name`. `name` is fixed at 'ApiError', consumers branch on
+    // instanceof, and the 'ApiError — shape' test pins it (APPENDIX-DF :164).
+    // REJECTED (b): a new ApiErrorCode such as a timeout code. Every consumer renders the same
+    // `network` copy for both, `shouldRetry` and the Sentry tags key on `network`, and plan
+    // 88.6.1-36 keys the RSVP timeout state on `network`.
+    // REJECTED (c): classifying by the caught error's own name or text. Engines differ and a
+    // test double can fake it; the helper's own signal is the one source of truth.
+    // REJECTED (d): splicing the caught text into the message. An engine's TypeError can quote
+    // the request URL, `respondViaToken` and `getExistingResponse` carry the magic token in the
+    // query, and the message reaches breadcrumbs through `errCtx`.
+    // REJECTED (e): a cause on `guardedJson`'s `internal` rejection. A JSON SyntaxError's text
+    // can quote the response body (SPEC Prohibition 5).
+    // Honest limit: CORS, DNS and offline failures stay one class. The browser reports them as
+    // the same TypeError on purpose; the cause carries whatever the browser said.
+    // Putting the caught text into the message, or a cause on the parse failure, is a decision,
+    // not a cleanup.
+    const timedOut = controller.signal.aborted;
+    throw new ApiError(
+      timedOut
+        ? `${failureMessage} (timed out after ${PUBLIC_TRANSPORT_TIMEOUT_MS} ms)`
+        : failureMessage,
+      'network',
+      0,
+      undefined,
+      undefined,
+      { cause: caught }
+    );
   } finally {
     clearTimeout(timer);
   }
@@ -1041,9 +1243,11 @@ export const rsvpAPI = {
   //
   // DECISION Phase 88.5 (RESEARCH B-2): this was typed apiFetch-of-RsvpList — an
   // ARRAY — which was simply wrong. The route returns an OBJECT,
-  // `{ rsvps, summary }` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js:536).
-  // The wrong type survived because every consumer was `.js` (RsvpSection.js:33-35,
-  // gameDetail/page.js:588 and :832) so TS never checked it; all three already read
+  // `{ rsvps, summary }` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js, anchor
+  // `return res.json({ rsvps: shapedRsvps, summary });`).
+  // The wrong type survived because every consumer was `.js` (src/app/components/RsvpSection.js:166-167,
+  // `setRsvps(data.rsvps || [])`; src/app/gameDetail/page.js:723 and :977, `rsvpAPI.getEventRsvps(`;
+  // lines read at 88.6.1-07) so TS never checked it; all three already read
   // `data.rsvps` / `data.summary`, i.e. they always treated it as the object. Do not
   // revert to RsvpList.
   getEventRsvps: (event_id: string) =>
@@ -1055,6 +1259,9 @@ export const rsvpAPI = {
  * Uses direct fetch without Auth0 token injection
  */
 const RSVP_RESPOND_TRANSPORT_FAILURE = 'rsvp respond request did not complete';
+// Plan 88.6.1-87 (close ruling P-77): the message of the not_found rejection below. A log
+// message only, never rendered: the RSVP page renders its copy by page state.
+const RSVP_RESPOND_EVENT_GONE = 'rsvp respond: the event no longer exists';
 
 export const rsvpPublicAPI = {
   // Respond to RSVP via magic link token (no auth required) — direct-to-backend
@@ -1062,19 +1269,77 @@ export const rsvpPublicAPI = {
   //
   // T-88.6-123 (#103, routed here from plan 24 by D41): `eventId` and `status` are now
   // percent-encoded like the `token` and `userId` arms beside them, which always were.
-  // DEFENCE-IN-DEPTH, not a live hole — verified at source: Sonnet/routes/rsvp.js:212
-  // allow-lists the status and :217-220 recomputes the HMAC over (eventId, userId, status)
+  // DEFENCE-IN-DEPTH, not a live hole — verified at source: Sonnet/routes/rsvp.js (anchor
+  // `['yes', 'maybe', 'no'].includes(status)`) allow-lists the status and the anchor
+  // `const expectedToken = generateRsvpToken(eventId, userId, status);` recomputes the HMAC over (eventId, userId, status)
   // and 403s on mismatch. The asymmetry is closed because a reader would otherwise tidy it
   // the WRONG way, by dropping the two encodings that are there.
   respondViaToken: async (token: string, eventId: string, userId: string, status: string) => {
     const { res, text } = await timedPublicFetch(
       `${PUBLIC_API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${encodeURIComponent(eventId)}&u=${encodeURIComponent(userId)}&s=${encodeURIComponent(status)}`,
       {},
-      RSVP_RESPOND_TRANSPORT_FAILURE
+      RSVP_RESPOND_TRANSPORT_FAILURE,
+      { skipErrorBody: (s) => s >= 500 }
     );
+    // DECISION Phase 88.6.1-23 (R9 mechanism; owner ruling 2026-10-05, copy key R9): CHOSEN — a
+    // status of 500 or above rejects `internal` at headers, before any body read (the status
+    // predicate on timedPublicFetch's skip opt-in above) and before the parse; every status
+    // below 500 still resolves its parsed body. `internal` is the code this module already gives
+    // every 5xx (`statusToCode`), and the RSVP page's `internal` arm (plan 88.6.1-36) shows R9,
+    // which is true whether or not the single-use token was spent (the backend consumes it
+    // before the work that can 500, BE `routes/rsvp.js` `consumeByNonce`).
+    // WHY DECISION Phase 88.6-42's no-throw rule does not bind here: it is a CONSEQUENCE
+    // constraint that protects the bodies the page reads, the 403 and 410 discriminants. The
+    // backend's 5xx body carries none of them and the page never reads it, so this throw
+    // strands no read.
+    // REJECTED (a): a full res.ok throw. That is branch A (owner, 2026-09-09): it strands the
+    // four 403 / 410 reads.
+    // REJECTED (b): telling the 500 apart on the page by its text. Backend prose is never a
+    // discriminant here (the error-envelope roster pins this page's reads at four), and a
+    // resolved body carries no status.
+    // REJECTED (c): attaching the 5xx body as `details` or `upstreamMessage`. Nothing reads it,
+    // and a raw backend body must not ride a diagnostic (SPEC Prohibition 5).
+    // REJECTED (d): reading the 5xx body and checking the status afterwards (the first draft of
+    // this guard). Nothing reads that body, so the page would wait for it, and a 5xx whose body
+    // stalls would hold the person for the full 20 s and then reject `network` instead of
+    // `internal`. Also rejected: a second body path outside timedPublicFetch to check the
+    // status first (DECISION Phase 88.6-62 forbids it), and the boolean form of the skip, which
+    // would also drop the 403 / 410 bodies. The per-status predicate skips only the body
+    // nothing reads.
+    // Widening this below 500, or reading the 5xx body, is a decision, not a cleanup.
+    // AMENDED Phase 88.6.1-87 (close ruling P-77, owner 2026-10-18; key per owner ruling D4 Option A):
+    // the app's own JSON 404 carrying the token event_not_found (BE
+    // `periodictabletopbackend_v2/Sonnet/routes/rsvp.js` GET /respond, plan 88.6.1-87 Task 1, sent
+    // after the token is consumed) now rejects `not_found`, read only after the parse so an HTML
+    // 404 stays `internal`. The TOKEN is what is required, not the parse: Railway's edge answers a
+    // detached or misrouted domain with its own JSON 404 (probed 2026-10-18,
+    // `x-railway-fallback: true`, no `error` key), and that must never tell anyone a game night
+    // was cancelled. The reasoning above holds: the only 404 that throws carries the token the
+    // page now keys on, and the four reads are the 403 and 410 bodies, which still resolve. The
+    // same 404 also answers an event soft-deleted with its group and restorable for 30 days,
+    // owner-accepted 2026-10-18 ("a") under the detail's hedge, with the BE improvement routed to
+    // Phase 93 (`.planning/deferred/phase-93.md`, entry
+    // `GET /rsvp/respond: the 404 for a missing event`).
+    // REJECTED (a): keying on the 404 parsing (Railway's fallback above). REJECTED (b): reading
+    // the 404 body's prose (a backend string is never a discriminant). REJECTED (c): accepting
+    // both bodies while the BE deploys (D4: the BE deploys first, and until then the case keeps
+    // today's card). REJECTED (d): a status field on the resolved body (a body-shape change the
+    // binding constraint above forbids).
+    // [AMENDED 2026-10-19 (88.6.1 code review IN-14): the 5xx rejection carries the message every
+    // other helper's server error carries (`extractErrorMessage` with no body read, "HTTP error!
+    // status: N") over RSVP_RESPOND_TRANSPORT_FAILURE, which describes a request that did NOT
+    // complete; this one completed with a server error, and the page's breadcrumb read like a
+    // network drop. Code and status are unchanged.]
+    if (res.status >= 500) throw new ApiError(extractErrorMessage(null, res.status), 'internal', res.status);
     // NO res.ok throw — rsvp/[token]/page.js reads `result.error` off the parsed 410 body
     // to tell "cancelled" from "already happened", and D62 branch B keeps that read.
-    return guardedJson(text, res.status, RSVP_RESPOND_TRANSPORT_FAILURE);
+    // [AMENDED Phase 88.6.1-23 (R9 mechanism): except a status of 500 or above, which rejects
+    // internal above — no 5xx body carries a discriminant the page reads.]
+    // [AMENDED Phase 88.6.1-87 (P-77): and except a parsed 404 carrying the backend token
+    // event_not_found, which rejects not_found below; every other 404 resolves as before.]
+    const body = guardedJson(text, res.status, RSVP_RESPOND_TRANSPORT_FAILURE);
+    if (res.status === 404 && body?.error === 'event_not_found') throw new ApiError(RSVP_RESPOND_EVENT_GONE, 'not_found', 404);
+    return body;
   },
 };
 
@@ -1440,6 +1705,11 @@ export const magicAuthAPI = {
   // non-OK status except 400 a coded ApiError (429 → rate_limited, the raw 500 → internal),
   // while the 400 still RESOLVES into the page's invalid-link branch. See the DECISION Phase
   // 88.6-42 binding-constraint amendment for why this one helper may throw on status.]
+  // [AMENDED Phase 88.6.1-23 (R3-M7/M9): "while the 400 still RESOLVES" is now "while the
+  // `token_invalid` answer still RESOLVES": the discriminator is the backend's CODE, not the
+  // status. A non-OK answer resolves only when its code is `token_invalid` (whatever its
+  // status); every other non-OK answer, a 400 with any other code or none included, throws the
+  // coded ApiError. See the DECISION Phase 88.6.1-23 (R3-M7/M9) marker at the guard.]
   validateToken: async (token: string, formLoadedAt = null) => {
     const { res, text } = await timedPublicFetch(
       `${PUBLIC_API_BASE_URL}/magic-auth/validate`,
@@ -1451,19 +1721,39 @@ export const magicAuthAPI = {
       MAGIC_VALIDATE_TRANSPORT_FAILURE
     );
     const body = guardedJson(text, res.status, MAGIC_VALIDATE_TRANSPORT_FAILURE);
-    // The ONE scoped exception to the DECISION Phase 88.6-42 binding constraint (see its
-    // 2026-09-29 amendment): any non-OK status except the 400 `token_invalid` answer throws a
-    // coded ApiError, so a 429 / 5xx renders the register's rate_limited / internal line
-    // instead of the invalid-link copy. No new `.error` read: the upstream string rides on
+    // One of TWO scoped exceptions to the DECISION Phase 88.6-42 binding constraint (see its
+    // 2026-09-29 amendment and its 88.6.1-23 R9 bracket): validateToken throws on any non-OK
+    // answer whose code is not `token_invalid` (a 4xx included), and respondViaToken throws on a
+    // status of 500 or above and, since plan 88.6.1-87 (P-77), on a parsed 404 carrying the
+    // backend token `event_not_found` (AMENDED 2026-10-19, 88.6.1 code review A-80). Here, a coded ApiError means a 400 that is not a dead link, a
+    // 429 or a 5xx renders the register's validation / rate_limited / internal line instead of
+    // the invalid-link copy. No new `.error` read: the upstream string rides on
     // `extractUpstreamMessage`, the one sanctioned read (errorEnvelopeReads assertion 6).
-    if (!res.ok && res.status !== 400) {
-      throw new ApiError(
-        extractErrorMessage(body, res.status),
-        mapErrorToCode(body, res.status),
-        res.status,
-        body,
-        extractUpstreamMessage(body)
-      );
+    //
+    // DECISION Phase 88.6.1-23 (R3-M7/M9): CHOSEN — the backend's own code decides. A non-OK
+    // answer resolves only when its code is `token_invalid` (the fix text of
+    // `.planning/deferred/phase-88.6.1.md:225`).
+    // REJECTED (a): the HTTP status alone (the old rule). A future second 400 on the route would
+    // render as a dead link.
+    // REJECTED (b): status 400 AND the code. It keeps the other drift the register names: a
+    // `token_invalid` moved off 400 would render "Something went wrong" for a dead link.
+    // REJECTED (c): reading the code off the body directly. `mapErrorToCode` is the module's one
+    // code seam, and its value is the code the throw carries.
+    // No production behaviour changes today: the route's only 400s are `token_invalid` (BE
+    // `routes/magicAuth.js:98`, `:115`). Pair with Phase 93's consumer sweep when it touches
+    // `utils/errors.js`.
+    // Keying this on the status again is a decision, not a cleanup.
+    if (!res.ok) {
+      const code = mapErrorToCode(body, res.status);
+      if (code !== 'token_invalid') {
+        throw new ApiError(
+          extractErrorMessage(body, res.status),
+          code,
+          res.status,
+          body,
+          extractUpstreamMessage(body)
+        );
+      }
     }
     return body;
   },
@@ -1512,11 +1802,17 @@ export const availabilityFormAPI = {
   // both mean "nothing to pre-fill" to the one consumer. A TRANSPORT failure (incl. the 20s
   // timeout) REJECTS, and the consumer's own catch treats it as optional pre-fill and proceeds
   // to READY; before this, a stalled GET held the page on "Loading" forever.
+  // [AMENDED Phase 88.6.1-23 (R3-M3): a non-2xx now resolves `null` WITHOUT waiting for its
+  // body — this is the one caller that passes `timedPublicFetch`'s `skipErrorBody` opt-in in
+  // its boolean form, because it discards every non-OK body. Only a transport failure
+  // (including the 20 s timeout) still rejects. See DECISION Phase 88.6.1-23 (R3-M3 / D-26) on
+  // that helper.]
   getExistingResponse: async (promptId: string, token: string) => {
     const { res, text } = await timedPublicFetch(
       `${PUBLIC_API_BASE_URL}/availability-responses/${encodeURIComponent(promptId)}?magic_token=${encodeURIComponent(token)}`,
       { headers: { 'Content-Type': 'application/json' } },
-      AVAILABILITY_EXISTING_TRANSPORT_FAILURE
+      AVAILABILITY_EXISTING_TRANSPORT_FAILURE,
+      { skipErrorBody: true }
     );
     if (!res.ok) return null;
     try {
@@ -1562,7 +1858,7 @@ export const availabilityFormAPI = {
       // :216, :241), so a mechanical conversion to body.code/body.message here produces an
       // EMPTY message. Phase 93 owns the backend code; this read goes when that lands.
       const err = objectBodyOrEmpty(text);
-      throw new Error(err.error || GCAL_PREFILL_FAILURE);
+      throw new Error(capErrorText(String(err.error || GCAL_PREFILL_FAILURE)));
     }
     // An unparseable 200 (a proxy or gateway HTML page) now surfaces the SAME failure the
     // error branch above produces, instead of an unhandled SyntaxError. The resolved SHAPE
@@ -1603,7 +1899,7 @@ export const availabilityFormAPI = {
     if (!res.ok) {
       // RETAINED under D62 branch B — see the twin comment in prefillFromGcal above.
       const err = objectBodyOrEmpty(text);
-      throw new Error(err.error || SAVED_PREFILL_FAILURE);
+      throw new Error(capErrorText(String(err.error || SAVED_PREFILL_FAILURE)));
     }
     // Same guard, same reason, same unchanged { slot_ids, count } shape.
     return guardedJson(text, res.status, SAVED_PREFILL_FAILURE);
@@ -1688,20 +1984,14 @@ export const promptAPI = {
     apiFetch(`/prompts/${promptId}/heatmap`),
 };
 
-/**
- * API functions for Availability Suggestions (event creation from suggestions)
- */
-export const suggestionAPI = {
-  /**
-   * Convert a suggestion to an event
-   * @param {string} suggestionId - UUID of the suggestion
-   * @returns {Promise<{success: boolean, event_id: string}>}
-   */
-  convert: (suggestionId: string) =>
-    apiFetch(`/suggestions/${suggestionId}/convert`, {
-      method: 'POST',
-    }),
-};
+// DECISION Phase 88.6.1-49 (Req 14, SUGGESTION-CARD-RULING: retire): the frontend client for
+// POST /suggestions/:suggestionId/convert is DELETED with its only caller, the retired
+// SuggestionCard.js. Chosen OVER keeping an uncalled client beside the still-live backend route.
+// The route's removal is Phase 91.1's rider (.planning/deferred/phase-91.1.md, "The suggestion
+// → event convert path has no caller"); the close-notification email is the feature that
+// replaced the card. Not to be confused with the plural game-suggestions client further down
+// this file, which is live. Re-adding a suggestion-to-event client is a product decision, not a
+// cleanup.
 
 /**
  * API functions for Group Invites

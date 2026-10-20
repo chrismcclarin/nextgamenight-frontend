@@ -633,8 +633,8 @@ describe('T-88.6-87 — the pre-flight failure has a diagnostic channel and an h
     const [message, ctx] = mockLoggerInfo.mock.calls[0];
     expect(message).toBe('deletion pre-flight failed');
     // T-84-01: the payload is bounded to the caught error's NAME and MESSAGE —
-    // never the blockers list, never the raw Error as ctx (logger.ts:24 types ctx
-    // as a plain record).
+    // never the blockers list, never the raw Error as ctx (logger.ts:31, the info
+    // signature, types ctx as a plain record).
     expect(Object.keys(ctx as object).sort()).toEqual(['message', 'name']);
     expect(ctx).not.toBeInstanceOf(Error);
     expect(JSON.stringify(ctx)).not.toContain('do-not-forward');
@@ -684,9 +684,10 @@ describe('AC-21 as amended by D52 — an in-flight DELETE cannot be dismissed', 
     const cancel = cancelAction();
     expect(cancel).toHaveAttribute('aria-disabled', 'true');
     // Focusable-but-inert: the native attribute would remove it from the focus
-    // order, and with the danger action already natively disabled and
-    // `hideCloseButton` set, the dialog would contain ZERO tab-reachable controls
-    // during an IRREVERSIBLE deletion.
+    // order. Since 88.6.1-22 the danger action is aria-disabled too (D-35 / D-39)
+    // and the header Close always renders, so the dialog keeps tab-reachable
+    // controls while deleting; Cancel stays aria-disabled on its own reason (it
+    // says it is unavailable without leaving the focus order).
     expect(cancel).not.toHaveAttribute('disabled');
     expect(cancel).not.toHaveAttribute('aria-hidden');
     cancel.focus();
@@ -707,7 +708,7 @@ describe('AC-21 as amended by D52 — an in-flight DELETE cannot be dismissed', 
     await user.type(confirmInput(), 'delete');
 
     // `|| undefined` so the attribute is ABSENT rather than "false", matching
-    // NextGameNightCard.tsx:390's shipped shape.
+    // NextGameNightCard.tsx:489's shipped shape (`aria-disabled={isFlight || undefined}`).
     expect(cancelAction()).not.toHaveAttribute('aria-disabled');
     await user.click(cancelAction());
     await waitFor(() =>
@@ -737,8 +738,8 @@ describe('D52 — the announcements: a polite progress region and the converted 
     await user.click(trigger());
     await waitFor(() => expect(confirmInput()).not.toBeDisabled());
 
-    // Empty-first: a region mounted WITH its content does not announce
-    // (StatusRegion.tsx:9-12).
+    // Empty-first: a polite region mounted WITH its content does not announce
+    // (StatusRegion.tsx:9-17, the EMPTY-FIRST bullet).
     const region = progressRegion();
     expect(region).toHaveTextContent('');
     expect(region).toHaveAttribute('aria-live', 'polite');
@@ -791,9 +792,9 @@ describe('D52 — the announcements: a polite progress region and the converted 
     const failure = screen.getByRole('alert');
     const classes = failure.className.split(/\s+/);
     expect(classes).toContain('text-content-status-error');
-    expect(classes).toContain('text-sm'); // StatusRegion.tsx:43, the primitive's own default
+    expect(classes).toContain('text-sm'); // StatusRegion.tsx:103 (`'text-sm',` in its cn call), the primitive's own default
     expect(classes).not.toContain('font-medium');
-    // NextGameNightCard.tsx:457-459: do not add `empty:hidden` either.
+    // NextGameNightCard.tsx:581-582 (`empty:hidden` stay rejected): do not add it either.
     expect(failure.className).not.toMatch(/empty:hidden/);
   });
 
@@ -827,8 +828,9 @@ describe('D52 — the announcements: a polite progress region and the converted 
 describe('D52 / D24 — focus lands on a NAMED element on both `deleting` edges', () => {
   it('false->true: focus moves to the tabIndex={-1} wrapper of the polite region, a node this component owns', async () => {
     // NOT `document.activeElement !== document.body`, which is vacuous in this
-    // harness (keyboardOperability.test.tsx:148-153), and NOT the Radix Content
-    // node, for which `Modal` forwards no ref (Modal.tsx:150-192).
+    // harness (keyboardOperability.test.tsx:208-213, activeElement lands on <body>), and NOT
+    // the Radix Content node, for which `Modal` forwards no ref (Modal.tsx:266-351, the
+    // `<DialogContent` element).
     const user = userEvent.setup();
     await enterDeletingState(user);
     const target = progressFocusTarget();
@@ -849,6 +851,211 @@ describe('D52 / D24 — focus lands on a NAMED element on both `deleting` edges'
     await user.click(screen.getByRole('button', { name: 'Delete my account' }));
     await waitFor(() => expect(screen.getByRole('alert')).not.toHaveTextContent(''));
     expect(document.activeElement).toBe(confirmInput());
+  });
+});
+
+describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 / D-39), the D-22 regions, the header close', () => {
+  // vi.clearAllMocks (the file's beforeEach) does not drop a queued mockReturnValueOnce /
+  // mockRejectedValueOnce, so a test that fails before consuming its queue would hand its
+  // deferreds to the NEXT test and red it for the wrong reason. Reset this describe's queue
+  // after every test so a failure here stays a failure here.
+  afterEach(() => {
+    mockDeleteAccount.mockReset();
+  });
+
+  it('DZ1: the pressed danger action stays in the document with aria-disabled and NO native disabled', async () => {
+    const user = userEvent.setup();
+    await enterDeletingState(user);
+    const action = screen.getByRole('button', { name: 'Deleting…' });
+    expect(action).toHaveAttribute('aria-disabled', 'true');
+    expect(action).not.toHaveAttribute('disabled');
+    expect(action.isConnected).toBe(true);
+  });
+
+  it('DZ2: two synchronous presses send exactly ONE DELETE; Deleting… and aria-disabled hold until it settles', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const inFlight = deferred<{ message: string }>();
+    mockDeleteAccount.mockReturnValue(inFlight.promise);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my account');
+    const action = screen.getByRole('button', { name: 'Delete my account' });
+
+    // Both presses dispatch before React re-renders, so the second one is refused by the
+    // first-line ref latch, not by any attribute.
+    await act(async () => {
+      fireEvent.click(action);
+      fireEvent.click(action);
+    });
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+
+    // A later press while the DELETE is still in flight: still one request.
+    await act(async () => {
+      fireEvent.click(action);
+    });
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+    expect(action).toHaveTextContent('Deleting…');
+    expect(action).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('DZ3: idle with a partial phrase, the action is natively disabled with NO aria-disabled (rule of KIND)', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my');
+    const action = screen.getByRole('button', { name: 'Delete my account' });
+    expect(action).toBeDisabled();
+    expect(action).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('DZ4: a definitive failure RELEASES the latch — the next press sends a second DELETE', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    mockDeleteAccount.mockRejectedValue(
+      new ApiError('boom', 'internal', 500, { code: 'internal' })
+    );
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my account');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Deletion failed — nothing was deleted. Please try again.'
+      )
+    );
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await waitFor(() => expect(mockDeleteAccount).toHaveBeenCalledTimes(2));
+  });
+
+  it('DZ5: a blocked 409 RELEASES the latch — after Cancel and reopen, a press sends a second DELETE', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    mockDeleteAccount
+      .mockRejectedValueOnce(
+        new ApiError('blocked', 'owner_of_active_groups', 409, {
+          code: 'owner_of_active_groups',
+          details: { groups: [{ id: 'g7', name: 'Wingspan Wing', memberCount: 3 }] },
+        })
+      )
+      .mockReturnValueOnce(deferred<{ message: string }>().promise);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my account');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await screen.findByText(/You still own a group with other members/i);
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+
+    await user.click(cancelAction());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my account');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await waitFor(() => expect(mockDeleteAccount).toHaveBeenCalledTimes(2));
+  });
+
+  it('DZ6: the header Close says it is unavailable while deleting, and pressing it changes nothing', async () => {
+    const user = userEvent.setup();
+    await enterDeletingState(user);
+    const dialog = screen.getByRole('dialog', { name: 'Delete your account' });
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    expect(close).toHaveAttribute('aria-disabled', 'true');
+    await user.click(close);
+    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+    expect(confirmInput()).toHaveValue('delete my account');
+  });
+
+  it('DZ8 (D-22, R8 empty + adjacency): both regions are EMPTY and sr-only before their outcome; the SAME node carries the text after, without sr-only', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const inFlight = deferred<{ message: string }>();
+    mockDeleteAccount.mockReturnValueOnce(inFlight.promise);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+
+    const polite = progressRegion();
+    const failure = screen.getByRole('alert');
+    expect(polite).toHaveTextContent('');
+    expect(polite.className).toMatch(/\bsr-only\b/);
+    expect(failure).toHaveTextContent('');
+    expect(failure.className).toMatch(/\bsr-only\b/);
+    // Adjacency: exactly ONE polite and ONE assertive region, neither inside the other.
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(polite.contains(failure) || failure.contains(polite)).toBe(false);
+
+    await user.type(confirmInput(), 'delete my account');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await waitFor(() => expect(progressRegion()).toHaveTextContent('Deleting…'));
+    expect(progressRegion()).toBe(polite);
+    expect(polite.className).not.toMatch(/\bsr-only\b/);
+
+    await act(async () => {
+      inFlight.reject(new ApiError('boom', 'internal', 500, { code: 'internal' }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Deletion failed — nothing was deleted. Please try again.'
+      )
+    );
+    expect(screen.getByRole('alert')).toBe(failure);
+    expect(failure.className).not.toMatch(/\bsr-only\b/);
+    // The progress region is empty, and hidden, again.
+    expect(polite).toHaveTextContent('');
+    expect(polite.className).toMatch(/\bsr-only\b/);
+  });
+
+  it('DZ9 (R8 idempotency backstop): two definitive failures in a row are announced twice — cleared during the second request, the same node after', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const first = deferred<{ message: string }>();
+    const second = deferred<{ message: string }>();
+    mockDeleteAccount.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my account');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await act(async () => {
+      first.reject(new ApiError('boom', 'internal', 500, { code: 'internal' }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Deletion failed — nothing was deleted. Please try again.'
+      )
+    );
+    const failure = screen.getByRole('alert');
+
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    // Wait for the POSITIVE signal first (the second request is in flight), then assert
+    // the region was cleared (FE-TESTING-CONVENTIONS CF-26).
+    await waitFor(() => expect(progressRegion()).toHaveTextContent('Deleting…'));
+    expect(failure).toHaveTextContent('');
+    expect(failure.className).toMatch(/\bsr-only\b/);
+    expect(screen.getByRole('alert')).toBe(failure);
+
+    await act(async () => {
+      second.reject(new ApiError('boom', 'internal', 500, { code: 'internal' }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(failure).toHaveTextContent(
+        'Deletion failed — nothing was deleted. Please try again.'
+      )
+    );
+    expect(screen.getByRole('alert')).toBe(failure);
+    expect(failure.className).not.toMatch(/\bsr-only\b/);
   });
 });
 
@@ -931,12 +1138,20 @@ describe('Phase 88.6-30 — source-level invariants', () => {
     'utf8'
   );
 
-  it('keeps the danger action byte-unchanged on the NATIVE disabled attribute (arm A2 not taken)', () => {
-    // Moving `:391` to `aria-disabled` per the strict 88.5 split first requires
-    // minting a gated `.btn-danger` token pair in BOTH themes
-    // (globals.css:1310-1314) — an owner-level token decision, not a side effect.
-    expect(source).toContain('disabled={confirmDisabled}');
-    expect(source).not.toMatch(/variant="danger"[\s\S]{0,160}aria-disabled/);
+  it('the danger action takes arm A2 — aria-disabled while deleting, the validity half native (TAKEN by D-39, 88.6.1-22)', () => {
+    // REWRITTEN in place by 88.6.1-22. Arm A2 was gated on minting a gated .btn-danger token
+    // pair in BOTH themes (the gated-token marker in globals.css, at
+    // --color-btn-primary-gated-bg); D-39 minted it and the owner approved pair R on
+    // 2026-10-16, so the pressed action now follows the rule of POSITION.
+    expect(source).toMatch(/variant="danger"[\s\S]{0,200}aria-disabled=\{deleting \|\| undefined\}/);
+    expect(source).toContain('disabled={confirmInvalid}');
+  });
+
+  it('DZ7 (W008): the in-flight literal appears ONCE in code and the action reads DELETING_LABEL', () => {
+    // Comment-stripped source: the hoisted constant is the one literal, so the button
+    // label and the polite announcement cannot drift apart.
+    expect(source.match(/'Deleting…'/g) ?? []).toHaveLength(1);
+    expect(source).toMatch(/deleting \? DELETING_LABEL : 'Delete my account'/);
   });
 
   it('stores the generation counter in a REF, never useState and never a closured local', () => {
@@ -953,9 +1168,10 @@ describe('Phase 88.6-30 — source-level invariants', () => {
     expect(raw).toMatch(/native `disabled`/);
     // The gated A2 move of `:391`.
     expect(raw).toMatch(/btn-danger/);
-    // Both cited markers, so this reads as a considered divergence, not drift.
-    expect(raw).toContain('NextGameNightCard.tsx:379-391');
-    expect(raw).toContain('ConfirmDialog.tsx:160-173');
+    // Both cited markers, so this reads as a considered divergence, not drift. Matched
+    // on file name plus anchor token (88.6.1-22), so a line drift cannot red a correct marker.
+    expect(raw).toMatch(/NextGameNightCard\.tsx:\d+(?:-\d+)?[\s\S]{0,80}aria-disabled=\{isFlight \|\| undefined\}/);
+    expect(raw).toMatch(/ConfirmDialog\.tsx:\d+(?:-\d+)?[\s\S]{0,80}prevPendingRef/);
     // The Escape reason.
     expect(raw).toMatch(/onEscapeKeyDown/);
   });
@@ -1088,7 +1304,7 @@ describe('DangerZoneDeleteAccount — R7 composed axe audit + focus contract (88
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 
-  it('3. the IN-FLIGHT branch (aria-disabled Cancel, populated polite region, natively-disabled confirm) passes the same two rules', async () => {
+  it('3. the IN-FLIGHT branch (aria-disabled Cancel, populated polite region, aria-disabled confirm) passes the same two rules', async () => {
     const user = userEvent.setup();
     await enterDeletingState(user);
     // Settle on the state under test, not on chrome: the region is populated and Cancel is gated.

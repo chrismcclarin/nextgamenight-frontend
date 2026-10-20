@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import KebabMenu from './KebabMenu';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import { focusElement } from '../../components/ui/focusPageFloor';
 
 // Day of week helper
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -23,27 +25,108 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
  * @param {Function} [props.onCreate] - Callback for the empty state's "Create a
  *   schedule" CTA (Req 6). Null/absent for anyone who cannot manage schedules —
  *   the gating stays at the call site, exactly like onEdit/onToggle/onDelete.
+ * @param {{ current: HTMLElement | null }} [props.focusFallbackRef] - ref to the section
+ *   heading; focus target after Confirm Delete (88.6.1-30). Absent (or null, as in the
+ *   host's modal shape) the dialog title or page floor is used.
+ * @param {Object<string, true>} [props.togglingIds] - schedule ids whose Pause/Resume is
+ *   in flight (88.6.1-30, Req 4); the pressed control reads unavailable until it settles.
  */
-export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelete, games = [], onCreate }) {
+export default function ScheduleList({
+  schedules = [],
+  onEdit,
+  onToggle,
+  onDelete,
+  games = [],
+  onCreate,
+  focusFallbackRef,
+  togglingIds,
+}) {
   const { timezone } = useTimezone();
   const [deleteConfirm, setDeleteConfirm] = useState(null); // schedule_id to confirm deletion
+  // Declared ABOVE the empty-state early return, so the hook order is stable and the recovery
+  // survives deleting the last schedule (the list then renders its empty state).
+  const recovery = useFocusRecovery({ fallback: focusFallbackRef });
+  const confirmOpenerRef = useRef(null);
+  const confirmCancelRef = useRef(null);
+  // The confirm prompt's id, read by Cancel's aria-describedby (A-43 announce, marker below).
+  // Only one confirm row is open at a time per list, so one id per instance is enough.
+  const confirmPromptId = useId();
+
+  // The control that opened the confirm, read AFTER the open commits: on the phone path that is
+  // the Schedule actions trigger KebabMenu restored focus to. Never written when the confirm
+  // closes (see the D-04 marker below).
+  /* DECISION Phase 88.6.1 code review A-43: once the opener is captured, focus moves INTO the
+     confirm row, onto Cancel, through the shared `focusElement` (D-04). Before this, opening the
+     confirm moved nothing: a screen-reader user who picked Delete (on a phone, from the kebab)
+     heard the menu close and nothing more, with a destructive confirmation now on screen. CHOSEN
+     — Cancel, the safe default for a destructive confirm. REJECTED — Confirm Delete (one stray
+     Enter deletes); the prompt paragraph (needs an added tabindex and is not actionable). The
+     capture runs FIRST in the same effect, so Cancel still returns to the opener. Changing the
+     target is a decision, not a cleanup.
+     AMENDED 2026-10-19 (88.6.1 code review A-43 announce): landing on Cancel alone was heard as
+     "Cancel, button" with no word of what was being confirmed. Cancel now carries
+     `aria-describedby` pointing at the EXISTING prompt paragraph, so the focus move reads the
+     prompt sentence too (no new copy). Dropping the description is a decision, not a cleanup. */
+  useEffect(() => {
+    if (deleteConfirm === null) return;
+    const active = document.activeElement;
+    confirmOpenerRef.current =
+      active instanceof HTMLElement && active.isConnected && active !== document.body
+        ? active
+        : null;
+    focusElement(confirmCancelRef.current);
+  }, [deleteConfirm]);
 
   const handleDeleteClick = (schedule) => {
     setDeleteConfirm(schedule.id);
   };
 
-  const handleConfirmDelete = (scheduleId) => {
-    onDelete?.(scheduleId);
+  /* DECISION Phase 88.6.1-30 (D-04, D-05, H5): ONE `useFocusRecovery` lives here, where the
+     confirm row's state lives. Confirm Delete arms it; its target is the section heading the host
+     passes as `focusFallbackRef` (the modal shape passes a null ref, and plan 04's floor finds the
+     dialog's own title). Cancel arms it; its target is the control that opened the confirm,
+     captured by the effect above AFTER the open commits. Both buttons are plain Buttons, not
+     KebabMenu items, so both arms pass `from: event.currentTarget` (plan 04 contract (1): Safari
+     does not focus a clicked button, and without the seed the hook watches the page body and
+     disarms).
+     REJECTED: (a) arming in PromptScheduleManager's delete handler — the removal is THIS
+     component's state, and the host never sees Cancel; (b) capturing the opener at click time —
+     on the kebab path the clicked element is the menu item that unmounts, and KebabMenu moves
+     focus to its trigger only after the item's handler returns (`KebabMenu.js`, anchors
+     `item.onClick();` then `restoreFocusToTrigger();` on the single-tap path); (c) a ref to the
+     desktop Delete button — on a phone it sits in a container hidden below md and cannot take
+     focus; (d) a trigger ref or fallback prop on KebabMenu (D-04, and KebabMenu's own restore
+     marker); (e) a tab-index attribute written in this markup, or a minted heading (D-05) — the
+     hook adds one to a target that has none, and how long it stays is plan 04's
+     tabindex-lifetime rule (`88.6.1-04-PLAN.md:185`, anchor `**tabindex-lifetime rule.** This is
+     its one statement`), not restated here.
+     The opener ref is deliberately NOT cleared when the confirm closes (#33): a click's SyncLane
+     commit flushes passive effects at the end of the commit (react-dom 18.2.0,
+     `react-dom.development.js:26934`, anchor `includesSomeLane(pendingPassiveEffectsLanes,
+     SyncLane)`) BEFORE plan 04's observer microtask calls `preferred()`, so clearing it there
+     would send Cancel to the heading. A stale opener is safe: plan 04's `focusElement` refuses a
+     disconnected element.
+     Removing either arm is a decision, not a cleanup. */
+  const handleConfirmDelete = (scheduleId, event) => {
+    const settle = recovery.arm({ from: event.currentTarget });
+    const result = onDelete?.(scheduleId);
     setDeleteConfirm(null);
+    Promise.resolve(result).then(settle, settle);
   };
 
-  const handleCancelDelete = () => {
+  const handleCancelDelete = (event) => {
+    const settle = recovery.arm({ preferred: () => confirmOpenerRef.current, from: event.currentTarget });
     setDeleteConfirm(null);
+    settle();
   };
 
-  // Empty state (Req 6 / UI-SPEC 9.2). This branch is "nothing here yet" ONLY —
-  // a failed settings fetch renders the shared error treatment in the parent
-  // (PromptScheduleManager) and never reaches this component.
+  // Empty state (Req 6 / UI-SPEC 9.2). This branch is "nothing here yet" ONLY: a successful
+  // settings fetch said empty. A failed FIRST load, and an access or gone answer, render the
+  // parent's full error banner and never reach this component. A failed REFRESH over a list
+  // that loaded earlier (an empty one included, owner ruling Y) DOES reach it, under the
+  // parent's copy row RF1 notice: `DECISION Phase 88.6.1-30 (AC-29 / RF1)` in
+  // PromptScheduleManager.js. (Corrected by 88.6.1-30; it used to say a failed fetch never
+  // reaches this component.)
   if (!schedules || schedules.length === 0) {
     return (
       <EmptyState
@@ -146,13 +229,17 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   Edit
                 </Button>
 
-                {/* Pause/Resume toggle */}
+                {/* Pause/Resume toggle. 88.6.1 code review A-47: the in-flight state is SHOWN as
+                    well as exposed — `aria-disabled:opacity-50`, the house raw-button wash
+                    (ResponseDashboard's Remind, KebabMenu items), so a sighted user sees why a
+                    second press does nothing. */}
                 <button
                   onClick={() => onToggle?.(schedule.id)}
-                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors ${
+                  aria-disabled={togglingIds?.[schedule.id] ? 'true' : undefined}
+                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors aria-disabled:opacity-50 ${
                     isActive
-                      ? 'bg-status-warning-subtle text-content-status-warning hover:bg-status-warning-subtle-hover'
-                      : 'bg-status-success-subtle text-content-status-success hover:bg-status-success-subtle-hover'
+                      ? 'bg-status-warning-subtle text-content-status-warning enabled-hover:bg-status-warning-subtle-hover'
+                      : 'bg-status-success-subtle text-content-status-success enabled-hover:bg-status-success-subtle-hover'
                   }`}
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
@@ -186,6 +273,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                     {
                       label: isActive ? 'Pause' : 'Resume',
                       onClick: () => onToggle?.(schedule.id),
+                      ariaDisabled: !!togglingIds?.[schedule.id],
                     },
                     {
                       label: 'Delete',
@@ -203,18 +291,20 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                 {/* §4.5 emphasis outcome: 400 + a colour token. `font-medium` (500) is deleted
                     rather than promoted to 700 — this is body prose inside an already-tinted
                     error box, not hierarchy, and it already carries its colour token. */}
-                <p className="text-content-status-error mb-3">
+                <p id={confirmPromptId} className="text-content-status-error mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>
                 <div className="flex gap-2">
                   <Button
                     variant="danger"
                     size="default"
-                    onClick={() => handleConfirmDelete(schedule.id)}
+                    onClick={(event) => handleConfirmDelete(schedule.id, event)}
                   >
                     Confirm Delete
                   </Button>
                   <Button
+                    ref={confirmCancelRef}
+                    aria-describedby={confirmPromptId}
                     variant="secondary"
                     size="default"
                     onClick={handleCancelDelete}

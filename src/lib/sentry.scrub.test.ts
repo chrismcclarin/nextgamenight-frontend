@@ -2,6 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { describe, it, expect } from 'vitest';
+// DECISION Phase 88.6.1-76 (P-09 SDK pin): CHOSEN, import the INSTALLED SDK's own selector
+// serializer and run real jsdom elements through it, OVER hand-copying its output, because a
+// hand copy cannot notice an SDK upgrade that escapes values or adds an attribute. REJECTED:
+// declaring @sentry/core in package.json. It must stay the exact copy @sentry/nextjs pins
+// (8.55.2, one hoisted copy), and a separate range could install a second copy the app never
+// runs. Replacing this import with a hand-written selector is a decision, not a cleanup.
+import { htmlTreeAsString } from '@sentry/core';
 // The scrub module lives at the repo root (imported by the three sentry.*.config.js
 // runtime files). This test lives under src/ (A3) so the vitest `include` collects
 // it; it reaches the root module via a relative path.
@@ -14,6 +21,8 @@ import {
   scrubTransaction,
   TOKEN_PATH_PATTERNS_FE_ROUTES,
   TOKEN_PATH_PATTERNS_API_PATHS,
+  TOKEN_PATH_PATTERNS_ENCODED,
+  stripUrlFragments,
 } from '../../sentry.scrub.js';
 // The cross-module import lives HERE, never inside `sentry.scrub.js` — that module's
 // docblock promises pure functions safe to unit-test in isolation, and it must not import
@@ -58,6 +67,11 @@ const HEX64 = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90'
 const TRACE_ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
 
 const R = '[REDACTED]';
+
+// Phase 88.6.1-08 (P-10, case D1): the ONE family list, declared inside the AC-1 describe below,
+// is pushed here at collection time so the P-10 describe can loop over the SAME nine
+// [prefix, token] pairs without a second copy that could drift (D1 asserts the length).
+const SHARED_FAMILIES: Array<[string, string]> = [];
 
 describe('scrubString / scrubUrl — the shipped value rules', () => {
   it('scrubString redacts emails and JWT-looking tokens', () => {
@@ -134,6 +148,83 @@ describe('scrubString — Auth0 subs (88.6-59, review MEDLOW-11)', () => {
   });
 });
 
+// Phase 88.6.1-08 (W007, AC-34 clause 1; DF-7 probe inputs). Before this plan the SECRET_KV key
+// group was a bare word list behind a `\b`, so `access_token=` / `id_token=` / `refresh_token=`
+// (the `_` is a word character, so no boundary sits before `token`), camelCase keys and quoted
+// pairs all came back unchanged. `toBe` everywhere: every output here is fully determined.
+describe('W007 — OAuth-shaped key=value pairs and the logger breadcrumb (88.6.1-08, AC-34, Prohibition 5)', () => {
+  it('W007: access_token / id_token / refresh_token / client_secret / x-auth-token values are redacted, camelCase and quoted pairs included (DF-7 probe inputs)', () => {
+    expect(scrubString('callback?access_token=abc123&x=1')).toBe(`callback?${R}&x=1`);
+    expect(scrubString('id_token=eyJabc refresh_token=r3fr35h')).toBe(`${R} ${R}`);
+    expect(scrubString('client_secret=s3cr3tval&x=1')).toBe(`${R}&x=1`);
+    expect(scrubString('x-auth-token: abcdef')).toBe(R);
+    // camelCase keys (review r2 #103): letters run straight into the keyword.
+    expect(scrubString('accessToken=abc')).toBe(R);
+    expect(scrubString('idToken: abc')).toBe(R);
+    // Quoted pairs (review r2 #102). The whole pair goes, and the quote whose partner sat
+    // outside the match is re-emitted, so the quotes stay balanced: a JSON pair reads as one
+    // quoted string, and a quoted value keeps its pair of quotes.
+    expect(scrubString('{"refresh_token":"v1.x"}')).toBe(`{"${R}"}`);
+    expect(scrubString('refresh_token: "v1.x"')).toBe(`"${R}"`);
+    // 88.6.1-76 (carry-in from 88.6.1-08's deferred item): the same pairs serialised a SECOND
+    // time, so every quote carries a backslash. Before: the first came back
+    // [REDACTED]"v1x\" (the value survived) and the JSON one came back unchanged. Same shape
+    // as the unescaped pair, escapes kept: the backslash belongs to its quote.
+    expect(scrubString('refresh_token: \\"v1x\\"')).toBe(`\\"${R}\\"`);
+    expect(scrubString('{\\"refresh_token\\":\\"v1x\\"}')).toBe(`{\\"${R}\\"}`);
+    // A backslash that escapes no quote is part of the value, and still goes with it.
+    expect(scrubString('password=ab\\cd&x=1')).toBe(`${R}&x=1`);
+    // Owner ruling #10 (2026-10-13, `88.6.1-PLAN-REVIEW-work/RULINGS.md`), the cost line of the
+    // W007 marker in `sentry.scrub.js`: the ONE word after a `<word>-token:` prose colon is
+    // eaten, by design (fail-safe). Before this plan only the bare `token` after the hyphen
+    // matched, leaving `refresh-` in front of the placeholder.
+    expect(scrubString('Invalid refresh-token: expired session')).toBe(`Invalid ${R} session`);
+  });
+
+  it('W007 NEGATIVE: a token-ish word that is not a key=value secret is untouched', () => {
+    // The `\b` after the key keeps these out; `passwordless` and `mytokens` are what an
+    // unanchored keyword match (the camelCase clause done wrong) would catch.
+    for (const s of [
+      'token_count=5',
+      'tokens=5',
+      'password_reset=true',
+      'passwordless=1',
+      'mytokens=3',
+      'trace_id=4bf92f3577b34da6a3ce929d0e0e4736',
+      ALPHA,
+    ]) {
+      expect(scrubString(s), s).toBe(s);
+    }
+  });
+
+  it('Prohibition 5: the exact object logger.info(msg, errCtx(err)) hands to addBreadcrumb comes back redacted from scrubEvent', () => {
+    // The crumb is built LITERALLY (no logger import here, which keeps `@sentry/nextjs` out of
+    // this suite). Its shape is `logger.info` at `src/lib/logger.ts:53`
+    // (`Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx })`) with `ctx` from
+    // `errCtx` at `src/lib/logger.ts:89-98` (name and message only). The WIRING proof, the real
+    // logger through the `beforeSend` that `sentry.client.config.js` hands to `Sentry.init`, is
+    // the 88.6.1-08 tracer in `src/lib/sentryClientReplayGate.test.ts`.
+    const crumb = {
+      message: 'Failed to refresh the session',
+      level: 'info',
+      data: {
+        name: 'Error',
+        message: 'refresh failed: id_token=eyJabc refresh_token=r3fr35h for alice@example.com',
+      },
+    };
+    const out = scrubEvent({ breadcrumbs: [crumb] }) as {
+      breadcrumbs: Array<{ message: string; data: { name: string; message: string } }>;
+    };
+    const serialised = JSON.stringify(out);
+    expect(serialised).not.toContain('eyJabc');
+    expect(serialised).not.toContain('r3fr35h');
+    expect(serialised).not.toContain('alice@example.com');
+    expect(out.breadcrumbs[0].message).toBe('Failed to refresh the session');
+    expect(out.breadcrumbs[0].data.name).toBe('Error');
+    expect(out.breadcrumbs[0].data.message).toBe(`refresh failed: ${R} ${R} for ${R}`);
+  });
+});
+
 describe('AC-1 — every LIVE token-in-path family is redacted, by its own pattern', () => {
   // The NINE live families, each against its real route prefix. The payload is the
   // mutation-guard ALPHA everywhere EXCEPT where a real token shape is the point, so a
@@ -157,6 +248,8 @@ describe('AC-1 — every LIVE token-in-path family is redacted, by its own patte
     ['events/invite-preview/', ALPHA],
     ['invites/info/', ALPHA],
   ];
+  // Phase 88.6.1-08: shared with the P-10 describe (see SHARED_FAMILIES at the top).
+  SHARED_FAMILIES.push(...FAMILIES);
 
   it('redacts exactly the token segment and keeps the route identity (absolute URL)', () => {
     for (const [prefix, token] of FAMILIES) {
@@ -210,13 +303,61 @@ describe('AC-1 — the `rsvp` greedy family is held narrow from BOTH sides', () 
   });
 
   it('NEGATIVE: the tokenless `/rsvp/` siblings come through with route identity intact', () => {
-    // `api.ts:722` — an authenticated event lookup by UUID.
+    // `api.ts:1087` (`/rsvp/event/${event_id}`) — an authenticated event lookup by UUID.
     expect(scrubString('/rsvp/event/f47ac10b-58cc-4372-a567-0e02b2c3d479')).toBe(
       '/rsvp/event/f47ac10b-58cc-4372-a567-0e02b2c3d479'
     );
-    // `api.ts:734` — the public respond endpoint. Its QUERY carries the token and `scrubUrl`
+    // `api.ts:1109` (`/rsvp/respond?token=`) — the public respond endpoint. Its QUERY carries the token and `scrubUrl`
     // strips the whole query string, but the PATH must survive readable.
     expect(scrubUrl('https://x/rsvp/respond?token=abc&e=1')).toBe(`https://x/rsvp/respond?${R}`);
+  });
+
+  // Phase 88.6.1-08 (W012, AC-34 clause 2; SPEC Edge Coverage R13 'nested paths'). Before this
+  // plan the sibling lookahead ended only at `/`, `?`, `#` or the end, so prose after a
+  // sibling word was eaten, and any `rsvp/` segment anywhere in a path was read as the token
+  // route although the FE route `src/app/rsvp/[token]` is a ROOT route.
+  it('W012: an rsvp sibling word followed by prose is not a token (88.6.1-08)', () => {
+    expect(scrubString('rsvp/event is broken')).toBe('rsvp/event is broken');
+    expect(scrubString('rsvp/respond timed out')).toBe('rsvp/respond timed out');
+  });
+
+  it('W012: a NESTED rsvp/ segment is not the token route (88.6.1-08)', () => {
+    expect(scrubString('GET /api/events/5/rsvp/summary failed')).toBe(
+      'GET /api/events/5/rsvp/summary failed'
+    );
+    expect(scrubString('/_next/static/chunks/app/rsvp/[token]/page-abc123.js')).toBe(
+      '/_next/static/chunks/app/rsvp/[token]/page-abc123.js'
+    );
+  });
+
+  it('W012: the fix narrows nothing it must catch — every first-segment shape still redacts (88.6.1-08)', () => {
+    // CONFIRM-ONLY: green before and after. The regression arm for the nested-path exclusion.
+    const t = RSVP_TOKEN;
+    for (const [input, expected] of [
+      [`https://www.nextgamenight.app/rsvp/${t}`, `https://www.nextgamenight.app/rsvp/${R}`],
+      [`www.nextgamenight.app/rsvp/${t}`, `www.nextgamenight.app/rsvp/${R}`],
+      [`http://localhost:3000/rsvp/${t}`, `http://localhost:3000/rsvp/${R}`],
+      [`/rsvp/${t}`, `/rsvp/${R}`],
+      [`rsvp/${t}`, `rsvp/${R}`],
+      [`returnTo=/rsvp/${t}`, `returnTo=/rsvp/${R}`],
+      [`/api/auth/login?returnTo=/rsvp/${t}`, `/api/auth/login?returnTo=/rsvp/${R}`],
+      [`failed at /rsvp/${t}`, `failed at /rsvp/${R}`],
+      [`/rsvp/${t} failed`, `/rsvp/${R} failed`],
+      // AC-34's literal case: the segment after the token is kept.
+      [`/rsvp/${t}/next`, `/rsvp/${R}/next`],
+      // Plan review r1 D14 (2026-10-06): six parent-segment shapes. A lookbehind segment built
+      // from the end-set leaked the whole token for the first five (a query value or a `=`,
+      // `|`, `:` or non-ASCII letter posed as a parent segment); an allowlist widened with
+      // brackets leaked the sixth; one widened with `:` leaked the fourth.
+      [`?from=/groups/x&to=/rsvp/${t}`, `?from=/groups/x&to=/rsvp/${R}`],
+      [`nav /a/b=/rsvp/${t}`, `nav /a/b=/rsvp/${R}`],
+      [`/a/b|/rsvp/${t}`, `/a/b|/rsvp/${R}`],
+      [`https://x.app/a/b:/rsvp/${t}`, `https://x.app/a/b:/rsvp/${R}`],
+      [`/a/bé/rsvp/${t}`, `/a/bé/rsvp/${R}`],
+      [`/a/[b]/rsvp/${t}`, `/a/[b]/rsvp/${R}`],
+    ]) {
+      expect(scrubString(input), input).toBe(expected);
+    }
   });
 });
 
@@ -269,6 +410,142 @@ describe('AC-1 — the long-hex backstop lives in scrubUrl ONLY', () => {
     expect(out.contexts.trace.trace_id).toBe(TRACE_ID);
     // …and the bare value is untouched by the string scrubber directly, too.
     expect(scrubString(TRACE_ID)).toBe(TRACE_ID);
+  });
+});
+
+// Phase 88.6.1-08 (W007 fragments, AC-34 clause 1; threat T-88.6.1-162). Before this plan no
+// layer touched a URL fragment, so an OAuth implicit-flow `#access_token=…` or any opaque
+// fragment token left whole. The `access_token=` inputs below are ALSO caught by Task 1's
+// prefixed SECRET_KV in `scrubString`; the OPAQUE-fragment inputs (`#abc123`, `#tok`) are the
+// ones only the fragment rule can redact, so they are what make each shape discriminating.
+describe('W007 — scrubUrl strips URL fragments (88.6.1-08)', () => {
+  it('W007: scrubUrl strips a URL fragment to #[REDACTED] (DF-7 probe; absolute, relative, fetch span, quoted, scheme-less; replay-leaf long input — the fragment rule, the EMAIL start, end to end)', () => {
+    // Absolute.
+    expect(scrubUrl('https://www.nextgamenight.app/cb#access_token=abc123')).toBe(
+      `https://www.nextgamenight.app/cb#${R}`
+    );
+    expect(scrubUrl('https://www.nextgamenight.app/cb#abc123')).toBe(`https://www.nextgamenight.app/cb#${R}`);
+    // Relative.
+    expect(scrubUrl('/cb#access_token=abc123')).toBe(`/cb#${R}`);
+    expect(scrubUrl('/cb#abc123')).toBe(`/cb#${R}`);
+    // A fetch span description (`scrubSpanJson` sends it through `scrubUrl`).
+    expect(
+      scrubSpanJson({ description: 'GET https://api.x.app/cb#access_token=abc123', data: {} }).description
+    ).toBe(`GET https://api.x.app/cb#${R}`);
+    expect(scrubSpanJson({ description: 'GET https://api.x.app/cb#abc123', data: {} }).description).toBe(
+      `GET https://api.x.app/cb#${R}`
+    );
+    // A double-quoted URL keeps its closing quote: the fragment ends at the quote.
+    expect(scrubUrl('see "https://x/cb#access_token=abc123" here')).toBe(`see "https://x/cb#${R}" here`);
+    expect(scrubUrl('see "https://x/cb#abc123" here')).toBe(`see "https://x/cb#${R}" here`);
+    // CONFIRM-ONLY: the query strip runs first, so a `?…#…` URL keeps today's shape.
+    expect(scrubUrl('https://www.nextgamenight.app/cb?x=1#frag')).toBe(`https://www.nextgamenight.app/cb?${R}`);
+    // Scheme-less host, and a path after `,` or `:` (review r2 #104).
+    expect(scrubUrl('www.nextgamenight.app/cb#access_token=abc123')).toBe(`www.nextgamenight.app/cb#${R}`);
+    expect(scrubUrl('x,/cb#tok')).toBe(`x,/cb#${R}`);
+    expect(scrubUrl('to:/cb#abc')).toBe(`to:/cb#${R}`);
+
+    // Long input (review r2 #135; scoped check H-10 / M-39). The input MUST hold a `#`: without
+    // one the `#` guard in `scrubUrl` short-circuits the fragment pass and this pin would go
+    // green against a quadratic regex. The 500 ms ceiling sits several times below every
+    // measured RED and several times above the slowest measured GREEN.
+    const L = `invite ${'a'.repeat(50000)}#`;
+    // (i) the fragment RULE alone, timed on the exported step: `scrubUrl` ends in
+    // `scrubString`, so timing it would also pay for EMAIL.
+    let t0 = performance.now();
+    expect(stripUrlFragments(L)).toBe(L);
+    expect(performance.now() - t0, '(i) stripUrlFragments on a long letter run').toBeLessThan(500);
+    // (i-b) 88.6.1 code review A-05 / A-06 / A-11: START-DENSE runs. Every separator begins a
+    // valid start, and under the old single global replace each start with no `#` after it in its
+    // run rescanned the run to its end: 1.1 to 2.8 s each, measured 2026-10-19 through scrubUrl.
+    // Now 2 to 8 ms. The 300 ms ceiling sits far below every RED and far above every GREEN.
+    const DENSE: Array<[string, string]> = [
+      ['a.b/ run, # after it', `${'a.b/'.repeat(10000)} #x`],
+      ['=/ run, # after it', `${'=/'.repeat(20000)} #x`],
+      ['a:// run, # after it', `${'a://'.repeat(10000)} #x`],
+      ['# before an a.b/ run', `#https://${'a.b/'.repeat(20000)}`],
+      ['# before a ,/x run', `#${',/x'.repeat(20000)}`],
+      ['# before an x:/ run', `#${'x:/'.repeat(20000)}`],
+    ];
+    for (const [label, input] of DENSE) {
+      t0 = performance.now();
+      scrubUrl(input);
+      expect(performance.now() - t0, `(i-b) scrubUrl on a start-dense run: ${label}`).toBeLessThan(300);
+    }
+    // The dense shapes still redact what they must: a fragment inside a start-dense run.
+    expect(scrubUrl(`${'a.b/'.repeat(3)}cb#tok`)).toBe(`${'a.b/'.repeat(3)}cb#${R}`);
+    expect(scrubUrl(`see /a#b/c#d x/y#z`)).toBe(`see /a#${R} x/y#z`);
+    // (ii) the EMAIL start: a long run of local-part characters with no address in it.
+    const A = 'a'.repeat(50000);
+    t0 = performance.now();
+    expect(scrubString(A)).toBe(A);
+    expect(performance.now() - t0, '(ii) scrubString on a long letter run').toBeLessThan(500);
+    // A second address glued onto the end of a first by a local-part character is still
+    // redacted (a run-start lookbehind on EMAIL would leak it as `[REDACTED]_c@d.com`).
+    expect(scrubString('a@b.com_c@d.com')).toBe(`${R}${R}`);
+    // (iii) end to end: the reachable replay path (`isUrlLike` routes any string naming
+    // `invite` to `scrubUrl`).
+    t0 = performance.now();
+    expect(scrubUrl(L)).toBe(L);
+    expect(performance.now() - t0, '(iii) scrubUrl end to end on a long letter run').toBeLessThan(500);
+  });
+
+  it('W007 NEGATIVE: a # that is not part of a URL is untouched (INP selector, click selector)', () => {
+    // CONFIRM-ONLY: green before and after. An INP span description is an HTML selector, and
+    // `isUrlLike` routes a replay click selector naming `invite` to `scrubUrl`.
+    expect(scrubSpanJson({ description: 'body > div#__next > main > button.btn', data: {} }).description).toBe(
+      'body > div#__next > main > button.btn'
+    );
+    const click = {
+      type: 5,
+      data: { tag: 'breadcrumb', payload: { category: 'ui.click', message: 'div#invite-panel > button.btn' } },
+    };
+    const out = scrubRecordingEvent(click) as typeof click;
+    expect(out.data.payload.message).toBe('div#invite-panel > button.btn');
+  });
+});
+
+// Phase 88.6.1-08 (P-10, plan 58 ledger row; threats T-88.6.1-172 / -174). Before this plan
+// every family's token class ended only at `/`, `?`, `#` or whitespace, so the quote, bracket
+// or comma closing a quoted or bracketed path was swallowed into `[REDACTED]`, and the
+// long-hex backstop's lookahead accepted only the end, `/`, `?` or `#`, so a hex token
+// followed by a quote, a bracket or a space survived WHOLE.
+describe('P-10 — a token segment ends at quotes, brackets and separators (88.6.1-08)', () => {
+  it('P-10: every family keeps the punctuation after its token; JSON-shaped paths and quoted siblings survive', () => {
+    // Anti-vacuity: the shared list is the AC-1 describe's nine families.
+    expect(SHARED_FAMILIES).toHaveLength(9);
+    const CLOSERS = ['"', "'", '\x60', ')', ']', '}', '>', ',', ';'];
+    for (const [prefix, token] of SHARED_FAMILIES) {
+      for (const ch of CLOSERS) {
+        expect(scrubString(`x /${prefix}${token}${ch} y`), `family ${prefix} closer ${ch}`).toBe(
+          `x /${prefix}${R}${ch} y`
+        );
+      }
+    }
+    // JSON-shaped strings keep their structure and still redact. The list is the shape the
+    // FIRST-planned rsvp lookbehind leaked whole.
+    expect(scrubString(`["/a/b","/rsvp/${RSVP_TOKEN}"]`)).toBe(`["/a/b","/rsvp/${R}"]`);
+    expect(scrubString(`{"from":"/a/b","to":"/invite/group/${HEX64}"}`)).toBe(
+      `{"from":"/a/b","to":"/invite/group/${R}"}`
+    );
+    expect(scrubString(`("/rsvp/${RSVP_TOKEN}")`)).toBe(`("/rsvp/${R}")`);
+    // Quoted tokenless siblings stay byte-identical.
+    expect(scrubString('"/rsvp/event"')).toBe('"/rsvp/event"');
+    expect(scrubString("see '/rsvp/respond', then")).toBe("see '/rsvp/respond', then");
+  });
+
+  it('P-10: the long-hex backstop ends at whitespace and closing punctuation; a .js chunk is untouched', () => {
+    expect(scrubUrl(`see "https://x/unknown-future-route/${HEX64}"`)).toBe(
+      `see "https://x/unknown-future-route/${R}"`
+    );
+    expect(scrubUrl(`https://x/unknown-future-route/${HEX64})`)).toBe(`https://x/unknown-future-route/${R})`);
+    expect(scrubUrl(`https://x/unknown-future-route/${HEX64} failed`)).toBe(
+      `https://x/unknown-future-route/${R} failed`
+    );
+    // CONFIRM-ONLY: the full stop is not in the set, so a 32-hex chunk name is untouched.
+    expect(scrubUrl(`https://x/_next/static/chunks/${TRACE_ID}.js`)).toBe(
+      `https://x/_next/static/chunks/${TRACE_ID}.js`
+    );
   });
 });
 
@@ -497,6 +774,302 @@ describe('scrubRecordingEvent (replay pipeline)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Phase 88.6.1-76 (P-09; threats T-88.6.1-1524 / T-88.6.1-1525). Sentry writes every DOM
+// selector with `htmlTreeAsString` from @sentry/core, which appends the aria-label, type, name,
+// title and alt attributes with their RAW, unescaped values. In this app those values carry
+// group and member names, so every click breadcrumb, replay click, INP span and LCP attribute
+// carried them. The rule (redactNamedAttributes in `sentry.scrub.js`, see its P-09 marker):
+// from the FIRST aria-label, title or alt opener, nothing survives except an allowlisted static
+// label prefix (the app's own text). It never has to find where a name ENDS, which is the one
+// thing a crafted name can fake.
+// ---------------------------------------------------------------------------
+describe('P-09 — names in Sentry element selectors leave only as [REDACTED] (88.6.1-76)', () => {
+  it('P-09: a selector keeps the clicked control and its static label prefix; from the first name-bearing value on, nothing survives (realistic names)', () => {
+    const BATTERY: Array<[string, string]> = [
+      // 1. A group name with quotes, square brackets and an apostrophe (D-19's gear label).
+      [
+        'div.flex.items-center > button.rounded-full.p-2[aria-label="Customize Bob\'s "Fun" [Board] Games"][type="button"]',
+        'div.flex.items-center > button.rounded-full.p-2[aria-label="Customize [REDACTED]"]',
+      ],
+      // 2. Unicode and an emoji, in an alt with no static prefix.
+      [
+        'div.flex.-space-x-2 > img.h-8.w-8.rounded-full[alt="Zoë Ångström 🎲"]',
+        'div.flex.-space-x-2 > img.h-8.w-8.rounded-full[alt="[REDACTED]"]',
+      ],
+      // 3. An email used as a member's display name (ManageMembers, "Role for <username or
+      // email>"). Before this plan the email rule caught only the address, and the name
+      // attribute after it survived.
+      [
+        'td.px-2 > select#member-role-3.rounded[aria-label="Role for alice@example.com"][name="role"]',
+        'td.px-2 > select#member-role-3.rounded[aria-label="Role for [REDACTED]"]',
+      ],
+      // 4. A name-bearing ANCESTOR. This is the price of completeness: everything after the
+      // first name-bearing opener could be a crafted fake, so the button inside is dropped too.
+      [
+        'div.tile[title="Meeple"] > button.icon[aria-label="Accept friend request from Ana"][type="button"] > img[alt="Ana"]',
+        'div.tile[title="[REDACTED]"]',
+      ],
+      // 5. A closing quote-bracket inside a name.
+      [
+        'button.link[aria-label="Add Tom "the Rook"] Smith as a friend"][type="button"]',
+        'button.link[aria-label="Add [REDACTED]"]',
+      ],
+      // 6. An element separator inside a name.
+      [
+        'button[aria-label="Accept invite to A > B"][type="button"]',
+        'button[aria-label="Accept invite to [REDACTED]"]',
+      ],
+      // 7. Truncated (the SDK cuts at its string budget).
+      ['button[aria-label="Customize Bo', 'button[aria-label="Customize [REDACTED]"]'],
+      // 8. Embedded in an exception sentence: the rest of the sentence is dropped too.
+      [
+        'Failed to execute \'querySelector\': \'button[title="Bob"]\' is not a valid selector.',
+        'Failed to execute \'querySelector\': \'button[title="[REDACTED]"]',
+      ],
+    ];
+    for (const [input, output] of BATTERY) {
+      expect(scrubString(input), `scrubString: ${input}`).toBe(output);
+      expect(scrubUrl(input), `scrubUrl: ${input}`).toBe(output);
+      // Idempotent: the scrubUrl-then-scrubString double pass changes nothing.
+      expect(scrubString(scrubString(input)), `twice: ${input}`).toBe(output);
+    }
+  });
+
+  it('P-09 NEGATIVE: selectors and text with no name-bearing attribute are byte-identical', () => {
+    // CONFIRM-ONLY: green before and after. aria-labelledby and data-title are not aria-label
+    // or title, and a key="value" pair outside square brackets is not a selector attribute.
+    for (const s of [
+      'body > div#__next > main > button.btn[type="submit"][name="save"]',
+      'div[aria-labelledby="hdr-1"] > button[data-title="x"]',
+      'token_count="5"',
+      ALPHA,
+    ]) {
+      expect(scrubString(s)).toBe(s);
+    }
+  });
+
+  it('P-09 SDK SHAPE: the installed @sentry/core htmlTreeAsString output, realistic and CRAFTED names, keeps no name text', () => {
+    // A DETACHED jsdom tree, never appended to document.body, so the SDK's walk stops at
+    // div.card and the pinned string is deterministic. 200 is replay's maxStringLength; the
+    // raw pins red the day an SDK upgrade escapes values or adds an attribute.
+    const card = document.createElement('div');
+    card.className = 'card';
+    const gear = document.createElement('button');
+    gear.id = 'gear-1';
+    gear.className = 'btn ghost';
+    gear.setAttribute('aria-label', 'Customize Bob\'s "Fun" [Board] Games');
+    gear.setAttribute('type', 'button');
+    gear.setAttribute('name', 'gear');
+    gear.setAttribute('title', 'Settings for Zoë');
+    gear.setAttribute('data-testid', 'group-gear');
+    gear.setAttribute('role', 'button');
+    const avatar = document.createElement('img');
+    avatar.setAttribute('alt', 'ana@example.com');
+    gear.appendChild(avatar);
+    card.appendChild(gear);
+    const raw = htmlTreeAsString(avatar, { maxStringLength: 200 });
+    expect(raw).toBe(
+      'div.card > button#gear-1.btn.ghost[aria-label="Customize Bob\'s "Fun" [Board] Games"][type="button"][name="gear"][title="Settings for Zoë"] > img[alt="ana@example.com"]'
+    );
+    expect(scrubString(raw)).toBe('div.card > button#gear-1.btn.ghost[aria-label="Customize [REDACTED]"]');
+
+    // CRAFTED names (planner probe 2026-10-05): each closes its own value, opens a fake
+    // element whose CLASS carries free text, and reopens a name-bearing attribute. The first
+    // P-09 design, which looked for where a value ends, let alice-smith through on all three.
+    function craftedLeaf(tag: string, cls: string, attrs: Array<[string, string]>): Element {
+      const holder = document.createElement('div');
+      holder.className = 'card';
+      const el = document.createElement(tag);
+      el.className = cls;
+      for (const [k, v] of attrs) el.setAttribute(k, v);
+      holder.appendChild(el);
+      return el;
+    }
+    const CRAFTED: Array<[Element, string, string]> = [
+      [
+        craftedLeaf('button', 'btn', [
+          ['aria-label', 'Customize x"] > button.alice-smith[aria-label="y'],
+          ['type', 'button'],
+        ]),
+        'div.card > button.btn[aria-label="Customize x"] > button.alice-smith[aria-label="y"][type="button"]',
+        'div.card > button.btn[aria-label="Customize [REDACTED]"]',
+      ],
+      [
+        craftedLeaf('button', 'btn', [
+          ['aria-label', 'Add x"] > button.alice-smith[aria-label=" as a friend'],
+          ['type', 'button'],
+        ]),
+        'div.card > button.btn[aria-label="Add x"] > button.alice-smith[aria-label=" as a friend"][type="button"]',
+        'div.card > button.btn[aria-label="Add [REDACTED]"]',
+      ],
+      [
+        craftedLeaf('img', 'avatar', [['alt', 'x"] > img.alice-smith[alt="y']]),
+        'div.card > img.avatar[alt="x"] > img.alice-smith[alt="y"]',
+        'div.card > img.avatar[alt="[REDACTED]"]',
+      ],
+    ];
+    for (const [leaf, rawExpected, scrubbedExpected] of CRAFTED) {
+      const craftedRaw = htmlTreeAsString(leaf, { maxStringLength: 200 });
+      expect(craftedRaw).toBe(rawExpected);
+      const scrubbed = scrubString(craftedRaw);
+      expect(scrubbed).toBe(scrubbedExpected);
+      expect(scrubbed).not.toContain('alice');
+    }
+  });
+
+  it('P-09: the name leaves no channel — error breadcrumb, replay message and attribute map, INP span, LCP attribute, Event target', () => {
+    const GEAR =
+      'div.flex.items-center > button.rounded-full.p-2[aria-label="Customize Bob\'s "Fun" [Board] Games"][type="button"]';
+    const GEAR_OUT = 'div.flex.items-center > button.rounded-full.p-2[aria-label="Customize [REDACTED]"]';
+    const CRAFTED_RAW =
+      'div.card > button.btn[aria-label="Customize x"] > button.alice-smith[aria-label="y"][type="button"]';
+    const CRAFTED_OUT = 'div.card > button.btn[aria-label="Customize [REDACTED]"]';
+
+    // (1) Error event: a ui.click breadcrumb, through scrubEvent.
+    const errorEvent = { breadcrumbs: [{ category: 'ui.click', message: GEAR }] };
+    expect((scrubEvent(errorEvent) as typeof errorEvent).breadcrumbs[0].message).toBe(GEAR_OUT);
+
+    // (2) Replay: its own click breadcrumb is a Custom event carrying the message AND an
+    // attribute map read from the rrweb mirror. The raw map values stand in for snapshot
+    // masking turned off; the replay walker's key rule is the second control.
+    const replayMessage = 'li.notification > button.btn[aria-label="Accept invite to Who\'s in? #3"][type="button"]';
+    const replay = {
+      type: 5,
+      timestamp: 1,
+      data: {
+        tag: 'breadcrumb',
+        payload: {
+          category: 'ui.click',
+          message: replayMessage,
+          data: {
+            nodeId: 42,
+            node: {
+              id: 42,
+              tagName: 'button',
+              textContent: '******',
+              attributes: {
+                id: 'acc-1',
+                class: 'btn',
+                'aria-label': 'Accept invite to Who\'s in? #3',
+                title: 'Bob',
+                alt: 'Bob',
+                type: 'button',
+                testId: 'notif-accept',
+                role: 'button',
+              },
+            },
+          },
+        },
+      },
+    };
+    const replayOut = scrubRecordingEvent(replay) as typeof replay;
+    expect(replayOut.data.payload.message).toBe(
+      'li.notification > button.btn[aria-label="Accept invite to [REDACTED]"]'
+    );
+    const node = replayOut.data.payload.data.node;
+    expect(node.attributes['aria-label']).toBe(R);
+    expect(node.attributes.title).toBe(R);
+    expect(node.attributes.alt).toBe(R);
+    expect(node.attributes.id).toBe('acc-1');
+    expect(node.attributes.class).toBe('btn');
+    expect(node.attributes.type).toBe('button');
+    expect(node.attributes.testId).toBe('notif-accept');
+    expect(node.attributes.role).toBe('button');
+    expect(node.tagName).toBe('button');
+    expect(node.textContent).toBe('******');
+
+    // (3) An INP span: its NAME is the selector.
+    const span = {
+      description: 'body > div#__next > main > button.btn[aria-label="Select Zoë"][type="button"]',
+      op: 'ui.interaction.click',
+      data: {},
+    };
+    expect((scrubSpanJson(span) as typeof span).description).toBe(
+      'body > div#__next > main > button.btn[aria-label="Select [REDACTED]"]'
+    );
+
+    // (4) The LCP element on the pageload root span, which beforeSendSpan never sees: it rides
+    // in contexts.trace.data, through scrubTransaction into scrubEvent.
+    const txn = {
+      type: 'transaction',
+      transaction: '/dashboard',
+      contexts: { trace: { trace_id: TRACE_ID, data: { 'lcp.element': 'div.hero > img.cover[alt="Bob\'s game night"]' } } },
+    };
+    const txnOut = scrubTransaction(txn) as typeof txn;
+    expect(txnOut.contexts.trace.data['lcp.element']).toBe('div.hero > img.cover[alt="[REDACTED]"]');
+    expect(txnOut.contexts.trace.trace_id).toBe(TRACE_ID);
+
+    // (5) A serialized DOM Event under extra (the SDK's __serialized__ shape), crafted name.
+    const withTarget = {
+      extra: { __serialized__: { type: 'click', target: CRAFTED_RAW, currentTarget: '[object Window]' } },
+    };
+    const targetOut = scrubEvent(withTarget) as typeof withTarget;
+    expect(targetOut.extra.__serialized__.target).toBe(CRAFTED_OUT);
+    expect(JSON.stringify(targetOut)).not.toContain('alice');
+  });
+
+  it('P-09 INVARIANT: no id / name / type / className / data-testid expression carries a user-identity field (the closure keeps everything before the first name)', () => {
+    // WHY THIS SCAN EXISTS. redactNamedAttributes keeps everything BEFORE the first
+    // name-bearing opener: the tags, ids, classes and type / name values of the chain. So the
+    // closure is complete only while none of those carries user text. Read one by one at
+    // planning (every DOM name= value is a literal, a useId() derivative or an entity id);
+    // this scan reds the day one does, and the fix then goes at that site, never into an
+    // allowlist here. LIMIT: the matcher is per line, so a multi-line expression is not seen.
+    // The run after the opening brace excludes only the CLOSING brace, so it crosses the
+    // template-literal opener and still sees a field inside one.
+    const IDENTITY_ATTRIBUTE =
+      /\b(?:id|name|type|className|data-testid)=\{[^}]*\b(?:username|displayName|display_name|first_name|last_name|nickname|full_?[nN]ame|(?:group|member|user|friend|participant|player|owner|friendship|game|event|pic|invite|requester|sender)\??\.(?:name|title|username|email))\b/;
+
+    // Self-check: the scan can fail at all, and it does not flag the look-alikes.
+    for (const offender of [
+      '<div id={member.username}>',
+      'name={`x-${user.name}`}',
+      'className={`chip ${group.name}`}',
+      'data-testid={friend?.username}',
+    ]) {
+      expect(IDENTITY_ATTRIBUTE.test(offender), `must match: ${offender}`).toBe(true);
+    }
+    for (const lookAlike of [
+      'name={`member-role-${member.id}`}',
+      'id={emailFieldId}',
+      'className={`a${emailError ? \' b\' : \'\'}`}',
+      'name={glyph}',
+    ]) {
+      expect(IDENTITY_ATTRIBUTE.test(lookAlike), `must not match: ${lookAlike}`).toBe(false);
+    }
+
+    const SRC = path.resolve(__dirname, '..');
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules') continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (
+          /\.(js|jsx|tsx)$/.test(entry.name) &&
+          !entry.name.includes('.test.') &&
+          !entry.name.includes('.e2eReplica.')
+        ) {
+          files.push(full);
+        }
+      }
+    };
+    walk(SRC);
+    // Non-vacuous: a wrong root would scan nothing and pass.
+    expect(files.length).toBeGreaterThan(100);
+    const hits: string[] = [];
+    for (const file of files) {
+      fs.readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (IDENTITY_ATTRIBUTE.test(line)) hits.push(`${path.relative(SRC, file)}:${i + 1}: ${line.trim()}`);
+        });
+    }
+    expect(hits).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 88.6-61 (review round 2 H-1, owner ruling R2-H1-RULING). Performance payloads —
 // transactions (`beforeSendTransaction`) and spans (`beforeSendSpan`, which is ALSO the only
 // hook that reaches standalone INP/CLS spans) — bypassed every scrub layer: `beforeSend` never
@@ -557,6 +1130,36 @@ describe('scrubSpanJson / scrubTransaction — performance egress (R2 H-1)', () 
     expect(out.data['code.filepath']).not.toContain('auth0|123');
   });
 
+  it('R3-M5: scrubSpanJson applies the key-name rule the other two walkers apply; trace ids untouched', () => {
+    // Phase 88.6.1-76 (R3-M5, AC-34 clause 3; threat T-88.6.1-1521). The span walker was
+    // value-only, so a value that matches no value pattern kept itself under `user.email` or
+    // `token` (planner probe 2026-10-04). deepScrub and deepScrubRecording already redact by
+    // key; this pins the third walker to the same rule. None of these values matches a value
+    // pattern on its own, so only the key rule can redact them.
+    const span = {
+      description: 'x',
+      data: {
+        'user.email': 'not-an-email-value',
+        token: 'plainvalue',
+        'auth.tokens': ['plainA', 'plainB'],
+        user: { email: 'plainvalue', id: 'u1' },
+        'http.method': 'GET',
+        'http.response.status_code': 200,
+      },
+      trace_id: TRACE_ID,
+    };
+    const out = scrubSpanJson(span) as typeof span;
+    expect(out.data['user.email']).toBe(R);
+    expect(out.data.token).toBe(R);
+    expect(out.data['auth.tokens']).toEqual([R, R]);
+    expect(out.data.user.email).toBe(R);
+    expect(out.data.user.id).toBe('u1');
+    expect(out.data['http.method']).toBe('GET');
+    expect(out.data['http.response.status_code']).toBe(200);
+    expect(out.description).toBe('x');
+    expect(out.trace_id).toBe(TRACE_ID);
+  });
+
   it('CONFIRM-ONLY (marker (iii)): span trace_id / span_id / parent_span_id survive byte-identical', () => {
     // Green on the identity baseline too, by design: this pins marker (iii) against a future
     // "scrub every field" edit, which would silently break FE-to-BE trace linking.
@@ -571,5 +1174,118 @@ describe('scrubSpanJson / scrubTransaction — performance egress (R2 H-1)', () 
     expect(out.trace_id).toBe(TRACE_ID);
     expect(out.span_id).toBe('a1b2c3d4e5f60718');
     expect(out.parent_span_id).toBe('b1b2c3d4e5f60718');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1 adversarial code review fix batch (2026-10-19). Each case was RED against the tree
+// before its fix (measured with the module under node and with this file).
+// ---------------------------------------------------------------------------
+describe('88.6.1 code review — scrub gaps closed', () => {
+  it('A-08: a token that starts with an opening quote or bracket is redacted, and the opener is kept', () => {
+    // Before: the token class needs one non-terminator right after the prefix, so these
+    // matched nothing and the token passed whole (the long-hex backstop needs a slash first).
+    for (const [prefix, token] of SHARED_FAMILIES) {
+      for (const [open, close] of [['"', '"'], ["'", "'"], ['\x60', '\x60'], ['(', ')'], ['[', ']'], ['{', '}'], ['<', '>']]) {
+        expect(scrubString(`x /${prefix}${open}${token}${close} y`), `family ${prefix} opener ${open}`).toBe(
+          `x /${prefix}${open}${R}${close} y`
+        );
+      }
+    }
+    expect(scrubUrl(`https://x/invite/group/"${HEX64}"`)).toBe(`https://x/invite/group/"${R}"`);
+    // A quoted rsvp SIBLING is still a sibling: the opener sits before the sibling lookahead.
+    expect(scrubString('/rsvp/"event"')).toBe('/rsvp/"event"');
+    expect(scrubString('/rsvp/(respond)')).toBe('/rsvp/(respond)');
+    // Idempotent: the placeholder starts with `[`, and scrubUrl runs scrubString after itself.
+    expect(scrubString(`/invite/group/${R}`)).toBe(`/invite/group/${R}`);
+    expect(scrubUrl(scrubUrl(`https://x/invite/group/[${HEX64}]`))).toBe(`https://x/invite/group/[${R}]`);
+  });
+
+  it('A-08 follow-up: a literal Next.js route template `[token]` is a route name, not a token, and passes unchanged', () => {
+    // Before: the `[` opener made `/invite/group/[token]` read as an opener plus the token
+    // `token]`, so route templates (transactions, chunk paths) came back `[[REDACTED]]`.
+    for (const route of ['invite/group', 'invite/game', 'rsvp', 'availability-form', 'restore/group']) {
+      expect(scrubUrl(`/${route}/[token]`), `template ${route}`).toBe(`/${route}/[token]`);
+      expect(scrubString(`/${route}/[token]`), `template ${route}`).toBe(`/${route}/[token]`);
+      expect(scrubTransaction({ transaction: `/${route}/[token]` })).toEqual({ transaction: `/${route}/[token]` });
+    }
+    expect(scrubString('/_next/static/chunks/app/invite/group/[token]/page-x.js')).toBe(
+      '/_next/static/chunks/app/invite/group/[token]/page-x.js'
+    );
+    // The A-08 positive half stays: a REAL token in brackets is still redacted, opener kept.
+    expect(scrubUrl(`/invite/group/[${HEX64}]`)).toBe(`/invite/group/[${R}]`);
+    expect(scrubString(`/invite/group/[${HEX64}]`)).toBe(`/invite/group/[${R}]`);
+  });
+
+  it('A-10: a percent-encoded token route is redacted in free text (every family, either case of %2F)', () => {
+    // Before: `scrubString('/api/auth/login?returnTo=%2Frsvp%2F<token>')` came back unchanged.
+    expect(scrubString(`/api/auth/login?returnTo=%2Frsvp%2F${RSVP_TOKEN}`)).toBe(
+      `/api/auth/login?returnTo=%2Frsvp%2F${R}`
+    );
+    expect(scrubString(`returnTo=%2finvite%2fgroup%2f${HEX64}&x=1`)).toBe(`returnTo=%2finvite%2fgroup%2f${R}&x=1`);
+    for (const [prefix, token] of SHARED_FAMILIES) {
+      const enc = prefix.split('/').join('%2F');
+      expect(scrubString(`login failed: returnTo=%2F${enc}${token}%3Fu%3D1 now`), `encoded family ${prefix}`).toBe(
+        `login failed: returnTo=%2F${enc}${R}%3Fu%3D1 now`
+      );
+    }
+    // The encoded siblings stay siblings.
+    expect(scrubString('returnTo=%2Frsvp%2Fevent%2F12')).toBe('returnTo=%2Frsvp%2Fevent%2F12');
+    // The encoded twins are DERIVED from the plain list, one for one, in the same order, so a
+    // new family cannot be added to one and not the other.
+    const groupOf = (re: RegExp) => re.source.slice(re.source.indexOf('(') + 1, re.source.indexOf(')'));
+    const plain = [...TOKEN_PATH_PATTERNS_API_PATHS, ...TOKEN_PATH_PATTERNS_FE_ROUTES].map((re: RegExp) =>
+      groupOf(re).replace(/\\\//g, '/')
+    );
+    const encoded = TOKEN_PATH_PATTERNS_ENCODED.map((re: RegExp) => groupOf(re).replace(/%2F/g, '/'));
+    expect(encoded).toEqual(plain);
+    expect(encoded).toHaveLength(9);
+  });
+
+  it('REVIEW WR-01: a selector serialised a second time (=\\") loses its name too, escapes kept', () => {
+    // Before: both the fast-path guard and the opener needed a bare `="`, so this passed whole.
+    expect(scrubString('payload {\\"sel\\":\\"button[aria-label=\\"Customize Alice Smith\\"]\\"}')).toBe(
+      `payload {\\"sel\\":\\"button[aria-label=\\"Customize ${R}\\"]`
+    );
+    expect(scrubString('button[aria-label=\\"Customize Alice\\"]')).toBe(`button[aria-label=\\"Customize ${R}\\"]`);
+    expect(scrubUrl('img[alt=\\"Zoë?x=1\\"]')).toBe(`img[alt=\\"${R}\\"]`);
+    // The plain shape is unchanged.
+    expect(scrubString('button[aria-label="Customize Weekend Warriors"]')).toBe(`button[aria-label="Customize ${R}"]`);
+  });
+
+  it('REVIEW IN-01: an Authorization pair with a Basic or Negotiate scheme loses the credential, not just the scheme', () => {
+    // Before: `[REDACTED] dXNlcjpwYXNz`.
+    expect(scrubString('Authorization: Basic dXNlcjpwYXNz')).toBe(R);
+    expect(scrubString('{"authorization":"Basic dXNlcjpwYXNz"}')).toBe(`{"${R}"}`);
+    expect(scrubString('authorization=Negotiate YIIabc&x=1')).toBe(`${R}&x=1`);
+    // NEGATIVE: the scheme words in prose are not a credential.
+    expect(scrubString('basic information here')).toBe('basic information here');
+  });
+
+  it('A-09 / IN-02: a credential nested under a secret key is redacted by all three walkers', () => {
+    // Before: deepScrub's object branch dropped the incoming key, so each of these came back
+    // with the token in clear (none of the values matches a value pattern on its own).
+    const ev = scrubEvent({ extra: { token: { value: RSVP_TOKEN, list: [ALPHA] } } } as never) as {
+      extra: { token: { value: string; list: string[] } };
+    };
+    expect(ev.extra.token.value).toBe(R);
+    expect(ev.extra.token.list).toEqual([R]);
+    const rec = scrubRecordingEvent({ data: { payload: { password: { v: ALPHA } } } }) as {
+      data: { payload: { password: { v: string } } };
+    };
+    expect(rec.data.payload.password.v).toBe(R);
+    const span = scrubSpanJson({ data: { token: { v: RSVP_TOKEN }, list: [{ secret: ALPHA }, 'plain'] } }) as {
+      data: { token: { v: string }; list: Array<{ secret: string } | string> };
+    };
+    expect(span.data.token.v).toBe(R);
+    // IN-02: an object element of an array is walked, as deepScrub walks it.
+    expect(span.data.list).toEqual([{ secret: R }, 'plain']);
+    // NEGATIVE: a harmless key keeps its value, and Sentry's own trace id still links.
+    const ok = scrubEvent({ extra: { note: { value: ALPHA } }, contexts: { trace: { trace_id: TRACE_ID } } } as never) as {
+      extra: { note: { value: string } };
+      contexts: { trace: { trace_id: string } };
+    };
+    expect(ok.extra.note.value).toBe(ALPHA);
+    expect(ok.contexts.trace.trace_id).toBe(TRACE_ID);
   });
 });

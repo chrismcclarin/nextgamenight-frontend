@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
@@ -20,16 +20,34 @@ import {
 import { cn } from '../../lib/cn';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
+import { CalendarLoadingCard } from '../components/CalendarLoadingCard';
 import PendingMemberBanner from '../components/PendingMemberBanner';
 import GroupLibrary from '../components/GroupLibrary';
 import KebabMenu from '../components/KebabMenu';
 import GroupSettings from '../components/GroupSettings';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
+
+// The resolved outcome of one games load: the shape plan 88.6.1-21's banner reads
+// (`classifyRetryResult`) to announce a failed retry, and the shape plan 88.6.1-71 reuses for the
+// page's members and events fetches (88.6.1-70 contract C4). A skipped or superseded run resolves
+// nothing (unknown, never announced).
+const LOAD_OK = Object.freeze({ isError: false });
+const LOAD_FAILED = Object.freeze({ isError: true });
+
+// Copy rows G7 / G8, ratified by the owner on 2026-10-05 (revision lap 3, recorded as D-47): one
+// constant per string, so a copy scan finds each byte for byte. CALENDAR_TITLE is the calendar's
+// existing title, hoisted so the calendar and the events failure arm's heading cannot drift apart.
+const GROUP_LOAD_FAILED_TITLE = "Couldn't load this group";
+const GROUP_EVENTS_LOAD_FAILED_TITLE = "Couldn't load this group's events";
+const CALENDAR_TITLE = "Calendar";
+// Copy row P78c (close ruling P-78, owner 2026-10-17): the members notice's spoken section name — the member list has no heading of its own.
+const MEMBERS_SECTION_NAME = 'Members';
 
 // A groups home page
 function GroupHomePage(){
@@ -42,11 +60,22 @@ function GroupHomePage(){
     // selfUuid makes the find miss and would bounce an active member off their
     // own group. Identity-unresolved is a LOADING state, never "removed".
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+    // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
     const [gamesError, setGamesError] = useState(null);
+    // Req 9 (88.6.1-55): the number of the newest games request, and the group id whose FIRST
+    // games request has settled. See the marker on getGamesForGroup.
+    const gamesRunRef = useRef(0);
+    const gamesSettledForRef = useRef(null);
+    // 88.6.1-56: the newest games run's pending outcome promise (the retry joins it), the group id
+    // whose games last LOADED (C3), and the games section's one focus target (C12). See the
+    // marker on gamesRetained.
+    const gamesInFlightRef = useRef(null);
+    const [gamesLoadedFor, setGamesLoadedFor] = useState(null);
+    const gamesFocusRef = useRef(null);
     const [eventModal, setEventModal] = useState(false);
     const [memberModal, setMemberModal] = useState(false);
     const [showGroupSettings, setShowGroupSettings] = useState(false);
@@ -57,10 +86,41 @@ function GroupHomePage(){
     // resolves. Without this, getGroup()/games/events fetches race the
     // membership lookup and the page paints with partial data before the
     // redirect fires for removed users.
-    const [membershipChecked, setMembershipChecked] = useState(false);
+    // AMENDED 2026-10-19 (88.6.1 code review A-57): stored as the group id the check passed FOR
+    // (`membershipChecked` is derived below `Router`), so a same-mount switch to another group
+    // re-closes the gate instead of painting the new group with the old group's member data.
+    const [membershipCheckedFor, setMembershipCheckedFor] = useState(null);
 
     // Calendar state
     const [groupEvents, setGroupEvents] = useState([]);
+    // 88.6.1-71 (Req 9): the members and events loads are tracked like the games load. Each slot
+    // keeps its error until its newest run succeeds, the group id its newest success loaded for
+    // (88.6.1-70 contract C3 — never a row count), a run counter (newest wins) and the pending
+    // run a retry joins (review r2 #81).
+    // AMENDED 2026-10-19 (88.6.1 code review A-57): each error is stored with the group id it was
+    // read FOR, `{ groupId, failure }` — groupPlanning's `roleRecord` shape (the field is `failure`, not
+    // `error`, so `errorEnvelopeReads.test.ts` does not count this internal record as an envelope read) — and read through the
+    // derivations below `Router`, so an error and its slot's `retained` value change together on a
+    // same-mount group switch (history back/forward): group A's failure can never show as group
+    // B's banner. Each setter takes the run's own group id.
+    const [membersErrorRecord, setMembersErrorRecord] = useState(null);
+    const [eventsErrorRecord, setEventsErrorRecord] = useState(null);
+    const [membersLoadedFor, setMembersLoadedFor] = useState(null);
+    const [eventsLoadedFor, setEventsLoadedFor] = useState(null);
+    const membersRunRef = useRef(0);
+    const eventsRunRef = useRef(0);
+    const membersInFlightRef = useRef(null);
+    const eventsInFlightRef = useRef(null);
+    // 88.6.1-89 (close ruling P-79): the group record's own load, tracked in the members load's
+    // shape — its error, the group id its newest success loaded for (C3), a run counter and the
+    // pending run a retry joins. See the marker on getGroup.
+    const [groupErrorRecord, setGroupErrorRecord] = useState(null);
+    const [groupLoadedFor, setGroupLoadedFor] = useState(null);
+    const groupRunRef = useRef(0);
+    const groupInFlightRef = useRef(null);
+    // The calendar section's heading: plan 88.6.1-73's `headingRef` on the calendar, and the events
+    // failure arm's own heading, so it always names the section heading on screen.
+    const calendarHeadingRef = useRef(null);
     const [calendarPrefillDate, setCalendarPrefillDate] = useState(null);
     // CAL-05: track the visual entry mode for the create-event modal.
     // 'day' is set when the user taps an empty day cell or the modal's
@@ -78,12 +138,21 @@ function GroupHomePage(){
 
     const searchParams = useSearchParams();
     const Router = searchParams.get('id');
+    // A-57: the per-group reads of the records above — null when the record is another group's.
+    const errorFor = (record) => (record && record.groupId === Router ? record.failure : null);
+    const membersError = errorFor(membersErrorRecord);
+    const eventsError = errorFor(eventsErrorRecord);
+    const groupError = errorFor(groupErrorRecord);
+    const membershipChecked = membershipCheckedFor !== null && membershipCheckedFor === Router;
     const prefillDate = searchParams.get('date');
     const prefillTime = searchParams.get('time');
     const shouldCreateEvent = searchParams.get('create_event') === 'true';
 
     // GROUP-05 (Plan 69-04): detect "user is no longer a member" signals and
     // redirect to the home banner consumer at `/?removedFrom=<name>`.
+    // AMENDED 2026-10-19 (88.6.1 code review CR-4 / A-69, owner ratified): the param now carries
+    // the group's ID (`/?removedFrom=<groupId>`), never its name — the home page reads it as
+    // presence only and shows a fixed sentence, so no free text travels in the URL.
     //
     // apiFetch (src/lib/api.js) throws Error(message) only — there's no
     // exposed `.status`, so we match on common 403/404/membership phrases.
@@ -92,7 +161,7 @@ function GroupHomePage(){
         const status = error?.status || error?.response?.status;
         if (status === 403 || status === 404) return true;
         // CONTROL FLOW, not a user-facing read, and rostered as such in
-        // `fetchErrorTreatment.test.ts`'s `CONTROL_FLOW_ALLOWED` (`:314-318`), whose `why` reads:
+        // `fetchErrorTreatment.test.ts`'s `CONTROL_FLOW_ALLOWED` (its `app/groupHomePage/page.js` entry), whose `why` reads:
         // "isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed."
         // This line is DELIBERATELY byte-unchanged. A later R1 sweep that "completes" the work by
         // routing it through `getFetchErrorMessage` would turn a deliberate control-flow read into
@@ -110,26 +179,127 @@ function GroupHomePage(){
         );
     };
 
-    const redirectToHomeAsRemoved = (groupName) => {
-        const name = groupName || Group?.name || 'this group';
-        router.push(`/?removedFrom=${encodeURIComponent(name)}`);
+    const redirectToHomeAsRemoved = () => {
+        // `removed` only if no id is in hand (the page cannot load without `?id=`, so this is a
+        // belt for a future caller, not a live path).
+        router.push(`/?removedFrom=${encodeURIComponent(Router || 'removed')}`);
     };
 
+    /* DECISION Phase 88.6.1-89 (close ruling P-79, owner 2026-10-17 "reuse"): CHOSEN — the group
+       record's load is TRACKED in the members load's shape (its rules and reasons are the DECISION
+       block above `getGroupMembers`: newest wins, the error kept until the newest run succeeds,
+       each run resolving LOAD_OK / LOAD_FAILED, a retry joining the pending run, LOG FIRST, the
+       removal redirect taken by the newest run only), and ONE page-load banner for a failing
+       members load or group load, members first, whose Try again re-runs every failing load —
+       instead of the silent catch that shipped, which left the page to open under the fallback
+       header 'Group' with no word that anything had failed.
+       The thrown error is stored as is (C10: wrapping an ApiError turns a 401 into `unknown`).
+       ORDER, load-bearing: this run's promise is published BEFORE the first await. One tab return
+       reaches retryGroup TWICE in one dispatch (the group's own error state and the page-load
+       state each add a visibilitychange listener while erroring, and each calls its refetch
+       synchronously), and only a ref already set when the first call suspends lets the second
+       join it, so one tab return sends one group request. Moving the assignment below the await
+       is a regression, not a tidy-up.
+       REJECTED: (a) a second G7 gate for the group record — two banners can swap under a focused
+       Try again, and an outage that failed both loads would need two presses; (b) treating any
+       failure as a removal — the members block's REJECTED (c), unchanged; (c) an RF1 notice for a
+       failed group refresh over a kept header — no ratified words name the header (D-51's list
+       names the group page's members and events only), so a non-access failure of a refresh
+       after a settings save keeps the header and stays silent, as today — ROUTED to Phase 92
+       (`.planning/deferred/phase-92.md`, entry `A failed (non-access) group REFRESH after a
+       settings save`), where this page is rewritten; (d) a page-local Promise.race deadline for
+       one of three loads — a second timeout mechanism beside the one Phase 93 adds app-wide.
+       STATED LIMIT, OWNED BY PHASE 93 (review r2 M1): the first paint now waits on the group load
+       as it already waits on the members load, and `lib/api.ts` has no deadline (its comment
+       whose sentence reads `NOTHING in this module had one, apiFetch included`), so a request
+       that never settles holds the group loading line with no banner and no retry — the same
+       exposure the members gate has today. The app-wide deadline is an
+       OWNED RESIDUAL of Phase 93
+       (`.planning/deferred/phase-93.md`, the apiFetch-timeout entry that api.ts comment names),
+       where the group load has been added to that entry.
+       The group focus guard is the THIRD child of every top-level fragment so the members guard
+       stays the second (the C12 marker's position rule; RetainedContentFocusGuard's Position rule
+       in FetchErrorBanner.tsx names this shape).
+       Changing this is a decision, not a cleanup. */
     const getGroup = async () => {
-        if (!Router) return;
+        if (!Router) return undefined;
+        const run = ++groupRunRef.current;
+        const groupId = Router;
+        // JOIN: published BEFORE the first await (the ORDER rule above), until the run settles.
+        let outcome;
+        let finishRun;
+        const thisRun = new Promise((resolve) => {
+            finishRun = resolve;
+        });
+        groupInFlightRef.current = thisRun;
         try {
             // Use groupsAPI.getGroup which automatically includes Authorization header
             const data = await groupsAPI.getGroup(Router);
+            if (run !== groupRunRef.current) return undefined;
             setGroup(data);
+            setGroupErrorRecord(null);
+            setGroupLoadedFor(groupId);
+            outcome = LOAD_OK;
+            return outcome;
         } catch (error) {
-            if (isRemovedFromGroupError(error)) {
-                redirectToHomeAsRemoved();
-                return;
+            if (run === groupRunRef.current) {
+                if (isRemovedFromGroupError(error)) {
+                    redirectToHomeAsRemoved();
+                    return undefined;
+                }
             }
             logger.info('Error fetching group:', errCtx(error));
+            if (run !== groupRunRef.current) return undefined;
+            setGroupErrorRecord({
+                groupId,
+                failure: error instanceof Error ? error : new Error("The group request didn't complete."),
+            });
+            outcome = LOAD_FAILED;
+            return outcome;
+        } finally {
+            finishRun(outcome);
+            if (groupInFlightRef.current === thisRun) groupInFlightRef.current = null;
         }
     };
 
+    /* DECISION Phase 88.6.1-71 (Req 9, members load failure — owner ruling 2026-10-05): CHOSEN — a
+       members request that fails for any reason but removal, or answers with something that is not
+       a list, is TRACKED; on the first load the gate shows the full banner titled
+       GROUP_LOAD_FAILED_TITLE with Try again, checked BEFORE the group loading line; on a refresh
+       the member list is kept (the refresh notice says so).
+       REJECTED (a) — emptying the member list and moving on (what shipped): the first load sat on
+       the group loading line forever because nothing ever opened the gate, and a failed refresh
+       silently erased the member count and the games list's member data.
+       REJECTED (b) — the compact notice: its sentence says some personal controls are unavailable,
+       which is false here; nothing on the page is.
+       REJECTED (c) — treating any failure as a removal: a network blip would bounce an active
+       member to the home page; for the newest run the removal redirect stays the FIRST decision in
+       both arms, and the redirect call itself is unchanged (an overtaken run never redirects, LOG
+       FIRST below).
+       ACCESS (plan 88.6.1-70's contract C10): `retained` comes only from `useRetainedContent`, and
+       the banner's early return keys on "not retained", not on the paint gate — so an access or
+       gone answer the removal redirect does not take (a session that expired, a 410) replaces the
+       group's content with the banner even after the page has loaded, and keeps it replaced until
+       a load succeeds.
+       REJECTED (d) — gating the banner on the paint gate alone: once the page has loaded, the
+       notice handed "not retained" shows nothing, and the whole group would stay on screen with no
+       failure state.
+       Newest wins, the error is cleared only by the newest run's success (so Try again keeps its
+       banner, label and focus), and each run resolves LOAD_OK / LOAD_FAILED (plan 88.6.1-70's
+       contract C1-C5, C10).
+       LOG FIRST (review r2 #80): the catch's existing log line runs BEFORE the superseded return —
+       a request that really failed is a real diagnostic even when a newer run has overtaken it,
+       the house order (ResponseDashboard's "Logged BEFORE the generation guard on purpose",
+       EventCalendar's "Reported REGARDLESS of cancellation"); the removal redirect is taken by the
+       newest run only.
+       REJECTED (e) — guard before log: every overtaken failure vanishes from the logs, so an
+       outage looks smaller than it was.
+       JOIN (review r2 #81): Try again and the tab-return re-attempt return the pending run's
+       promise instead of starting another (ResponseDashboard's in-flight short-circuit); a direct
+       refresh after a write never joins, so a pre-write answer cannot land last.
+       REJECTED (f) — a run per tab return: on a phone every app switch would send one more request
+       and throw the previous answer away.
+       Changing any of these is a decision, not a cleanup. */
     const getGroupMembers = async () => {
         // Gate the membership derive on identity resolution. Until selfUuid is
         // resolved the find below would miss and the redirect-as-removed branch
@@ -137,9 +307,20 @@ function GroupHomePage(){
         // false (page shows "Loading group…"); when selfUuid resolves the effect
         // re-runs (selfUuid is in its deps) and the derive recomputes.
         if (!Router || !user?.sub || !selfUuid) return;
+        const run = ++membersRunRef.current;
+        const groupId = Router;
+        // JOIN: this run's promise is published from its start until it settles, whoever started
+        // it, and resolves with the run's own outcome, so a joined retry reads it too (C4).
+        let outcome;
+        let finishRun;
+        const thisRun = new Promise((resolve) => {
+            finishRun = resolve;
+        });
+        membersInFlightRef.current = thisRun;
         try {
             // Use groupsAPI.getGroupMembers which automatically includes Authorization header
             const data = await groupsAPI.getGroupMembers(Router);
+            if (run !== membersRunRef.current) return undefined;
 
             // Ensure data is an array before processing
             if (!Array.isArray(data)) {
@@ -149,14 +330,15 @@ function GroupHomePage(){
                    logger egresses its ctx to Sentry, so re-channelling it unchanged would have
                    sent that payload out of the browser. A SHAPE DESCRIPTOR goes instead; the
                    payload never does. `logger.warn` is NOT the matching level: it is
-                   `Sentry.captureMessage` (`logger.ts:31-32`), an EVENT, and AC-2's amended level
+                   `Sentry.captureMessage` (`logger.ts`, anchor `Sentry.captureMessage(msg, { level: 'warning'`), an EVENT, and AC-2's amended level
                    (owner 2026-09-13) is `info` — a breadcrumb. Restoring `data` here is one
                    keystroke and is exactly what T-84-01 forbids. */
                 logger.info('Group members data is not an array:', {
                     received: data === null ? 'null' : typeof data,
                 });
-                setUserList([]);
-                return;
+                setMembersErrorRecord({ groupId, failure: new Error("The group members request didn't complete.") });
+                outcome = LOAD_FAILED;
+                return outcome;
             }
 
             // GROUP-05: backend's `/groups/:id/users` returns 200 even for
@@ -174,52 +356,154 @@ function GroupHomePage(){
             // the paint gate so the rest of the page renders.
             setUserList(data);
             setUserRole(currentUserMember.UserGroup.role);
-            setMembershipChecked(true);
+            setMembershipCheckedFor(groupId);
+            setMembersErrorRecord(null);
+            setMembersLoadedFor(groupId);
+            outcome = LOAD_OK;
+            return outcome;
         } catch (error) {
-            if (isRemovedFromGroupError(error)) {
-                redirectToHomeAsRemoved();
-                return;
+            if (run === membersRunRef.current) {
+                if (isRemovedFromGroupError(error)) {
+                    redirectToHomeAsRemoved();
+                    return undefined;
+                }
             }
             logger.info('Error fetching group members:', errCtx(error));
-            setUserList([]);
+            if (run !== membersRunRef.current) return undefined;
+            setMembersErrorRecord({
+                groupId,
+                failure: error instanceof Error ? error : new Error("The group members request didn't complete."),
+            });
+            outcome = LOAD_FAILED;
+            return outcome;
+        } finally {
+            finishRun(outcome);
+            if (membersInFlightRef.current === thisRun) membersInFlightRef.current = null;
         }
     };
 
+    /* DECISION Phase 88.6.1-71 (Req 9, events load failure — owner ruling 2026-10-05): CHOSEN — a
+       failed events request is TRACKED; on this group's first load the calendar's place shows its
+       section heading and the full banner titled GROUP_EVENTS_LOAD_FAILED_TITLE, checked BEFORE
+       the calendar because a failed request also has zero events — the same heading-plus-banner
+       shape as the games section below; on a refresh the events already shown are kept
+       (`eventsRetained`, from plan 88.6.1-70's `useRetainedContent` over `eventsLoadedFor`) — an
+       events list that loaded EMPTY is kept too (owner ruling Y, 2026-10-05: a list that loaded
+       empty is retained content); an access or gone answer is never kept (plan 88.6.1-70's
+       contract C10: the banner replaces the calendar until a load succeeds — this fetch has no
+       removal arm of its own).
+       REJECTED (a) — emptying the events list (what shipped): an empty calendar told the group it
+       had no events when the request had failed — the defect `DECISION Phase 88.6-27` closed in
+       the calendar's own fetch, still open on this page's.
+       REJECTED (b) — a new failure prop on the calendar: it documents its external-events mode as
+       parent-owned, and a prop would widen a component two pages mount for a fetch only this page
+       owns.
+       Focus after a successful Try again goes to the calendar's own heading through `headingRef`
+       (plan 88.6.1-73), never the top of the page. Newest wins; error cleared on success; outcome
+       resolved; log first and the retry joins a pending run (the members block's two rules and
+       reasons, review r2 #80 / #81). A non-member's events request is answered 403 by the
+       backend, which the access rule above turns into the banner.
+       Changing any of these is a decision, not a cleanup. */
     const fetchGroupEvents = async () => {
         if (!Router || !user?.sub) return;
+        const run = ++eventsRunRef.current;
+        const groupId = Router;
+        // JOIN: published from the run's start until it settles (the members fetch's comment).
+        let outcome;
+        let finishRun;
+        const thisRun = new Promise((resolve) => {
+            finishRun = resolve;
+        });
+        eventsInFlightRef.current = thisRun;
         try {
-            const data = await eventsAPI.getGroupEvents(Router, { includeRsvpSummary: true });
+            const data = await eventsAPI.getGroupEvents(groupId, { includeRsvpSummary: true });
+            if (run !== eventsRunRef.current) return undefined;
             setGroupEvents(data || []);
+            setEventsErrorRecord(null);
+            setEventsLoadedFor(groupId);
+            outcome = LOAD_OK;
+            return outcome;
         } catch (error) {
             logger.info('Error fetching group events:', errCtx(error));
-            setGroupEvents([]);
+            if (run !== eventsRunRef.current) return undefined;
+            setEventsErrorRecord({
+                groupId,
+                failure: error instanceof Error ? error : new Error("The group events request didn't complete."),
+            });
+            outcome = LOAD_FAILED;
+            return outcome;
+        } finally {
+            finishRun(outcome);
+            if (eventsInFlightRef.current === thisRun) eventsInFlightRef.current = null;
         }
     };
 
+    /* DECISION Phase 88.6.1-55 (Req 9, D-09a / D-37 precedent): CHOSEN — the page-wide games
+       loader shows only until THIS group's first games request settles (a has-settled marker
+       keyed by the group id), and only the newest request may write anything.
+       REJECTED (a): re-arming the loader on every call — what shipped: every event created from
+       this page and every "Try again" on the games banner replaced the WHOLE page (the open
+       create-event dialog, the calendar, the scroll position and keyboard focus) with one line,
+       for a request about one list.
+       REJECTED (b): a flag that never re-arms — this component stays mounted when the page moves
+       to another group's id, so the previous group's games would sit under the new group's
+       header until the request lands.
+       Newest wins: an older request that settles later (an overlapping refresh, or the previous
+       group's) writes nothing — no list, no error, no loader, no settled mark, not even the
+       removal redirect; the newest run gets the same answer and acts on it. LOG FIRST: the
+       catch's log line still runs for an overtaken failure, BEFORE the superseded return — a
+       request that really failed is a real diagnostic (the house order this page's members and
+       events catches use). REJECTED: guard before log — every overtaken failure vanishes from the
+       logs, so an outage looks smaller than it was.
+       The error is cleared only by the newest run's SUCCESS, never at the start of a run.
+       REJECTED: the start-of-run clear that shipped — it unmounted the games banner the moment
+       "Try again" was pressed, so the in-flight label never showed and focus fell off the
+       removed button. Each run resolves LOAD_OK, LOAD_FAILED or nothing, so the banner can
+       announce a failed retry and never a superseded one.
+       No busy line and no dimming: D-09 keeps the visible "Updating…" line to Browse Games, and
+       dimming old rows is Phase 88.9's look option.
+       Changing any of these is a decision, not a cleanup. */
     const getGamesForGroup = useCallback(async () => {
         // 87.4 Plan 10 (SPEC Req 5 + T-874-10-RACE): gate the games fetch on
-        // selfUuid resolution the same way getGroupMembers is (L109-115). selfUuid
+        // selfUuid resolution the same way getGroupMembers is (its identity guard, anchor `!selfUuid) return;`). selfUuid
         // resolves ASYNC (after an Auth0-session-load round-trip), so a callback
         // keyed only on user?.sub would close over an unresolved selfUuid on a hard
         // load, send it as undefined, get a 403 from the self-gated lists endpoint,
         // and have the catch below misread that 403 as a removal signal -- bouncing
         // an active member. Gating here (and re-keying selfUuid into the deps) makes
         // the fetch impossible to fire before identity resolves.
-        if (!Router || !user?.sub || !selfUuid) return;
+        if (!Router || !user?.sub || !selfUuid) return undefined;
+        const run = ++gamesRunRef.current;
+        const groupId = Router;
+        // JOIN: this run's promise is published from its start until it settles, whoever started
+        // it, and resolves with the run's own outcome, so a joined retry reads it too (C4).
+        let outcome;
+        let finishRun;
+        const thisRun = new Promise((resolve) => {
+            finishRun = resolve;
+        });
+        gamesInFlightRef.current = thisRun;
         try {
-            setLoading(true);
-            setGamesError(null);
-            const games = await listsAPI.getGroupGames(Router, selfUuid);
+            if (gamesSettledForRef.current !== groupId) setLoading(true);
+            const games = await listsAPI.getGroupGames(groupId, selfUuid);
+            if (run !== gamesRunRef.current) return undefined;
             setGamesList(games || []);
+            setGamesError(null);
+            setGamesLoadedFor(groupId);
+            outcome = LOAD_OK;
+            return outcome;
         } catch (error) {
             // /api/lists/games/:groupId/:userId 403s non-members — treat
             // it as a removal signal and redirect, same as the member-list
-            // absence path in getGroupMembers.
-            if (isRemovedFromGroupError(error)) {
-                redirectToHomeAsRemoved();
-                return;
+            // absence path in getGroupMembers. Only the newest run redirects.
+            if (run === gamesRunRef.current) {
+                if (isRemovedFromGroupError(error)) {
+                    redirectToHomeAsRemoved();
+                    return undefined;
+                }
             }
             logger.info('Error fetching games:', errCtx(error));
+            if (run !== gamesRunRef.current) return undefined;
             /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): a failed games request is
                TRACKED as a failure here and handed to GroupGamesList as an `errorState` prop —
                chosen OVER the `setGamesList([])` this shipped with. GroupGamesList takes `games`
@@ -234,23 +518,161 @@ function GroupHomePage(){
                Keep the ERROR object, not a flattened string: useFetchErrorState reads
                `ApiError.code` off it to pick the right user-facing copy. Do NOT re-add
                `setGamesList([])` here — the stale list is deliberately left alone so a refetch
-               failure does not blank a list the person is still looking at. */
+               failure does not blank a list the person is still looking at.
+
+               AMENDED Phase 88.6.1-55 (AC-29 record): the parent keeps the list on a failed
+               refresh and, since this plan, no longer blanks the page while refreshing. But the
+               games list component checks its failure branch FIRST and renders the banner in
+               place of the cached list, so a failed refresh still hides a list the person was
+               looking at. Recorded as this site's AC-29 retained-data shape and handed to plan
+               88.6.1-56: the fix lives in the games list component, as an RF1 site (plan
+               88.6.1-70's notice above the retained cards).
+               AMENDED Phase 88.6.1-56 (AC-29): closed — the games list keeps its cards (or its
+               loaded empty state) under plan 88.6.1-70's refresh notice, and the full banner shows
+               only while nothing is retained. */
             setGamesError(
                 error instanceof Error ? error : new Error("The group games request didn't complete.")
             );
+            outcome = LOAD_FAILED;
+            return outcome;
         } finally {
-            setLoading(false);
+            finishRun(outcome);
+            if (gamesInFlightRef.current === thisRun) gamesInFlightRef.current = null;
+            if (run === gamesRunRef.current) {
+                gamesSettledForRef.current = groupId;
+                setLoading(false);
+            }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Router, user?.sub, selfUuid]);
 
+    const retryGames = useCallback(() => gamesInFlightRef.current ?? getGamesForGroup(), [getGamesForGroup]);
     // getGamesForGroup is already a useCallback with a stable identity, so it can be handed to
     // the hook directly — no ref hop needed here (unlike groupPlanning's per-render fetches).
+    // The hook is handed retryGames, which joins a pending games run instead of starting another
+    // (the games DECISION block on gamesRetained).
     const gamesErrorState = useFetchErrorState({
         isError: Boolean(gamesError),
         error: gamesError,
-        refetch: getGamesForGroup,
+        refetch: retryGames,
     });
+    /* DECISION Phase 88.6.1-56 (C3 + C10, games): CHOSEN — a has-loaded state keyed to the group
+       id (gamesLoadedFor), set by the newest run's success only, read through plan 88.6.1-70's one
+       hook at the page's top level, above every early return.
+       REJECTED: (a) a row count — D-09a, and D-50: a list that loaded empty is retained content;
+       (b) plan 88.6.1-55's settled-for ref — a ref renders nothing, and it marks a settled FAILURE
+       too; (c) the hook inside the games list — it unmounts whenever the Library tab shows, which
+       would forget a remembered access answer.
+       The loading gate also holds while the settled-for ref differs from the group id. Reading
+       that ref at render is deliberate: the effect-time re-arm alone (plan 88.6.1-55's, which
+       stays) paints one stale frame of the previous group's kept error under the new group's
+       header.
+       JOIN (seam pass S7-2): CHOSEN — Try again and the tab-return re-attempt return the pending
+       games run's promise (retryGames), the rule the members and events blocks state for this
+       page's other two slots (one retry idiom per file, D-30); a direct refresh (the games effect,
+       a created event) never joins, so a pre-write answer cannot land last. REJECTED: (f) handing
+       the hook the fetch itself, as shipped — a press while a tab-return run is held starts a
+       second request that supersedes the held one and throws its answer away, and on a phone
+       every app switch plus a press sends one more request.
+       C12: CHOSEN — the page owns gamesFocusRef and renders plan 88.6.1-70's focus guard as the
+       games list's NEXT sibling. REJECTED: (d) the guard inside the list — its branches are
+       separate returns, so no spot there survives a withdrawal; (e) the guard BEFORE the list —
+       when a list that loaded EMPTY is withdrawn, only that empty-branch return remounts (its
+       fragment is replaced by the first-load branch's div), so React detaches the ref and
+       re-attaches it in the commit's layout pass in tree order, where the guard also runs, and an
+       earlier guard reads it while it is null; the list branch's heading survives reconciliation
+       into the first-load branch, so a withdrawal of the cards cannot show the difference.
+       Changing any of these is a decision, not a cleanup. */
+    const gamesRetained = useRetainedContent(gamesLoadedFor === Router, gamesErrorState);
+
+    // The members and events fetches are re-created every render, so each reaches the hook through
+    // the Friends-shape adapter (`DECISION Phase 88-14`): a ref-held fetch behind a STABLE callback
+    // (the hook keys its tab-return listener on `refetch`). The retry JOINS a pending run — it
+    // returns that run's promise rather than starting another (the members fetch's DECISION
+    // block); the direct callers (a role change, a settings save, a created event) never join.
+    const membersFetchRef = useRef(null);
+    const eventsFetchRef = useRef(null);
+    const groupFetchRef = useRef(null);
+    useEffect(() => {
+        membersFetchRef.current = getGroupMembers;
+        eventsFetchRef.current = fetchGroupEvents;
+        groupFetchRef.current = getGroup;
+    });
+    const retryMembers = useCallback(
+        () => membersInFlightRef.current ?? membersFetchRef.current?.(),
+        []
+    );
+    const retryEvents = useCallback(
+        () => eventsInFlightRef.current ?? eventsFetchRef.current?.(),
+        []
+    );
+    const retryGroup = useCallback(() => groupInFlightRef.current ?? groupFetchRef.current?.(), []);
+    const membersErrorState = useFetchErrorState({
+        isError: Boolean(membersError),
+        error: membersError,
+        refetch: retryMembers,
+    });
+    const eventsErrorState = useFetchErrorState({
+        isError: Boolean(eventsError),
+        error: eventsError,
+        refetch: retryEvents,
+    });
+    const groupErrorState = useFetchErrorState({ isError: Boolean(groupError), error: groupError, refetch: retryGroup });
+    // 88.6.1-70 contract C10: the ONLY derivation of `retained` on this page — false on a first
+    // load, and false after an access or gone answer until the next success.
+    const membersRetained = useRetainedContent(membersLoadedFor === Router, membersErrorState);
+    const eventsRetained = useRetainedContent(eventsLoadedFor === Router, eventsErrorState);
+    const groupRetained = useRetainedContent(groupLoadedFor === Router, groupErrorState);
+    // 88.6.1-89 (close ruling P-79): ONE page-load state for the two loads whose failure leaves
+    // nothing of the group to show — the members load first, then the group record (the marker
+    // on getGroup). Its Try again re-runs every load that is failing, and resolves LOAD_FAILED if
+    // any still fails, LOAD_OK when all succeed, else nothing (C4). `membersErrorState` itself is
+    // unchanged and still drives the members notice and `membersRetained`.
+    const membersBlocking = membersErrorState.showError && !membersRetained;
+    const groupBlocking = groupErrorState.showError && !groupRetained;
+    const membersBlockingRef = useRef(false);
+    const groupBlockingRef = useRef(false);
+    useEffect(() => {
+        membersBlockingRef.current = membersBlocking;
+        groupBlockingRef.current = groupBlocking;
+    });
+    const retryPageLoad = useCallback(async () => {
+        // Both retries start in this synchronous turn, before the first await, so each joins a
+        // pending run of its own load (the ORDER rule in the marker on getGroup).
+        const runs = [];
+        if (membersBlockingRef.current) runs.push(retryMembers());
+        if (groupBlockingRef.current) runs.push(retryGroup());
+        if (runs.length === 0) return undefined;
+        const results = await Promise.all(runs);
+        if (results.some((result) => result?.isError === true)) return LOAD_FAILED;
+        if (results.every((result) => result?.isError === false)) return LOAD_OK;
+        return undefined;
+    }, [retryMembers, retryGroup]);
+    const pageLoadError = membersBlocking ? membersError : groupBlocking ? groupError : null;
+    const pageLoadErrorState = useFetchErrorState({
+        isError: Boolean(pageLoadError),
+        error: pageLoadError,
+        refetch: retryPageLoad,
+    });
+    /* DECISION Phase 88.6.1-71 (C12, focus when content leaves): CHOSEN — plan 88.6.1-70's shared
+       guard, one per `retained` value. The members guard is the SECOND child of a fragment in
+       every markup return of this component, so ONE instance survives the switch from the page
+       to the G7 gate and sees `membersRetained` go from true to false; it has no target (nothing
+       of the group survives under G7, so plan 88.6.1-04's floor takes focus). The events guard
+       is the calendar slot's NEXT sibling, so it runs after the failure arm's 'Calendar' heading
+       has taken `calendarHeadingRef` in the same commit (React runs layout effects and attaches
+       refs in one depth-first pass, a subtree before its next sibling).
+       REJECTED — (a) the members guard inside the page's return only: it unmounts with the page
+       and never fires (plant M2); (b) the events guard before the slot: the ref is still empty
+       when it runs, so focus lands on the group's heading, a screen above the section on a phone
+       (plant E2); (c) a members target: no element of the group stays on screen under G7;
+       (d) focus code of this page's own (D-04).
+       AMENDED Phase 88.6.1-89: the group guard is the THIRD child in every return — the fixed-fragment-index placement that RetainedContentFocusGuard's Position rule in FetchErrorBanner.tsx names.
+       Changing any of these is a decision, not a cleanup. */
+    const membersFocusGuard = <RetainedContentFocusGuard retained={membersRetained} />;
+    // 88.6.1-89: the group record's guard, the THIRD child of every top-level fragment (the C12
+    // marker above, the marker on getGroup). No target: nothing of the group survives under G7.
+    const groupFocusGuard = <RetainedContentFocusGuard retained={groupRetained} />;
 
     // PR2-L11 (SPEC Req 7): getGroup + fetchGroupEvents do NOT depend on selfUuid,
     // so they live in an effect keyed only on [Router, user?.sub, ...] — they fire
@@ -314,29 +736,61 @@ function GroupHomePage(){
     };
 
 
+    // 88.6.1-71 (Req 9, G7): a members load that failed with nothing retained — the first load, or
+    // an access or gone answer the removal redirect did not take (C10) — replaces the page with the
+    // full banner. Checked BEFORE the paint gate (the members fetch's DECISION block, REJECTED (d)).
+    // No focusTarget: this screen has no section, so the floor (`main`, or the group's h1 once the
+    // page returns) is the honest target.
+    // AMENDED 88.6.1-89 (close ruling P-79): the gate reads the page-load state — the members load
+    // OR the group record's load failing with nothing retained, members first — so one banner and
+    // one Try again cover both (the marker on getGroup, REJECTED (a)).
+    if (pageLoadErrorState.showError) {
+        return (
+            <>
+                <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                    <div className="w-full max-w-xl">
+                        <FetchErrorBanner state={pageLoadErrorState} title={GROUP_LOAD_FAILED_TITLE} reportContext="Group home page — group and members fetch" />
+                    </div>
+                </div>
+                {membersFocusGuard}
+                {groupFocusGuard}
+            </>
+        );
+    }
+
     // Phase 69-04 paint gate: don't render the group page until the
     // membership check has confirmed the current user belongs here. This
     // covers two cases — (a) `getGroup` resolves before `getGroupMembers`
     // and `setGroup(data)` would otherwise flash group content for a
     // removed user, (b) the games endpoint 403s in the brief window
     // between mount and redirect.
-    if (!membershipChecked) {
+    // AMENDED 88.6.1-89: the gate also waits for the group record's first load to settle, so a
+    // first-load failure is shown by the page-load gate above it and never withdraws a painted page.
+    if (!membershipChecked || (groupLoadedFor !== Router && !groupError)) {
         return (
-            <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
-                <p className="text-content-secondary">Loading group…</p>
-                {/* D-08: if identity resolution permanently fails, the membership
-                    check can never complete — surface a compact, non-blocking
-                    degrade notice instead of an indefinite silent spinner (D-11). */}
-                <FetchErrorBanner state={selfIdentityErrorState} compact />
-            </div>
+            <>
+                <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                    <p className="text-content-secondary">Loading group…</p>
+                    {/* D-08: if identity resolution permanently fails, the membership
+                        check can never complete — surface a compact, non-blocking
+                        degrade notice instead of an indefinite silent spinner (D-11). */}
+                    <FetchErrorBanner state={selfIdentityErrorState} compact />
+                </div>
+                {membersFocusGuard}
+                {groupFocusGuard}
+            </>
         );
     }
 
-    if (loading) {
+    if (loading || gamesSettledForRef.current !== Router) {
         return (
-            <div className="p-6 flex items-center justify-center min-h-screen">
-                <p className="text-content-secondary">Loading games...</p>
-            </div>
+            <>
+                <div className="p-6 flex items-center justify-center min-h-screen">
+                    <p className="text-content-secondary">Loading games...</p>
+                </div>
+                {membersFocusGuard}
+                {groupFocusGuard}
+            </>
         );
     }
 
@@ -448,7 +902,7 @@ function GroupHomePage(){
 
     // 88.6-21 (D-31, owner ruling 2026-08-27): the group-settings entry gate. Spelled as the
     // SAME expression `grouplist.js` already ships for the same decision, rather than a second
-    // formulation of it. PRESENTATION ONLY — the backend 403 (`routes/groups.js:1521`) is the
+    // formulation of it. PRESENTATION ONLY — the backend 403 (`routes/groups.js`, anchor `Only owners and admins can update group settings`) is the
     // authorization control; see the marker on the kebab below.
     const canEditGroup = userRole === 'owner' || userRole === 'admin';
 
@@ -515,6 +969,10 @@ function GroupHomePage(){
         // POLL-02: FriendshipStatusProvider lifted to root layout — see
         // src/app/layout.js. Nested mount removed so NotificationBell +
         // friends/page consume the same receivedRequests state.
+        // The fragment carries the members focus guard as its SECOND child, in every return
+        // (the C12 DECISION block at `membersFocusGuard`); the page's markup is not re-indented.
+        // The group focus guard is its THIRD child, in every return (88.6.1-89).
+        <>
         <div className="p-4 md:p-6">
             {/* Breadcrumbs.
                 DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
@@ -553,13 +1011,24 @@ function GroupHomePage(){
                 below was inert — the owner's name ran off a 375px screen). `wrap-break-word` sits on
                 the nav because overflow-wrap inherits (groupPlanning's group link additionally
                 carries `max-w-[200px] truncate`, so it truncates rather than wraps — by design).
-                `min-w-0` is deliberately NOT added: no breadcrumb nav is a flex item (every parent is
-                a block div), so it would be inert; add it if one ever becomes one. Pinned on all five
-                navs by `breadcrumbNavOverflow.test.ts`; "tidying" to `block` or dropping `max-w-full`
-                is a decision, not a cleanup. */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                `min-w-0` is on the nav and KEPT on purpose: it is inert today, because no breadcrumb
+                nav is a flex item (every parent is a block div), and it is there so a future flex
+                parent cannot let `min-width: auto` beat `max-w-full` and re-open UAT3-D1. Pinned on
+                all five navs by `breadcrumbNavOverflow.test.ts` — the overflow tokens (now including
+                `min-w-0`), every breadcrumb link's house ring and every separator's `aria-hidden`;
+                "tidying" to `block`, dropping `max-w-full` or dropping `min-w-0` is a decision, not a
+                cleanup.
+                AMENDED Phase 88.6.1-55 (R7-M7): until this phase this marker left `min-w-0` out on
+                purpose, as inert, and asked for it to be added if a breadcrumb nav ever became a flex
+                item. Nothing guarded that condition (register R7-M7), so the trap is removed instead
+                of waited for. Plans 88.6.1-16, -52 and -53 added the token to the other four navs and
+                each names this marker as the decision it departs from; this amendment makes the
+                record match the code. The separator below is hidden from assistive tech in the same
+                plan (D-46), so a screen reader no longer reads "greater than" between the crumbs; it
+                looks the same. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
-                <span className="text-content-muted mx-2">{'>'}</span>
+                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || 'Group'}</span>
             </nav>
 
@@ -738,7 +1207,8 @@ function GroupHomePage(){
                             second type scale — the same reasoning 88-19 recorded when it
                             removed the md:-prefixed heading sizes from userProfile. This is a
                             visible +6px on phone, and it is the intended direction: userProfile
-                            (:1268) and gameDetail (:1036) both already render their h1 at 30px
+                            (its `<Heading ref={profileHeadingRef} level={1} size="display"` title) and
+                            gameDetail (its `level={1}` `size="display"` titles) both already render their h1 at 30px
                             unconditionally, so this surface was the last outlier. `wrap-break-word`
                             is what keeps a long group name safe at 375px and must stay. */}
                         <Heading
@@ -777,7 +1247,7 @@ function GroupHomePage(){
                         "Active members only" IS SUPERSEDED, not contradicted: the entry is now
                         OWNER/ADMIN only. Owner ruling 2026-08-27, phone UAT test 6, option 1. The
                         single item is "Group settings", whose SAVE the backend 403s for anyone
-                        else (`routes/groups.js:1507-1521`, the refusal at `:1521`), so an active
+                        else (`routes/groups.js`'s `router.put('/:group_id/settings'` handler, the refusal at anchor `Only owners and admins can update group settings`), so an active
                         member was being offered an action that could only end in a failure toast.
                         The expression matches the one `grouplist.js` already ships for the same
                         decision (`canEdit = userRole === 'owner' || userRole === 'admin'`).
@@ -786,12 +1256,12 @@ function GroupHomePage(){
                         control and must never be "simplified away" on the strength of this line —
                         a UI gate mistaken for authorization is a real privilege defect
                         (T-88.6-54). The 403's user-facing copy is `MESSAGE_BY_CODE.forbidden`
-                        (`useFetchErrorState.ts:50`, already ratified — no new string), routed and
+                        (`useFetchErrorState.ts`, anchor `forbidden: "You don't have access to this.`, already ratified — no new string), routed and
                         asserted by plan 88.6-20 at `GroupSettings.js`'s settings-save catch, not
                         here. That path stays reachable: the role can change after the modal
                         renders (SPEC Edge Coverage, `ordering / R1`).
 
-                        BOTH the wrapper AND the item are gated, deliberately. Plan 16's
+                        The WRAPPER is the gate, deliberately. Plan 16's
                         zero-items-renders-no-trigger rule still holds as a rule (UI-SPEC §9 / §7.3)
                         but is NOT what is relied on here — in plan 18's own words, so this phase
                         ships one posture on the question, "that rule is a TEST CONTRACT, not an
@@ -799,24 +1269,28 @@ function GroupHomePage(){
                         it".
 
                         IT STRANDS NOBODY. Leave Group lives in Manage Members
-                        (`ManageMembers.js:641-647`, rendered for `isCurrentUser && !isOwner`),
+                        (`ManageMembers.js`, anchor `{isCurrentUser && !isOwner && (`, rendered for `isCurrentUser && !isOwner`),
                         whose opener sits under the same active-member gate in the CTA row below
                         and is reachable by every active member.
 
                         The TRIGGER stays swappable — Phase 88.9 owns replacing it with a gear
                         glyph, and this phase changes only what plan 16's component change brings.
-                        Widening this gate back to any active member is a decision, not a cleanup. */}
+                        Widening this gate back to any active member is a decision, not a cleanup.
+
+                        AMENDED Phase 88.6.1-55 (W051, LATENT-AND-DEAD-RULING): until this phase the
+                        item list repeated the owner/admin check inside the wrapper. Under the
+                        wrapper that inner check could never be false, so it was deleted as dead code
+                        (owner ruling 2026-10-03, TIDY). The wrapper stays, because dropping it too
+                        would lean on KebabMenu's zero-items rule, which this marker refuses to treat
+                        as a gate. REJECTED: leaving the dead arm in place (the 88.6 review's "none
+                        needed") — it read as a half-finished refactor. */}
                     {canEditGroup && (
                         <div className="shrink-0 relative z-20">
                             <KebabMenu
                                 ariaLabel="Group actions"
-                                items={
-                                    canEditGroup
-                                        ? [
-                                              { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
-                                          ]
-                                        : []
-                                }
+                                items={[
+                                    { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
+                                ]}
                             />
                         </div>
                     )}
@@ -996,7 +1470,7 @@ function GroupHomePage(){
                            Phase 88.6's `Button` migration still owns the real border/ring MODEL;
                            this is an interim per-site edge. Changing it is a decision, not a
                            cleanup. */
-                        /* ——— AMENDED Phase 88.6-21 (task 2, UI-SPEC §3.2 `:208`), everything
+                        /* ——— AMENDED Phase 88.6-21 (task 2, UI-SPEC §3.2's `btn`-alone-with-token-utilities row), everything
                            above KEPT AS HISTORY ———
 
                            THIS CONTROL IS NOW A `<Button variant="ghost">`, AND EVERY EDGE
@@ -1010,7 +1484,7 @@ function GroupHomePage(){
                            alternative is the RECORDED NEXT STEP priced at 1.1330 in the bullet
                            above, i.e. a WEAKER cue than the ring, and taking it here would have
                            been the rejected arm of ruling 2. `variant="primary"` is forbidden for
-                           a bare `.btn` outright (§3.2 `:214`).
+                           a bare `.btn` outright (§3.2, "A bare `.btn` NEVER maps to `variant="primary"`").
 
                            FOUR MECHANICAL CHANGES, each of which touches something this marker
                            states, so each is recorded rather than left to be discovered:
@@ -1036,11 +1510,11 @@ function GroupHomePage(){
                                 keeps the half-migration (class string kept, ring dropped) red.
                              4. `px-4 py-2 md:px-6 md:py-3`, `rounded-btn` and `transition-all`
                                 are DELETED as dead: `.btn` declares `padding`, `border-radius`
-                                and `transition` UNLAYERED (`globals.css:2194-2205`), so no
+                                and `transition` UNLAYERED (`globals.css`, the unlayered `.btn {` block), so no
                                 `@layer utilities` class of any of the three ever painted here.
                                 `transition-all` in particular is worth naming: the hover fill
                                 DOES transition, from `.btn`'s own
-                                `transition: var(--theme-transition)` (`:1684` —
+                                `transition: var(--theme-transition)` (the same `.btn {` block —
                                 background-color, color, border-color, box-shadow), never from
                                 this class.
 
@@ -1069,7 +1543,7 @@ function GroupHomePage(){
                             Manage Members
                         </Button>
                     )}
-                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
+                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css`, the `.btn { min-height: 2.75rem; }` rule inside it, reasoning in the D-36 marker above it), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
                     {/* DECISION Phase 88.6-21 (task 2, UI-SPEC §3.2 asChild row / §13 correction 4):
                         this is the PURPLE `btn btn-primary` CTA, not the amber one — the SPEC's
                         own §13 correction 4 exists because an earlier reading swapped the two. It
@@ -1124,8 +1598,8 @@ function GroupHomePage(){
                            amber Create-Event CTA converges onto `<Button variant="accent">` and
                            its inline `style` is DELETED. That inline pair was the SECOND
                            expression of one design decision — the first is `.btn-accent`
-                           (`globals.css:2478-2481`) — which is exactly the routed duplication the
-                           `DECISION Phase 88.3-18` marker at `globals.css:2389` exists to prevent.
+                           (`globals.css`, the `.btn-accent {` rule) — which is exactly the routed duplication the
+                           `DECISION Phase 88.3-18` marker above `.btn-accent` in `globals.css` (the Share Game QR one) exists to prevent.
                            The OI-6 reasoning the deleted comment carried is KEPT here rather than
                            lost: the fill was `var(--amber-600)`, white on it 3.19:1, a pre-existing
                            AA failure in both themes; `--amber-700` is 5.0216:1; `amber-800` (7.09)
@@ -1133,21 +1607,21 @@ function GroupHomePage(){
 
                            BYTE-EQUAL AT REST, MEASURED AT EXECUTION ACROSS ALL THREE TOKENS, not
                            two: `--color-btn-accent-bg` is `var(--amber-700)` in both theme blocks
-                           (`globals.css:1390`, `:1827`), `--color-btn-accent-text` is `#ffffff` in
-                           both (`:1392`, `:1829`), and `--color-btn-accent-hover` is
-                           `var(--amber-800)` in both (`:1391`, `:1828`).
+                           (`globals.css`, `--color-btn-accent-bg: var(--amber-700);` in the light and the `.dark` block), `--color-btn-accent-text` is `#ffffff` in
+                           both (anchor `--color-btn-accent-text: #ffffff;`), and `--color-btn-accent-hover` is
+                           `var(--amber-800)` in both (anchor `--color-btn-accent-hover: var(--amber-800);`).
 
                            THE HOVER STATE IS NOT BYTE-EQUAL, AND THAT IS DISCLOSED RATHER THAN
                            SUPPRESSED. Today the amber is an INLINE declaration, which beats every
                            class rule, so the fill is INVARIANT under hover — `.btn` declares no
                            background of its own. After this migration
                            `.btn-accent:hover:not(:disabled):not([aria-disabled='true'])`
-                           (`globals.css:2483-2484`) applies `--color-btn-accent-hover`, and
-                           `.btn`'s own unlayered `transition: var(--theme-transition)` (`:1684`)
+                           (`globals.css`, that rule) applies `--color-btn-accent-hover`, and
+                           `.btn`'s own unlayered `transition: var(--theme-transition)` (its `.btn {` block)
                            covers background-color — so the control now visibly DARKENS on hover
                            where it previously did not move. It is an ADDED state, not a changed
                            one, and the added state is STRONGER than the rest state it lifts from:
-                           white on amber-800 measures 7.0900 (`tokenContrast.test.ts:1257`) against
+                           white on amber-800 measures 7.0900 (`tokenContrast.test.ts`, anchor `white on amber-800 hover (7.0900)`) against
                            the rest state's 5.0216. Recorded in `88.6-21-SUMMARY.md` for
                            `/gsd-ui-review`. Re-adding an inline fill to suppress it is a decision,
                            not a cleanup.
@@ -1175,6 +1649,31 @@ function GroupHomePage(){
                     )}
                 </div>
             </div>
+
+            {/* DECISION Phase 88.6.1-71 (AC-29 / RF1, owner ruling 2026-10-05): CHOSEN — a failed
+                REFRESH keeps what was on screen and shows plan 88.6.1-70's shared notice + Retry
+                (members: here, between the header, which carries the member count it qualifies,
+                and the tab strip; events: directly above the calendar it qualifies), each gated by
+                its own `retained` from plan 88.6.1-70's `useRetainedContent` over the
+                loaded-for-this-group state — so a list that loaded EMPTY is kept under the notice
+                (owner ruling Y, 2026-10-05) and an access or gone answer never is (contract C10);
+                a failed FIRST load keeps the full banner (the G7 return and the calendar slot's
+                failure arm); a removal still redirects first and never shows the notice.
+                REJECTED (a) — the full banner above the retained content (the earlier D-09a
+                arrangement): the owner ruled the smaller notice for a refresh on 2026-10-05, and
+                the orchestrator converged every retained-content site on it.
+                REJECTED (b) — a notice written in this page: the same sentence ships at other
+                surfaces and must look and speak the same everywhere.
+                Focus after a successful Retry: the page's h1 for the members notice (its section's
+                own heading, so no focusTarget); the calendar's own 'Calendar' heading for the
+                events notice (`headingRef`, plan 88.6.1-73).
+                Changing any of these is a decision, not a cleanup. */}
+            <RefreshFailedNotice
+                state={membersErrorState}
+                retained={membersRetained}
+                className="mb-4"
+                sectionName={MEMBERS_SECTION_NAME}
+            />
 
             {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}
 
@@ -1229,23 +1728,75 @@ function GroupHomePage(){
 
             {activeTab === 'home' && (
               <>
-                {/* Group Calendar */}
-                <EventCalendar
-                    refreshKey={eventsRefreshKey}
-                    events={groupEvents}
-                    variant="compact"
-                    title="Calendar"
-                    showListView={true}
-                    scope={Router ? `group:${Router}` : 'group'}
-                    onEmptyDayClick={userRole && userRole !== 'pending' ? (dateStr) => {
-                        // CAL-05: empty-day tap (or EventDayModal's
-                        // "+ New event on this day") opens create-event in
-                        // visual day-mode focused on the tapped day.
-                        setCalendarPrefillDate(dateStr);
-                        setCalendarEntryMode('day');
-                        setEventModal(true);
-                    } : undefined}
-                />
+                {/* Group Calendar. The failure arm is checked FIRST: a failed request also has
+                    zero events, so the calendar would read as an empty group (the events fetch's
+                    DECISION block); then the first-load line (88.6.1-89).
+                    DECISION Phase 88.6.1-89 (close ruling P-80, owner 2026-10-17 "reuse"): CHOSEN —
+                    the calendar's own loading card, byte for byte (CalendarLoadingCard, moved out
+                    of EventCalendar.js), between the failure arm and the calendar, keyed on
+                    eventsLoadedFor (C3, never a row count), so a refresh over loaded events never
+                    shows it; in external-events mode the calendar leaves loading to its parent.
+                    The section's level-2 Calendar heading is KEPT above the card: both other arms
+                    show it (the failure arm's own, the calendar's through headingRef), so a
+                    heading-navigating screen-reader user finds the section during the load, and
+                    calendarHeadingRef points at a node in every state (review r2 M25).
+                    REJECTED: a loading prop on the calendar (the events block's REJECTED (b): it
+                    would widen a component two pages mount for a fetch only this page owns); a
+                    copy of the card here (two copies of one loader drift); a named export from
+                    EventCalendar.js (this page's suite stubs that whole module, so the page could
+                    not render the real card under test); the card alone without the section
+                    heading (the section would vanish from the outline while it loads).
+                    Changing any of these is a decision, not a cleanup. */}
+                {eventsErrorState.showError && !eventsRetained ? (
+                    <div>
+                        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
+                            {CALENDAR_TITLE}
+                        </Heading>
+                        <FetchErrorBanner
+                            state={eventsErrorState}
+                            title={GROUP_EVENTS_LOAD_FAILED_TITLE}
+                            reportContext="Group home page — events fetch"
+                            focusTarget={calendarHeadingRef}
+                        />
+                    </div>
+                ) : eventsLoadedFor !== Router ? (
+                    <div>
+                        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
+                            {CALENDAR_TITLE}
+                        </Heading>
+                        <CalendarLoadingCard />
+                    </div>
+                ) : (
+                    <>
+                    {/* The events notice: see DECISION Phase 88.6.1-71 (AC-29 / RF1, owner ruling 2026-10-05). */}
+                    <RefreshFailedNotice
+                        state={eventsErrorState}
+                        retained={eventsRetained}
+                        focusTarget={calendarHeadingRef}
+                        className="mb-4"
+                        sectionName={CALENDAR_TITLE}
+                    />
+                    <EventCalendar
+                        refreshKey={eventsRefreshKey}
+                        events={groupEvents}
+                        variant="compact"
+                        title={CALENDAR_TITLE}
+                        headingRef={calendarHeadingRef}
+                        showListView={true}
+                        scope={Router ? `group:${Router}` : 'group'}
+                        onEmptyDayClick={userRole && userRole !== 'pending' ? (dateStr) => {
+                            // CAL-05: empty-day tap (or EventDayModal's
+                            // "+ New event on this day") opens create-event in
+                            // visual day-mode focused on the tapped day.
+                            setCalendarPrefillDate(dateStr);
+                            setCalendarEntryMode('day');
+                            setEventModal(true);
+                        } : undefined}
+                    />
+                    </>
+                )}
+                {/* After the slot, never before it: see DECISION Phase 88.6.1-71 (C12, focus when content leaves). */}
+                <RetainedContentFocusGuard retained={eventsRetained} focusTarget={calendarHeadingRef} />
 
                 {/* Group Games Section */}
                 <GroupGamesList
@@ -1255,7 +1806,11 @@ function GroupHomePage(){
                     userRole={userRole}
                     members={UserList}
                     errorState={gamesErrorState}
+                    retained={gamesRetained}
+                    focusRef={gamesFocusRef}
                 />
+                {/* After the list, never before it: see DECISION Phase 88.6.1-56 (C3 + C10, games). */}
+                <RetainedContentFocusGuard retained={gamesRetained} focusTarget={gamesFocusRef} />
               </>
             )}
 
@@ -1283,6 +1838,20 @@ function GroupHomePage(){
                 group_id={Router}
                 user={user}
                 modal={memberModal}
+                /* DECISION Phase 88.6.1-71 (RF1 after the Manage Members dialog closes): CHOSEN — the
+                   close re-presents NOTHING; the members notice keeps its one region across the
+                   close. Five of this dialog's six member updates refresh the list while it is
+                   open, so a failed refresh fills the notice's region behind it — and that fill IS
+                   heard: the dialog hides the page through the aria-hidden package's hideOthers,
+                   which exempts every aria-live element and keeps its ancestors (the package's
+                   index, comment "we should not hide aria-live elements"), and the dialog sets no
+                   aria-modal. Measured by RF-8 (the page's link sits under aria-hidden while the
+                   region does not).
+                   REJECTED — remounting the notice on close (the planned review r2 #236 fix, whose
+                   premise was that the region sits under aria-hidden): the region is exposed, so a
+                   remount would make a screen reader hear the same sentence twice (plant N).
+                   If the dialog ever gains aria-modal or a hide that covers live regions, this
+                   choice must be revisited. Changing it is a decision, not a cleanup. */
                 modaltoggle={() => setMemberModal(false)}
                 onMembersUpdated={getGroupMembers}
                 group_name={Group?.name || 'this group'}
@@ -1312,6 +1881,9 @@ function GroupHomePage(){
                 />
             )}
         </div>
+        {membersFocusGuard}
+        {groupFocusGuard}
+        </>
     );
 }
 

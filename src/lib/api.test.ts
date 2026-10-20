@@ -6,10 +6,14 @@
 // classification block, which stubs global fetch to pin the WR-04 contract.
 import { afterEach, vi } from 'vitest';
 
+import fs from 'node:fs';
+import path from 'node:path';
+
 import {
   ApiError,
   apiFetch,
   availabilityFormAPI,
+  isCsrfRejection,
   magicAuthAPI,
   mapErrorToCode,
   publicFetch,
@@ -19,6 +23,7 @@ import {
 } from './api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { errCtx, logger } from '@/lib/logger';
+import { withoutComments } from '../test-utils/sourceScan';
 
 describe('ApiError — shape', () => {
   it('is both an Error and an ApiError, carrying code + status + details', () => {
@@ -30,6 +35,18 @@ describe('ApiError — shape', () => {
     expect(err.code).toBe('rate_limited');
     expect(err.status).toBe(429);
     expect(err.details).toEqual({ retryAfter: 30 });
+  });
+
+  // 88.6.1-23 MEDLOW-18 (S1): the platform ErrorOptions ride a sixth optional parameter, so a
+  // transport failure can keep its cause. Built without it, the shape is unchanged.
+  it('S1: keeps an ErrorOptions cause non-enumerably, and has NO own cause without options', () => {
+    const boom = new TypeError('boom');
+    const withCause = new ApiError('x', 'network', 0, undefined, undefined, { cause: boom });
+    expect(withCause.cause).toBe(boom);
+    expect(Object.keys(withCause)).not.toContain('cause');
+    expect(withCause.name).toBe('ApiError');
+    expect(withCause).toBeInstanceOf(ApiError);
+    expect(Object.prototype.hasOwnProperty.call(new ApiError('x', 'network', 0), 'cause')).toBe(false);
   });
 });
 
@@ -250,7 +267,7 @@ describe('rsvpAPI.submitRsvp — undefined note is dropped from the wire body', 
 // request", killing R12 silently. These assertions are the only thing standing
 // there. The exact key-SET check (not a `toMatchObject`) is deliberate: an added
 // alias key must fail, and the backend refuses any body carrying a second key
-// (routes/users.js:1226-1229, :1760-1763).
+// (routes/users.js:1406 and :2103, `keys.length !== 1`; re-found at 88.6.1-07).
 //
 // NO `grep`-based key gate is added on api.ts. The body is written in ES6
 // shorthand, so there is no colon after the key and a colon-anchored grep fails
@@ -347,7 +364,7 @@ describe('usersAPI email-change calls — the serialised wire body, path and met
 
   it('percent-encodes the user_id path segment on every one of the five', async () => {
     // The id can be an Auth0 sub (`auth0|abc`) as well as a UUID — matchesSelf
-    // accepts either (middleware/objectAuth.js:59-84) — and a raw `|` in a path
+    // accepts either (middleware/objectAuth.js:59-84, `async function matchesSelf`) — and a raw `|` in a path
     // is not a legal URL character.
     const calls: Array<[string, () => Promise<unknown>]> = [
       ['email', () => usersAPI.requestEmailChange('auth0|a b', 'x@y.z')],
@@ -422,8 +439,9 @@ describe('88.6-42 — the FE reads code/message/details and nothing else', () =>
       // "regardless of status". It now maps off the status like any other body.
       expect(mapErrorToCode({ errors: [{ message: 'x' }] }, 500)).toBe('internal');
       // On a 400 the OUTCOME is unchanged, which is why the three unconverted backend
-      // producers measured 2026-09-17 (routes/invites.js:216, routes/friendships.js:278,
-      // routes/availability.js:55-64 — all top-level `errors[]` on a 400) are
+      // producers measured 2026-09-17 (routes/invites.js:216 and routes/friendships.js:278,
+      // `res.status(400).json({ errors: errors.array() })`; routes/availability.js:55-64,
+      // `errors: errors.array().map` — all top-level `errors[]` on a 400) are
       // behaviour-neutral across this change.
       expect(mapErrorToCode({ errors: [{ message: 'x' }] }, 400)).toBe('validation');
     });
@@ -522,6 +540,80 @@ describe('88.6-42 — the FE reads code/message/details and nothing else', () =>
       );
       expect(err.message).toBe('Name is required');
       expect(err.upstreamMessage).toBe('legacy too');
+    });
+  });
+
+  // Plan 88.6.1-07 (D-24 (a2), MEDLOW-9). The BFF proxy's CSRF gate answers an unsafe-method
+  // call with a code-less 403 whose body carries the structural key `csrf_rejected: true`.
+  // `ApiError.details` is the WHOLE body, so the key is TOP-LEVEL there. `isCsrfRejection` is
+  // the one seam predicate that recognises it; `getFetchErrorMessage` reads it so that request
+  // never prints a role refusal. These arms drive the real apiFetch throw site (the parent's
+  // `rejection` helper), so the tracer is the whole path: body -> apiFetch -> details ->
+  // predicate -> message.
+  describe('88.6.1-07 / D-24 — the proxy CSRF 403 is recognised by one structural key', () => {
+    const PROXY_CSRF_BODY = { error: 'Cross-origin request rejected', csrf_rejected: true } as const;
+    const ROLE = 'Only the poll creator and group admins can end a check-in.';
+    const FALLBACK = "We couldn't end that check-in. Please try again.";
+
+    it('A1: is true for the proxy body on an ApiError with status 403', () => {
+      expect(isCsrfRejection(new ApiError('x', 'forbidden', 403, { ...PROXY_CSRF_BODY }))).toBe(true);
+    });
+
+    it('A2: is false, and never throws, for every malformed, mis-statused or non-ApiError shape', () => {
+      const cases: Array<[string, unknown]> = [
+        ['flag as the string "true"', new ApiError('x', 'forbidden', 403, { csrf_rejected: 'true' })],
+        ['flag as 1', new ApiError('x', 'forbidden', 403, { csrf_rejected: 1 })],
+        ['flag false', new ApiError('x', 'forbidden', 403, { csrf_rejected: false })],
+        ['flag missing', new ApiError('x', 'forbidden', 403, { error: 'Cross-origin request rejected' })],
+        ['details null', new ApiError('x', 'forbidden', 403, null)],
+        ['details undefined', new ApiError('x', 'forbidden', 403, undefined)],
+        ['details an array', new ApiError('x', 'forbidden', 403, [])],
+        ['details a string', new ApiError('x', 'forbidden', 403, 'csrf_rejected')],
+        ['details a number', new ApiError('x', 'forbidden', 403, 403)],
+        ['the same body on a 401', new ApiError('x', 'unauthorized', 401, { ...PROXY_CSRF_BODY })],
+        ['the same body on a 400', new ApiError('x', 'validation', 400, { ...PROXY_CSRF_BODY })],
+        ['the same body on a 500', new ApiError('x', 'internal', 500, { ...PROXY_CSRF_BODY })],
+        [
+          'a duck-typed plain object',
+          { code: 'forbidden', status: 403, details: { csrf_rejected: true } },
+        ],
+        ['a plain Error', new Error('x')],
+        ['null', null],
+        ['undefined', undefined],
+      ];
+      for (const [label, input] of cases) {
+        let out: unknown;
+        expect(() => {
+          out = isCsrfRejection(input);
+        }, `${label}: must not throw`).not.toThrow();
+        expect(out, label).toBe(false);
+      }
+    });
+
+    it('A3: mapErrorToCode still resolves the flagged body to forbidden (a2 over a1, confirm-only)', () => {
+      expect(mapErrorToCode({ ...PROXY_CSRF_BODY }, 403)).toBe('forbidden');
+    });
+
+    it('A4: end to end, apiFetch fed the proxy body prints the caller fallback, never the role sentence', async () => {
+      const err = await rejection(403, JSON.stringify(PROXY_CSRF_BODY));
+      expect(getFetchErrorMessage(err, { fallback: FALLBACK, byCode: { forbidden: ROLE } })).toBe(FALLBACK);
+      expect(err.code).toBe('forbidden');
+      expect(isCsrfRejection(err)).toBe(true);
+    });
+
+    it('A5: end to end control, a backend 403 without the flag still prints the role sentence', async () => {
+      const err = await rejection(403, '{"error":"Access denied"}');
+      expect(getFetchErrorMessage(err, { fallback: FALLBACK, byCode: { forbidden: ROLE } })).toBe(ROLE);
+    });
+
+    it('A6: the proxy source still emits the exact body literal these arms feed (producer contract)', () => {
+      // A contract guard, not a fix pin: renaming the producer's key would otherwise disable the
+      // predicate silently while every arm above stayed green on its own copy of the body.
+      const src = withoutComments(
+        fs.readFileSync(path.resolve(__dirname, '../app/api/[...path]/route.ts'), 'utf8')
+      );
+      expect(src).toContain("{ error: 'Cross-origin request rejected', csrf_rejected: true }");
+      expect(src).toContain('{ status: 403 }');
     });
   });
 });
@@ -635,7 +727,8 @@ describe('88.6-42 — transport hardening on the apiFetch-bypassing public helpe
 // ADDED by plan 88.6-58 task 4 (2026-09-28, /code-adversarial-review 88.6 MEDLOW-2). Plan 42's
 // census above named FIVE apiFetch-bypassing public helpers; there were SIX. The sixth,
 // `availabilityFormAPI.getExistingResponse`, is awaited by the magic-link page BEFORE it sets
-// READY (availability-form/[token]/page.js:131, :159), so a GET that never settles held the
+// READY (availability-form/[token]/page.js:147, `await availabilityFormAPI.getExistingResponse(`,
+// before :190, `setPageState(PAGE_STATES.READY)`; re-read at 88.6.1-07), so a GET that never settles held the
 // visitor on "Loading" forever — the same class plan 42 closed for the other five. Three cases
 // were RED on FE d03f728 (timeout, non-JSON 200, unencoded promptId); the 404 case is
 // confirm-only (the `object | null` contract is unchanged).
@@ -676,7 +769,8 @@ describe('88.6-58 — getExistingResponse, the SIXTH apiFetch-bypassing helper, 
     expect(settled).toHaveBeenCalledTimes(1);
     const [outcome, value] = settled.mock.calls[0];
     expect(outcome).toBe('rejected');
-    expect((value as Error).message).toBe('availability existing-response lookup did not complete');
+    // 88.6.1-23 MEDLOW-18: a timeout says so (the helper's own deadline fired).
+    expect((value as Error).message).toBe('availability existing-response lookup did not complete (timed out after 20000 ms)');
   });
 
   it('a 200 with a non-JSON body resolves null (guarded parse; the object | null contract kept)', async () => {
@@ -805,7 +899,9 @@ describe('88.6-62 — the magic-link transport contract (review round 2 cluster 
     const [outcome, value] = settled.mock.calls[0];
     expect(outcome).toBe('rejected');
     expect(value).toBeInstanceOf(ApiError);
-    expect(value).toMatchObject({ code: 'network', status: 0, message: failure });
+    // 88.6.1-23 MEDLOW-18: a timeout says so, and the AbortError is kept as the cause.
+    expect(value).toMatchObject({ code: 'network', status: 0, message: `${failure} (timed out after 20000 ms)` });
+    expect(((value as ApiError).cause as Error).name).toBe('AbortError');
   });
 
   it.each(SIX)('CONFIRM-ONLY: %s leaves NO timer pending once it resolves', async (_name, run) => {
@@ -890,5 +986,469 @@ describe('88.6-62 — the magic-link transport contract (review round 2 cluster 
       const err = await reject(502, exact);
       expect(err.message).toBe(exact);
     });
+  });
+});
+
+// ADDED by plan 88.6.1-23 task 1 (R3-M3, D-26; register `.planning/deferred/phase-88.6.1.md:230`).
+// getExistingResponse throws a non-OK body away (`if (!res.ok) return null;`), yet the
+// helper under it read that body inside its 20 s deadline first, so a 404 whose body
+// stalled held the magic-link page on "Validating your link..." for up to 20 s. G1 was
+// RED before the fix (unsettled at 0 ms, rejected at 20 000 ms). G2 is the control: the
+// opt-in is per caller, and respondViaToken still reads its 410 body (the page reads
+// the `event_cancelled` discriminant off it), so a stalled 410 still waits and rejects.
+describe('88.6.1-23 / R3-M3 (D-26) — a non-OK pre-fill lookup is not held by its body', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  // Headers arrive at once with `status`; the body read models real fetch: it settles only by
+  // rejecting when the request's signal aborts (the 88.6-62 describe's stalled-body double).
+  const stalledBody = (status: number) => {
+    const text = vi.fn();
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      text.mockImplementation(
+        () =>
+          new Promise<string>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            );
+          }),
+      );
+      return { ok: status >= 200 && status < 300, status, text };
+    });
+    return { fetchMock, text };
+  };
+
+  it('G1: a 404 whose body never ends resolves null at 0 ms, never reads the body and leaves no timer', async () => {
+    vi.useFakeTimers();
+    const { fetchMock, text } = stalledBody(404);
+    vi.stubGlobal('fetch', fetchMock);
+    const settled = vi.fn();
+    availabilityFormAPI.getExistingResponse('p1', 'tok').then(
+      (v) => settled('resolved', v),
+      (e) => settled('rejected', e),
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled, 'the lookup must settle at headers, not wait for the body').toHaveBeenCalledTimes(1);
+    expect(settled.mock.calls[0]).toEqual(['resolved', null]);
+    expect(text, 'a body nothing reads is never read').not.toHaveBeenCalled();
+    expect(vi.getTimerCount(), 'the deadline is cleared, not left armed').toBe(0);
+  });
+
+  it('G2 (CONFIRM-ONLY control): respondViaToken still reads a stalled 410 body and rejects network at 20 000 ms', async () => {
+    vi.useFakeTimers();
+    const { fetchMock, text } = stalledBody(410);
+    vi.stubGlobal('fetch', fetchMock);
+    const settled = vi.fn();
+    rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes').then(
+      (v) => settled('resolved', v),
+      (e) => settled('rejected', e),
+    );
+
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(settled).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toHaveBeenCalledTimes(1);
+    const [outcome, value] = settled.mock.calls[0];
+    expect(outcome).toBe('rejected');
+    expect(value).toBeInstanceOf(ApiError);
+    expect(value).toMatchObject({ code: 'network', status: 0 });
+    expect(text, 'the 410 body carries the page discriminant, so it is still read').toHaveBeenCalledTimes(1);
+  });
+});
+
+// ADDED by plan 88.6.1-23 task 2 (W062 rider MEDLOW-18; register
+// `.planning/deferred/phase-88.6.1.md:193`). The transport catch collapsed every failure onto
+// one cause-less message, so a breadcrumb could not tell a timeout from a dropped connection.
+// The register asked for "cause + a distinct name"; the name stays 'ApiError' because consumers
+// branch on instanceof and 'ApiError — shape' pins the name. A timeout is told apart by its
+// MESSAGE (built from the helper's constants only) and every failure keeps its cause.
+// S1 (in 'ApiError — shape'), T1 and T2 were RED before the fix; T4 and T5 are confirm-only.
+describe('88.6.1-23 / W062 rider MEDLOW-18 — a timeout is told apart from other transport failures, and the cause is kept', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const PREFILL = { magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' };
+
+  // [helper, call, the helper's own failure constant]
+  const SIX: Array<[string, () => Promise<unknown>, string]> = [
+    ['rsvpPublicAPI.respondViaToken', () => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'), 'rsvp respond request did not complete'],
+    ['magicAuthAPI.validateToken', () => magicAuthAPI.validateToken('t'), 'magic-auth validate request did not complete'],
+    ['availabilityFormAPI.submitResponse', () => availabilityFormAPI.submitResponse({ a: 1 }), 'availability response submission did not complete'],
+    ['availabilityFormAPI.getExistingResponse', () => availabilityFormAPI.getExistingResponse('p1', 'tok'), 'availability existing-response lookup did not complete'],
+    ['availabilityFormAPI.prefillFromGcal', () => availabilityFormAPI.prefillFromGcal(PREFILL), 'Failed to import from Google Calendar'],
+    ['availabilityFormAPI.prefillFromSaved', () => availabilityFormAPI.prefillFromSaved(PREFILL), 'Failed to use saved availability'],
+  ];
+
+  const capture = async (run: () => Promise<unknown>): Promise<unknown> => {
+    try {
+      await run();
+    } catch (err) {
+      return err;
+    }
+    return null;
+  };
+
+  it('T1: a timeout says so in the message and keeps the AbortError as its cause, for all six helpers', async () => {
+    vi.useFakeTimers();
+    for (const [name, run, failure] of SIX) {
+      // Models real fetch: it settles only by rejecting when the request's signal aborts.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          (_url: string, init?: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () =>
+                reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+              );
+            }),
+        ),
+      );
+      const settled = vi.fn();
+      run().then(
+        (v) => settled('resolved', v),
+        (e) => settled('rejected', e),
+      );
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(settled, name).toHaveBeenCalledTimes(1);
+      const [outcome, value] = settled.mock.calls[0];
+      expect(outcome, name).toBe('rejected');
+      expect(value, name).toBeInstanceOf(ApiError);
+      expect(value, name).toMatchObject({
+        code: 'network',
+        status: 0,
+        name: 'ApiError',
+        message: `${failure} (timed out after 20000 ms)`,
+      });
+      expect((value as ApiError).cause, name).toBeInstanceOf(Error);
+      expect(((value as ApiError).cause as Error).name, name).toBe('AbortError');
+    }
+  });
+
+  it('T2: any other transport failure keeps the message byte-unchanged and the caught value as cause, for all six', async () => {
+    for (const [name, run, failure] of SIX) {
+      const boom = new TypeError('Failed to fetch');
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(boom));
+      const caught = await capture(run);
+      expect(caught, name).toBeInstanceOf(ApiError);
+      expect(caught, name).toMatchObject({ code: 'network', status: 0, name: 'ApiError', message: failure });
+      expect((caught as ApiError).cause, name).toBe(boom);
+    }
+  });
+
+  // Prohibition 5: what is ADDED carries no URL and no token. The caught text is never spliced
+  // into the message, so errCtx (name and message only) cannot carry the token-bearing URL.
+  it('T4 (CONFIRM-ONLY): a TypeError quoting the token-bearing URL never reaches the message or errCtx', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(
+        new TypeError('NetworkError when attempting to fetch resource https://x.invalid/rsvp/respond?token=tok-SECRET-123'),
+      ),
+    );
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('tok-SECRET-123', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(errCtx(caught)).toEqual({ name: 'ApiError', message: 'rsvp respond request did not complete' });
+    const json = JSON.stringify(errCtx(caught));
+    expect(json).not.toContain('tok-SECRET-123');
+    expect(json).not.toContain('http');
+  });
+
+  // A JSON SyntaxError's text can quote the response body, so the parse failure keeps no cause.
+  it('T5 (CONFIRM-ONLY): an unparseable 200 rejects internal with NO own cause property', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '<!DOCTYPE html><html><body>gateway</body></html>' }),
+    );
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 200 });
+    expect(Object.prototype.hasOwnProperty.call(caught, 'cause')).toBe(false);
+  });
+});
+
+// ADDED by plan 88.6.1-23 task 2 (the R9 mechanism; owner ruling 2026-10-05, copy key R9,
+// `.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/planning-briefs/revision-lap-3-manifest.md:48`).
+// The backend's own failure on GET /rsvp/respond is a JSON 500 (BE `routes/rsvp.js`,
+// anchor `Something went wrong processing your RSVP.`), which respondViaToken RESOLVED, so the
+// RSVP page fell to its generic copy and told the person to tap a single-use link the backend
+// may already have consumed. A status of 500 or above now rejects ApiError('internal') at
+// headers, without reading the body, and plan 88.6.1-36's `internal` arm shows R9. Y1, Y2 and
+// Y4 were RED before the fix; Y3 is the confirm-only boundary.
+describe('88.6.1-23 / R9 mechanism — a server error on the RSVP link rejects as internal; the bodies the page reads still resolve', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const answer = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText });
+
+  const capture = async (run: () => Promise<unknown>): Promise<unknown> => {
+    try {
+      await run();
+    } catch (err) {
+      return err;
+    }
+    return null;
+  };
+
+  it('Y1: the backend JSON 500 rejects ApiError(internal, 500) with the constant message and nothing of the body', async () => {
+    vi.stubGlobal('fetch', answer(500, '{"error":"Something went wrong processing your RSVP."}'));
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    // 88.6.1 code review IN-14: the server-error message, not the transport-failure one.
+    expect(caught).toMatchObject({ code: 'internal', status: 500, message: 'HTTP error! status: 500' });
+    expect((caught as ApiError).details).toBeUndefined();
+    expect((caught as ApiError).upstreamMessage).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(caught, 'cause')).toBe(false);
+    expect(JSON.stringify(errCtx(caught))).not.toContain('processing your RSVP');
+  });
+
+  it('Y2: a JSON 502, 503, 504 and 599 each reject ApiError(internal) with that status', async () => {
+    for (const status of [502, 503, 504, 599]) {
+      vi.stubGlobal('fetch', answer(status, '{"message":"upstream unavailable"}'));
+      const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+      expect(caught, String(status)).toBeInstanceOf(ApiError);
+      expect(caught, String(status)).toMatchObject({
+        code: 'internal',
+        status,
+        message: `HTTP error! status: ${status}`,
+      });
+    }
+  });
+
+  // ADDED by plan 88.6.1-87 (close ruling P-77, owner 2026-10-18; key per owner ruling D4
+  // "Option A"), replacing the note that this 404 was deliberately not pinned. The backend's
+  // post-consume missing-event 404 now carries the token event_not_found (BE
+  // `Sonnet/routes/rsvp.js`, GET /respond, anchor `event_not_found`), and respondViaToken
+  // rejects ApiError('not_found', 404) for that parsed body ONLY. Y5 was RED before the fix
+  // (the 404 resolved); Y6 is a confirm-only boundary; Y7 and Y8 are regression pins, green
+  // before and after, made RED by the plant that loosens the discriminant to the status alone.
+  it('Y5: a 404 carrying the token event_not_found rejects ApiError(not_found, 404) with the constant message and nothing of the body', async () => {
+    vi.stubGlobal('fetch', answer(404, '{"error":"event_not_found"}'));
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'not_found', status: 404, message: 'rsvp respond: the event no longer exists' });
+    expect((caught as ApiError).details).toBeUndefined();
+    expect((caught as ApiError).upstreamMessage).toBeUndefined();
+    expect(JSON.stringify(errCtx(caught))).not.toContain('event_not_found');
+  });
+
+  it('Y6 (CONFIRM-ONLY boundary): an HTML 404 still rejects internal, status 404 (the parse runs first, R9)', async () => {
+    vi.stubGlobal('fetch', answer(404, '<html><body>Not Found</body></html>'));
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 404 });
+  });
+
+  // Railway's edge answers a detached or misrouted domain with its own JSON 404 (probed
+  // 2026-10-18, `x-railway-fallback: true`, no `error` key). It parses, and it must never tell
+  // anyone their game night was cancelled: no token was consumed.
+  it('Y7: Railway edge fallback JSON 404 (no error key) RESOLVES, never rejects not_found', async () => {
+    const body = '{"status":"error","code":404,"message":"Application not found","request_id":"x"}';
+    vi.stubGlobal('fetch', answer(404, body));
+    await expect(rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes')).resolves.toEqual(JSON.parse(body));
+  });
+
+  // The prose prohibition's pin: the legacy body the backend sent before plan 87 (and still
+  // sends until its deploy) resolves exactly as before, so the page stays on its ERROR card.
+  it('Y8: the legacy prose 404 body RESOLVES, never rejects not_found', async () => {
+    const body = '{"error":"Event not found"}';
+    vi.stubGlobal('fetch', answer(404, body));
+    await expect(rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes')).resolves.toEqual(JSON.parse(body));
+  });
+
+  it('Y3 (CONFIRM-ONLY boundary): every body below 500 the page reads still resolves; a non-JSON 502 still rejects internal', async () => {
+    const BODIES: Array<[number, string]> = [
+      [403, '{"error":"account_not_found","message":"fixture"}'],
+      [403, '{"error":"expired_link","message":"fixture"}'],
+      [410, '{"error":"event_cancelled","group_id":"g-1"}'],
+      [410, '{"error":"event_passed","event_name":"X","group_id":"g-1"}'],
+      [400, '{"error":"Missing required parameters"}'],
+    ];
+    for (const [status, body] of BODIES) {
+      vi.stubGlobal('fetch', answer(status, body));
+      await expect(rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'), `${status} ${body}`).resolves.toEqual(JSON.parse(body));
+    }
+    vi.stubGlobal('fetch', answer(502, '<html><body>Bad gateway</body></html>'));
+    const caught = await capture(() => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes'));
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'internal', status: 502 });
+  });
+
+  it('Y4: a 503 whose body stalls rejects internal at headers, never reads the body, leaves no timer', async () => {
+    vi.useFakeTimers();
+    const text = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        text.mockImplementation(
+          () =>
+            new Promise<string>((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () =>
+                reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+              );
+            }),
+        );
+        return { ok: false, status: 503, text };
+      }),
+    );
+    const settled = vi.fn();
+    rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes').then(
+      (v) => settled('resolved', v),
+      (e) => settled('rejected', e),
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled, 'a 5xx is decided at headers, not after its body').toHaveBeenCalledTimes(1);
+    const [outcome, value] = settled.mock.calls[0];
+    expect(outcome).toBe('rejected');
+    expect(value).toBeInstanceOf(ApiError);
+    expect(value).toMatchObject({ code: 'internal', status: 503 });
+    expect(text, 'a 5xx body nothing reads is never read').not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// ADDED by plan 88.6.1-23 task 3 (R3-M7/M9; register `.planning/deferred/phase-88.6.1.md:225`,
+// fix text "resolve only when the body code is token_invalid"). validateToken used to call a
+// link dead by HTTP 400 alone, so a second 400 on the route would render as a dead link and a
+// token_invalid moved off 400 would render "Something went wrong". The backend's own code now
+// decides. V1-V4 were RED before the fix. No production behaviour changes today: the validate
+// route's only 400s are token_invalid (BE `routes/magicAuth.js:98`, `:115`).
+describe('88.6.1-23 / R3-M7/M9 — validateToken decides by the token_invalid code, not by HTTP 400', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answer = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText });
+
+  const validateRejection = async (status: number, bodyText: string): Promise<unknown> => {
+    vi.stubGlobal('fetch', answer(status, bodyText));
+    try {
+      await magicAuthAPI.validateToken('t');
+    } catch (err) {
+      return err;
+    }
+    return null;
+  };
+
+  it('V1: a 400 whose code is validation REJECTS a coded ApiError', async () => {
+    const caught = await validateRejection(400, '{"code":"validation","message":"Bad input"}');
+    expect(caught, 'a 400 that is not token_invalid must not resolve').toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'validation', status: 400 });
+  });
+
+  it('V2: a code-less 400 REJECTS validation, the status template as message, the legacy string as upstreamMessage', async () => {
+    const caught = await validateRejection(400, '{"error":"Bad request"}');
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({
+      code: 'validation',
+      status: 400,
+      message: 'HTTP error! status: 400',
+      upstreamMessage: 'Bad request',
+    });
+  });
+
+  it('V3: a 400 whose body is JSON null REJECTS validation', async () => {
+    const caught = await validateRejection(400, 'null');
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'validation', status: 400 });
+  });
+
+  it('V4: a 410 carrying code token_invalid RESOLVES its body into the invalid-link branch', async () => {
+    const body = { code: 'token_invalid', message: 'This link is no longer valid.' };
+    vi.stubGlobal('fetch', answer(410, JSON.stringify(body)));
+    await expect(magicAuthAPI.validateToken('t')).resolves.toEqual(body);
+  });
+});
+
+// ADDED by plan 88.6.1-23 task 3 (W063, AC-34 clause 5; register
+// `.planning/deferred/phase-88.6.1.md:194`). The 88.6-62 cap bounded only NON-JSON text, so a JSON
+// envelope message, a joined field-error text and the two prefill Error messages rode uncapped
+// into every errCtx breadcrumb. capErrorText now redacts (scrubString) and THEN cuts, where each
+// message is built. M1-M4 and M6-M8 were RED before the fix; M5 is confirm-only. The #3 arms
+// above stay green unedited (their text carries no PII, so redact-then-cut is byte-unchanged).
+describe('88.6.1-23 / W063 — every body-derived ApiError message is capped where it is built', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answer = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText });
+
+  const rejectionOf = async (status: number, bodyText: string, run: () => Promise<unknown>): Promise<Error> => {
+    vi.stubGlobal('fetch', answer(status, bodyText));
+    let caught: unknown = null;
+    try {
+      await run();
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'must REJECT on a non-ok response').toBeInstanceOf(Error);
+    return caught as Error;
+  };
+  const viaApiFetch = (status: number, bodyText: string) => rejectionOf(status, bodyText, () => apiFetch('/anything'));
+  const viaPublicFetch = (status: number, bodyText: string) => rejectionOf(status, bodyText, () => publicFetch('/anything'));
+
+  const envelope = (message: unknown, code = 'validation') => JSON.stringify({ code, message });
+  const JWT =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LTEiLCJwcm9tcHQiOiJwLTEifQ.c2lnbmF0dXJlLXZhbHVlLWhlcmUtMTIz';
+
+  it('M1: apiFetch caps a 5000-character envelope message, and errCtx carries the capped text', async () => {
+    const err = await viaApiFetch(400, envelope('m'.repeat(5000)));
+    expect(err.message).toBe('m'.repeat(200) + ' [truncated]');
+    expect(errCtx(err).message).toBe('m'.repeat(200) + ' [truncated]');
+    expect(err).toMatchObject({ code: 'validation' });
+  });
+
+  it('M2: publicFetch caps the same envelope message', async () => {
+    const err = await viaPublicFetch(400, envelope('m'.repeat(5000)));
+    expect(err.message).toBe('m'.repeat(200) + ' [truncated]');
+  });
+
+  it('M3: validateToken caps a 5000-character envelope message on its coded throw', async () => {
+    const err = await rejectionOf(500, envelope('m'.repeat(5000), 'internal'), () => magicAuthAPI.validateToken('t'));
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.message).toBe('m'.repeat(200) + ' [truncated]');
+  });
+
+  it('M4: apiFetch caps the joined field-error text', async () => {
+    const err = await viaApiFetch(400, JSON.stringify({ details: { errors: [{ message: 'n'.repeat(300) }] } }));
+    expect(err.message).toBe('n'.repeat(200) + ' [truncated]');
+  });
+
+  it('M5 (CONFIRM-ONLY): exactly 200 characters pass untouched; a non-string message is coerced like Error, never throwing', async () => {
+    expect((await viaApiFetch(400, envelope('y'.repeat(200)))).message).toBe('y'.repeat(200));
+    expect((await viaApiFetch(400, envelope({ nested: true }))).message).toBe('[object Object]');
+    expect((await viaApiFetch(400, envelope(12345))).message).toBe('12345');
+  });
+
+  // 190 puts `alice@` inside the kept 200 characters: a blind cut keeps ' alice@exa', a fragment
+  // the EMAIL rule cannot match without its TLD, so only redact-then-cut removes it.
+  it('M6: an email straddling character 200 is redacted whole, never cut into a fragment', async () => {
+    const err = await viaApiFetch(400, envelope('a'.repeat(190) + ' alice@example.com'));
+    expect(err.message).not.toContain('alice');
+    expect(err.message).not.toContain('@');
+  });
+
+  // A blind cut keeps the token's first 50 characters, a header-plus-partial-payload fragment
+  // the three-segment JWT rule cannot match.
+  it('M7: a JWT straddling character 200 is redacted whole, never cut into a fragment', async () => {
+    const err = await viaApiFetch(400, envelope('a'.repeat(150) + JWT));
+    expect(JWT.length).toBeGreaterThan(50);
+    expect(err.message).not.toContain('eyJ');
+  });
+
+  it('M8: prefillFromGcal caps the body-derived text of its plain Error', async () => {
+    const err = await rejectionOf(400, JSON.stringify({ error: 'e'.repeat(5000) }), () =>
+      availabilityFormAPI.prefillFromGcal({ magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' }),
+    );
+    expect(err.message).toBe('e'.repeat(200) + ' [truncated]');
   });
 });

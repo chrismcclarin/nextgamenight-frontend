@@ -6,8 +6,9 @@
 // move document.activeElement (Tab+focus+Esc only). The roving={false} source
 // assertion is covered by the plan's grep gate; here we pin the behavior.
 import * as React from 'react';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 
 vi.mock('../components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'UTC' }),
@@ -24,6 +25,11 @@ vi.mock('../../lib/hooks/useSelfIdentity', () => ({
 import EventHeatmapBackground from './EventHeatmapBackground';
 
 afterEach(cleanup);
+
+/** Review #178: the two ARIA required-context rules, scoped by rule id (the composed audit's runOnly idiom). */
+const REQUIRED_CONTEXT = {
+  runOnly: { type: 'rule' as const, values: ['aria-required-parent', 'aria-required-children'] },
+};
 
 const heatmapData = {
   slots: [
@@ -142,18 +148,34 @@ describe('UI-SPEC §9.3 E9 · long-text — the tightest cell wraps or clips exa
 });
 
 describe('T-88.6-71 — the availability level reaches the cell RESTING accessible name', () => {
+  // The accessible-name algorithm (jsdom, Testing Library, macOS VoiceOver) reads ReadCell's
+  // explicit `aria-label` (ReadCell, anchor `role="gridcell"`), so the level must be IN that name
+  // at rest; the tooltip's aria-describedby exists only while it is OPEN. iOS VoiceOver adds a
+  // second rule: it lands on a cell only when the cell has NO accessible children (research AT-1,
+  // the WebKit leaf rule) - hence the leaf pin below.
+  // Amended by DECISION Phase 88.6.1-24 (D-34, copy row C1): the names are now the scheduler's C1
+  // template, and an EMPTY cell takes C1's plain note with no "0 of N available", because an empty
+  // cell has no wash level - the zero arm of `mergedCellColor` (src/lib/availabilityColor.ts:100)
+  // returns the neutral surface - so T-88.6-71's colour-only concern does not arise there. Every
+  // cell that HAS a level still names it.
   it('names the count and the total on every annotated cell, not just inside the tooltip', () => {
     render(<EventHeatmapBackground heatmapData={heatmapData} loading={false} anchorDate="2026-06-29" />);
-    // ReadCell puts ariaLabel on an EXPLICIT aria-label (ReadCell.tsx:218), which overrides the
-    // count span's text — so without the fold at the call site this level is colour-only to a
-    // screen reader at rest. The tooltip's aria-describedby exists only while it is OPEN.
-    const named = screen.getAllByRole('gridcell', { name: /: 3 of 4 available$/ });
-    expect(named.length).toBeGreaterThan(0);
-    for (const cell of screen.getAllByRole('gridcell')) {
-      expect(cell.getAttribute('aria-label')).toMatch(
-        /^Availability for \d{4}-\d{2}-\d{2} hour \d+: \d+ of \d+ available$/
+    // 2026-06-29 is a Monday; the fixture's 18:00 UTC slot lands on the 18:00 row under the mocked
+    // profile zone UTC, and both half-hour cells of that hour carry the hourly count.
+    expect(
+      screen.getByRole('gridcell', { name: 'Monday, June 29 at 6:00 PM, 3 of 4 available' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('gridcell', { name: 'Monday, June 29 at 6:30 PM, 3 of 4 available' })
+    ).toBeInTheDocument();
+    const names = screen.getAllByRole('gridcell').map((cell) => cell.getAttribute('aria-label') ?? '');
+    const counted = names.filter((name) => /, \d+ of \d+ available$/.test(name));
+    expect(counted).toHaveLength(2);
+    names
+      .filter((name) => !/, \d+ of \d+ available$/.test(name))
+      .forEach((name) =>
+        expect(name).toMatch(/^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2} at \d{1,2}:(00|30) (AM|PM)$/)
       );
-    }
   });
 
   it('leaves the shared ReadCell primitive to own the attribute — the fix is at the ONE call site', () => {
@@ -164,5 +186,72 @@ describe('T-88.6-71 — the availability level reaches the cell RESTING accessib
       expect(cell.hasAttribute('aria-label')).toBe(true);
       expect(cell.hasAttribute('aria-labelledby')).toBe(false);
     }
+  });
+
+  it('exposes no accessible child in any cell, so the cell itself is the leaf iOS VoiceOver lands on (88.6.1-24, D-34)', () => {
+    render(<EventHeatmapBackground heatmapData={heatmapData} loading={false} anchorDate="2026-06-29" />);
+    const cells = screen.getAllByRole('gridcell');
+    // Anti-vacuity: the keyed hour's two cells each hold the count span.
+    expect(cells.filter((cell) => cell.childNodes.length > 0).length).toBeGreaterThanOrEqual(2);
+    cells.forEach((cell) =>
+      cell.childNodes.forEach((node) => {
+        expect(node.nodeType).toBe(Node.ELEMENT_NODE);
+        expect((node as Element).getAttribute('aria-hidden'), cell.getAttribute('aria-label') ?? '').toBe('true');
+      })
+    );
+  });
+
+  it('puts every gridcell inside the row and grid context ARIA requires (88.6.1-24, review #178)', async () => {
+    // Lives here because the composed create-event audit mocks this component to null
+    // (createEvent.integration.test.tsx, `vi.mock('@/app/components/EventHeatmapBackground'`), so
+    // nothing else runs these two rules on this grid. Both rules are tagged wcag131.
+    const { container } = render(
+      <EventHeatmapBackground heatmapData={heatmapData} loading={false} anchorDate="2026-06-29" />
+    );
+    expect(await axe(container, REQUIRED_CONTEXT)).toHaveNoViolations();
+  });
+
+  it('names the grid "Group availability" for a screen reader (88.6.1-24, owner ruling #178)', () => {
+    render(<EventHeatmapBackground heatmapData={heatmapData} loading={false} anchorDate="2026-06-29" />);
+    expect(screen.getAllByRole('grid')).toHaveLength(1);
+    const grid = screen.getByRole('grid', { name: 'Group availability' });
+    expect(grid.hasAttribute('aria-labelledby')).toBe(false);
+    expect(
+      within(grid).getByRole('gridcell', { name: 'Monday, June 29 at 6:00 PM, 3 of 4 available' })
+    ).toBeInTheDocument();
+  });
+});
+
+// Plan 88.6.1-85 Task 2 (owner ruling 2026-10-18, the sibling of close ruling P-94): the visual reads
+// "M/T/W", the reader reads "Monday, Tuesday, Wednesday". Each day columnheader is NAMED with the
+// full weekday and the day number while its visible letter and number stay as they are. Expected
+// names are written as literals, never re-derived with date-fns. The week of 2026-06-29 (a Monday,
+// under the mocked zone UTC) holds two two-digit days and five single-digit ones.
+describe('EventHeatmapBackground — the day header is named with the full day (88.6.1-85 Task 2, owner ruling 2026-10-18)', () => {
+  const EXPECTED_DAY_NAMES = [
+    'Monday 29', 'Tuesday 30', 'Wednesday 1', 'Thursday 2', 'Friday 3', 'Saturday 4', 'Sunday 5',
+  ];
+  // HD-1 and HD-2 read the same render, so the named half and the visible half cannot drift.
+  const renderChart = () =>
+    render(<EventHeatmapBackground heatmapData={heatmapData} loading={false} anchorDate="2026-06-29" />);
+
+  it('HD-1 resolves the seven day headers by role and computed name, Monday 29 .. Sunday 5, in DOM order', () => {
+    renderChart();
+    // By COMPUTED accessible name, never the raw attribute: a label on a wrapper while another
+    // element takes the columnheader role, or one overridden by aria-labelledby, fails here.
+    const resolved = EXPECTED_DAY_NAMES.map((name) => screen.getByRole('columnheader', { name }));
+    const all = screen.getAllByRole('columnheader');
+    expect(all).toHaveLength(7);
+    resolved.forEach((el, i) => {
+      expect(all[i]).toBe(el);
+    });
+  });
+
+  it('HD-2 the same render still shows the letter and the number, M29 first and S5 seventh', () => {
+    // CONFIRM-ONLY half: green before and after this plan. The visible spans are unchanged.
+    renderChart();
+    const all = screen.getAllByRole('columnheader');
+    expect(all[0].textContent).toBe('M29');
+    expect(all[6].textContent).toBe('S5');
   });
 });

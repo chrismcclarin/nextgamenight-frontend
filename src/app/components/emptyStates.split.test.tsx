@@ -361,6 +361,14 @@ describe('PromptScheduleReadOnly error vs empty vs soft-failed drift (88.6-15 / 
 });
 
 describe('PromptScheduleSection badge omits on error and mints no second region (88.6-15 / D-31)', () => {
+  // Copy row RF1 / D-47: plan 88.6.1-70's REFRESH_FAILED_NOTICE (C7). While the notice shows it is in
+  // the DOM twice: the visible line and the one polite region.
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  // 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this notice passes `sectionName`,
+  // so its polite region and the Retry's description say "Open polls: " first and the visible line
+  // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
+  const SPOKEN = "Open polls: Couldn't refresh. Showing what loaded earlier.";
+
   function makeClient() {
     return new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -409,6 +417,7 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
   // (b2) PASSED. Expanding the panel gives the failure a positive surface — OpenPollsList's
   // banner on the SAME open-polls key — so awaiting it proves the error state has landed, and
   // only then is the badge's survival a real claim.
+  // AMENDED Phase 88.6.1-75 (RF1 / D-47): with data retained, OpenPollsList now shows plan 88.6.1-70's RF1 notice instead of its banner, so both legs settle on the RF1 sentence; the reasoning above is unchanged.
   it('(b1) keeps a POPULATED cache count across a failed refetch', async () => {
     const client = makeClient();
     (promptAPI.getOpenPrompts as unknown as Mock).mockResolvedValueOnce({
@@ -421,9 +430,11 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
     (promptAPI.getOpenPrompts as unknown as Mock).mockRejectedValue(new Error('boom'));
     await client.refetchQueries({ queryKey: promptKeys.openPolls('g1') });
 
-    expect(
-      await screen.findByText("We couldn't load the check-ins")
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
+    expect(screen.queryByText("We couldn't load the check-ins")).toBeNull();
     // TanStack retains `data` across a refetch error, so a number the user can still trust
     // must not be replaced with nothing.
     expect(screen.getByText('2 open polls')).toBeInTheDocument();
@@ -443,9 +454,11 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
     (promptAPI.getOpenPrompts as unknown as Mock).mockRejectedValue(new Error('boom'));
     await client.refetchQueries({ queryKey: promptKeys.openPolls('g1') });
 
-    expect(
-      await screen.findByText("We couldn't load the check-ins")
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText(RF1)).toHaveLength(1);
+      expect(screen.getByText(SPOKEN)).toBeInTheDocument();
+    });
+    expect(screen.queryByText("We couldn't load the check-ins")).toBeNull();
     expect(screen.getByText('No open polls')).toBeInTheDocument();
   });
 

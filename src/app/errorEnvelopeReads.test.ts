@@ -165,7 +165,12 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // FULL `npm test` run is what surfaced it: the task-level verify lists did not name this
     // suite, and every targeted run had happened before the AvailabilityForm edit. Do not
     // "stabilise" this by anchoring on text alone — the line number is what makes a MOVE visible.
-    declaredAt: 96,
+    // RE-DERIVED by plan 88.6.1-26 (2026-10-16): 96 -> 108. Fourth move, and again not on its
+    // own: plan 26 added the StatusRegion import and the hoisted A5 constant (copy row A5) above
+    // the component, amended `DECISION Phase 88.6-25` above the declaration (the useAppForm
+    // refusal), and amended the pre-fill state comment directly above it. The receiver is
+    // unchanged — still set only by the perform* callbacks, still { source, count, failed? }.
+    declaredAt: 108,
     declaration: 'const [prefillStatus, setPrefillStatus] = useState(',
     why:
       'Local pre-fill banner state shaped { source, count, failed? } — set only by this ' +
@@ -177,11 +182,45 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
   {
     file: 'app/userProfile/page.js',
     receiver: 'phoneValidation',
-    declaredAt: 228,
+    // RE-DERIVED by plan 88.6.1-18 (2026-10-15): 228 -> 231. The declaration did not move on its
+    // own: plan 18 added one import (`useFocusRecovery`) and one hoisted copy constant with its
+    // comment line (`VERIFY_CODE_IN_FLIGHT_LABEL`, row P1) above it, and every other symbol that
+    // plan added sits below it. Kept as a line number rather than a text anchor, per the note on
+    // the AvailabilityForm entry above: the line number is what makes a MOVE visible.
+    // RE-DERIVED by plan 88.6.1-60 (Task 2, 2026-10-17): 231 -> 234. Again not on its own: plan 60
+    // added the `flushSync` import (the import outcome's held writes, review #220) and the two
+    // hoisted #221 copy constants (`BGG_FOUND_ONE_LABEL`, `bggFoundManyLabel`, copy row F8) above it.
+    // RE-DERIVED by plan 88.6.1-60 (Task 3, 2026-10-17): 234 -> 235. One import line above it, plan
+    // 04's `focusElement` / `focusPageFloor` (the import result timer's focus move).
+    // RE-DERIVED by plan 88.6.1-67 (Task 1, 2026-10-17): 235 -> 237. Again not on its own: a
+    // hoisted copy constant with its comment line (`COLLECTION_LOAD_FAILED_TITLE`, copy row P8)
+    // landed above it and pushed it down. Kept as a line number, not a text anchor.
+    // RE-DERIVED by plan 88.6.1-67 (Task 3, 2026-10-17): 237 -> 239. A second hoisted copy constant
+    // with its comment line (`ADDING_TO_COLLECTION_LABEL`, copy row P7) landed above it.
+    // RE-DERIVED by plan 88.6.1-63 (task 3): 239 -> 240, pushed down by one import line (selfIdentityFailedWithNoRow).
+    // RE-DERIVED 2026-10-19 (code review CR-5 / A-75, commit 9883474): 240 -> 244. A hoisted copy constant with
+    // its DECISION comment (`DISCONNECT_CALENDAR_PENDING_LABEL`, copy row CR5a) landed above it. Kept as a line number.
+    declaredAt: 244,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +
       'validatePhoneInput, never assigned from a response body.',
+  },
+  {
+    // ADDED at the Phase 88.6.1 wave 3 gate (orchestrator, 2026-10-15): plan 88.6.1-16's role
+    // read stamps the caller's role with the group it was read for, so `roleError` can be
+    // DERIVED at render (`roleRecord.error` at page.js:69). The full `npm test` run at the wave
+    // gate is what surfaced it — plan 16's task-level verify lists did not name this suite.
+    file: 'app/groupPlanning/page.js',
+    receiver: 'roleRecord',
+    // RE-DERIVED by plan 88.6.1-63 (task 2's wiring, caught at the task 3 gate): 65 -> 67, pushed down by
+    // one import line and one pointer line (selfIdentityErrorSource).
+    declaredAt: 67,
+    declaration: 'const [roleRecord, setRoleRecord] = useState(',
+    why:
+      'Local role-read state { groupId, role, error } written only by the page\'s own ' +
+      'loadUserRole callback: `error` holds the CAUGHT Error object (or a locally minted one), ' +
+      'never a field of a response body. The read at :69 is a render-time derive off that state.',
   },
 ];
 
@@ -258,21 +297,34 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
   //      TRANSPORT (guarded success parse + mapped timeout) without touching the reads.
   //
   // GONE, and not coming back: the three apiFetch-path alias arms the SPEC called :300, :309
-  // and :316. `extractErrorMessage` is now `body?.message ?? "HTTP error! status: N"`,
+  // and :316. `extractErrorMessage` is now `body?.message ?? "HTTP error! status: N"`
+  // (AMENDED Phase 88.6.1-23 (W063): that same value, coerced with String and capped by
+  // capErrorText where it is built),
   // `mapErrorToCode`'s validation hint reads `body.details.errors`, and `extractFieldErrors`
   // has one arm. Both self-constructed non-JSON bodies were reshaped onto `message` in the
   // same commit.
+  // 3 → 4 on 2026-10-18 (plan 88.6.1-87, owner ruling D4): the fourth read is respondViaToken's
+  // token discriminant on its direct /rsvp/respond fetch. AC-9's rule that a new `.error` read
+  // fails assertion 1 is honoured by rostering this read BY NAME: the route answers raw
+  // `{ error }` tokens (its four siblings too), so there is no envelope `code` to read instead
+  // until Phase 93.
   'lib/api.ts': {
-    sites: 3,
+    sites: 4,
     why:
-      'The envelope seam itself, down to THREE. (1) extractUpstreamMessage is AC-4 arm A: ' +
+      'The envelope seam itself, down to THREE, then FOUR. (1) extractUpstreamMessage is AC-4 arm A: ' +
       "the ONE by-name exemption, populating a NON-RENDERED ApiError field forwarded to " +
       "Sentry extra by queryClient.ts:162 and read by nothing else (owner ruling " +
       "2026-09-09 a; assertion 6 pins the site and the no-render property). (2) and (3) are " +
       'the raw-fetch prefill helpers, whose availabilityPrefill bodies carry no code and no ' +
       'message at any of their eight emit sites (re-opened at source 2026-09-17) — RETAINED ' +
       'under D62 branch B with Phase 93 owning the backend code. The three apiFetch alias ' +
-      'arms the SPEC cited as :300/:309/:316 are DONE: dropped by plan 88.6-42.',
+      'arms the SPEC cited as :300/:309/:316 are DONE: dropped by plan 88.6-42. (4) ADDED ' +
+      '2026-10-18 by plan 88.6.1-87: respondViaToken reads body.error on its direct ' +
+      '/rsvp/respond fetch (not an apiFetch alias arm) to key a parsed 404 carrying the token ' +
+      'event_not_found to ApiError not_found, the RSVP page EVENT_GONE card (owner ruling ' +
+      '2026-10-18 D4 "Option A", close ruling P-77). A Phase 93 blocking precondition like the ' +
+      'others: BAPI-03 moves it to code (.planning/deferred/phase-93.md, entry ' +
+      '"GET /rsvp/respond: the 404 for a missing event").',
     owner: {
       kind: 'owner',
       date: '2026-09-09',
@@ -296,15 +348,17 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
   'app/rsvp/[token]/page.js': {
     // 2 → 4 on 2026-09-29 (plan 88.6-58 task 7, review MEDLOW-16, ITEM-16-COPY-RULING
     // ratified): two more `result.error ===` discriminant reads for the 403 bodies
-    // `expired_link` (Sonnet/routes/rsvp.js:260-263) and `account_not_found` (:235-238).
+    // `expired_link` and `account_not_found` (Sonnet/routes/rsvp.js, anchors
+    // `error: 'expired_link',` and `error: 'account_not_found',`; line cites replaced by anchors
+    // 2026-10-19, 88.6.1 code review A-70, because BE edits above them keep moving them).
     // Those DO carry a `message`, which the page deliberately does not render (R1). Same
     // disposition, same removal condition — Phase 93 lands the BE `code` on all FOUR.
     sites: 4,
     why:
       'A DOMAIN DISCRIMINANT, not a legacy alias. The backend branches VERBATIM, re-read at ' +
-      'source 2026-09-16 — Sonnet/routes/rsvp.js:293-296 is ' +
+      'source 2026-09-16 — Sonnet/routes/rsvp.js (anchor error: [event_cancelled], in GET /respond) is ' +
       'res.status(410).json({ error: [event_cancelled], group_id: event.Group?.id || ' +
-      'event.group_id }) and :302-306 is res.status(410).json({ error: [event_passed], ' +
+      'event.group_id }) and the anchor error: [event_passed] is res.status(410).json({ error: [event_passed], ' +
       'event_name: event.Game?.name || [Game Session], group_id: event.Group?.id || ' +
       'event.group_id }), with the string literals bracketed here only to keep this roster ' +
       'quote-safe. ' +
@@ -323,7 +377,8 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       kind: 'owner',
       date: '2026-09-09',
       ruling:
-        'D62 branch B — FE-only; Phase 93 owns adding code to Sonnet/routes/rsvp.js:292-306 ' +
+        'D62 branch B — FE-only; Phase 93 owns adding code to the two GET /respond 410 bodies in ' +
+        'Sonnet/routes/rsvp.js (anchors error: [event_cancelled] and error: [event_passed]) ' +
         'and Sonnet/routes/availabilityResponse.js:77-80,:119-122 as the precondition for ' +
         'removing the error alias',
     },
@@ -425,7 +480,8 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       kind: 'owner',
       date: '2026-09-09',
       ruling:
-        'D62 branch B — FE-only; Phase 93 owns adding code to Sonnet/routes/rsvp.js:292-306 ' +
+        'D62 branch B — FE-only; Phase 93 owns adding code to the two GET /respond 410 bodies in ' +
+        'Sonnet/routes/rsvp.js (anchors error: [event_cancelled] and error: [event_passed]) ' +
         'and Sonnet/routes/availabilityResponse.js:77-80,:119-122 as the precondition for ' +
         'removing the error alias',
     },
@@ -502,7 +558,8 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     // Stated positively as well as by difference, so the census this plan asserts is
     // readable straight off a failure rather than reconstructed from a violations list.
     expect(MEASURED).toEqual({
-      'lib/api.ts': 3,
+      // 3 → 4 on 2026-10-18 (plan 88.6.1-87, owner ruling D4): respondViaToken's token discriminant.
+      'lib/api.ts': 4,
       // 2 → 4 on 2026-09-29 (plan 88.6-58 task 7): the two 403 discriminants joined the two 410s.
       'app/rsvp/[token]/page.js': 4,
       // 2 → 1 on 2026-09-29 (plan 88.6-62, review round 2 #11): the guard reads success, not error.
@@ -510,7 +567,8 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     });
     const total = Object.values(MEASURED).reduce((a, b) => a + b, 0);
     // 9 → 8 on 2026-09-29 (plan 88.6-62, review round 2 #11): the AvailabilityForm guard read.
-    expect(total, '7 → 9 on 2026-09-29 (plan 88.6-58 task 7); 9 → 8 the same day (plan 88.6-62)').toBe(8);
+    // 8 → 9 on 2026-10-18 (plan 88.6.1-87, owner ruling D4): respondViaToken's token discriminant.
+    expect(total, '7 → 9 on 2026-09-29 (plan 88.6-58 task 7); 9 → 8 the same day (plan 88.6-62); 8 → 9 on 2026-10-18 (plan 88.6.1-87)').toBe(9);
     expect(Object.keys(ENVELOPE_READ_ROSTER).sort()).toEqual(Object.keys(MEASURED).sort());
   });
 
@@ -577,9 +635,10 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
   it('6. AC-4 arm A — ONE by-name construction site, and the field it fills renders nowhere', () => {
     // Added by plan 88.6-42 task 1 (2026-09-17). Assertions 1-3 pin the COUNT; this one pins
     // WHICH read the count permits and what the value it produces is allowed to do. Without
-    // it, "lib/api.ts: 3" would permit a THIRD apiFetch-path alias read to be reintroduced
+    // it, "lib/api.ts: 4" would permit a further apiFetch-path alias read to be reintroduced
     // under the same number, which is precisely the exemption-as-cover failure this suite
-    // exists to prevent.
+    // exists to prevent. ("lib/api.ts: 3" → "lib/api.ts: 4" on 2026-10-18, plan 88.6.1-87,
+    // owner ruling D4.)
     const apiSrc = withoutComments(fs.readFileSync(path.join(SRC, 'lib/api.ts'), 'utf8'));
 
     // (a) THE NAMED SITE. The one sanctioned legacy read on the apiFetch path lives in
@@ -589,11 +648,13 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
       /function extractUpstreamMessage\(body: any\): string \| undefined \{\s*return typeof body\?\.error === 'string' \? body\.error : undefined;\s*\}/,
     );
 
-    // (b) …and the three rostered reads in this file are that one plus the two raw-fetch
-    // prefill helpers, and nothing else. Stated by RECEIVER so a new `body.error` anywhere
-    // in the module reds here as well as on the count.
+    // (b) …and the four rostered reads in this file are that one, the two raw-fetch
+    // prefill helpers and respondViaToken's token discriminant, and nothing else. Stated by
+    // RECEIVER so a new `body.error` anywhere in the module reds here as well as on the count.
+    // (three → four, and a second `body.error`, on 2026-10-18: plan 88.6.1-87, owner ruling D4.)
     const apiHits = BY_FILE.get('lib/api.ts') ?? [];
     expect(apiHits.map((hit) => `${hit.receiver}.${hit.prop}`).sort()).toEqual([
+      'body.error',
       'body.error',
       'err.error',
       'err.error',
@@ -612,7 +673,12 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
       withoutComments(fs.readFileSync(path.join(SRC, r), 'utf8')).includes('upstreamMessage'),
     );
     expect(carriers.sort()).toEqual(['lib/api.ts', 'lib/logger.ts', 'lib/queryClient.ts']);
-    expect(apiSrc).toMatch(/return body\?\.message \?\? `HTTP error! status: \$\{status\}`;/);
+    // AMENDED Phase 88.6.1-23 (W063): the same envelope-only value (body?.message, else the bare
+    // status template, no alias arm) is now coerced with String and capped by capErrorText where it
+    // is built. Pinned byte-exact so an alias arm cannot slip in under the wrap.
+    expect(apiSrc).toMatch(
+      /return capErrorText\(String\(body\?\.message \?\? `HTTP error! status: \$\{status\}`\)\);/,
+    );
   });
 
   it('7. T-88.6-117 — google-connect returns FIXED bodies, and exactly FOUR of them', () => {

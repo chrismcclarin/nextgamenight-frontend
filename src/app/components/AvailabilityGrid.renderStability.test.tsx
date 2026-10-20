@@ -44,7 +44,7 @@ beforeEach(() => renderCounts.clear());
 
 const Grid = AvailabilityGrid as unknown as (props: Record<string, unknown>) => React.JSX.Element;
 
-const cellsByLabel = () => screen.getAllByRole('button', { name: 'not selected' });
+const cellsByLabel = () => screen.getAllByRole('button', { name: /, not selected$/ });
 
 type Slot = { slotId: string; preference: string };
 
@@ -115,5 +115,31 @@ describe('AvailabilityGrid — WriteCell memo survives a paint tick (Phase 87.8 
     fireEvent.pointerDown(cellsByLabel()[0]); // next empty cell
 
     expect([...renderCounts.entries()]).toHaveLength(1);
+  });
+
+  // Plan 88.6.1-17: each cell now carries a copy row A2 name (day + time + state). The name
+  // must change ONLY on the cell whose state changed — a name that depended on anything
+  // else (the selection, the render) would rename every cell per tick and defeat the memo.
+  it('88.6.1-17: a paint tick renames ONLY the painted cell', () => {
+    renderHarness(2); // 56 cells
+    const cells = cellsByLabel();
+    expect(cells).toHaveLength(56);
+    const labels = () =>
+      [...document.querySelectorAll('[data-slot-id]')].map((c) => c.getAttribute('aria-label') ?? '');
+
+    fireEvent.pointerDown(cells[0]);
+    const before = labels();
+    expect(before).toHaveLength(56);
+
+    fireEvent.pointerEnter(cells[1]); // drag-over paints the second cell
+    const after = labels();
+    expect(after).toHaveLength(56);
+
+    const changed = after.map((n, i) => (n !== before[i] ? i : -1)).filter((i) => i >= 0);
+    expect(changed).toEqual([1]);
+    expect(before[1].endsWith(', not selected')).toBe(true);
+    const prefix = before[1].slice(0, -', not selected'.length);
+    expect(prefix.length).toBeGreaterThan(0);
+    expect(after[1]).toBe(prefix + ', preferred');
   });
 });

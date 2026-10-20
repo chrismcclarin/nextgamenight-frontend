@@ -49,7 +49,14 @@ vi.mock('@/components/ui/useFetchErrorState', () => ({
 // this component now — identity resolution and the events fetch — and they render the SAME
 // banner in the SAME card frame, so a single `data-testid` could not tell them apart. The
 // context string is what each branch names itself by.
-vi.mock('@/components/ui/FetchErrorBanner', () => ({
+// Phase 88.6.1-73, plan 88.6.1-70 contract C9: the importOriginal spread keeps the REAL module, so
+// useRetainedContent, isAccessOrGoneError and RetainedContentFocusGuard stay real (a stubbed
+// predicate would change which branch this suite renders); only the banner stub below and
+// RefreshFailedNotice (rendering nothing, so the identity-banner assertions can never match it)
+// are overridden.
+vi.mock('@/components/ui/FetchErrorBanner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/ui/FetchErrorBanner')>()),
+  RefreshFailedNotice: () => null,
   FetchErrorBanner: ({
     state,
     reportContext,
@@ -68,8 +75,14 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+// Phase 88.6.1-11 (W022): ONE useUser value, returned on every call. It mirrors the SDK, whose
+// provider memoises the value its hook returns (a useMemo over user, error, isLoading and
+// checkSession in @auth0/nextjs-auth0 3.8.0's client use-user module). The inline mock this
+// replaces built a new object on every call, and THAT is what re-fired a bare-object dependency
+// on every render in plan 88.6-27, not the SDK.
+const authUser = vi.hoisted(() => ({ user: { sub: 'auth0|self' }, isLoading: false }));
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
+  useUser: () => authUser,
 }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -247,5 +260,60 @@ describe('EventCalendar — the cancelled-generation guard (R2 #45/#122)', () =>
 
     expect(h.monthViewEvents).toHaveLength(1);
     expect((h.monthViewEvents[0] as { id: string }).id).toBe('fresh');
+  });
+});
+
+// Phase 88.6.1-11 — MEDLOW-8 (Req 11) and AC-29 at the identity site (Req 9, shared rule 7).
+//
+// MEDLOW-8: a self-fetch cancelled by a dependency change, after the parent has switched to
+// supplying events, used to leave "Loading calendar..." up forever: the cancelled run's finally
+// skips the loading release, and the successor run starts no fetch.
+//
+// AC-29: a failed BACKGROUND refetch of the self-identity row keeps the cached row (TanStack keeps
+// `data`), so `selfUuid` is defined while the query reports an error. The calendar can load, and
+// it must not claim it could not.
+describe('EventCalendar — MEDLOW-8 (a supplied-events switch releases loading) and AC-29 (a retained identity row renders the calendar)', () => {
+  const SELF = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  type Mocked = ReturnType<typeof vi.fn>;
+  const eventsMock = () => eventsAPI.getUserEvents as Mocked;
+
+  it('MEDLOW-8: a cancelled self-fetch followed by parent-supplied events leaves "Loading calendar..." and renders those events', async () => {
+    h.selfUuid = SELF;
+    // The first (self-fetch) request never settles: only the cancellation can end its run.
+    eventsMock().mockImplementationOnce(() => new Promise(() => {}));
+
+    const { rerender } = render(<EventCalendar refreshKey={0} />);
+    expect(screen.getByText('Loading calendar...')).toBeInTheDocument();
+
+    // The parent now supplies events AND a dependency changes, so the self-fetch run is cancelled
+    // and its successor starts no fetch. Same typed-any bag idiom as the external-events case.
+    const extProps: any = {
+      events: [{ id: 'external', start_date: '2026-10-20T18:00:00.000Z' }],
+      refreshKey: 1,
+    };
+    rerender(<EventCalendar {...extProps} />);
+
+    // POSITIVE settle signal first (CF-26), then the absence.
+    await vi.waitFor(() => expect(h.monthViewRenders).toBeGreaterThan(0));
+    expect(screen.queryByText('Loading calendar...')).not.toBeInTheDocument();
+    expect((h.monthViewEvents[0] as { id: string }).id).toBe('external');
+    // The second run fetched nothing.
+    expect(eventsMock()).toHaveBeenCalledTimes(1);
+  });
+
+  it('AC-29: a cached self row that survived a failed identity refetch fetches and renders the calendar, with no identity banner', async () => {
+    h.selfUuid = SELF;
+    h.isError = true;
+    eventsMock().mockResolvedValue([{ id: 'e1', start_date: '2026-10-21T18:00:00.000Z' }]);
+
+    render(<EventCalendar />);
+
+    await vi.waitFor(() => expect(h.monthViewRenders).toBeGreaterThan(0));
+    expect(
+      document.querySelector('[data-context="event calendar — self-identity resolution"]')
+    ).toBeNull();
+    expect(h.monthViewEvents).toHaveLength(1);
+    expect(eventsMock()).toHaveBeenCalledTimes(1);
+    expect(eventsMock()).toHaveBeenCalledWith(SELF, { includeRsvpSummary: true });
   });
 });

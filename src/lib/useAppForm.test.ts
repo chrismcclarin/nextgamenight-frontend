@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { z } from 'zod';
 import { useAppForm } from './useAppForm';
 import { logger } from './logger';
@@ -70,5 +70,120 @@ describe('useAppForm', () => {
     expect(onValid).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith('form submit failed', boom);
     expect(threw).toBe(false);
+  });
+
+  // Plan 88.6.1-26 (W001 / R3-M19, AC-12): the hook refuses a second submit while one runs.
+  // Before this plan a second press re-ran react-hook-form's whole lifecycle: the consumer latch
+  // returned early inside it, and the second run's settle flipped `isSubmitting` back to false
+  // while the FIRST request was still pending, so the in-flight label and `aria-disabled`
+  // vanished mid-save.
+
+  /** onValid whose FIRST call is held until `release()`; every later call resolves at once. */
+  function heldOnValid() {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = () => resolve();
+    });
+    const onValid = vi.fn().mockImplementationOnce(() => held).mockResolvedValue(undefined);
+    return { onValid, release: () => release() };
+  }
+
+  /** The hook, reading `isSubmitting` during render so `result.current` tracks it. */
+  function renderSubmittingHook() {
+    return renderHook(() => {
+      const form = useAppForm(schema, { defaultValues: { name: 'ok' } });
+      void form.formState.isSubmitting;
+      return form;
+    });
+  }
+
+  it('U1: a second submit while the first runs is refused: onValid once, the event default-prevented, isSubmitting held', async () => {
+    const { onValid, release } = heldOnValid();
+    const { result } = renderSubmittingHook();
+    const evt1 = { preventDefault: vi.fn(), persist: vi.fn() };
+    const evt2 = { preventDefault: vi.fn(), persist: vi.fn() };
+
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = result.current.handleAppSubmit(onValid)(evt1 as never);
+    });
+    // The first submit has passed validation and is waiting on its request.
+    await waitFor(() => expect(onValid).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.formState.isSubmitting).toBe(true));
+
+    await act(async () => {
+      await result.current.handleAppSubmit(onValid)(evt2 as never);
+    });
+    expect(onValid).toHaveBeenCalledTimes(1);
+    // Without this the refused press would fall through to a native form post.
+    expect(evt2.preventDefault).toHaveBeenCalledTimes(1);
+    expect(result.current.formState.isSubmitting).toBe(true);
+
+    await act(async () => {
+      release();
+      await first;
+    });
+    expect(result.current.formState.isSubmitting).toBe(false);
+  });
+
+  it('U4: a refused submit with NO event resolves without throwing and never reaches onValid', async () => {
+    const { onValid, release } = heldOnValid();
+    const { result } = renderSubmittingHook();
+
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = result.current.handleAppSubmit(onValid)();
+    });
+    await waitFor(() => expect(onValid).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await expect(result.current.handleAppSubmit(onValid)()).resolves.toBeUndefined();
+    });
+    expect(onValid).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release();
+      await first;
+    });
+  });
+
+  // CONFIRM-ONLY (green before the fix by design): guards the release in `finally`.
+  it('U2: after a THROWING submit the guard is released, so the next submit reaches onValid', async () => {
+    const boom = new Error('submit failed');
+    const onValid = vi.fn().mockRejectedValueOnce(boom).mockResolvedValue(undefined);
+    const { result } = renderSubmittingHook();
+
+    await act(async () => {
+      await result.current.handleAppSubmit(onValid)();
+    });
+    expect(logger.error).toHaveBeenCalledWith('form submit failed', boom);
+
+    await act(async () => {
+      await result.current.handleAppSubmit(onValid)();
+    });
+    expect(onValid).toHaveBeenCalledTimes(2);
+  });
+
+  // CONFIRM-ONLY (green before the fix by design): an invalid submit never wedges the guard.
+  it('U3: after an INVALID submit the guard is released, so a corrected submit reaches onValid', async () => {
+    const onValid = vi.fn();
+    const { result } = renderHook(() => {
+      const form = useAppForm(schema, { defaultValues: { name: '' } });
+      void form.formState.errors;
+      return form;
+    });
+
+    await act(async () => {
+      await result.current.handleAppSubmit(onValid)();
+    });
+    expect(onValid).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.setValue('name', 'ok');
+    });
+    await act(async () => {
+      await result.current.handleAppSubmit(onValid)();
+    });
+    expect(onValid).toHaveBeenCalledTimes(1);
   });
 });

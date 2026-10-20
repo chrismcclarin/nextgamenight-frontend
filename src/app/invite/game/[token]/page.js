@@ -7,6 +7,39 @@ import { eventsAPI } from '../../../../lib/api';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
+
+// Copy row L1 (D-30, owner-ratified 2026-10-04), byte-equal to this route's own `loading.tsx` label.
+const LOADING_LABEL = 'Loading your game night invite...';
+
+// The page region's test handle. NOT EXPORTED, deliberately, for the reason the rsvp page records
+// (`rsvp/[token]/page.js`, anchor `NOT EXPORTED, deliberately`): Next's generated route types reject
+// a page module's non-route named exports. The test re-declares the literal.
+const PAGE_STATUS_TESTID = 'game-invite-page-status';
+
+// Strings this page already rendered before plan 88.6.1-19, hoisted so the branch markup and the
+// screen-reader announcement read ONE source and cannot drift apart (no new words, D-31).
+const JOINED_HEADLINE = "You're in!";
+const ALREADY_JOINED_HEADLINE = "You're already in this game";
+const ALREADY_JOINED_DETAIL = 'You joined earlier — see you there!';
+const EXPIRED_HEADLINE = 'Game Night Has Passed';
+const EXPIRED_DETAIL =
+  'This game night has already passed. Ask the organizer for an invite to the next one!';
+const TRANSIENT_HEADLINE = "Couldn't join game night";
+const PERMANENT_HEADLINE = 'This invite is no longer valid';
+
+// How long the page region stays EMPTY after a Retry press before it may be filled again:
+// `REGION_EMPTY_DWELL_MS`, imported with `StatusRegion` above. Source: AT-4,
+// `research/APPENDIX-AT.md:316-326` (`emptyRegionSettleDelay { 100_ms }`, failure condition 4).
+// AMENDED Phase 88.6.1-82: plan 88.6.1-19 declared a second copy here because this page and
+// `FetchErrorBanner.tsx` shared no dependency; the constant now lives on `StatusRegion`, which this
+// page already imports, so that reason is gone and the one declaration is imported, not repeated.
+
+/** Join the non-empty parts of an announcement with one space (never a trailing space). */
+function joinParts(...parts) {
+  return parts.filter(Boolean).join(' ');
+}
 
 // POLL-05 status enum (D-INVITE-LANDING-04 zero-flash mandate):
 // loading → preview (unauth) | joining → joined | already-joined | expired
@@ -28,16 +61,7 @@ function GameInvitePage() {
   // network failures consistently land on the retry CTA, not the dead-end
   // "invite no longer valid" copy.
   const classifyError = (err) => {
-    const msg = err?.message || '';
     const httpStatus = err?.status;
-    const lowerMsg = msg.toLowerCase();
-    const isTransient =
-      httpStatus === 0 ||
-      (httpStatus >= 500 && httpStatus < 600) ||
-      err?.name === 'TypeError' ||
-      lowerMsg.includes('network') ||
-      lowerMsg.includes('failed to fetch') ||
-      lowerMsg.includes('fetch');
     /* DECISION Phase 88.6-23 (D-45 / D-59): `isPermanent` decides on the HTTP STATUS ALONE —
        chosen OVER the five backend-prose arms it replaced (`expired`, `passed`, `full`,
        `deleted`, `Invalid invite`), which is the shape that ships today and the one a future
@@ -57,11 +81,24 @@ function GameInvitePage() {
        `User not found` on the join route — which lands permanent either way, so the mapping
        is unchanged by it.)
 
-       THE `isTransient` ARMS BELOW ARE DELIBERATELY UNTOUCHED: they match fetch/`TypeError`
-       text the CLIENT produces, not backend prose, so the alias drop cannot reach them. */
+       AMENDED Phase 88.6.1-19 (W048 / WR-410): the paragraph that stood here said the transient
+       arms were safe to leave because they matched only text the CLIENT produces. That was
+       false. The text they read is the error's message, and for every HTTP error that is the
+       backend envelope's own `message` (`extractErrorMessage` in `api.ts`), so a 404 or 410
+       whose message happened to mention the network or fetching was classified transient and
+       offered Retry on a dead link. Those arms are now DELETED — the status-0 and 5xx tests,
+       the TypeError name test, the three message-text tests and the lower-cased message local —
+       and the STATUS ALONE decides: 404 or 410 is permanent; everything else (status 0, any
+       5xx, a thrown runtime error with no status) is transient. Status 0 and 5xx were never
+       404/410, so deleting them changes no answer; the text arms could only ever turn a 404/410
+       into "transient", which was the defect.
+       REJECTED: the review's gated shape (keep the text arms, run them only when there is no
+       HTTP status). Without a status `isPermanent` is already false, so the gated arms could
+       never change the answer — dead code defended by a comment.
+       Re-adding a message-text test to this classifier is a decision, not a cleanup. */
     const isPermanent = httpStatus === 404 || httpStatus === 410;
     // Ambiguous → treat as transient. findOrCreate makes retry idempotent.
-    return isPermanent && !isTransient ? 'permanent' : 'transient';
+    return isPermanent ? 'permanent' : 'transient';
   };
 
   // POLL-05 race fix (D-INVITE-LANDING-04): single-shot in-flight guard.
@@ -191,16 +228,57 @@ function GameInvitePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, eventInfo, token]);
 
+  // Req 5: the settled branch's <h1> (only one renders at a time) and the one-shot Retry arm.
+  // See the DECISION Phase 88.6.1-19 (R8 / Req 5) marker at the fragment below.
+  const settledHeadingRef = useRef(null);
+  // The pending card's line (loading or joining — one <p>, its label swaps). After a Retry it
+  // replaces the pressed button, so it takes focus in flight (A-64, 88.6.1 code review).
+  const pendingLineRef = useRef(null);
+  const retryFocusArmedRef = useRef(false);
+
+  // R8 idempotency: while this flag is on the page region reads '' (the announcement's leading
+  // arm below). A Retry turns it on; a REGION_EMPTY_DWELL_MS timer turns it off. It is STATE, not
+  // a ref, because the timer's end is what refills the region when the outcome committed first.
+  // It gates ONLY the region's text — never the request, the branch, the Retry button or focus.
+  const [regionDwell, setRegionDwell] = useState(false);
+  const regionDwellTimerRef = useRef(null);
+  useEffect(() => () => {
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+  }, []);
+
   // Retry handler for transient errors. Resets the ref AND bumps retryKey
   // so BOTH the preview effect and the join effect re-fire — necessary when
   // the preview itself failed (e.g. backend was down on first attempt).
   const handleRetry = () => {
+    retryFocusArmedRef.current = true;
+    // A press while a dwell is running restarts it.
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+    setRegionDwell(true);
+    regionDwellTimerRef.current = setTimeout(() => {
+      regionDwellTimerRef.current = null;
+      setRegionDwell(false);
+    }, REGION_EMPTY_DWELL_MS);
     joiningRef.current = false;
     setError(null);
     setStatus('loading');
     setEventInfo(null);
     setRetryKey((k) => k + 1);
   };
+
+  // The focus edge for a Retry. In flight the arm STAYS on and, when focus is lost (the Retry
+  // button unmounted under the user), the pending line takes it — never a floor in flight, or
+  // focus would not read as lost at settle. On the first settled render the arm is dropped and,
+  // only when focus is lost (the pending line has just unmounted), the settled heading takes it.
+  useEffect(() => {
+    if (!retryFocusArmedRef.current) return;
+    if (authLoading || status === 'loading' || status === 'joining') {
+      if (isFocusLost()) focusElement(pendingLineRef.current);
+      return;
+    }
+    retryFocusArmedRef.current = false;
+    if (!isFocusLost()) return;
+    if (!focusElement(settledHeadingRef.current)) focusPageFloor();
+  }, [status, authLoading]);
 
   // Format event date nicely
   const formatEventDate = (dateStr) => {
@@ -227,22 +305,53 @@ function GameInvitePage() {
         : `/gameDetail?event_id=${eventInfo.event_id}`)
     : '/';
 
+  // Render values shared by the branch markup AND the announcement below — one source each, with
+  // the same fallbacks the markup has always used.
+  const gameName = eventInfo?.game_name || 'Game Night';
+  const eventDateLabel = formatEventDate(eventInfo?.event_date);
+
   // Loading / joining state — brief spinner only. D-INVITE-LANDING-04
   // mandates legit first-joins go loading → joining → joined without
   // bouncing through 'already-joined'.
-  if (authLoading || status === 'loading' || status === 'joining') {
-    const label = status === 'joining' ? 'Joining game night...' : 'Loading...';
-    return (
+  const isPending = authLoading || status === 'loading' || status === 'joining';
+
+  // The announcement MIRRORS the render dispatch below, in order, so it can never describe a
+  // branch other than the one on screen. Loading and joining yield '' — the region must be
+  // mounted and empty first, or there is no CHANGE for a screen reader to announce.
+  let announcement = '';
+  if (regionDwell) {
+    announcement = '';
+  } else if (isPending) {
+    announcement = '';
+  } else if (status === 'preview' && eventInfo) {
+    announcement = joinParts(gameName, eventDateLabel);
+  } else if (status === 'joined') {
+    announcement = eventInfo
+      ? joinParts(JOINED_HEADLINE, gameName, eventDateLabel)
+      : JOINED_HEADLINE;
+  } else if (status === 'already-joined') {
+    announcement = joinParts(ALREADY_JOINED_HEADLINE, ALREADY_JOINED_DETAIL);
+  } else if (status === 'expired') {
+    announcement = joinParts(EXPIRED_HEADLINE, EXPIRED_DETAIL);
+  } else if (status === 'error-transient') {
+    announcement = joinParts(TRANSIENT_HEADLINE, error);
+  } else if (status === 'error-permanent') {
+    announcement = joinParts(PERMANENT_HEADLINE, error);
+  }
+
+  let body;
+  if (isPending) {
+    const label = status === 'joining' ? 'Joining game night...' : LOADING_LABEL;
+    body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4 text-center">
           <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
-          <p className="text-content-primary">{label}</p>
+          <p ref={pendingLineRef} className="text-content-primary">{label}</p>
         </div>
       </div>
     );
-  }
-
-  return (
+  } else {
+    body = (
     <div className="min-h-screen bg-surface-page flex items-center justify-center">
       <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4">
 
@@ -266,8 +375,9 @@ function GameInvitePage() {
                     24x24 viewBox (x/y 3.75-20.25, corner radius 2.5) plus a five-pip face as
                     filled circles at r=1.25.
                     ⚠ THE `<svg>` OPENING TAG ABOVE IS BYTE-UNCHANGED, deliberately:
-                    `tintTreatment.test.ts:437` counts `className="w-8 h-8 text-content-accent-strong"`
-                    openings and expects exactly 2 in this file, and `accentSweep.test.ts:60` lists
+                    `tintTreatment.test.ts:461` (anchor `<svg className="w-8 h-8 ${STRONG_TEXT}"`) counts `className="w-8 h-8 text-content-accent-strong"`
+                    openings and expects exactly 2 in this file, and `accentSweep.test.ts:68-73` (anchor
+                    `Glyphs on amber-100 circles`) lists
                     this file in its seven-circle census. Both suites were re-run green after this
                     edit. Restyling the tag, or swapping this glyph back, is a decision. */}
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.25 3.75h11.5a2.5 2.5 0 012.5 2.5v11.5a2.5 2.5 0 01-2.5 2.5H6.25a2.5 2.5 0 01-2.5-2.5V6.25a2.5 2.5 0 012.5-2.5z" />
@@ -278,18 +388,18 @@ function GameInvitePage() {
                 <circle cx="15.75" cy="15.75" r="1.25" fill="currentColor" stroke="none" />
               </svg>
             </div>
-            <Heading level={1} size="display" className="text-content-primary mb-2">
-              {eventInfo.game_name || 'Game Night'}
+            <Heading level={1} size="display" className="text-content-primary mb-2" ref={settledHeadingRef}>
+              {gameName}
             </Heading>
             <p className="text-content-muted mb-6">
-              {formatEventDate(eventInfo.event_date)}
+              {eventDateLabel}
             </p>
             {/* UI-SPEC §3.2 `asChild`: the element stays an `<a>` — a client-router
                 navigation to the Auth0 handoff route is a behaviour change, not a cleanup —
                 and the `href` is byte-identical. Surviving utilities go on `<Button
                 className>`, never on the slotted child (Slot concatenates without
                 tailwind-merge). `block` is dead under unlayered `.btn`'s
-                `display: inline-flex` (globals.css:2195); `w-full` and `text-center` are not. */}
+                `display: inline-flex` (globals.css, anchor `.btn {`); `w-full` and `text-center` are not. */}
             <Button asChild variant="primary" size="default" className="w-full text-center">
               <a
                 href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/game/${token}`)}`}
@@ -310,13 +420,13 @@ function GameInvitePage() {
             <div className="mx-auto mb-4 w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center">
               <span className="text-3xl" role="img" aria-label="game die">🎲</span>
             </div>
-            <Heading level={1} size="display" className="text-content-primary mb-2">
-              You&apos;re in!
+            <Heading level={1} size="display" className="text-content-primary mb-2" ref={settledHeadingRef}>
+              {JOINED_HEADLINE}
             </Heading>
             {eventInfo && (
               <div className="mb-6 p-4 bg-surface-elevated rounded-lg">
-                <p className="font-bold text-content-primary">{eventInfo.game_name || 'Game Night'}</p>
-                <p className="text-sm text-content-muted mt-1">{formatEventDate(eventInfo.event_date)}</p>
+                <p className="font-bold text-content-primary">{gameName}</p>
+                <p className="text-sm text-content-muted mt-1">{eventDateLabel}</p>
               </div>
             )}
             <Button
@@ -344,19 +454,19 @@ function GameInvitePage() {
             </div>
             {/* h1 @ 20 STAYS at 20 (D-04's second row): this is a mutually-exclusive STATUS
                 branch, not the page title. The `ErrorFallback` precedent
-                (`typeScaleTouchedSurfaces.test.ts:263-271`) is why level and size are
+                (`typeScaleTouchedSurfaces.test.ts:1659`, anchor `'components/ui/ErrorFallback.tsx': { 1: 1 }`) is why level and size are
                 separate facts. Promoting it to Display would be the demotion-in-reverse the
                 88-29 amendment describes. */}
-            <Heading level={1} size="heading" className="text-content-primary mb-2">
-              You&apos;re already in this game
+            <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
+              {ALREADY_JOINED_HEADLINE}
             </Heading>
             <p className="text-content-secondary mb-4">
-              You joined earlier — see you there!
+              {ALREADY_JOINED_DETAIL}
             </p>
             {eventInfo && (
               <div className="mb-6 p-4 bg-surface-elevated rounded-lg">
-                <p className="font-bold text-content-primary">{eventInfo.game_name || 'Game Night'}</p>
-                <p className="text-sm text-content-muted mt-1">{formatEventDate(eventInfo.event_date)}</p>
+                <p className="font-bold text-content-primary">{gameName}</p>
+                <p className="text-sm text-content-muted mt-1">{eventDateLabel}</p>
               </div>
             )}
             <Button
@@ -374,15 +484,15 @@ function GameInvitePage() {
         {status === 'expired' && (
           <div className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-surface-elevated rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <svg className="w-8 h-8 text-content-muted" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <Heading level={1} size="heading" className="text-content-primary mb-2">
-              Game Night Has Passed
+            <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
+              {EXPIRED_HEADLINE}
             </Heading>
             <p className="text-content-muted mb-6">
-              This game night has already passed. Ask the organizer for an invite to the next one!
+              {EXPIRED_DETAIL}
             </p>
             <Button asChild variant="primary" size="default" className="w-full text-center">
               <Link href="/">
@@ -397,12 +507,12 @@ function GameInvitePage() {
         {status === 'error-transient' && (
           <div className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
-            <Heading level={1} size="heading" className="text-content-primary mb-2">
-              Couldn&apos;t join game night
+            <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
+              {TRANSIENT_HEADLINE}
             </Heading>
             <p className="text-content-secondary mb-2">{error}</p>
             <p className="text-xs text-content-muted mb-6">
@@ -431,12 +541,12 @@ function GameInvitePage() {
         {status === 'error-permanent' && (
           <div className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <Heading level={1} size="heading" className="text-content-primary mb-2">
-              This invite is no longer valid
+            <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
+              {PERMANENT_HEADLINE}
             </Heading>
             <p className="text-content-secondary mb-6">{error}</p>
             <p className="text-sm text-content-muted mb-6">
@@ -452,6 +562,67 @@ function GameInvitePage() {
 
       </div>
     </div>
+    );
+  }
+
+  /* DECISION Phase 88.6.1-19 (R8 / Req 5): three choices on this page, each with its rejects.
+
+     THE REGION. ONE always-mounted `StatusRegion` at FRAGMENT SLOT 0, rendered from this
+     component and never from inside a branch — ported from `DECISION Phase 88.6-24`
+     (`rsvp/[token]/page.js`) and `DECISION Phase 88.6-23` (`availability-form/[token]/page.js`).
+     React reconciles same-type children by index, so it is the SAME DOM node across every branch
+     flip. REJECTED (1) a region inside each branch (mounted with its text, a polite region
+     announces nothing; D-42 keeps that premise for polite/status regions); (2) hoisting the
+     shared outer wrapper (a fragment adds no box and matches both shipped siblings); (3) a route
+     layout (a server-rendered shell cannot read this client page's state). sr-only, because it
+     repeats a heading already on screen; D-22's opt-in empty-state prop is NOT adopted (always
+     sr-only, ST-2 group A). The region and the focused heading may both speak the heading in the
+     same moment; the availability-form SUBMITTED precedent accepts that.
+
+     THE RETRY FOCUS. Pressing Retry swaps in the loading card and removes the button the user
+     pressed. CHOSEN: the settled branch's <h1> takes focus ONCE, on the first settled render
+     after a Retry, and only when focus is lost (`isFocusLost`, plan 88.6.1-04's one definition);
+     a heading that will not take focus falls to the shared `focusPageFloor`, never <body>.
+     AMENDED 2026-10-19 (88.6.1 code review A-64): while the retry is IN FLIGHT the pending line
+     (the loading / joining <p> that replaced the pressed Retry) takes focus, only when focus is
+     lost, and the arm stays on until settle — the restore page's in-flight arm
+     (`restore/group/[token]/page.tsx`, `DECISION Phase 88.6.1-36`), so one Retry-removes-the-
+     button rule has one treatment. Focus is the ONE channel for that line; the region stays ''
+     (the dwell below is unchanged). REJECTED: leaving focus on <body> in flight — a silent wait
+     on a slow phone request (WCAG 4.1.3) and a keyboard user parked nowhere; a floor in flight —
+     focus would sit on a connected `main` and not read as lost at settle, so the heading move
+     would never fire.
+     REJECTED (a) keeping Retry mounted with aria-disabled across the request — a success still
+     replaces the branch and removes it, so the heading move is needed anyway; it would drop
+     today's loading card (a visible change) and need an in-flight label the owner has not
+     ratified (D-31). (b) plan 04's `useFocusRecovery` — its check acts on the FIRST commit that
+     loses focus, which here is the loading commit, before any heading exists, so it would floor
+     to <main> and disarm before the outcome renders. (c) focusing on first load — an unrequested
+     jump; no control the user operated was removed. (d) focusing the re-mounted Retry after a
+     repeat failure — two targets for one rule; Retry is the next Tab stop after the heading.
+
+     THE REGION DWELL. CHOSEN: the region stays '' from the press until the outcome has committed
+     AND `REGION_EMPTY_DWELL_MS` has passed — the value named from its source, AT-4,
+     `research/APPENDIX-AT.md:316-326` (`emptyRegionSettleDelay`, WebKit's re-announce condition
+     for identical text). REJECTED (e) relying on the round trip for the gap: an offline failure
+     rejects in milliseconds (`publicFetch`'s TypeError arm in `api.ts`, anchor
+     `if (errName === 'TypeError'`). (f) delaying the request instead
+     of the region fill — it slows every retry for a screen-reader-only concern. (g) importing
+     plan 88.6.1-21's module-private constant — the two files share no dependency; both cite the
+     same appendix line instead, so the values cannot drift silently. [AMENDED Phase 88.6.1-82,
+     recorded 2026-10-19 (88.6.1 code review A-63): (g) is SUPERSEDED — the constant now lives on
+     `StatusRegion` and this page imports it (see the note above `joinParts` at the top of the
+     file); the import is what ships, not a rejected alternative.]
+     Changing any of this is a decision, not a cleanup. */
+  return (
+    <>
+      <StatusRegion
+        className="sr-only"
+        data-testid={PAGE_STATUS_TESTID}
+        message={announcement}
+      />
+      {body}
+    </>
   );
 }
 

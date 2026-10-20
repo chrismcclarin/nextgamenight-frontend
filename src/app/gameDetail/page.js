@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL, ApiError } from '../../lib/api';
+import { isUuid } from '../../lib/isUuid';
+import { collapseBlankLines } from '../../lib/collapseBlankLines';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
@@ -12,6 +14,7 @@ import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import QRCodeModal from '../components/QRCodeModal';
+import { SHARE_GAME_QR_LOADING_LABEL } from '../components/shareGameQrCopy';
 import { Modal } from '../components/Modal';
 import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -20,15 +23,25 @@ import SafeImage from '../components/SafeImage';
 import ClickableMemberName from '../components/ClickableMemberName';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
+import { FormField } from '../components/form/FormField';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { logger, errCtx } from '../../lib/logger';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import {
+    FetchErrorBanner,
+    RefreshFailedNotice,
+    RetainedContentFocusGuard,
+    SectionLoadFailedNotice,
+    useRetainedContent,
+    isAccessOrGoneError,
+} from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import KebabMenu from '../components/KebabMenu';
 import { toast } from 'sonner';
@@ -103,7 +116,7 @@ function canInviteGuest(participant, viewerRole) {
 // Phase 88-20 (Req 15): `canInvite` / `groupId` carry the guest-invite affordance
 // onto the chip. The gate is computed by `canInviteGuest` at the call site rather
 // than re-derived here, so the chip and the See-all row cannot disagree.
-function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId }) {
+function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId, rsvpUnavailable = false }) {
     const isCustom = !!participant.is_custom;
     return (
         <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
@@ -114,7 +127,9 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
                     participant.username || 'Unknown'
                 )}
             </span>
-            <RsvpStatusPill status={rsvpStatus} />
+            {/* 88.6.1-74 (owner ruling D8-r2, E17): no pill while the RSVP list never loaded, so no
+                chip says "No reply" for a list that failed. */}
+            {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} />}
             {role === 'owner' && (
                 <span className="text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
             )}
@@ -150,13 +165,14 @@ function GuestInviteButton({ groupId, userId }) {
        WHY A REF AND NOT THE STATE. The second activation runs the PREVIOUS render's closure,
        where `status` is still null, so a state-only guard here is byte-equivalent to the gating
        prop on the control it is meant to back up. The house states the rule in prose at
-       `src/components/ui/useConfirmAction.ts:210-212` — "Refs mirror the state the event handlers
+       `src/components/ui/useConfirmAction.ts`'s refs comment — "Refs mirror the state the event handlers
        must read SYNCHRONOUSLY. Two clicks inside one tick see stale state but never a stale ref."
-       Keeping the state term beside it matches the recorded belt-and-braces at
-       `src/app/restore/group/[token]/page.tsx:343` / `:346-347`.
+       Keeping the state term beside it matches the recorded belt-and-braces in
+       `src/app/restore/group/[token]/page.tsx` (`handleTakeOver`'s `if (acceptingRef.current) return;`).
 
        WHY PER INSTANCE. This component renders once per participant (three render sites:
-       `:126`, `:1351`, `:1964`), so a module-scope or page-level flag would let one guest's
+       `ParticipantChip`'s strip, the game view's session-card list, the See-all `Modal` row),
+       so a module-scope or page-level flag would let one guest's
        in-flight invite silently swallow every other row's press.
 
        PLACEMENT IS THE WHOLE RULE — the ref MIRRORS the gate state. It is set immediately before
@@ -169,9 +185,29 @@ function GuestInviteButton({ groupId, userId }) {
        2026-09-14 amendment the in-flight gate is `aria-disabled`, which does not stop the browser
        firing this handler. The attribute without this latch is a re-sendable invite button. */
     const sendingRef = useRef(false);
+    // 88.6.1-47 (D-06): the settled chip's node, and the shared focus-recovery instance that
+    // lands focus on it. Above the settled early return below (hooks order).
+    const chipRef = useRef(null);
+    const inviteFocus = useFocusRecovery();
 
-    const handleInvite = async () => {
+    /* DECISION Phase 88.6.1-47 (D-06): CHOSEN — when the send settles, the chip takes focus
+       ONCE, through the shared `useFocusRecovery` hook (plan 88.6.1-04) armed at the press with
+       the chip as the preferred target. So it moves only when focus was on the button and was
+       lost with it, it lands inside the See-all dialog when that is the host, and it never moves
+       a user who went elsewhere during the send. `from: event.currentTarget` seeds the hook with
+       the pressed button, because Safari does not focus a clicked button (the hook's consumer
+       contract, point 1). REJECTED — (a) a bespoke edge-triggered effect in this component: a
+       second definition of "focus was lost", the per-host copy D-04 rejects by tenet; (b) making
+       the chip a Tab stop or a button: D-06 keeps it non-interactive and out of the Tab order
+       (`tabIndex -1`, no role, no handler); (c) a heading as the target: the chip is where the
+       action resolved. KNOWN RISK (review #209): the live region and the focus move compete on
+       VoiceOver — moving focus onto the chip can cut off the polite `outcomeMessage` announcement
+       in the sr-only `StatusRegion`, which is the only channel carrying the fuller explanation
+       (for a 409, the `pending` and `member` lines); plan 88.6.1-57's VoiceOver steps measure it.
+       Removing the focus landing is a decision, not a cleanup. */
+    const handleInvite = async (event) => {
         if (sendingRef.current || status === 'sending' || settled) return;
+        const settle = inviteFocus.arm({ preferred: () => chipRef.current, from: event.currentTarget });
         sendingRef.current = true;
         setStatus('sending');
         try {
@@ -192,7 +228,8 @@ function GuestInviteButton({ groupId, userId }) {
                carried a prose fallback (`(code === 'conflict' || !code) &&
                message.includes(...)`) for the FE-first deploy window in which production
                emitted code-less 409s. The 88-34 backend is CONFIRMED live (ERROR_REGISTRY
-               codes on the wire — invites.js:379/:399), so the owner-ruled removal condition
+               codes on the wire — the `already_member` / `invite_pending` codes in the
+               backend's `routes/invites.js`), so the owner-ruled removal condition
                is met and the prose arms are gone. Re-adding prose matching is a decision, not
                a hardening: an unrecognized 409 belongs in the safety-net arm below. */
             const code = err?.code;
@@ -208,6 +245,10 @@ function GuestInviteButton({ groupId, userId }) {
                 sendingRef.current = false;
                 setStatus('error');
             }
+        } finally {
+            // Releases the focus ARM (D-06), never the latch: `sendingRef` keeps its own
+            // placement rule (DECISION Phase 88.6-18 (T-88.6-50) above).
+            settle();
         }
     };
 
@@ -234,7 +275,8 @@ function GuestInviteButton({ groupId, userId }) {
                         : 'Invite this guest to join the group';
 
     /* DECISION Phase 88-27 (D-32 buckets A/B/C): base keeps the neutral, branches override
-       it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
+       it — same call, same measured cascade fact, as `ParticipantRow.js`'s
+       `ORIGINAL MARKER 2, verbatim (Phase 88-27` note.
        `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
        is no tailwind-merge on this template literal.
        (88.6-18: still true of the SETTLED chip below, which is a `<span>` carrying the whole
@@ -252,6 +294,10 @@ function GuestInviteButton({ groupId, userId }) {
     /* DECISION Phase 88.6-18 (D8): in the four SETTLED states (`sent`, `pending`, `member`,
        `already`) this control renders a NON-INTERACTIVE status chip — a plain `<span>`, no
        `role`, no `aria-live`, not focusable, no handler. Owner ruling 2026-09-09, arm B.
+       [AMENDED Phase 88.6.1-47 (D-06), owner ruling 2026-10-04]: the chip is now
+       PROGRAMMATICALLY focusable (`tabIndex -1`), stays out of the Tab order, and takes focus
+       ONCE when the send settles (the D-06 marker at `handleInvite`). Still no role, no
+       `aria-live`, no handler — only the "not focusable" clause above changes.
 
        WHY: `globals.css`'s unlayered `.btn:disabled { opacity: 0.5 }` can be undone by no
        utility, and these four labels are colour-coded OUTCOMES the user must READ. A terminal
@@ -265,14 +311,21 @@ function GuestInviteButton({ groupId, userId }) {
        THREE THINGS ABOUT THE CHIP ARE DECIDED HERE because the obvious reading of each is wrong:
         - NO `role="status"`. "Status element" points straight at it, and it would be a SECOND
           live region: the sr-only `StatusRegion` above is mounted UNCONDITIONALLY and already
-          announces every outcome. `88.6-UI-SPEC.md:571-573` — "exactly one live region per
-          failure … Do not add a second region".
+          announces every outcome. `88.6-UI-SPEC.md` (`Announcement: exactly one live region
+          per failure`) — "exactly one live region per failure … Do not add a second region".
         - IT KEEPS ITS BRANCH `title`. Those four strings are the only fuller explanation each
           settled state has ("They already have an invite waiting — nothing more to send" says
           what "Invite pending" cannot). On a `<span>` a `title` is the accessible DESCRIPTION,
           so the information survives arm B rather than being silently dropped.
+          [CORRECTED Phase 88.6.1-47 (W052)]: the sentence just above over-claims. A role-less
+          `<span>` is generic, and assistive tech does not reliably expose its `title`, so the
+          fuller explanation reaches a screen reader through `outcomeMessage` in the sr-only
+          `StatusRegion`, not through the title. The title is KEPT for pointer users.
         - IT KEEPS ITS GEOMETRY. `inline-flex items-center text-xs px-2 py-1 rounded-sm border`
           are dead only against the UNLAYERED `.btn`; on a `<span>` nothing supplies them.
+          [CORRECTED Phase 88.6.1-47 (W052)]: the retained list as rendered is
+          `inline-flex min-h-11 items-center text-sm px-2 py-1 rounded-sm border` (the label
+          moved to `text-sm` and gained the `min-h-11` floor after this was written).
           Stripping them because the migration strips them from the `<Button>` states would be a
           silent-green regression — no suite in this plan measures a settled chip's box.
 
@@ -280,10 +333,10 @@ function GuestInviteButton({ groupId, userId }) {
        in-flight `sending` gate below is `aria-disabled` with the re-press refused in
        `handleInvite`'s synchronous latch — over the NATIVE `disabled` attribute, which is how D8
        first read on 2026-09-09 and which drops focus to `<body>` mid-submit on the control the
-       user just activated (`src/app/components/NextGameNightCard.tsx:377-391`;
-       `src/app/components/EmailAddressSection.tsx:1572-1598` states the split outright — the
-       control being ACTED ON gets `aria-disabled`, a control nobody is standing on may be
-       natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
+       user just activated (`src/app/components/NextGameNightCard.tsx`'s pressed RSVP control,
+       `aria-disabled={isFlight`; `src/app/components/EmailAddressSection.tsx` states the split
+       outright at `the control being ACTED ON gets` — the control being acted on gets
+       `aria-disabled`, a control nobody is standing on may be natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
        sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is the shipped
        "Sending..." label swap plus the house `aria-disabled` treatment already in globals.css
        (`cursor: not-allowed`) and on ghost (`aria-disabled:text-content-muted`, which beats this
@@ -296,6 +349,8 @@ function GuestInviteButton({ groupId, userId }) {
             <>
             <StatusRegion className="sr-only" message={outcomeMessage} />
             <span
+                ref={chipRef}
+                tabIndex={-1}
                 className={`inline-flex min-h-11 items-center text-sm px-2 py-1 rounded-sm border border-line transition-colors ${branchInk}`}
                 title={title}
             >
@@ -343,8 +398,90 @@ function GuestInviteButton({ groupId, userId }) {
     );
 }
 
+// 88.6.1-25 (Requirement 1): the event-link message screens and the shared loader. The not-found
+// words are today's, hoisted byte-unchanged; PAGE_LOADING_LABEL is copy row E4 (D-30, three ASCII
+// dots), the same sentence the route fallback already shows (gameDetail/loading.tsx).
+const EVENT_NOT_FOUND_TITLE = 'Event not found';
+const EVENT_NOT_FOUND_DETAIL = 'This event no longer exists or has been cancelled.';
+const PAGE_LOADING_LABEL = 'Loading game night...';
+// Copy rows E1, E2 and E3 (88.6.1-COPY-TABLE.html, ratified 2026-10-04, D-30), shipped with the
+// straight apostrophe (D-32 R8).
+const EVENT_NO_ACCESS_TITLE = "You don't have access to this event";
+const EVENT_NO_ACCESS_DETAIL = "You may be signed in with a different account, or you haven't been invited yet.";
+const EVENT_LOAD_FAILED_TITLE = "We couldn't load this event";
+
+// 88.6.1-25 (D-01): the per-event sign-in latch. The key follows the in-repo `ng<feature>:<purpose>`
+// convention (src/app/page.js, 'nggroups:refresh'). Every helper is FAIL-CLOSED: a storage call that
+// throws reads as "latch already set" (banner, never a redirect) and a write that throws reports
+// failure, so blocked storage can never produce a redirect loop (RESEARCH P-4). None of them logs.
+const SIGN_IN_LATCH_PREFIX = 'ngevent:signinRedirect:';
+
+function readSignInLatch(eventId) {
+    try {
+        return window.sessionStorage.getItem(SIGN_IN_LATCH_PREFIX + eventId) !== null;
+    } catch {
+        return true;
+    }
+}
+
+function writeSignInLatch(eventId) {
+    try {
+        window.sessionStorage.setItem(SIGN_IN_LATCH_PREFIX + eventId, '1');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function clearSignInLatch(eventId) {
+    try {
+        window.sessionStorage.removeItem(SIGN_IN_LATCH_PREFIX + eventId);
+    } catch {
+        // Nothing to do: a latch that cannot be removed only means one more banner, never a loop.
+    }
+}
+
+// The return address is built from this page's own location (path + search + hash) and NEVER read
+// from the query string (SPEC Constraint, V5.1.5); the Auth0 SDK's same-origin check is the
+// server-side control. The hash rides inside returnTo because a fragment never reaches a server.
+function buildSignInUrl() {
+    const { pathname, search, hash } = window.location;
+    return `/api/auth/login?returnTo=${encodeURIComponent(pathname + search + hash)}`;
+}
+
+// 88.6.1-47 (D-44): the id of the Game Sessions filter panel, named by the "Show Filters & Sort"
+// disclosure's aria-controls while the panel is mounted.
+const SESSION_FILTERS_PANEL_ID = 'game-sessions-filters';
+
+// Copy row E5 (D-30, seen and heard), ratified 2026-10-04; byte-checked against
+// 88.6.1-COPY-TABLE.html (row E5). The Sessions filter's To Date error, shown only while the range is backwards.
+const SESSION_DATE_RANGE_ERROR = 'To Date must be on or after From Date.';
+
+// 88.6.1-74 — owner ruling D8-r2 (2026-10-13; copy rows GD1, GD2, E16) and its follow-up
+// (2026-10-15; copy rows E17, E18, GD3, GD4): the line a side read's section notice shows when it
+// failed and never loaded for this key (a coded failure shows the register sentence instead).
+const REVIEWS_LOAD_FAILED = "Couldn't load reviews.";
+const SESSIONS_LOAD_FAILED = "Couldn't load game sessions.";
+const ROSTER_LOAD_FAILED = "Couldn't load who's coming.";
+const REPLIES_LOAD_FAILED = "Couldn't load who's replied.";
+const BRINGS_LOAD_FAILED = "Couldn't load who's bringing games.";
+const MY_RSVPS_LOAD_FAILED = "Couldn't load your RSVPs.";
+const GROUP_ROLE_LOAD_FAILED = "Couldn't load your group role.";
+// The side reads, by name: event view `roster`, `rsvpList`, `brings`; game view `groupEvents`,
+// `fanOut`, `reviews`, `gameRoster`.
+const NO_SECTION_LOAD_ERRORS = {
+    roster: null,
+    rsvpList: null,
+    brings: null,
+    groupEvents: null,
+    fanOut: null,
+    reviews: null,
+    gameRoster: null,
+};
+const GROUP_CONTENT_READS = ['groupEvents', 'reviews', 'gameRoster'];
+
 export default function GameDetailPage() {
-    const { user } = Auth();
+    const { user, isLoading: authLoading } = Auth();
     // Phase 87.3-04 (D-01/D-04): the caller's resolved Users.id UUID from the
     // shared self-identity hook. Every is-me/is-mine derive on this page keys on
     // this UUID vs the nested `User.id` (never the flat `user_id`/`user.sub`),
@@ -354,7 +491,8 @@ export default function GameDetailPage() {
     const { selfUuid, self, query: selfIdentityQuery } = useSelfIdentity();
     // D-08: permanent identity-resolution failure degrades is-me affordances
     // loudly-but-small via the compact FetchErrorBanner (never silently — D-11).
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+    // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
     const { timezone } = useTimezone();
     // Phase 76 SOCL-06: compute friendship status at the participants-modal
     // call site so the trailing-slot affordance branches per relationship.
@@ -363,9 +501,28 @@ export default function GameDetailPage() {
     const { getStatus: getFriendshipStatus } = useFriendshipStatus();
     const searchParams = useSearchParams();
     const router = useRouter();
-    const game_id = searchParams.get('game_id');
-    const group_id = searchParams.get('group_id');
-    const event_id = searchParams.get('event_id');
+    // DECISION Phase 88.6.1-25 (D-03 / AC-6 / CSPT): all three URL ids are validated ONCE, here,
+    // where they are read, so no request path is ever built from them. The api helpers interpolate
+    // each id into the path unencoded, and an id that decodes to dot-segments (`..%2Fusers%2Fme`) was
+    // normalised into ANOTHER same-origin BFF GET whose reply rendered as an event or a game.
+    // CHOSEN: a rejected `event_id` (present but not a UUID; an empty value counts as present) is
+    // "Event not found" with ZERO requests and is checked first; a rejected `game_id` is "Game not
+    // found" with zero requests and wins over a valid `event_id`; a rejected `group_id` is treated
+    // as absent on both views.
+    // REJECTED (a): validating at each fetch site (eight call sites; the one forgotten is the hole).
+    // REJECTED (b): encodeURIComponent on the path (closes the traversal but still sends a request
+    // for garbage, and AC-6 requires zero). REJECTED (c): a third "invalid link" screen (no ratified
+    // words, D-31). REJECTED (d): treating a bad `game_id` as absent (it is the page's entity
+    // selector, not optional context like `group_id`; the page would load a different entity than
+    // the link named). Loosening this to accept non-UUID ids is a decision, not a cleanup.
+    const rawGameId = searchParams.get('game_id');
+    const rawGroupId = searchParams.get('group_id');
+    const rawEventId = searchParams.get('event_id');
+    const game_id = isUuid(rawGameId) ? rawGameId : null;
+    const group_id = isUuid(rawGroupId) ? rawGroupId : null;
+    const event_id = isUuid(rawEventId) ? rawEventId : null;
+    const eventIdRejected = rawEventId !== null && event_id === null;
+    const gameIdRejected = rawGameId !== null && game_id === null;
     // Phase 65-03 EVT-05: optional date prefill for the "Plan a game night
     // with this" CTA (e.g. /gameDetail?game_id=X&group_id=Y&date=2026-05-15
     // — used when the user lands here from a planning surface).
@@ -377,6 +534,42 @@ export default function GameDetailPage() {
     const [userReview, setUserReview] = useState(null);
     const [loading, setLoading] = useState(true);
     const [gameError, setGameError] = useState(null);
+    // 88.6.1-74 (contract C3): the `entityKey` whose PRIMARY record (the event or the game) is on
+    // screen. Set ONLY when the current run's primary read succeeds; cleared at the start of a run
+    // for a new key and by every access or gone answer (C10). Not `loadedEntityKeyRef`, which is
+    // stamped after ANY settle and only drives the loading flash.
+    // AMENDED Phase 88.6.1-74 (wave 8 CI gate): the event view ALSO stamps `loadedEntityKeyRef` at
+    // its primary's success (see the DECISION at that stamp in fetchEventOnly).
+    const [loadedFor, setLoadedFor] = useState(null);
+    // 88.6.1-74 (review r1 D12): one entry per SIDE read, each the `entityKey` that read last
+    // loaded for in a current-generation run of the fetch function. Whether a side read's failure
+    // is a failed refresh is a fact about THAT read, not about the primary record (`loadedFor`):
+    // identity arrives after the first fetch in production, so several side reads first run on
+    // run 2 or 3. Each run reads it ONCE, at its start. State, not a ref: the group-content guard
+    // reads it at render. Reset to {} wherever `loadedFor` is cleared.
+    const [readLoadedFor, setReadLoadedFor] = useState({});
+    // 88.6.1-74 (owner ruling D8-r2): the thrown error of each side read that failed while it had
+    // NOT loaded for this key — shown by that read's SectionLoadFailedNotice. Never fed to
+    // useRetainedContent, gameError or eventSideError.
+    const [sectionLoadError, setSectionLoadError] = useState(NO_SECTION_LOAD_ERRORS);
+    // 88.6.1-74 (P-2 under C10): a side-read failure during an event-view refresh of a read that
+    // had loaded, stored as ONE code-less Error so its code reads `unknown`.
+    const [eventSideError, setEventSideError] = useState(null);
+    // 88.6.1-74 (review r3 L-02, scoped check 2 M2-01): the `entityKey` whose game read ANSWERED in
+    // the run that started when the page last moved to that key. The shared loader covers a game key
+    // that has not answered on this visit, so an in-page key change never paints a one-commit
+    // "Game not found" or a stale game view.
+    const [gameAnsweredFor, setGameAnsweredFor] = useState(null);
+    // 88.6.1-25 (D-01): the event fetch's error OBJECT (useFetchErrorState reads `ApiError.code` off
+    // it, as the game view's gameError does), and where the sign-in redirect stands for this event:
+    // 'idle' (none decided), 'redirecting' (replace called), 'declined' (the latch was already set or
+    // storage failed, so the 401 renders the banner instead).
+    const [eventError, setEventError] = useState(null);
+    const [signInRedirect, setSignInRedirect] = useState('idle');
+    // 88.6.1-25 (D-02, review r2 #31): true from the moment a 410 `account_deleted` from the event
+    // fetch starts the identity recheck until that recheck settles. Set in the SAME batch as the
+    // error (the query's own fetching flag is still false in that render, so the banner would flash).
+    const [identityRecheckPending, setIdentityRecheckPending] = useState(false);
     const [showReviewForm, setShowReviewForm] = useState(false);
     const [userRole, setUserRole] = useState(null);
     // Phase 71.1 GAMP-09: scope detection for two-QR model.
@@ -392,6 +585,9 @@ export default function GameDetailPage() {
     // here so all downstream renders/hooks have a non-null value to key off.
     // The URL group_id (from searchParams) takes precedence; falls back to
     // the event response only when the URL omits it.
+    // [AMENDED Phase 88.6.1-25 (D-41)] No longer true: the event's OWN group now wins once the
+    // event loads (see the D-41 marker at the derive in fetchEventOnly). The guarded URL value
+    // only seeds this until then, so the suggestions fetch can start early.
     const [effectiveGroupId, setEffectiveGroupId] = useState(group_id || null);
     // Phase 71.1: cached group members roster — needed by handleLeaveEvent
     // to resolve the caller's own row via Plan 71.1-01's caller-self-row
@@ -440,7 +636,14 @@ export default function GameDetailPage() {
        for the life of the mount. Mirroring is also the only release rule consistent with what
        these handlers already do: on success both `router.push` and deliberately do NOT reset their
        flag, and only the catch resets it. A `finally` release would re-open the handler during the
-       App Router transition while the page is still mounted. */
+       App Router transition while the page is still mounted.
+
+       [AMENDED Phase 88.6.1-47 (D-35)] The count is now FOUR: `qrLoadingRef` for Share Game QR
+       joins the three. The rule stated above is the MIRROR — set beside the gate's setter, clear
+       beside the setter that re-enables the control. Its "never in a `finally`" sentence describes
+       Cancel and Leave, whose success path navigates and never re-enables. Share Game QR re-enables
+       in its `finally` (success and failure alike), so its mirror release sits there, beside
+       `setQrLoading(false)`. */
     const cancellingRef = useRef(false);
     const leavingRef = useRef(false);
     const [participants, setParticipants] = useState([]);
@@ -455,6 +658,7 @@ export default function GameDetailPage() {
     const [showGameQR, setShowGameQR] = useState(false);
     const [gameInviteUrl, setGameInviteUrl] = useState('');
     const [qrLoading, setQrLoading] = useState(false);
+    const qrLoadingRef = useRef(false);
     // 88-33 Task 5 (fork 7): the hand-rolled removeConfirmingId/timer pair that lived here
     // is gone — the see-all Remove now rides `removeParticipantGate` (useConfirmAction,
     // two-tap tier) below, which owns the armed id, the 3s revert timer, and its cleanup.
@@ -584,10 +788,57 @@ export default function GameDetailPage() {
     // re-run below (identity resolving AFTER the first fetch) refreshes data
     // WITHOUT flashing the whole page back to the full loading state. A real
     // param change (different game/event) still gets the full loading screen.
+    // AMENDED Phase 88.6.1-74 (wave 8 CI gate): "finished loading" reads "settled, or (event view)
+    // its primary record is on screen" — the event view stamps it at the primary's success too. The
+    // key derivation below is unchanged: the CI trail's second navigation was Next's hydration
+    // replaceState of the same URL, never a search-params rewrite.
     const loadedEntityKeyRef = useRef(null);
     const entityKey = `${game_id}|${group_id}|${event_id}`;
+    // 88.6.1-74: the event view's <h1> (RF1's focusTarget) and the replacement screen's title (the
+    // C12 guards' target: E1 / "Event not found" through renderEventMessageState, "Game not found").
+    const eventTitleRef = useRef(null);
+    const withdrawalTitleRef = useRef(null);
+    // 88.6.1-74 (review r2 #86): the event id on screen, read by the user-triggered brings writes'
+    // cross-event check.
+    const currentEventIdRef = useRef(null);
+    useEffect(() => {
+        currentEventIdRef.current = event_id;
+    });
+    // 88.6.1-74: stamp / clear one side read's state for THIS run's key (functional updates).
+    const stampRead = (read) => {
+        setReadLoadedFor((prev) => (prev[read] === entityKey ? prev : { ...prev, [read]: entityKey }));
+        setSectionLoadError((prev) => (prev[read] === null ? prev : { ...prev, [read]: null }));
+    };
+    // At a side block's end: never-loaded failures go to their section notices.
+    const recordNeverLoaded = (failures) => {
+        const reads = Object.keys(failures);
+        if (reads.length === 0) return;
+        setSectionLoadError((prev) => {
+            const next = { ...prev };
+            for (const read of reads) next[read] = failures[read];
+            return next;
+        });
+    };
+    // 88.6.1-25 (RESEARCH M-1.2): per-run generation for fetchEventOnly. The fetch effect below can
+    // run several times for one link (mount, user resolves, identity resolves, a new event id), so
+    // a run that is no longer the newest applies NOTHING: no state write after any await, no
+    // `loading` clear, no entity stamp. eventErrorGenRef records which run set `eventError`, so the
+    // sign-in redirect acts only on the newest run's answer.
+    const eventFetchGenRef = useRef(0);
+    const eventErrorGenRef = useRef(0);
+    // 88.6.1-74 (carry-in, contract C4): the game view's per-run generation, plan 25's
+    // eventFetchGenRef shape. Each view's run also bumps the OTHER view's counter (review r2 #84).
+    const gameFetchGenRef = useRef(0);
+    // 88.6.1-74: the game view's <h1> (RF1's focusTarget), filled by attachGameTitle.
+    const gameTitleRef = useRef(null);
+    // The event id the clean-slate reset last cleared Recommended Games for (see the DECISION at
+    // the reset in fetchEventOnly).
+    const suggestionsClearedForEventRef = useRef(null);
 
     useEffect(() => {
+        // 88.6.1-25 (AC-6): a rejected event or game id makes no request at all. Without this,
+        // a rejected game id (nulled) beside a valid event id would fall into the event fetch.
+        if (eventIdRejected || gameIdRejected) return;
         if (game_id) {
             fetchGameData();
         } else if (event_id) {
@@ -596,17 +847,30 @@ export default function GameDetailPage() {
         // Phase 87.3-04: selfUuid is in the dep array so the is-me/scope derives
         // inside fetchGameData/fetchEventOnly re-run once identity resolves (they
         // are gated on selfUuid and skipped while it is still undefined).
-    }, [game_id, group_id, event_id, user?.sub, selfUuid]);
+    }, [game_id, group_id, event_id, user?.sub, selfUuid, eventIdRejected, gameIdRejected]);
 
     // Fetch game suggestions for event-only view.
     // Phase 71.1-02 Blocker 1 fix: gate on effectiveGroupId (URL-or-derived)
     // so game-only callers loading /gameDetail?event_id=X without a URL
     // group_id still get suggestions once the event response loads.
+    // [AMENDED Phase 88.6.1-25 (D-41)] "URL-or-derived" now reads: the guarded URL hint first (so
+    // the fetch can start before the event loads), then the event's own group once it has loaded.
+    // getEventSuggestions is event-scoped: the group decides only WHETHER to ask, so the effect keys
+    // on `hasGroup`, not on which group; otherwise the hint giving way to the event's group would
+    // ask twice (review r2 #140).
+    const hasGroup = Boolean(effectiveGroupId);
     useEffect(() => {
-        if (!event_id || !effectiveGroupId) return;
+        // 88.6.1-25 (AC-6): this effect reads event_id on its own, so a rejected game id beside a
+        // valid event id must stop it too, or that URL would still make a request.
+        if (gameIdRejected) return;
+        if (!event_id || !hasGroup) return;
+        // 88.6.1-25 (retention rule): an answer for an event the page has moved past is dropped, so
+        // a superseded event's suggestions never land on the next event's screen.
+        let superseded = false;
         const fetchSuggestions = async () => {
             try {
                 const data = await suggestionsAPI.getEventSuggestions(event_id);
+                if (superseded) return;
                 if (Array.isArray(data)) {
                     setEventSuggestions(data);
                 } else if (data && Array.isArray(data.suggestions)) {
@@ -616,11 +880,14 @@ export default function GameDetailPage() {
                     setEventSuggestions([]);
                 }
             } catch {
-                setEventSuggestions([]);
+                if (!superseded) setEventSuggestions([]);
             }
         };
         fetchSuggestions();
-    }, [event_id, effectiveGroupId]);
+        return () => {
+            superseded = true;
+        };
+    }, [event_id, hasGroup, gameIdRejected]);
 
     // Scroll to ballot section when #vote hash is in URL (from notification links)
     useEffect(() => {
@@ -641,30 +908,226 @@ export default function GameDetailPage() {
     // RSVP changes (backend hard-deletes EventBring rows when RSVP flips to
     // 'no' or 'maybe' — see routes/rsvp.js). Used both on initial mount and
     // from the RsvpSection onRsvpChange callback below.
-    const refreshBringersSet = async (eventId) => {
+    // 88.6.1-25 (review r2 #29): the helper RETURNS the Set and writes nothing itself. Each caller
+    // writes the result: the initial event load only after its own current-generation check, so a
+    // superseded event's brings are never painted onto the next event's strip.
+    // [AMENDED Phase 88.6.1-74] On failure it returns `null` (the previous set stays on screen,
+    // contract C1) and hands the thrown error to `onError`; the non-array SHAPE fallback still
+    // yields an empty set. The user-triggered callers write through writeUserBringers below.
+    /* DECISION Phase 88.6.1-74 (C1, side reads): CHOSEN — a failed side read keeps the value on
+       screen and is a failed refresh shown by RF1 only when THAT read had loaded for this key (its
+       own `readLoadedFor` entry at run start — identity arrives after the first fetch in production,
+       so several side reads first run on run 2 or 3); a read that has not loaded for this key never
+       shows RF1 (P-2). CHOSEN (owner ruling D8-r2, 2026-10-13, and its follow-up, 2026-10-15):
+       every side read that failed and never loaded shows plan 70's SectionLoadFailedNotice with the
+       owner's ratified line (a coded failure: the register sentence for its code, through
+       `fallbackMessage`, never `byCode`) where its false state sat — reviews and sessions: the
+       count and the empty-state sentence hidden; event roster: the Participants card's place; RSVP
+       list: inside the Participants card, no `No reply` pills, no event-view ballot; brings: below
+       it; game RSVP fan-out: under the Upcoming heading, no upcoming ballot; game roster: the CTA's
+       slot, one notice for every member-only control it gates. `Add Review` and `Show Filters &
+       Sort` stay visible beside their notices — CHOSEN over hiding them, because hiding a working
+       control because a read failed is a larger change than the ruling asks for, and the notice's
+       Retry sits beside them. The ballots are the one control removed while a notice shows: their
+       gate would state something false ("RSVP to vote" to someone who replied).
+       CHOSEN, game view: the group reads are the access gate for the group content (`GET
+       /games/:id` is group-agnostic, periodictabletopbackend_v2/Sonnet/routes/games.js, anchor
+       `router.get('/:id'`): their access or gone answer withdraws that content and the member-only
+       state — never RF1, never the full banner over the catalog game — EXCEPT `unauthorized`, which
+       takes the primary-401 path (the full banner's sign-in line): a 401 says the session ended, not
+       that this user may not see the group, and a silent withdrawal would show a member a
+       non-member's page with no pointer to sign in and no tab-return re-attempt (review r2 #311).
+       The withdrawal hides the content on screen only; the `GET /games/:id` payload still carries
+       every group's reviews, a BE fix routed outside this phase (review r2 #317, Routed finding 6).
+       CHOSEN, event view (review r2 #316): the roster's OWN access or gone answer resets only the
+       roster-derived member state (`groupMembers`, `groupMembersByUserId`, `userRole`, `userScope`,
+       the roster's key) and keeps the event with no error — the game view's standard for the same
+       server answer, `unauthorized` excepted as there (review r3 M-01: a roster 401 is an ordinary
+       side failure — RF1 when the roster had loaded, the error stored so the tab-return re-attempt
+       arms). Measured path: a participant whose only participations in the group are on cancelled
+       events (the roster's game-only branch counts non-cancelled events only; the event read admits
+       a participant on any status).
+       REJECTED (a): resetting to empty — it wrote a false empty state over true data (Prohibition
+       2). REJECTED (b): a side failure deciding an access state — P-2: only the primary read does
+       that; the scoped exceptions above never produce E1, a redirect or a banner (save the game
+       view's `unauthorized`). REJECTED (c): reporting a failure of a read that has not loaded for
+       this key through RF1 — only a read that loaded for this key can be "earlier". REJECTED (d):
+       storing a side read's ApiError itself, which plan 70's C10 asks for at a PRIMARY read — a
+       roster or sessions 403 would reach useRetainedContent as an access answer and silence RF1
+       over an event / game that is still on screen. A non-access side failure is stored code-less;
+       a session that really expired is caught by the next Retry's primary read. REJECTED (e): the
+       full banner over a game this user may see — a false statement, and a game-only caller (403
+       from the group reads on every run) would lose the page. REJECTED (f): keeping `userRole` /
+       `userScope` / `groupMembers` after a group (or event roster) access answer under Phase
+       87.3-04's rule — that rule covers an unresolved identity, not a server answer; keeping them
+       shows member-only actions that will fail. REJECTED (g): the fetch run's brings write inside
+       this helper, ahead of the run's generation check — an older same-key run's answer could
+       overwrite a newer one's (#85); and a strict id compare against the raw URL `event_id` — an
+       upper-case UUID in the URL blocks every user-triggered write (#86). REJECTED (h) (owner
+       ruling D8-r2): silence for a never-loaded side failure — the page said `Reviews (0)` / "Be
+       the first" or `Game Sessions (0)` for a failure; hiding the count with no notice — the same
+       silence; the compact identity notice — its sentence is the identity line; an optional text
+       prop on the compact branch — plan 70's call. Changing this is a decision, not a cleanup. */
+    const refreshBringersSet = async (eventId, onError) => {
         try {
             const brings = await eventBringsAPI.getEventBrings(eventId);
+            const bSet = new Set();
             if (Array.isArray(brings)) {
-                const bSet = new Set();
                 for (const b of brings) {
                     if (b?.User?.id) bSet.add(b.User.id);
                 }
-                setBringersSet(bSet);
-            } else {
-                setBringersSet(new Set());
             }
-        } catch {
-            setBringersSet(new Set());
+            return bSet;
+        } catch (error) {
+            // DECISION Phase 88.6.1-74 (C1, side reads): a failure keeps the previous set.
+            onError?.(error);
+            return null;
         }
+    };
+    // 88.6.1-74 (review r2 #86): a user-triggered brings refresh writes only a Set (never the
+    // failure value — a null would throw at `bringersSet.has`) and only for the event on screen,
+    // compared case-insensitively (a URL may carry an upper-case UUID the server returns
+    // lower-case). On the game view (`handleEventUpdated`) no event is on screen, so the write is
+    // blocked — harmless, `bringersSet` is read only in the event view. A Set clears the brings
+    // section notice (the dice are loaded now); a failure changes nothing.
+    const writeUserBringers = (eventId, bSet) => {
+        if (!(bSet instanceof Set)) return;
+        const onScreen = currentEventIdRef.current;
+        if (!onScreen || String(eventId).toLowerCase() !== String(onScreen).toLowerCase()) return;
+        setBringersSet(bSet);
+        setSectionLoadError((prev) => (prev.brings === null ? prev : { ...prev, brings: null }));
+    };
+
+    // 88.6.1-74 (review r2 #310): the event view's ONE per-key reset, shared by the new-key clear and
+    // the C10 drop. Side reads no longer overwrite on failure, so without it a new event would
+    // inherit the previous one's side data, and an event whose access returns would show the
+    // pre-drop roster, RSVP pills and brings as current. It never touches `eventError`,
+    // `signInRedirect` (plan 25's per-code dispatch owns them), `effectiveGroupId` or the
+    // suggestions (the suggestions effect does not re-run on the same key).
+    const clearEventKeyData = () => {
+        setUserRole(null);
+        setUserScope('none');
+        setGroupMembers([]);
+        setGroupMembersByUserId({});
+        setParticipants([]);
+        setRsvpByUserId({});
+        setEventRsvpStatuses({});
+        setBringersSet(new Set());
+        setEventSideError(null);
+        setReadLoadedFor({});
+        setSectionLoadError((prev) => ({ ...prev, roster: null, rsvpList: null, brings: null }));
     };
 
     const fetchEventOnly = async () => {
+        // 88.6.1-25: this run's generation, taken before the first await (see eventFetchGenRef).
+        const gen = ++eventFetchGenRef.current;
+        // 88.6.1-74 (review r2 #84): an event run supersedes any in-flight game run too.
+        gameFetchGenRef.current += 1;
+        const isCurrentRun = () => gen === eventFetchGenRef.current;
+        // 88.6.1-74: PRIMARY rules only (the eventError clear on success, C2); the side reads decide
+        // from their own run-start keys (the per-read rule, review r1 D12), read ONCE here.
+        const isRefresh = loadedFor === entityKey;
+        const readsAtStart = readLoadedFor;
+        // 88.6.1-74 (M2-01): a run for a DIFFERENT key forgets which game key last answered; a
+        // same-key run keeps it (see gameAnsweredFor).
+        setGameAnsweredFor((k) => (k === entityKey ? k : null));
         // Identity-only re-run (selfUuid resolved after first load of the SAME
         // event): refresh in place — no full-page loading flash (#1/#18).
-        if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
+        if (loadedEntityKeyRef.current !== entityKey) {
+            setLoading(true);
+            // 88.6.1-25 (retention rule, review r2 #30): a DIFFERENT event starts from a clean slate,
+            // so a failure there never shows the previous event and a roster 403 there never keeps the
+            // previous event's role or roster. Phase 87.3-04's "never downgrade to 'none'" protects the
+            // SAME event's scope during an identity re-run, which keeps the same entity key and never
+            // reaches this reset; 'none' is the initial value. The group id resets to the guarded URL
+            // hint, NOT null, so the suggestions fetch can still start before the event loads.
+            setSingleEvent(null);
+            setLoadedFor(null);
+            setEventError(null);
+            setSignInRedirect('idle');
+            clearEventKeyData();
+            // DECISION Phase 88.6.1-25 (retention rule, amended by the wave 4 CI gate, run 38878098281):
+            // Recommended Games is cleared only when the EVENT ID changes, NOT on every run that reaches
+            // this reset. The reset also runs for the SAME event whenever identity resolves before the
+            // first load has stamped the entity key (the newest run is the only one that stamps), and the
+            // suggestions effect keys on the event, not identity, so it never asks again: clearing here
+            // on every run hid the section for real users whenever suggestions landed before identity.
+            // A superseded event's late answer is still dropped by the suggestions effect's own cleanup
+            // flag, which is what keeps the different-event half of the rule. Moving this clear back to
+            // every run is a regression, not a tidy-up.
+            if (suggestionsClearedForEventRef.current !== event_id) {
+                suggestionsClearedForEventRef.current = event_id;
+                setEventSuggestions([]);
+                setSuggestionsPlayerCount(null);
+            }
+            setEffectiveGroupId(group_id || null);
+        }
+        // 88.6.1-74: each side read's recorded failure, by read name (the per-read rule at the end).
+        const sideFailures = {};
         try {
-            const eventData = await eventsAPI.getEvent(event_id);
+            // 88.6.1-25 (D-01, RESEARCH P-2): ONLY the getEvent rejection decides the page state, so it
+            // has its own try. The roster, RSVP and bring fetches below keep their own soft catches: a
+            // members 403 or 500 after a good event leaves the event rendered.
+            let eventData;
+            try {
+                eventData = await eventsAPI.getEvent(event_id);
+            } catch (error) {
+                logger.info('Error fetching event:', errCtx(error));
+                if (!isCurrentRun()) return;
+                eventErrorGenRef.current = gen;
+                const code = error instanceof ApiError ? error.code : 'unknown';
+                // TERMINAL answers clear any event still on screen, so neither the no-access state nor
+                // the redirect loader can sit under a retained event (Prohibition 1); every other code
+                // keeps a retained event of the same entity, under RF1 (88.6.1-74). The membership
+                // test is plan 70's ONE predicate (contract C10), which replaced the wave-4 local
+                // four-code list: it adds `gone`, `not_provisioned`, the three restore-link 410s and
+                // `token_invalid`, which reach the E3 banner with the register's line.
+                if (isAccessOrGoneError({ showError: true, code })) {
+                    setSingleEvent(null);
+                    setLoadedFor(null);
+                    clearEventKeyData();
+                }
+                // An answer the backend sends only to an AUTHENTICATED caller proves the session, so it
+                // clears the sign-in latch (review r2 #305). Never a 401, network, 5xx, 429 or unknown.
+                if (code === 'forbidden' || code === 'not_found' || code === 'account_deleted') {
+                    clearSignInLatch(event_id);
+                }
+                // D-02: re-check identity so useSelfIdentity's own effect routes to the goodbye
+                // logout, even from a tab whose self row was cached before the deletion.
+                if (code === 'account_deleted') {
+                    setIdentityRecheckPending(true);
+                    const settle = () => setIdentityRecheckPending(false);
+                    Promise.resolve(selfIdentityQuery?.refetch?.()).then(settle, settle);
+                }
+                setEventError(
+                    error instanceof Error ? error : new Error("The event request didn't complete.")
+                );
+                // 88.6.1-70 contract C4: the run this retry ran ended failed.
+                return { isError: true };
+            }
+            if (!isCurrentRun()) return;
+            // 88.6.1-74 (C2): a FIRST run clears the error on the primary success; a refresh clears
+            // it at its clean end, so the notice never disappears and reappears inside one Retry.
+            if (!isRefresh) setEventError(null);
+            setSignInRedirect('idle');
+            clearSignInLatch(event_id);
             setSingleEvent(eventData);
+            setLoadedFor(entityKey);
+            // DECISION Phase 88.6.1-74 (wave 8 CI gate, run 39026336968): the event view stamps the
+            // settled key HERE, at the primary's success, as well as in the finally — CHOSEN OVER
+            // stamping only at the run's end. The event view renders its record from this point (the
+            // `!game_id && singleEvent` branch sits BEFORE the loader gate), so a same-key re-run that
+            // starts while this run's side reads are still out (identity resolving after the first
+            // load, the most common real refresh) must refresh in place; with the end-only stamp it
+            // found no settled run, took the new-key reset below and cleared the event on screen, and a
+            // failed refresh then showed the full banner instead of RF1. REJECTED: re-keying on the
+            // raw URL instead of the validated ids (the CI trail's second same-document navigation was
+            // Next's own hydration replaceState of the SAME URL, not a rewrite — nothing re-keyed);
+            // gating the reset on the `loadedFor` state (a render-time closure value; this ref is
+            // written synchronously). The game view keeps the end-only stamp: its record renders only
+            // after the loader gate, i.e. after the run's finally. Moving this back to the finally
+            // alone is a regression, not a tidy-up.
+            loadedEntityKeyRef.current = entityKey;
 
             // Backend GET /events/:event_id flattens EventParticipations via
             // formatEventWithCustomParticipants — each row is { user_id (UUID),
@@ -679,48 +1142,98 @@ export default function GameDetailPage() {
             // Without this, game-only callers loading a bare /gameDetail?event_id=X
             // URL would skip the groupMembers fetch entirely and render with
             // userScope='none' (no participants strip, no Leave kebab).
-            const derivedGroupId = group_id || eventData?.group_id || eventData?.Group?.id;
+            // [AMENDED Phase 88.6.1-25 (D-41)] "a hint, not the source of truth" is now TRUE in
+            // code: the event's own group comes first and the URL value is only the fallback.
+            // DECISION Phase 88.6.1-25 (D-41): CHOSEN — on the event view the event's own group wins;
+            // the URL group_id is only a hint (this comment's own words) and a fallback.
+            // REJECTED (a): URL-first, the Phase 71.1-02 precedence. A stale or hand-edited link
+            // fetched ANOTHER group's roster, whose 403 was swallowed so the caller silently rendered
+            // as scope 'none', and it pointed cancel, edit, BringSummary and the guest invite at the
+            // wrong group. REJECTED (b): ignoring the URL entirely. The guarded URL hint still seeds
+            // effectiveGroupId, so the suggestions fetch can start before the event loads.
+            // Putting the URL first again is a decision, not a cleanup.
+            const derivedGroupId = eventData?.group_id || eventData?.Group?.id || group_id;
             // (88-33 Task 9, UAT row 371 / T-88-33-02: the debug console.log that
             // printed the derived group UUID here is deleted — info disclosure.)
             setEffectiveGroupId(derivedGroupId || null);
 
             if (derivedGroupId && user?.sub) {
-                // Fetch group members — used for current-user role + per-row
-                // role badge in the See-all modal. Members come back as User
-                // objects with id (UUID), user_id (Auth0 string), and
-                // UserGroup.role attached via the through-table.
-                const fetchedGroupMembers = await groupsAPI.getGroupMembers(derivedGroupId);
-                if (Array.isArray(fetchedGroupMembers)) {
-                    // Phase 71.1 GAMP-09: derive both userRole + userScope via
-                    // unified resolver. Plan 71.1-01's caller-self-row contract
-                    // guarantees the caller's row is present (with UserGroup=null
-                    // for game-only callers).
-                    // Phase 87.3-04: gate the is-me scope derive on identity
-                    // resolution — while selfUuid is unresolved leave userScope
-                    // at its prior/default value (loading/indeterminate), NEVER
-                    // downgrade to 'none'. The fetch effect's selfUuid dep re-runs
-                    // this flow once identity resolves.
-                    if (selfUuid) {
-                        const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
-                        setUserRole(role);
-                        setUserScope(scope);
+                try {
+                    // Fetch group members — used for current-user role + per-row
+                    // role badge in the See-all modal. Members come back as User
+                    // objects with id (UUID), user_id (Auth0 string), and
+                    // UserGroup.role attached via the through-table.
+                    const fetchedGroupMembers = await groupsAPI.getGroupMembers(derivedGroupId);
+                    if (!isCurrentRun()) return;
+                    if (Array.isArray(fetchedGroupMembers)) {
+                        // Phase 71.1 GAMP-09: derive both userRole + userScope via
+                        // unified resolver. Plan 71.1-01's caller-self-row contract
+                        // guarantees the caller's row is present (with UserGroup=null
+                        // for game-only callers).
+                        // Phase 87.3-04: gate the is-me scope derive on identity
+                        // resolution — while selfUuid is unresolved leave userScope
+                        // at its prior/default value (loading/indeterminate), NEVER
+                        // downgrade to 'none'. The fetch effect's selfUuid dep re-runs
+                        // this flow once identity resolves.
+                        // AMENDED Phase 88.6.1-74 (roster access answer): the rule covers an UNRESOLVED
+                        // identity only. The roster's own access or gone answer and the primary read's
+                        // C10 drop are server answers, so they return userRole / userScope /
+                        // groupMembers to their initial values; see DECISION Phase 88.6.1-74 (C1, side
+                        // reads).
+                        if (selfUuid) {
+                            const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
+                            setUserRole(role);
+                            setUserScope(scope);
+                        }
+                        // Cache the roster so handleLeaveEvent can resolve the
+                        // caller's User.id UUID without a second fetch.
+                        setGroupMembers(fetchedGroupMembers);
+                        // Build map keyed by User.id (UUID) since EventParticipation
+                        // rows expose user_id-as-UUID after the flatten step.
+                        const byId = {};
+                        for (const m of fetchedGroupMembers) {
+                            if (m.id) byId[m.id] = m;
+                        }
+                        setGroupMembersByUserId(byId);
+                        stampRead('roster');
                     }
-                    // Cache the roster so handleLeaveEvent can resolve the
-                    // caller's User.id UUID without a second fetch.
-                    setGroupMembers(fetchedGroupMembers);
-                    // Build map keyed by User.id (UUID) since EventParticipation
-                    // rows expose user_id-as-UUID after the flatten step.
-                    const byId = {};
-                    for (const m of fetchedGroupMembers) {
-                        if (m.id) byId[m.id] = m;
+                } catch (error) {
+                    // 88.6.1-25 (P-2): the roster's own catch; the event stays rendered and the page
+                    // state is not touched.
+                    // AMENDED 2026-10-19 (88.6.1 code review A-48): this catch moved INSIDE the side-read
+                    // block, OVER the outer catch it used to be, so a roster failure falls through to the
+                    // RSVP-list and brings reads instead of skipping them — skipped, the RSVP list was
+                    // never attempted, `rsvpList` never recorded, and the event-view ballot told a viewer
+                    // who had said Yes to "RSVP Yes or Maybe to vote". Each side read now has its own catch.
+                    logger.info('Error fetching event members:', errCtx(error));
+                    if (!isCurrentRun()) return undefined;
+                    const rosterCode = error instanceof ApiError ? error.code : 'unknown';
+                    if (rosterCode !== 'unauthorized' && isAccessOrGoneError({ showError: true, code: rosterCode })) {
+                        // DECISION Phase 88.6.1-74 (C1, side reads) — review r2 #316: the roster's OWN access
+                        // or gone answer resets only the roster-derived member state and keeps the event; no
+                        // error of any kind. Its `unauthorized` is an ordinary side failure (review r3 M-01).
+                        setGroupMembers([]);
+                        setGroupMembersByUserId({});
+                        setUserRole(null);
+                        setUserScope('none');
+                        setReadLoadedFor((prev) => {
+                            if (!('roster' in prev)) return prev;
+                            const next = { ...prev };
+                            delete next.roster;
+                            return next;
+                        });
+                        setSectionLoadError((prev) => (prev.roster === null ? prev : { ...prev, roster: null }));
+                    } else {
+                        // DECISION Phase 88.6.1-74 (C1, side reads): record the roster failure.
+                        sideFailures.roster = error;
                     }
-                    setGroupMembersByUserId(byId);
                 }
                 // Fetch RSVP status — both for the current viewer (already
                 // wired into RsvpSection) and as a per-participant map keyed
                 // by the nested User.id UUID for the strip + See-all chips (D-04).
                 try {
                     const rsvpData = await rsvpAPI.getEventRsvps(event_id);
+                    if (!isCurrentRun()) return;
                     // Phase 87.3-04: my-RSVP derive gated on identity resolution
                     // (nested User.id vs selfUuid). Re-runs when selfUuid resolves.
                     if (selfUuid) {
@@ -735,26 +1248,60 @@ export default function GameDetailPage() {
                         if (r.User?.id) byUserId[r.User.id] = r.status;
                     }
                     setRsvpByUserId(byUserId);
-                } catch {
-                    setEventRsvpStatuses({ [event_id]: null });
-                    setRsvpByUserId({});
+                    stampRead('rsvpList');
+                } catch (error) {
+                    // DECISION Phase 88.6.1-74 (C1, side reads): keep the values; record the failure.
+                    if (!isCurrentRun()) return undefined;
+                    sideFailures.rsvpList = error;
                 }
 
                 // Fetch event brings to flag participants who are bringing a
-                // game (small bringersSet of User.id UUIDs).
-                await refreshBringersSet(event_id);
+                // game (small bringersSet of User.id UUIDs). Written only by the
+                // current run (88.6.1-25, review r2 #29).
+                let bringsError = null;
+                const bSet = await refreshBringersSet(event_id, (error) => { bringsError = error; });
+                if (!isCurrentRun()) return undefined;
+                if (bSet === null) {
+                    // DECISION Phase 88.6.1-74 (C1, side reads): a failure writes nothing.
+                    sideFailures.brings = bringsError;
+                } else {
+                    setBringersSet(bSet);
+                    stampRead('brings');
+                }
             }
-        } catch (error) {
-            logger.info('Error fetching event:', errCtx(error));
         } finally {
-            loadedEntityKeyRef.current = entityKey;
-            setLoading(false);
+            // A superseded run neither clears `loading` nor stamps the entity (RESEARCH M-1.2).
+            if (isCurrentRun()) {
+                loadedEntityKeyRef.current = entityKey;
+                setLoading(false);
+            }
         }
+        if (!isCurrentRun()) return undefined;
+        // 88.6.1-74 — the per-read rule (DECISION Phase 88.6.1-74 (C1, side reads)): a recorded
+        // failure of a read that had loaded for this key at run start is a failed refresh, shown by
+        // RF1 through ONE code-less Error (P-2 under C10); a failure of a read that had not loaded
+        // goes to that read's section notice (owner ruling D8-r2) and the run ends like a clean one.
+        const failedReads = Object.keys(sideFailures);
+        const neverLoaded = {};
+        for (const read of failedReads) {
+            if (readsAtStart[read] !== entityKey) neverLoaded[read] = sideFailures[read];
+        }
+        recordNeverLoaded(neverLoaded);
+        if (failedReads.some((read) => readsAtStart[read] === entityKey)) {
+            setEventSideError(new Error("An event side read didn't complete."));
+            return { isError: true };
+        }
+        setEventError(null);
+        setEventSideError(null);
+        // 88.6.1-70 contract C4: a clean end resolves `{ isError: false }`; a superseded run
+        // resolves `undefined` (it wrote nothing).
+        return { isError: false };
     };
 
     // (88-33 Task 5: the 65-02 "clean up the second-click confirm timer on unmount"
     // effect that lived here is gone with the hand-rolled timer — useConfirmAction
-    // performs the same unmount cleanup internally, absorbed from KebabMenu.js:63-71.)
+    // performs the same unmount cleanup internally (its "Unmount cleanup" block; that code has
+    // since left KebabMenu).)
 
     // Phase 65-02: cancel-event handler invoked from the kebab menu.
     // Single click cancels and redirects — no modal, no second confirm. The
@@ -766,13 +1313,16 @@ export default function GameDetailPage() {
         // SYNCHRONOUSLY because the second activation runs the PREVIOUS render's closure, where
         // the state flag is still false; a state-only guard here is byte-equivalent to the item
         // gate it is meant to back up. The state term is KEPT beside it, matching the recorded
-        // belt-and-braces at `restore/group/[token]/page.tsx:343`/`:346-347`.
+        // belt-and-braces in `restore/group/[token]/page.tsx` (`handleTakeOver`'s
+        // `if (acceptingRef.current) return;`).
         if (cancellingRef.current || cancellingEvent) return;
         cancellingRef.current = true;
         setCancellingEvent(true);
         try {
             await eventsAPI.deleteEvent(singleEvent.id);
-            router.push(`/groupHomePage?id=${group_id}`);
+            // 88.6.1-25 (AC-7, D-41): the EVENT's group, never the URL value, which a bare link
+            // omits (this pushed the literal `id=null`); Home when no group is known.
+            router.push(effectiveGroupId ? `/groupHomePage?id=${effectiveGroupId}` : '/');
         } catch (err) {
             logger.info('Error cancelling event:', errCtx(err));
             /* DECISION Phase 88-25 (Req 14 / T-88-25-01): failure copy is DERIVED from
@@ -843,8 +1393,20 @@ export default function GameDetailPage() {
 
     // Phase 65-02: open the Share-Game-QR modal. Mirrors the EventDayModal
     // handleShowGameQR pattern (loading state + error swallow).
+    /* DECISION Phase 88.6.1-47 (D-35): CHOSEN — the pressed control stays focusable
+       (`aria-disabled`) and a synchronous ref latch (`qrLoadingRef`) refuses a second press,
+       released beside the loading reset in the `finally`; the in-flight label is copy row E6, read
+       from the one constant in `shareGameQrCopy.ts`. REJECTED — (a) the native attribute: it drops
+       focus off the control the user just pressed, and the QR dialog then records no opener to
+       return focus to (W014 case 1); (b) a state-only guard: a second press in the same tick reads
+       the previous render's `false` and sends a second request. The look follows the owner's
+       accent answer recorded by plan 88.6.1-22: answer 2Q (2026-10-16), the gated accent colour
+       pair on the accent rule's `aria-disabled` state — no colour, opacity or disabled utility at
+       this call site. Putting the native attribute back is a decision, not a cleanup. */
     const handleShowGameQR = async () => {
+        if (qrLoadingRef.current) return;
         if (!singleEvent?.id) return;
+        qrLoadingRef.current = true;
         setQrLoading(true);
         try {
             const data = await eventsAPI.getEventInviteToken(singleEvent.id);
@@ -858,6 +1420,7 @@ export default function GameDetailPage() {
                 })
             );
         } finally {
+            qrLoadingRef.current = false;
             setQrLoading(false);
         }
     };
@@ -908,80 +1471,231 @@ export default function GameDetailPage() {
         onConfirm: (targetUserDbId) => performRemoveParticipation(targetUserDbId),
     });
 
-    const fetchGameData = async () => {
-        if (!game_id) return;
+    // 88.6.1-74 (contract C3): the game view's per-key reset — every value a game key owns, back to
+    // its `useState` initial value. Never `gameAnsweredFor` (the primary-access and group-401 paths
+    // call this AFTER the answer; a reset there would hold the loader over their banner), and never
+    // `userRole` / `userScope` / `groupMembers` (Phase 87.3-04's unresolved-identity rule; a GROUP
+    // read's access answer resets those itself).
+    const clearGameKeyData = () => {
+        setGame(null);
+        setEvents([]);
+        setEventRsvpStatuses({});
+        setReviews([]);
+        setUserReview(null);
+        setReviewForm({ rating: 2.5, review_text: '', is_recommended: true });
         setGameError(null);
+        setLoadedFor(null);
+        setReadLoadedFor({});
+        setSectionLoadError((prev) => ({ ...prev, groupEvents: null, fanOut: null, reviews: null, gameRoster: null }));
+    };
+
+    // 88.6.1-74 (review r1 D16, the group-access truth): a group read's access or gone answer
+    // withdraws the GROUP content and the member-only state in one current-generation step, and
+    // keeps the catalog game, `loadedFor` and `loadedEntityKeyRef` — never clearGameKeyData(), which
+    // would clear the game. DECISION Phase 88.6.1-74 (C1, side reads).
+    const withdrawGroupContent = () => {
+        setEvents([]);
+        setEventRsvpStatuses({});
+        setReviews([]);
+        setUserReview(null);
+        setReviewForm({ rating: 2.5, review_text: '', is_recommended: true });
+        setGroupMembers([]);
+        setUserRole(null);
+        setUserScope('none');
+        setReadLoadedFor({});
+        setSectionLoadError((prev) => ({ ...prev, groupEvents: null, fanOut: null, reviews: null, gameRoster: null }));
+    };
+
+    const fetchGameData = async () => {
+        if (!game_id) return undefined;
+        // 88.6.1-74 (carry-in, contract C4, review r2 #84): this run's generation, taken before the
+        // first await. A run that is no longer the newest writes NOTHING after any await and its
+        // finally does nothing. A run of EITHER view supersedes the other view's in-flight run (both
+        // write `loadedFor`, `loadedEntityKeyRef` and `loading`), so this bumps the event view's
+        // counter too. No start-of-run `gameError` clear (C2): the error stays until the newest run
+        // succeeds.
+        const gen = ++gameFetchGenRef.current;
+        eventFetchGenRef.current += 1;
+        const isCurrentRun = () => gen === gameFetchGenRef.current;
+        // PRIMARY rules only (the first-run clear below); a side read's refresh is its own key.
+        const isRefresh = loadedFor === entityKey;
+        const readsAtStart = readLoadedFor;
+        // 88.6.1-74 (M2-01): a run for a DIFFERENT key forgets which game key last answered; a
+        // same-key run keeps it, so an identity re-run shows no loader flash.
+        setGameAnsweredFor((k) => (k === entityKey ? k : null));
 
         // Identity-only re-run (selfUuid resolved after first load of the SAME
         // game): refresh in place — no full-page loading flash (#1/#18).
-        if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
+        // 88.6.1-74 (C3): a NEW key starts from a clean slate, so game B never shows game A.
+        if (loadedEntityKeyRef.current !== entityKey) {
+            setLoading(true);
+            clearGameKeyData();
+        }
         try {
             // Fetch game details using gamesAPI which includes proper API URL and auth
-            const gameData = await gamesAPI.getGame(game_id);
-            setGame(gameData);
+            let gameData;
+            try {
+                gameData = await gamesAPI.getGame(game_id);
+            } catch (error) {
+                logger.info('Error fetching game data:', errCtx(error));
+                if (!isCurrentRun()) return undefined;
+                /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a failed load is TRACKED and rendered as
+                   the shared fetch-error treatment, chosen OVER the silent `console.error` this
+                   shipped with. `game` stays null after a swallowed failure, so the render fell
+                   through to the "Game not found" dead end below — a 500 or a dropped connection was
+                   reported to the person as a definitive statement that the game does not exist, with
+                   no retry and only a back-link. Empty and failed are different facts (UI-SPEC 9.2);
+                   a `not_found` code still reaches the not-found branch, which is the one case where
+                   that copy is TRUE.
 
+                   Keep the ERROR object, not a flattened string: useFetchErrorState reads
+                   `ApiError.code` off it.
+                   AMENDED Phase 88.6.1-74 (AC-29 / RF1, owner ruling 2026-10-05): the PRIMARY failure is
+                   still tracked exactly as above. A failed REFRESH keeps the game and its lists and is
+                   shown by RF1 (RefreshFailedNotice, between the breadcrumb and the game card). The
+                   start-of-run `gameError` clear is gone: it hid the notice at the press (contract C2).
+                   A side failure of a read that has not loaded for this key is no longer tracked here:
+                   it rendered nothing, and RF1's "earlier" sentence would be false over data that never
+                   loaded (named trade-off: that case loses this state's tab-return re-attempt; Task 3's
+                   section notices re-arm it per read). `getGame`'s access or gone answers (plan 70's
+                   isAccessOrGoneError) drop the game (C10), and a side read's failure is stored
+                   code-less (P-2 / C11); a group read's access answer is not tracked at all — it
+                   withdraws the group content and keeps the game — except its `unauthorized`, which is
+                   tracked as the primary 401 is (review r2 #311). A run of either view supersedes the
+                   other view's in-flight run (the cross-view generation bump), chosen over a key-compare
+                   guard on `setLoadedFor` alone, which would let the stale run's other writes land
+                   (review r2 #84). Changing this is a decision, not a cleanup. */
+                const code = error instanceof ApiError ? error.code : 'unknown';
+                if (isAccessOrGoneError({ showError: true, code })) {
+                    // C10: an access or gone answer drops the game; the ApiError itself is stored so
+                    // the full banner reads its code.
+                    clearGameKeyData();
+                    setGameError(error);
+                } else {
+                    setGameError(
+                        error instanceof Error ? error : new Error("The game request didn't complete.")
+                    );
+                }
+                return { isError: true };
+            }
+            if (!isCurrentRun()) return undefined;
+            setGame(gameData);
+            setLoadedFor(entityKey);
+            // A first run (or a full banner's Try again) gives way to the content at once.
+            if (!isRefresh) setGameError(null);
+
+            // 88.6.1-74: each side read's recorded failure, by read name (the per-read rule below).
+            const sideFailures = {};
+            // DECISION Phase 88.6.1-74 (C1, side reads): ONE line logs a review or roster failure,
+            // as the side catch did before each read got its own catch (the roster must still run
+            // after a reviews failure, so `Add Review` and the member actions are decided by it).
+            const logSideFailure = (error) => {
+                logger.info('Error fetching game details:', errCtx(error));
+            };
+            // DECISION Phase 88.6.1-74 (C1, side reads): a GROUP read's answer is classified on its
+            // thrown ApiError FIRST (C11's scoped exception): a 401 takes the primary-401 path (review
+            // r2 #311); any other access or gone answer withdraws the group content and ends the run
+            // clean (no error of any kind); anything else returns null and is recorded for its read.
+            const answerGroupRead = (error) => {
+                const code = error instanceof ApiError ? error.code : 'unknown';
+                if (code === 'unauthorized') {
+                    clearGameKeyData();
+                    setGameError(error);
+                    return { isError: true };
+                }
+                if (isAccessOrGoneError({ showError: true, code })) {
+                    withdrawGroupContent();
+                    setGameError(null);
+                    return { isError: false };
+                }
+                return null;
+            };
             // Only fetch events, reviews, and role when group_id is available
             if (group_id) {
                 // Fetch events for this game in this group
                 // Use eventsAPI.getGroupEvents which automatically includes Authorization header
                 let eventsData;
+                let eventsFailed = false;
                 try {
                     eventsData = await eventsAPI.getGroupEvents(group_id);
                 } catch (error) {
                     logger.info('Error fetching events:', errCtx(error));
-                    eventsData = [];
+                    if (!isCurrentRun()) return undefined;
+                    // DECISION Phase 88.6.1-74 (C1, side reads): no empty-list write; the access
+                    // answer first, then the failure is recorded and the fan-out skipped.
+                    const answered = answerGroupRead(error);
+                    if (answered) return answered;
+                    sideFailures.groupEvents = error;
+                    eventsFailed = true;
                 }
+                if (!isCurrentRun()) return undefined;
 
-                // Ensure eventsData is an array before filtering
-                if (!Array.isArray(eventsData)) {
-                    /* DECISION Phase 88.6-18 (AC-2, T-84-01): this conversion carries a SHAPE
-                       DESCRIPTOR of the received value, never the value — chosen OVER passing
-                       `eventsData` through as `logger.info`'s ctx the way the other ten
-                       conversions pass `errCtx(err)`. There is no caught error here; the second
-                       argument WAS the response payload, which is exactly the shape
-                       `logger.ts`'s T-84-01 rule forbids reaching the Sentry payload. Re-adding
-                       the payload "so the log is useful" is a decision, not a fix.
-                       Level is `logger.info` and NOT `logger.warn` for the reason AC-2's owner
-                       amendment of 2026-09-13 records: `logger.warn` is `Sentry.captureMessage`,
-                       an EVENT, and under `replaysOnErrorSampleRate: 1.0` an event flushes the
-                       Session Replay buffer. The severity lives in the message, not the channel. */
-                    logger.info('Events data is not an array:', { received: eventsData === null ? 'null' : typeof eventsData });
-                    eventsData = [];
-                }
+                if (!eventsFailed) {
+                    // Ensure eventsData is an array before filtering
+                    if (!Array.isArray(eventsData)) {
+                        /* DECISION Phase 88.6-18 (AC-2, T-84-01): this conversion carries a SHAPE
+                           DESCRIPTOR of the received value, never the value — chosen OVER passing
+                           `eventsData` through as `logger.info`'s ctx the way the other ten
+                           conversions pass `errCtx(err)`. There is no caught error here; the second
+                           argument WAS the response payload, which is exactly the shape
+                           `logger.ts`'s T-84-01 rule forbids reaching the Sentry payload. Re-adding
+                           the payload "so the log is useful" is a decision, not a fix.
+                           Level is `logger.info` and NOT `logger.warn` for the reason AC-2's owner
+                           amendment of 2026-09-13 records: `logger.warn` is `Sentry.captureMessage`,
+                           an EVENT, and under `replaysOnErrorSampleRate: 1.0` an event flushes the
+                           Session Replay buffer. The severity lives in the message, not the channel. */
+                        logger.info('Events data is not an array:', { received: eventsData === null ? 'null' : typeof eventsData });
+                        eventsData = [];
+                    }
 
-                const gameEvents = eventsData.filter(event => event.game_id === game_id);
-                setEvents(gameEvents);
+                    const gameEvents = eventsData.filter(event => event.game_id === game_id);
+                    setEvents(gameEvents);
+                    stampRead('groupEvents');
 
-                // Fetch RSVP statuses for each event (for BallotSection).
-                // Phase 87.3-04: gate on identity resolution — this whole
-                // per-event my-RSVP derive keys on selfUuid vs nested User.id.
-                // While selfUuid is unresolved, skip it (indeterminate); the
-                // fetch effect's selfUuid dep re-runs this once identity resolves.
-                //
-                // 88-33 Task 7 step 1c (owner-ruled 2026-08-20): the fan-out is
-                // scoped to the UPCOMING partition only — history cards render the
-                // session record without RSVP/ballot UI (see the DECISION marker at
-                // the history render), so fetching per-event RSVP for all history
-                // was an N+1 over deep history with zero readers (r1#15/r3#18).
-                // Same partition predicate as the render's useMemo split.
-                const rsvpFanoutNow = new Date();
-                const upcomingGameEvents = gameEvents.filter(evt =>
-                    evt.status !== 'cancelled' &&
-                    evt.start_date &&
-                    new Date(evt.start_date) > rsvpFanoutNow
-                );
-                if (selfUuid && upcomingGameEvents.length > 0) {
-                    const rsvpStatusMap = {};
-                    await Promise.all(upcomingGameEvents.map(async (evt) => {
-                        try {
-                            const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
-                            const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
-                            rsvpStatusMap[evt.id] = myRsvp?.status || null;
-                        } catch {
-                            rsvpStatusMap[evt.id] = null;
-                        }
-                    }));
-                    setEventRsvpStatuses(rsvpStatusMap);
+                    // Fetch RSVP statuses for each event (for BallotSection).
+                    // Phase 87.3-04: gate on identity resolution — this whole
+                    // per-event my-RSVP derive keys on selfUuid vs nested User.id.
+                    // While selfUuid is unresolved, skip it (indeterminate); the
+                    // fetch effect's selfUuid dep re-runs this once identity resolves.
+                    //
+                    // 88-33 Task 7 step 1c (owner-ruled 2026-08-20): the fan-out is
+                    // scoped to the UPCOMING partition only — history cards render the
+                    // session record without RSVP/ballot UI (see the DECISION marker at
+                    // the history render), so fetching per-event RSVP for all history
+                    // was an N+1 over deep history with zero readers (r1#15/r3#18).
+                    // Same partition predicate as the render's useMemo split.
+                    const rsvpFanoutNow = new Date();
+                    const upcomingGameEvents = gameEvents.filter(evt =>
+                        evt.status !== 'cancelled' &&
+                        evt.start_date &&
+                        new Date(evt.start_date) > rsvpFanoutNow
+                    );
+                    if (selfUuid && upcomingGameEvents.length > 0) {
+                        // DECISION Phase 88.6.1-74 (C1, side reads): a failed per-event read keeps its
+                        // previous value (never a null write); the fan-out stamps only when every
+                        // per-event request in it succeeded.
+                        const rsvpStatusMap = {};
+                        const failedIds = [];
+                        let fanOutError = null;
+                        await Promise.all(upcomingGameEvents.map(async (evt) => {
+                            try {
+                                const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
+                                const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
+                                rsvpStatusMap[evt.id] = myRsvp?.status || null;
+                            } catch (error) {
+                                failedIds.push(evt.id);
+                                if (!fanOutError) fanOutError = error;
+                            }
+                        }));
+                        if (!isCurrentRun()) return undefined;
+                        setEventRsvpStatuses((prev) => {
+                            const next = { ...rsvpStatusMap };
+                            for (const id of failedIds) next[id] = prev[id] ?? null;
+                            return next;
+                        });
+                        if (failedIds.length > 0) sideFailures.fanOut = fanOutError;
+                        else stampRead('fanOut');
+                    }
                 }
 
                 // Fetch reviews for this game in this group
@@ -990,8 +1704,23 @@ export default function GameDetailPage() {
                 // send selfUuid. This runs inside the selfUuid-keyed fetch effect
                 // (deps at L303), so it re-fires with the resolved UUID once
                 // identity lands; before then it sends null (is-me indeterminate).
-                const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, selfUuid || null);
-                setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+                let reviewsData;
+                let reviewsFailed = false;
+                try {
+                    reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, selfUuid || null);
+                } catch (error) {
+                    logSideFailure(error);
+                    if (!isCurrentRun()) return undefined;
+                    const answered = answerGroupRead(error);
+                    if (answered) return answered;
+                    sideFailures.reviews = error;
+                    reviewsFailed = true;
+                }
+                if (!isCurrentRun()) return undefined;
+                if (!reviewsFailed) {
+                    setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+                    stampRead('reviews');
+                }
 
                 // Find current user's review + derive role.
                 // Phase 87.3-04 (D-01): the per-page usersAPI.getUser(user.sub)
@@ -1000,16 +1729,34 @@ export default function GameDetailPage() {
                 if (user?.sub) {
                     // Get user's role in the group
                     // Use groupsAPI.getGroupMembers which automatically includes Authorization header
-                    const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
-                    if (Array.isArray(fetchedGroupMembers)) {
+                    let fetchedGroupMembers;
+                    let rosterFailed = false;
+                    try {
+                        fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
+                    } catch (error) {
+                        logSideFailure(error);
+                        if (!isCurrentRun()) return undefined;
+                        const answered = answerGroupRead(error);
+                        if (answered) return answered;
+                        sideFailures.gameRoster = error;
+                        rosterFailed = true;
+                    }
+                    if (!isCurrentRun()) return undefined;
+                    if (!rosterFailed && Array.isArray(fetchedGroupMembers)) {
                         setGroupMembers(fetchedGroupMembers);
                         // Phase 87.3-04: gate the scope derive on identity —
                         // unresolved selfUuid stays indeterminate (never 'none').
+                        // AMENDED Phase 88.6.1-74 (group access answer): the rule covers an UNRESOLVED
+                        // identity only; a group read's access or gone answer is a server answer, so
+                        // the withdrawal resets userRole / userScope / groupMembers to their initial
+                        // values (what a fresh load by that user shows); see DECISION Phase 88.6.1-74
+                        // (C1, side reads).
                         if (selfUuid) {
                             const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
                             setUserRole(role);
                             setUserScope(scope);
                         }
+                        stampRead('gameRoster');
                     }
 
                     // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
@@ -1036,25 +1783,29 @@ export default function GameDetailPage() {
                     }
                 }
             }
-        } catch (error) {
-            logger.info('Error fetching game data:', errCtx(error));
-            /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a failed load is TRACKED and rendered as
-               the shared fetch-error treatment, chosen OVER the silent `console.error` this
-               shipped with. `game` stays null after a swallowed failure, so the render fell
-               through to the "Game not found" dead end below — a 500 or a dropped connection was
-               reported to the person as a definitive statement that the game does not exist, with
-               no retry and only a back-link. Empty and failed are different facts (UI-SPEC 9.2);
-               a `not_found` code still reaches the not-found branch, which is the one case where
-               that copy is TRUE.
-
-               Keep the ERROR object, not a flattened string: useFetchErrorState reads
-               `ApiError.code` off it. */
-            setGameError(
-                error instanceof Error ? error : new Error("The game request didn't complete.")
-            );
+            if (!isCurrentRun()) return undefined;
+            // 88.6.1-74 — the per-read rule (DECISION Phase 88.6.1-74 (C1, side reads)): a recorded
+            // failure of a read that had loaded for this key at run start is a failed refresh, shown
+            // by RF1 through the code-less 88-25 fallback (P-2 under C10); a failure of a read that
+            // had not loaded goes to its section notice (owner ruling D8-r2), and the run ends clean.
+            const failedReads = Object.keys(sideFailures);
+            const neverLoaded = {};
+            for (const read of failedReads) {
+                if (readsAtStart[read] !== entityKey) neverLoaded[read] = sideFailures[read];
+            }
+            recordNeverLoaded(neverLoaded);
+            if (failedReads.some((read) => readsAtStart[read] === entityKey)) {
+                setGameError(new Error("The game request didn't complete."));
+                return { isError: true };
+            }
+            setGameError(null);
+            return { isError: false };
         } finally {
-            loadedEntityKeyRef.current = entityKey;
-            setLoading(false);
+            if (isCurrentRun()) {
+                loadedEntityKeyRef.current = entityKey;
+                setGameAnsweredFor(entityKey);
+                setLoading(false);
+            }
         }
     };
 
@@ -1066,14 +1817,144 @@ export default function GameDetailPage() {
         fetchGameDataRef.current = fetchGameData;
     });
     const retryGameData = useCallback(() => fetchGameDataRef.current?.(), []);
+    // 88.6.1-74 (plan 25's hand-off, review r2 #139): the hook re-fetches on every visible
+    // `visibilitychange` while armed, and a 404 is a final answer, so `not_found` never arms it.
+    // Every other code stays armed (access can be granted, a session renewed). Nothing on screen
+    // changes: "Game not found" renders from `!game`, and the banner gate already excludes it.
+    const gameErrorArmedCode = gameError instanceof ApiError ? gameError.code : 'unknown';
+    const gameErrorArmed = Boolean(gameError) && gameErrorArmedCode !== 'not_found';
     const gameErrorState = useFetchErrorState({
-        isError: Boolean(gameError),
+        isError: gameErrorArmed,
         error: gameError,
         refetch: retryGameData,
     });
+    // 88.6.1-74 (contract C10): the game view's `retained`, plan 70's hook over `loadedFor`.
+    const gameRetained = useRetainedContent(loadedFor === entityKey, gameErrorState);
+    // 88.6.1-74: ONE composed ref for both game titles — RF1's focus target and the title-overflow
+    // observer's node.
+    const attachGameTitle = useCallback((node) => {
+        gameTitleRef.current = node;
+        setTitleNode(node);
+    }, []);
+
+    // 88.6.1-25 (AC-5): the event view's adapter, copied from the game view's above (the same ref hop,
+    // because fetchEventOnly is re-declared every render and the hook needs a STABLE refetch). A
+    // same-event retry does NOT clear `eventError` first, so the banner stays mounted (its own
+    // retrying state) until the retry settles instead of flashing "Event not found".
+    const fetchEventOnlyRef = useRef(null);
+    useEffect(() => {
+        fetchEventOnlyRef.current = fetchEventOnly;
+    });
+    const retryEventOnly = useCallback(() => fetchEventOnlyRef.current?.(), []);
+    // 88.6.1-25 (review r2 #139): the hook re-fetches on every visible `visibilitychange` while it is
+    // armed, so it is armed only for answers that can CHANGE. Not for a 404 (final), and not for a 401
+    // whose redirect or held loader owns the screen; `forbidden` stays armed (access can be granted)
+    // and so does `account_deleted` (gate (iii)'s fallthrough reads this state). Kept separate from the
+    // terminal-code list in fetchEventOnly, so replacing that list does not touch this predicate.
+    const eventErrorArmedCode = eventError instanceof ApiError ? eventError.code : 'unknown';
+    const eventErrorArmed =
+        Boolean(eventError) &&
+        eventErrorArmedCode !== 'not_found' &&
+        !(eventErrorArmedCode === 'unauthorized' && signInRedirect !== 'declined');
+    const eventErrorState = useFetchErrorState({
+        // 88.6.1-74: plan 25's armed predicate over `eventError`, OR a side-read failure of a read
+        // that had loaded (code-less, P-2). Plan 25's gates read `eventError` itself for the access
+        // states, so a side failure never reaches E1 or the redirect.
+        isError: eventErrorArmed || Boolean(eventSideError),
+        error: eventError || eventSideError,
+        refetch: retryEventOnly,
+    });
+    // 88.6.1-74 (contract C10): the event view's `retained` — plan 70's hook over the success-only
+    // `loadedFor`, so an access or gone answer is never a refresh failure.
+    const eventRetained = useRetainedContent(loadedFor === entityKey, eventErrorState);
+
+    // 88.6.1-74 (owner ruling D8-r2 and its follow-up): one state per never-loaded side read, each
+    // over its own stored error with the view's retry adapter, so a section notice's Retry re-runs
+    // the page fetch and its tab-return re-attempt arms while it shows. A code-less failure shows
+    // the ratified line (`fallbackMessage`); a coded one shows the register sentence. No `byCode`.
+    const reviewsLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.reviews), error: sectionLoadError.reviews, refetch: retryGameData },
+        { fallbackMessage: REVIEWS_LOAD_FAILED }
+    );
+    const sessionsLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.groupEvents), error: sectionLoadError.groupEvents, refetch: retryGameData },
+        { fallbackMessage: SESSIONS_LOAD_FAILED }
+    );
+    const myRsvpsLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.fanOut), error: sectionLoadError.fanOut, refetch: retryGameData },
+        { fallbackMessage: MY_RSVPS_LOAD_FAILED }
+    );
+    const groupRoleLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.gameRoster), error: sectionLoadError.gameRoster, refetch: retryGameData },
+        { fallbackMessage: GROUP_ROLE_LOAD_FAILED }
+    );
+    const rosterLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.roster), error: sectionLoadError.roster, refetch: retryEventOnly },
+        { fallbackMessage: ROSTER_LOAD_FAILED }
+    );
+    const repliesLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.rsvpList), error: sectionLoadError.rsvpList, refetch: retryEventOnly },
+        { fallbackMessage: REPLIES_LOAD_FAILED }
+    );
+    const bringsLoadState = useFetchErrorState(
+        { isError: Boolean(sectionLoadError.brings), error: sectionLoadError.brings, refetch: retryEventOnly },
+        { fallbackMessage: BRINGS_LOAD_FAILED }
+    );
+    // 88.6.1-74 (review r1 D16): true while any GROUP read (the group events, the reviews, the
+    // roster) has loaded for this key — the group-content guard's `retained`.
+    const groupContentRetained = GROUP_CONTENT_READS.some((read) => readLoadedFor[read] === entityKey);
+
+    // DECISION Phase 88.6.1-25 (D-01): CHOSEN — a latched `window.location.replace` to sign-in on ANY
+    // 401 from the event fetch, decided only after `useUser` has settled and only for the CURRENT
+    // fetch generation, with the per-event latch written BEFORE navigating and read fail-closed.
+    // REJECTED (a): redirect only when the app sees no session (a stale session would get a banner
+    // whose old remedy was false). REJECTED (b): `withPageAuthRequired` on the whole page (wider than
+    // the phase). REJECTED (c): assigning `window.location.href` (Back would return to a page that
+    // redirects again). REJECTED (d): a return address read from the query (an open redirect; SPEC
+    // Constraint). REJECTED (e): deciding inside the fetch's catch (it cannot wait for the session to
+    // settle; that is the SPEC's concurrency backstop race). PREMISE (RESEARCH MC-6): session storage
+    // belongs to the tab, so the latch survives the same-tab round trip through Auth0; the signed-out
+    // phone e2e (e2e/event-link-signed-out.spec.ts) measures it in Chromium and owner check A on iOS.
+    // WHY NO LOOP (review r2 #305): 401 -> latch -> sign-in -> a 403 / 404 / 410 or a good load
+    // clears it -> a later 401 redirects once more -> a 401 on return finds the latch and gets the
+    // banner. Only an answer that proves the session clears the latch; a 401 never does.
+    // Removing the latch or the auth-settled gate is a decision, not a cleanup.
+    useEffect(() => {
+        if (authLoading || !event_id) return;
+        if (!(eventError instanceof ApiError) || eventError.code !== 'unauthorized') return;
+        // A newer run is in flight: its answer, not this one, decides.
+        if (eventErrorGenRef.current !== eventFetchGenRef.current) return;
+        if (signInRedirect !== 'idle') return;
+        if (readSignInLatch(event_id) || !writeSignInLatch(event_id)) {
+            // Already redirected once for this event (or storage failed): the banner, never a loop.
+            setSignInRedirect('declined');
+            return;
+        }
+        setSignInRedirect('redirecting');
+        window.location.replace(buildSignInUrl());
+    }, [eventError, authLoading, event_id, signInRedirect]);
+
+    /* DECISION Phase 88.6.1-47 (H6 / D-04 / D-05): CHOSEN — arm the shared `useFocusRecovery`
+       hook (plan 88.6.1-04) at the confirmed delete. The dialog's own restore returns focus to the
+       opener (the row's Delete or its kebab trigger), and when the refetch then removes that
+       session's card, focus goes to the heading of the list that held it: `Upcoming (N)` while
+       that section survives, else `Game Sessions (N)`, which is always rendered. No heading is
+       minted and no `tabIndex` is written in markup (D-05): the hook adds the attribute itself.
+       REJECTED — (a) focusing at the end of `performDeleteEvent`: the refetch commits later, so it
+       would focus too early and then lose focus again (RESEARCH M-2.1 fact 2); (b) awaiting the
+       refetch before closing: the gate closes only after `onConfirm` resolves, so it would hold
+       the dialog open through the reload; (c) a per-consumer close handler on the dialog
+       (`DECISION Phase 88.6-44`, no per-consumer `onCloseAutoFocus`). No `from` is passed: this
+       runs as the dialog's `onConfirm`, which receives no event, and the closing dialog's restore
+       is the primitive's, which the hook follows (its consumer contract, point 5). */
+    const upcomingHeadingRef = useRef(null);
+    const sessionsHeadingRef = useRef(null);
+    const sessionFocus = useFocusRecovery({ fallback: sessionsHeadingRef });
 
     // Runs ONLY after the dialog gate below has been explicitly confirmed.
     const performDeleteEvent = async (event_id) => {
+        const inUpcoming = upcomingEvents.some((e) => e.id === event_id);
+        const settle = sessionFocus.arm({ preferred: () => (inUpcoming ? upcomingHeadingRef.current : null) });
         try {
             await eventsAPI.deleteEvent(event_id);
             // Refresh events after deletion
@@ -1092,6 +1973,10 @@ export default function GameDetailPage() {
             // contract) — swallowing it here would close the dialog and read as
             // "deleted" when the DELETE was refused.
             throw error;
+        } finally {
+            // Releases the focus arm (H6) when this host's own work ends; the refetch above is
+            // un-awaited on purpose and the hook still acts when it commits.
+            settle();
         }
     };
 
@@ -1123,13 +2008,15 @@ export default function GameDetailPage() {
         setEditEventModal(true);
     };
 
+    // DECISION Phase 88.6.1-68 (one close owner) — refresh only; see the marker at the event-view Edit mount.
     const handleEventUpdated = () => {
         // Capture editingEvent.id before clearing — needed for refreshBringersSet
         // so the 🎲 indicators on the strip + See-all modal drop the removed
         // user immediately (same pattern as Phase 65-02 RSVP-flip-deletes-brings).
+        // AMENDED Phase 88.6.1-68: the handler no longer clears editingEvent; the capture stays
+        // because this closure's event is the one that was updated, even if a later Edit has
+        // opened another.
         const updatedEventId = editingEvent?.id;
-        setEditEventModal(false);
-        setEditingEvent(null);
         fetchGameData(); // Refresh the event data
         // Phase 71.1-02: bump every per-event refresh signal so child
         // components that hold private state (RsvpSection, BallotSection) and
@@ -1137,7 +2024,7 @@ export default function GameDetailPage() {
         setBallotRefreshKey(k => k + 1);
         setRsvpRefreshKey(k => k + 1);
         setBringRefreshKey(k => k + 1);
-        if (updatedEventId) refreshBringersSet(updatedEventId);
+        if (updatedEventId) refreshBringersSet(updatedEventId).then((bSet) => writeUserBringers(updatedEventId, bSet));
     };
 
     const handleReviewSubmit = async (e) => {
@@ -1356,6 +2243,22 @@ export default function GameDetailPage() {
 
     const displayedEvents = filteredEvents.slice(0, visibleSessions);
 
+    // 88.6.1-52 (D-25, E5; review #212, #59): the Sessions date range is backwards only when BOTH
+    // values are complete dates — the YYYY-MM-DD shape with exactly four year digits, and not
+    // earlier than 1000-01-01 — and the To string sorts before the From string. Under that guard
+    // string order really is date order; a bare `filters.dateTo < filters.dateFrom` is not: a
+    // five-digit year sorts by its first character, and Chrome's progressive year values
+    // (0002-…, 0020-…, 0202-…) while a desktop year is typed sort before any real year, so the
+    // alert would fire mid-entry. Equal dates are valid ("on or after").
+    // `new Date(...)` is deliberately not used: `new Date('10000-01-01')` is not an ISO date
+    // string, so what it parses to depends on the engine, and it would hide the five-digit case
+    // only by accident.
+    const isCompleteSessionDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && value >= '1000-01-01';
+    const sessionDateRangeInverted =
+        isCompleteSessionDate(filters.dateFrom) &&
+        isCompleteSessionDate(filters.dateTo) &&
+        filters.dateTo < filters.dateFrom;
+
     // Shared per-event card renderer for the Upcoming and Game Sessions sections
     // (88-33 Task 7 step 1b — the card is defined ONCE; `interactive` controls
     // whether the RSVP/Ballot/BringSummary surfaces mount, see the marker there).
@@ -1392,8 +2295,25 @@ export default function GameDetailPage() {
                                                 </span>
                                             </p>
                                         )}
+                                        {/* DECISION Phase 88.6.1-52 (R10 / AC-31, shared rule 12): CHOSEN — `whitespace-pre-line` +
+                                            `wrap-anywhere`, the ONE pair decided for all five typed-text sites so plans 88.6.1-29,
+                                            88.6.1-38 and 88.6.1-52 agree; the value stays a React text child.
+                                            REJECTED (a): `whitespace-pre-wrap` — it keeps runs of spaces and leading indentation,
+                                            which a comment or a review does not need, and the five sites must not diverge.
+                                            REJECTED (b): the `break-word` wrap utility for this site. This paragraph sits in a
+                                            `flex-1` item with no `min-w-0` (the card's left column), and only `overflow-wrap: anywhere`
+                                            lowers the min-content width that a flex item's `min-width: auto` resolves to; `break-word`
+                                            would still let one long pasted string widen the whole card past a 375px screen.
+                                            REJECTED (c): splitting the text on newlines into separate elements, or injecting it as
+                                            HTML (SPEC Constraint: user-entered text is rendered as text).
+                                            CHOSEN as well (owner ruling #115, 2026-10-13): each value passes through plan 88.6.1-84's
+                                            shared `collapseBlankLines`, so a run of three or more breaks renders as one blank line,
+                                            OVER rendering every break as typed (a flood of blank lines pushes the card off a phone
+                                            screen) and OVER a server cap (it would change stored text); the stored text is
+                                            untouched, and all five sites call the same helper. Dropping either class or the helper
+                                            call is a decision, not a cleanup. */}
                                         {event.comments && (
-                                            <p className="text-content-secondary mt-1 text-sm italic">{event.comments}</p>
+                                            <p className="text-content-secondary mt-1 text-sm italic whitespace-pre-line wrap-anywhere">{collapseBlankLines(event.comments)}</p>
                                         )}
                                     </div>
                                     {/* DECISION Phase 88-11 (D-40, F-6c/F-6d): ONE role gate wraps BOTH
@@ -1559,12 +2479,16 @@ export default function GameDetailPage() {
                                             }}
                                         />
                                         {/* Ballot Section - game voting */}
-                                        <BallotSection
-                                            eventId={event.id}
-                                            eventDate={event.start_date}
-                                            userRole={userRole}
-                                            userRsvpStatus={eventRsvpStatuses[event.id] || null}
-                                        />
+                                        {/* 88.6.1-74 (D8-r2 follow-up): no ballot while my RSVPs never
+                                            loaded — its gate would tell someone who replied to RSVP. */}
+                                        {!myRsvpsLoadState.showError && (
+                                            <BallotSection
+                                                eventId={event.id}
+                                                eventDate={event.start_date}
+                                                userRole={userRole}
+                                                userRsvpStatus={eventRsvpStatuses[event.id] || null}
+                                            />
+                                        )}
                                         {/* Bring Summary - who is bringing which games */}
                                         <BringSummary
                                             eventId={event.id}
@@ -1578,15 +2502,132 @@ export default function GameDetailPage() {
                             </div>
     );
 
+    /* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): CHOSEN — plan 70's shared
+       RetainedContentFocusGuard, once per view's `retained` value, rendered as the LAST child, under
+       ONE stable key, of the root `div` of every return from the first early return on. React matches
+       a keyed child by its key, not its index, so the guards stay ONE instance through the switch from
+       a view to a withdrawal screen and see `retained` flip. The target is the replacement screen's
+       title (`withdrawalTitleRef`: E1 / "Event not found" in renderEventMessageState, "Game not
+       found" in renderGameNotFound), else plan 04's floor (`main h1`, else `main`) — both view
+       headings leave with their views (review r2 #338).
+       REJECTED (a): a guard inside each view's return — it unmounts with the view and never sees
+       the flip, so focus falls to <body>. REJECTED (b): wrapping the early-return chain in an inner
+       render function under one outer fragment — a whole-region re-indent of a megafile and a diff
+       nobody can review. REJECTED (c): eventTitleRef / gameTitleRef as the target — gone with the
+       view; the ref is null by then. REJECTED (d): the guards as the FIRST child (round 1's shape) —
+       React runs the guard's componentDidUpdate before a later sibling's ref attaches, so the title
+       ref is still null and focus lands on bare `main`. REJECTED (e): keeping the one-commit "Game
+       not found" frame after an in-page key change and keeping the target off it (round 2's shape) —
+       the frame is gone instead (the loader gate below, review r3 L-02).
+       AMENDED 2026-10-19 (88.6.1 code review A-56): the two full-banner screens — the event banner
+       (iii) and the game view's failed-load banner, the screens access answers withdraw to most —
+       now carry the target too, on the banner's box (`withdrawalTitleRef` on the wrapper `div`;
+       focusElement gives it tabindex -1), so focus lands on the banner that says what happened and
+       offers Try again, OVER bare `main` (what it was). REJECTED: a ref on the banner's own title —
+       it is a span inside FetchErrorBanner, which takes no title ref, and widening a shared primitive
+       for one page is out of proportion; a visually hidden h2 repeating the title — a second copy of
+       words the banner's live region already speaks.
+       The game view's guard (`gameRetained`) is the fragment's second child, on the same target.
+       A THIRD guard, for the group content (`groupContentRetained`, aimed at the game title), sits
+       INSIDE the game view as its root's FIRST child: a group withdrawal keeps the game view, so an
+       outer guard never sees a flip, and it may sit first because its target is already mounted.
+       THE INVARIANT: every return from the first early return on keeps a `div` root whose LAST child
+       is {retainedFocusGuards}, with the same key. A return added without it, with another root
+       element, or with the guards ahead of a sibling silently remounts them or reads a null target
+       on that transition, and focus falls to <body> or bare `main` there. Declared here, above the
+       rejected-id gates (the first early returns) and above the two helpers that render it — a
+       constant declared below those gates is read before its initialisation on a rejected-id URL.
+       Changing this is a decision, not a cleanup. */
+    const retainedFocusGuards = (
+        <Fragment key="retained-focus-guards">
+            <RetainedContentFocusGuard retained={eventRetained} focusTarget={withdrawalTitleRef} />
+            <RetainedContentFocusGuard retained={gameRetained} focusTarget={withdrawalTitleRef} />
+        </Fragment>
+    );
+
+    // 88.6.1-25 (Requirement 1): the ONE layout for the event view's message screens ("Event not
+    // found" and, from task 2, no access), so the two cannot drift. Component-local because it renders
+    // a Link; declared above the first gate that calls it.
+    function renderEventMessageState(title, detail) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center max-w-md mx-auto px-6">
+                    {/* DECISION Phase 88.6.1-25 (message-screen heading): CHOSEN — the title is an h2 at
+                        the `heading` size, so a screen reader's heading navigation finds it. REJECTED:
+                        an h1 (PAGE_SURFACES in typeScaleTouchedSurfaces.test.ts lists this file and forces
+                        every h1 here to the 30/700 Display rung, a look change in a non-look phase).
+                        REJECTED: keeping the heading-styled paragraph (its only recorded reason was the
+                        heading-count pin, which is bookkeeping; the pin moved with this, review r2 #180). */}
+                    <Heading ref={withdrawalTitleRef} level={2} size="heading" className="text-content-primary mb-2">{title}</Heading>
+                    <p className="text-content-secondary mb-6">{detail}</p>
+                    <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                        ← Back to Home
+                    </Link>
+                </div>
+                {retainedFocusGuards}
+            </div>
+        );
+    }
+
+    // DECISION Phase 88.6.1-25 (SPEC phone-first floor): the five back links on this page's message
+    // screens (the event helper above, "No game selected", and the three below) carry the phone-scoped
+    // floor `min-h-11 md:min-h-0` and the house focus ring (Button.tsx, the same string).
+    // CHOSEN: the phone-scoped floor (plan 21's WR-503 choice, the UpcomingEventsCard.js idiom).
+    // CHOSEN: plan 21's Req 7 ring for recovery controls, because these five are recovery controls on
+    // dead-end screens and keyboard focus on them must be as visible as on the banner's Try again.
+    // REJECTED (a): an all-widths floor (a desktop look change this phase declined). REJECTED (b):
+    // negative-margin compensation (the 44px target would overlap the line above it). REJECTED (c):
+    // flooring only the event helper's link (four identical sibling links left under the floor, with
+    // no owner). The words are unchanged.
+    // The "Game not found" screen: a MOVE of the branch that sat after the 88-25 game gate, now also
+    // reached by a rejected game id (no request made, so `userScope` is still 'none' and the
+    // scope-aware link below reads Home).
+    function renderGameNotFound() {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center">
+                    <p ref={withdrawalTitleRef} className="text-content-status-error mb-4">Game not found</p>
+                    {/* Phase 71.1 GAMP-11: scope-aware fallback — game-only/none
+                        callers fall through to "← Back to Home" since the group
+                        page would 403. Group-member/pending see the group link
+                        as before. */}
+                    {group_id ? (
+                        (userScope === 'group-member' || userScope === 'pending') ? (
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                                ← Back to Group
+                            </Link>
+                        ) : (
+                            <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                                ← Back to Home
+                            </Link>
+                        )
+                    ) : (
+                        <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                            ← Back to Home
+                        </Link>
+                    )}
+                </div>
+                {retainedFocusGuards}
+            </div>
+        );
+    }
+
+    // 88.6.1-25 (AC-6): the rejected-id gates come FIRST, event then game, above "No game selected"
+    // (a rejected id is nulled, so that branch or the loader would otherwise catch it; `loading` starts
+    // true and nothing clears it once the fetch effect returns early).
+    if (eventIdRejected) return renderEventMessageState(EVENT_NOT_FOUND_TITLE, EVENT_NOT_FOUND_DETAIL);
+    if (gameIdRejected) return renderGameNotFound();
+
     if (!game_id && !event_id) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
                     <p className="text-content-secondary mb-4">No game selected</p>
-                    <Link href="/" className="text-content-link hover:underline">
+                    <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                         ← Back to Home
                     </Link>
                 </div>
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -1602,8 +2643,24 @@ export default function GameDetailPage() {
                intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
                actually renders, so it is the one the padding-budget e2e loads. */
             <div className="p-3 md:p-6 max-w-6xl mx-auto">
-                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
+                {/* DECISION Phase 88.6.1-52 (D-46 / R7-M7): this breadcrumb and the game view's below
+                    reach the house standard. CHOSEN (a): the house focus ring on both links, per
+                    site (`DECISION Phase 88.3-17`, which chose per-site OVER a global
+                    `a:focus-visible` rule) — 2px ring + 2px offset sits 4px outside the link, inside
+                    the pill's 12px/8px padding and clear of a separator's 8px side margin, so on a
+                    one-line pill it never paints over adjacent text. REJECTED: the inset form (that
+                    is for flush strips and tight boxes; every breadcrumb in the app uses the outset
+                    form). CHOSEN (b): `aria-hidden` on the `>` separators — they are decoration; a
+                    screen reader read "greater than" between crumbs; they look the same. CHOSEN
+                    (c): `min-w-0` on the nav — inert under today's block parent, kept so a future
+                    flex parent cannot let `min-width: auto` beat `max-w-full` and re-open UAT3-D1.
+                    This DEPARTS FROM the UAT3-D1 close-out marker in `groupHomePage/page.js`
+                    ("deliberately NOT added … add it if one ever becomes one"); SPEC Requirement 11
+                    (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place. These
+                    four links plus Profile's Home link (plan 88.6.1-53) are the five D-46 counted.
+                    Removing the ring, the attribute or the cap is a decision, not a cleanup. */}
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                     {effectiveGroupId && singleEvent?.Group?.name && (
                         /* Phase 71.1-02 Blocker 2 fix: only render the group
                            segment when we actually have a group name. The
@@ -1615,9 +2672,9 @@ export default function GameDetailPage() {
                            in-depth so old data paths can never display the
                            literal-word fallback. */
                         <>
-                            <span className="text-content-muted mx-2">{'>'}</span>
+                            <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                             {(userScope === 'group-member' || userScope === 'pending') ? (
-                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors">
+                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                                     {singleEvent.Group.name}
                                 </Link>
                             ) : (
@@ -1632,7 +2689,7 @@ export default function GameDetailPage() {
                             )}
                         </>
                     )}
-                    <span className="text-content-muted mx-2">{'>'}</span>
+                    <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     {/* D-03 / R2 #171 (T-88.6-138, same shape as plan 17's breadcrumb): the
                         weight was the ONLY thing marking the current page, so 700 is KEPT as the
                         hierarchy outcome AND the distinction gains a PROGRAMMATIC cue. Without
@@ -1650,6 +2707,20 @@ export default function GameDetailPage() {
                     selfUuid can't resolve, hiding those sections) so the failure
                     surfaces loudly-but-small instead of silently. */}
                 <FetchErrorBanner state={selfIdentityErrorState} compact />
+
+                {/* DECISION Phase 88.6.1-74 (AC-29 / RF1, event view): CHOSEN — plan 70's shared
+                    RefreshFailedNotice, mounted unconditionally here, beside the event it qualifies and
+                    below the identity notice. `retained` comes from plan 70's useRetainedContent over
+                    the success-only `loadedFor` (C10: an access or gone answer is never RF1); the focus
+                    target is the event heading. REJECTED (a): above the breadcrumb or the timezone
+                    nudge — farther from the content, and it pushes the RSVP further down at 375px.
+                    REJECTED (b): the full E3 banner over the retained event — it hides what is still
+                    true, and C6 forbids both forms for one state. REJECTED (c): silence — the owner
+                    ruling of 2026-10-05. REJECTED (d): the floor's `main h1` instead of an explicit
+                    target — the same element today, but a heading added above would move focus to the
+                    top of the page. The access answers (C10) clear the event before this branch can
+                    render. Moving or removing this is a decision, not a cleanup. */}
+                <RefreshFailedNotice state={eventErrorState} retained={eventRetained} focusTarget={eventTitleRef} className="mb-4" />
 
                 {/* DECISION Phase 88-24 (SPEC Req 2, owner ruling 2026-08-05 = option-a):
                     the `p-3 md:p-6` on the `.card` below — and on all 28 `.card` call sites
@@ -1684,7 +2755,7 @@ export default function GameDetailPage() {
                         - game-only scope: Leave event
                         - pending or none: no kebab at all (matches prior pending behavior) */}
                     <div className="flex justify-between items-start gap-3 mb-2">
-                        <Heading level={1} size="display" className="text-content-primary">{singleEvent.title || 'Game Night'}</Heading>
+                        <Heading ref={eventTitleRef} level={1} size="display" className="text-content-primary">{singleEvent.title || 'Game Night'}</Heading>
                         {/* DECISION Phase 88.6-18 (D-12): the second, hand-rolled kebab that lived
                             here CONVERGES onto the shared `KebabMenu` component this file already
                             imports and renders one screen over. It shipped the same dropdown-role
@@ -1702,7 +2773,8 @@ export default function GameDetailPage() {
                             does not fail, it SUCCEEDS.
                             The trigger's own size, geometry and ⋮ glyph are DELETED, not converged:
                             the glyph is ICON sizing, stays out of the type scale, and is now
-                            `KebabMenu`'s (`KebabMenu.js:125`, `:132`, owned by plan 16). This file
+                            `KebabMenu`'s (the trigger's own `text-2xl` glyph sizing and its ⋮ glyph in
+                            `KebabMenu.js`, owned by plan 16). This file
                             adds no geometry of its own.
 
                             DECISION Phase 88.6-18 (D24): both destructive items carry plan 16's
@@ -1719,7 +2791,7 @@ export default function GameDetailPage() {
 
                             DECISION Phase 88.6-18 (D3): the in-flight gate on both items is plan
                             16's per-item `ariaDisabled` flag and NEVER its native `disabled` key.
-                            REJECTED — the NATIVE attribute (`KebabMenu.js:150` renders `item.disabled`
+                            REJECTED — the NATIVE attribute (`KebabMenu.js` renders `item.disabled`
                             as the real attribute): `keepOpen` deliberately keeps these items mounted
                             AND FOCUSED for the whole request, and a natively-disabled focused element
                             blurs to `<body>`, which is exactly the state this menu's container-bound
@@ -1728,11 +2800,12 @@ export default function GameDetailPage() {
                             focusout on a disabled item. Two shipped markers carry the split verbatim:
                             the control being ACTED ON gets `aria-disabled`, a control nobody is
                             standing on may stay natively disabled
-                            (`src/app/components/NextGameNightCard.tsx:377-391`,
-                            `src/app/components/EmailAddressSection.tsx:1572-1598`).
+                            (`src/app/components/NextGameNightCard.tsx`'s pressed RSVP control,
+                            `aria-disabled={isFlight`; `src/app/components/EmailAddressSection.tsx`,
+                            `the control being ACTED ON gets`).
                             REJECTED — passing NO gate at all and letting the handler latch be the
                             whole guard: it deletes the busy affordance that ships today
-                            (`KebabMenu.js:156`) and the programmatic busy state assistive tech
+                            (`KebabMenu.js`'s per-item `ariaDisabled` rendering, `'aria-disabled': true`) and the programmatic busy state assistive tech
                             depends on, leaving a destructive item looking fully live while a DELETE
                             is in flight.
                             Neither item is `twoTap`: single-tap commit is the Phase 65-02 decision
@@ -1799,11 +2872,11 @@ export default function GameDetailPage() {
                                 <Button
                                     variant="accent"
                                     onClick={handleShowGameQR}
-                                    disabled={qrLoading}
+                                    aria-disabled={qrLoading || undefined}
                                     /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 /
                                        11c(c), 2026-08-28): `btn-secondary` -> `btn-accent`, the
-                                       SAME treatment as the byte-identical twin at
-                                       `EventDayModal.js:289` — same recipe, same QR path, same
+                                       SAME treatment as the byte-identical twin in
+                                       `EventDayModal.js` (`handleShowGameQR(e, event)`) — same recipe, same QR path, same
                                        title, same label. The owner ruled on the modal instance;
                                        this one moved with it because shipping the SAME-NAMED
                                        control in two treatments is exactly the consistency debt
@@ -1817,7 +2890,7 @@ export default function GameDetailPage() {
                                        `shrink-0` is KEPT — it is flex-row sizing, not treatment;
                                        dropping it lets this button squeeze against the
                                        "Participants (N)" heading in its `justify-between` row.
-                                       Ground is the white `.card` at `:1592`, so 5.0216 as above.
+                                       Ground is the white `.card` that opens the Participants section, so 5.0216 as above.
                                        Full marker at the `.btn-accent` rule in `globals.css`.
                                        APPENDED 88.6-18 (D23): the amber treatment is unchanged and
                                        its spelling moved onto the `Button` primitive's accent
@@ -1837,12 +2910,12 @@ export default function GameDetailPage() {
                                     title="Share Game QR"
                                 >
                                     {/* Decorative — the visible label names the button. Same pair
-                                        as the twin at `EventDayModal.js:292`. */}
+                                        as the twin's decorative `<svg` in `EventDayModal.js`. */}
                                     <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                                     </svg>
-                                    {qrLoading ? 'Loading...' : 'Share Game QR'}
+                                    {qrLoading ? SHARE_GAME_QR_LOADING_LABEL : 'Share Game QR'}
                                 </Button>
                             )}
                         </div>
@@ -1867,6 +2940,7 @@ export default function GameDetailPage() {
                                         key={p.id ?? p.user_id ?? `row-${idx}`}
                                         participant={p}
                                         rsvpStatus={status}
+                                        rsvpUnavailable={repliesLoadState.showError}
                                         role={role}
                                         isBringing={isBringing}
                                         viewerScope={userScope}
@@ -1897,8 +2971,16 @@ export default function GameDetailPage() {
                                 See all ({participants.length}) →
                             </button>
                         )}
+                        {/* 88.6.1-74 (owner ruling D8-r2 follow-up, E17 / E18): the RSVP list's and
+                            the brings' never-loaded notices, inside the card they qualify. */}
+                        <SectionLoadFailedNotice state={repliesLoadState} className="mt-3" />
+                        <SectionLoadFailedNotice state={bringsLoadState} className="mt-3" />
                     </div>
                 )}
+
+                {/* 88.6.1-74 (owner ruling D8-r2, E16): the roster's never-loaded notice stands where
+                    the Participants card sits (absent while the roster never loaded). */}
+                <SectionLoadFailedNotice state={rosterLoadState} className="mb-6" />
 
                 <div className="space-y-4">
                     <RsvpSection
@@ -1927,16 +3009,20 @@ export default function GameDetailPage() {
                             // indicator on the strip + See-all modal in sync.
                             // Backend deletes EventBring rows when RSVP flips
                             // to 'no'/'maybe', so the local set must refresh.
-                            refreshBringersSet(singleEvent.id);
+                            refreshBringersSet(singleEvent.id).then((bSet) => writeUserBringers(singleEvent.id, bSet));
                         }}
                     />
-                    <BallotSection
-                        key={ballotRefreshKey}
-                        eventId={singleEvent.id}
-                        eventDate={singleEvent.start_date}
-                        userRole={userRole}
-                        userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
-                    />
+                    {/* 88.6.1-74 (owner ruling D8-r2 follow-up): no ballot while the RSVP list never
+                        loaded — its gate would tell someone who said yes to RSVP. */}
+                    {!repliesLoadState.showError && (
+                        <BallotSection
+                            key={ballotRefreshKey}
+                            eventId={singleEvent.id}
+                            eventDate={singleEvent.start_date}
+                            userRole={userRole}
+                            userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
+                        />
+                    )}
                     <BringSummary
                         eventId={singleEvent.id}
                         groupId={effectiveGroupId}
@@ -1960,7 +3046,8 @@ export default function GameDetailPage() {
                                 <GameSuggestionCard
                                     key={game.id}
                                     game={game}
-                                    onClick={() => router.push(`/gameDetail?game_id=${game.id}&group_id=${group_id}`)}
+                                    // 88.6.1-25 (D-03, D-41): the event's group, not the URL value.
+                                    onClick={() => router.push(`/gameDetail?game_id=${game.id}&group_id=${effectiveGroupId}`)}
                                 />
                             ))}
                         </div>
@@ -1980,9 +3067,18 @@ export default function GameDetailPage() {
 
                 {editEventModal && editingEvent && (
                     <CreateEvent
-                        group_id={group_id}
+                        // 88.6.1-25 (AC-7, D-41): the event's group, never null from a bare link.
+                        group_id={effectiveGroupId}
                         modal={editEventModal}
                         modaltoggle={() => { setEditEventModal(false); setEditingEvent(null); }}
+                        // DECISION Phase 88.6.1-68 (one close owner): this host's created-callback only
+                        // refreshes; the close after a success is CreateEvent's own modaltoggle(), which
+                        // plan 88.6.1-81 calls only while the press's dialog session is still open.
+                        // REJECTED: the host closing here too (what shipped: an older update's late
+                        // success closed, and at this conditional mount unmounted, an Edit dialog the
+                        // person had reopened, with whatever they had typed). The ordinary path is
+                        // unchanged (the callback refreshes, then CreateEvent toasts and closes).
+                        // Re-adding a close here is a decision, not a cleanup.
                         onEventCreated={() => {
                             // Phase 71.1-02: bump RSVP / brings refresh signals in
                             // addition to the existing ballot bump so the cascade
@@ -1990,13 +3086,11 @@ export default function GameDetailPage() {
                             // RSVP / EventBring / EventBallotVote rows on the
                             // backend) is visible without a manual page refresh.
                             const updatedEventId = singleEvent?.id;
-                            setEditEventModal(false);
-                            setEditingEvent(null);
                             fetchEventOnly();
                             setBallotRefreshKey(k => k + 1);
                             setRsvpRefreshKey(k => k + 1);
                             setBringRefreshKey(k => k + 1);
-                            if (updatedEventId) refreshBringersSet(updatedEventId);
+                            if (updatedEventId) refreshBringersSet(updatedEventId).then((bSet) => writeUserBringers(updatedEventId, bSet));
                         }}
                         editingEvent={editingEvent}
                         user={user}
@@ -2119,7 +3213,7 @@ export default function GameDetailPage() {
                                                 <span>{p.username || 'Unknown'}</span>
                                             )}
                                         </span>
-                                        <RsvpStatusPill status={status} />
+                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} />}
                                         {isSelfRow && (
                                             // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
                                             // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not
@@ -2260,7 +3354,6 @@ export default function GameDetailPage() {
                     onClose={() => setShowGameQR(false)}
                     url={gameInviteUrl}
                     title="Game Night Invite QR"
-                    showReset={false}
                 />
 
                 {/* Phase 65-02 EVT-07: BringGamePicker mount fix. Previously
@@ -2277,17 +3370,79 @@ export default function GameDetailPage() {
                         setBringRefreshKey(k => k + 1);
                         // Phase 65-02 EVT-02 followup: show 🎲 immediately
                         // after picking a game without waiting for a remount.
-                        if (bringPickerEventId) refreshBringersSet(bringPickerEventId);
+                        if (bringPickerEventId) refreshBringersSet(bringPickerEventId).then((bSet) => writeUserBringers(bringPickerEventId, bSet));
                     }}
                 />
+                {retainedFocusGuards}
             </div>
         );
     }
 
-    if (loading) {
+    /* DECISION Phase 88.6.1-25 (D-01 / D-02 / AC-2..AC-5): the event view's failure gates, in this
+       ORDER, mirroring DECISION Phase 88-25 for the game view below (keep the error object, take the
+       copy from its code, check a failure BEFORE "Event not found"). Each answer the event fetch can
+       get has its own screen: (i) the loader while a 401's sign-in redirect is pending or under way,
+       or while a 410's identity recheck runs; (ii) a 403 is the no-access screen; (iii) every other
+       failure, a declined 401 included, is the shared banner with Try again; (iv) only a real 404
+       (or a rejected id, gated earlier) reaches "Event not found". REJECTED: classifying in
+       fetchEventOnly's old single catch, which also caught the roster fetch, so a members 403 after
+       a good event would have become the no-access screen (RESEARCH P-2). Reordering these is a
+       decision, not a cleanup.
+       AMENDED Phase 88.6.1-74 (AC-29 / RF1, owner ruling 2026-10-05): a transient failure on a
+       same-event refresh now shows RF1 INSIDE the event view (the event stays). The access answers
+       still drop the event first (C10), now classified by plan 70's isAccessOrGoneError instead of
+       the four-code list, so the six widened codes (`gone`, `not_provisioned`, the restore-link
+       410s, `token_invalid`) land on (iii) with the register's line. The gates below are unchanged. */
+    const eventErrorCode = eventError instanceof ApiError ? eventError.code : null;
+    // (i) A 401 holds the loader while the sign-in decision is pending and while redirecting, so
+    // "Event not found" never paints for a frame before navigation (RESEARCH P-5); only a declined
+    // redirect (latch already set, or storage failed) falls through to the banner.
+    const holdEventLoader =
+        !game_id && eventErrorCode === 'unauthorized' && signInRedirect !== 'declined';
+    // (i) D-02: a 410 holds the loader ONLY while the recheck this run started is in flight, or while
+    // the identity query itself reports the deleted account (its effect is routing to goodbye). Any
+    // other settled outcome falls through to the banner, so the loader is never a dead end (r2 #31).
+    const holdAccountDeletedLoader =
+        !game_id &&
+        eventErrorCode === 'account_deleted' &&
+        (identityRecheckPending || selfIdentityErrorState.code === 'account_deleted');
+
+    // The shared loader (both views) reads copy row E4 and is a labelled status, RouteFallback's
+    // contract (role="status" + aria-label), so the loader that holds the redirect is announced.
+    // 88.6.1-74 (review r3 L-02, M2-01): the loader also covers a game key whose game read has not
+    // answered in this visit's run, so an in-page key change never paints "Game not found" or a
+    // stale game view for one commit. See the AMENDED line on the DECISION Phase 88-25 gate below.
+    const gameKeyUnanswered = Boolean(game_id) && gameAnsweredFor !== entityKey;
+    if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered) {
+        return (
+            <div className="flex items-center justify-center min-h-screen" role="status" aria-label={PAGE_LOADING_LABEL}>
+                <p className="text-content-secondary">{PAGE_LOADING_LABEL}</p>
+                {retainedFocusGuards}
+            </div>
+        );
+    }
+
+    // (ii) AC-3: the same helper as "Event not found", so the reused Back to Home link (D-33 row 18)
+    // and the layout cannot drift. The terminal arm already cleared any retained event.
+    if (!game_id && eventError && eventErrorState.code === 'forbidden') {
+        return renderEventMessageState(EVENT_NO_ACCESS_TITLE, EVENT_NO_ACCESS_DETAIL);
+    }
+
+    // (iii) AC-5: every other failure, inside the same two wrappers as the game view's banner.
+    if (!game_id && !singleEvent && eventErrorState.showError && eventErrorState.code !== 'not_found') {
         return (
             <div className="flex items-center justify-center min-h-screen">
-                <p className="text-content-secondary">Loading game details...</p>
+                {/* A-56 (88.6.1 code review): the banner's box is the withdrawal target (the
+                    DECISION Phase 88.6.1-74 (C12) marker, AMENDED 2026-10-19). */}
+                <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
+                    <FetchErrorBanner
+                        state={eventErrorState}
+                        title={EVENT_LOAD_FAILED_TITLE}
+                        // A quoted literal on purpose: loggerCtxShape.test.ts (test 5) gates every reportContext.
+                        reportContext="Game detail page — event fetch"
+                    />
+                </div>
+                {retainedFocusGuards}
             </div>
         );
     }
@@ -2297,18 +3452,11 @@ export default function GameDetailPage() {
     // tap. Distinct from the "Game not found" branch below — the user
     // arrived via /gameDetail?event_id=X expecting an event, so we tell
     // them the event is gone (not the game) and link back to userHome.
+    // [AMENDED Phase 88.6.1-25 (D-01 / AC-4)] This gate now receives ONLY a real 404 (a rejected
+    // event id is answered by the earlier gate with the same screen); every other failure is
+    // classified above it, so the sentence is true whenever it shows.
     if (event_id && !singleEvent) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center max-w-md mx-auto px-6">
-                    <p className="text-content-primary text-xl font-bold mb-2">Event not found</p>
-                    <p className="text-content-secondary mb-6">This event no longer exists or has been cancelled.</p>
-                    <Link href="/" className="text-content-link hover:underline">
-                        ← Back to Home
-                    </Link>
-                </div>
-            </div>
-        );
+        return renderEventMessageState(EVENT_NOT_FOUND_TITLE, EVENT_NOT_FOUND_DETAIL);
     }
 
     /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a FAILED game load is checked BEFORE the
@@ -2316,48 +3464,30 @@ export default function GameDetailPage() {
        null, so flipping these tells someone whose request merely failed that the game does not
        exist, which is a false statement and a dead end with no retry. `not_found` is deliberately
        NOT routed here: a real 404 IS "Game not found", and that branch keeps the scope-aware
-       back-link 71.1 GAMP-11 put there. */
+       back-link 71.1 GAMP-11 put there.
+       AMENDED Phase 88.6.1-74 (key-change frame, review r3 L-02): the shared loader above also
+       covers a key whose game read has not answered in this visit's run, so neither branch below
+       renders in the one commit after an in-page key change. REJECTED: keeping that frame and
+       keeping the focus target off it (round 2's shape) — the page said a game that exists was not
+       found, and the target needed a two-way rule. */
     if (!game && gameErrorState.showError && gameErrorState.code !== 'not_found') {
         return (
             <div className="flex items-center justify-center min-h-screen">
-                <div className="w-full max-w-md px-6">
+                {/* A-56: the banner's box is the withdrawal target (see the event banner above). */}
+                <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={gameErrorState}
                         title="We couldn't load this game"
                         reportContext="Game detail page — game/session fetch"
                     />
                 </div>
+                {retainedFocusGuards}
             </div>
         );
     }
 
     if (!game) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center">
-                    <p className="text-content-status-error mb-4">Game not found</p>
-                    {/* Phase 71.1 GAMP-11: scope-aware fallback — game-only/none
-                        callers fall through to "← Back to Home" since the group
-                        page would 403. Group-member/pending see the group link
-                        as before. */}
-                    {group_id ? (
-                        (userScope === 'group-member' || userScope === 'pending') ? (
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline">
-                                ← Back to Group
-                            </Link>
-                        ) : (
-                            <Link href="/" className="text-content-link hover:underline">
-                                ← Back to Home
-                            </Link>
-                        )
-                    ) : (
-                        <Link href="/" className="text-content-link hover:underline">
-                            ← Back to Home
-                        </Link>
-                    )}
-                </div>
-            </div>
-        );
+        return renderGameNotFound();
     }
 
     return (
@@ -2388,18 +3518,21 @@ export default function GameDetailPage() {
            Restoring `p-6` is a DECISION (it re-tightens the budget to ~72/75 and re-splits the
            two branches), not a cleanup. */
         <div className="p-3 md:p-6 max-w-6xl mx-auto">
+            {/* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): the group-content guard. */}
+            <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />
             {/* Breadcrumbs */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
+            {/* Same ring, hidden separators and `min-w-0` as the event-view breadcrumb — `DECISION Phase 88.6.1-52 (D-46 / R7-M7)`. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 {group_id && (
                     <>
-                        <span className="text-content-muted mx-2">{'>'}</span>
+                        <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                         {(userScope === 'group-member' || userScope === 'pending') ? (
                             /* Group-context (game_id present) view: group-members
                                see the link with the group name (or generic "Group"
                                while loading — graceful, not load-bearing for the
                                game-only flow). */
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors">
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
                                 {singleEvent?.Group?.name || 'Group'}
                             </Link>
                         ) : singleEvent?.Group?.name ? (
@@ -2413,12 +3546,22 @@ export default function GameDetailPage() {
                         ) : null}
                     </>
                 )}
-                <span className="text-content-muted mx-2">{'>'}</span>
+                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {/* D-03 / R2 #171 (T-88.6-138): the current-page twin of the single-event
                     breadcrumb above — 700 kept as hierarchy, `aria-current` added so the
                     distinction is not weight-only. */}
                 <span aria-current="page" className="text-content-primary font-bold">{game.name}</span>
             </nav>
+
+            {/* DECISION Phase 88.6.1-74 (AC-29 / RF1, game view): CHOSEN — plan 70's shared
+                RefreshFailedNotice between the breadcrumb and the game card: above the content it
+                qualifies, beside the title focus returns to. REJECTED (a): inside the game card above
+                the title — the card's padding and its DECISION Phase 88-24 idiom are not this plan's
+                to change. REJECTED (b): below the CTA — it qualifies the whole page, and at 375px it
+                would sit below the first screen. REJECTED (c): the full banner over the retained game
+                (C6 forbids both forms for one state). Moving or removing this is a decision, not a
+                cleanup. */}
+            <RefreshFailedNotice state={gameErrorState} retained={gameRetained} focusTarget={gameTitleRef} className="mb-4" />
 
             {/* Game Details */}
             <div className="card p-3 md:p-6 mb-6">
@@ -2444,7 +3587,7 @@ export default function GameDetailPage() {
                         <Heading
                             level={1}
                             size="display"
-                            ref={setTitleNode}
+                            ref={attachGameTitle}
                             id="game-title"
                             tabIndex={-1}
                             onClick={(e) => {
@@ -2513,7 +3656,7 @@ export default function GameDetailPage() {
                             <Heading
                                 level={1}
                                 size="display"
-                                ref={setTitleNode}
+                                ref={attachGameTitle}
                                 id="game-title"
                                 tabIndex={-1}
                                 onClick={(e) => {
@@ -2622,6 +3765,9 @@ export default function GameDetailPage() {
                         </Button>
                     </div>
                 )}
+                {/* 88.6.1-74 (owner ruling D8-r2 follow-up, GD4): the roster's never-loaded notice in
+                    the CTA's slot — one notice for every member-only control the roster gates. */}
+                {group_id && <SectionLoadFailedNotice state={groupRoleLoadState} className="mt-6" />}
             </div>
 
             {/* DECISION Phase 88-33 Task 7 step 1b rider (owner-RATIFIED 2026-08-21 at phase
@@ -2635,9 +3781,11 @@ export default function GameDetailPage() {
                 always-on empty state here is a decision, not a completeness fix. */}
             {upcomingEvents.length > 0 && (
                 <div className="card p-3 md:p-6 mb-6">
-                    <Heading level={2} size="heading" className="w-full text-content-primary mb-4">
+                    <Heading ref={upcomingHeadingRef} level={2} size="heading" className="w-full text-content-primary mb-4">
                         Upcoming ({upcomingEvents.length})
                     </Heading>
+                    {/* 88.6.1-74 (owner ruling D8-r2 follow-up, GD3): the RSVP fan-out's notice. */}
+                    <SectionLoadFailedNotice state={myRsvpsLoadState} className="mb-4" />
                     <div className="space-y-0">
                         {upcomingEvents.map((event, index) => renderSessionCard(event, index, { interactive: true }))}
                     </div>
@@ -2659,28 +3807,44 @@ export default function GameDetailPage() {
                     reopening. This marker's OWN subject (the conditional count and the stacking)
                     is untouched by that ruling and still stands. */}
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                    <Heading level={2} size="heading" className="w-full text-content-primary">
+                    <Heading ref={sessionsHeadingRef} level={2} size="heading" className="w-full text-content-primary">
                         {/* Post-split (Task 7 step 1b): counts key on the HISTORY partition —
                             keying on raw `events` would show "3 of 5" with no filter active
                             whenever upcoming events exist. */}
-                        Game Sessions ({filteredEvents.length === historyEvents.length
-                            ? historyEvents.length
-                            : `${filteredEvents.length} of ${historyEvents.length}`})
+                        Game Sessions{/* 88.6.1-74 (owner ruling D8-r2): no count while the sessions never loaded. */}
+                        {sessionsLoadState.showError
+                            ? ''
+                            : ` (${filteredEvents.length === historyEvents.length
+                                ? historyEvents.length
+                                : `${filteredEvents.length} of ${historyEvents.length}`})`}
                     </Heading>
+                    {/* DECISION Phase 88.6.1-47 (D-44): CHOSEN — this toggle is a DISCLOSURE
+                        (`aria-expanded`), not a pressed toggle: D-44 rules that it shows and hides a
+                        panel. `aria-controls` is present ONLY while the panel is mounted, the house
+                        form (`DECISION Phase 88.6-16 (D-12)` in `KebabMenu.js`, the conditional
+                        spread). The arrow glyphs are hidden from assistive tech so the name is the
+                        words alone. REJECTED — (a) `aria-pressed`; (b) a permanent `aria-controls`,
+                        which would name an absent element while closed; (c) rendering the panel
+                        always and toggling `hidden` (KebabMenu's recorded rejected alternative: it
+                        changes what the card contains while closed). The visible label swap stays:
+                        those are existing words (D-31). Size unchanged (`min-h-11` from the cva
+                        base, D-21's delta here is 0). */}
                     <Button
                         variant="secondary"
                         onClick={() => setShowFilters(!showFilters)}
+                        aria-expanded={showFilters}
+                        {...(showFilters ? { 'aria-controls': SESSION_FILTERS_PANEL_ID } : {})}
                         className="w-full sm:w-auto"
                     >
                         {showFilters ? (
                             <>
                                 <span>Hide Filters</span>
-                                <span>▲</span>
+                                <span aria-hidden="true">▲</span>
                             </>
                         ) : (
                             <>
                                 <span>Show Filters & Sort</span>
-                                <span>▼</span>
+                                <span aria-hidden="true">▼</span>
                             </>
                         )}
                     </Button>
@@ -2688,13 +3852,13 @@ export default function GameDetailPage() {
                 
                 {/* Filters and Sorting */}
                 {showFilters && (
-                <div className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
+                <div id={SESSION_FILTERS_PANEL_ID} className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
                     <div className="flex justify-between items-center mb-3">
                         {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): 16/700, NOT the
                             20/700 Heading role — chosen OVER the literal reading of Task 3's
                             "section headings and card titles -> text-xl", which is what a
                             later reader will "correct" this to. This h3 is nested INSIDE the
-                            "Game Sessions" h2's card (:1742), so promoting it to 20px flattens
+                            "Game Sessions" h2's card (the Game Sessions card above), so promoting it to 20px flattens
                             a real two-level hierarchy into one visual level. Same rung, same
                             reasoning, and deliberately the same VALUE as the sub-heading rung
                             88-19 established on userProfile (see that file's header marker) —
@@ -2738,9 +3902,9 @@ export default function GameDetailPage() {
 
                             These are NATIVE attributes, which is the point: iOS and Android date pickers
                             honour `min`/`max` by greying out unreachable days, and a picker is the surface
-                            the owner was actually using when he reported this. `Input` spreads unknown
-                            props straight onto the element (`src/components/ui/Input.tsx:143`, contract
-                            recorded at `:27-29`), so no primitive changes.
+                            the owner was actually using when he reported this. `Input.tsx` spreads
+                            `...props` straight onto the element (the composition-contract note in its
+                            docblock), so no primitive changes.
 
                             THE BOUNDS ARE TWO-SIDED ON PURPOSE. A one-sided `min` on the To control would
                             trap a user who set To first: with From unbounded he could still pick an
@@ -2755,12 +3919,16 @@ export default function GameDetailPage() {
                             REJECTED — an inline error message for the typed path. The string would be NEW
                             visible copy, the phase's P1 contract forbids minting it, and neither register
                             holds a reusable one: UI-SPEC §6.3's 17 rows are all fetch-failure or
-                            save-success strings, and `MESSAGE_BY_CODE`
-                            (`src/components/ui/useFetchErrorState.ts:46-112`) is exhaustive over
+                            save-success strings, and `useFetchErrorState.ts`'s `MESSAGE_BY_CODE` is exhaustive over
                             `FetchErrorCode` — every entry is an API-failure message and this filter calls
                             no API. Routed to Phase 88.9 with the proposed string named on a row in
                             `.planning/deferred/phase-88.6.md`, so the owner ratifies it in the look phase
-                            rather than an executor minting it mid-sweep. */}
+                            rather than an executor minting it mid-sweep.
+                            [AMENDED Phase 88.6.1-52 (D-25, E5)] The REJECTED paragraph's only reason —
+                            the 88.6 copy contract forbade minting the string — no longer holds: row E5
+                            was ratified on 2026-10-04 (D-30) and now ships on To Date (see
+                            `DECISION Phase 88.6.1-52 (D-25 / E5)` below). The WHAT THIS DOES NOT DO
+                            paragraph's typed-path gap is closed by it. The bounds are unchanged. */}
                         <div>
                             <label htmlFor="session-filter-date-from" className="block text-sm text-content-secondary mb-1">From Date</label>
                             <Input
@@ -2771,8 +3939,25 @@ export default function GameDetailPage() {
                                 onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
                             />
                         </div>
-                        <div>
-                            <label htmlFor="session-filter-date-to" className="block text-sm text-content-secondary mb-1">To Date</label>
+                        {/* DECISION Phase 88.6.1-52 (D-25 / E5): CHOSEN — the house `FormField` on To Date
+                            only, with `labelClassName` holding today's exact label classes (no look
+                            change at rest) and `error` set to copy row E5 only while the range is
+                            backwards. The error sits on To because the ratified sentence names To. It
+                            is a `role="alert"` line inserted with its text, which D-42 rules is
+                            announced on insertion. REJECTED — (a) converting all ten session filters
+                            to `FormField` (no defect behind it; `DECISION Phase 88-20`'s htmlFor/id
+                            association is already met); (b) a second error on From (one condition,
+                            one message); (c) clamping or correcting the typed date (it would silently
+                            change what the person typed); (d) a raw string compare of the two values
+                            (wrong for years of five or more digits, and it alerts while a desktop
+                            year is being typed — hence the complete-date guard on
+                            `sessionDateRangeInverted`). The two-sided native bounds above stay.
+                            Removing the message is a decision, not a cleanup. */}
+                        <FormField
+                            label="To Date"
+                            labelClassName="block text-sm text-content-secondary mb-1"
+                            error={sessionDateRangeInverted ? SESSION_DATE_RANGE_ERROR : undefined}
+                        >
                             <Input
                                 id="session-filter-date-to"
                                 type="date"
@@ -2780,7 +3965,7 @@ export default function GameDetailPage() {
                                 min={filters.dateFrom || undefined}
                                 onChange={(e) => handleFilterChange('dateTo', e.target.value)}
                             />
-                        </div>
+                        </FormField>
 
                         {/* Player Filters */}
                         <div>
@@ -2881,6 +4066,9 @@ export default function GameDetailPage() {
                 </div>
                 )}
                 
+                {/* 88.6.1-74 (owner ruling D8-r2, GD2): the sessions' never-loaded notice stands where
+                    the empty-state sentence stood. */}
+                <SectionLoadFailedNotice state={sessionsLoadState} />
                 {displayedEvents.length > 0 ? (
                     <div className="space-y-0">
                         {/* DECISION Phase 87.7 (Plan 08, R5): the separator below carries NO top
@@ -2905,11 +4093,13 @@ export default function GameDetailPage() {
                        NEVER the raw fetch — a group with only a future event has events.length
                        > 0 but genuinely no history, and must get the ruled empty copy, not
                        'No sessions match your filters.'. */
-                    <p className="text-content-muted text-sm">
-                        {historyEvents.length === 0
-                            ? "No game sessions yet — they'll show up here after your group plays this game."
-                            : 'No sessions match your filters.'}
-                    </p>
+                    !sessionsLoadState.showError && (
+                        <p className="text-content-muted text-sm">
+                            {historyEvents.length === 0
+                                ? "No game sessions yet — they'll show up here after your group plays this game."
+                                : 'No sessions match your filters.'}
+                        </p>
+                    )
                 )}
                 
                 {/* Show More Button */}
@@ -2970,7 +4160,7 @@ export default function GameDetailPage() {
                     gate. That escalation is what produced the ruling above: the deferral worked
                     exactly as designed, and is now RESOLVED. */}
                 <div className="flex justify-between items-center mb-4">
-                    <Heading level={2} size="heading" className="text-content-primary">Reviews ({reviews.length})</Heading>
+                    <Heading level={2} size="heading" className="text-content-primary">Reviews{reviewsLoadState.showError ? '' : ` (${reviews.length})`}</Heading>
                     {user && !userReview && userRole && userRole !== 'pending' && (
                         <Button
                             variant="primary"
@@ -3012,13 +4202,17 @@ export default function GameDetailPage() {
                                 </button>
                             </div>
                         </div>
+                        {/* R10: same class pair, same `collapseBlankLines` call and reasons as `DECISION Phase 88.6.1-52 (R10 / AC-31, shared rule 12)` at the session card's comments line. */}
                         {userReview.review_text && (
-                            <p className="text-content-secondary mt-2">{userReview.review_text}</p>
+                            <p className="text-content-secondary mt-2 whitespace-pre-line wrap-anywhere">{collapseBlankLines(userReview.review_text)}</p>
                         )}
                     </div>
                 )}
 
                 {/* Other Reviews */}
+                {/* 88.6.1-74 (owner ruling D8-r2, GD1): the reviews' never-loaded notice stands where
+                    "No reviews yet" stood. */}
+                <SectionLoadFailedNotice state={reviewsLoadState} />
                 {reviews.length > 0 ? (
                     <div className="space-y-4">
                         {reviews
@@ -3060,8 +4254,9 @@ export default function GameDetailPage() {
                                                 )}
                                             </div>
                                         </div>
+                                        {/* R10: same class pair, same `collapseBlankLines` call and reasons as `DECISION Phase 88.6.1-52 (R10 / AC-31, shared rule 12)` at the session card's comments line. */}
                                         {review.review_text && (
-                                            <p className="text-content-secondary mt-2">{review.review_text}</p>
+                                            <p className="text-content-secondary mt-2 whitespace-pre-line wrap-anywhere">{collapseBlankLines(review.review_text)}</p>
                                         )}
                                     </div>
                                 );
@@ -3070,7 +4265,9 @@ export default function GameDetailPage() {
                 ) : (
                     // D2 mini-formula rider (Rule 2, same-class as the 4 ruled sites):
                     // muted + text-sm, no "!", state + path.
-                    <p className="text-content-muted text-sm">No reviews yet. Be the first to review this game.</p>
+                    !reviewsLoadState.showError && (
+                        <p className="text-content-muted text-sm">No reviews yet. Be the first to review this game.</p>
+                    )
                 )}
             </div>
 
@@ -3123,7 +4320,7 @@ export default function GameDetailPage() {
                             </label>
                             <Textarea
                                 id="review_text"
-                                /* Phase 88.6-45 (R7 house rule, `Input.tsx:11-19`): `name` beside `id` on both review
+                                /* Phase 88.6-45 (R7 house rule, `Input.tsx`'s `HOUSE RULE (88-33 Task 8, fork 5` docblock): `name` beside `id` on both review
                                    controls, found by the composed audit (`textarea#review_text[name=?]` / `input#recommended[name=?]:
                                    missing name attribute`). The handlers read `e.target.value` / `.checked`, so inert to behaviour. */
                                 name="review_text"
@@ -3202,8 +4399,8 @@ export default function GameDetailPage() {
                     group_id={group_id}
                     modal={showCreateEvent}
                     modaltoggle={() => setShowCreateEvent(false)}
+                    // DECISION Phase 88.6.1-68 (one close owner) — refresh only; see the marker at the event-view Edit mount.
                     onEventCreated={() => {
-                        setShowCreateEvent(false);
                         // Refresh sessions list so the brand-new event shows up.
                         fetchGameData();
                     }}
@@ -3230,6 +4427,7 @@ export default function GameDetailPage() {
                 self={self}
                 onSave={() => setBringRefreshKey(k => k + 1)}
             />
+            {retainedFocusGuards}
         </div>
     );
 }

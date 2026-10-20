@@ -67,6 +67,12 @@ export interface UseConfirmActionConfig {
   body?: React.ReactNode;
   /** The verb alone: "Remove", "Delete", "Disconnect". Never "OK"/"Yes". */
   confirmLabel: string;
+  /**
+   * `dialog`/`typed` only, optional: the confirm's text while the commit is pending
+   * ("Disconnecting…"). Passed through `dialogProps`; see ConfirmDialog's `pendingLabel`.
+   * Ignored by `two-tap`. (88.6.1 code review CR-5 / A-75)
+   */
+  pendingLabel?: string;
   /** Cancel copy. @default 'Cancel' */
   cancelLabel?: string;
   /** `typed` tier only: the phrase that must be entered EXACTLY. */
@@ -83,14 +89,27 @@ export interface UseConfirmActionConfig {
    * Runs ONLY after an explicit confirmation. Receives the committed target id
    * (the armed id for `two-tap`; the trigger's id, unchanged, for the others).
    * May return a promise — the gate stays `pending` until it settles.
+   *
+   * `two-tap` only: a second argument, `{ from }`, carries the control the person activated for
+   * the committing tap (`event.currentTarget` of the row trigger), so a consumer can arm
+   * `useFocusRecovery` with `from` (its consumer contract item 1: Safari does not focus a clicked
+   * button). Additive; a consumer that reads one argument is unaffected. The `dialog`/`typed`
+   * tiers call `onConfirm(targetId)` exactly as before (their activator is the dialog's own
+   * confirm control, which the dialog's restore owns).
    */
-  onConfirm: (targetId?: string) => void | Promise<void>;
+  onConfirm: (targetId?: string, context?: ConfirmContext) => void | Promise<void>;
+}
+
+/** The second argument a `two-tap` commit hands `onConfirm` (88.6.1 code review A-74). */
+export interface ConfirmContext {
+  /** The trigger the person pressed for the committing tap, or null when it was not a click. */
+  from: Element | null;
 }
 
 /** Props for a `two-tap` row trigger. Spread onto the row's own `<button>`. */
 export interface ConfirmTriggerProps {
   type: 'button';
-  onClick: () => void;
+  onClick: (event?: React.MouseEvent<Element>) => void;
   /** Present ONLY while armed (a resting destructive button is not a toggle). */
   'aria-pressed'?: true;
   /** Present only when the caller supplied a resting name; swaps with the visible label. */
@@ -105,6 +124,7 @@ export interface ConfirmDialogState {
   title: string;
   body?: React.ReactNode;
   confirmLabel: string;
+  pendingLabel?: string;
   cancelLabel: string;
   expectedPhrase?: string;
   onCancel: () => void;
@@ -126,8 +146,11 @@ export interface ConfirmActionState {
    * ships an element rather than asking the caller to render one.
    */
   statusNode: React.ReactElement;
-  /** Start the gate for a target. `two-tap` arms; the others open the dialog. */
-  trigger: (targetId?: string, targetLabel?: string) => void;
+  /**
+   * Start the gate for a target. `two-tap` arms; the others open the dialog. `from` (two-tap) is
+   * the activating control, handed to `onConfirm` on the committing tap.
+   */
+  trigger: (targetId?: string, targetLabel?: string, from?: Element | null) => void;
   /** Commit (`dialog`/`typed`). `ConfirmDialog` supplies the typed value. */
   confirm: (typedValue?: string) => void;
   /** Abort. `onConfirm` is never called; any armed target is disarmed. */
@@ -195,6 +218,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     title,
     body,
     confirmLabel,
+    pendingLabel,
     cancelLabel = 'Cancel',
     expectedPhrase,
     armedLabel = DEFAULT_ARMED_LABEL,
@@ -277,12 +301,13 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     [pending, tier, matchesPhrase]
   );
 
-  const runConfirm = React.useCallback(async (targetId?: string) => {
+  const runConfirm = React.useCallback(async (targetId?: string, context?: ConfirmContext) => {
     if (pendingRef.current) return;
     pendingRef.current = true;
     setPending(true);
     try {
-      await onConfirmRef.current(targetId);
+      // Only the two-tap commit passes a context; the dialog tiers keep their one-argument call.
+      await (context === undefined ? onConfirmRef.current(targetId) : onConfirmRef.current(targetId, context));
       if (!mountedRef.current) return;
       setOpen(false);
       targetRef.current = undefined;
@@ -298,7 +323,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
   }, []);
 
   const trigger = React.useCallback(
-    (targetId?: string, targetLabel?: string) => {
+    (targetId?: string, targetLabel?: string, from?: Element | null) => {
       // Re-entry while a commit is in flight is inert in EVERY tier.
       if (pendingRef.current) return;
 
@@ -335,7 +360,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       armedIdRef.current = null;
       setArmedId(null);
       setAnnouncement('');
-      void runConfirm(targetId);
+      void runConfirm(targetId, { from: from ?? null });
     },
     [clearArmTimer, runConfirm]
   );
@@ -382,7 +407,12 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       const accessibleName = armed ? armedLabel : restingAriaLabel;
       return {
         type: 'button',
-        onClick: () => trigger(targetId, targetLabel),
+        // DECISION 88.6.1 code review A-74: the click's `currentTarget` is threaded to `onConfirm`
+        // over the old event-less `() => trigger(...)`. Without it a two-tap consumer cannot meet
+        // useFocusRecovery's `from` contract, and on WebKit (which does not focus a clicked
+        // button) focus fell to <body> when the removed row left. Dropping the event is a
+        // decision, not a cleanup.
+        onClick: (event) => trigger(targetId, targetLabel, event?.currentTarget ?? null),
         ...(armed ? { 'aria-pressed': true as const } : {}),
         ...(restingAriaLabel !== undefined && accessibleName !== undefined
           ? { 'aria-label': accessibleName }
@@ -411,6 +441,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       title,
       body,
       confirmLabel,
+      pendingLabel,
       cancelLabel,
       expectedPhrase,
       onCancel: cancel,
@@ -424,6 +455,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       title,
       body,
       confirmLabel,
+      pendingLabel,
       cancelLabel,
       expectedPhrase,
       cancel,

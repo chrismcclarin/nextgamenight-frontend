@@ -544,11 +544,14 @@ describe('NextGameNightCard — the RSVP success announcement (W45(a) / V-20)', 
     // unmounted and remounted per announcement, which is the defect being pinned.
     const region = screen.getByRole('status');
     expect(region.textContent?.trim()).toBe('');
+    // D-22 (88.6.1-06): an empty region is sr-only, so it costs no layout.
+    expect(region).toHaveClass('sr-only');
 
     // FIRST success.
     await user.click(yesButton());
     await waitFor(() => expect(region.textContent?.trim()).toBe(SUCCESS_COPY));
     expect(screen.getByRole('status')).toBe(region);
+    expect(region).not.toHaveClass('sr-only');
 
     // SECOND success, a DIFFERENT status so the same-status early return does not block it.
     // Deferred so the in-flight window is observable: the region must be EMPTY while the
@@ -559,6 +562,8 @@ describe('NextGameNightCard — the RSVP success announcement (W45(a) / V-20)', 
 
     await user.click(noButton());
     expect(region.textContent?.trim()).toBe('');
+    // In the in-flight window the cleared region is empty AND sr-only (D-22).
+    expect(region).toHaveClass('sr-only');
 
     await act(async () => {
       write.resolve({ id: 'rsvp-own', status: 'no', note: null });
@@ -568,6 +573,7 @@ describe('NextGameNightCard — the RSVP success announcement (W45(a) / V-20)', 
     await waitFor(() => expect(region.textContent?.trim()).toBe(SUCCESS_COPY));
     // The SAME node carried both announcements — never remounted.
     expect(screen.getByRole('status')).toBe(region);
+    expect(region).not.toHaveClass('sr-only');
   });
 
   it('CLEARS the success when a later write FAILS — the two regions cannot contradict', async () => {
@@ -634,23 +640,75 @@ describe('NextGameNightCard — the RSVP success announcement (W45(a) / V-20)', 
     await waitFor(() => expect(region.textContent?.trim()).toBe(''));
   });
 
-  it('adds NO idle layout: the two regions share one parent, outside the spaced stack', async () => {
-    // WHAT THIS PIN CAN AND CANNOT PROVE, stated rather than implied. jsdom computes no
-    // layout, so rendered HEIGHT at 375px is NOT measurable here (registered as
-    // `unrun-verify` in WINDOWS.md). What IS structural, and is the whole idle-delta risk:
-    // the outer stack is `space-y-2`, whose `> * + *` rule would add an 8px margin to a
-    // SECOND direct child even while that child is empty and zero-height. Both regions
-    // therefore live inside ONE un-spaced wrapper, so the stack sees exactly one child and
-    // the idle card is byte-identical to the shipped one.
+  it('D-22: no idle gap under the RSVP buttons; the outcome pair sits after the spaced stack, each region sr-only while empty', async () => {
+    // WHAT THIS PIN CAN AND CANNOT PROVE. jsdom computes no layout, so the pixels are
+    // measured at 375px by e2e/empty-status-region-idle.spec.ts in the phone project.
+    // What is structural here, and is the whole idle-gap mechanism: Tailwind 4.3.3
+    // space-y-2 sets margin-block-end on every child that is NOT the last (a
+    // where-wrapped not-last-child selector, not the v3 adjacent-sibling margin-top).
+    // With the outcome wrapper as the stack's last child, the RSVP group kept an 8px
+    // bottom margin with nothing under it. So the group must be the stack's LAST child,
+    // the pair must sit outside the stack, and each region carries mt-2 (its spacing
+    // WHEN SHOWN) plus sr-only while empty, which takes it out of flow.
     renderCard();
     await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
 
+    const group = rsvpGroup();
+    const stack = group.parentElement as HTMLElement;
     const success = screen.getByRole('status');
     const failure = screen.getByRole('alert');
 
-    expect(success.textContent?.trim()).toBe('');
+    expect(stack.lastElementChild).toBe(group);
+    expect(stack.contains(success)).toBe(false);
+    expect(stack.contains(failure)).toBe(false);
+
     expect(success.parentElement).toBe(failure.parentElement);
-    expect(success.parentElement?.className ?? '').not.toMatch(/space-y|gap-|mt-|my-/);
+    expect(success.parentElement?.getAttribute('class')).toBeNull();
+
+    expect(success.textContent?.trim()).toBe('');
+    expect(failure.textContent?.trim()).toBe('');
+    for (const region of [success, failure]) {
+      expect(region).toHaveClass('sr-only');
+      expect(region).toHaveClass('mt-2');
+    }
+  });
+
+  it('D-22: a shown outcome is visible with its mt-2 and the other region is hidden, on the same two nodes', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    // Captured ONCE before any action (node identity, C-6).
+    const success = screen.getByRole('status');
+    const failure = screen.getByRole('alert');
+
+    // Success arm.
+    await user.click(yesButton());
+    await waitFor(() => expect(success.textContent?.trim()).toBe(SUCCESS_COPY));
+    expect(success).not.toHaveClass('sr-only');
+    expect(success).toHaveClass('mt-2');
+    expect(failure.textContent?.trim()).toBe('');
+    expect(failure).toHaveClass('sr-only');
+
+    // Failure arm.
+    submitRsvp.mockRejectedValue(new Error('network down'));
+    await user.click(noButton());
+    await waitFor(() => expect(failure.textContent?.trim()).not.toBe(''));
+    expect(failure).not.toHaveClass('sr-only');
+    expect(failure).toHaveClass('mt-2');
+    expect(success.textContent?.trim()).toBe('');
+    expect(success).toHaveClass('sr-only');
+
+    // A later success flips both back.
+    submitRsvp.mockResolvedValue({ id: 'rsvp-own', status: 'no', note: null });
+    await user.click(noButton());
+    await waitFor(() => expect(success.textContent?.trim()).toBe(SUCCESS_COPY));
+    expect(success).not.toHaveClass('sr-only');
+    expect(failure.textContent?.trim()).toBe('');
+    expect(failure).toHaveClass('sr-only');
+
+    expect(screen.getByRole('status')).toBe(success);
+    expect(screen.getByRole('alert')).toBe(failure);
   });
 
   it('renders the ratified copy VISIBLY — never sr-only (owner ruling 2026-09-14, arm 2)', async () => {

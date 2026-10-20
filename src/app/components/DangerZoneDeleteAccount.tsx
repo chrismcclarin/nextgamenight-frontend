@@ -95,7 +95,9 @@ const NOT_PROVISIONED_MESSAGE =
    register row, the region carries the string the dialog ALREADY says out loud, hoisted to
    one constant so the button label and the announcement cannot drift apart. Whether a
    fuller sentence is wanted here is an owner question, routed with plan 88.6-30's
-   checkpoint — not a guess taken at execution. */
+   checkpoint — not a guess taken at execution.
+   AMENDED Phase 88.6.1-22 (W008): the button now reads the constant too — until this line it
+   carried its own literal, so the "cannot drift" claim was false. */
 const DELETING_LABEL = 'Deleting…';
 
 /* DECISION Phase 88.6-30 (D1, round-3 verdict): the in-flight DELETE is BOUNDED by a
@@ -106,7 +108,8 @@ const DELETING_LABEL = 'Deleting…';
 
    THE VALUE IS DERIVED, NOT PREFERRED — it is not an owner knob. It MUST exceed the BFF's
    own `PROXY_TIMEOUT_MS` (`src/app/api/[...path]/route.ts:22`, 30s). The citation chain:
-   the BFF aborts its upstream leg at 30s (`:164-165`) and returns 504 (`:195-199`), which
+   the BFF aborts its upstream leg at 30s (`:199`, `controller.abort()`) and returns 504
+   (`:233`, `aborted ? 504 : 502`; both re-read 88.6.1-22, 2026-10-16), which
    `classifyDeleteError` maps to 'ambiguous' at the `err.status === 504` arm; a plain
    network drop rejects as a TypeError -> ApiError('network', 0) -> 'ambiguous'. So every
    SERVER-side stall is already bounded. The only case this timer can reach is a
@@ -232,15 +235,18 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
 
   /* D52 (owner ruling 2026-09-13) + D24 (outcome split): the focus targets. Each is a node
      THIS COMPONENT OWNS and holds a ref to. The Radix Content node is deliberately NOT a
-     target: `Modal` renders `DialogContent` internally (`Modal.tsx:150-192`) and forwards
-     no ref for it, and its only focus affordance — `initialFocusRef` (`:102`, `:121`,
-     `:143`) — fires on `onOpenAutoFocus` and cannot serve a mid-life `deleting` edge. A
+     target: `Modal` renders `DialogContent` internally (`Modal.tsx:266-351`, `<DialogContent`)
+     and forwards no ref for it, and its only focus affordance — `initialFocusRef` (`:141`
+     the prop, `:169` destructured, `:254` `applyInitialFocus(initialFocusRef, event)`) —
+     fires on `onOpenAutoFocus` and cannot serve a mid-life `deleting` edge. A
      `document.querySelector('[role="dialog"]')` lookup is REJECTED for the same reason
      plus its unassertability in jsdom. */
   const progressFocusRef = React.useRef<HTMLDivElement>(null);
   const confirmInputRef = React.useRef<HTMLInputElement>(null);
   const blockedLeadRef = React.useRef<HTMLParagraphElement>(null);
   const cancelActionRef = React.useRef<HTMLButtonElement>(null);
+  // The DELETE latch (88.6.1-22, D-35): see the DECISION marker at the danger action.
+  const deleteInFlightRef = React.useRef(false);
 
   const resetState = React.useCallback(() => {
     setConfirmText('');
@@ -256,8 +262,10 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
     // and leave the user with no indication of the request's outcome. The button-side
     // change alone does not make the ruling true — this modal mounts
     // `dismissable={false}`, which defeats overlay/outside dismissal but NOT Escape:
-    // `Modal.tsx:133-135` records that Radix's `onEscapeKeyDown` is INTENTIONALLY left
-    // enabled. One line closes every remaining path at once.
+    // `Modal.tsx:182-183` ("which we intentionally leave enabled") records that Radix's
+    // `onEscapeKeyDown` is INTENTIONALLY left enabled. One line closes every remaining path
+    // at once. Since 88.6.1-22 the header close also SAYS it is unavailable while
+    // deleting (`closeDisabled={deleting}` on `Modal.Header`, below).
     if (deleting) return;
     // D-33: closing invalidates any outstanding pre-flight, so a response arriving
     // after the modal is reopened cannot land in the new cycle.
@@ -293,8 +301,8 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
         // Phase 88.6-30 (T-88.6-87): the UX swallow below is unchanged, but the
         // failure is no longer invisible. AC-16/D2 keeps this at `logger.info`, and
         // T-84-01 bounds the payload to the caught error's NAME and MESSAGE — never
-        // the blockers list, and never the raw `Error` as `ctx` (`logger.ts:24` types
-        // `ctx` as a plain record). `errCtx` rather than a hand-written
+        // the blockers list, and never the raw `Error` as `ctx` (`logger.ts:31`,
+        // `info(msg: string, ctx?: Record<string, unknown>)`, types `ctx` as a plain record). `errCtx` rather than a hand-written
         // `{ name, message }` literal: spelling `message:` on the call line matches
         // `fetchErrorTreatment.test.ts`'s R1 sink pattern and would red a gate this
         // change never touched.
@@ -307,8 +315,9 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
         // CORRECTED Phase 88.6-30: this comment used to close with "and the query
         // layer already reports errors." That clause was FALSE for this path and is
         // deleted. The pre-flight is a BARE promise, not a TanStack query, so
-        // `QueryCache.onError` -> `Sentry.captureException` (`queryClient.ts:162`,
-        // wired at `:168`) never fires for it — which is why, on the app's most
+        // `QueryCache.onError` -> `Sentry.captureException` (`queryClient.ts:179`,
+        // `Sentry.captureException(error, …)`; wired at `:184-185`, `new QueryCache({ onError`)
+        // never fires for it — which is why, on the app's most
         // destructive flow, a pre-flight failure previously produced no console line,
         // no Sentry event and no user signal at all. The `logger.info` above is the
         // channel that clause wrongly claimed already existed.
@@ -322,7 +331,9 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
   }, [resetState]);
 
   const handleDelete = React.useCallback(async () => {
+    if (deleteInFlightRef.current) return;
     if (confirmText !== CONFIRM_PHRASE) return;
+    deleteInFlightRef.current = true;
     setDeleting(true);
     setFailureMessage(null);
     /* DECISION Phase 88.6-30 (D1): this signal BOUNDS A WAIT. It does NOT discard a
@@ -371,12 +382,14 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
           // a generic blocked message instead.
           setFailureMessage(BLOCKED_NO_DETAILS_MESSAGE);
         }
+        deleteInFlightRef.current = false;
         setDeleting(false);
         return;
       }
       if (outcome === 'ambiguous') {
         // Deletion may have committed server-side (or the account is already
-        // gone) — never leave a live session on a possibly-deleted account.
+        // gone) — never leave a live session on a possibly-deleted account. The
+        // DELETE latch stays HELD here, as on success: the page is navigating away.
         navigateToLogout();
         return;
       }
@@ -390,26 +403,32 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
           ? NOT_PROVISIONED_MESSAGE
           : DEFINITIVE_FAILURE_MESSAGE
       );
+      deleteInFlightRef.current = false;
       setDeleting(false);
     } finally {
       clearTimeout(bound);
     }
   }, [confirmText]);
 
-  const confirmDisabled =
-    preflightPending || deleting || confirmText !== CONFIRM_PHRASE;
+  const confirmInvalid = preflightPending || confirmText !== CONFIRM_PHRASE;
 
   /* DECISION Phase 88.6-30 (D52 piece (ii), owner ruling 2026-09-13; split by D24): an
      explicit focus move on BOTH `deleting` edges, mirroring the shipped house remedy at
-     `ConfirmDialog.tsx:166-173` (a `prev`-style ref plus an effect on the edge) rather
-     than inventing a second idiom.
+     `ConfirmDialog.tsx:181-188` (`prevPendingRef`, a `prev`-style ref plus an effect on the
+     edge) rather than inventing a second idiom.
 
-     WHY IT IS NEEDED: while `deleting`, the confirm `Input` is disabled and the danger
-     action is disabled, so the browser drops focus to `<body>` and Radix does NOT recover
-     it — a disable-induced `focusout` carries a null `relatedTarget` and
+     WHY IT WAS WRITTEN (88.6-30): while `deleting`, the confirm `Input` is disabled and the
+     danger action was disabled, so the browser dropped focus to `<body>` and Radix does NOT
+     recover it — a disable-induced `focusout` carries a null `relatedTarget` and
      `@radix-ui/react-focus-scope` returns early on null, while the Content div is
-     `tabIndex: -1`. The drop is PRE-EXISTING (`:391`'s native `disabled` is shipped code,
-     pinned byte-unchanged); this is the house fix for it.
+     `tabIndex: -1`.
+     AMENDED Phase 88.6.1-22 (D-35 / D-39): the danger action no longer drops focus — it is
+     `aria-disabled` while `deleting` (`:770`, `aria-disabled={deleting || undefined}`;
+     the gated `.btn-danger` pair, owner ruling 2026-10-16). The false->true move is KEPT
+     (owner ruling 2026-09-13): it carries focus to the only progress feedback, and it still
+     recovers the touch path where a tap does not focus the button and focus sits in the
+     confirm input, which stays natively disabled while deleting [reasoned from the code,
+     not measured on a device].
 
      THE RESTORE IS SPLIT BY OUTCOME, NOT UNCONDITIONAL (D24). An unconditional restore to
      the confirm input is a silent no-op on the blocked-with-groups outcome:
@@ -417,12 +436,12 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
      and React 18 auto-batches them into ONE commit, so `isBlocked` is already true when
      `deleting` goes false — the ternary has swapped and the confirm `Input` is unmounted.
      A freshly-rendered blocked list would arrive unfocused and unannounced. Keying on the
-     mount condition is the house idiom, not a new one: `ConfirmDialog.tsx:166-173` already
+     mount condition is the house idiom, not a new one: `ConfirmDialog.tsx:188` already
      keys on `[pending, open, typedInputRendered]`.
 
-     REJECTED for the blocked arm: minting a heading (task 3 pins `:259` as this file's
-     ONLY heading), and "or the first focusable element" — that is the group link, which
-     navigates the user OUT of the dialog mid-flow. CONSEQUENCE, not taste. The null
+     REJECTED for the blocked arm: minting a heading (task 3 pins `:468`, the
+     `Heading level={2}` line, as this file's ONLY heading), and "or the first focusable
+     element" — that is the group link, which navigates the user OUT of the dialog mid-flow. CONSEQUENCE, not taste. The null
      fallback is stated POSITIVELY as the Cancel action, which sits in `<Modal.Footer>`
      outside the ternary, is mounted on both arms, and is already required by AC-21 to
      stay focusable. */
@@ -461,33 +480,43 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
       </Button>
 
       <Modal open={open} onClose={handleClose} dismissable={false}>
-        <Modal.Header>Delete your account</Modal.Header>
+        <Modal.Header closeDisabled={deleting}>Delete your account</Modal.Header>
         <Modal.Body>
           {/* DECISION Phase 88.6-30 (D52 piece (i), owner ruling 2026-09-13; visibility
               ruled 2026-09-14): an ALWAYS-MOUNTED polite region carrying IN-FLIGHT
               PROGRESS ONLY, as a direct child of `Modal.Body` and OUTSIDE the `isBlocked`
               ternary, so it survives the ternary swapping arms mid-flow.
 
-              It is mounted EMPTY on the initial render because a region created by the
-              event it announces announces nothing (`StatusRegion.tsx:9-12`). It is VISIBLE
-              when set and `sr-only` is the RECORDED REJECTED ARM — this is the only
-              feedback a SIGHTED phone user gets during an irreversible account deletion.
-              There is no delta while idle: an empty `StatusRegion` renders nothing visible
-              (`StatusRegion.tsx:43`), and `Modal.Body` is not a `space-y-*` stack, so the
-              empty wrapper takes no margin.
+              It is mounted EMPTY on the initial render because a polite region created by
+              the event it announces announces nothing (`StatusRegion.tsx:9-17`, the
+              EMPTY-FIRST bullet). It is VISIBLE when set and `sr-only` is the RECORDED
+              REJECTED ARM — this is the only feedback a SIGHTED phone user gets during an
+              irreversible account deletion.
+              AMENDED Phase 88.6.1-22 (D-22): `sr-only` stays rejected WHILE SET; the house
+              prop (`srOnlyWhenEmpty`, `DECISION Phase 88.6.1-06`) hides only the EMPTY
+              region, and a region holding text never carries it. There is no delta while
+              idle: the empty region is `sr-only` (the prop appends it last in its `cn(…)`,
+              `StatusRegion.tsx:102-106`), so its own `mb-4` costs nothing, and `Modal.Body`
+              is not a `space-y-*` stack, so the wrapper takes no margin.
 
               IT IS NOT A SECOND FAILURE REGION and must never carry an outcome — the
               failure keeps its own single region inside the non-blocked arm below
-              (`88.6-UI-SPEC.md:555-557`, "exactly one live region per failure … Do not add
+              (`88.6-UI-SPEC.md:597-599`, "exactly one live region per failure … Do not add
               a second region"; recorded as §14 row A-31). It is ALSO the focus carrier for
               the `deleting` false->true edge, which is why the wrapper is `tabIndex={-1}`
               and holds the ref. */}
-          <div
-            ref={progressFocusRef}
-            tabIndex={-1}
-            className={deleting ? 'mb-4 focus:outline-hidden' : 'focus:outline-hidden'}
-          >
-            <StatusRegion politeness="polite" className="text-content-secondary">
+          <div ref={progressFocusRef} tabIndex={-1} className="focus:outline-hidden">
+            {/* DECISION Phase 88.6.1-22 (D-22): the 16px below a shown in-flight line moved
+                from the wrapper's conditional class onto the region itself — 0px idle (the
+                empty region is sr-only), 16px under a shown line, identical to before.
+                Chosen OVER keeping a conditional wrapper class (the per-site idiom D-22
+                retires) and OVER an unconditional wrapper margin (+16px idle at the top of
+                every open dialog). */}
+            <StatusRegion
+              politeness="polite"
+              srOnlyWhenEmpty
+              className="mb-4 text-content-secondary"
+            >
               {deleting ? DELETING_LABEL : null}
             </StatusRegion>
           </div>
@@ -606,14 +635,19 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   ALWAYS-MOUNTED assertive `StatusRegion`, converted IN PLACE.
 
                   REJECTED (1): the conditional mount it replaces —
-                  `{failureMessage && <p role="alert" …>}`. That is the exact defect
-                  `StatusRegion.tsx:9-12` names: "Screen readers announce *changes* to a
-                  live region, not the conditional mount of a new one." A definitive
-                  failure on the most consequential flow in the app was announced to
-                  nobody. The shipped remedy is verbatim at
-                  `NextGameNightCard.tsx:452-464` ("EMPTY-FIRST, ALWAYS MOUNTED … Wrapping
-                  this in `{error && …}` would make the failure silent for exactly the
-                  users who need it most. Do not add `empty:hidden` either").
+                  `{failureMessage && <p role="alert" …>}`.
+                  CORRECTED Phase 88.6.1-22 (D-42): the reason first written here — that the
+                  conditional mount was the defect the StatusRegion EMPTY-FIRST bullet named,
+                  so a definitive failure reached no screen reader — was an inference from a
+                  premise that holds for POLITE regions only. An inserted `role="alert"` that
+                  arrives with its text IS announced (ARIA 1.2 `alert`; TetraLogical 2024 incl.
+                  VoiceOver iOS — 88.6.1 research AT-4; the corrected bullet is
+                  `StatusRegion.tsx:9-17`). The always-mounted shape is KEPT for its two other
+                  reasons: node identity is assertable (the tests capture the node once), and
+                  the clear at the start of `handleDelete` followed by a set makes an identical
+                  repeat failure re-announce. The precedent, corrected the same way, is
+                  `NextGameNightCard.tsx:574-583` ("ALWAYS MOUNTED, EMPTY-FIRST. Corrected
+                  Phase 88.6.1 (D-42)").
 
                   REJECTED (2): hoisting it out of the ternary to `Modal.Body` beside the
                   polite progress region. That would stand an assertive region next to a
@@ -622,16 +656,22 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   what makes node identity assertable.
 
                   Converting IN PLACE adds NO region: this is still the ONE failure region
-                  `88.6-UI-SPEC.md:555-557` requires, now empty-first so it actually
-                  announces. The className is COLOUR-ONLY: `text-sm` is the primitive's own
-                  default (`StatusRegion.tsx:43`) and `font-medium` DELETES per
-                  `88.6-UI-SPEC.md:375`'s emphasis outcome (400 + colour), byte-identical
-                  to the ratified precedent at `NextGameNightCard.tsx:460-464`. The
-                  standing empty region's `space-y-4` top margin is ACCEPTED, not hidden —
-                  the phase accepted that cost once already (`88.6-29-PLAN.md:240`, "Do not
-                  hide it when empty either"). */}
+                  `88.6-UI-SPEC.md:597-599` requires, mounted empty-first. The className is
+                  COLOUR-ONLY: `text-sm` is the primitive's own default
+                  (`StatusRegion.tsx:103`, `'text-sm',`) and `font-medium` DELETES per
+                  `88.6-UI-SPEC.md:401`'s emphasis outcome (400 + colour), matching the
+                  ratified precedent at `NextGameNightCard.tsx:585-590` (its assertive
+                  `StatusRegion`). The standing empty region's 16px gap in the `space-y-4`
+                  stack is ACCEPTED, not hidden — the phase accepted that cost once already
+                  (`88.6-29-PLAN.md:240`, "Do not hide it when empty either").
+                  CORRECTED Phase 88.6.1-22 (D-22): under Tailwind 4 that 16px is the
+                  PREVIOUS sibling's `margin-block-end` (`space-y-4` targets
+                  `:where(& > :not(:last-child))`), so the `srOnlyWhenEmpty` prop this region
+                  now carries cannot remove it — the region stays the last child. Still
+                  ACCEPTED; the prop only hides the empty region's own box. */}
               <StatusRegion
                 politeness="assertive"
+                srOnlyWhenEmpty
                 className="text-content-status-error"
               >
                 {failureMessage}
@@ -647,23 +687,35 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
 
               CHOSEN OVER the native `disabled` attribute — which is what AC-21 literally
               said on 2026-09-09, and which `DECISION Phase 88.5`
-              (`NextGameNightCard.tsx:379-391`) would even have PERMITTED here, since that
-              split reserves `aria-disabled` for the PRESSED control and Cancel is "the
-              button nobody is standing on". It was rejected on 2026-09-13 for a reason
-              88.5 did not have to weigh: the danger action at `:391` is already natively
-              disabled while `deleting` and `Modal.tsx:151` passes `hideCloseButton`, so
-              native `disabled` on Cancel would leave this dialog with ZERO tab-reachable
-              controls during an IRREVERSIBLE account deletion, with no control to Tab back
-              to — Radix does not recover a disable-induced `focusout`, whose
-              `relatedTarget` is null. `ConfirmDialog.tsx:160-173` records the identical
-              focus drop for the same dialog class and ships the focus-restore effect this
-              file now mirrors.
+              (`NextGameNightCard.tsx:479-489`, ending `aria-disabled={isFlight || undefined}`)
+              would even have PERMITTED here, since that split reserves `aria-disabled` for
+              the PRESSED control and Cancel is "the button nobody is standing on". It was
+              rejected on 2026-09-13 because, with the danger action then natively disabled
+              while `deleting`, native `disabled` on Cancel was believed to leave this dialog
+              with ZERO tab-reachable controls during an IRREVERSIBLE account deletion —
+              Radix does not recover a disable-induced `focusout`, whose `relatedTarget` is
+              null. `ConfirmDialog.tsx:170-188` (the failed-commit restore, `prevPendingRef`)
+              records the identical focus drop for the same dialog class and ships the
+              focus-restore effect this file now mirrors.
+              CORRECTED Phase 88.6.1-22: that "ZERO tab-reachable controls" premise was false.
+              `hideCloseButton` (`Modal.tsx:267`) hides only the shadcn default close, and
+              `Modal.Header` always renders its OWN close (`Modal.tsx:421-439`,
+              `<DialogClose aria-label="Close"`), which stayed focusable. The decision to gate
+              Cancel with `aria-disabled` stands on its own reason: the control stays
+              focusable AND says it is unavailable. That header close ignored presses while
+              deleting (`handleClose` returns) without saying so — a known bug, fixed in
+              88.6.1-22 by passing `closeDisabled={deleting}` (the primitive's
+              presentation-only prop) to `Modal.Header`.
 
-              ALSO REJECTED (gated, not free): moving the danger action at `:391` to
-              `aria-disabled` too, per the strict 88.5 split. `globals.css:1310-1314`
-              records that accent and danger have NO gated arm and that a future gated
-              `.btn-danger` must mint its token pair there; that is an owner-level token
-              decision and was not taken. `:391` is byte-unchanged.
+              ALSO REJECTED (gated, not free), as written 2026-09-13: moving the danger action
+              to `aria-disabled` too, per the strict 88.5 split — the gated-token marker in
+              `globals.css` (`:1549-1592`, "Accent and danger have NO gated arm yet") said a
+              future gated `.btn-danger` must mint its token pair there, an owner-level token
+              decision that was not then taken.
+              AMENDED Phase 88.6.1-22 (D-39, owner ruling 2026-10-16): TAKEN — the gated
+              `.btn-danger` pair now exists (owner chose pair R from the 375px sample), and the
+              danger action below is `aria-disabled` while deleting (`DECISION Phase 88.6.1-22
+              (D-35 / D-39)`, `:770`).
               ALSO REJECTED: a deferred-register line, and accepting it forever —
               dismissing the modal mid-DELETE runs `resetState()` and leaves the user with
               no indication of the request's outcome.
@@ -672,14 +724,15 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               the attribute only communicates it. Same division of labour 88.5 states ("The
               re-tap it needs to block is blocked in the HANDLER instead"). `|| undefined`
               keeps the attribute ABSENT rather than `"false"` when not deleting, matching
-              `NextGameNightCard.tsx:390`'s shipped shape. No primitive change is needed:
-              `ModalActionProps` extends the native button props (`Modal.tsx:330-334`), so
-              `aria-disabled` passes through exactly as `disabled` would, and
-              `.btn-secondary[aria-disabled='true']` (`globals.css:2052-2056`) already
+              `NextGameNightCard.tsx:489`'s shipped shape. No primitive change is needed:
+              `ModalActionProps` extends the native button props (`Modal.tsx:560-561`,
+              `extends React.ButtonHTMLAttributes<HTMLButtonElement>`), so `aria-disabled`
+              passes through exactly as `disabled` would, and
+              `.btn-secondary[aria-disabled='true']` (`globals.css:2494-2498`) already
               supplies the gated look with all three tokens declared.
 
               The `handleClose` guard exists because `dismissable={false}` does NOT disable
-              Escape — `Modal.tsx:133-135` leaves Radix's `onEscapeKeyDown` enabled on
+              Escape — `Modal.tsx:182-183` leaves Radix's `onEscapeKeyDown` enabled on
               purpose. Swapping this back to `disabled` is a decision, not a cleanup. */}
           <Modal.Action
             ref={cancelActionRef}
@@ -692,13 +745,31 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
           >
             Cancel
           </Modal.Action>
+          {/* DECISION Phase 88.6.1-22 (D-35 / D-39): the danger action is the control the
+              person just pressed, so while `deleting` it carries `aria-disabled` and KEEPS
+              focus, and `handleDelete` refuses a second press on its FIRST line through
+              `deleteInFlightRef`; the VALIDITY half (`confirmInvalid`: pre-flight pending or
+              an unmatched phrase) stays native `disabled` (rule of KIND, `DECISION Phase
+              88.6-22` in `FriendInvitePanel.js`). The latch is a REF because a second
+              synchronous press dispatches before `setDeleting(true)` lands (that marker's
+              reason), and because this file's D-33 marker already rules that a
+              component-scope counter in React is a ref. It is released exactly where
+              `setDeleting(false)` runs (the blocked and definitive arms) and stays HELD on
+              the success and ambiguous arms, which navigate away — a press during that
+              navigation must stay refused. REJECTED: keeping native `disabled` — the arm
+              D52 deferred only for want of a gated colour, which D-39 minted (owner chose
+              pair R on 2026-10-16). Disclosed visible delta: while deleting, the action shows
+              the gated danger pair instead of the 50% wash. The confirm input stays natively
+              disabled while deleting: nothing submits from it (no key handler, no form), so
+              it is not the activated control. */}
           {!isBlocked && (
             <Modal.Action
               variant="danger"
               onClick={handleDelete}
-              disabled={confirmDisabled}
+              disabled={confirmInvalid}
+              aria-disabled={deleting || undefined}
             >
-              {deleting ? 'Deleting…' : 'Delete my account'}
+              {deleting ? DELETING_LABEL : 'Delete my account'}
             </Modal.Action>
           )}
         </Modal.Footer>

@@ -11,8 +11,9 @@
 //   no layout: every box is zero, so a "the slot did not change height" assertion at this level
 //   would pass on zeroes and prove nothing. It would be VACUOUS, which is worse than absent. The
 //   constant-height invariant is asserted here STRUCTURALLY — one container instance is the single
-//   height source and the three contents swap inside it — and its geometry is asserted only in the
-//   phone Playwright lane.
+//   height source and the FOUR contents (chips, bar, empty hint, failed line — the failed line
+//   since 88.6.1-14, D-28) swap inside it — and its geometry is asserted only in the phone
+//   Playwright lane (`e2e/quick-suggestions-failed.spec.ts` for the failed line).
 // - **The ruling is D4 (owner, 2026-09-14).** One slot for every member, hint inside the slot on
 //   empty, no role gate. There is no role polarity left to assert; what replaces it is an
 //   output-IDENTITY assertion across roles.
@@ -24,7 +25,7 @@ const GROUP_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
 const api = vi.hoisted(() => ({ getGroupSuggestions: vi.fn() }));
 const log = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }));
-/** Counts renders of the always-constructed modal tree — see the finger-up blast-radius pin. */
+// Counts renders of the always-constructed modal tree — see the finger-up blast-radius pin.
 const counts = vi.hoisted(() => ({ browseModal: 0 }));
 
 vi.mock('@/lib/logger', async (importOriginal) => {
@@ -61,8 +62,8 @@ type QuickSuggestionsProps = {
   duration?: number | null;
   onSelectGame?: (game: { id: string; name: string }) => void;
   eventId?: string | null;
-  /** The D4 ruling deleted the role gate; this prop is dead to the component and is passed by
-   *  ONE pin below purely to prove that passing it changes nothing. */
+  // The D4 ruling deleted the role gate; this prop is dead to the component and is passed by
+  // ONE pin below purely to prove that passing it changes nothing.
   userRole?: string | null;
 };
 const QuickSuggestions = QuickSuggestionsDefault as unknown as React.ComponentType<QuickSuggestionsProps>;
@@ -80,8 +81,15 @@ const GAMES = [
 const slot = () => screen.getByTestId('quick-suggestions-slot');
 const placeholder = () => screen.queryByTestId('quick-suggestions-placeholder');
 const emptyBox = () => screen.queryByTestId('quick-suggestions-empty');
+const failedBox = () => screen.queryByTestId('quick-suggestions-failed');
 
-/** A promise a test settles by hand — the only way to observe an in-flight fetch. */
+// Copy row H4 (D-30), shipped with the straight apostrophe (D-32 R8). The empty hint is the
+// sentence D-28 retires from the failure path: it states something the app does not know.
+const H4_FAILED_LINE = "We couldn't load suggestions.";
+const EMPTY_HINT = 'Add games to your collection to enable suggestions';
+const failure = () => new ApiError('boom', 'unknown', 500, {});
+
+// A promise a test settles by hand — the only way to observe an in-flight fetch.
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -104,7 +112,7 @@ function renderSuggestions(props: QuickSuggestionsProps = {}) {
   );
 }
 
-/** Run out the component's 500ms debounce inside `act`, so the fetch actually starts. */
+// Run out the component's 500ms debounce inside `act`, so the fetch actually starts.
 async function runDebounce() {
   await act(async () => {
     vi.advanceTimersByTime(500);
@@ -116,6 +124,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   counts.browseModal = 0;
   __resetPaintGestureActiveStore();
+  // mockReset, not only clearAllMocks: clearing keeps any UNCONSUMED once-queue, so an arm that
+  // fails before its second fetch would leak that queued value into the next arm (88.6.1-14).
+  api.getGroupSuggestions.mockReset();
   api.getGroupSuggestions.mockResolvedValue({ suggestions: [] });
 });
 
@@ -157,10 +168,10 @@ describe('QuickSuggestions — ONE slot, for every member (owner ruling D4, 2026
   });
 
   it('the SAME container instance carries all three contents, and nothing above it remounts', async () => {
-    /* THE CONSTANT-HEIGHT INVARIANT, ASSERTED STRUCTURALLY. jsdom evaluates no layout, so this is
-       the honest form of it: one element is the single height source and the contents swap
-       INSIDE it. If a future edit returns a different subtree per outcome, this identity check
-       reds — which is exactly the collapse the ruling removed. */
+    // THE CONSTANT-HEIGHT INVARIANT, ASSERTED STRUCTURALLY. jsdom evaluates no layout, so this is
+    // the honest form of it: one element is the single height source and the contents swap
+    // INSIDE it. If a future edit returns a different subtree per outcome, this identity check
+    // reds — which is exactly the collapse the ruling removed.
     const gate = deferred<{ suggestions: typeof GAMES }>();
     api.getGroupSuggestions.mockReturnValue(gate.promise);
     const { rerender } = renderSuggestions({ playerCount: 0 });
@@ -229,10 +240,10 @@ describe('QuickSuggestions — the in-flight bar tracks a REAL fetch, in both po
   });
 
   it('a commit with NO fetch possible shows the hint box, not the bar', () => {
-    /* THE `!loaded` REGRESSION PIN. The gate this replaces latched `true` synchronously at the
-       production mount — `participantCount` is 0 at the modal's fresh mount — so a bar keyed on
-       it painted where no settle was pending. This fixture IS that mount: invalid params, no
-       fetch, no bar. */
+    // THE `!loaded` REGRESSION PIN. The gate this replaces latched `true` synchronously at the
+    // production mount — `participantCount` is 0 at the modal's fresh mount — so a bar keyed on
+    // it painted where no settle was pending. This fixture IS that mount: invalid params, no
+    // fetch, no bar.
     renderSuggestions({ playerCount: 0 });
     expect(placeholder()).not.toBeInTheDocument();
     expect(emptyBox()).toBeInTheDocument();
@@ -304,28 +315,125 @@ describe('QuickSuggestions — the cancelled-generation guard covers resolve, re
 
     expect(screen.getByText('Catan')).toBeInTheDocument(); // not emptied by the stale rejection
     expect(log.error).not.toHaveBeenCalled(); // the guard is checked BEFORE the report
+    // Q7 (88.6.1-14): a superseded failure does not show the failed line either.
+    expect(screen.queryByTestId('quick-suggestions-failed')).toBeNull();
+  });
+
+  it('a SUPERSEDED failure never puts the failed line over a NEWER empty settle (88.6.1-14, Q7b)', async () => {
+    // Q7 above cannot see a stale failed write on its own: the newer run there shows chips, and
+    // chips outrank the failed kind. This arm is the one that can — the newer run settles EMPTY,
+    // so a failed flag written by the stale run (outside the generation guard) would surface the
+    // H4 line over a true empty settle.
+    const first = deferred<never>();
+    api.getGroupSuggestions
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ suggestions: [] });
+
+    const { rerender } = renderSuggestions({ playerCount: 4 });
+    await runDebounce();
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={5} duration={120} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(emptyBox()).toBeInTheDocument());
+    const settledEmpty = emptyBox();
+
+    await act(async () => {
+      first.reject(failure());
+    });
+
+    expect(emptyBox()).toBe(settledEmpty);
+    expect(failedBox()).toBeNull();
+    expect(log.error).not.toHaveBeenCalled();
   });
 });
 
 // ---------------------------------------------------------------------------
 // The real-failure report (AC-16 (a), as amended by D7 arm A).
 // ---------------------------------------------------------------------------
-describe('QuickSuggestions — a REAL failure reports, silently to the user', () => {
-  it('reports through logger.error while the rendered output stays silent', async () => {
-    api.getGroupSuggestions.mockRejectedValue(new ApiError('boom', 'unknown', 500, {}));
+describe('QuickSuggestions — a REAL failure reports, and the slot says so (D-28)', () => {
+  it('reports through logger.error and shows the H4 line, with no live region', async () => {
+    // Q1 (88.6.1-14, D-28, copy row H4). Until this plan the slot rendered the empty-collection
+    // hint on a failure — a sentence the app does not know to be true. The failed line reuses the
+    // hint's box and stays SILENT to assistive technology: no role, no aria-live (the 88.6-39
+    // rejected live region still holds — the deps re-fire on every form edit).
+    api.getGroupSuggestions.mockRejectedValue(failure());
     renderSuggestions();
     await runDebounce();
 
     await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
-    // Nothing user-facing: the settled-empty content, exactly as a zero-result fetch renders.
+    const box = failedBox();
+    expect(box).not.toBeNull();
+    expect(box!.textContent).toBe(H4_FAILED_LINE);
+    expect(emptyBox()).toBeNull();
+    expect(screen.queryByText(EMPTY_HINT)).toBeNull();
+    expect(slot().querySelectorAll('[role="alert"], [role="status"], [aria-live]')).toHaveLength(0);
+    expect(box).not.toHaveAttribute('aria-hidden');
+  });
+
+  it('the failed line reuses the hint box: same slot container, same element classes (Q2)', async () => {
+    // D-28: no new look ships (the section-failure LOOK stays with Phase 88.9). Only the words and
+    // the test id change, so the classes of the box and of its paragraph are captured from the
+    // empty hint and compared exactly.
+    const gate = deferred<never>();
+    api.getGroupSuggestions.mockReturnValue(gate.promise);
+    const { rerender } = renderSuggestions({ playerCount: 0 });
+    const container = slot();
+    const emptyClass = (emptyBox() as HTMLElement).className;
+    const emptyParagraphClass = (emptyBox() as HTMLElement).querySelector('p')!.className;
+
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={120} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    expect(placeholder()).toBeInTheDocument();
+
+    await act(async () => {
+      gate.reject(failure());
+    });
+    const box = failedBox();
+    expect(box).not.toBeNull();
+    expect(slot()).toBe(container);
+    expect(box!.className).toBe(emptyClass);
+    expect(box!.querySelector('p')!.className).toBe(emptyParagraphClass);
+  });
+
+  it('a later SUCCESS replaces the failed line with chips (Q3)', async () => {
+    api.getGroupSuggestions
+      .mockRejectedValueOnce(failure())
+      .mockResolvedValueOnce({ suggestions: GAMES });
+    const { rerender } = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    expect(failedBox()).not.toBeNull();
+
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={90} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(screen.getByText('Catan')).toBeInTheDocument());
+    expect(failedBox()).toBeNull();
+  });
+
+  it('invalid params after a failure show the empty hint, not the failed line, and fetch nothing (Q4)', async () => {
+    api.getGroupSuggestions.mockRejectedValue(failure());
+    const { rerender } = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    expect(failedBox()).not.toBeNull();
+
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={0} duration={120} onSelectGame={vi.fn()} />
+    );
     expect(emptyBox()).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(failedBox()).toBeNull();
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(1);
   });
 
   it('the PAYLOAD is a wrapped error carrying only the code and the status', async () => {
-    /* `logger.error(msg, err)` forwards whatever it is given, WHOLE, and `ApiError`'s fourth
-       constructor argument is the entire parsed response body. This pin is what keeps that body
-       out of Sentry — `sentry.scrub.js` is the second layer, not the first. */
+    // `logger.error(msg, err)` forwards whatever it is given, WHOLE, and `ApiError`'s fourth
+    // constructor argument is the entire parsed response body. This pin is what keeps that body
+    // out of Sentry — `sentry.scrub.js` is the second layer, not the first.
     const body = { details: { groupName: 'The Thursday Crew', members: ['alice@example.com'] } };
     api.getGroupSuggestions.mockRejectedValue(new ApiError('boom', 'rate_limited', 429, body));
     renderSuggestions();
@@ -345,9 +453,9 @@ describe('QuickSuggestions — a REAL failure reports, silently to the user', ()
   });
 
   it('is LATCHED — a failure across THREE consecutive dep changes reports exactly ONCE per key', async () => {
-    /* Without the latch a persistent failure files one Sentry event per debounced cycle, and the
-       effect deps re-fire on every create-event form edit — the first of which flushes a full
-       Session Replay. */
+    // Without the latch a persistent failure files one Sentry event per debounced cycle, and the
+    // effect deps re-fire on every create-event form edit — the first of which flushes a full
+    // Session Replay.
     api.getGroupSuggestions.mockRejectedValue(new ApiError('boom', 'unknown', 500, {}));
     const { rerender } = renderSuggestions({ duration: 60 });
     await runDebounce();
@@ -366,6 +474,71 @@ describe('QuickSuggestions — a REAL failure reports, silently to the user', ()
     }
 
     expect(log.error).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The first-settle rule (W030 / WR-302, D-09b).
+// ---------------------------------------------------------------------------
+// The effect sets the in-flight flag synchronously on every valid dep change, so before 88.6.1-14
+// a settled slot flipped to the grey bar on every participant or duration change — the new-user
+// empty case worst of all. After the FIRST settle the slot keeps its settled content until the
+// next settle. Each arm asserts the settled node is the SAME node (not merely present) at the
+// rerender, after the debounce, and after the re-fire settles.
+describe('QuickSuggestions — the first-settle rule (W030, D-09b)', () => {
+  it('a settled EMPTY slot keeps its hint box through a re-fire — no bar (Q5)', async () => {
+    const { rerender } = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(emptyBox()).toBeInTheDocument());
+    const settled = emptyBox();
+
+    const refire = deferred<{ suggestions: never[] }>();
+    api.getGroupSuggestions.mockReturnValue(refire.promise);
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={90} onSelectGame={vi.fn()} />
+    );
+
+    expect(placeholder()).toBeNull();
+    expect(emptyBox()).toBe(settled);
+
+    await runDebounce();
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(2);
+    expect(placeholder()).toBeNull();
+    expect(emptyBox()).toBe(settled);
+
+    await act(async () => {
+      refire.resolve({ suggestions: [] });
+    });
+    expect(emptyBox()).toBe(settled);
+  });
+
+  it('a settled FAILED slot keeps its failed line through a re-fire, then shows the new chips (Q6)', async () => {
+    api.getGroupSuggestions.mockRejectedValueOnce(failure());
+    const { rerender } = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    const settled = failedBox();
+    expect(settled).not.toBeNull();
+
+    const refire = deferred<{ suggestions: typeof GAMES }>();
+    api.getGroupSuggestions.mockReturnValue(refire.promise);
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={90} onSelectGame={vi.fn()} />
+    );
+
+    expect(placeholder()).toBeNull();
+    expect(failedBox()).toBe(settled);
+
+    await runDebounce();
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(2);
+    expect(placeholder()).toBeNull();
+    expect(failedBox()).toBe(settled);
+
+    await act(async () => {
+      refire.resolve({ suggestions: GAMES });
+    });
+    expect(screen.getByText('Catan')).toBeInTheDocument();
+    expect(failedBox()).toBeNull();
   });
 });
 
@@ -419,11 +592,11 @@ describe('QuickSuggestions — the finger-up hold, asserted over RENDERED OUTPUT
   });
 
   it('the closed BrowseMoreModal tree is NOT rebuilt across a full engage→exit cycle', async () => {
-    /* THE BLAST-RADIUS PIN. `BrowseMoreModal` has no closed-state short-circuit, so a render of
-       the OUTER component rebuilds its whole element tree — at finger-up, the frame the hold
-       exists to protect. Keeping the subscription in the inner slot-only component is what
-       contains it. The slot's OWN re-render on the exit edge is intended: that is the held
-       change landing. */
+    // THE BLAST-RADIUS PIN. `BrowseMoreModal` has no closed-state short-circuit, so a render of
+    // the OUTER component rebuilds its whole element tree — at finger-up, the frame the hold
+    // exists to protect. Keeping the subscription in the inner slot-only component is what
+    // contains it. The slot's OWN re-render on the exit edge is intended: that is the held
+    // change landing.
     const gate = deferred<{ suggestions: typeof GAMES }>();
     api.getGroupSuggestions.mockReturnValue(gate.promise);
     renderSuggestions();
@@ -482,10 +655,10 @@ describe('QuickSuggestions — the BGG thumbnail is on SafeImage', () => {
   });
 
   it("the chip's accessible name is EXACTLY the game name plus the player count, in BOTH polarities", async () => {
-    /* EXACT-STRING, never `toContain`: a substring assertion passes on
-       "Image placeholder Catan3-4p", which is precisely the regression the `aria-hidden` wrapper
-       exists to prevent — `SafeImage`'s fallback labels itself "Image placeholder" when `alt` is
-       falsy, and `aria-hidden` passed as a PROP never reaches that branch. */
+    // EXACT-STRING, never `toContain`: a substring assertion passes on
+    // "Image placeholder Catan3-4p", which is precisely the regression the `aria-hidden` wrapper
+    // exists to prevent — `SafeImage`'s fallback labels itself "Image placeholder" when `alt` is
+    // falsy, and `aria-hidden` passed as a PROP never reaches that branch.
     api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES });
     const withThumb = renderSuggestions();
     await runDebounce();
@@ -508,8 +681,8 @@ describe('QuickSuggestions — the BGG thumbnail is on SafeImage', () => {
 // ---------------------------------------------------------------------------
 describe('QuickSuggestions — both controls carry the 44px floor (UI-SPEC §3.5)', () => {
   it('the chip and "Browse more" both take min-h-11 with inline-flex', async () => {
-    /* SOURCE-LEVEL, not rendered geometry — jsdom has no layout. The rendered measurement at
-       375px lives in the phone Playwright lane. */
+    // SOURCE-LEVEL, not rendered geometry — jsdom has no layout. The rendered measurement at
+    // 375px lives in the phone Playwright lane.
     api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES });
     renderSuggestions();
     await runDebounce();

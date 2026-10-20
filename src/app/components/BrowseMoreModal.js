@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import * as Sentry from '@sentry/nextjs';
 import { suggestionsAPI } from '../../lib/api';
@@ -7,6 +7,7 @@ import GameSuggestionCard from './GameSuggestionCard';
 import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 
 /**
  * BrowseMoreModal — In-app modal that replaces the legacy standalone
@@ -43,6 +44,9 @@ const TIER_RANGES = {
   heavy: { min: 3.5, max: 5 },
 };
 
+// Copy row E8 (D-09, hoisted per D-30): the refresh line, with the single ellipsis glyph.
+const UPDATING_SUGGESTIONS = 'Updating suggestions…';
+
 function mergeTierRange(tiers) {
   if (tiers.size === 0) return null; // no filter
   const arr = [...tiers];
@@ -72,6 +76,14 @@ export default function BrowseMoreModal({
   const [sortKey, setSortKey] = useState('rating');
   const [sortDirection, setSortDirection] = useState('desc');
   const [hasEverHadResults, setHasEverHadResults] = useState(false);
+  // The first SUCCESSFUL load (D-09a's has-loaded rule). Never reset: the one mount keeps this
+  // component alive across a close and reopen, so a reopen refreshes in place.
+  const [hasLoaded, setHasLoaded] = useState(false);
+  // Whether the request behind the list on screen carried a tier filter (D11 (a)); the empty
+  // state's variant reads this settled value, never live tier state.
+  const [settledFiltersActive, setSettledFiltersActive] = useState(false);
+  // W006 latch: the class-plus-code key of the failure already reported in this episode.
+  const lastReportedKeyRef = useRef(null);
 
   // If the parent updates defaultPlayerCount (e.g., RSVP confirms during the
   // modal's lifetime) and the user hasn't typed yet, sync the input. We only
@@ -83,6 +95,12 @@ export default function BrowseMoreModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultPlayerCount]);
+
+  // A new open is a new failure episode (W006). Declared ABOVE the fetch effect on purpose:
+  // effects run in declaration order, so the latch is re-armed before the open's fetch starts.
+  useEffect(() => {
+    if (open) lastReportedKeyRef.current = null;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -118,6 +136,12 @@ export default function BrowseMoreModal({
         const items = Array.isArray(data) ? data : data?.suggestions || [];
         setSuggestions(items);
         if (items.length > 0) setHasEverHadResults(true);
+        // The closure's tiers are the ones this request was BUILT with; a superseded request
+        // never reaches this line (the cancelled check above), so this stamps the answer shown.
+        setSettledFiltersActive(selectedTiers.size > 0);
+        setHasLoaded(true);
+        // Recovery ends the failure episode (W006): the next failure files again.
+        lastReportedKeyRef.current = null;
       } catch (err) {
         if (!cancelled) {
           /* DECISION Phase 88.6-32 (R1 / T-88.6-140): the copy is DERIVED from `ApiError.code`
@@ -132,22 +156,45 @@ export default function BrowseMoreModal({
              theirs from the AC-2 `logger.error` conversion, whose `exception.values[0]` also
              carries the error's message and stack.
 
-             CLASS-ONLY, matching `FeedbackForm.js:236-240`: a wrapped Error naming the class
-             and, when present, the envelope code — never `err.message`, never the response
-             body. Widening it is a decision, not a cleanup. */
+             CLASS-ONLY, matching `FeedbackForm.js:345` (`feedback submit failed`): a wrapped
+             Error naming the class and, when present, the envelope code — never `err.message`,
+             never the response body. Widening it is a decision, not a cleanup.
+
+             AMENDED Phase 88.6.1-32 (W006, D-26): the capture is now LATCHED to one event per
+             failure episode — keyed on class plus code (the `lastReportedKeyRef` idiom of
+             `QuickSuggestions.js:313`, `lastReportedKeyRef.current !== reportKey`), re-armed
+             when the dialog opens and on a successful response — because this effect re-runs on
+             every filter tap, and during an outage it filed one event per tap (WR-106,
+             `88.6-REVIEW-2026-09-24-triaged.md:395`, `WR-106`). A different failure code is a
+             new episode. REJECTED: demoting it to a `logger.info` breadcrumb (the review's
+             first fix option and the research pick, DF-4) — this capture is an AC-16 (a)
+             escalation (owner, 2026-09-09; `88.6-32-PLAN.md:829`, `T-88.6-140`), and 88.6's D2
+             ruling keeps escalations a plan ADDED at event level (`88.6-CONTEXT.md:336`,
+             `where a plan ADDS an escalation`); a breadcrumb files nothing on its own, so an
+             outage of this endpoint would reach no operator. REJECTED: `logger.error` — it
+             forwards the error's message and stack, and this site is class-only.
+             CORRECTION of WR-106's first objection (`88.6-REVIEW-2026-09-24-triaged.md:402`):
+             the allowlist sentence above gave the wrong reason — `logger` is not `console`, so
+             the allowlist never mattered; the true reason this capture is hand-rolled is the
+             class-only payload. WR-106's second objection (`:403`) does not hold: the three
+             siblings did stay at `logger.error` as D2's AC-16 carve-out (`88.6-CONTEXT.md:328`,
+             `survives ONLY where an owner ruling requires a Sentry EVENT`). The sentences above
+             are kept as history. */
           const cls = (err && err.name) || 'Error';
           const code = err && typeof err.code === 'string' ? ` ${err.code}` : '';
-          Sentry.captureException(
-            new Error(`browse-more suggestions fetch failed: ${cls}${code}`),
-            { tags: { feature: 'suggestions', op: 'browse-more-fetch' } }
-          );
+          const reportKey = `browse-more suggestions fetch failed: ${cls}${code}`;
+          if (lastReportedKeyRef.current !== reportKey) {
+            lastReportedKeyRef.current = reportKey;
+            Sentry.captureException(new Error(reportKey), {
+              tags: { feature: 'suggestions', op: 'browse-more-fetch' },
+            });
+          }
           /* NO `fallback:` OPTION, deliberately. UI-SPEC §6.3's register holds no ratified
              string for this site, and an executor never mints user-visible copy — so the
              code-less arm takes the register's own `unknown` copy
-             (`useFetchErrorState.ts:46`) rather than a newly-authored sentence. Adding a
+             (`useFetchErrorState.ts:123`, `unknown: 'Something went wrong`) rather than a newly-authored sentence. Adding a
              fallback here means ratifying one first. */
           setError(getFetchErrorMessage(err));
-          setSuggestions([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -204,10 +251,32 @@ export default function BrowseMoreModal({
     setSortDirection('desc');
   };
 
-  const isEmpty = !loading && !error && displaySuggestions.length === 0;
-  const filtersActive = selectedTiers.size > 0;
-  const libraryEmpty = isEmpty && !filtersActive && !hasEverHadResults;
-  const filtersYieldNone = isEmpty && (filtersActive || hasEverHadResults);
+  /* DECISION Phase 88.6.1-32 (D11, owner 2026-10-13): two rulings shape these values.
+
+     D11 (b), OPTION 2 — the Browse Games exception to D-50. After a failed refresh over an
+     EMPTY result the body shows the dialog's first-load failure sentence in the keyed alert
+     paragraph, with no empty-state sentence and no empty-state button, and the slot stays
+     empty; over kept cards the slot carries it instead (D-41). Never both: one alert.
+     D-50 scope note: D-50 (a loaded-empty list keeps its empty sentence under the failure
+     notice) stays as ruled for the RF1 sites; its retained key is "the same filters", and
+     here the failed request usually carries DIFFERENT filters from the empty result, so it is
+     a first load for that key. REJECTED: D-50 as written (option 1) — the filters sentence
+     under the slot's register line states as fact something the server never answered (SPEC
+     Prohibition 2), and nothing on screen says the sentence is old. REJECTED: a blank body
+     with the slot alone carrying the line (option 3) — the body empties, the centred dialog
+     shrinks and jumps (the look D-09 exists to remove), and it says nothing option 2 lacks.
+
+     D11 (a) — the empty-state variant (library-empty vs the filters one) reads the filters of
+     the last SUCCESSFUL response, chosen OVER live tier state: a tier tap would otherwise flip
+     library-empty to the filters variant before the server answers, which breaks the
+     same-node rule a refresh in place rests on. The tier buttons and the reset keep reading
+     live tier state. Changing any of this is a decision, not a cleanup. */
+  const refreshing = hasLoaded && loading;
+  const isEmpty = displaySuggestions.length === 0;
+  const refreshError = hasLoaded && !isEmpty ? error : null;
+  const bodyError = error && (!hasLoaded || isEmpty) ? error : null;
+  const libraryEmpty = isEmpty && !settledFiltersActive && !hasEverHadResults;
+  const filtersYieldNone = isEmpty && (settledFiltersActive || hasEverHadResults);
 
   const decrementDisabled = (playerCount || 1) <= 1;
 
@@ -280,15 +349,32 @@ export default function BrowseMoreModal({
                 there is no AA violation, but it strands the phase's only two
                 un-standardised controls for the cost of one utility in a commit
                 that already opens both lines. The exemption's `why` above is about
-                SIZE, so a ring does not weaken it. */}
+                SIZE, so a ring does not weaken it.
+
+                DECISION Phase 88.6.1-32 (AC-13, D-35): the decrement's limit at 1 is
+                aria-disabled plus a FIRST-LINE guard in its handler, chosen OVER the native
+                disabled attribute — with that attribute the focused button left the focus
+                order when it reached 1, and focus fell to the page body inside the Radix
+                dialog (register MEDLOW-29) — and OVER relying on the clamp alone: with an
+                EMPTY box the clamp writes 1, which the guard refuses. This is CT-3 census row
+                22, a BOUNDARY, not an in-flight gate. The two utilities that carried the
+                disabled-state variant (the half-opacity one and the not-allowed cursor one)
+                are deleted as dead: the gated look now comes from the unlayered
+                aria-disabled rules on the .btn and .btn-secondary classes in globals.css (the
+                gated colour pair and the not-allowed cursor), so the 50% wash becomes the
+                gated colour pair — a disclosed visible delta, the same shape as every other
+                gated secondary button. No extra opacity utility is added (a double dim). The
+                32x32 exemption and the inset ring above are unchanged (88.6-32 D-10, AC-10).
+                Changing any of this is a decision, not a cleanup. */}
             <div className="flex items-center gap-1" title="Player count">
               <button
                 type="button"
-                onClick={() =>
-                  setPlayerCount((p) => Math.max(1, (p || 1) - 1))
-                }
-                disabled={decrementDisabled}
-                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                onClick={() => {
+                  if (decrementDisabled) return;
+                  setPlayerCount((p) => Math.max(1, (p || 1) - 1));
+                }}
+                aria-disabled={decrementDisabled || undefined}
+                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                 aria-label="Decrease player count"
               >
                 −
@@ -349,10 +435,10 @@ export default function BrowseMoreModal({
                      VARIANT, chosen OVER the plan's literal "keep the `bg-*` utilities on
                      `<Button className>`". Those utilities CANNOT paint on a `Button`:
                      `.btn-secondary` declares `background-color` and `color` UNLAYERED
-                     (`globals.css:2627-2631`) and an unlayered author rule beats every
+                     (`globals.css:2723`, `.btn-secondary {`) and an unlayered author rule beats every
                      `@layer utilities` rule, so `bg-btn-primary text-btn-primary-text` would be
                      dead and every pressed tier would render as an unpressed one.
-                     `.btn-primary` (`globals.css:2378-2381`) sets exactly those two properties
+                     `.btn-primary` (`globals.css:2474`, `.btn-primary {`) sets exactly those two properties
                      off exactly those two tokens, so the variant is the same paint with the
                      cascade the right way round — the same substitution plan 88.6-23 made for a
                      computed `btn ${…}` template. */
@@ -399,7 +485,7 @@ export default function BrowseMoreModal({
               {/* DECISION Phase 88.6-32 (R2): the pair's `rounded-l-btn` / `rounded-r-btn`
                   segmented shape is DELETED with the migration rather than carried onto
                   `<Button className>`. Those utilities are DEAD on any `.btn` element —
-                  unlayered `.btn` sets the `border-radius` SHORTHAND (`globals.css:2199`) and
+                  unlayered `.btn` sets the `border-radius` SHORTHAND (`globals.css:2295`, `border-radius: 8px` in `.btn {`) and
                   beats the `@layer utilities` longhands — so today they paint only in the
                   ACTIVE state, which is the one state that carries no `.btn`. The pair has
                   therefore been rendering half-segmented and half-pill all along; the
@@ -428,13 +514,72 @@ export default function BrowseMoreModal({
               </div>
             </div>
           </div>
+
+          {/* DECISION Phase 88.6.1-32 (D-09, D-41, copy row E8): after the first SUCCESSFUL load
+              (hasLoaded) a refresh happens IN PLACE — the previous cards or the settled empty
+              state stay as the same nodes, the results wrapper below is aria-busy, and copy
+              row E8 goes into the polite region here. A failed refresh over kept cards puts the
+              register's line (the failure code's own sentence, no fallback) into the assertive
+              sibling region and keeps the cards. Both regions are always mounted, never nested,
+              in one reserved line that is the LAST row of this sticky toolbar, so the busy line
+              appears and clears without moving the dialog.
+              REJECTED, each with its reason: the slot in the scrolling body (it scrolls out of
+              view when the user has scrolled down the grid — exactly when they change a sort);
+              dimming old rows (a look option, Phase 88.9 per
+              D-09); a spinner (no house spinner primitive, SPEC amendment row 3); aria-busy on a
+              live region (RESEARCH A3 — it sits on the results wrapper only); reserving two
+              lines for a wrapped failure line (20px more permanent blank space on a 667px phone;
+              at 375px a refresh FAILURE may grow the toolbar by one line, while the busy
+              transition, which happens on every tap, never moves); counting a failed first load
+              as settled (nothing to keep, and a stale failure beside the busy line contradicts
+              itself — the D-09a has-loaded rule); clearing the list on a failed refresh (D-41).
+              Also: the first-load failure paragraph in the body is an alert per D-42 (an alert
+              inserted with its text is announced), and the assertive region here stays empty in
+              that state so nothing is said twice. The two body paragraphs (the failure one and
+              the first-load one) carry DISTINCT keys, and the keys are load-bearing for D-42:
+              without them React reuses the first-load node and switches its role and text in
+              place, which is not an inserted alert (r1 A3). In every state at most one alert
+              element contains the failure line; whenever the body carries it, the assertive
+              region here is empty (r1 D9).
+              AMENDED Phase 88.6.1-64 (D-22): plan 32 first REJECTED D-22's srOnlyWhenEmpty prop
+              here, believing it collapses an empty region to zero height so the dialog would move
+              the instant E8 appears. The code shows otherwise: the reserved line is THIS wrapper's
+              min-h-5, and StatusRegion adds only text-sm plus caller classes, so an sr-only empty
+              region costs the line nothing and E8 / the failure line still appear without moving
+              the dialog. Both regions now take the prop (AC-26 census findings AC26c-09/10, D-22's
+              one empty-region shape). Containing block for the sr-only regions: the sticky
+              (positioned) toolbar, inside the dialog's own clip. Changing any of this is a
+              decision, not a cleanup. */}
+          <div data-testid="browse-more-status" className="mt-2 min-h-5">
+            <StatusRegion
+              message={refreshing ? UPDATING_SUGGESTIONS : ''}
+              className="text-content-muted"
+              srOnlyWhenEmpty
+            />
+            <StatusRegion
+              politeness="assertive"
+              message={refreshError || ''}
+              className="text-content-status-error"
+              srOnlyWhenEmpty
+            />
+          </div>
         </div>
 
-        <div className="p-4">
-          {loading ? (
-            <p className="text-content-muted text-center py-12">Loading suggestions...</p>
-          ) : error ? (
-            <p className="text-content-status-error text-center py-12">{error}</p>
+        <div
+          data-testid="browse-more-results"
+          aria-busy={loading || undefined}
+          className="p-4"
+        >
+          {bodyError ? (
+            <p
+              key="browse-more-failure"
+              role="alert"
+              className="text-content-status-error text-center py-12"
+            >
+              {bodyError}
+            </p>
+          ) : !hasLoaded ? (
+            <p key="browse-more-first-load" className="text-content-muted text-center py-12">Loading suggestions...</p>
           ) : libraryEmpty ? (
             <EmptyState
               variant="library-empty"
@@ -479,7 +624,7 @@ function EmptyState({ variant, onAddGames, onResetFilters }) {
             text-sm` are dead under unlayered `.btn` and are deleted; `Slot` concatenates the
             child's className WITHOUT tailwind-merge, so any surviving utility goes on
             `<Button className>`, never on the `<Link>`. Shipped precedent:
-            `GroupLibrary.js:184`. */}
+            `GroupLibrary.js:194` (`Button asChild`). */}
         <Button asChild variant="primary">
           <Link href="/userProfile" onClick={onAddGames}>
             Add games to your collection

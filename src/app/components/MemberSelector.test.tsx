@@ -28,6 +28,7 @@ const MemberSelector = MemberSelectorDefault as unknown as ComponentType<{
   selectedMemberIds: string[];
   onSelectAllMembers: (checked: boolean) => void;
   error?: string | null;
+  errorKey?: number;
 }>;
 
 const ANN_SUB = 'auth0|ann';
@@ -46,7 +47,15 @@ const members = [
 // Harness: real react-hook-form control seeded with a given selected_member_ids
 // value, plus a live JSON readout of the field so tests can assert the emitted
 // (written) value after a click.
-function Harness({ initial }: { initial: string[] }) {
+function Harness({
+  initial,
+  error,
+  errorKey,
+}: {
+  initial: string[];
+  error?: string;
+  errorKey?: number;
+}) {
   const { control, watch } = useForm<{ selected_member_ids: string[] }>({
     defaultValues: { selected_member_ids: initial },
   });
@@ -58,6 +67,8 @@ function Harness({ initial }: { initial: string[] }) {
         control={control}
         selectedMemberIds={selectedMemberIds}
         onSelectAllMembers={() => {}}
+        error={error}
+        errorKey={errorKey}
       />
       <div data-testid="emitted">{JSON.stringify(selectedMemberIds)}</div>
     </>
@@ -133,5 +144,42 @@ describe('MemberSelector — label fallback never renders a raw identifier (PR2-
     expect(screen.getByRole('checkbox', { name: 'Member' })).toBeInTheDocument();
     expect(screen.queryByText(CARL_UUID)).not.toBeInTheDocument();
     expect(screen.queryByText('auth0|carl')).not.toBeInTheDocument();
+  });
+});
+
+// Plan 88.6.1-26 (Requirement 8, register deferred/phase-88.6.1.md:344). The error paragraph was a
+// plain, unassociated <p>: never announced and not tied to the group it describes. It now takes
+// the FormField shape D-42 keeps — a conditional role="alert" with an id, and the group's
+// aria-describedby pointing at it only while it renders. No scheduleSchema rule emits a message
+// at selected_member_ids today, so the fixture text below is a test string, not shipped copy.
+describe('MemberSelector — the member error is announced and tied to its group (88.6.1-26, Req 8)', () => {
+  const FIXTURE_ERROR = 'Choose at least one member';
+
+  it('M1: an error renders as an alert with id member-selector-error and describes the group', () => {
+    render(<Harness initial={[]} error={FIXTURE_ERROR} />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveAttribute('id', 'member-selector-error');
+    expect(alert).toHaveTextContent(FIXTURE_ERROR);
+    const group = screen.getByRole('group', { name: 'Send to Members' });
+    expect(group).toHaveAttribute('aria-describedby', 'member-selector-error');
+    expect(group).toHaveAccessibleDescription(FIXTURE_ERROR);
+  });
+
+  // CONFIRM-ONLY (the inverse): no error, no alert, no dangling association.
+  it('M2: without an error there is no alert and the group has no aria-describedby', () => {
+    render(<Harness initial={[]} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Send to Members' })).not.toHaveAttribute('aria-describedby');
+  });
+
+  // Carry-in (the FormField errorKey idiom): a bumped per-verdict key re-inserts an IDENTICAL error.
+  it('M3: bumping errorKey with an identical error re-mounts the alert; the same key keeps it', () => {
+    const { rerender } = render(<Harness initial={[]} error={FIXTURE_ERROR} errorKey={1} />);
+    const first = screen.getByRole('alert');
+    rerender(<Harness initial={[]} error={FIXTURE_ERROR} errorKey={2} />);
+    const second = screen.getByRole('alert');
+    expect(second).not.toBe(first);
+    rerender(<Harness initial={[]} error={FIXTURE_ERROR} errorKey={2} />);
+    expect(screen.getByRole('alert')).toBe(second);
   });
 });

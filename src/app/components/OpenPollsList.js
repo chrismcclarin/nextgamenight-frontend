@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { promptAPI } from '../../lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
+import { collapseBlankLines } from '../../lib/collapseBlankLines';
 import {
   openPromptsSchema,
   softFailPromptQueryFn,
@@ -14,8 +15,17 @@ import StartPollModal from './StartPollModal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { toast } from 'sonner';
+
+// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
+// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
+// notices that share its page are told apart by ear — in the region and in the Retry's
+// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
+// visible heading (the review's lead): the ruling fixed short names per page.
+// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
+const OPEN_POLLS_SECTION_NAME = 'Open polls';
 
 /**
  * OpenPollsList — Phase 71.2 (POLL-01 / D-UI-01..04)
@@ -33,9 +43,16 @@ import { toast } from 'sonner';
  * @param {string} props.userRole - 'owner' | 'admin' | 'member' | 'pending'
  * @param {string} [props.currentUserDbId] - Caller's User.id UUID (currently
  *   informational; the can_close gate is server-derived in the response).
+ * @param {{ current: HTMLElement | null }} [props.focusFallbackRef] - Where focus goes after an
+ *   ended check-in's row leaves the DOM (Phase 88.6.1-29, H4): the host's own expand control.
+ *   When omitted, the shared focus-recovery hook floors to the page (`main h1`, plan 88.6.1-04).
  */
-export default function OpenPollsList({ groupId, group, userRole, currentUserDbId }) {
+export default function OpenPollsList({ groupId, group, userRole, currentUserDbId, focusFallbackRef }) {
   const [showStartPoll, setShowStartPoll] = useState(false);
+  // Req 4 in-flight latch, keyed per check-in id: the ref refuses synchronously, the state
+  // renders the End item's `ariaDisabled`. See DECISION Phase 88.6.1-29 (Req 4) above handleClose.
+  const closingPromptIdsRef = useRef(new Set());
+  const [closingPromptIds, setClosingPromptIds] = useState(() => new Set());
   const queryClient = useQueryClient();
 
   // Phase 84 (PRIM-07 / D-12): open prompts via useQuery on the shared promptKeys
@@ -57,14 +74,23 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
   const { data, isPending } = openPollsQuery;
   const loading = isPending;
   const prompts = data?.prompts || [];
+  // 88.6.1-70 contract C3: DATA PRESENCE, never a count (the Section badge's `hasRetainedOpenData`
+  // rule) — a list that loaded EMPTY is retained content too (owner ruling Y, D-50).
+  const hasRetainedPollsData = data !== undefined;
 
   /* DECISION Phase 88-18 (Req 6 / T-88-18-01, UI-SPEC 9.2): a HARD fetch failure now renders the
      shared fetch-error treatment instead of falling through to the empty state. `softFailPromptQueryFn`
      only soft-fails a PARSE failure to EMPTY_OPEN_PROMPTS — a network/4xx/5xx rejection still rejects,
      leaving `data` undefined and `prompts` at [], which used to print "no active check-ins" at someone
      whose request had failed. Empty and failed are different facts and get different surfaces; do not
-     re-merge these two branches. */
+     re-merge these two branches.
+     AMENDED Phase 88.6.1-75 (AC-29): a failure with data RETAINED now renders plan 88.6.1-70's RF1
+     notice above that data, and the full banner only when nothing is retained (a first load, or an
+     access or gone answer — plan 70's C10, through `useRetainedContent`). Empty and failed are still
+     never merged: the empty state renders only when a SUCCESSFUL fetch returned zero. */
   const pollsErrorState = useFetchErrorState(openPollsQuery);
+  const pollsRetained = useRetainedContent(hasRetainedPollsData, pollsErrorState, { queryKey: promptKeys.openPolls(groupId) });
+  const focusRecovery = useFocusRecovery({ fallback: focusFallbackRef });
 
   // Post-write cache invalidation replaces the old loadPrompts() refetch — keeps
   // the open-polls list fresh after a direct-API write (A1/A4).
@@ -77,7 +103,41 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
   // positive role allowlist.
   const canCreate = userRole && userRole !== 'pending';
 
+  /* DECISION Phase 88.6.1-29 (D-04, D-05, H4): ending a check-in arms plan 88.6.1-04's ONE shared
+     focus-recovery hook at the START of this handler, with the host's own expand control (the
+     Check-ins `role="button"` header, passed down as `focusFallbackRef`) as the fallback. The hook
+     acts only once the ended row has left the DOM and only if focus was lost with it; without the
+     prop it floors to the page `<h1>` (plan 04's floor). REJECTED, each for its reason:
+     (a) a heading minted for Check-ins: D-05 forbids it, and the Section's own note keeps the title
+         a span;
+     (b) a fallback prop on KebabMenu: D-04 forbids it, and so does KebabMenu's own restore marker;
+     (c) focusing after the refresh await resolves: TanStack commits the removal a macrotask after
+         that (RESEARCH M-2.1, P-6), so focus would leave a row still on screen; the ordering arm of
+         PromptScheduleSection.test.tsx shows that RED;
+     (d) the next row's kebab trigger as `preferred`: D-05 names the expand control, whose
+         accessible name carries the live count badge, so landing there announces the outcome; a
+         next-row target announces only "Check-in actions";
+     (e) the planning page's "Availability Polls" heading: it lies outside this component, and D-05
+         names the section's own control.
+     Changing the target is a decision, not a cleanup. */
+  /* DECISION Phase 88.6.1-29 (Req 4, DECISION 88.6-22 rule of POSITION): one End request per
+     check-in while the first is in flight. Before this, a re-commit from a re-opened menu sent a
+     second PATCH, whose outcome was the backend's 409 and then the ratified "already closed" toast.
+     The real order of refusal: while the request is in flight the End item carries
+     `aria-disabled` through KebabMenu's shipped per-item `ariaDisabled` flag, and KebabMenu's
+     handler refusal of a flagged item (`if (item.ariaDisabled) return;`) runs before its two-tap
+     commit, so that is what refuses a re-commit from a re-opened menu. The per-id ref latch checked
+     on the first line below is defense-in-depth for any caller of handleClose that bypasses that
+     refusal; it refuses synchronously, and a refused commit does not re-arm the focus hook.
+     REJECTED: the native `disabled` attribute (88.6-16 and 88.6-22: a natively disabled focused
+     control blurs to `<body>`, and the focus hook would then read the user as having moved on).
+     REJECTED: no guard, which leaves a concurrent double close to the backend.
+     Removing either half is a decision, not a cleanup. */
   const handleClose = async (promptId) => {
+    if (closingPromptIdsRef.current.has(promptId)) return;
+    const settle = focusRecovery.arm();
+    closingPromptIdsRef.current.add(promptId);
+    setClosingPromptIds((prev) => new Set(prev).add(promptId));
     try {
       await promptAPI.closePrompt(promptId);
       // Backend has already flipped status to 'closed'; invalidate so the
@@ -117,10 +177,20 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
           },
         })
       );
+    } finally {
+      settle();
+      closingPromptIdsRef.current.delete(promptId);
+      setClosingPromptIds((prev) => {
+        const next = new Set(prev);
+        next.delete(promptId);
+        return next;
+      });
     }
   };
 
-  const showEmptyState = !loading && !pollsErrorState.showError && prompts.length === 0;
+  // A retained EMPTY list under the RF1 notice is still the empty state, so the 88-18 header-CTA rule
+  // below keeps exactly one start-a-check-in CTA (header or empty state) in every state.
+  const showEmptyState = !loading && (!pollsErrorState.showError || pollsRetained) && prompts.length === 0;
 
   return (
     <div>
@@ -142,49 +212,88 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
         </Button>
       )}
 
+      {/* DECISION Phase 88.6.1-75 (AC-29 / RF1): a failed REFRESH over check-ins that loaded keeps
+          them on screen under plan 88.6.1-70's shared RefreshFailedNotice (copy row RF1, its
+          REFRESH_FAILED_NOTICE constant, plus a Retry) — owner ruling 2026-10-05 (D-47) and the
+          orchestrator's consistency decision that every retained-content site uses it. Three arms,
+          one failure surface per state: loading; the FULL banner only when nothing is retained (a
+          first load, or an access or gone answer), checked before the empty state; otherwise the
+          notice, mounted unconditionally in that arm, above the list or above the empty state a
+          SUCCESSFUL fetch returned.
+          REJECTED: (a) the FULL banner above the retained list — plan 88.6.1-29's earlier-lap choice
+          (the D-09a / D-41 shape): its title says the check-ins could not be loaded above check-ins
+          that did load, which contradicts the screen; (b) the compact banner — both of its sentences
+          (plan 21's compact notice and its after-failed-retry line) are about personal controls and
+          are false for a list refresh; (c) the banner REPLACING the list (what shipped before this),
+          which hid rows the Section's badge still counts; (d) retention keyed on a non-zero count —
+          the r3 #14 trap, a successful empty list would blank (owner ruling Y: a list that loaded
+          empty is retained content); (e) the notice over rows after a 401 / 403 refetch, or a local
+          list of access codes — plan 70's useRetainedContent decides (C10), so the full banner says
+          why and the rows are withdrawn until a success.
+          Retention is DATA PRESENCE (`hasRetainedPollsData`, the Section badge's rule) passed through
+          plan 70's useRetainedContent with this query's own key (`pollsRetained`, so the access memory
+          outlives a remount); the notice's focus target is the Section's expand control
+          (`focusFallbackRef`, D-05 — no heading is minted).
+          C12: plan 70's RetainedContentFocusGuard sits right here, before the ternary and outside
+          every arm, with the same target, so a row control that held focus when an access answer
+          withdrew the rows hands it to the expand control, never the page body; the notice's own
+          Retry is plan 70's. Changing this is a decision, not a cleanup. */}
+      <RetainedContentFocusGuard retained={pollsRetained} focusTarget={focusFallbackRef} />
       {loading ? (
         <p className="text-content-muted text-sm py-4 text-center">Loading check-ins...</p>
-      ) : pollsErrorState.showError ? (
+      ) : pollsErrorState.showError && !pollsRetained ? (
         <FetchErrorBanner
           state={pollsErrorState}
           title="We couldn't load the check-ins"
           reportContext="Open availability check-ins list (group page)"
         />
-      ) : prompts.length === 0 ? (
-        // D-UI-03: unified empty-state COPY for ALL roles (admin/member alike);
-        // only the CTA is role-gated, and that gate stays here at the call site.
-        <EmptyState
-          icon="Vote"
-          heading="No check-ins running"
-          body="Start one and everyone picks the nights that work — you'll see the overlap."
-          action={
-            canCreate ? (
-              /* The per-CTA `min-h-11` this used to carry is DROPPED, in the same commit as
-                 the header button's `<Button>` migration above — the D-36 marker's own last
-                 clause says that is when it becomes correct, because the cva base now supplies
-                 the 44px floor at EVERY viewport (88.6-06 D-09). Both CTAs are the same action
-                 and still the same touch target; what changed is where the floor comes from.
-                 The floor itself is NOT optional here — see that marker. */
-              <Button
-                variant="primary"
-                onClick={() => setShowStartPoll(true)}
-              >
-                + Start a check-in
-              </Button>
-            ) : undefined
-          }
-        />
       ) : (
-        <ul className="space-y-2">
-          {prompts.map((p) => (
-            <OpenPollCard
-              key={p.id}
-              prompt={p}
-              group={group}
-              onClose={handleClose}
+        <>
+          <RefreshFailedNotice
+            state={pollsErrorState}
+            retained={pollsRetained}
+            focusTarget={focusFallbackRef}
+            className="mb-4"
+            sectionName={OPEN_POLLS_SECTION_NAME}
+          />
+          {prompts.length === 0 ? (
+            // D-UI-03: unified empty-state COPY for ALL roles (admin/member alike);
+            // only the CTA is role-gated, and that gate stays here at the call site.
+            <EmptyState
+              icon="Vote"
+              heading="No check-ins running"
+              body="Start one and everyone picks the nights that work — you'll see the overlap."
+              action={
+                canCreate ? (
+                  /* The per-CTA `min-h-11` this used to carry is DROPPED, in the same commit as
+                     the header button's `<Button>` migration above — the D-36 marker's own last
+                     clause says that is when it becomes correct, because the cva base now supplies
+                     the 44px floor at EVERY viewport (88.6-06 D-09). Both CTAs are the same action
+                     and still the same touch target; what changed is where the floor comes from.
+                     The floor itself is NOT optional here — see that marker. */
+                  <Button
+                    variant="primary"
+                    onClick={() => setShowStartPoll(true)}
+                  >
+                    + Start a check-in
+                  </Button>
+                ) : undefined
+              }
             />
-          ))}
-        </ul>
+          ) : (
+            <ul className="space-y-2">
+              {prompts.map((p) => (
+                <OpenPollCard
+                  key={p.id}
+                  prompt={p}
+                  group={group}
+                  closing={closingPromptIds.has(p.id)}
+                  onClose={handleClose}
+                />
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       <StartPollModal
@@ -217,7 +326,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
  * Backend re-validates on PATCH (defense in depth) so a forged client-side
  * flag still fails with 403 — see threat T-71.2-11 in plan.
  */
-function OpenPollCard({ prompt, group, onClose }) {
+function OpenPollCard({ prompt, group, closing, onClose }) {
   const isAuto = !!prompt.created_by_settings_id;
 
   // Note: Plan 01 named the include attribute `template_name` (the actual
@@ -271,9 +380,20 @@ function OpenPollCard({ prompt, group, onClose }) {
             Deadline: {deadlineDisplay}
           </p>
         )}
+        {/* DECISION Phase 88.6.1-29 (R10 / AC-31, shared rule 12): `whitespace-pre-line` +
+            `wrap-anywhere`, the one pair decided for all five R10 sites so that plans 29, 38 and 52
+            agree, so a check-in note keeps the line breaks people type. REJECTED:
+            `whitespace-pre-wrap` (it keeps runs of spaces and leading indentation, which a note does
+            not need, and the five sites must not diverge). REJECTED: splitting the text into line
+            elements or rendering markup (SPEC Constraint: user text renders as text only).
+            CHOSEN as well (owner ruling #115, 2026-10-13): the value passes through plan
+            88.6.1-84's shared `collapseBlankLines`, so a run of three or more breaks renders as one
+            blank line, OVER rendering every break as typed (a flood of blank lines pushes the card
+            off a phone screen) and OVER a server cap (it would change stored text); the stored
+            message is untouched. Removing the call is a decision, not a cleanup. */}
         {prompt.custom_message && (
-          <p className="text-sm text-content-secondary mt-2 italic">
-            &ldquo;{prompt.custom_message}&rdquo;
+          <p className="text-sm text-content-secondary mt-2 italic whitespace-pre-line wrap-anywhere">
+            &ldquo;{collapseBlankLines(prompt.custom_message)}&rdquo;
           </p>
         )}
       </div>
@@ -287,6 +407,7 @@ function OpenPollCard({ prompt, group, onClose }) {
               danger: true,
               twoTap: true,
               confirmLabel: 'Tap again to end',
+              ariaDisabled: closing,
               onClick: () => onClose(prompt.id),
             },
           ]}

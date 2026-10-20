@@ -58,10 +58,13 @@ vi.mock('@/lib/api', async (importOriginal) => {
     promptAPI: {
       ...actual.promptAPI,
       getOpenPrompts: vi.fn(async () => ({ prompts: [] })),
+      closePrompt: vi.fn(async () => ({})),
     },
   };
 });
 
+import { act, within } from '@testing-library/react';
+import { promptAPI, ApiError } from '@/lib/api';
 import PromptScheduleSection from './PromptScheduleSection';
 
 const anyProps = (p: Record<string, unknown>): any => p;
@@ -151,5 +154,110 @@ describe('PromptScheduleSection collapsed panel (AC-7)', () => {
     // The name comes from the "Check-ins" span plus the badge; the svg never contributed to
     // it, so `keyboardOperability.test.tsx`'s `{ name: /check-ins/i }` is undisturbed.
     expect(header()).toHaveAccessibleName(/check-ins/i);
+  });
+});
+
+// Plan 88.6.1-29 task 1 (H4, D-04, D-05): the host arms the shared focus-recovery hook, and the
+// Check-ins expand control is the fallback. Every comment in this block is a `//` line (CF-9).
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const checkIn = (id: string, username: string) => ({
+  id,
+  can_close: true,
+  custom_message: null,
+  Creator: { id: `u-${id}`, username },
+});
+const ROW_A = checkIn('pa', 'Ana');
+const ROW_B = checkIn('pb', 'Ben');
+
+// Open row A's kebab and two-tap "End check-in", scoped to the list its trigger names through
+// aria-controls (the house idiom, prompts.invalidation.test.tsx `GAP13: closing a poll`).
+function endCheckIn(trigger: HTMLElement) {
+  fireEvent.click(trigger);
+  const list = document.getElementById(trigger.getAttribute('aria-controls') as string);
+  expect(list, 'the kebab names its open list through aria-controls').not.toBeNull();
+  fireEvent.click(within(list as HTMLElement).getByRole('button', { name: 'End check-in' }));
+  fireEvent.click(within(list as HTMLElement).getByRole('button', { name: 'Tap again to end' }));
+}
+
+describe('Check-ins: ending a check-in keeps focus off <body> (H4, D-04, D-05)', () => {
+  it('T1. focus lands on the expand control only AFTER the ended row leaves the DOM', async () => {
+    const refetch = deferred<{ prompts: unknown[] }>();
+    const close = deferred<unknown>();
+    vi.mocked(promptAPI.getOpenPrompts)
+      .mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never)
+      .mockImplementationOnce(() => refetch.promise as never);
+    vi.mocked(promptAPI.closePrompt).mockImplementationOnce(() => close.promise as never);
+
+    renderSection({ defaultExpanded: true });
+    await screen.findByText('Started by Ana');
+    const triggerA = screen.getAllByRole('button', { name: 'Check-in actions' })[0];
+
+    endCheckIn(triggerA);
+    // KebabMenu's commit restores focus to the row's own trigger.
+    expect(document.activeElement).toBe(triggerA);
+
+    await act(async () => {
+      close.resolve({});
+    });
+    // The close resolved but the refetch is still held: the row is on screen, so focus stays.
+    expect(document.activeElement).toBe(triggerA);
+    expect(document.activeElement).not.toBe(header());
+
+    await act(async () => {
+      refetch.resolve({ prompts: [ROW_B] });
+    });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(header());
+      expect(screen.queryByText('Started by Ana')).toBeNull();
+    });
+    // Focusing the expand control must not toggle the section.
+    expect(header()).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('T2. a failed end moves nothing: the row stays and its trigger keeps focus', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never);
+    vi.mocked(promptAPI.closePrompt).mockImplementationOnce(async () => {
+      throw new ApiError('x', 'internal', 500);
+    });
+
+    renderSection({ defaultExpanded: true });
+    await screen.findByText('Started by Ana');
+    const triggerA = screen.getAllByRole('button', { name: 'Check-in actions' })[0];
+
+    endCheckIn(triggerA);
+    await act(async () => {});
+    await act(async () => {});
+
+    // Asserted synchronously after the flush, never inside waitFor (CF-26).
+    expect(screen.getByText('Started by Ana')).toBeInTheDocument();
+    expect(document.activeElement).toBe(triggerA);
+  });
+});
+
+// Plan 88.6.1-29 task 3: W018 (Req 11, WR-205) and copy row G4 (Req 12).
+describe('Check-ins panel classes and loading badge (W018, G4)', () => {
+  it('W1. the expanded panel carries mt-3 alone; every animation-era class is gone', async () => {
+    renderSection({ defaultExpanded: true });
+    await screen.findByRole('button', { name: '+ Start a check-in' });
+    // useId ids contain colons, so the panel is resolved by id, never by a CSS selector.
+    const panel = document.getElementById(header().getAttribute('aria-controls') as string);
+    expect(panel, 'aria-controls must resolve to the panel').not.toBeNull();
+    expect((panel as HTMLElement).className).toBe('mt-3');
+  });
+
+  it('G1. while the open-polls query is pending, the badge says what is loading', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockImplementationOnce(() => new Promise(() => {}) as never);
+    renderSection({ defaultExpanded: false });
+    expect(within(header()).getByText('Loading check-ins...')).toBeInTheDocument();
+    expect(header()).toHaveAccessibleName(/Loading check-ins\.\.\./);
   });
 });

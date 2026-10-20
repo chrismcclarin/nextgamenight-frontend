@@ -7,13 +7,14 @@
 // each arm CAPTURES the region before the flip and asserts on the SAME captured element after.
 // Re-querying after the flip degrades the test back to presence and is deliberately avoided.
 //
-// A bare `getByRole('status')` is also FORBIDDEN here: `AvailabilityForm` renders its own
-// always-mounted `sr-only` `StatusRegion` (`useConfirmAction`'s `statusNode`), so the READY
-// render legitimately carries TWO. The page-level one is addressed by its `data-testid`.
+// A bare `getByRole('status')` is also FORBIDDEN here: READY carries FOUR always-mounted status
+// regions — the page's own, and three from the form: its confirm region (`useConfirmAction`'s
+// `statusNode`), its pre-fill outcome region (plan 88.6.1-26) and the grid's selection summary
+// (plan 88.6.1-39). Each is addressed by its `data-testid`, or counted on purpose.
 //
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,21 +26,36 @@ vi.mock('next/navigation', () => ({
 }));
 
 /**
- * A stand-in for the real form. It is NOT a convenience: the real `AvailabilityForm` renders its
- * own always-mounted `StatusRegion`, and this stub renders one too — so the "two `role=status`
- * nodes coexist on READY" property the page's marker records is REPRODUCED here rather than
- * mocked away. The submit button is what drives `onSuccess`.
+ * A stand-in for the real form. It is NOT a convenience: the real `AvailabilityForm` renders
+ * THREE always-mounted `StatusRegion`s (its confirm region, its pre-fill outcome region and the
+ * grid's selection summary), and this stub renders three too — so the "four `role=status` nodes
+ * coexist on READY" property the page's marker records is REPRODUCED here rather than mocked
+ * away (in order: the confirm region, then stand-ins for the pre-fill outcome region and the
+ * grid's summary, the last two added by plan 88.6.1-39). The submit button is what drives
+ * `onSuccess`.
+ * The real form is rendered on demand (`formMode.real`) for the arms that count or drive the
+ * grid's region.
  */
-vi.mock('@/app/components/AvailabilityForm', () => ({
-  default: ({ onSuccess }: { onSuccess: (r: unknown) => void }) => (
+const formMode = vi.hoisted(() => ({ real: false }));
+vi.mock('@/app/components/AvailabilityForm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/app/components/AvailabilityForm')>();
+  const RealForm = actual.default as unknown as React.ComponentType<Record<string, unknown>>;
+  function AvailabilityFormSwitch(props: Record<string, unknown>) {
+    if (formMode.real) return <RealForm {...props} />;
+    const { onSuccess } = props as { onSuccess: (r: unknown) => void };
+    return (
     <div>
+      <div role="status" aria-live="polite" className="sr-only" />
+      <div role="status" aria-live="polite" className="sr-only" />
       <div role="status" aria-live="polite" className="sr-only" />
       <button type="button" onClick={() => onSuccess({ isUnavailable: false, slotCount: 3 })}>
         Submit availability
       </button>
     </div>
-  ),
-}));
+    );
+  }
+  return { ...actual, default: AvailabilityFormSwitch };
+});
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
@@ -402,6 +418,17 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
     ).toBe(true);
     expect(screen.getByText(ORGANIZER_GUIDANCE)).toBeInTheDocument();
   });
+
+  // 88.6.1-23 R3-M7/M9 (P2): only the backend's token_invalid code is a dead link. A 400 with any
+  // other code is a failed request and renders the register's validation line, never "Link No
+  // Longer Valid" or the organizer guidance. RED before the fix (the 400 resolved into the
+  // invalid-link branch).
+  it('P2: a 400 that is not token_invalid renders the failed-request heading over the validation line', async () => {
+    vi.stubGlobal('fetch', respond(400, '{"code":"validation","message":"Bad input"}'));
+    await useRealValidate();
+    render(<AvailabilityFormPage />);
+    await expectFailedRequest('Something looks off with that request. Refresh the page to try again.');
+  });
 });
 
 describe('availability-form/[token] — the branch roots and the second region', () => {
@@ -419,14 +446,91 @@ describe('availability-form/[token] — the branch roots and the second region',
     );
   });
 
-  it('READY carries TWO always-mounted role=status nodes, deliberately', async () => {
+  it('READY carries FOUR always-mounted role=status nodes, deliberately', async () => {
     validate().mockResolvedValue(VALID_TOKEN_BODY);
 
     render(<AvailabilityFormPage />);
     await screen.findByRole('button', { name: /submit availability/i });
 
     // This is why a bare getByRole('status') is forbidden in this file. The page-level one
-    // survives the flip; the form's unmounts with the form.
-    expect(screen.getAllByRole('status')).toHaveLength(2);
+    // survives the flip; the form's three unmount with the form.
+    expect(screen.getAllByRole('status')).toHaveLength(4);
+  });
+});
+
+// ADDED by plan 88.6.1-23 task 1 (R3-M3, D-26, the tracer). The optional pre-fill lookup
+// used to read a non-OK body it then threw away, so a 404 whose body never ended held the
+// page on "Validating your link..." (up to the 20 s deadline). P1 was RED before the fix:
+// the form never rendered inside the default findBy window. No fake timers on purpose: the
+// RED run must fail on that window, not on a 20 s wait.
+describe('availability-form/[token] — 88.6.1-23 R3-M3: a stalled 404 body on the pre-fill lookup no longer holds the page', () => {
+  it('P1: the form renders at once, the 404 body is never read and no breadcrumb is filed', async () => {
+    validate().mockResolvedValue(VALID_TOKEN_BODY);
+    await useRealExisting();
+    const text = vi.fn(() => new Promise<string>(() => {}));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, text }));
+
+    render(<AvailabilityFormPage />);
+
+    await screen.findByRole('button', { name: /submit availability/i });
+    expect(text, 'a body the lookup throws away is never read').not.toHaveBeenCalled();
+    expect(logger.info, 'a 404 is the normal no-prior-response outcome').not.toHaveBeenCalled();
+  });
+});
+
+// ADDED by plan 88.6.1-39 (D-14 / D-45, AC-24, the tracer's far end). The grid's count must be
+// read from the COMMITTED selection, after the parent re-rendered; on this page the parent is
+// react-hook-form's Controller inside the REAL AvailabilityForm, not a useState harness. These
+// arms switch the form mock to the real component (formMode.real) and back.
+const GRID_SUMMARY_TESTID = 'availability-grid-summary-status';
+
+describe('availability-form/[token] — 88.6.1-39: the real form speaks the grid summary once, from the committed value', () => {
+  afterEach(() => {
+    formMode.real = false;
+  });
+
+  it('P39-1: a touch tap on the first empty cell speaks "1 preferred, 0 if need be slots selected" on the same region', async () => {
+    formMode.real = true;
+    validate().mockResolvedValue(VALID_TOKEN_BODY);
+
+    render(<AvailabilityFormPage />);
+
+    const region = await screen.findByTestId(GRID_SUMMARY_TESTID);
+    expect(region.textContent).toBe('');
+
+    const cell = screen.getAllByRole('button', { name: /, not selected$/ })[0];
+    fireEvent.pointerDown(cell, { pointerId: 1, pointerType: 'touch', clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(document, { pointerId: 1, pointerType: 'touch' });
+
+    expect(screen.getByTestId(GRID_SUMMARY_TESTID)).toBe(region);
+    expect(region.textContent).toBe('1 preferred, 0 if need be slots selected');
+  });
+
+  // The page marker's count, held against the REAL form so it cannot drift silently again
+  // (register R3-M13/M21: the marker said TWO while the page carried more).
+  it('P39-2: on the real form READY carries exactly FOUR status nodes — the page, the grid summary, the pre-fill outcome and the confirm region — all empty', async () => {
+    formMode.real = true;
+    validate().mockResolvedValue(VALID_TOKEN_BODY);
+
+    render(<AvailabilityFormPage />);
+    const gridRegion = await screen.findByTestId(GRID_SUMMARY_TESTID);
+
+    const regions = screen.getAllByRole('status');
+    expect(regions).toHaveLength(4);
+    expect(regions).toContain(pageRegion());
+    expect(regions).toContain(gridRegion);
+    expect(regions).toContain(screen.getByTestId('prefill-status'));
+
+    const form = document.querySelector('form');
+    expect(form).not.toBeNull();
+    const insideForm = regions.filter((r) => form!.contains(r));
+    // The grid's summary and the pre-fill outcome sit inside the form.
+    expect(insideForm).toHaveLength(2);
+    expect(insideForm).toContain(gridRegion);
+    // The confirm region is neither the page's nor inside the form: a sibling of the form.
+    const others = regions.filter((r) => r !== pageRegion() && !form!.contains(r));
+    expect(others).toHaveLength(1);
+
+    for (const r of regions) expect(r.textContent).toBe('');
   });
 });

@@ -5,16 +5,21 @@
  *
  * Radix-backed replacement for the hand-rolled `.modal-*` fleet (QRCodeModal,
  * StartPollModal, BrowseMoreModal, ...), which is 0/16 on axe. Radix Dialog
- * provides focus-trap, Esc-to-close, focus-restore, `role="dialog"` +
- * `aria-modal`, and `aria-labelledby` (auto-wired from <Modal.Header> via the
- * underlying DialogTitle) for free.
+ * supplies the focus trap, Escape-to-close, `role="dialog"` and the
+ * `aria-labelledby` wiring from <Modal.Header> (via the underlying
+ * DialogTitle). `aria-modal` is set here explicitly (this Radix build does not
+ * emit it). Focus RESTORE on close is this primitive's own, NOT Radix's: Radix
+ * restores to a `Dialog.Trigger` this primitive never renders, so the restore
+ * lives here (`DECISION Phase 88.6-44` below) and, since Phase 88.6.1-20, it
+ * is shared with `BottomSheet` and floors instead of dropping focus on <body>.
  *
- * The chrome reproduces today's `globals.css` `.modal-*` rules 1:1 so the
- * Phase-88 migration is a near-mechanical class -> component swap:
+ * The chrome descends from the legacy `globals.css` `.modal-*` rules but is NOT
+ * a 1:1 reproduction of them: the padding was retuned for phone width (fork 6,
+ * Phase 88-32 / 88-33). The shipped classes:
  *   - Content: radius 12px, max-h 90dvh, scroll contained to the Body
- *   - Header:  1.25rem 1.5rem (20/24) padding, 1px bottom border, title 20px/700
- *   - Body:    1.5rem (24) padding, flex:1, scroll-y
- *   - Footer:  1rem 1.5rem (16/24) padding, justify-end, gap 0.75rem (12)
+ *   - Header:  `px-3 py-2 md:px-6 md:py-3`, 1px bottom border, title 20px/700
+ *   - Body:    `p-3 md:p-6`, flex:1, scroll-y
+ *   - Footer:  `px-3 py-4 md:px-6`, 1px top border, justify-end, gap 0.75rem (12)
  *
  * Copy-agnostic: every title/label/CTA is supplied by the consumer; nothing is
  * hardcoded. No `dangerouslySetInnerHTML` — children render as escaped React
@@ -29,7 +34,10 @@ import {
   DialogClose,
   DialogContent,
   DialogTitle,
+  handleDialogCloseAutoFocus,
+  recordDialogOpener,
 } from '@/components/ui/dialog';
+import { DIALOG_ROLE_SELECTOR } from '@/components/ui/focusPageFloor';
 import { cn } from '@/lib/cn';
 
 export type ModalSize = 'sm' | 'default' | 'lg';
@@ -59,6 +67,51 @@ export function preventNonDismissableClose(
 }
 
 /**
+ * Stacked-dialog guard (Phase 88.6.1-43, wave 5 CI gate). An outside interaction whose target
+ * sits inside ANOTHER dialog belongs to that dialog, so it is cancelled here and this one stays
+ * open. The target may already be detached (the press closed the dialog it sat in);
+ * `closest` still walks the detached subtree to that dialog's content.
+ *
+ * DECISION Phase 88.6.1-43 (wave 5 CI gate; owner answer 3A via plan 88.6.1-22; CI runs
+ * 38972642726 / 38976822652): a press inside ANOTHER open or just-closed dialog never dismisses
+ * this one, decided HERE in the primitive. MEASURED 2026-10-16 in Chromium at 375x667 with the
+ * shipped Modal + ConfirmDialog + useConfirmAction built on production Next's vendored React
+ * (18.3.0-canary-178c267a4e-20241218): Radix defers a modal dialog's pointer-down-outside to the
+ * click (`deferPointerDownOutside`, @radix-ui/react-dialog 1.1.17). A press on Cancel in a
+ * confirm that is a React SIBLING of this dialog (GroupSettings.js "Siblings of the Modal, not
+ * children") arms this dialog's outside handler, Cancel's own onClick closes the confirm, this
+ * dialog's layer re-renders inside the same click task with the confirm gone from Radix's
+ * stack, and the deferred dispatch then reads "pointer events enabled" and closes THIS dialog
+ * too. Every dialog stacked on a house Modal was exposed, pending or not: GroupSettings' delete
+ * confirm, and ManageMembers' roster beneath its Transfer, Leave, four ConfirmDialog and
+ * FriendInvitePanel siblings. Not focus: Radix's modal content already cancels every
+ * focus-outside. jsdom runs react-dom 18.2, which re-renders the layer later and so drops the
+ * dispatch by accident, which is why a plain click test is green on the broken tree.
+ * CHOSEN OVER (b) rendering each stacked dialog as a React child of the one beneath, so Radix
+ * counts the press as inside: it fixes one site at a time across eight sibling mounts, and
+ * reverses GroupSettings' recorded sibling decision for no gain over a fix in one place.
+ * OVER (c) Radix's DismissableLayerBranch around the upper dialog: the branch unmounts with that
+ * dialog and leaves Radix's branch set in the same cleanup that was measured to run BEFORE the
+ * deferred dispatch, so it is gone exactly when it is needed (reasoned from the measured order,
+ * not separately run). OVER (d) a guard on "the press began while a later dialog covered this
+ * one": it costs a document listener per open dialog to also cover the upper dialog's OVERLAY,
+ * a path MEASURED not exposed (this dialog's deferred listener runs first, while the upper
+ * dialog is still live, and is correctly gated). A press on this dialog's own backdrop, with
+ * nothing stacked, still dismisses it. Pinned by Modal.test.tsx MS1-MS3 and
+ * GroupSettings.test.tsx PC8, both driven through `pressInStackedDialog`
+ * (src/test-utils/stackedDialogPress.ts). Removing this guard is a decision, not a cleanup.
+ */
+export function preventStackedDialogDismiss(
+  own: Element | null,
+  event: Pick<Event, 'target' | 'preventDefault'>
+): void {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const dialog = target.closest(DIALOG_ROLE_SELECTOR);
+  if (dialog && dialog !== own) event.preventDefault();
+}
+
+/**
  * Escape guard for an EXPANDED combobox (Phase 88.6-57, CR-502). Radix's `useEscapeKeydown`
  * listens on `document` in the CAPTURE phase, so it sees Escape BEFORE the Combobox's own
  * React `onKeyDown` — which therefore cannot stop the dialog from closing. When the keydown
@@ -70,11 +123,23 @@ export function preventNonDismissableClose(
  * control such as `GameComboInput`'s Clear button is a SIBLING inside the same root, so a
  * guard keyed on the input alone lets Escape from that button close the whole Modal while the
  * list is open.
+ *
+ * The SECOND owner (Phase 88.6.1-20, review r2 #198): a keydown that originates inside an open
+ * member pop-up — its floating element carries `data-member-popover` (plan 88.6.1-37) — is the
+ * pop-up's Escape. It is cancelled here the same way, scoped by `closest(...)` on the event
+ * target, so the pop-up's own floating-ui dismiss closes the pop-up and the dialog stays open.
+ * Escape from anywhere else in the dialog still closes it: this is never a blanket Escape block.
+ * The name stays `preventComboboxEscape` because `Combobox.tsx` cites it by name.
  */
 function preventComboboxEscape(event: Pick<KeyboardEvent, 'target' | 'preventDefault'>): void {
   const target = event.target;
-  const root = target instanceof Element ? target.closest('[data-combobox-root]') : null;
-  if (root?.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
+  if (!(target instanceof Element)) return;
+  const root = target.closest('[data-combobox-root]');
+  if (root?.querySelector('[role="combobox"][aria-expanded="true"]')) {
+    event.preventDefault();
+    return;
+  }
+  if (target.closest('[data-member-popover]')) event.preventDefault();
 }
 
 /**
@@ -129,6 +194,12 @@ export interface ModalProps {
    * 88.6-44, is a real restore to the element that held focus when the dialog
    * opened (see `handleCloseAutoFocus`). A caller that prevents default keeps
    * full control, exactly as before.
+   *
+   * Since Phase 88.6.1-20 the handler runs FIRST and there are three outcomes:
+   * a handler that prevents default keeps control; a handler that does NOT
+   * (FeedbackModalProvider's failure path, when its own focus did not land)
+   * falls through to the primitive's restore and floor; with no handler, the
+   * restore runs (opener, else the still-open dialog's title, `main h1`, `main`).
    */
   onCloseAutoFocus?: (event: Event) => void;
   /** Extra classes merged onto the dialog content surface. */
@@ -165,8 +236,23 @@ function ModalRoot({
   // listens on `document` in the capture phase, so the child's React handler runs too late
   // to stop the dialog — the host is the only place that sees the event first). Removing
   // the guard re-opens createEvent's form loss; it is a decision, not a cleanup.
+  //
+  // AMENDED IN PLACE Phase 88.6.1-20 (#198, review r2, routed from plan 88.6.1-37): "the ONE
+  // exception" above is now TWO — an expanded combobox, and an open member pop-up (an Escape
+  // whose target sits inside `data-member-popover`, the attribute plan 88.6.1-37 puts on the
+  // pop-up's floating element). Same reason, same REJECTED alternative: handling it in the
+  // pop-up is too late, because Radix listens on `document` in the capture phase. Every other
+  // Escape still closes the dialog.
+  //
+  // A SECOND guard rides the same two handlers since Phase 88.6.1-43 (wave 5 CI gate): an
+  // outside interaction whose target sits inside another dialog never dismisses this one, at
+  // any `dismissable` value. See `DECISION Phase 88.6.1-43` on `preventStackedDialogDismiss`.
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
   const preventOutsideDismiss = React.useCallback(
-    (event: Event) => preventNonDismissableClose(dismissable, event),
+    (event: Event) => {
+      preventNonDismissableClose(dismissable, event);
+      preventStackedDialogDismiss(contentRef.current, event);
+    },
     [dismissable]
   );
 
@@ -190,42 +276,49 @@ function ModalRoot({
      the content, whereas a `useEffect` in this component runs AFTER the child scope has already
      focused the first tabbable (React runs child effects first) and would capture the header
      Close control. `onCloseAutoFocus` fires from a `setTimeout` after unmount, so the opener
-     may be gone by then — a detached node is skipped and the browser's own fallback stands.
+     may be gone by then — see the amendment below for what happens then.
 
-     REJECTED: rendering a `Dialog.Trigger` per consumer (~37 call sites, and the opener is
-     often not a single static button); REJECTED: each consumer passing its own
-     `onCloseAutoFocus` (the FeedbackModalProvider shape times the fleet — the duplication the
-     tenet forbids). A consumer that prevents default in its own handler still wins — checked
-     BEFORE the restore. Pinned by `Modal.test.tsx` ("returns focus to the opener"); five
-     surface suites (plan 88.6-44) assert it against a NAMED trigger. Removing this handler is a
-     decision, not a cleanup. */
+     REJECTED: rendering a `Dialog.Trigger` per consumer (22 `Modal` mounts in 18 files —
+     `grep -rn -e '^[[:space:]]*<Modal open' -e '^[[:space:]]*<Modal$' src`, test and spec
+     files excluded, measured 2026-10-15 — and the opener is often not a single static
+     button); REJECTED: each consumer passing its own `onCloseAutoFocus` (the
+     FeedbackModalProvider shape times the fleet — the duplication the tenet forbids). A
+     consumer that prevents default in its own handler still wins — checked BEFORE the
+     restore. Pinned by `Modal.test.tsx` ("returns focus to the opener"); five surface suites
+     (plan 88.6-44) assert it against a NAMED trigger. Removing this handler is a decision,
+     not a cleanup.
+
+     AMENDED IN PLACE Phase 88.6.1-20 (D-07, W014 / WR-201, AC-15): the restore is now
+     `restoreDialogFocus` in `components/ui/dialog.tsx`, SHARED with `BottomSheet` (one copy, so
+     the two primitives cannot drift again), reached through `handleDialogCloseAutoFocus`. It
+     acts only when focus is LOST (plan 04's `isFocusLost`, D-04's one definition), so a closing
+     dialog never moves focus off a live element — a dialog that opened after it keeps focus. It
+     checks the OUTCOME (`document.activeElement === opener` after `focus()`), so a removed,
+     disabled or hidden opener no longer leaves the user on `<body>`: it FLOORS to the still-open
+     dialog's title, then the page's `main h1`, then `main`. The opener ref is cleared on every
+     path. The capture stays in `onOpenAutoFocus` for the reason recorded above. A dialog whose
+     content holds an auto-focused descendant (React's autofocus prop) captures no opener
+     (Radix skips its open event) and floors by decision — REJECTED (f) in
+     `DECISION Phase 88.6.1-20` in `dialog.tsx`. */
   const openerRef = React.useRef<HTMLElement | null>(null);
 
   const handleOpenAutoFocus = React.useCallback(
     (event: Event) => {
-      const active = document.activeElement;
-      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      recordDialogOpener(openerRef);
       applyInitialFocus(initialFocusRef, event);
     },
     [initialFocusRef]
   );
 
   const handleCloseAutoFocus = React.useCallback(
-    (event: Event) => {
-      onCloseAutoFocus?.(event);
-      if (event.defaultPrevented) return;
-      const opener = openerRef.current;
-      openerRef.current = null;
-      if (!opener || !opener.isConnected) return;
-      event.preventDefault();
-      opener.focus();
-    },
+    (event: Event) => handleDialogCloseAutoFocus(event, openerRef, onCloseAutoFocus),
     [onCloseAutoFocus]
   );
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        ref={contentRef}
         hideCloseButton
         onOpenAutoFocus={handleOpenAutoFocus}
         onCloseAutoFocus={handleCloseAutoFocus}
@@ -264,7 +357,7 @@ function ModalRoot({
              decision, not a cleanup. Pinned by Modal.test.tsx. */
           /* DECISION Phase 88.6-08 (D-30 / W34): the height cap is `90dvh` — the DYNAMIC
              viewport unit — converging the dialog family onto the one unit `BottomSheet`
-             already ships (`BottomSheet.tsx:80`, `:82`). W34 was the recorded divergence:
+             already ships (`BottomSheet.tsx`'s `HEIGHT_CLASS`). W34 was the recorded divergence:
              two viewport-unit idioms inside one primitive family.
 
              (a) CHOSEN OVER `svh`, and `svh` is a real alternative rather than a strawman.
@@ -279,27 +372,28 @@ function ModalRoot({
              inconsistency. `BottomSheet` is anchored to the BOTTOM edge — precisely the
              edge iOS Safari's dynamic toolbar occupies — so for it the unit choice decides
              whether the rows a person is reaching for sit UNDER the toolbar; that argument
-             is written out at `BottomSheet.tsx:62-77`. `Modal` is CENTRE-anchored and its
-             cap is a max rather than a floor, with `Modal.Body` (`:336`) owning the scroll,
-             so an over-tall viewport estimate costs scroll distance here rather than
-             reachability. Same unit, different reason — recorded so the next reader does
-             not conclude the two were converged by coincidence.
+             is written out in `BottomSheet.tsx`'s `DECISION Phase 88.1 (D-06 / C13)`
+             marker. `Modal` is CENTRE-anchored and its cap is a max rather than a floor,
+             with `Modal.Body` (`ModalBody`, below) owning the scroll, so an over-tall
+             viewport estimate costs scroll distance here rather than reachability. Same
+             unit, different reason — recorded so the next reader does not conclude the two
+             were converged by coincidence.
 
              (c) THIS IS A DISCLOSURE, NOT AN OBJECTION. D-30 stands, and `BottomSheet`'s
              `dvh` is never reverted — "simplifying" either side back to `vh` re-opens D-06
              and W34 together. Nothing here re-opens the convergence.
 
-             (d) THE SCROLL CONTAINER DOES NOT MOVE. `Modal.Body` (`:336`) is still the
-             only scrolling region, so `FetchErrorBanner`'s §6.2 placement rule — top of
+             (d) THE SCROLL CONTAINER DOES NOT MOVE. `Modal.Body` (`ModalBody`, below) is
+             still the only scrolling region, so `FetchErrorBanner`'s §6.2 placement rule — top of
              the surface's scroll container, above the first content element — is
              unaffected by the unit change. RESEARCH § Assumptions Log A7 flags a
              scroll-container change as the thing that would silently move it.
 
-             (e) STALE ON THE OTHER SIDE, routed not edited: `BottomSheet.tsx:62-63` still
-             says in the present tense that "`Modal.tsx:186` caps at `max-h-[90vh]` and is
-             the known-divergent sibling". That sentence is now false. This plan declares
-             neither that file nor its suite, and an edit lands only in a file its plan
-             declares — plan 37 declares `BottomSheet.tsx` and owns the amendment.
+             (e) THE OTHER SIDE, now closed (historical): when this marker was written,
+             `BottomSheet.tsx`'s dvh marker still called `Modal` the known-divergent
+             sibling in the present tense. Plan 88.6-37 amended that sentence in place, and
+             plan 88.6.1-20 (W072) finished the job by marking its last present-tense
+             paragraph historical. Both sides now record the convergence.
 
              Gated by `Modal.test.tsx`: the rendered shell carries `max-h-[90dvh]`, and a
              comment-stripped scan of this file finds no viewport-height unit but `dvh`. */
@@ -326,7 +420,9 @@ export interface ModalHeaderProps {
    * actual close suppression lives in the consumer (createGroup.js gates its
    * onClose while a create is in flight) so Esc/×/outside-click stay uniform.
    * This prop must never grow behavior: trapping close at the primitive would
-   * reopen the WCAG 2.1.2 No Keyboard Trap decision for all ~37 call sites.
+   * reopen the WCAG 2.1.2 No Keyboard Trap decision for all 22 `Modal` mounts in
+   * 18 files (`grep -rn -e '^[[:space:]]*<Modal open' -e '^[[:space:]]*<Modal$' src`,
+   * test and spec files excluded, measured 2026-10-15).
    * @default false
    */
   closeDisabled?: boolean;
@@ -339,7 +435,10 @@ export interface ModalHeaderProps {
   closeClassName?: string;
 }
 
-/** `.modal-header`: 1.25rem 1.5rem padding, 1px bottom border, title 20px/700. */
+/**
+ * Header: `px-3 py-2 md:px-6 md:py-3` (the Body's horizontal scale), 1px bottom border,
+ * title 20px/700, 44px Close.
+ */
 function ModalHeader({ children, className, closeDisabled = false, closeClassName }: ModalHeaderProps) {
   return (
     <div
@@ -349,8 +448,10 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
 
          THE MISALIGNMENT: header `px-6` (24px) against Body's `p-3` (12px) indented the title
          12px past the field labels underneath it at 375px — a visible step at the top of every
-         one of the ~37 Modal.Header call sites. Fork 6 ruled ONE shared horizontal scale, fixed
-         at the primitive rather than per consumer.
+         one of the 19 `Modal.Header` call sites in 16 files
+         (`grep -rn '^[[:space:]]*<Modal\.Header' src`, test and spec files excluded, measured
+         2026-10-15). Fork 6 ruled ONE shared horizontal scale, fixed at the primitive rather
+         than per consumer.
 
          VERTICAL: `py-5` (20px) is now `py-2 md:py-3`. The 44px close box — not the padding —
          sets the header's floor (88-CODE-REVIEW D1, see the marker below), so the old 20px was
@@ -367,10 +468,17 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
       </DialogTitle>
       {/* 88-CODE-REVIEW D1 (2026-08-06): 44px REAL box (min-h-11/min-w-11, the KebabMenu/88-28
           idiom) over a pseudo-element hit extension — assertMin44 in e2e/touch-targets.spec.ts
-          measures boundingBox(), which ::after never changes (recorded 88-28 decision at
-          touch-targets.spec.ts:234-236). The bare glyph measured ~15x24px, below even WCAG
-          2.5.8's 24px, on all 37 Modal.Header call sites. Header grows ~68px -> ~84px. */}
+          measures boundingBox(), which ::after never changes (the recorded 88-28 decision —
+          that spec's own "WHY NOT `boundingBox()`" note). The bare glyph measured ~15x24px,
+          below even WCAG 2.5.8's 24px, on all 19 `Modal.Header` call sites in 16 files (the
+          same grep as the header marker above, measured 2026-10-15). Header grows ~68px ->
+          ~84px. */}
+      {/* 88.6.1 code review A-44: `data-modal-close` is the STABLE hook a consumer uses to ask "is
+          focus still on the header close?" (createEvent.js's late initial focus), so no consumer
+          matches the label text, which a rename or translation would silently break. Removing it is
+          a decision, not a cleanup. */}
       <DialogClose
+        data-modal-close=""
         aria-label="Close"
         aria-disabled={closeDisabled || undefined}
         className={cn(
@@ -398,7 +506,7 @@ export interface ModalBodyProps {
   className?: string;
 }
 
-/** `.modal-body`: 1.5rem padding, flex:1, scroll-y (the only scrolling region). */
+/** Body: `p-3 md:p-6`, flex:1, scroll-y (the only scrolling region). */
 function ModalBody({ children, className }: ModalBodyProps) {
   return (
     /* DECISION Phase 88-32 ruling 6 (DEF-88-30-03): Body defaults to `p-3 md:p-6` —
@@ -420,7 +528,7 @@ export interface ModalFooterProps {
   className?: string;
 }
 
-/** `.modal-footer`: 1rem 1.5rem padding, 1px top border, justify-end, gap 0.75rem. */
+/** Footer: `px-3 py-4 md:px-6`, 1px top border, justify-end, gap 0.75rem (12). */
 function ModalFooter({ children, className }: ModalFooterProps) {
   return (
     <div
@@ -454,7 +562,7 @@ export type ModalActionVariant = 'primary' | 'secondary' | 'danger';
    That arm expresses the variant mapping in two places — the house duplication tenet's
    explicit target — and leaves the phase's `.btn` emitter census permanently non-zero, so
    it could never honestly reach one emitter. The swap DELETES a map rather than
-   translating one because `Button.tsx:6-10` records that its variant names were aligned
+   translating one because `Button.tsx`'s docblock records that its variant names were aligned
    with `ModalActionVariant` "so the later adoption plans are a mechanical swap": the three
    entries matched 1:1 (primary/secondary/danger), byte-identically.
 
@@ -469,13 +577,18 @@ export type ModalActionVariant = 'primary' | 'secondary' | 'danger';
      V-2  hover elevation — INHERITED ALREADY NARROWED, not introduced here. THIS FILE
           AUTHORS NO HOVER TOKEN. The lift lives on `Button`'s base as
           `enabled-hover:shadow-theme-md` (plan 06), and plan 05's `enabled-hover`
-          `@custom-variant` (`globals.css:177-183`) compiles inside a hover-capability
-          media query and excludes BOTH `:disabled` and `[aria-disabled='true']`. So the
-          eight GATED footer actions do not lift: a hover lift on a gated dialog action
-          would be a regression, never a sanctioned V-2 delta. Those eight, read live
-          2026-09-16: `DangerZoneDeleteAccount.tsx:391`, `StartPollModal.js:274` and `:282`,
-          `GroupSettings.js:1168`, `ManageMembers.js:743`, `:750`, `:796`, `:803` — all on
-          the NATIVE `disabled` attribute, which `enabled-hover` excludes directly.
+          `@custom-variant` (the `@custom-variant enabled-hover` block in `globals.css`)
+          compiles inside a hover-capability media query and excludes BOTH `:disabled` and
+          `[aria-disabled='true']`. So the GATED footer actions do not lift: a hover lift on
+          a gated dialog action would be a regression, never a sanctioned V-2 delta. Re-derived
+          2026-10-15 (plan 88.6.1-20), named by file and label because later 88.6.1 plans edit
+          these files: `DangerZoneDeleteAccount.tsx` "Delete my account" and its Cancel;
+          `StartPollModal.js` Cancel and "Start poll"; `GroupSettings.js` "Save Changes";
+          `ManageMembers.js` the transfer pair (Cancel, "Transfer ownership") and the leave
+          pair (Cancel, "Confirm Leave"). Each is gated by the native `disabled` attribute or
+          by `aria-disabled` (the account-deletion Cancel, today), and `enabled-hover`
+          excludes both, so none of them lifts while gated — whichever gate a later plan
+          moves it onto (D-35 / D-39).
      V-3  the house focus ring, whose ONE home is `Button`'s cva base (plan 05, ARM A).
 
    NO `size` PROP IS ADDED. Dialog footer actions are `size="default"` per UI-SPEC §3.3,
@@ -483,20 +596,24 @@ export type ModalActionVariant = 'primary' | 'secondary' | 'danger';
 
    THE `ref` IS FORWARDED, and that is not scope creep. `ModalAction` was a plain function
    component, so on React 18 a caller's `ref` was silently dropped — which made this file's
-   own contract at `:61-71` ("A destructive confirmation must open with CANCEL focused")
-   UNREACHABLE through `Modal.Action`. `ConfirmDialog.tsx` gets CANCEL focus only because it
-   uses a bare `<Button ref={cancelRef}>` instead, while `DangerZoneDeleteAccount.tsx:384`'s
-   Cancel IS a `Modal.Action` and that file passes no `initialFocusRef` at all. `Button` is
-   already `forwardRef`, so this is purely additive, and it is a LATENT gap rather than a
-   live regression: zero `Modal.Action` sites pass a `ref` today (measured 2026-09-16 —
-   `grep -rn 'Modal.Action' src | grep -c 'ref='` returns 0 across all 32 matched lines).
+   own contract in `applyInitialFocus`'s docblock ("A destructive confirmation must open
+   with CANCEL focused") UNREACHABLE through `Modal.Action`. `ConfirmDialog.tsx` gets CANCEL
+   focus only because it uses a bare `<Button ref={cancelRef}>` instead, while
+   `DangerZoneDeleteAccount.tsx`'s Cancel IS a `Modal.Action` and that file passes no
+   `initialFocusRef` at all. `Button` is already `forwardRef`, so this is purely additive,
+   and it was a LATENT gap rather than a live regression: zero `Modal.Action` sites passed
+   a `ref` then (measured 2026-09-16 — `grep -rn 'Modal.Action' src | grep -c 'ref='`
+   returned 0 across all 32 matched lines). Re-read 2026-10-15 (plan 88.6.1-20), site by
+   site: one does now — `DangerZoneDeleteAccount.tsx`'s Cancel (`cancelActionRef`), which
+   that file focuses itself. That one-line grep cannot see it (its `ref=` sits on the line
+   after the opening tag), so it is no longer a valid census.
 
    WHAT THE ref DOES NOT DO: it changes no call site's behaviour today, and this plan wires
    no `initialFocusRef` anywhere. That wiring is ROUTED, not done: plan 30 owns
-   `DangerZoneDeleteAccount.tsx` and plan 19 owns `ManageMembers.js`; `StartPollModal.js:171`
-   already passes its own. This is also NOT the `DialogContent` ref plan 30 routes — that is
-   a different target (the dialog content container, not the footer action) — and D52's
-   mechanism is untouched.
+   `DangerZoneDeleteAccount.tsx` and plan 19 owns `ManageMembers.js`; `StartPollModal.js`
+   already passes its own (`initialFocusRef={deadlineInputRef}` on its `<Modal>`). This is
+   also NOT the `DialogContent` ref plan 30 routes — that is a different target (the dialog
+   content container, not the footer action) — and D52's mechanism is untouched.
 
    Re-pointing this back at a bare `<button>` with a local variant map is a decision, not a
    cleanup. */

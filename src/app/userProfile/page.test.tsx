@@ -54,25 +54,42 @@ const DEFAULT_PREFS = {
 /**
  * Mutable self row the mocked identity hook returns. Held in `vi.hoisted` so a
  * test can vary it (e.g. flip `sms_enabled`) BEFORE render without re-mocking.
- * `preferences` is derived from `notification_preferences`, and the whole
- * Notification Preferences card is gated on it — an identity row without it
- * renders no toggles at all.
+ * The Notification Preferences card is gated on `preferences`, which the page's
+ * init sets from the row (`notification_preferences`, or the app's defaults when
+ * the row carries none) and, since 88.6.1-61, never sets when there is no row —
+ * so with no row the card is absent.
  */
 const h = vi.hoisted(() => ({
   self: undefined as undefined | Record<string, unknown>,
+  // Plan 88.6.1-61: the identity query's error, read by the mocked `useSelfIdentity` (isError / error).
+  selfError: null as null | Error,
+  // Plan 88.6.1-61: ONE stable refetch for the identity query, so a case can supply the row on Retry.
+  refetchSelf: vi.fn(),
   /**
    * Availability rows the mocked `useQuery` returns. Held here (not baked into
    * the mock) so the two-tap delete pins can render real rows without a
    * QueryClientProvider. Plan 88-10 added this; the default stays `[]` so every
    * pre-existing test sees exactly what it saw before.
    */
-  patterns: [] as Record<string, unknown>[],
+  patterns: [] as undefined | Record<string, unknown>[],
+  // Plan 88.6.1-59: the patterns query's error, read by the mocked `useQuery` (isError / error).
+  patternsError: null as null | Error,
+  // Wave 7 CI gate (88.6.1-21 / 59): the query's `isPending`, so a case can hold a never-loaded
+  // query in flight the way TanStack reports it (pending, no error) and the page shows its loading line.
+  patternsPending: false,
+  // Plan 88.6.1-59: ONE stable refetch for the patterns query, so a case can assert on it.
+  refetchPatterns: vi.fn(),
+  // Plan 88.6.1-59 (P11): the one cache entry the fake QueryClientContext hands back for the
+  // patterns key, standing in for a real cache's entry that outlives an unmount.
+  patternsEntry: {} as object,
   /**
    * The Auth0 row, held as ONE object rather than rebuilt inside the mock factory.
    * Identity matters: the page's owned-games / calendar-status effect depends on
    * `user`, so a mock that returns a fresh object literal per render re-runs that
-   * effect on EVERY render — which flips `loadingGames` back to true and unmounts
-   * the collection grid mid-interaction. The real `useUser` returns a stable
+   * effect on EVERY render and refetches the collection each time (before plan
+   * 88.6.1-67 each of those refetches also blanked the grid mid-interaction; it now
+   * keeps the cards, but a refetch per render is still not what the page does in
+   * a browser). The real `useUser` returns a stable
    * context value, so the loop is a mock artefact, not page behaviour. Making this
    * stable is a decision, not a tidy-up: reverting it makes any test that clicks a
    * row in the collection non-deterministic.
@@ -90,6 +107,12 @@ const h = vi.hoisted(() => ({
    */
   authError: null as null | Error,
   setTimezone: vi.fn(),
+  // Plan 88.6.1-18: the useTutorial mock used to build a fresh vi.fn() per call, so nothing
+  // could assert on it. Hoisted so the Replay pins can.
+  replayTutorial: vi.fn(),
+  // Whether the tour is showing, read by the useTutorial mock at CALL time so a rerender sees a
+  // changed value. Reset to false in the root beforeEach (clearAllMocks clears no plain values).
+  showTutorial: false,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -97,8 +120,10 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({
     self: h.self,
     selfUuid: h.self?.id as string | undefined,
-    query: { isError: false, error: null, isPending: !h.self, refetch: vi.fn() },
-    isPending: !h.self,
+    query: { isError: Boolean(h.selfError), error: h.selfError, isPending: !h.self && !h.selfError, refetch: h.refetchSelf },
+    isPending: !h.self && !h.selfError,
+    // Plan 88.6.1-79 (D-r3-10): the identity query's cache key, the same shape the real hook builds.
+    queryKey: ['users', 'self', h.authUser.sub],
   }),
 }));
 
@@ -138,10 +163,10 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
     useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
     useQuery: () => ({
       data: h.patterns,
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+      isPending: h.patternsPending,
+      isError: Boolean(h.patternsError),
+      error: h.patternsError,
+      refetch: h.refetchPatterns,
     }),
   };
 });
@@ -158,7 +183,7 @@ vi.mock('sonner', () => {
 
 // Provider hooks the page consumes; each has its own dedicated identity suite.
 vi.mock('@/app/components/tutorial/TutorialProvider', () => ({
-  useTutorial: () => ({ replayTutorial: vi.fn() }),
+  useTutorial: () => ({ replayTutorial: h.replayTutorial, showTutorial: h.showTutorial }),
 }));
 // `setTimezone` is hoisted (not built per call) so the timezone-picker pins can
 // assert what the Combobox committed.
@@ -193,6 +218,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     gamesAPI: {
       ...actual.gamesAPI,
       searchBGG: vi.fn().mockResolvedValue([]),
+      importFromBGG: vi.fn().mockResolvedValue({ id: 'game-imported' }),
     },
     googleCalendarAPI: {
       ...actual.googleCalendarAPI,
@@ -221,6 +247,12 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import Profile from './page';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { auditFormControls } from '../../test-utils/formControlAudit';
+import { ApiError } from '@/lib/api';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
+import { QueryClientContext, hashKey } from '@tanstack/react-query';
+import { UNAVAILABLE_COPY } from '@/app/components/EmailAddressSection';
 
 /** Accessor for the mocked house logger — AC-2's channel on this surface. */
 export function loggerMock() {
@@ -258,24 +290,50 @@ export function toastMock() {
  *   `phone_verified` drive the entitlement-gated SMS column, and
  *   `notification_preferences` gates the whole Notification Preferences card.
  */
-export function renderProfile(selfOverrides: Record<string, unknown> = {}) {
-  h.self = {
+export function renderProfile(
+  selfOverrides: Record<string, unknown> = {},
+  // Plan 88.6.1-79: `container` too, so a case can render inside a `main` (focus-floor cases).
+  options: { wrapper?: React.ComponentType<{ children: React.ReactNode }>; container?: HTMLElement } = {}
+) {
+  h.self = harnessSelfRow(selfOverrides);
+  return render(<Profile />, options);
+}
+
+/**
+ * The harness identity row with `overrides` merged over it — ONE builder, shared by
+ * `renderProfile` and the 88.6.1-61 cases that hand the page a row only after it rendered
+ * without one.
+ */
+function harnessSelfRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
     id: SELF_UUID,
     user_id: 'auth0|self',
     username: 'Self',
     sms_enabled: false,
     phone_verified: false,
     notification_preferences: DEFAULT_PREFS,
-    ...selfOverrides,
+    ...overrides,
   };
-  return render(<Profile />);
+}
+
+/** Plan 88.6.1-79: the profile header card (the calendar zone lives in it in every state). */
+function headerCard(): HTMLElement {
+  const card = screen.getByRole('heading', { name: 'Google Calendar Integration' }).closest('.card');
+  if (!(card instanceof HTMLElement)) throw new Error('no header card around Google Calendar Integration');
+  return card;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   h.self = undefined;
+  h.selfError = null;
+  h.refetchSelf.mockReset();
   h.patterns = [];
+  h.patternsError = null;
+  h.patternsPending = false;
+  h.patternsEntry = {};
   h.authError = null;
+  h.showTutorial = false;
 });
 
 afterEach(cleanup);
@@ -520,7 +578,7 @@ describe('userProfile availability settings', () => {
   // The recurring DATE pair had NO client guard of any kind: the server rejects an
   // inverted range with a code-less 400 that renders the generic register copy and
   // discards the form (`routes/availability.js:137`). The TIME pair on the same form
-  // already refuses it with a ratified toast (`userProfile/page.js:1252`,
+  // already refuses it with a ratified toast (`userProfile/page.js:1760`,
   // 88-CODE-REVIEW MED#7) and is deliberately untouched.
   //
   // THIS ASSERTS THE DERIVATION, NOT A DATE. A test that pinned a literal would pass
@@ -539,7 +597,7 @@ describe('userProfile availability settings', () => {
     const endDate = screen.getByLabelText('End Date (Optional)') as HTMLInputElement;
 
     // THE EMPTY-SIBLING CASE, on the control that actually has one. `start_date` seeds to
-    // today (userProfile/page.js:210, HEAT-02 expansion 4) while `end_date` seeds to '', so
+    // today (userProfile/page.js:222, HEAT-02 expansion 4) while `end_date` seeds to '', so
     // it is the START control whose bound must be ABSENT here — not an empty string, which
     // would be a real bound of nothing on a field the user is entitled to leave blank.
     expect(
@@ -635,6 +693,31 @@ describe('userProfile destructive gates (Req 11)', () => {
     await waitFor(() =>
       expect(googleCalendarAPI.disconnect).toHaveBeenCalledWith(SELF_UUID)
     );
+  });
+
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): while the disconnect is in
+  // flight the pressed confirm reads "Disconnecting…" (ConfirmDialog's pendingLabel).
+  it('the pending disconnect confirm reads the ratified pending label until it settles (CR-5)', async () => {
+    const { googleCalendarAPI } = await import('@/lib/api');
+    (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connected: true,
+    });
+    let settle!: () => void;
+    (googleCalendarAPI.disconnect as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<void>((resolve) => { settle = resolve; })
+    );
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Disconnecting\u2026' });
+    expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
+    expect(within(dialog).queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
+
+    settle();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('cancel on the disconnect dialog aborts — the API is never reached', async () => {
@@ -1122,13 +1205,24 @@ describe('userProfile form controls (Req 1 — the 16px floor)', () => {
   // button (~20x24). It now carries the same negative-margin 44px idiom as the SMS banner
   // dismiss, so the tap target grows; the glyph shifts ~4px right because the -8px margin
   // consumes the row's gap-2 (page.js says the same). Pinned on the class idiom because jsdom
-  // has no layout — the geometry half is the owner's device check (88.6-UAT.md test 3, arm (n)).
-  it('the Edit-username pencil carries the 44px tap-target idiom', async () => {
+  // has no layout. 88.6.1-53 (V-1a / AC-23): the ring is INSET, so it can no longer paint over
+  // the last letter of the name; the geometry half is measured in a real browser by
+  // e2e/profile-pencil-ring.spec.ts, not left to the owner's device check. Review #215: the
+  // title is the ONE name source; the glyph is hidden, so the name is not read twice.
+  it('the Edit-username pencil carries the 44px tap-target idiom, ring inset, one name source (88.6.1-53, V-1a)', async () => {
     renderProfile();
     const pencil = await screen.findByRole('button', { name: 'Edit username' });
-    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-offset-2']) {
+    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-inset']) {
       expect(pencil.className.split(/\s+/)).toContain(cls);
     }
+    expect(pencil.className.split(/\s+/)).not.toContain('focus-visible:ring-offset-2');
+    // One name source: no aria-label, the title names it, and every glyph is aria-hidden.
+    expect(pencil).not.toHaveAttribute('aria-label');
+    expect(pencil).toHaveAttribute('title', 'Edit username');
+    const hidden = pencil.querySelector('span[aria-hidden="true"]');
+    expect(hidden).not.toBeNull();
+    expect((pencil.textContent ?? '').length).toBeGreaterThan(0);
+    expect(hidden?.textContent).toBe(pencil.textContent);
   });
 
   it('carries no sub-16px size class on any control', async () => {
@@ -1248,7 +1342,9 @@ describe('userProfile type scale (Req 2)', () => {
     // that carry a className — prose does not.
     const raw = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)];
     expect(raw.map((m) => m[0])).toEqual([]);
-    expect(headingTags(source).length).toBe(14);
+    // 14 -> 15 (Phase 88.6.1-79): the withdrawn identity arm's page heading, a second `level={1}`
+    // TAG in source; only one of the two arms is ever mounted, so the page renders one h1.
+    expect(headingTags(source).length).toBe(15);
   });
 
   // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it exactly
@@ -1267,7 +1363,7 @@ describe('userProfile type scale (Req 2)', () => {
   it('keeps every heading inside the working set', async () => {
     const source = await pageSource();
     const tags = headingTags(source);
-    expect(tags.length).toBe(14);
+    expect(tags.length).toBe(15);
     const offenders = tags.filter((attrs) =>
       /\b(?:[a-z]+:)?text-(?:lg|2xl|4xl|5xl)\b/.test(attrs)
     );
@@ -1277,7 +1373,7 @@ describe('userProfile type scale (Req 2)', () => {
   it('gives every heading an explicit size and an explicit level', async () => {
     const source = await pageSource();
     const tags = headingTags(source);
-    expect(tags.length).toBe(14);
+    expect(tags.length).toBe(15);
     for (const attrs of tags) {
       // UI-SPEC §4.4: every migrated call site records its rung rather than
       // inheriting one from the level.
@@ -1295,7 +1391,8 @@ describe('userProfile type scale (Req 2)', () => {
       const lvl = /\blevel=\{([1-6])\}/.exec(attrs)?.[1] as string;
       counts[lvl] = (counts[lvl] ?? 0) + 1;
     }
-    expect(counts).toEqual({ '1': 1, '2': 7, '3': 4, '4': 2 });
+    // '1': 1 -> 2 (Phase 88.6.1-79): the withdrawn identity arm's heading; the two arms are exclusive.
+    expect(counts).toEqual({ '1': 2, '2': 7, '3': 4, '4': 2 });
   });
 
   // The two h4s at 16 are the one judgement D-04's table does not make for us.
@@ -1311,8 +1408,11 @@ describe('userProfile type scale (Req 2)', () => {
   it('leaves no clip utility on the page title', async () => {
     const source = await pageSource();
     const h1 = headingTags(source).filter((a) => /\blevel=\{1\}/.test(a));
-    expect(h1).toHaveLength(1);
-    expect(h1[0]).not.toMatch(/\b(?:truncate|line-clamp-\d|text-ellipsis|whitespace-nowrap)\b/);
+    // 1 -> 2 (Phase 88.6.1-79): the healthy heading and the withdrawn arm's (exclusive arms); both wrap.
+    expect(h1).toHaveLength(2);
+    for (const attrs of h1) {
+      expect(attrs).not.toMatch(/\b(?:truncate|line-clamp-\d|text-ellipsis|whitespace-nowrap)\b/);
+    }
   });
 
   // Plan 08 re-pointed `ModalAction` at `Button` internally and left the call-site
@@ -1590,8 +1690,8 @@ describe('userProfile save-status slots (DEF-88-10-02)', () => {
 // ===========================================================================
 // 88-CODE-REVIEW H1 — a wrong verification code is NOT success
 // ===========================================================================
-// The backend's wrong-code outcome is a 200 { verified: false } (routes/
-// users.js:727-732 — only MALFORMED input 400s), so the handler must read the
+// The backend's wrong-code outcome is a 200 { verified: false }
+// (routes/users.js:823-828 — only MALFORMED input 400s), so the handler must read the
 // body. Before H1 it discarded it: a wrong code marked the phone verified in
 // local state and the immortal self cache while the DB row stayed false — the
 // SMS toggles enabled and SMS silently never sent. These pins hold the gate.
@@ -1984,9 +2084,13 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
       'Game added',
       'Still loading your account — please try again in a moment.',
       'Game removed',
+      // 88.6.1-61 (review 65): the two availability create guards reuse the page's existing
+      // still-loading sentence instead of returning without a word — no new string.
+      'Still loading your account — please try again in a moment.',
       'Please select at least one day.',
       'Start time must be before end time.',
       'Schedules created',
+      'Still loading your account — please try again in a moment.',
       'Start time must be before end time.',
       'Override created',
       'Pattern deleted',
@@ -2020,19 +2124,25 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
   });
 });
 
-describe('phone verification — wrong code shows error, never verifies (H1)', () => {
-  async function reachArmedVerify() {
-    renderProfile({ sms_enabled: true, phone_verified: false });
-    const phone = await screen.findByRole('textbox', { name: 'Phone number' });
-    fireEvent.change(phone, { target: { value: '+1 415 555 2671' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
-    const code = await screen.findByRole('textbox', { name: 'Verification code' });
-    fireEvent.change(code, { target: { value: '123456' } });
-    // Two buttons on the page are named "Verify" (this one + a link-style one in
-    // the SMS rows) — scope to the code-entry row.
-    return within(code.parentElement as HTMLElement).getByRole('button', { name: 'Verify' });
-  }
+// Shared by the H1 describe below and plan 88.6.1-18's in-flight describe after it (moved to
+// module scope by 88.6.1-18, not copied).
+async function reachArmedVerify() {
+  // An earlier test leaves a never-settling savePhone implementation behind, and
+  // vi.clearAllMocks() clears calls, not implementations — so set it here first.
+  const { usersAPI } = await import('@/lib/api');
+  (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  renderProfile({ sms_enabled: true, phone_verified: false });
+  const phone = await screen.findByRole('textbox', { name: 'Phone number' });
+  fireEvent.change(phone, { target: { value: '+1 415 555 2671' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
+  const code = await screen.findByRole('textbox', { name: 'Verification code' });
+  fireEvent.change(code, { target: { value: '123456' } });
+  // Two buttons on the page are named "Verify" (this one + a link-style one in
+  // the SMS rows) — scope to the code-entry row.
+  return within(code.parentElement as HTMLElement).getByRole('button', { name: 'Verify' });
+}
 
+describe('phone verification — wrong code shows error, never verifies (H1)', () => {
   it('200 { verified: false } → error copy, SMS toggles stay disabled, cache untouched', async () => {
     const { usersAPI } = await import('@/lib/api');
     const { patchSelfCache } = await import('@/lib/hooks/selfIdentityCache');
@@ -2071,6 +2181,226 @@ describe('phone verification — wrong code shows error, never verifies (H1)', (
     expect(
       screen.queryByText("That code didn't match. Check it and try again.")
     ).not.toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// Plan 88.6.1-18 — the pressed Verify (W066 / WR-505, D-35) and focus after success (Req 5)
+// ===========================================================================
+// Rule of POSITION: while a check is in flight the pressed Verify is aria-disabled (never
+// natively disabled), reads copy row P1, and a synchronous ref latch refuses a second press.
+// jsdom never blurs a disabled element (C-11), so the RED half of each in-flight pin is the
+// attributes and the request count; the focus lines are confirm-only here and proven in the
+// phone e2e spec (e2e/profile-pressed-controls.spec.ts).
+describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
+  const WRONG_CODE_LINE = "That code didn't match. Check it and try again.";
+  const P1 = 'Verifying...';
+
+  // Each case sets its own verifyPhone implementation; restore the default afterwards so a
+  // held or failing implementation never leaks into a later suite (clearAllMocks keeps impls).
+  afterEach(async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  it('V1: the pressed Verify reads Verifying..., is aria-disabled (not native) and stays mounted while the check runs', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    const verify = await reachArmedVerify();
+    verify.focus();
+    fireEvent.click(verify);
+
+    // POSITIVE settle on the SAME node.
+    await waitFor(() => expect(verify).toHaveTextContent(P1));
+    expect(verify).toHaveAttribute('aria-disabled', 'true');
+    expect(verify).not.toBeDisabled();
+    expect(verify.isConnected).toBe(true);
+    // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, C-11); the real-browser
+    // proof is the phone e2e spec.
+    expect(document.activeElement).toBe(verify);
+
+    await act(async () => { release({ verified: false }); });
+    await screen.findByText(WRONG_CODE_LINE);
+  });
+
+  it('V2: three presses send ONE check, and a losing duplicate can never paint the wrong-code line over a verified number (WR-505)', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    // The race, modelled for real: the FIRST check is held; every LATER check resolves at
+    // once as a duplicate that loses ({ verified: false }).
+    let releaseFirst: (value?: unknown) => void = () => {};
+    let calls = 0;
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) return new Promise((resolve) => { releaseFirst = resolve; });
+      return Promise.resolve({ verified: false, error: 'Invalid or expired code' });
+    });
+
+    const verify = await reachArmedVerify();
+    fireEvent.click(verify);
+    fireEvent.click(verify);
+    fireEvent.click(verify);
+
+    await waitFor(() => expect(verify).toHaveTextContent(P1));
+    expect(usersAPI.verifyPhone).toHaveBeenCalledTimes(1);
+    // Still in flight after the second and third press, until the FIRST check settles.
+    expect(verify).toHaveAttribute('aria-disabled', 'true');
+    expect(verify).toHaveTextContent(P1);
+
+    await act(async () => { releaseFirst({ verified: true }); });
+    // POSITIVE settle first, then the absence (CF-26).
+    await screen.findByText('Phone verified');
+    expect(screen.queryByText(WRONG_CODE_LINE)).toBeNull();
+  });
+
+  it('V3: a failed check releases the latch — the button resets and a second press sends a second check', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({
+      verified: false,
+      error: 'Invalid or expired code',
+    });
+
+    const verify = await reachArmedVerify();
+    fireEvent.click(verify);
+    await screen.findByText(WRONG_CODE_LINE);
+    expect(verify.textContent).toBe('Verify');
+    expect(verify).not.toHaveAttribute('aria-disabled');
+    expect(verify).not.toBeDisabled();
+
+    fireEvent.click(verify);
+    expect(usersAPI.verifyPhone).toHaveBeenCalledTimes(2);
+    await screen.findByText(WRONG_CODE_LINE);
+  });
+
+  it('V4: after a successful check focus lands on "Phone verified" (not <body>), only once the button is gone; the checkmark is aria-hidden', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    const verify = await reachArmedVerify();
+    await user.click(verify);
+    // R5 ordering: while the check is held the pressed Verify still holds focus.
+    expect(document.activeElement).toBe(verify);
+
+    await act(async () => { release({ verified: true }); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByText('Phone verified'))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(verify.isConnected).toBe(false);
+
+    const row = screen.getByText('Phone verified').parentElement as HTMLElement;
+    const checkmark = row.querySelector('svg');
+    expect(checkmark).not.toBeNull();
+    expect(checkmark).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('V5: the recovery is wired with the profile h1 as its fallback (R5 empty; the primitive half is plan 04)', async () => {
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/app/userProfile/page.js', 'utf8')
+    );
+    expect(source).toContain('useFocusRecovery({ fallback: profileHeadingRef })');
+    expect(source).toContain('ref={profileHeadingRef}');
+  });
+});
+
+// ===========================================================================
+// Plan 88.6.1-18 — Replay Tutorial stays focusable while resetting (W016 / D-35, SPEC
+// amendment row 11). The tutorial itself is not changed (D-49).
+// ===========================================================================
+// The single-request pin is green against the OLD page only because React drops clicks on a
+// natively disabled button; the RED half of R1 is the attributes (C-11).
+describe('Replay Tutorial in flight (88.6.1-18: W016, D-35)', () => {
+  const RESET_FAILED = "We couldn't restart the tour. Please try again.";
+
+  afterEach(async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  it('R1: the pressed Replay reads Starting..., is aria-disabled (not native), and three presses send ONE reset', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    replay.focus();
+    fireEvent.click(replay);
+
+    await waitFor(() => expect(replay).toHaveTextContent('Starting...'));
+    expect(replay).toHaveAttribute('aria-disabled', 'true');
+    expect(replay).not.toBeDisabled();
+
+    fireEvent.click(replay);
+    fireEvent.click(replay);
+    expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(1);
+    expect(replay).toHaveTextContent('Starting...');
+    expect(replay).toHaveAttribute('aria-disabled', 'true');
+    // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, C-11); the real-browser
+    // proof is the phone e2e spec.
+    expect(document.activeElement).toBe(replay);
+
+    await act(async () => { release({ tutorial_version: 0 }); });
+    await waitFor(() => expect(replay.textContent).toBe('Replay Tutorial'));
+  });
+
+  it('R2: a successful reset opens the tour once and the button returns to rest', async () => {
+    renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    fireEvent.click(replay);
+
+    await waitFor(() => expect(h.replayTutorial).toHaveBeenCalledTimes(1));
+    expect(h.replayTutorial).toHaveBeenCalledWith();
+    await waitFor(() => expect(replay.textContent).toBe('Replay Tutorial'));
+    expect(replay).not.toHaveAttribute('aria-disabled');
+    expect(replay).not.toBeDisabled();
+  });
+
+  it('R3: a failed reset toasts once, keeps the diagnostic shape, and releases the latch', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+
+    renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    fireEvent.click(replay);
+
+    await waitFor(() => expect(toastMock().error).toHaveBeenCalledTimes(1));
+    expect(toastMock().error).toHaveBeenCalledWith(RESET_FAILED);
+    expect(loggerMock().info).toHaveBeenCalledWith('Error replaying tutorial:', expect.any(Object));
+    await waitFor(() => expect(replay.textContent).toBe('Replay Tutorial'));
+    expect(replay).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(replay);
+    expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(toastMock().error).toHaveBeenCalledTimes(2));
+  });
+
+  it('R4: while the tour is open Replay is aria-disabled and a press sends no second reset', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const { rerender } = renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    fireEvent.click(replay);
+    await waitFor(() => expect(h.replayTutorial).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(replay.textContent).toBe('Replay Tutorial'));
+
+    // The tour opened: Replay still holds focus under its scrim (no focus handling in the
+    // overlay until the v2.1 rewrite, D-49).
+    h.showTutorial = true;
+    rerender(<Profile />);
+
+    expect(replay).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(replay);
+    expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -2188,5 +2518,3068 @@ describe('pattern times print 12-hour (fork 1)', () => {
     await screen.findByRole('button', { name: 'Delete Monday schedule' });
     expect(document.body.textContent).toContain('6:00 PM - 10:00 PM');
     expect(document.body.textContent).not.toContain('18:00');
+  });
+});
+
+// 88.6.1-48 (D-21 / D-44, AC-19): the seven Days-of-Week buttons are PRESSED toggles; All / Clear
+// beside them is an ACTION and carries no pressed state. The floor is pinned here on the class
+// tokens (jsdom has no layout); the geometry is measured at 375px in e2e/touch-targets.spec.ts and
+// the classes are also source-pinned in controlSizeFloor.test.tsx.
+describe('Days of Week toggles (88.6.1-48: D-21 / D-44, AC-19)', () => {
+  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  async function openDaysGroup() {
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    return screen.getByRole('group', { name: 'Days of Week' });
+  }
+
+  it('D1: each day reports its pressed state, and a press flips it both ways', async () => {
+    const group = await openDaysGroup();
+    for (const name of DAY_NAMES) {
+      expect(within(group).getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
+    }
+    const mon = within(group).getByRole('button', { name: 'Mon' });
+    fireEvent.click(mon);
+    expect(within(group).getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(group).getByRole('button', { name: 'Tue' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(within(group).getByRole('button', { name: 'Mon' }));
+    expect(within(group).getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('D2: All / Clear is an action with no pressed state, and it sets or clears all seven', async () => {
+    const group = await openDaysGroup();
+    const allButton = within(group).getByRole('button', { name: 'All' });
+    expect(allButton).not.toHaveAttribute('aria-pressed');
+    fireEvent.click(allButton);
+    for (const name of DAY_NAMES) {
+      expect(within(group).getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
+    }
+    // The SAME node now reads Clear: the label carries what the next press will do.
+    const clearButton = within(group).getByRole('button', { name: 'Clear' });
+    expect(clearButton).toBe(allButton);
+    expect(clearButton).not.toHaveAttribute('aria-pressed');
+    fireEvent.click(clearButton);
+    for (const name of DAY_NAMES) {
+      expect(within(group).getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
+    }
+  });
+
+  it('D3: the phone floor sits in the static classes, so pressed, unpressed and All / Clear all carry it', async () => {
+    const group = await openDaysGroup();
+    fireEvent.click(within(group).getByRole('button', { name: 'Mon' }));
+    const pressed = within(group).getByRole('button', { name: 'Mon' });
+    const unpressed = within(group).getByRole('button', { name: 'Tue' });
+    const allClear = within(group).getByRole('button', { name: 'All' });
+    expect(pressed).toHaveAttribute('aria-pressed', 'true');
+    for (const el of [pressed, unpressed, allClear]) {
+      const tokens = el.className.split(/\s+/);
+      for (const cls of ['min-h-11', 'md:min-h-0', 'min-w-11', 'md:min-w-0']) {
+        expect(tokens, `${el.textContent} is missing ${cls}`).toContain(cls);
+      }
+    }
+  });
+});
+
+// 88.6.1-53 (W065, AC-22, plus the seven controls ST-7 found): every Profile form control carries
+// an id AND a name, because browser autofill reads id, name and autocomplete, never ARIA (the
+// house rule, src/components/ui/Input.tsx HOUSE RULE). The SMS code field offers the texted code
+// and the number pad; the phone field offers the saved number; the Username field is the public
+// display name, so it is marked nickname, never username (review #216).
+describe('form controls carry id + name (88.6.1-53: W065, AC-22)', () => {
+  function expectIdEqualsName(id: string) {
+    const el = document.getElementById(id);
+    expect(el, `#${id} is not rendered`).not.toBeNull();
+    expect(el?.getAttribute('name'), `#${id} has no matching name`).toBe(id);
+  }
+
+  it('A1: the default tab, with the username editor, the SMS phone field, the schedule form and the BGG search open, passes the audit', async () => {
+    const user = userEvent.setup();
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    await openDefaultTabControls(user);
+
+    auditFormControls(document.body);
+    for (const id of [
+      'profile-username',
+      'profile-phone',
+      'recurring-start-time',
+      'recurring-end-time',
+      'recurring-start-date',
+      'recurring-end-date',
+      'bgg-search',
+    ]) {
+      expectIdEqualsName(id);
+    }
+    expect(document.getElementById('profile-phone')).toHaveAttribute('autocomplete', 'tel');
+    expect(document.getElementById('profile-username')).toHaveAttribute('autocomplete', 'nickname');
+
+    // No two rendered controls share an id.
+    const ids = Array.from(document.body.querySelectorAll('input, select, textarea')).map((el) => el.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('A2: the code-entry step offers the texted code on a number pad and passes the audit', async () => {
+    await reachArmedVerify();
+    const code = screen.getByRole('textbox', { name: 'Verification code' });
+    expect(code.id).toBe('profile-verification-code');
+    expect(code).toHaveAttribute('name', 'profile-verification-code');
+    expect(code).toHaveAttribute('autocomplete', 'one-time-code');
+    expect(code).toHaveAttribute('inputmode', 'numeric');
+    auditFormControls(document.body);
+  });
+
+  it('A3: the Specific Dates form passes the audit, and its checkbox stays native', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+    await user.click(await screen.findByRole('tab', { name: 'Specific Dates' }));
+    await user.click(await screen.findByRole('button', { name: '+ Add Override' }));
+
+    auditFormControls(document.body);
+    for (const id of ['specific-date', 'specific-start-time', 'specific-end-time', 'specific-is-available']) {
+      expectIdEqualsName(id);
+    }
+    const checkbox = document.getElementById('specific-is-available');
+    expect(checkbox).toBeInstanceOf(HTMLInputElement);
+    expect((checkbox as HTMLInputElement).type).toBe('checkbox');
+  });
+});
+
+// 88.6.1-53 (D-46 / R7-M7, AC-23): the Profile breadcrumb reaches the house standard the other
+// four breadcrumbs reached — the Home link carries the house focus ring, the separator is
+// hidden from screen readers, and the nav carries min-w-0.
+describe('breadcrumb ring and separator (88.6.1-53: D-46 / R7-M7)', () => {
+  it('B1: the separator is aria-hidden and the nav carries min-w-0 beside its overflow tokens', async () => {
+    renderProfile();
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByText('>')).toHaveAttribute('aria-hidden', 'true');
+    const tokens = nav.className.split(/\s+/);
+    for (const cls of ['min-w-0', 'inline-block', 'max-w-full', 'wrap-break-word']) {
+      expect(tokens, `the nav is missing ${cls}`).toContain(cls);
+    }
+  });
+
+  it('B2: the Home link carries the house outset focus ring', async () => {
+    // Read from source: the next/link mock renders children only, so the Home link has no
+    // element of its own in jsdom.
+    const src = await pageSource();
+    const start = src.indexOf('aria-label="Breadcrumb"');
+    expect(start).toBeGreaterThan(-1);
+    const slice = src.slice(start, src.indexOf('</nav>', start));
+    expect(slice.length).toBeGreaterThan(0);
+    expect(slice.split('<Link href="/"').length - 1).toBe(1);
+    const linkAt = slice.indexOf('<Link href="/"');
+    const tag = slice.slice(linkAt, slice.indexOf('>', linkAt));
+    for (const cls of ['focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-offset-2']) {
+      expect(tag, `the Home link is missing ${cls}`).toContain(cls);
+    }
+  });
+});
+
+// 88.6.1-53 (Req 5, Req 4, D-42, D-22): the phone block. Change number (two rows), the second tap on
+// Remove and the SMS banner's Dismiss each remove the control the person pressed, so focus used to
+// fall to <body>; each now lands on a real target through plan 18's shared phoneVerifyRecovery.
+// A verify answer that arrives after Change number no longer undoes it (review 61), and never
+// writes an old number as verified over a newer save (review M-32). Remove refuses a tap while its
+// removal is in flight. The polite format hint is the house always-mounted region.
+// jsdom never blurs a disabled element (C-11): the RED half of the Remove latch is the attribute
+// and the request count; the focus claims are proven again in e2e/profile-pressed-controls.spec.ts.
+describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, Req 4, D-42, D-22)', () => {
+  const VALID = '+1 415 555 2671';
+  const NEWER = '+1 415 555 0199';
+  const BANNER = 'SMS disabled — add a phone number to re-enable.';
+  const REMOVE_FAILED = "We couldn't remove your number. Please try again.";
+  const REMOVED_USER = { sms_enabled: true, phone: null, phone_verified: false, notification_preferences: DEFAULT_PREFS };
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // Each case sets its own implementations; restore the defaults so a held one never leaks into a
+  // later suite (vi.clearAllMocks keeps implementations).
+  afterEach(async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  it('C1: Change number in the code-entry row lands focus on the Phone number field, never <body>', async () => {
+    const user = userEvent.setup();
+    await reachArmedVerify();
+    await user.click(screen.getByRole('button', { name: 'Change number' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Phone number' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('C2: Change number in the verified row lands focus on the Phone number field, which holds the number', async () => {
+    const user = userEvent.setup();
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+    await user.click(await screen.findByRole('button', { name: 'Change number' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Phone number' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.getByRole('textbox', { name: 'Phone number' })).toHaveValue(VALID);
+  });
+
+  it('C3: a verify answer that lands after Change number does not undo it, and the server truth still lands (review 61)', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    const check = deferred();
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(() => check.promise);
+
+    const verify = await reachArmedVerify();
+    await user.click(verify);
+    await waitFor(() => expect(verify).toHaveAttribute('aria-disabled', 'true'));
+    await user.click(screen.getByRole('button', { name: 'Change number' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Phone number' }))
+    );
+
+    await act(async () => { check.resolve({ verified: true }); });
+
+    // POSITIVE settle first: the server did verify that number, so the SMS toggles unlock.
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: 'New Event SMS notifications' })).not.toBeDisabled()
+    );
+    const field = screen.getByRole('textbox', { name: 'Phone number' });
+    expect(field.isConnected).toBe(true);
+    expect(document.activeElement).toBe(field);
+    expect(screen.queryByText('Phone verified')).toBeNull();
+  });
+
+  it('C4: a verify answer that lands after a NEWER number was saved writes nothing (review M-32, Edge R11 ordering)', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    const { patchSelfCache } = await import('@/lib/hooks/selfIdentityCache');
+    const check = deferred();
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(() => check.promise);
+
+    const verify = await reachArmedVerify();
+    await user.click(verify);
+    await waitFor(() => expect(verify).toHaveAttribute('aria-disabled', 'true'));
+    await user.click(screen.getByRole('button', { name: 'Change number' }));
+    const field = await screen.findByRole('textbox', { name: 'Phone number' });
+    fireEvent.change(field, { target: { value: NEWER } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
+    // POSITIVE: the page reached code entry for the NEW number.
+    const code = await screen.findByRole('textbox', { name: 'Verification code' });
+    expect(screen.getByText(/^Code sent to/)).toHaveTextContent('555 0199');
+
+    await act(async () => { check.resolve({ verified: true }); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+    expect(screen.getByRole('switch', { name: 'New Event SMS notifications' })).toBeDisabled();
+    expect(screen.queryByText('Phone verified')).toBeNull();
+    expect(code.isConnected).toBe(true);
+    expect(patchSelfCache).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ phone_verified: true })
+    );
+  });
+
+  it('R1: four taps across one held removal send ONE removePhone; Remove stays aria-disabled and never re-arms', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const removal = deferred();
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockImplementation(() => removal.promise);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    // The SAME node is now armed.
+    expect(remove).toHaveTextContent('Tap again to remove');
+    fireEvent.click(remove);
+    // POSITIVE settle on the same node.
+    await waitFor(() => expect(remove).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveTextContent('Remove');
+    expect(remove).not.toHaveTextContent('Tap again to remove');
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => { removal.resolve(REMOVED_USER); });
+    await screen.findByText(BANNER);
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+  });
+
+  it('R2: focus stays on Remove while the removal is held, then lands on the banner statement, never <body>', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    const removal = deferred();
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockImplementation(() => removal.promise);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    await user.click(remove);
+    await user.click(remove);
+    // CONFIRM-ONLY in jsdom (C-11): the held removal leaves the pressed control focused. The R5
+    // ordering is proven in the phone e2e spec in a real browser.
+    expect(document.activeElement).toBe(remove);
+
+    await act(async () => { removal.resolve(REMOVED_USER); });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText(BANNER)));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(remove.isConnected).toBe(false);
+  });
+
+  it('R3: a failed removal releases the latch, keeps the diagnostic shape, and a second removal is sent', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue(REMOVED_USER);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    await screen.findByText(REMOVE_FAILED);
+    expect(loggerMock().info).toHaveBeenCalledWith('Error removing phone:', expect.any(Object));
+    expect(remove).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(2);
+    await screen.findByText(BANNER);
+  });
+
+  it('R4: the banner Dismiss lands focus on the Phone number field it points at, never <body> (review 214)', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue(REMOVED_USER);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    await user.click(remove);
+    await user.click(remove);
+    await screen.findByText(BANNER);
+
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Phone number' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByText(BANNER)).toBeNull();
+  });
+
+  it('F1: the format hint is one always-mounted polite region, empty and visually hidden until an error, and the same node after', async () => {
+    renderProfile({ sms_enabled: true });
+    const phone = await screen.findByRole('textbox', { name: 'Phone number' });
+    const region = document.getElementById('phone-format-error');
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region?.textContent).toBe('');
+    expect(region?.className.split(/\s+/)).toContain('sr-only');
+
+    fireEvent.change(phone, { target: { value: '1234567' } });
+    // C-6: node identity, not presence.
+    expect(document.getElementById('phone-format-error')).toBe(region);
+    expect(region?.textContent).toBe('Invalid phone number');
+    const shown = region?.className.split(/\s+/) ?? [];
+    expect(shown).not.toContain('sr-only');
+    for (const cls of ['text-content-status-error', 'text-xs', 'mt-1']) expect(shown).toContain(cls);
+    expect(phone.getAttribute('aria-describedby') ?? '').toContain('phone-format-error');
+
+    fireEvent.change(phone, { target: { value: VALID } });
+    expect(document.getElementById('phone-format-error')).toBe(region);
+    expect(region?.textContent).toBe('');
+    expect(region?.className.split(/\s+/)).toContain('sr-only');
+    expect(phone.getAttribute('aria-describedby') ?? '').not.toContain('phone-format-error');
+
+    // R8 idempotency: the same error a second time re-sets the SAME node's text.
+    fireEvent.change(phone, { target: { value: '1234567' } });
+    expect(document.getElementById('phone-format-error')).toBe(region);
+    expect(region?.textContent).toBe('Invalid phone number');
+  });
+
+  it('D1: the phone error alert stays conditionally mounted, and its DECISION marker reads true under D-42', async () => {
+    const src = await pageSource();
+    expect(src).toContain('DECISION Phase 88-25 (DEF-88-19-04)');
+    expect(src).toContain('AMENDED Phase 88.6.1-53 (D-42');
+    expect(src).not.toContain('that would make it polite');
+
+    renderProfile({ sms_enabled: true });
+    await screen.findByRole('textbox', { name: 'Phone number' });
+    expect(document.getElementById('phone-flow-error')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1-59 Task 1 (D-35, Req 4, Req 5; D-44, Req 6): Save Schedule and Save Override are
+// PRESSED controls. While a save runs each keeps its node, reads Saving..., carries
+// aria-disabled (never native disabled) and refuses every further press through one shared
+// first-line latch; a success closes the form and focus lands on the form's own toggle. The two
+// toggles are disclosures: aria-expanded always, aria-controls only while the form exists.
+describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // The Specific Dates tab, reached the way the end-before-start case reaches it.
+  async function openSpecificDates(user: ReturnType<typeof userEvent.setup>) {
+    (await screen.findByRole('tab', { name: 'Specific Dates' })).focus();
+    await user.keyboard('{Enter}');
+  }
+
+  // Each case sets its own implementation; vi.clearAllMocks keeps implementations, so a held one
+  // would leak into a later suite (the implementation-persistence trap).
+  afterEach(async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    (availabilityAPI.createRecurringPattern as Mock).mockResolvedValue({});
+    (availabilityAPI.createOverride as Mock).mockResolvedValue({});
+  });
+
+  it('S1: Save Schedule keeps its node, reads Saving... under aria-disabled, and three presses send one request', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (availabilityAPI.createRecurringPattern as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mon' }));
+    const save = screen.getByRole('button', { name: 'Save Schedule' });
+    fireEvent.click(save);
+
+    // Positive signal on the SAME node.
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(save).not.toBeDisabled();
+    expect(save.isConnected).toBe(true);
+    expect(save.textContent).toBe('Saving...');
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(availabilityAPI.createRecurringPattern).toHaveBeenCalledTimes(1);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save.textContent).toBe('Saving...');
+
+    await act(async () => { pending.resolve({}); });
+  });
+
+  it('S2: Save Override keeps its node, reads Saving... under aria-disabled, and three presses send one request', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (availabilityAPI.createOverride as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    await openSpecificDates(user);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Override' }));
+    const save = screen.getByRole('button', { name: 'Save Override' });
+    fireEvent.click(save);
+
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(save).not.toBeDisabled();
+    expect(save.isConnected).toBe(true);
+    expect(save.textContent).toBe('Saving...');
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(availabilityAPI.createOverride).toHaveBeenCalledTimes(1);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save.textContent).toBe('Saving...');
+
+    await act(async () => { pending.resolve({}); });
+  });
+
+  it('S3: a successful Save Schedule closes the form and focus lands on + Add Schedule, after the removal', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (availabilityAPI.createRecurringPattern as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    await user.click(screen.getByRole('button', { name: 'Mon' }));
+    const save = screen.getByRole('button', { name: 'Save Schedule' });
+    await user.click(save);
+    // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, C-11): the pressed control
+    // still holds focus while the create is held. The real-browser proof is the phone e2e arm.
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(document.activeElement).toBe(save);
+
+    await act(async () => { pending.resolve({}); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Schedule' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(save.isConnected).toBe(false);
+  });
+
+  it('S4: a successful Save Override closes the form and focus lands on + Add Override', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (availabilityAPI.createOverride as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    await openSpecificDates(user);
+    await user.click(await screen.findByRole('button', { name: '+ Add Override' }));
+    const save = screen.getByRole('button', { name: 'Save Override' });
+    await user.click(save);
+    // CONFIRM-ONLY in jsdom (C-11), as in S3.
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(document.activeElement).toBe(save);
+
+    await act(async () => { pending.resolve({}); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Override' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('S5: a failed Save Schedule releases the latch, keeps the form, and logs the unchanged diagnostic', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    (availabilityAPI.createRecurringPattern as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({});
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Schedule' }));
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith("We couldn't save that schedule. Please try again.")
+    );
+    expect(loggerMock().info).toHaveBeenCalledWith('Error creating schedule:', expect.any(Object));
+    const save = await screen.findByRole('button', { name: 'Save Schedule' });
+    expect(save).not.toHaveAttribute('aria-disabled');
+    expect(save).not.toBeDisabled();
+    expect(screen.getByRole('heading', { name: 'New Schedule' })).toBeInTheDocument();
+
+    fireEvent.click(save);
+    await waitFor(() => expect(availabilityAPI.createRecurringPattern).toHaveBeenCalledTimes(2));
+  });
+
+  it('S6: the availability recovery is wired to the heading fallback and both toggles (R5 empty)', async () => {
+    const source = await pageSource();
+    expect(source).toContain('useFocusRecovery({ fallback: availabilityHeadingRef })');
+    expect(source).toContain('ref={availabilityHeadingRef}');
+    expect(source).toContain('ref={addScheduleToggleRef}');
+    expect(source).toContain('ref={addOverrideToggleRef}');
+  });
+
+  it('S7: + Add Schedule is a disclosure, aria-controls only while its form exists (D-44)', async () => {
+    renderProfile();
+    const toggle = await screen.findByRole('button', { name: '+ Add Schedule' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.textContent).toBe('Cancel'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(panel).not.toBeNull();
+    expect(within(panel as HTMLElement).getByRole('heading', { name: 'New Schedule' })).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.textContent).toBe('+ Add Schedule'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+
+  it('S8: + Add Override is a disclosure, aria-controls only while its form exists (D-44)', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+    await openSpecificDates(user);
+    const toggle = await screen.findByRole('button', { name: '+ Add Override' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.textContent).toBe('Cancel'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(panel).not.toBeNull();
+    expect(
+      within(panel as HTMLElement).getByRole('heading', { name: 'New Specific Override' })
+    ).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.textContent).toBe('+ Add Override'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1-59 Task 2 (Req 11, AC-29 / RF1, Req 5): what the availability lists show after a
+// write. A multi-day save that fails part-way drops the days it saved from the selection and
+// re-reads the list; a failed refresh keeps the rows under plan 70's notice (the full banner only
+// when nothing is retained, or on an access answer); focus never falls to the body when a row,
+// the notice or the rows leave; a row Delete lands on the panel's toggle.
+describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  // Copy row RF1 (D-47), written ONCE here (contract C7). The notice renders it twice while it
+  // shows (the visible line and its polite region), so every query is an All query. A notice
+  // mounted mid-failure fills its region only after plan 70's dwell (quietOnMount), so the
+  // two-carrier count is waited for, never read on the first find.
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  const OVERRIDE = {
+    id: 'override-1',
+    type: 'specific_override',
+    is_available: true,
+    pattern_data: { date: '2026-11-03', startTime: '18:00', endTime: '22:00' },
+  };
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  async function openSpecificDates(user: ReturnType<typeof userEvent.setup>) {
+    (await screen.findByRole('tab', { name: 'Specific Dates' })).focus();
+    await user.keyboard('{Enter}');
+  }
+
+  // The unpressed re-attempt: a tab return, the useFetchErrorState.test.tsx idiom.
+  function fireVisible() {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  // The mocked useQuery reads `h` on render, so a changed query state commits only on a render.
+  async function rerenderPage(rerender: (ui: React.ReactElement) => void) {
+    await act(async () => { rerender(<Profile />); });
+  }
+
+  const schedulesHeading = () => screen.getByRole('heading', { name: 'Availability Schedules' });
+
+  afterEach(async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    h.refetchPatterns.mockReset();
+    (availabilityAPI.createRecurringPattern as Mock).mockResolvedValue({});
+    (availabilityAPI.deleteAvailability as Mock).mockResolvedValue({});
+  });
+
+  it('M1: a multi-day save that fails on Tuesday re-reads the list, drops Monday, and the retry never re-sends Monday', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    let failedOnce = false;
+    (availabilityAPI.createRecurringPattern as Mock).mockImplementation(
+      async (_id: string, formData: { dayOfWeek: number }) => {
+        if (formData.dayOfWeek === 2 && !failedOnce) {
+          failedOnce = true;
+          throw new Error('boom');
+        }
+        return {};
+      }
+    );
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    const mon = screen.getByRole('button', { name: 'Mon' });
+    fireEvent.click(mon);
+    fireEvent.click(screen.getByRole('button', { name: 'Tue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Wed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Schedule' }));
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith("We couldn't save that schedule. Please try again.")
+    );
+    await waitFor(() => expect(mon).toHaveAttribute('aria-pressed', 'false'));
+    expect(h.refetchPatterns).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Tue' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Wed' })).toHaveAttribute('aria-pressed', 'true');
+    const save = await screen.findByRole('button', { name: 'Save Schedule' });
+    await waitFor(() => expect(save).not.toHaveAttribute('aria-disabled'));
+
+    fireEvent.click(save);
+    await waitFor(() => expect(availabilityAPI.createRecurringPattern).toHaveBeenCalledTimes(4));
+    const sent = (availabilityAPI.createRecurringPattern as Mock).mock.calls.map(
+      (call) => (call[1] as { dayOfWeek: number }).dayOfWeek
+    );
+    expect(sent).toEqual([1, 2, 2, 3]);
+  });
+
+  it('M2: a failure with nothing confirmed still re-reads the list and keeps the whole selection', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    (availabilityAPI.createRecurringPattern as Mock).mockRejectedValueOnce(
+      new ApiError('Gateway timeout', 'internal', 504)
+    );
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Schedule' }));
+
+    await waitFor(() => expect(toastMock().error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save Schedule' })).not.toHaveAttribute('aria-disabled')
+    );
+    expect(h.refetchPatterns).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Tue' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('P1: a failed refresh keeps the schedules under RF1, in a status region that was already there', async () => {
+    h.patterns = PATTERNS;
+    const { rerender } = renderProfile();
+    await screen.findByRole('button', { name: 'Delete Monday schedule' });
+    const before = screen.getAllByRole('status');
+
+    h.patternsError = new Error('boom');
+    rerender(<Profile />);
+
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    const region = screen.getAllByRole('status').find((node) => node.textContent === RF1);
+    expect(region).toBeDefined();
+    // Contract C8 b: the region pre-existed (node identity, C-6).
+    expect(before).toContain(region);
+  });
+
+  it('P2: a list that loaded empty keeps its empty sentence, with RF1 above it (D-50)', async () => {
+    h.patterns = [];
+    h.patternsError = new Error('boom');
+    renderProfile();
+
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const sentence = screen.getByText('No schedules set. Add one to get started.');
+    const row = screen.getByRole('button', { name: 'Retry' }).parentElement as HTMLElement;
+    expect(row.textContent).toContain(RF1);
+    expect(row.compareDocumentPosition(sentence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
+  });
+
+  it('P3: a failed load with nothing retained shows only the full banner, never an empty sentence or RF1', async () => {
+    h.patterns = undefined;
+    h.patternsError = new Error('boom');
+    renderProfile();
+
+    // CONFIRM-ONLY against the pre-task page: it pins that the nothing-retained arm survives.
+    await screen.findByText("Couldn't load your schedules");
+    expect(screen.queryByText('No schedules set. Add one to get started.')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('P4: a failed refresh keeps the overrides under RF1 on the Specific Dates tab', async () => {
+    const user = userEvent.setup();
+    h.patterns = [OVERRIDE];
+    h.patternsError = new Error('boom');
+    renderProfile();
+    await openSpecificDates(user);
+
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('button', { name: /^Delete .+ override$/ })).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your overrides")).toBeNull();
+  });
+
+  it('P5: a successful Retry removes the notice and lands focus on the Availability Schedules heading', async () => {
+    const user = userEvent.setup();
+    h.patterns = PATTERNS;
+    h.patternsError = new Error('boom');
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patternsError = null;
+      return { isError: false };
+    });
+    const { rerender } = renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Retry' }));
+    await rerenderPage(rerender);
+
+    await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+  });
+
+  it('P6: a 401 or 403 over the kept schedules withdraws them for the full banner and its register line', async () => {
+    // CONFIRM-ONLY against the pre-task page (its exclusive banner shows exactly this); RED
+    // against a plant that hands the rows' presence to the notice without the retention hook.
+    for (const error of [
+      new ApiError('Unauthorized', 'unauthorized', 401),
+      new ApiError('Forbidden', 'forbidden', 403),
+    ]) {
+      h.patterns = PATTERNS;
+      h.patternsError = error;
+      renderProfile();
+      await screen.findByText("Couldn't load your schedules");
+      expect(screen.getByText(getFetchErrorMessage(error))).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
+      cleanup();
+    }
+  });
+
+  it('P7: a first-load Try again that succeeds lands focus on the Availability Schedules heading', async () => {
+    const user = userEvent.setup();
+    h.patterns = undefined;
+    h.patternsError = new Error('boom');
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patternsError = null;
+      h.patterns = PATTERNS;
+      return { isError: false };
+    });
+    const { rerender } = renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    await rerenderPage(rerender);
+
+    await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  // Wave 7 CI gate (2026-10-17, run 39020174955): the PRESS half of P7, where a real browser takes
+  // it. A never-loaded TanStack query reports `pending` at the press, so the page swaps the full
+  // banner for its loading line while Try again holds focus, and focus moves THEN (P7's success
+  // rerender finds it already moved). DECISION Phase 88.6.1-59 (AC-29 / RF1, D-05) and DECISION
+  // Phase 88.6.1-70 (Req 5, focusTarget) send it to the panel's level-3 heading before plan 21's
+  // floor; e2e/error-recovery-floor.spec.ts test 1 and e2e/report-form-survives-recovery.spec.ts
+  // follow this record.
+  it('P7b: a first-load Try again lands focus on the Availability Schedules heading at the press, not the page h1', async () => {
+    const user = userEvent.setup();
+    h.patterns = undefined;
+    h.patternsError = new Error('boom');
+    let release: () => void = () => {};
+    h.refetchPatterns.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          h.patternsError = null;
+          h.patternsPending = true;
+          release = () => {
+            h.patternsPending = false;
+            h.patterns = [];
+            resolve({ isError: false });
+          };
+        })
+    );
+    const { rerender } = renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    await rerenderPage(rerender);
+
+    expect(screen.getByText('Loading schedules...')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+    expect(document.activeElement).not.toBe(screen.getByRole('heading', { level: 1 }));
+
+    await act(async () => { release(); });
+    await rerenderPage(rerender);
+    expect(screen.queryByText('Loading schedules...')).toBeNull();
+    expect(document.activeElement).toBe(schedulesHeading());
+  });
+
+  it('P8: a 500 or a network failure over the kept schedules shows RF1 above them', async () => {
+    for (const error of [
+      new ApiError('Server error', 'internal', 500),
+      new ApiError('Network error', 'network', 0),
+    ]) {
+      h.patterns = PATTERNS;
+      h.patternsError = error;
+      renderProfile();
+      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+      expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+      expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('P9: an unpressed re-attempt answered 403 or 401 withdraws the rows while a Delete holds focus, and focus lands on the heading', async () => {
+    for (const answer of [
+      new ApiError('Forbidden', 'forbidden', 403),
+      new ApiError('Unauthorized', 'unauthorized', 401),
+    ]) {
+      h.patterns = PATTERNS;
+      h.patternsError = new Error('boom');
+      const { rerender } = renderProfile();
+      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+      act(() => screen.getByRole('button', { name: 'Delete Monday schedule' }).focus());
+      h.refetchPatterns.mockImplementation(async () => {
+        h.patternsError = answer;
+        return { isError: true };
+      });
+
+      await act(async () => { fireVisible(); });
+      await rerenderPage(rerender);
+
+      await screen.findByText("Couldn't load your schedules");
+      expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+      expect(document.activeElement).not.toBe(document.body);
+      cleanup();
+      h.refetchPatterns.mockReset();
+    }
+  });
+
+  it('P10: an unpressed re-attempt that succeeds while Retry holds focus lands on the heading', async () => {
+    h.patterns = PATTERNS;
+    h.patternsError = new Error('boom');
+    const { rerender } = renderProfile();
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    act(() => screen.getByRole('button', { name: 'Retry' }).focus());
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patternsError = null;
+      return { isError: false };
+    });
+
+    await act(async () => { fireVisible(); });
+    await rerenderPage(rerender);
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(schedulesHeading()));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('P11: an access answer is remembered across a remount over the cached query (C10 memory with the cache entry)', async () => {
+    // This suite mocks useQuery, so there is no real cache. A fake QueryClientContext stands in
+    // for the one property a real cache gives: the SAME entry object for the patterns key on both
+    // sides of an unmount. Every other key finds nothing (the hook's instance memory serves).
+    const fakeClient = {
+      getQueryCache: () => ({
+        find: (filters: { queryKey?: unknown }) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(availabilityKeys.patterns(h.self?.id as string | undefined))
+            ? h.patternsEntry
+            : undefined,
+        // P5 A-79: useRetainedContent looks its query up by hash (`get`), so the fake answers both.
+        get: (hash: string) =>
+          hash === hashKey(availabilityKeys.patterns(h.self?.id as string | undefined))
+            ? h.patternsEntry
+            : undefined,
+      }),
+    };
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientContext.Provider value={fakeClient as never}>{children}</QueryClientContext.Provider>
+    );
+    // CONFIRM-ONLY against Task 1's page (its exclusive banner shows on every error); RED against
+    // the two-argument hook call.
+    h.patterns = PATTERNS;
+    const first = renderProfile({}, { wrapper });
+    await screen.findByRole('button', { name: 'Delete Monday schedule' });
+
+    h.patternsError = new ApiError('Forbidden', 'forbidden', 403);
+    await rerenderPage(first.rerender);
+    await screen.findByText("Couldn't load your schedules");
+
+    h.patternsError = new ApiError('Server error', 'internal', 500);
+    await rerenderPage(first.rerender);
+    expect(screen.getByText("Couldn't load your schedules")).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    first.unmount();
+    const second = renderProfile({}, { wrapper });
+    await screen.findByText("Couldn't load your schedules");
+    expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete Tuesday schedule' })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    h.patternsError = null;
+    await rerenderPage(second.rerender);
+    expect(await screen.findByRole('button', { name: 'Delete Monday schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tuesday schedule' })).toBeInTheDocument();
+  });
+
+  it('D1: deleting a schedule lands focus on + Add Schedule after the row leaves', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    h.patterns = PATTERNS;
+    const pending = deferred();
+    (availabilityAPI.deleteAvailability as Mock).mockReturnValue(pending.promise);
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patterns = [PATTERNS[1]];
+      return { isError: false };
+    });
+    renderProfile();
+
+    const del = await screen.findByRole('button', { name: 'Delete Monday schedule' });
+    await user.click(del);
+    await user.click(del);
+    // CONFIRM-ONLY in jsdom (C-11): the committed Delete still holds focus while it is held.
+    await waitFor(() => expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon'));
+    expect(document.activeElement).toBe(del);
+
+    await act(async () => { pending.resolve({}); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Schedule' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+  });
+
+  it('D1b (A-74, Safari shape): a Delete tapped twice without ever taking focus still lands focus on + Add Schedule', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    h.patterns = PATTERNS;
+    const pending = deferred();
+    (availabilityAPI.deleteAvailability as Mock).mockReturnValue(pending.promise);
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patterns = [PATTERNS[1]];
+      return { isError: false };
+    });
+    renderProfile();
+
+    const del = await screen.findByRole('button', { name: 'Delete Monday schedule' });
+    // iOS Safari does not focus a tapped button: nothing is focused for either tap.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(del);
+    fireEvent.click(del);
+    expect(document.activeElement).toBe(document.body);
+    await waitFor(() => expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon'));
+
+    await act(async () => { pending.resolve({}); });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Schedule' }))
+    );
+    expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
+  });
+
+  it('D2: deleting an override lands focus on + Add Override', async () => {
+    const user = userEvent.setup();
+    h.patterns = [OVERRIDE];
+    h.refetchPatterns.mockImplementation(async () => {
+      h.patterns = [];
+      return { isError: false };
+    });
+    renderProfile();
+    await openSpecificDates(user);
+
+    const del = await screen.findByRole('button', { name: /^Delete .+ override$/ });
+    await user.click(del);
+    await user.click(del);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add Override' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1-59 Task 3 (D-35, Req 4, Req 5): the username editor's Save is a PRESSED control (its
+// in-flight half aria-disabled plus a first-line latch; its blank-name half stays native), its
+// Cancel is a sibling that stays natively disabled while saving, and both exits land focus on the
+// Edit-username pencil that opened the editor.
+describe('username Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // Scoped to the editor's button row: the Email section renders its own Cancel while its editor
+  // is open.
+  function editorCancel(save: HTMLElement) {
+    return within(save.parentElement as HTMLElement).getByRole('button', { name: 'Cancel' });
+  }
+
+  afterEach(async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.updateUsername as Mock).mockResolvedValue({ username: 'Self' });
+  });
+
+  it('U1: Save keeps its node, reads Saving... under aria-disabled, Cancel stays native, three presses send one request', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (usersAPI.updateUsername as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    const save = screen.getByRole('button', { name: 'Save' });
+    const cancel = editorCancel(save);
+    fireEvent.click(save);
+
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(save).not.toBeDisabled();
+    expect(save.textContent).toBe('Saving...');
+    expect(cancel).toBeDisabled();
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(usersAPI.updateUsername).toHaveBeenCalledTimes(1);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save.textContent).toBe('Saving...');
+
+    await act(async () => { pending.resolve({ username: 'Self' }); });
+  });
+
+  it('U2: a blank username keeps Save natively disabled, with no aria-disabled (rule of KIND)', async () => {
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Username' }), { target: { value: '   ' } });
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    expect(save).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('U3: a successful Save closes the editor and focus lands on the Edit-username pencil, after the removal', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (usersAPI.updateUsername as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit username' }));
+    const save = screen.getByRole('button', { name: 'Save' });
+    await user.click(save);
+    // CONFIRM-ONLY in jsdom (C-11): the pressed Save still holds focus while the save is held.
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    expect(document.activeElement).toBe(save);
+
+    await act(async () => { pending.resolve({ username: 'Self' }); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit username' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(save.isConnected).toBe(false);
+  });
+
+  it('U4: Cancel closes the editor and focus lands on the Edit-username pencil', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit username' }));
+    const cancel = editorCancel(screen.getByRole('button', { name: 'Save' }));
+    await user.click(cancel);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit username' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('U5: a failed Save releases the latch, keeps the editor, and logs the unchanged diagnostic', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.updateUsername as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({ username: 'Self' });
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith("We couldn't save your username. Please try again.")
+    );
+    expect(loggerMock().info).toHaveBeenCalledWith('Error updating username:', expect.any(Object));
+    const save = await screen.findByRole('button', { name: 'Save' });
+    expect(save.textContent).toBe('Save');
+    expect(save).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('textbox', { name: 'Username' })).toBeInTheDocument();
+
+    fireEvent.click(save);
+    await waitFor(() => expect(usersAPI.updateUsername).toHaveBeenCalledTimes(2));
+  });
+
+  it('U6: the username recovery is wired to the pencil, the h1 fallback, and both exits (R5 empty)', async () => {
+    const source = await pageSource();
+    expect(source).toContain('const usernameRecovery = useFocusRecovery({ fallback: profileHeadingRef });');
+    expect(source).toContain('ref={editUsernamePencilRef}');
+    expect(source.split('usernameRecovery.arm({ preferred: () => editUsernamePencilRef.current').length - 1).toBe(2);
+  });
+});
+
+describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps an implementation, so restore the default here.
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+  });
+
+  it('I1: Import Collection keeps its node, reads Importing... under aria-disabled, and three presses neither reopen the dialog nor send a second import', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    fireEvent.click(importBtn);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() => expect(importBtn).toHaveAttribute('aria-disabled', 'true'));
+    expect(importBtn).not.toBeDisabled();
+    expect(importBtn.isConnected).toBe(true);
+    expect(importBtn.textContent).toBe('Importing...');
+
+    // The click handler commits inside act, so a reopened dialog would already be in the document.
+    fireEvent.click(importBtn);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(importBtn);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(1);
+    expect(importBtn).toHaveAttribute('aria-disabled', 'true');
+    expect(importBtn.textContent).toBe('Importing...');
+
+    await act(async () => { pending.resolve({ imported: 0 }); });
+  });
+
+  it('I2: a second Continue before the dialog has gone starts no second import', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    const cont = within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' });
+    // Two native activations before React commits the close: the jsdom model of a double Enter
+    // during the dialog's exit animation.
+    act(() => {
+      cont.click();
+      cont.click();
+    });
+
+    expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(1);
+    await act(async () => { pending.resolve({ imported: 0 }); });
+  });
+
+  it('I3: a failed import releases the latch, keeps its diagnostic, and a second import can start', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({ imported: 0 });
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    fireEvent.click(importBtn);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+
+    await screen.findByText("We couldn't import that collection. Check the username and try again.");
+    expect(loggerMock().info).toHaveBeenCalledWith('Error importing BGG collection:', expect.any(Object));
+    await waitFor(() => expect(importBtn.textContent).toBe('Import Collection'));
+    expect(importBtn).not.toHaveAttribute('aria-disabled');
+    expect(importBtn).not.toBeDisabled();
+
+    fireEvent.click(importBtn);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(2));
+  });
+
+  it('I4: after Continue the dialog restores focus to Import Collection, which is still importing', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    const field = await screen.findByRole('textbox', { name: 'BoardGameGeek username' });
+    await user.type(field, 'someone');
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    // Focuses the button and opens the dialog, so the dialog records it as the opener.
+    await user.click(importBtn);
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() => expect(document.activeElement).toBe(importBtn));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(importBtn).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => { pending.resolve({ imported: 0 }); });
+    // R5 ordering backstop: still there after the held import settles.
+    await waitFor(() => expect(importBtn.textContent).toBe('Import Collection'));
+    expect(document.activeElement).toBe(importBtn);
+  });
+});
+
+describe('BGG import outcome region (88.6.1-60: Req 8, D-22)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  async function startImport() {
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+  });
+
+  it('R1: one always-mounted polite region, empty and sr-only first, carries the progress line and then the result on the same node', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    const field = await screen.findByRole('textbox', { name: 'BoardGameGeek username' });
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region.textContent).toBe('');
+    expect(region.classList).toContain('sr-only');
+
+    fireEvent.change(field, { target: { value: 'someone' } });
+    await startImport();
+
+    await waitFor(() => expect(region).toHaveTextContent('Fetching your BGG collection...'));
+    expect(document.getElementById('bgg-import-status')).toBe(region);
+    expect(region.classList).not.toContain('sr-only');
+    for (const cls of ['mt-3', 'p-3', 'rounded-btn', 'bg-surface-muted', 'text-content-secondary', 'text-base']) {
+      expect(region.classList).toContain(cls);
+    }
+
+    await act(async () => { pending.resolve({ imported: 3, skipped: 1, total: 4 }); });
+    await waitFor(() => expect(region).toHaveTextContent('Imported 3 games'));
+    expect(document.getElementById('bgg-import-status')).toBe(region);
+    expect(region).toHaveTextContent('Total: 4');
+    expect(region.classList).toContain('bg-status-success-subtle');
+  });
+
+  it('R2: a failed import writes the failure line on the same node', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockRejectedValueOnce(new Error('boom'));
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    expect(region).not.toBeNull();
+    await startImport();
+
+    await waitFor(() =>
+      expect(region).toHaveTextContent("We couldn't import that collection. Check the username and try again.")
+    );
+    expect(document.getElementById('bgg-import-status')).toBe(region);
+    expect(region.classList).toContain('bg-status-error-subtle');
+  });
+
+  // Held-out backstop for the R8 idempotency edge: a second identical result is still a text
+  // change on the node, because the region passes through the progress line between them.
+  it('R3: two consecutive imports with the same result each mutate the same node', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    await startImport();
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    await waitFor(() => expect(region).toHaveTextContent('Imported 0 games'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Import Collection' })).not.toHaveAttribute('aria-disabled'));
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => { records.push(...list); });
+    observer.observe(region, { childList: true, characterData: true, subtree: true });
+
+    await startImport();
+    await waitFor(() => expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Import Collection' })).not.toHaveAttribute('aria-disabled'));
+    await waitFor(() => expect(records.length).toBeGreaterThan(0));
+    await waitFor(() => expect(region).toHaveTextContent('Imported 0 games'));
+    observer.disconnect();
+    expect(document.getElementById('bgg-import-status')).toBe(region);
+  });
+});
+
+describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  async function openSearch(query: string) {
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add from BGG' }));
+    const field = screen.getByRole('textbox', { name: 'Search BoardGameGeek' });
+    fireEvent.change(field, { target: { value: query } });
+    return { field, search: screen.getByRole('button', { name: 'Search' }) };
+  }
+
+  afterEach(async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([]);
+  });
+
+  it('S1: Search keeps its node under aria-disabled and two presses plus a field Enter send one request', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    const pending = deferred();
+    (gamesAPI.searchBGG as Mock).mockReturnValue(pending.promise);
+    renderProfile();
+
+    const { field, search } = await openSearch('catan');
+    fireEvent.click(search);
+
+    await waitFor(() => expect(search).toHaveAttribute('aria-disabled', 'true'));
+    expect(search).not.toBeDisabled();
+    expect(search.isConnected).toBe(true);
+    expect(search.textContent).toBe('Searching...');
+
+    fireEvent.click(search);
+    fireEvent.click(search);
+    fireEvent.keyPress(field, { key: 'Enter', code: 'Enter', charCode: 13 });
+    expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(1);
+    expect(search).toHaveAttribute('aria-disabled', 'true');
+    expect(search.textContent).toBe('Searching...');
+
+    await act(async () => { pending.resolve([]); });
+  });
+
+  // CONFIRM-ONLY (green before this plan): the blank-query half stays a native disable.
+  it('S2: a blank or whitespace query keeps Search natively disabled, with no aria-disabled (rule of KIND)', async () => {
+    renderProfile();
+    const { field, search } = await openSearch('');
+    expect(search).toBeDisabled();
+    expect(search).not.toHaveAttribute('aria-disabled');
+    fireEvent.change(field, { target: { value: '   ' } });
+    expect(search).toBeDisabled();
+    expect(search).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('S3: a failed search releases the latch; its toast and diagnostic are unchanged', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockRejectedValueOnce(new Error('boom')).mockResolvedValue([]);
+    renderProfile();
+
+    const { search } = await openSearch('catan');
+    fireEvent.click(search);
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith(
+        "We couldn't reach BoardGameGeek. Please try again in a few moments."
+      )
+    );
+    expect(loggerMock().info).toHaveBeenCalledWith('Error searching BGG:', expect.any(Object));
+    await waitFor(() => expect(search.textContent).toBe('Search'));
+    expect(search).not.toHaveAttribute('aria-disabled');
+
+    fireEvent.click(search);
+    await waitFor(() => expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(2));
+  });
+
+  it('S4: a search with results is announced once, screen-reader only; a zero result keeps the toast alone', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([
+      { bgg_id: 1, name: 'Azul', year_published: 2017 },
+      { bgg_id: 2, name: 'Catan', year_published: 1995 },
+    ]);
+    renderProfile();
+
+    const { search } = await openSearch('azul');
+    fireEvent.click(search);
+
+    const line = await screen.findByText('Found 2 games.');
+    const region = line.closest('[role="status"]') as HTMLElement;
+    expect(region).not.toBeNull();
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region.classList).toContain('sr-only');
+    expect(toastMock()).not.toHaveBeenCalledWith('No games found. Try a different search term.');
+
+    await waitFor(() => expect(search.textContent).toBe('Search'));
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 3, name: 'Azul: Summer', year_published: 2019 }]);
+    fireEvent.click(search);
+    await screen.findByText('Found 1 game.');
+    expect(screen.queryByText('Found 2 games.')).toBeNull();
+
+    await waitFor(() => expect(search.textContent).toBe('Search'));
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([]);
+    fireEvent.click(search);
+    await waitFor(() =>
+      expect(toastMock()).toHaveBeenCalledWith('No games found. Try a different search term.')
+    );
+    expect(screen.queryByText(/^Found \d+ games?\.$/)).toBeNull();
+  });
+});
+
+describe('BGG search answer and result-count region (88.6.1 code review A-68 / A-76)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  afterEach(async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+  });
+  async function openAndSearch(query: string) {
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add from BGG' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: query } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  }
+
+  it('A-68: a search that answers with no body reads as zero results, never a search failure', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce(null);
+    renderProfile();
+    await openAndSearch('nothing');
+    await waitFor(() =>
+      expect(toastMock()).toHaveBeenCalledWith('No games found. Try a different search term.')
+    );
+    expect(toastMock().error).not.toHaveBeenCalled();
+  });
+
+  it('A-76: Hide Search empties the screen-reader result count, so no stale count outlives the panel', async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 1, name: 'Azul', year_published: 2017 }]);
+    renderProfile();
+    await openAndSearch('azul');
+    const line = await screen.findByText('Found 1 game.');
+    const region = line.closest('[role="status"]') as HTMLElement;
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Search' }));
+    await waitFor(() => expect(region.textContent).toBe(''));
+    expect(screen.queryByText('Found 1 game.')).toBeNull();
+  });
+});
+
+describe('BGG import result timer (88.6.1-60: Req 11)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  let setSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let clearSpy: ReturnType<typeof vi.spyOn> | undefined;
+  const resultTimers: unknown[] = [];
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // The handle of the most recent 5-second timer the page scheduled.
+  function lastResultTimer(): unknown {
+    const spy = setSpy as unknown as Mock;
+    for (let i = spy.mock.calls.length - 1; i >= 0; i -= 1) {
+      if (spy.mock.calls[i][1] === 5000) {
+        const handle = spy.mock.results[i].value;
+        if (!resultTimers.includes(handle)) resultTimers.push(handle);
+        return handle;
+      }
+    }
+    return undefined;
+  }
+
+  async function importOnce() {
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+    setSpy?.mockRestore();
+    clearSpy?.mockRestore();
+    setSpy = undefined;
+    clearSpy = undefined;
+    // No stray result timer outlives a case.
+    for (const handle of resultTimers.splice(0)) clearTimeout(handle as ReturnType<typeof setTimeout>);
+  });
+
+  it('T1: a second import inside the window clears the first import\'s result timer by its handle', async () => {
+    setSpy = vi.spyOn(globalThis, 'setTimeout');
+    clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValueOnce({ imported: 1 });
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    await importOnce();
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    await waitFor(() => expect(region).toHaveTextContent('Imported 1 games'));
+    await waitFor(() => expect(lastResultTimer()).toBeDefined());
+    const h1 = lastResultTimer();
+
+    const pending = deferred();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
+    await importOnce();
+    await waitFor(() => expect(region).toHaveTextContent('Fetching your BGG collection...'));
+    expect(clearSpy).toHaveBeenCalledWith(h1);
+
+    await act(async () => { pending.resolve({ imported: 0 }); });
+  });
+
+  it('T2: unmounting the page cancels a pending result timer by its handle', async () => {
+    setSpy = vi.spyOn(globalThis, 'setTimeout');
+    clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValueOnce({ imported: 1 });
+    const { unmount } = renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    await importOnce();
+    await waitFor(() => expect(document.getElementById('bgg-import-status')).toHaveTextContent('Imported 1 games'));
+    await waitFor(() => expect(lastResultTimer()).toBeDefined());
+    const h1 = lastResultTimer();
+
+    unmount();
+    expect(clearSpy).toHaveBeenCalledWith(h1);
+  });
+});
+
+describe('BGG import result timer focus (88.6.1-60: Req 5, owner design 2026-10-05)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // Fake timers are on: vi.waitFor only (RTL's findBy / waitFor poll on the faked clock).
+  async function importAndWaitForTimer() {
+    const { userGamesAPI } = await import('@/lib/api');
+    const getOwnedGames = userGamesAPI.getOwnedGames as Mock;
+    renderProfile();
+    const field = await vi.waitFor(() => screen.getByRole('textbox', { name: 'BoardGameGeek username' }));
+    fireEvent.change(field, { target: { value: 'someone' } });
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    act(() => importBtn.focus());
+    fireEvent.click(importBtn);
+    const refreshesBefore = getOwnedGames.mock.calls.length;
+    fireEvent.click(within(await vi.waitFor(() => screen.getByRole('dialog'))).getByRole('button', { name: 'Continue' }));
+    await vi.waitFor(() =>
+      expect(document.getElementById('bgg-import-status')).toHaveTextContent('Imported 1 games')
+    );
+    // A positive wait for the post-import refresh; the timer is scheduled right after it.
+    await vi.waitFor(() => expect(getOwnedGames.mock.calls.length).toBeGreaterThan(refreshesBefore));
+    await act(async () => {});
+    return { field: field as HTMLInputElement, importBtn };
+  }
+
+  async function runResultTimer() {
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  }
+
+  function expectRegionCleared() {
+    const region = document.getElementById('bgg-import-status') as HTMLElement;
+    expect(region.textContent).toBe('');
+    expect(region.classList).toContain('sr-only');
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+  });
+
+  it('T3-A: focus still on Import Collection moves to + Add from BGG before the box empties', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 1, skipped: 0, total: 1 });
+      const { field, importBtn } = await importAndWaitForTimer();
+      act(() => importBtn.focus());
+      expect(document.activeElement).toBe(importBtn);
+
+      await runResultTimer();
+
+      expectRegionCleared();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '+ Add from BGG' }));
+      expect(document.activeElement).not.toBe(document.body);
+      expect(field.value).toBe('');
+      // The state in which a real browser drops focus; jsdom does not, so the toggle line above
+      // is the RED half.
+      expect(importBtn).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // CONFIRM-ONLY on the tree before this plan (nothing moved focus at all); its teeth are a
+  // throwaway callback that moves focus without checking where it is.
+  it('T3-B: focus the user moved elsewhere is left alone', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 1, skipped: 0, total: 1 });
+      const { field } = await importAndWaitForTimer();
+      act(() => field.focus());
+      const toggle = screen.getByRole('button', { name: '+ Add from BGG' });
+      const toggleFocused = vi.fn();
+      toggle.addEventListener('focus', toggleFocused);
+
+      await runResultTimer();
+
+      expectRegionCleared();
+      expect(document.activeElement).toBe(field);
+      expect(field.value).toBe('');
+      expect(toggleFocused).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('T3-W: the move is wired to the shared refs and plan 04 primitives, and written before the write that disables the button', async () => {
+    const source = await pageSource();
+    expect(source).toContain('ref={importButtonRef}');
+    expect(source).toContain('ref={addFromBggToggleRef}');
+    expect(source).toContain('ref={collectionHeadingRef}');
+    expect(source).toContain('focusElement(addFromBggToggleRef.current)');
+    expect(source).toContain('focusElement(collectionHeadingRef.current)');
+    expect(source).toContain('focusPageFloor(');
+    const move = source.indexOf('focusElement(addFromBggToggleRef.current)');
+    expect(move).toBeGreaterThan(-1);
+    expect(move).toBeLessThan(source.indexOf("setBggUsername('')"));
+  });
+
+  it('T3-N: a newly typed name is kept, the result line still goes, and focus stays on an enabled Import Collection', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 1, skipped: 0, total: 1 });
+      const { field, importBtn } = await importAndWaitForTimer();
+      fireEvent.change(field, { target: { value: 'another' } });
+      act(() => importBtn.focus());
+      expect(document.activeElement).toBe(importBtn);
+
+      await runResultTimer();
+
+      expectRegionCleared();
+      expect(field.value).toBe('another');
+      expect(importBtn).not.toBeDisabled();
+      expect(document.activeElement).toBe(importBtn);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('T3-D: with the import dialog open the name is kept, the result line goes behind it, and Continue re-imports', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      const held = deferred();
+      (userGamesAPI.importBGGCollection as Mock)
+        .mockResolvedValueOnce({ imported: 1, skipped: 0, total: 1 })
+        .mockReturnValue(held.promise);
+      const { field, importBtn } = await importAndWaitForTimer();
+      act(() => importBtn.focus());
+      fireEvent.click(importBtn);
+      const dialog = await vi.waitFor(() => screen.getByRole('dialog'));
+
+      await runResultTimer();
+
+      expectRegionCleared();
+      expect(within(dialog).getByText('someone')).toBeInTheDocument();
+      expect(field.value).toBe('someone');
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+      await vi.waitFor(() => expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(2));
+      expect((userGamesAPI.importBGGCollection as Mock).mock.calls[1]).toEqual([SELF_UUID, 'someone']);
+      await act(async () => { held.resolve({ imported: 0 }); });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('T3-E: the + Add from BGG toggle is a disclosure: aria-expanded, and aria-controls only while the panel exists', async () => {
+    renderProfile();
+    const toggle = await screen.findByRole('button', { name: '+ Add from BGG' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+
+    fireEvent.click(toggle);
+    expect(toggle.textContent).toBe('Hide Search');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const panelId = toggle.getAttribute('aria-controls');
+    expect(panelId).toBeTruthy();
+    const panel = document.getElementById(panelId as string);
+    expect(panel).not.toBeNull();
+    expect(within(panel as HTMLElement).getByRole('textbox', { name: 'Search BoardGameGeek' })).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+});
+
+describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+
+  // The user's own settings, deliberately unlike DEFAULT_PREFS (Event Updates email off, a
+  // one-day reminder), so a page that shows or sends the defaults fails on sight.
+  const REAL_PREFS = {
+    event_created: { email: true, sms: false },
+    reminder: { email: true, sms: false, window_hours: 24 },
+    event_updated: { email: false, sms: false },
+    event_cancelled: { email: true, sms: false },
+  };
+  const TOGGLED = { ...REAL_PREFS, event_created: { email: false, sms: false } };
+
+  afterEach(async () => {
+    const { userGamesAPI, googleCalendarAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps an implementation, so restore the defaults here.
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([]);
+    (googleCalendarAPI.getStatus as Mock).mockResolvedValue({ connected: false });
+  });
+
+  it('I1: a kept row whose refetch failed shows and saves the real settings, never the defaults', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    h.selfError = new Error('boom');
+    renderProfile({ notification_preferences: REAL_PREFS });
+
+    const updates = await screen.findByRole('switch', { name: 'Event Updates email notifications' });
+    expect(updates).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('combobox', { name: 'Remind me' })).toHaveValue('24');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'New Event email notifications' }));
+    await waitFor(() => expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledTimes(1));
+    expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledWith(SELF_UUID, TOGGLED);
+  });
+
+  it('I2: a kept row whose refetch failed names the user from the row', async () => {
+    h.selfError = new Error('boom');
+    renderProfile({ username: 'RealName' });
+    expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+  });
+
+  it('I4: a row arriving after a failed first load initializes the page and the card appears with the real settings', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    h.selfError = new Error('boom');
+    const view = render(<Profile />);
+    // Positive signal first: the no-row fallback ran (the identity notices are up).
+    await screen.findAllByRole('button', { name: 'Retry' });
+    expect(screen.queryByRole('heading', { name: 'Notification Preferences' })).toBeNull();
+
+    h.selfError = null;
+    h.self = harnessSelfRow({ username: 'RealName', notification_preferences: REAL_PREFS });
+    view.rerender(<Profile />);
+
+    await screen.findByRole('heading', { name: 'Notification Preferences' });
+    expect(screen.getByRole('switch', { name: 'Event Updates email notifications' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('switch', { name: 'New Event email notifications' }));
+    await waitFor(() => expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledTimes(1));
+    expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledWith(SELF_UUID, TOGGLED);
+  });
+
+  it('I5: with no identity row the Notification Preferences card is hidden, not filled with defaults', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    // The calendar zone, the ACTIVE availability panel (Radix mounts only that one) and the
+    // collection zone each show the identity notice (amended by 88.6.1-61 Task 2, review 65).
+    expect(await screen.findAllByRole('button', { name: 'Retry' })).toHaveLength(3);
+    expect(screen.queryByText('No schedules set. Add one to get started.')).toBeNull();
+
+    expect(screen.queryByRole('heading', { name: 'Notification Preferences' })).toBeNull();
+    expect(screen.queryAllByRole('switch')).toHaveLength(0);
+    expect(screen.queryByText('Choose how you receive notifications')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Timezone' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Availability Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Self' })).toBeInTheDocument();
+    expect(usersAPI.updateNotificationPreferences).not.toHaveBeenCalled();
+  });
+
+  it('I6: a row arriving while the username editor is open keeps the typed name, and Cancel restores the row name', async () => {
+    h.selfError = new Error('boom');
+    const view = render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit username' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Username' }), { target: { value: 'Typed Name' } });
+
+    h.selfError = null;
+    h.self = harnessSelfRow({ username: 'RealName', notification_preferences: REAL_PREFS });
+    view.rerender(<Profile />);
+    // Positive signal: the row init ran (the card only mounts from it).
+    await screen.findByRole('heading', { name: 'Notification Preferences' });
+
+    expect(screen.getByRole('textbox', { name: 'Username' })).toHaveValue('Typed Name');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+  });
+
+  // ---- 88.6.1-61 Task 2 (AC-29, review 65, review 222) ----
+
+  const STILL_LOADING = 'Still loading your account — please try again in a moment.';
+
+  // A Retry that supplies the row: the mocked refetch swaps the harness to a resolved identity,
+  // and the retry's own state write re-renders the page over it.
+  function retrySuppliesTheRow() {
+    h.refetchSelf.mockImplementation(async () => {
+      h.selfError = null;
+      h.self = harnessSelfRow();
+      return { isError: false, data: h.self };
+    });
+  }
+
+  it('I3: a kept row whose refetch failed shows the calendar control and the collection, with no identity notice', async () => {
+    const { userGamesAPI, googleCalendarAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    // Re-set explicitly: earlier describes leave `getStatus` answering connected.
+    (googleCalendarAPI.getStatus as Mock).mockResolvedValue({ connected: false });
+    h.selfError = new Error('boom');
+    renderProfile();
+
+    // Positive signal: the collection list renders under the kept row.
+    await screen.findByRole('button', { name: 'Remove Catan' });
+    expect(await screen.findByRole('button', { name: 'Connect Google Calendar' })).toBeInTheDocument();
+    // AMENDED Phase 88.6.1-79 (D-51): the kept row now carries the header card's RF1 Retry; no compact notice replaces the calendar or collection zone
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1));
+    expect(within(headerCard()).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Notification Preferences' })).toBeInTheDocument();
+  });
+
+  it('I7: with no row a Save press says the account is still loading, and neither panel says the user has nothing', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    const user = userEvent.setup();
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+
+    await user.click(screen.getByRole('button', { name: '+ Add Schedule' }));
+    await user.click(screen.getByRole('button', { name: 'Save Schedule' }));
+    await waitFor(() => expect(toastMock().error).toHaveBeenCalledWith(STILL_LOADING));
+    expect(availabilityAPI.createRecurringPattern).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('tab', { name: 'Specific Dates' }));
+    await screen.findByRole('heading', { name: 'Specific Date Overrides' });
+    expect(screen.queryByText(/No specific overrides set\./)).toBeNull();
+    expect(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '+ Add Override' }));
+    await user.click(screen.getByRole('button', { name: 'Save Override' }));
+    await waitFor(() =>
+      expect(toastMock().error.mock.calls.filter((call) => call[0] === STILL_LOADING)).toHaveLength(2)
+    );
+    expect(availabilityAPI.createOverride).not.toHaveBeenCalled();
+  });
+
+  it('I8: a successful Retry in the collection card lands focus on the My Game Collection heading', async () => {
+    const user = userEvent.setup();
+    h.selfError = new Error('boom');
+    retrySuppliesTheRow();
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+
+    const card = screen.getByRole('heading', { name: /^My Game Collection/ }).closest('.card') as HTMLElement;
+    await user.click(within(card).getByRole('button', { name: 'Retry' }));
+
+    // The notice leaves once the row is in hand; focus lands on the section's own heading.
+    await waitFor(() => expect(within(card).queryByRole('button', { name: 'Retry' })).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: /^My Game Collection/ }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('I9: a successful Retry in the Availability Settings card lands focus on the Availability Schedules heading', async () => {
+    const user = userEvent.setup();
+    h.selfError = new Error('boom');
+    retrySuppliesTheRow();
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+
+    const card = document.getElementById('availability-settings') as HTMLElement;
+    await user.click(within(card).getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(within(card).queryByRole('button', { name: 'Retry' })).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Availability Schedules' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("I10: with no row the BGG search still announces its results (plan 60's region is outside the hidden card)", async () => {
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([
+      { bgg_id: 1, name: 'Azul', year_published: 2017 },
+      { bgg_id: 2, name: 'Catan', year_published: 1995 },
+    ]);
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByText('Found 2 games.')).toBeInTheDocument();
+  });
+});
+
+describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  // Copy row P8 (owner-ratified 2026-10-05), straight apostrophe.
+  const P8 = "Couldn't load your collection";
+  const AZUL_ROW = { id: 'game-azul', name: 'Azul', bgg_id: 230802, year_published: 2017, image_url: null };
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  function collectionHeading() {
+    return screen.getByRole('heading', { name: /^My Game Collection/ });
+  }
+
+  // The collection Remove is a two-tap gate: the glyph arms into the labelled verb `Remove`.
+  async function twoTapRemove(name: string) {
+    fireEvent.click(await screen.findByRole('button', { name: `Remove ${name}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps implementations (and queued once-values), so reset.
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    (userGamesAPI.addOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    (gamesAPI.importFromBGG as Mock).mockReset().mockResolvedValue({ id: 'game-imported' });
+  });
+
+  it('R2: a refresh after a removal keeps the remaining cards on screen, the same nodes, marked busy', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    renderProfile();
+    const brass = await screen.findByRole('button', { name: 'Remove Brass' });
+
+    await twoTapRemove('Catan');
+    // Positive signal: the refresh is in flight and the grid that holds Brass says so.
+    await waitFor(() => expect(brass.closest('[aria-busy="true"]')).not.toBeNull());
+    expect(brass.isConnected).toBe(true);
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBe(brass);
+    expect(screen.queryByText('Loading your collection...')).toBeNull();
+    // D-54: Catan left at the server's confirmation, before the held refresh answered.
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+
+    await act(async () => { refresh.resolve([OWNED_GAMES[1]]); });
+    await waitFor(() => expect(document.querySelector('[aria-busy]')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBe(brass);
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+  });
+
+  it('R3: a failed refresh after a removal keeps the remaining rows, never the empty sentence', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new Error('boom'));
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+
+    await twoTapRemove('Catan');
+    await waitFor(() =>
+      expect(loggerMock().info).toHaveBeenCalledWith('Error fetching owned games:', expect.any(Object))
+    );
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
+    expect(screen.queryByText(/You don't have any games in your collection yet/)).toBeNull();
+    expect(screen.queryByText(P8)).toBeNull();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+    expect(document.querySelector('[aria-busy]')).toBeNull();
+  });
+
+  it('R7: a Remove answered 404 drops the row and refreshes; a transient refresh failure keeps the rest', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    (userGamesAPI.removeOwnedGame as Mock).mockRejectedValueOnce(
+      new ApiError('Game not found in your collection', 'not_found', 404)
+    );
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+
+    await twoTapRemove('Catan');
+    await waitFor(() => {
+      expect(loggerMock().info).toHaveBeenCalledWith('Error removing game from collection:', expect.any(Object));
+      expect(loggerMock().info).toHaveBeenCalledWith('Error fetching owned games:', expect.any(Object));
+      expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+    expect(screen.queryByText(P8)).toBeNull();
+    // A-67 / WR-11: a 404 is a confirmed removal, so no error toast beside the row leaving.
+    expect(toastMock().error).not.toHaveBeenCalled();
+  });
+
+  it('R7b: a Remove answered 404 for a gone account withdraws the rest of the list behind the banner', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const err = new ApiError('User not found', 'not_found', 404);
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockReset()
+      .mockRejectedValue(err)
+      .mockResolvedValueOnce(OWNED_GAMES);
+    (userGamesAPI.removeOwnedGame as Mock).mockRejectedValueOnce(
+      new ApiError('User not found', 'not_found', 404)
+    );
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+
+    await twoTapRemove('Catan');
+    // Positive signal first: the P8 banner replaced the list.
+    await screen.findByText(P8);
+    expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove Brass' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    const text = collectionHeading().textContent ?? '';
+    expect(text).toContain('—');
+    expect(text).not.toContain('(1)');
+    expect(text).not.toContain('(2)');
+  });
+
+  it('R4: an older collection answer never overwrites a newer one (latest wins)', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const refreshA = deferred<unknown>();
+    const refreshB = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refreshA.promise)
+      .mockReturnValueOnce(refreshB.promise);
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 230802, name: 'Azul', year_published: 2017 }]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValueOnce({ id: 'game-azul' });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    const add = await screen.findByRole('button', { name: /^(Add to Collection|Adding\.\.\.)$/ });
+    fireEvent.click(add);
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2)); // refresh A held
+
+    await twoTapRemove('Catan');
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(3)); // refresh B held
+
+    await act(async () => { refreshB.resolve([OWNED_GAMES[1], AZUL_ROW]); });
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await act(async () => { refreshA.resolve([...OWNED_GAMES, AZUL_ROW]); });
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Azul' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (2)' })).toBeInTheDocument();
+  });
+
+  it('R5: a new identity never shows the previous identity\'s rows (CONFIRM-ONLY; pins the C3 key)', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(new Promise(() => {}));
+    const { rerender } = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    h.self = { ...(h.self as Record<string, unknown>), id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' };
+    rerender(<Profile />);
+    await screen.findByText('Loading your collection...');
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+  });
+
+  it('F1: a failed first load shows the P8 banner, never the empty sentence and never (0)', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockRejectedValueOnce(new Error('boom'));
+    renderProfile();
+
+    await screen.findByText(P8);
+    expect(screen.queryByText(/You don't have any games in your collection yet/)).toBeNull();
+    const text = collectionHeading().textContent ?? '';
+    expect(text).toContain('—');
+    expect(text).not.toContain('(0)');
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    expect(screen.queryByText('Loading your collection...')).toBeNull();
+  });
+
+  it('F2: Try again after a failed first load brings the games and lands focus on the collection heading', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    const retry = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockReturnValueOnce(retry.promise);
+    renderProfile();
+
+    await screen.findByText(P8);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2));
+    // C2: the error is kept through the run, so the banner stays and the loader never swaps in.
+    expect(screen.getByText(P8)).toBeInTheDocument();
+    expect(screen.queryByText('Loading your collection...')).toBeNull();
+
+    await act(async () => { retry.resolve(OWNED_GAMES); });
+    await screen.findByRole('button', { name: 'Remove Catan' });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My Game Collection (2)' }))
+    );
+    expect(screen.queryByText(P8)).toBeNull();
+  });
+
+  it('F3: a failed Try again keeps the banner and its polite region says the title', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockRejectedValueOnce(new Error('boom again'));
+    renderProfile();
+
+    await screen.findByText(P8);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(screen.getAllByText(P8).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/You don't have any games in your collection yet/)).toBeNull();
+    const card = collectionHeading().closest('.card') as HTMLElement;
+    await waitFor(() =>
+      expect(within(card).getAllByRole('status').some((node) => node.textContent === P8)).toBe(true)
+    );
+  });
+
+  it('F4: with no identity row the collection count is an em-dash, never (0)', async () => {
+    h.self = undefined;
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    await screen.findAllByRole('button', { name: 'Retry' });
+    const text = collectionHeading().textContent ?? '';
+    expect(text).toContain('—');
+    expect(text).not.toContain('(0)');
+  });
+});
+
+describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  // Copy row RF1 (D-47), written ONCE here (88.6.1-70 contract C7): plan 70's notice renders it
+  // twice while it shows (the visible line and its polite region), so every lookup is an All query.
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  const P8 = "Couldn't load your collection";
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  // The unpressed re-attempt: a tab return, the useFetchErrorState.test.tsx idiom.
+  function fireVisible() {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  // Both taps of the two-tap Remove with real focus (userEvent), so the focus hook has a seed.
+  async function twoTapRemove(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(await screen.findByRole('button', { name: `Remove ${name}` }));
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+  }
+
+  function addFromBgg() {
+    return screen.getByRole('button', { name: '+ Add from BGG' });
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    // clearAllMocks keeps implementations and queued once-values, so reset to the harness defaults.
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (userGamesAPI.addOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    (gamesAPI.importFromBGG as Mock).mockReset().mockResolvedValue({ id: 'game-imported' });
+  });
+
+  it('N1: a failed refresh keeps the remaining rows under RF1, less the confirmed removal', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    const brass = screen.getByRole('button', { name: 'Remove Brass' });
+    expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+    expect(screen.queryByText(P8)).toBeNull();
+    expect(screen.queryByText(/You don't have any games in your collection yet/)).toBeNull();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    expect(retry.compareDocumentPosition(brass) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('N2: the RF1 region is on the page before the refresh fails, and the failure fills that node', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Brass' });
+    const before = screen.getAllByRole('status');
+
+    await twoTapRemove(user, 'Catan');
+    let filled: HTMLElement | undefined;
+    await waitFor(() => {
+      filled = screen.getAllByRole('status').find((node) => node.textContent === RF1);
+      expect(filled).toBeDefined();
+    });
+    expect(before).toContain(filled);
+  });
+
+  it('N3: a successful Retry removes the notice and lands focus on the collection heading', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    const again = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500))
+      .mockReturnValueOnce(again.promise);
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(3));
+    await act(async () => { again.resolve([OWNED_GAMES[1]]); });
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My Game Collection (1)' }))
+    );
+  });
+
+  it('R1b (A-74, Safari shape): a Remove tapped twice without ever taking focus still lands focus on + Add from BGG', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    renderProfile();
+
+    const remove = await screen.findByRole('button', { name: 'Remove Catan' });
+    // iOS Safari does not focus a tapped button: nothing is focused for either tap.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(remove);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    await act(async () => { refresh.resolve([OWNED_GAMES[1]]); });
+  });
+
+  it('R1: a confirmed Remove lands focus on + Add from BGG when the row leaves, before the refresh answers', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    const removal = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    (userGamesAPI.removeOwnedGame as Mock).mockReturnValueOnce(removal.promise);
+    renderProfile();
+
+    const remove = await screen.findByRole('button', { name: 'Remove Catan' });
+    await user.click(remove);
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1));
+    // CONFIRM-ONLY in jsdom: the pressed Remove keeps focus and its row stays while the call is held.
+    expect(document.activeElement).toBe(remove);
+    expect(remove.isConnected).toBe(true);
+
+    await act(async () => { removal.resolve({}); });
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2); // the refresh is still held
+    expect(document.activeElement).not.toBe(document.body);
+
+    await act(async () => { refresh.resolve([OWNED_GAMES[1]]); });
+    await act(async () => {});
+    expect(document.activeElement).toBe(addFromBgg());
+  });
+
+  it('N4: a collection that loaded EMPTY keeps its empty sentence under RF1 after a failed refresh (owner ruling Y)', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 230802, name: 'Azul', year_published: 2017 }]);
+    // `addOwnedGame` keeps the harness default: an answer with NO `game` row, so the add's
+    // confirmation append (Task 3, finding #75) adds nothing and the list stays the empty one.
+    renderProfile();
+    await screen.findByText(/You don't have any games in your collection yet/);
+
+    fireEvent.click(addFromBgg());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^(Add to Collection|Adding\.\.\.)$/ }));
+
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    const empty = screen.getByText(/You don't have any games in your collection yet/);
+    expect(screen.queryByText(P8)).toBeNull();
+    expect(screen.getByRole('heading', { name: 'My Game Collection (0)' })).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    expect(retry.compareDocumentPosition(empty) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('E1: a 401 or 403 refresh withdraws the rows for the P8 banner and its register line, never RF1', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    for (const err of [
+      new ApiError('Unauthorized', 'unauthorized', 401),
+      new ApiError('Forbidden', 'forbidden', 403),
+    ]) {
+      const user = userEvent.setup();
+      (userGamesAPI.getOwnedGames as Mock)
+        .mockReset()
+        .mockResolvedValueOnce(OWNED_GAMES)
+        .mockRejectedValueOnce(err);
+      renderProfile();
+
+      await twoTapRemove(user, 'Catan');
+      await screen.findByText(P8);
+      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Remove Brass' })).toBeNull();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
+      const text = screen.getByRole('heading', { name: /^My Game Collection/ }).textContent ?? '';
+      expect(text).toContain('—');
+      expect(text).not.toContain('(1)');
+      expect(text).not.toContain('(2)');
+      await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+      expect(document.activeElement).not.toBe(document.body);
+      cleanup();
+    }
+  });
+
+  it('E2: a 500 or a network failure on the refresh keeps the rows under RF1', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    for (const err of [
+      new ApiError('Server error', 'internal', 500),
+      new ApiError('Network error', 'network', 0),
+    ]) {
+      const user = userEvent.setup();
+      (userGamesAPI.getOwnedGames as Mock)
+        .mockReset()
+        .mockResolvedValueOnce(OWNED_GAMES)
+        .mockRejectedValueOnce(err);
+      renderProfile();
+
+      await twoTapRemove(user, 'Catan');
+      expect(await screen.findAllByText(RF1)).toHaveLength(2);
+      expect(screen.getByRole('button', { name: 'Remove Brass' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+      expect(screen.queryByText(P8)).toBeNull();
+      expect(screen.getByRole('heading', { name: 'My Game Collection (1)' })).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it('R8: a Remove answered 404 lands focus on + Add from BGG and the failed refresh shows RF1 over the rest', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    (userGamesAPI.removeOwnedGame as Mock).mockRejectedValueOnce(
+      new ApiError('Game not found in your collection', 'not_found', 404)
+    );
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+  });
+
+  it('R6: the notice, the guard and the focus instance are wired to plan 60\'s refs, which are declared and attached once', async () => {
+    const src = await pageSource();
+    const count = (needle: string) => src.split(needle).length - 1;
+    expect(src).toContain('useFocusRecovery({ fallback: collectionHeadingRef })');
+    // AMENDED (88.6.1 code review A-74): the Remove arm now also passes the gate's pressed control.
+    expect(src).toContain('collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: opts?.from ?? null })');
+    expect(src).toContain(
+      '<RefreshFailedNotice state={collectionErrorState} retained={collectionRetained} focusTarget={collectionHeadingRef}'
+    );
+    expect(count('<RetainedContentFocusGuard retained={collectionRetained} focusTarget={collectionHeadingRef} />')).toBe(1);
+    expect(count('ref={collectionHeadingRef}')).toBe(1);
+    expect(count('ref={addFromBggToggleRef}')).toBe(1);
+    expect(count('const addFromBggToggleRef = useRef(null);')).toBe(1);
+    expect(count('const collectionHeadingRef = useRef(null);')).toBe(1);
+    expect(src).not.toContain(RF1);
+  });
+
+  it('G1: an unpressed refresh that withdraws the rows while a row control holds focus lands on the heading', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    (userGamesAPI.getOwnedGames as Mock).mockRejectedValue(new ApiError('Forbidden', 'forbidden', 403));
+    act(() => { screen.getByRole('button', { name: 'Remove Brass' }).focus(); });
+    act(() => { fireVisible(); });
+
+    await screen.findByText(P8);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: /^My Game Collection/ }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryByRole('button', { name: 'Remove Brass' })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it("G2: an unpressed refresh that succeeds while the notice's Retry holds focus lands on the heading", async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    renderProfile();
+
+    await twoTapRemove(user, 'Catan');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    act(() => { screen.getByRole('button', { name: 'Retry' }).focus(); });
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([OWNED_GAMES[1]]);
+    act(() => { fireVisible(); });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My Game Collection (1)' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
+  });
+});
+
+describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const AZUL_RESULT = { bgg_id: 230802, name: 'Azul', year_published: 2017 };
+  const BRASS_RESULT = { bgg_id: 224517, name: 'Brass: Birmingham', year_published: 2018 };
+  const AZUL_ROW = { id: 'game-azul', name: 'Azul', bgg_id: 230802, year_published: 2017, image_url: null };
+  // The pressed Add's name follows its visible label (P7), so a lookup matches both labels.
+  const ADD_NAME = /^(Add to Collection|Adding\.\.\.)$/;
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  function addFromBgg() {
+    return screen.getByRole('button', { name: '+ Add from BGG' });
+  }
+
+  function searchFor(query: string) {
+    fireEvent.click(addFromBgg());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: query } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  }
+
+  // The result row's one button, found through the row that names the game (with its year, so a
+  // listed card's heading of the same name never matches).
+  function rowButton(name: RegExp) {
+    return within(screen.getByText(name).closest('div') as HTMLElement).getByRole('button');
+  }
+
+  afterEach(async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    // clearAllMocks keeps implementations and queued once-values, so reset to the harness defaults.
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    (gamesAPI.importFromBGG as Mock).mockReset().mockResolvedValue({ id: 'game-imported' });
+    (userGamesAPI.addOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+  });
+
+  it('A1: a burst of presses sends one import and one add; the pressed Add reads Adding... and stays aria-disabled', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const imported = deferred<unknown>();
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
+    (gamesAPI.importFromBGG as Mock).mockReturnValueOnce(imported.promise);
+    renderProfile();
+    await screen.findByRole('heading', { name: /^My Game Collection/ });
+
+    searchFor('azul');
+    const add = await screen.findByRole('button', { name: 'Add to Collection' });
+    fireEvent.click(add);
+    await waitFor(() => expect(add).toHaveAttribute('aria-disabled', 'true'));
+    expect(add).not.toBeDisabled();
+    expect(add.isConnected).toBe(true);
+    expect(add.textContent).toBe('Adding...');
+
+    fireEvent.click(add);
+    fireEvent.click(add);
+    expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(1);
+    expect(add).toHaveAttribute('aria-disabled', 'true');
+    expect(add.textContent).toBe('Adding...');
+
+    await act(async () => { imported.resolve({ id: 'game-azul' }); });
+    await waitFor(() => expect(userGamesAPI.addOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-azul'));
+    await act(async () => {});
+    expect(userGamesAPI.addOwnedGame).toHaveBeenCalledTimes(1);
+  });
+
+  it('A2: while an add is in flight its sibling Adds are natively disabled, and Already Owned stays native', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([
+      { id: 'game-catan', name: 'Catan', bgg_id: 13, year_published: 1995, image_url: null },
+    ]);
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT, BRASS_RESULT, { bgg_id: 13, name: 'Catan', year_published: 1995 }]);
+    (gamesAPI.importFromBGG as Mock).mockReturnValueOnce(new Promise(() => {}));
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    searchFor('a');
+    await screen.findByText(/^Brass: Birmingham/);
+    fireEvent.click(rowButton(/^Azul \(2017\)/));
+    await waitFor(() => expect(rowButton(/^Azul \(2017\)/)).toHaveAttribute('aria-disabled', 'true'));
+    const brass = rowButton(/^Brass: Birmingham/);
+    expect(brass).toHaveTextContent('Add to Collection');
+    expect(brass).toBeDisabled();
+    expect(brass).not.toHaveAttribute('aria-disabled');
+    // CONFIRM-ONLY half: the owned game's gate is native today and stays so (rule of KIND).
+    expect(screen.getByRole('button', { name: 'Already Owned' })).toBeDisabled();
+  });
+
+  it('A3b (A-73 / WR-09, Safari shape): an Add tap that never focused the button still lands focus on + Add from BGG, and the result count is emptied', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValueOnce({ id: 'game-azul' });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    searchFor('azul');
+    const region = (await screen.findByText('Found 1 game.')).closest('[role="status"]') as HTMLElement;
+    const add = await screen.findByRole('button', { name: ADD_NAME });
+    // iOS Safari does not focus a tapped button: nothing is focused when the press lands.
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(add);
+
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(region.textContent).toBe('');
+    await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
+  });
+
+  it('A3: a successful add closes the panel before the refresh and lands focus on + Add from BGG', async () => {
+    const user = userEvent.setup();
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValueOnce({ id: 'game-azul' });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    await user.click(addFromBgg());
+    await user.type(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), 'azul');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    await user.click(await screen.findByRole('button', { name: ADD_NAME }));
+
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+    expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2); // the refresh is still held
+    expect(toastMock().success).not.toHaveBeenCalledWith('Game added');
+
+    await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game added'));
+    expect(toastMock().success).toHaveBeenCalledTimes(1);
+  });
+
+  it('A4: a failed add releases the latch and the label; toast and diagnostic unchanged', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
+    (userGamesAPI.addOwnedGame as Mock).mockRejectedValueOnce(new Error('boom'));
+    renderProfile();
+    await screen.findByRole('heading', { name: /^My Game Collection/ });
+
+    searchFor('azul');
+    fireEvent.click(await screen.findByRole('button', { name: ADD_NAME }));
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith("We couldn't add that game. Please try again.")
+    );
+    expect(loggerMock().info).toHaveBeenCalledWith('Error adding game to collection:', expect.any(Object));
+    const add = screen.getByRole('button', { name: ADD_NAME });
+    await waitFor(() => expect(add.textContent).toBe('Add to Collection'));
+    expect(add).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('textbox', { name: 'Search BoardGameGeek' })).toBeInTheDocument();
+
+    fireEvent.click(add);
+    await waitFor(() => expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(2));
+  });
+
+  it('A5: one focus instance serves Remove and Add, the latch exists, and P7 ships with three ASCII full stops', async () => {
+    const src = await pageSource();
+    // CODE lines only: a comment that names the arm call is not a second call site.
+    const code = src
+      .split('\n')
+      .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+      .join('\n');
+    const count = (text: string, needle: string) => text.split(needle).length - 1;
+    // AMENDED (88.6.1 code review A-73): Remove arms with `preferred` alone; Add also passes the
+    // pressed button as `from` (consumer contract (1)). Still ONE instance, two arm sites.
+    // AMENDED again (A-74): Remove now passes the gate's pressed control as `from` too.
+    expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: opts?.from ?? null })')).toBe(1);
+    expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: pressed })')).toBe(1);
+    expect(src).toContain('addGameInFlightRef');
+    expect(count(src, "const ADDING_TO_COLLECTION_LABEL = 'Adding...';")).toBe(1);
+    expect(src).not.toContain('Adding…');
+  });
+
+  it('A6: the latch is released at the add\'s confirmation and the added game reads as owned before the refresh lands', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    const refresh = deferred<unknown>();
+    (userGamesAPI.getOwnedGames as Mock)
+      .mockResolvedValueOnce(OWNED_GAMES)
+      .mockReturnValueOnce(refresh.promise);
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT, BRASS_RESULT]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValueOnce({ id: 'game-azul' });
+    (userGamesAPI.addOwnedGame as Mock).mockResolvedValueOnce({ message: 'Game added to your collection', game: AZUL_ROW });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Catan' });
+
+    searchFor('azul');
+    await screen.findByText(/^Brass: Birmingham/);
+    const azulAdd = rowButton(/^Azul \(2017\)/);
+    act(() => { azulAdd.focus(); });
+    fireEvent.click(azulAdd);
+    await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
+
+    // The refresh is still held: reopen the search.
+    searchFor('azul');
+    await screen.findByText(/^Brass: Birmingham/);
+    const brass = rowButton(/^Brass: Birmingham/);
+    expect(brass).toHaveTextContent('Add to Collection');
+    expect(brass).not.toBeDisabled();
+    expect(brass).not.toHaveAttribute('aria-disabled');
+    const azul = rowButton(/^Azul \(2017\)/);
+    expect(azul).toHaveTextContent('Already Owned');
+    expect(azul).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Remove Azul' })).toBeInTheDocument();
+    expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2);
+
+    await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
+    expect(screen.getAllByRole('button', { name: 'Remove Azul' })).toHaveLength(1);
+  });
+});
+
+describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  // Copy row RF1 (D-47, owner-ratified) — declared once here (88.6.1-70 contract C7); the page
+  // itself never spells it (plan 70's one constant renders it).
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  const ROW_ADDRESS = 'row-address@example.com';
+
+  beforeEach(async () => {
+    const { userGamesAPI, googleCalendarAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    // Re-set explicitly: earlier describes leave `getStatus` answering connected.
+    (googleCalendarAPI.getStatus as Mock).mockResolvedValue({ connected: false });
+  });
+  afterEach(async () => {
+    const { userGamesAPI, googleCalendarAPI } = await import('@/lib/api');
+    // The persistence trap: clearAllMocks keeps an implementation, so restore the defaults here.
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([]);
+    (googleCalendarAPI.getStatus as Mock).mockResolvedValue({ connected: false });
+    document.querySelectorAll('main[data-k-main]').forEach((m) => m.remove());
+  });
+
+  // The mocked identity hook reads `h` on render, so a changed query state commits only on a render.
+  async function commit(rerender: (ui: React.ReactElement) => void) {
+    await act(async () => { rerender(<Profile />); });
+  }
+  function mainContainer(): HTMLElement {
+    const main = document.createElement('main');
+    main.setAttribute('data-k-main', '');
+    document.body.appendChild(main);
+    return main;
+  }
+  // The unpressed re-attempt: a tab return, the useFetchErrorState.test.tsx idiom.
+  function fireVisible() {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+  const visibleRf1 = (root: HTMLElement) => {
+    const node = within(root).getAllByText(RF1).find((n) => !n.closest('.sr-only'));
+    if (!node) throw new Error('no visible RF1 line');
+    return node;
+  };
+  const collectionCard = () => {
+    const card = screen.getByRole('heading', { name: /^My Game Collection/ }).closest('.card');
+    if (!(card instanceof HTMLElement)) throw new Error('no collection card');
+    return card;
+  };
+
+  async function healthy(container?: HTMLElement) {
+    const view = renderProfile({ username: 'RealName' }, container ? { container } : {});
+    await screen.findByRole('heading', { level: 1, name: 'RealName' });
+    return view;
+  }
+
+  it('K1: a 500 refresh keeps the name under the header card RF1 notice, with no full banner', async () => {
+    const view = await healthy();
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+    const heading = screen.getByRole('heading', { level: 1, name: 'RealName' });
+    expect(visibleRf1(headerCard()).compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(headerCard()).queryByText('Something went wrong')).toBeNull();
+  });
+
+  it('K2: the RF1 region is one of the header card status nodes present before the failure', async () => {
+    const view = await healthy();
+    const before = within(headerCard()).queryAllByRole('status');
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+    const region = within(headerCard()).getAllByRole('status').find((n) => n.textContent === RF1);
+    expect(region).toBeDefined();
+    expect(before).toContain(region);
+  });
+
+  it('K3: Retry recovers, the notice leaves and focus lands on the page h1, never body', async () => {
+    const user = userEvent.setup();
+    const view = await healthy(mainContainer());
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+
+    h.refetchSelf.mockImplementation(async () => { h.selfError = null; return { isError: false }; });
+    await user.click(within(headerCard()).getByRole('button', { name: 'Retry' }));
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).queryAllByText(RF1)).toHaveLength(0));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'RealName' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  async function withdrawnCase(err: ApiError) {
+    const view = await healthy();
+    // Positive signal: the collection list renders live over the healthy row.
+    await screen.findByRole('button', { name: 'Remove Catan' });
+    // A-65 positive signals: the preferences card and the availability lists are live over the row.
+    expect(screen.getByRole('heading', { level: 2, name: 'Notification Preferences' })).toBeInTheDocument();
+    expect(within(availabilityCard()).queryAllByRole('button', { name: 'Retry' })).toHaveLength(0);
+    h.selfError = err;
+    await commit(view.rerender);
+
+    const line = (await within(headerCard()).findAllByText(getFetchErrorMessage(err)))[0];
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    const headings = screen.getAllByRole('heading', { level: 1 });
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toHaveAccessibleName('Self');
+    expect(screen.queryByRole('heading', { level: 1, name: 'RealName' })).toBeNull();
+    expect(headings[0].compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Google Calendar Integration' })).toBeInTheDocument();
+    // Review #117: the collection card shows its existing compact notice, no live Remove control.
+    const card = collectionCard();
+    expect(within(card).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(within(card).queryAllByRole('button', { name: /^Remove / })).toHaveLength(0);
+    // A-65 (C10): no live control below the header acts on the withdrawn row — the Notification
+    // Preferences card leaves, and the availability list shows its existing compact notice.
+    expect(screen.queryByRole('heading', { name: 'Notification Preferences' })).toBeNull();
+    expect(within(availabilityCard()).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  }
+  const availabilityCard = () => {
+    const card = screen.getByRole('heading', { level: 2, name: 'Availability Settings' }).closest('.card');
+    if (!(card instanceof HTMLElement)) throw new Error('no availability card');
+    return card;
+  };
+
+  it('K4: a 401 over the kept row withdraws it; the page keeps one h1 (the session name) above the register line', async () => {
+    await withdrawnCase(new ApiError('Unauthorized', 'unauthorized', 401));
+  });
+
+  it('K5: a 403 over the kept row withdraws it; the page keeps one h1 (the session name) above the register line', async () => {
+    await withdrawnCase(new ApiError('Forbidden', 'forbidden', 403));
+  });
+
+  it('K5b (IN-15): with no session name the withdrawn arm still renders the page h1, from the email', async () => {
+    const original = h.authUser;
+    h.authUser = { ...original, name: undefined };
+    try {
+      const view = renderProfile({ username: 'RealName' });
+      await screen.findByRole('heading', { level: 1, name: 'RealName' });
+      const forbidden = new ApiError('Forbidden', 'forbidden', 403);
+      h.selfError = forbidden;
+      await commit(view.rerender);
+      await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+      const headings = screen.getAllByRole('heading', { level: 1 });
+      expect(headings).toHaveLength(1);
+      expect(headings[0]).toHaveAccessibleName('self');
+    } finally {
+      h.authUser = original;
+    }
+  });
+
+  it('K6: a network failure keeps the name under RF1', async () => {
+    const view = await healthy();
+    h.selfError = new ApiError('Network error', 'network', 0);
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+  });
+
+  it('K7: a 403 then a 500 stays withdrawn; the next success brings the row back (C10 memory)', async () => {
+    const view = await healthy();
+    const forbidden = new ApiError('Forbidden', 'forbidden', 403);
+    h.selfError = forbidden;
+    await commit(view.rerender);
+    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Self');
+    expect(screen.queryByRole('heading', { level: 1, name: 'RealName' })).toBeNull();
+
+    h.selfError = null;
+    await commit(view.rerender);
+    expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('K8: an unpressed re-attempt answered 403, then 401, withdraws the focused pencil and focus lands on the h1, never body (C12 a)', async () => {
+    for (const err of [
+      new ApiError('Forbidden', 'forbidden', 403),
+      new ApiError('Unauthorized', 'unauthorized', 401),
+    ]) {
+      const view = await healthy(mainContainer());
+      h.selfError = new ApiError('Server error', 'internal', 500);
+      await commit(view.rerender);
+      await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+
+      act(() => screen.getByRole('button', { name: 'Edit username' }).focus());
+      h.refetchSelf.mockImplementation(async () => { h.selfError = err; return { isError: true }; });
+      await act(async () => { fireVisible(); });
+      await commit(view.rerender);
+
+      expect(screen.queryByRole('button', { name: 'Edit username' })).toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 })));
+      expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Self');
+      expect(document.activeElement).not.toBe(document.body);
+
+      cleanup();
+      document.querySelectorAll('main[data-k-main]').forEach((m) => m.remove());
+      h.selfError = null;
+      h.refetchSelf.mockReset();
+    }
+  });
+
+  it('K9: the notice Retry holds focus and an unpressed re-attempt succeeds; focus lands on the RealName h1 (C12 b)', async () => {
+    const view = await healthy(mainContainer());
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(view.rerender);
+    await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
+
+    act(() => within(headerCard()).getByRole('button', { name: 'Retry' }).focus());
+    h.refetchSelf.mockImplementation(async () => { h.selfError = null; return { isError: false }; });
+    await act(async () => { fireVisible(); });
+    await commit(view.rerender);
+
+    await waitFor(() => expect(within(headerCard()).queryAllByText(RF1)).toHaveLength(0));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'RealName' }))
+    );
+  });
+
+  it('K10: an access answer puts the Email card on its unavailable arm (said, not empty), and a success restores it (review #125)', async () => {
+    const view = renderProfile({ username: 'RealName', email: ROW_ADDRESS });
+    await screen.findByRole('heading', { level: 1, name: 'RealName' });
+    const emailRegion = () => screen.getByRole('region', { name: 'Email' });
+    expect(await within(emailRegion()).findByText(ROW_ADDRESS)).toBeInTheDocument();
+    expect(within(emailRegion()).getByRole('button', { name: 'Change' })).toBeInTheDocument();
+
+    const forbidden = new ApiError('Forbidden', 'forbidden', 403);
+    h.selfError = forbidden;
+    await commit(view.rerender);
+    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+
+    expect(within(emailRegion()).queryByText(ROW_ADDRESS)).toBeNull();
+    expect(within(emailRegion()).queryByRole('button', { name: 'Change' })).toBeNull();
+    const said = await within(emailRegion()).findByText(UNAVAILABLE_COPY);
+    expect(said).not.toHaveClass('sr-only');
+
+    h.selfError = null;
+    await commit(view.rerender);
+    expect(await within(emailRegion()).findByText(ROW_ADDRESS)).toBeInTheDocument();
+    expect(within(emailRegion()).getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    expect(within(emailRegion()).queryByText(UNAVAILABLE_COPY)).toBeNull();
+  });
+
+  it('K11: the access memory survives a remount over the cached identity entry (C10 TanStack source)', async () => {
+    // This suite mocks the identity hook, so there is no real cache. A fake QueryClientContext
+    // stands in for the one property a real cache gives: the SAME entry object for the identity
+    // key on both sides of an unmount (plan 59's P11 shape). Every other key finds nothing.
+    const selfEntry = {};
+    const fakeClient = {
+      getQueryCache: () => ({
+        find: (filters: { queryKey?: unknown }) =>
+          JSON.stringify(filters?.queryKey) === JSON.stringify(['users', 'self', h.authUser.sub])
+            ? selfEntry
+            : undefined,
+        // P5 A-79: useRetainedContent looks its query up by hash (`get`), so the fake answers both.
+        get: (hash: string) => (hash === hashKey(['users', 'self', h.authUser.sub]) ? selfEntry : undefined),
+      }),
+    };
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientContext.Provider value={fakeClient as never}>{children}</QueryClientContext.Provider>
+    );
+    const first = renderProfile({ username: 'RealName' }, { wrapper });
+    await screen.findByRole('heading', { level: 1, name: 'RealName' });
+
+    const forbidden = new ApiError('Forbidden', 'forbidden', 403);
+    h.selfError = forbidden;
+    await commit(first.rerender);
+    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+    h.selfError = new ApiError('Server error', 'internal', 500);
+    await commit(first.rerender);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Self');
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    first.unmount();
+    // `h` unchanged: the held row and the 500 a real cache would still hold.
+    const second = renderProfile({ username: 'RealName' }, { wrapper });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Self' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: 'RealName' })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+
+    h.selfError = null;
+    await commit(second.rerender);
+    expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
   });
 });

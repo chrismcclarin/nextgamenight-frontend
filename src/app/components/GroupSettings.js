@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
@@ -24,6 +24,7 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { Modal } from './Modal';
 import { Input } from '../../components/ui/Input';
+import { useRadioGroup } from '../../components/ui/useRadioGroup';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -36,6 +37,9 @@ const DEFAULT_PROFILE_PICTURES = [
   { name: 'Fire', url: '🔥' },
   { name: 'Rocket', url: '🚀' },
 ];
+// Phase 88.6.1-43: the eight emoji, mapped once at module scope so the radio-group hook sees
+// one stable array of values in reading order.
+const DEFAULT_PICTURE_URLS = DEFAULT_PROFILE_PICTURES.map((pic) => pic.url);
 
 /*
  * Default background color options.
@@ -158,6 +162,11 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   const [customPictureUrl, setCustomPictureUrl] = useState('');
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  // Phase 88.6.1-43 (D-35): the in-flight latches for the two pressed controls that keep focus
+  // while they work. REFS, not the state flags: `setSaving(true)` does not land before a second
+  // synchronous press dispatches. See the marker above the leave-confirm buttons.
+  const saveInFlightRef = useRef(false);
+  const leaveInFlightRef = useRef(false);
 
   // Plan 69-04 Leave Group state
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -168,6 +177,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   // `ManageMembers.js`, where the same reasoning is recorded: this component can be mounted
   // more than once in a tree and a duplicate id would make the reference ambiguous.
   const leaveErrorId = useId();
+  // Phase 88.6.1-43: the id the default-icon radio group is named by (its visible
+  // "Choose a default icon:" paragraph). `useId` for the same reason as `leaveErrorId` above.
+  const iconChoiceLabelId = useId();
 
   // Plan 69-04: derive isOnlyMember from a one-time members fetch.
   // The Group object passed to GroupSettings doesn't reliably include
@@ -258,8 +270,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   const previewGround = resolveGroupGround(backgroundColor);
 
   const handleSave = async () => {
+    if (saveInFlightRef.current) return;
     if (!user?.sub) return;
-    
+    saveInFlightRef.current = true;
     try {
       setSaving(true);
       /*
@@ -429,6 +442,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
          so a banner would put a page-level treatment on an action-level failure. */
       toast.error(getFetchErrorMessage(error));
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   };
@@ -437,6 +451,16 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     setProfilePictureUrl(emoji);
     setCustomPictureUrl('');
   };
+
+  // Phase 88.6.1-43 (D-20 / D-43): the eight default-icon tiles are one radio group. Checking a
+  // tile only sets local form state, so selection-follows-focus is safe; Save Changes persists.
+  // The marker above the grid in the render below records the choice and what it rejected.
+  const iconRadio = useRadioGroup({
+    values: DEFAULT_PICTURE_URLS,
+    checked: profilePictureUrl,
+    onCheck: handleSelectDefaultPicture,
+    labelledBy: iconChoiceLabelId,
+  });
 
   /*
    * DECISION Phase 88.3.1 (D-06): TAPPING THE ALREADY-SELECTED SWATCH CLEARS IT.
@@ -491,7 +515,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   };
 
   const handleLeaveGroup = async () => {
+    if (leaveInFlightRef.current) return;
     if (!user?.sub || !group?.id) return;
+    leaveInFlightRef.current = true;
     try {
       setLeaving(true);
       setLeaveError('');
@@ -540,6 +566,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
          the destructive path. If that arm ever moves, this one moves with it. */
       setLeaveError(getFetchErrorMessage(err));
     } finally {
+      leaveInFlightRef.current = false;
       setLeaving(false);
     }
   };
@@ -774,12 +801,39 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
           {/* Default Options */}
           <div className="mb-4">
-            <p className="text-sm text-content-secondary mb-2">Choose a default icon:</p>
-            <div className="grid grid-cols-4 gap-2">
+            <p id={iconChoiceLabelId} className="text-sm text-content-secondary mb-2">Choose a default icon:</p>
+            {/* DECISION Phase 88.6.1-43 (D-20 / D-43, D-33 row 12): a radio group. Chosen: a
+                radiogroup named by the visible label above, each tile a radio with its checked
+                state, one roving tab stop, and arrow keys that move AND select. Selection
+                follows focus safely here because checking a tile only sets form state; nothing
+                persists until Save Changes.
+
+                Each tile's name is the shipped name string of its picture, carried by the
+                tile's EXISTING title attribute: the owner kept the desktop hover tooltip
+                (ruling 2026-10-05). The emoji sits in an aria-hidden span and the tile has no
+                aria-label, so the title is its ONLY name source. By HTML-AAM a button with no
+                aria-label, no label and a hidden subtree takes its name from its title, and a
+                title used as the name is not also the description. The swatch rule further down
+                (a title BESIDE an aria-label is read as a second name, round-3 #30) is honoured
+                because there is no aria-label here.
+
+                Rejected: aria-pressed (a set-only tile is a one-way toggle, the dishonesty
+                DECISION Phase 88.3.1 (D-06) names for the swatches); plain buttons with no state
+                (loses the per-tile state AC-19 requires); an aria-label with the title dropped
+                (AT-6's recommendation, which loses the tooltip the owner kept); and an
+                aria-label beside the kept title (two name sources, the swatch rule's double
+                read). The aria-hidden wrapper is load-bearing: remove it and the tile's name
+                becomes the emoji glyph.
+
+                Not yet heard on a device: if VoiceOver does not read a tile by its name, that
+                goes back to the owner; do not remove the tooltip to fix it. No visible change
+                at any width, and the tile size is untouched (D-21: no floor change). Changing
+                this is a decision, not a cleanup. */}
+            <div {...iconRadio.groupProps} className="grid grid-cols-4 gap-2">
               {DEFAULT_PROFILE_PICTURES.map((pic, index) => (
                 <button
                   key={index}
-                  onClick={() => handleSelectDefaultPicture(pic.url)}
+                  {...iconRadio.getRadioProps(index)}
                   /* DECISION Phase 88.6-20 (D-20 (iv)): this button GAINS the project focus
                      string. It is not scope creep — it is the first thing the ring scan found
                      when `GroupSettings.js` joined `RING_SCAN_FILES` in this same commit, and
@@ -801,13 +855,19 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                      such a site bare where a recorded geometry decision forbids `.btn`'s
                      padding; this is that case, recorded here. The ring is added as a utility
                      instead, byte-identical to the string the swatch below and the group-page
-                     header CTAs carry. */
+                     header CTAs carry.
+
+                     AMENDED Phase 88.6.1-43 (D-20 / D-43): the eight tiles are now one radio
+                     group from the shared useRadioGroup hook (role, checked state, roving tab
+                     stop and arrow keys come from it; its click handler calls the same
+                     handleSelectDefaultPicture this tile used to call itself). They stay bare
+                     buttons for this marker's reason, and the ring string is unchanged. */
                   className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                     profilePictureUrl === pic.url ? 'border-accent bg-surface-muted' : 'border-line'
                   }`}
                   title={pic.name}
                 >
-                  {pic.url}
+                  <span aria-hidden="true">{pic.url}</span>
                 </button>
               ))}
             </div>
@@ -1125,8 +1185,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                  * further down reds AND a silent fix that would leave this marker lying reds.
                  *
                  * REJECTED: moving `--color-border-strong` itself. It has 27 class usages
-                 * across `src` and `globals.css:1073-1136` records it as the 3:1 control edge
-                 * and forbids nudging it. Any future fix is a `dark:` variant HERE, and it
+                 * across `src` and the `DECISION Phase 88-01 (D-34` marker at its declaration
+                 * in `globals.css` records it as the 3:1 control edge ("stays the 3:1 control
+                 * edge" … "decision, not a cleanup"). Any future fix is a `dark:` variant HERE, and it
                  * updates test 15b in the same commit.
                  *
                  * ——— AMENDED Phase 88.6-20 (D-17, owner fork 2026-09-08). Every sentence
@@ -1152,7 +1213,8 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                  * reads 5.9962, up from `purple-500`'s 3.4225.
                  *
                  * REJECTED — `border-purple-400`, the 4.02 alternative named above. `@theme`
-                 * exposes only `--color-purple-100/300/700/800/900` (`globals.css:250-265`),
+                 * exposes only `--color-purple-100/300/700/800/900` (the `@theme` run that
+                 * starts at `--color-purple-100` in `globals.css`),
                  * so `border-purple-400` would compile against TAILWIND'S DEFAULT purple
                  * ramp — a colour that is not in this design system at all. Verified by
                  * reading the `@theme` block, not assumed.
@@ -1254,7 +1316,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                          is erased identically" is a reason it is not a REGRESSION, not a reason
                          to leave the mode uncovered. Owner ruling 2026-09-14, option (1).
                          REJECTED — a check glyph or disc instead of a band: a VISUAL decision
-                         needing the owner and a 375px mockup, and `:788-790` above already
+                         needing the owner and a 375px mockup, and `DECISION Phase 88.3 (R2-2, owner ruling)` above already
                          carries a prior rejection of that shape on different grounds.
 
                          NOT MEASURED: the `forced-colors: active` box-shadow/border behaviour
@@ -1384,6 +1446,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                         politeness, same empty-first mount, same `aria-describedby`. The two must
                         not diverge; one phase must not ship two standards for one shape.
 
+                        SUPERSEDED IN PART by CORRECTED Phase 88.6.1-43 (Tailwind 4) below.
                         THE ONE DELIBERATE DIFFERENCE, and it is spacing, not mechanism. Plan 19's
                         site sits in a `Modal.Body` with no `space-y`, so it suppresses the empty
                         region's gap with a conditional `mt-4`. THIS site sits inside
@@ -1398,14 +1461,58 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                         node from the accessibility tree in several screen readers and would
                         silently restore the very defect this arm fixes.
 
+                        AMENDED Phase 88.6.1-43 (D-22): the sr-only-while-empty shape this marker
+                        chose is now the house prop srOnlyWhenEmpty on StatusRegion (one idiom
+                        across the app, AC-26), in place of the hand-written class ternary. Same
+                        node, same politeness, same aria-describedby, and visible the moment it
+                        carries a message.
+
+                        AMENDED Phase 88.6.1-43 (D-42): the premise above (screen readers announce
+                        changes to a live region, not the conditional mount of a new one) holds
+                        for THIS polite region. It is not a rule for alerts: an inserted assertive
+                        alert that arrives with its text IS announced (ARIA 1.2; research AT-4),
+                        so the sentence must not be quoted as one.
+
+                        CORRECTED Phase 88.6.1-43 (Tailwind 4): the spacing paragraph above
+                        describes Tailwind 3. Under Tailwind 4.3.3 the stack's space-y-3 sets
+                        margin-block-end on every child that is NOT the last, and no top margin
+                        at all. The region is a middle child: while it is empty the prop takes it
+                        out of flow (sr-only is absolutely positioned), so the idle block costs no
+                        extra space; a shown message has the stack's 12px between it and the
+                        buttons. The REJECTED empty:hidden sentence above still holds.
+
                         Re-conditioning the mount, or dropping the `aria-describedby`, is a
                         decision, not a cleanup. */}
                     <StatusRegion
                       id={leaveErrorId}
                       politeness="polite"
                       message={leaveError}
-                      className={`text-content-status-error${leaveError ? '' : ' sr-only'}`}
+                      className="text-content-status-error"
+                      srOnlyWhenEmpty
                     />
+                    {/* DECISION Phase 88.6.1-43 (W016 rows 10-11, 18-19 / D-35, D-39): the pressed
+                        control stays focusable. Chosen: aria-disabled plus a synchronous
+                        first-line REF refusal on the control the user pressed (Save Changes with
+                        saveInFlightRef, Confirm Leave below with leaveInFlightRef, each released
+                        only in its handler's finally), and aria-disabled on the Delete Group
+                        opener while its confirm is pending, so the confirm dialog's close
+                        restore can land on it (W014 case 1); the opener's refusal of a second
+                        open is useConfirmAction's own trigger guard. The leave Cancel beside
+                        Confirm Leave KEEPS its native in-flight disabled: it is a sibling nobody
+                        pressed (rule of POSITION, DECISION Phase 88.6-22 in FriendInvitePanel.js).
+                        The two Manage Members routes keep native disabled too: a capability gate,
+                        not in flight (rule of KIND).
+
+                        Rejected: native disabled on the pressed control (it drops out of the
+                        focus order mid-request and strands a keyboard user); a see-through
+                        utility for the busy look (colour pairs only: the DR-C gated primary pair
+                        for Save, D-39's owner-approved gated danger pair for Confirm Leave and
+                        Delete Group); and a second latch on the opener (two refusals for one
+                        gate). Disclosed visible delta: while working, Save shows the gated
+                        primary pair and the two danger controls the gated danger pair, instead
+                        of the old 50% wash. MATCHED PAIR: the leave confirm in ManageMembers.js
+                        takes the same shape in plan 88.6.1-50. Changing this is a decision, not a
+                        cleanup. */}
                     <div className="flex gap-3">
                       <Button
                         type="button"
@@ -1420,7 +1527,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                         type="button"
                         variant="danger"
                         size="default"
-                        disabled={leaving}
+                        aria-disabled={leaving || undefined}
                         aria-describedby={leaveErrorId}
                         onClick={handleLeaveGroup}
                       >
@@ -1524,13 +1631,14 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
             {/* One affordance, one gate. The typed confirmation and its Cancel
                 now live in <ConfirmDialog> (see the DECISION marker above
                 `deleteGate`); this button only opens it. */}
+            {/* aria-disabled while pending, never native: see DECISION Phase 88.6.1-43 (W016 rows 10-11, 18-19 / D-35, D-39). */}
             <Button
               type="button"
               variant="danger"
               size="default"
               className="w-full sm:w-auto"
               onClick={() => deleteGate.trigger()}
-              disabled={deleteGate.pending}
+              aria-disabled={deleteGate.pending || undefined}
             >
               {deleteGate.pending ? 'Deleting...' : 'Delete Group'}
             </Button>
@@ -1542,7 +1650,8 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <Modal.Action variant="secondary" onClick={onClose}>
             Cancel
           </Modal.Action>
-          <Modal.Action variant="primary" onClick={handleSave} disabled={saving}>
+          {/* aria-disabled while saving, never native: see DECISION Phase 88.6.1-43 (W016 rows 10-11, 18-19 / D-35, D-39). */}
+          <Modal.Action variant="primary" onClick={handleSave} aria-disabled={saving || undefined}>
             {saving ? 'Saving...' : 'Save Changes'}
           </Modal.Action>
         </Modal.Footer>

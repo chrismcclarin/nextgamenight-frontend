@@ -7,8 +7,9 @@ import KebabMenu from './KebabMenu';
 import FriendInvitePanel from './FriendInvitePanel';
 import { toast } from 'sonner';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
@@ -17,6 +18,18 @@ import { Modal } from './Modal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { SelectControl } from '../../components/ui/Input';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+
+// Copy row G1 (Phase 88.6.1 D-30, owner-ratified 2026-10-04): the opener says what its dialog title and its receipt say.
+const RESET_INVITE_LINK_LABEL = 'Reset invite link';
+
+// 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): the Make admin confirm's text
+// while the grant is in flight (ConfirmDialog's pendingLabel).
+const PROMOTE_ADMIN_PENDING_LABEL = 'Promoting…';
+
+// The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
+const LOAD_OK = Object.freeze({ isError: false });
+const LOAD_FAILED = Object.freeze({ isError: true });
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -26,9 +39,73 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // the flat member.user_id vs sub compare (which flips value at PR-C). selfUuid resolves
     // ASYNC (D-04), so the current-member role derive re-runs when it resolves.
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+    // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
+    // The group whose roster is on screen (D-09a): the has-loaded flag is this id compared with
+    // `group_id`, never `members.length` — a roster that loaded empty and one never loaded differ.
+    const [loadedGroupId, setLoadedGroupId] = useState(null);
+    const hasLoaded = loadedGroupId === group_id;
+    // W027: bumped at the start of every fetchMembers call; a run that is no longer the latest
+    // writes nothing after its awaits (see the W027 marker above fetchMembers).
+    const fetchGenerationRef = useRef(0);
+    // Mirrors `rosterWithheld` (loaded, but withheld by `useRetainedContent`) after each commit;
+    // the close reset reads it (see the C10 marker below the members error adapter).
+    const rosterWithheldRef = useRef(false);
+    // The group the latest fetch asked for: a fetch for another group resets the previous
+    // group's error, pending invites and role, and the banner shows an error only for this key.
+    const [requestedGroupId, setRequestedGroupId] = useState(null);
+    /* DECISION Phase 88.6.1-42 (D-04, D-05, H1-H3): the three handlers whose refresh can remove
+       the row the user is on (the remove, the approve, the reject) arm the ONE shared hook
+       (plan 88.6.1-04) before any await and settle it in `finally`. A phone remove lands on the
+       neighbour row's member-actions trigger (the next row, else the previous one, captured at
+       arm time; a natively disabled trigger is skipped, an `aria-disabled` one is not, because
+       it can still take focus), and with no such neighbour on this dialog's title (the section
+       heading), reached through the hook's floor because this host sits inside a `Modal`.
+       Approve and reject land on the title.
+       REJECTED, each with its reason:
+       (a) a ref into the Modal header: `ModalHeader` takes no ref, so it would be an edit to the
+           shared primitive for the same element the floor already finds.
+       (b) always the title: D-05 as first written ("whole-list remounts -> the section heading")
+           assumed the whole roster remounted. After D-09a rows are keyed on the member id and
+           survive, so a single-row removal has a neighbour, and the title throws away the
+           user's place in a list they may be working through. D-05 is amended to "single-row
+           removal -> the neighbour row, else the heading" (D-57), the same reading plan
+           88.6.1-41 records for the home group list.
+       (c) arming the role change: after D-09a it removes nothing. Its refresh may MOVE the row
+           (the members GET has no order), and the shared hook cannot tell a moved node from a
+           blank-area click. No host-local re-focus is built either: MEASURED (T8b), React DOM's
+           commit re-focuses a moved node that held focus before the commit (`restoreSelection`,
+           the finding plan 88.6.1-41 recorded), so a re-focus written here could never act.
+       (d) a fallback prop on KebabMenu: its own marker, and D-04.
+       (e) the row's first control in DOM order: at phone width the desktop controls are hidden
+           and cannot take focus.
+       The dialog-tier remove and reject close their ConfirmDialog after the refresh, and the
+       hook defers to the primitive's restore, which floors to this title (D-07, plan 88.6.1-20;
+       `DECISION Phase 88.6-44`). Approve and reject go with Phase 91.1. Changing this is a
+       decision, not a cleanup. */
+    const rosterFocusRecovery = useFocusRecovery();
+    // The phone member-actions wrapper of each active row, by member id (callback refs below).
+    const memberActionsNodesRef = useRef(new Map());
+    // The arm-time neighbour resolver for a remove: the member-actions trigger of the active row
+    // directly after, else directly before, the removed one; null when neither has a usable one.
+    const neighbourMemberActions = (target_user_id) => {
+        const active = members.filter((m) => m.UserGroup?.role !== 'pending');
+        const index = active.findIndex((m) => m.id === target_user_id);
+        const neighbours = index === -1
+            ? []
+            : [active[index + 1], active[index - 1]].map(
+                (m) => (m ? memberActionsNodesRef.current.get(m.id) : undefined)
+            );
+        return () => {
+            for (const wrapper of neighbours) {
+                const trigger = wrapper?.querySelector('button');
+                if (trigger && trigger.isConnected && !trigger.hasAttribute('disabled')) return trigger;
+            }
+            return null;
+        };
+    };
     const [userRole, setUserRole] = useState(null);
     /* DECISION Phase 88.6-19 (R1 / UI-SPEC §6.2 arm 1): the members LOAD failure holds the
        ERROR OBJECT, not a flattened "Failed to load members" string, and renders through the
@@ -37,8 +114,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
        WHY. §6.2's first row routes a load failure of a surface's primary data to the banner,
        and the string being retired is one of the eight ad-hoc "Failed to X" copies P1 forbids
-       authoring. Keeping the ERROR (the 88-14 idiom, `friends/page.js:180-182` /
-       `GroupLibrary.js`) is what lets `useFetchErrorState` read `ApiError.code` and pick the
+       authoring. Keeping the ERROR (the 88-14 idiom, `friends/page.js`'s
+       `setFriendsLoadError(` error object / `GroupLibrary.js`) is what lets `useFetchErrorState` read `ApiError.code` and pick the
        ratified copy, including the 403 line — a flattened string cannot be re-classified.
 
        Collapsing this back to a string, or back to a bare red `<p>`, is a decision: it
@@ -50,6 +127,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // Owner-only kebab on each non-owner active row sets this; null = closed.
     const [transferTarget, setTransferTarget] = useState(null); // { id (member UUID), name } or null
     const [transferring, setTransferring] = useState(false);
+    // The pressed Transfer ownership's latch: see DECISION Phase 88.6.1-50 at the transfer footer.
+    const transferInFlightRef = useRef(false);
     // Invite modal + reset-link state — buttons live in the Manage Members header,
     // the actual invite UI is the existing FriendInvitePanel modal.
     const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -59,6 +138,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // canonical copy + inline error UX rather than window.confirm.
     const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
     const [leaving, setLeaving] = useState(false);
+    // The pressed Confirm Leave's latch: see DECISION Phase 88.6.1-50 at the transfer footer.
+    const leaveInFlightRef = useRef(false);
     const [leaveError, setLeaveError] = useState('');
     // Stable id for the leave-confirm failure's live region, so the Confirm control can
     // name it with `aria-describedby`. `useId` and not a literal: this component can be
@@ -84,13 +165,55 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         // the resolved UUID instead of sticking at a wrong "no role".
     }, [modal, group_id, user?.sub, selfUuid]);
 
+    // The close reset (R8 empty at a dialog host; C10 memory): see DECISION Phase 88.6.1-78
+    // (C10 access or gone, close reset) below the members error adapter. A run still in flight
+    // writes nothing; a transient error is cleared so a reopen mounts the notice's region empty;
+    // a withheld roster keeps its error. The roster itself is untouched (D-09a).
+    useEffect(() => {
+        if (modal) return;
+        fetchGenerationRef.current += 1;
+        if (!rosterWithheldRef.current) setError(null);
+    }, [modal]);
+
+    /* DECISION Phase 88.6.1-42 (W027 / IN-208): a generation counter (`fetchGenerationRef`)
+       bumped at CALL START and checked after every await (the members GET, the pending-invites
+       GET, the catch, each finally), so a superseded run writes nothing. It is the house idiom of
+       `QuickSuggestions.js` (`generationRef`), moved from an effect cleanup to the call start.
+       REJECTED: (a) IN-208's `isCancelled` closure passed from the effect (the `EventCalendar.js`
+       88.6-27 shape), because four of the five refresh callers are handlers with no effect cleanup
+       to invalidate them, so a remove refresh and an identity refresh could still land out of
+       order; (b) `AbortController`, rejected by name in 88.6-27.
+       ALSO CHOSEN, each over a named alternative:
+       - the error is cleared on SUCCESS, not at fetch start, CHOSEN OVER clearing it up front:
+         that unmounts the banner and its focused Try again the moment a retry starts;
+       - the error is RESET when a fetch asks for a different group than the latest one did
+         (`requestedGroupId`), together with the previous group's pending invites and the
+         caller's role, and the banner shows an error only for that group, CHOSEN OVER clearing
+         it on success alone (a previous group's failure would hold the new group's first-load
+         place, banner and all, until a success) and over a reset in the effect alone (the commit
+         that changes the group would still mount the previous group's banner and its live
+         region);
+       - the invite and role reset runs on a group change ONLY, CHOSEN OVER every refresh (the
+         title would flip to the plain members title for the length of each refresh);
+       - a payload that is not an array is a FAILURE, CHOSEN OVER writing an empty roster: that
+         printed the empty sentence for a request that returned no roster (Req 9, SPEC
+         Prohibition 2). Its breadcrumb below is byte-unchanged.
+       Changing any of this is a decision, not a cleanup. */
     const fetchMembers = async () => {
-        if (!group_id || !user?.sub) return;
+        if (!modal || !group_id || !user?.sub) return;
+        const generation = ++fetchGenerationRef.current;
+        const isCurrent = () => generation === fetchGenerationRef.current;
+        if (requestedGroupId !== group_id) {
+            setRequestedGroupId(group_id);
+            setError(null);
+            setPendingInvites([]);
+            setUserRole(null);
+        }
         setLoading(true);
-        setError(null);
         try {
             // Use groupsAPI.getGroupMembers which automatically includes Authorization header
             const data = await groupsAPI.getGroupMembers(group_id);
+            if (!isCurrent()) return;
 
             // Ensure data is an array before processing
             /* DECISION Phase 88.6-19 (AC-2 / T-84-01): this report's second argument is a SHAPE
@@ -103,12 +226,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 logger.info('Members data is not an array:', {
                     received: data === null ? 'null' : typeof data,
                 });
-                setMembers([]);
-                setLoading(false);
-                return;
+                setError(new Error("The members request didn't complete."));
+                return LOAD_FAILED;
             }
 
             setMembers(data || []);
+            setLoadedGroupId(group_id);
+            setError(null);
 
             // Find current user's role by the nested member.id (UUID) vs the
             // resolved selfUuid. Gated on identity resolution: while selfUuid is
@@ -116,7 +240,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             // role" — the effect re-runs when identity resolves (selfUuid in deps).
             if (!selfUuid) {
                 setPendingInvites([]);
-                return;
+                return LOAD_OK;
             }
             const currentUserMember = data.find(m => m.id === selfUuid);
             const role = currentUserMember?.UserGroup?.role || null;
@@ -128,25 +252,30 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 try {
                     setPendingLoading(true);
                     const invites = await invitesAPI.getGroupPendingInvites(group_id);
+                    if (!isCurrent()) return;
                     setPendingInvites(Array.isArray(invites) ? invites : []);
                 } catch (inviteErr) {
+                    if (!isCurrent()) return;
                     setPendingInvites([]);
                 } finally {
-                    setPendingLoading(false);
+                    if (isCurrent()) setPendingLoading(false);
                 }
             } else {
                 setPendingInvites([]);
             }
+            // The roster loaded; a failed pending-invites read above is swallowed and still OK.
+            return LOAD_OK;
         } catch (error) {
             logger.info('Error fetching members:', errCtx(error));
+            if (!isCurrent()) return;
             // Keep the ERROR object (88-14 idiom): useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
             setError(
                 error instanceof Error ? error : new Error("The members request didn't complete.")
             );
-            setMembers([]);
+            return LOAD_FAILED;
         } finally {
-            setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
     };
 
@@ -160,9 +289,41 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     });
     const retryMembers = useCallback(() => fetchMembersRef.current?.(), []);
     const membersErrorState = useFetchErrorState({
-        isError: Boolean(error),
+        isError: Boolean(error) && requestedGroupId === group_id,
         error,
         refetch: retryMembers,
+    });
+    /* DECISION Phase 88.6.1-78 (C10 access or gone, close reset):
+       CHOSEN: (1) `rosterRetained` comes from plan 88.6.1-70's `useRetainedContent` on plan
+       88.6.1-42's has-loaded flag for this group (a has-loaded flag, never a row count: a roster
+       that loaded EMPTY is retained content, D-50) — the one predicate for every 401 / 403 / 404 /
+       410 form, remembered until the next success — so an answer saying the viewer lost access or
+       the group is gone withholds the rows, the empty sentence, the pending invites and the Invite /
+       Reset action row for the full banner's register line, and the RF1 notice never offers a Retry
+       for it; (2) closing the dialog supersedes any in-flight run and clears a TRANSIENT error, so a
+       reopen mounts the notice's region empty and speaks only about the reopen's own refresh;
+       (3) while the roster is withheld the error is KEPT across the close (`rosterWithheldRef`), so
+       the hook's memory survives and a reopen never paints a withdrawn roster; (4) `fetchMembers`
+       returns at once while the dialog is closed, so the kept error arms no background refetch while
+       the dialog is closed — the work is gated, never the error (gating the error state on `modal`
+       would end the hook's memory at the close).
+       REJECTED: (a) the notice over an access answer: its Retry cannot succeed and it keeps
+       presenting content the viewer has lost; (b) writing an empty roster on access loss: contract
+       C1 forbids writing the data, the hook withholds it; (c) clearing the error at the START of a
+       run instead of on close: contract C2 forbids it (it unmounts a pressed Retry); (d) a local list
+       of codes: contract C10 (this plan's earlier forbidden / not-found set missed 401 and the 410
+       family); (e) clearing every error on close: it ends the hook's memory and paints the withdrawn
+       roster for the length of the reopen's GET; (f) keeping only a stored access or gone code across
+       the close: after a failed Try again the stored code is transient while the roster is still
+       withheld; (g) keeping every error across the close: the reopen would announce a failure from
+       before the close, moments before its own refresh may succeed; (h) leaving the Invite / Reset
+       action row up on a withdrawn role: its controls act on authorization the latest answer
+       revoked.
+       Changing this is a decision, not a cleanup. */
+    const rosterRetained = useRetainedContent(hasLoaded, membersErrorState);
+    const rosterWithheld = hasLoaded && !rosterRetained;
+    useEffect(() => {
+        rosterWithheldRef.current = rosterWithheld;
     });
 
     // Runs ONLY after the escalation gate below has been confirmed, or directly for
@@ -208,6 +369,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         title: `Make ${promoteTarget?.name || 'this member'} an admin?`,
         body: 'Admins can edit events, manage members, and approve or remove people.',
         confirmLabel: 'Make admin',
+        pendingLabel: PROMOTE_ADMIN_PENDING_LABEL,
         onConfirm: async (target_user_id) => {
             const ok = await performRoleChange(target_user_id, 'admin');
             // Rejecting keeps the gate open (useConfirmAction's contract) so the
@@ -243,6 +405,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // this. See the AR-DEC-3 marker at the kebab item for why they differ.
     const handleRemoveMemberConfirmed = async (target_user_id) => {
         if (!group_id || !user?.sub) return false;
+        const settle = rosterFocusRecovery.arm({ preferred: neighbourMemberActions(target_user_id) });
         try {
             await groupsAPI.removeUserFromGroup(group_id, target_user_id);
             await fetchMembers(); // Refresh the list
@@ -260,6 +423,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             // `removeMemberGate.onConfirm` rethrows on `false` (`Remove failed`), which is
             // what keeps the confirm dialog OPEN after a failed remove.
             return false;
+        } finally {
+            settle();
         }
     };
 
@@ -281,28 +446,32 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         removeMemberGate.trigger(target_user_id);
     };
 
-    const handleApproveMember = async (target_user_id) => {
+    const handleApproveMember = async (target_user_id, event) => {
         if (!group_id) return;
+        const settle = rosterFocusRecovery.arm({ from: event?.currentTarget });
         try {
             await groupsAPI.approveMember(group_id, target_user_id);
             await fetchMembers();
             if (onMembersUpdated) onMembersUpdated();
             // No success receipt here BY RULING, not by omission: Phase 91.1 deletes the
-            // approve/reject controls (ROADMAP :1527), so wiring a receipt for a control a
+            // approve/reject controls (ROADMAP `### Phase 91.1: Pending-member vestige removal`), so wiring a receipt for a control a
             // later phase removes is out of scope per the 88.6 SPEC. Phase 91.1 owns it.
         } catch (error) {
             logger.info('Error approving member:', errCtx(error));
             toast.error(getFetchErrorMessage(error));
+        } finally {
+            settle();
         }
     };
 
     const performRejectMember = async (target_user_id) => {
+        const settle = rosterFocusRecovery.arm();
         try {
             await groupsAPI.rejectMember(group_id, target_user_id);
             await fetchMembers();
             if (onMembersUpdated) onMembersUpdated();
             // No success receipt here BY RULING — same Phase 91.1 deletion as the approve
-            // handler above (ROADMAP :1527). Phase 91.1 owns this control's receipt.
+            // handler above (ROADMAP `### Phase 91.1: Pending-member vestige removal`). Phase 91.1 owns this control's receipt.
             return true;
         } catch (error) {
             logger.info('Error rejecting member:', errCtx(error));
@@ -310,6 +479,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             // `rejectMemberGate.onConfirm` rethrows on `false` (`Reject failed`) so a failed
             // reject leaves its dialog open.
             return false;
+        } finally {
+            settle();
         }
     };
 
@@ -317,12 +488,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
        FND-88-12-02): reject-pending is the DIALOG tier, and its body says only
        "They'll be removed from the pending list."
 
-       The ratified copy in 88-UI-SPEC.md:623 was "They'll be removed from the group and
-       will need a new invite to rejoin." The second clause is FALSE against the shipped
-       backend and was cut, not softened: `routes/groups.js:1237-1238` hard-deletes only the
+       The ratified copy in 88-UI-SPEC.md's "Reject pending member" row was "They'll be
+       removed from the group and will need a new invite to rejoin." The second clause is
+       FALSE against the shipped backend and was cut, not softened: the reject route in
+       `routes/groups.js` (its `destroy({ force: true })`) hard-deletes only the
        UserGroup row — it does not rotate the group's invite_token and writes no block-list
-       entry — and `:738-744` still matches that STANDING token, with `:857-869` admitting
-       the holder as a full `member` ("QR invites bypass pending"). So a rejected person
+       entry — and the join-by-token lookup (`where: { invite_token: token }`) still matches
+       that STANDING token, with its membership create admitting the holder as a full
+       `member` ("QR invites bypass pending"). So a rejected person
        reusing the same link does not need a new invite at all; they skip the pending queue
        entirely. The tier is unaffected and stands as ratified.
 
@@ -385,7 +558,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     };
 
     const handleLeaveGroupConfirmed = async () => {
+        if (leaveInFlightRef.current) return;
         if (!group_id) return;
+        leaveInFlightRef.current = true;
         setLeaving(true);
         setLeaveError('');
         try {
@@ -397,6 +572,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             logger.info('Error leaving group:', errCtx(error));
             setLeaveError(getFetchErrorMessage(error));
         } finally {
+            leaveInFlightRef.current = false;
             setLeaving(false);
         }
     };
@@ -450,8 +626,54 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             <Modal.Header>
                 {canManageMembers ? 'Manage Group Members' : 'Members'}
             </Modal.Header>
+            {/* DECISION Phase 88.6.1-78 (AC-29 / RF1, owner ruling 2026-10-05): a failed REFRESH keeps
+                what loaded (the roster, or the empty-roster sentence of a roster that loaded empty, D-50,
+                ruling Y) and shows plan 88.6.1-70's shared notice with its Retry, gated by
+                `rosterRetained` (a has-loaded flag for this group, never a row count).
+                CHOSEN: one notice mounted for as long as the dialog is open, above the whole roster
+                block (the rows, the empty sentence and the pending invites, which one fetch loads) and
+                outside the dialog's scrolling body (owner ruling #242, the marker below), so its polite
+                region exists before any failure and its recovery survives the rows leaving; no
+                `focusTarget`, because inside a Modal the floor finds this dialog's title, the section
+                heading D-05 names for this host.
+                REJECTED: (a) the full banner above the kept rows, D-09a's own clause, AMENDED by D-51
+                (ratified 2026-10-05): a "couldn't load" banner over a loaded roster contradicts itself;
+                (b) the notice inside the rows branch: its region would be inserted with the rows, and it
+                would unmount with them on an access answer, dropping focus to the dialog container;
+                (c) a ref into the Modal header as `focusTarget`: `ModalHeader` takes no ref, and the
+                floor reaches the same element (plan 88.6.1-42's rejection (a), same reason); (d) a
+                sentence or a notice written in this file (contract C7); (e) the full banner over a
+                roster that loaded empty (D-50); (f) the notice inside the scrolling body (owner ruling
+                #242, the marker below).
+                Changing this is a decision, not a cleanup. */}
+            {/* DECISION Phase 88.6.1-78 (#242, owner 2026-10-14): CHOSEN the notice pinned under the
+                dialog title, between the dialog's header and its scrolling body, so after a failed
+                background refresh the notice and its Retry stay in view however far the member list is
+                scrolled, at the cost of about one member row (~44px) of dialog height while the error
+                shows (its spacing is applied only while it shows, the header's own inset).
+                REJECTED the notice inside the scrolling body under the Invite buttons (this plan as
+                first written): once the person has scrolled to a member and acted, the notice and
+                Retry are above the top of the list and nothing on screen says the list is stale.
+                Precedent: the home group list made the same choice for the same reason (plan
+                88.6.1-77, its notice outside its scrolling list). Mockup
+                https://claude.ai/artifact/JMvFMJXD1M6GkDt6xGBuYi (v2, frame 3).
+                Moving this back into the scrolling body is a decision, not a cleanup. */}
+            {/* DECISION Phase 88.6.1-78 (C12, focus when the roster is withdrawn):
+                CHOSEN: plan 88.6.1-70's shared guard beside the RF1 notice, outside the roster block
+                and the scrolling body, with no target — so when an access or gone answer withdraws
+                the rows while a row control holds focus, pressed or not (the hook's tab-return
+                re-attempt presses nothing), focus lands on this dialog's title through plan
+                88.6.1-04's floor.
+                REJECTED: (a) the guard inside the roster block: it would unmount with the rows it
+                watches and never act; (b) relying on plan 88.6.1-42's three press arms: a refresh
+                nobody pressed arms nothing; (c) leaving it to Radix's focus scope: its removal
+                handler focuses the dialog container, which names nothing; (d) focus code written in
+                this file (D-04).
+                Changing this is a decision, not a cleanup. */}
+            <RetainedContentFocusGuard retained={rosterRetained} />
+            <RefreshFailedNotice state={membersErrorState} retained={rosterRetained} className="px-3 pt-3 md:px-6" />
             <Modal.Body>
-                {userRole && userRole !== 'pending' && (
+                {userRole && userRole !== 'pending' && !rosterWithheld && (
                     <div className="mb-4 pb-4 border-b border-line flex flex-wrap gap-2">
                         <Button
                             variant="primary"
@@ -460,6 +682,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         >
                             Invite members
                         </Button>
+                        {/* W016 row 20: aria-disabled, never native, so the reset dialog's close restore can land on this opener; its state guard stays the refusal, because the control pressed while a reset runs is the dialog's confirm (plan 88.6.1-22), not this opener. See DECISION Phase 88.6.1-50. */}
                         {canManageMembers && (
                             <Button
                                 variant="secondary"
@@ -468,11 +691,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     if (resettingInvite) return;
                                     resetInviteGate.trigger();
                                 }}
-                                disabled={resettingInvite}
+                                aria-disabled={resettingInvite || undefined}
                                 className="text-content-status-error"
                                 title="Invalidate the current invite link and generate a new one"
                             >
-                                {resettingInvite ? 'Resetting…' : 'Reset QR link'}
+                                {resettingInvite ? 'Resetting…' : RESET_INVITE_LINK_LABEL}
                             </Button>
                         )}
                     </div>
@@ -491,17 +714,45 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     compact, non-blocking degrade notice rather than fail silently. */}
                 <FetchErrorBanner state={selfIdentityErrorState} compact />
 
-                {loading ? (
-                    <p className="text-content-secondary">Loading members...</p>
-                ) : membersErrorState.showError ? (
+                {/* DECISION Phase 88.6.1-42 (D-09a, D-33 row 20): the first-load line replaces
+                    content only on the FIRST load of THIS group. A refresh (a role change, a remove,
+                    an approve, a reject, a member added from the invite panel) keeps the rows
+                    painted. A failed refresh keeps what loaded (the rows, or a loaded-empty
+                    roster's sentence), and the full banner renders only while nothing has loaded
+                    for this group; the shared RF1 notice that qualifies kept content is mounted by
+                    plan 88.6.1-78. A reopen shows the last roster and refreshes behind it. The four
+                    slots below are mutually exclusive by construction.
+
+                    REJECTED, each with its reason:
+                    (a) the row count as the has-loaded flag: a roster that loaded empty and a
+                        roster never loaded are different states.
+                    (b) a plain boolean: a reopen for another group would paint the previous
+                        group's rows and their Remove controls.
+                    (c) a busy marker or a visible updating line on the roster: D-09 (owner),
+                        nothing extra in Manage Members; dimming old rows is Phase 88.9's.
+                    (d) the full banner above kept rows, D-09a's own clause, AMENDED by D-51 (the
+                        RF1 convergence the owner ratified 2026-10-05): a "couldn't load" banner
+                        over a loaded roster contradicts itself.
+                    (e) a row count in the retained rule (the full banner over a roster that loaded
+                        EMPTY): the owner ruled on 2026-10-05 (D-50, ruling Y) that a loaded-empty
+                        list is retained content; the banner there throws away the knowledge that
+                        the last good read found nobody, and the RF1 notice above the sentence
+                        states the failure.
+                    Changing this is a decision, not a cleanup. */}
+                {membersErrorState.showError && !rosterRetained && (
                     <FetchErrorBanner
                         state={membersErrorState}
                         title="Couldn't load members"
                         reportContext="manage members — member list fetch"
                     />
-                ) : members.length === 0 ? (
+                )}
+                {loading && !hasLoaded && !membersErrorState.showError && (
+                    <p className="text-content-secondary">Loading members...</p>
+                )}
+                {rosterRetained && members.length === 0 && (
                     <p className="text-content-secondary">No members found.</p>
-                ) : (
+                )}
+                {rosterRetained && members.length > 0 && (
                     <>
                         {/* Pending Members Section (admin/owner only) */}
                         {canManageMembers && members.filter(m => m.UserGroup?.role === 'pending').length > 0 && (
@@ -528,7 +779,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <Button
                                                     variant="primary"
                                                     size="default"
-                                                    onClick={() => handleApproveMember(member.id)}
+                                                    onClick={(event) => handleApproveMember(member.id, event)}
                                                 >
                                                     Approve
                                                 </Button>
@@ -694,7 +945,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                             The desktop `ariaLabel` is byte-unchanged — two live
                                                             test queries key on that exact string. Collapsing these
                                                             two labels into one is a decision, not a cleanup. */}
-                                                        <div className="md:hidden">
+                                                        <div
+                                                            className="md:hidden"
+                                                            ref={(node) => {
+                                                                if (node) memberActionsNodesRef.current.set(member.id, node);
+                                                                else memberActionsNodesRef.current.delete(member.id);
+                                                            }}
+                                                        >
                                                             <KebabMenu
                                                                 ariaLabel={`Member actions for ${member.username || member.email}`}
                                                                 items={[
@@ -710,8 +967,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                     /* DECISION Phase 88 AR-DEC-3 (owner, 2026-08-05): keep
                                                                        KebabMenu-internal two-tap OVER routing through
                                                                        useConfirmAction — the hook tier cannot survive an
-                                                                       auto-closing menu item (D-07). The arming tap at
-                                                                       KebabMenu.js:76-86 is the ONLY tap that does not close
+                                                                       auto-closing menu item (D-07). The arming tap (the
+                                                                       first-tap branch of KebabMenu.js's item handler,
+                                                                       `if (armedIndex !== index) {`) is the ONLY tap that does not close
                                                                        the menu; hook-routing either arms without ever
                                                                        committing (silently breaking mobile remove) or closes
                                                                        on the arming tap. UI-SPEC §11.2 lists this gate as
@@ -761,7 +1019,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 )}
 
                 {/* Pending Invites Section */}
-                {pendingInvites.length > 0 && (
+                {pendingInvites.length > 0 && rosterRetained && (
                     <div className="mt-6">
                         <div className="flex items-center gap-2 mb-3">
                             <Heading level={3} size="heading" className="text-content-primary">Pending Invites</Heading>
@@ -842,6 +1100,38 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </p>
             </Modal.Body>
             <Modal.Footer>
+                {/* DECISION Phase 88.6.1-50 (W016 rows 12-15, 20 / D-35, D-39): the pressed control stays
+                    focusable. Chosen: aria-disabled plus a synchronous first-line REF refusal
+                    (transferInFlightRef) on the control the user pressed, Transfer ownership,
+                    released only in its handler's finally. The sibling Cancel KEEPS its native
+                    in-flight disabled: it is a sibling nobody pressed (the rule of POSITION,
+                    DECISION Phase 88.6-22 in FriendInvitePanel.js).
+
+                    Rejected, each with its reason: native disabled on the pressed confirm (it
+                    leaves the focus order mid-request, and after a failure a keyboard or switch
+                    user has nothing focused to come back to, on the one path here that cannot be
+                    undone); the transferring state flag as the refusal (it lands after a second
+                    synchronous press has already dispatched); gating the Cancel the same way
+                    (this dialog keeps the focusable confirm plus a live Escape and header close,
+                    DECISION Phase 88-12 (AR R2-M11) above, so nobody is stranded); an opacity
+                    utility for the busy look (the DR-C gated primary pair paints it, from the
+                    .btn-primary aria-disabled rule in globals.css). Disclosed visible delta:
+                    while working the button shows the gated primary pair instead of the old 50%
+                    wash. MATCHED PAIR: GroupSettings' DECISION Phase 88.6.1-43 (W016 rows 10-11,
+                    18-19), same ref shape, same release.
+
+                    Confirm Leave (rows 14-15, the leave dialog below) is the same shape: the
+                    pressed control carries aria-disabled with a first-line refusal through
+                    leaveInFlightRef, released in handleLeaveGroupConfirmed's finally, and its
+                    sibling Cancel stays native. Its busy look is plan 88.6.1-22's owner-approved
+                    gated danger pair (D-39), never an opacity utility.
+
+                    Row 20, the header's reset opener: aria-disabled while a reset runs, so it
+                    stays focusable and the reset dialog's close restore can land on it (W014
+                    case 1). Its existing first-line state guard stays its only refusal; a second
+                    ref latch is rejected (two refusals for one gate), because the control pressed
+                    while a reset runs is the dialog's confirm, not this opener. Changing this is
+                    a decision, not a cleanup. */}
                 <Modal.Action
                     variant="secondary"
                     disabled={transferring}
@@ -851,9 +1141,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </Modal.Action>
                 <Modal.Action
                     variant="primary"
-                    disabled={transferring}
+                    aria-disabled={transferring || undefined}
                     onClick={async () => {
+                        if (transferInFlightRef.current) return;
                         if (!transferTarget) return;
+                        transferInFlightRef.current = true;
                         setTransferring(true);
                         try {
                             await groupsAPI.transferOwnership(group_id, transferTarget.id);
@@ -864,6 +1156,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             logger.info('Transfer ownership failed:', errCtx(err));
                             toast.error(getFetchErrorMessage(err));
                         } finally {
+                            transferInFlightRef.current = false;
                             setTransferring(false);
                         }
                     }}
@@ -901,25 +1194,42 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                           this line is its only failure surface, so a toast would leave the
                           person looking at a dialog that gives no reason — on the one path
                           here that cannot be undone.
-                      (b) `{leaveError && <StatusRegion …>}`. A conditionally-mounted live
-                          region announces NOTHING (`StatusRegion.tsx:9-12`); the mount and the
-                          text would enter the DOM together. The empty-first mount IS the
-                          mechanism.
+                      (b) `{leaveError && <StatusRegion …>}`. A conditionally-mounted POLITE
+                          live region announces NOTHING (the EMPTY-FIRST bullet of
+                          `StatusRegion.tsx`'s docblock); the mount and the text would enter the
+                          DOM together. The empty-first mount IS the mechanism. This holds for
+                          this polite region and is not a rule for alerts: an inserted
+                          `role="alert"` that arrives with its text IS announced (ARIA 1.2, D-42).
 
                     Hand-rolling an `aria-live` div instead is also rejected: the primitive
                     supplies `role`, `aria-live` AND `aria-atomic` in one contract. This arm is
-                    written identically for `GroupSettings.js:481` (plan 20) and for the
-                    structurally identical bare error `<p>`s plan 22 owns — one phase must not
-                    ship two standards for one markup shape. Re-conditioning the mount, or
-                    dropping the `aria-describedby`, is a decision, not a cleanup. */}
+                    written identically for GroupSettings' leave-failure region (plan 88.6-20;
+                    now on the same prop under `DECISION Phase 88.6.1-43`) and for the
+                    structurally identical bare error `<p>`s plan 88.6-22 owns — one phase must
+                    not ship two standards for one markup shape.
+
+                    AMENDED Phase 88.6.1-50 (D-22, D-42): the region now takes the house
+                    `srOnlyWhenEmpty` prop. It is hidden only while it is empty, it is the same
+                    node in both states, and it is visible the moment it holds text (the owner's
+                    visible-when-set ruling, 2026-09-14). The conditional margin it carried is
+                    retired for the one house shape (AC-26), which is exactly what this marker's
+                    own "one standard for one markup shape" asks for: the margin is now
+                    unconditional, costs nothing while the empty region is out of flow, and is
+                    today's 16px gap once a message shows. The empty region's containing block is
+                    the dialog's fixed, overflow-clipped content, so it extends no scroll area
+                    (the adopter caveat on the prop). D-42 is the qualification in (b) above.
+                    Re-conditioning the mount, or dropping the `aria-describedby`, is a decision,
+                    not a cleanup. */}
                 <StatusRegion
                     id={leaveErrorId}
                     politeness="polite"
                     message={leaveError}
-                    className={`text-content-status-error${leaveError ? ' mt-4' : ''}`}
+                    className="mt-4 text-content-status-error"
+                    srOnlyWhenEmpty
                 />
             </Modal.Body>
             <Modal.Footer>
+                {/* W016 rows 14-15 follow DECISION Phase 88.6.1-50 at the transfer footer; the danger look is plan 88.6.1-22's owner-approved gated pair (D-39). */}
                 <Modal.Action
                     variant="secondary"
                     disabled={leaving}
@@ -929,7 +1239,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </Modal.Action>
                 <Modal.Action
                     variant="danger"
-                    disabled={leaving}
+                    aria-disabled={leaving || undefined}
                     aria-describedby={leaveErrorId}
                     onClick={handleLeaveGroupConfirmed}
                 >
@@ -940,8 +1250,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
         {/* Req 11 tiered gates. Each is rendered UNCONDITIONALLY and exactly ONCE for the
             whole roster — the hook owns which member is targeted, so a per-row copy would
-            mount one dialog per member. `statusNode` is likewise mounted once and always: a
-            conditionally-mounted live region announces nothing. All four are `dialog` tier
+            mount one dialog per member. `statusNode` is likewise mounted once and always: it
+            is a POLITE region (`useConfirmAction` gives it no politeness), and a
+            conditionally-mounted polite region announces nothing. An inserted `role="alert"`
+            that arrives with its text IS announced (ARIA 1.2, D-42), so this is not a rule for
+            alerts. All four are `dialog` tier
             today, which renders `statusNode` silent — it is still mounted so that
             retiering any of them to `two-tap` stays the one-word edit the primitive
             promises. */}

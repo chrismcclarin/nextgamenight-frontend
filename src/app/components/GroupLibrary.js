@@ -12,6 +12,8 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { logger, errCtx } from '@/lib/logger';
 
+const OWNER_FILTER_LABEL = 'Filter by owner';
+
 export default function GroupLibrary({ groupId }) {
   const router = useRouter();
   const [games, setGames] = useState([]);
@@ -57,7 +59,7 @@ export default function GroupLibrary({ groupId }) {
       // string is byte-identical to the `console.error` it replaces, and `errCtx` bounds the
       // payload to the error's name and message (T-84-01); the raw `Error` is never passed as
       // `logger.info`'s second argument, whose type is `Record<string, unknown>`
-      // (`logger.ts:24`) — a mistake `npm run typecheck` cannot see in a `.js` file.
+      // (`logger.ts:31`) — a mistake `npm run typecheck` cannot see in a `.js` file.
       logger.info('Error fetching group library:', errCtx(error));
       if (!mounted.current) return;
       // Keep the ERROR object, not a flattened string: useFetchErrorState reads
@@ -246,11 +248,35 @@ export default function GroupLibrary({ groupId }) {
           selected, `bg-surface-muted` otherwise) and the ink has to hold against its own fill,
           which is the same reason §4.5 gives for `UpcomingCountPill.tsx` and
           `MemberChipStack.tsx`. The 500 they carried is a prohibition outside the `Button`
-          label (§4.2), so leaving it was never an option; the choice was 400 or 700. */}
-      <div className="mb-4 overflow-x-auto flex gap-2 pb-1 -mx-1 px-1">
+          label (§4.2), so leaving it was never an option; the choice was 400 or 700.
+
+          DECISION Phase 88.6.1-48 (D-21 / D-44): the chips are PRESSED toggles and carry
+          `aria-pressed`, read from the same comparison each fill ternary reads. `All` is a
+          ONE-WAY toggle (pressing it while pressed changes nothing). Accepted: it reports a true
+          state, and its pressed state is the only non-colour cue that no owner filter is active.
+          REJECTED: a radio group (the D-20 icon-picker pattern). A member chip is TWO-way
+          (pressing the selected member returns to All), and a radio cannot be un-checked by
+          activating it; a radio group would also bring roving-tabindex keyboard work (D-43) to a
+          row that needs none.
+          FLOOR as in the Profile Days row: phone-scoped `min-h-11 md:min-h-0`, plus
+          `min-w-11 md:min-w-0` because `All` and short usernames are under 44px wide; both sit in
+          the static part of each className, so pressed and unpressed both carry them.
+          The bar's `-mt-1 pt-1` is the focus ring's top inset (#211): `overflow-x-auto` makes the
+          bar clip in both axes, and the chips' ring draws 4px outside them. Chosen over `pt-1`
+          alone, REJECTED because it shifts the chips down 4px at every width; the pair mirrors the
+          bar's own `-mx-1 px-1` and moves nothing. Removing `pt-1` cuts off the ring's top edge
+          again; removing only `-mt-1` shifts the chips 4px.
+          The bar is a named group (#210, owner 2026-10-13): role="group" with
+          `aria-label={OWNER_FILTER_LABEL}` (the ratified words, screen-reader only). Chosen over
+          leaving the row unnamed (the pressed state said WHO was picked, nothing said WHAT the
+          chips do) and over a visible label above the chips (a look change no ruling made). The
+          Days row's `aria-labelledby` form was not copied because this bar has no visible text to
+          point at. Changing any of this is a decision, not a cleanup. */}
+      <div role="group" aria-label={OWNER_FILTER_LABEL} className="mb-4 -mt-1 pt-1 overflow-x-auto flex gap-2 pb-1 -mx-1 px-1">
         <button
+          aria-pressed={selectedOwner === null}
           onClick={() => setSelectedOwner(null)}
-          className={`shrink-0 px-3 py-1 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+          className={`shrink-0 px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
             selectedOwner === null
               ? 'bg-btn-primary text-btn-primary-text'
               : 'bg-surface-muted text-content-secondary hover:text-content-primary'
@@ -261,8 +287,9 @@ export default function GroupLibrary({ groupId }) {
         {members.map((member) => (
           <button
             key={member.user_id}
+            aria-pressed={selectedOwner === member.user_id}
             onClick={() => setSelectedOwner(member.user_id === selectedOwner ? null : member.user_id)}
-            className={`shrink-0 px-3 py-1 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+            className={`shrink-0 px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
               selectedOwner === member.user_id
                 ? 'bg-btn-primary text-btn-primary-text'
                 : 'bg-surface-muted text-content-secondary hover:text-content-primary'

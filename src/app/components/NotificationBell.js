@@ -4,8 +4,101 @@ import { invitesAPI } from '../../lib/api';
 import { logger } from '@/lib/logger';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { useDismissal } from '@/components/ui/useDismissal';
+import { useFocusRecovery } from '@/components/ui/useFocusRecovery';
+import { StatusRegion } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useUnreadNotificationCount } from './UnreadNotificationProvider';
+
+// Copy row N1 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:100) — heard, not seen.
+const LOADING_NOTIFICATIONS = 'Loading notifications';
+
+// Copy row N7 (D-47, owner-ratified 2026-10-05; planning-briefs/revision-lap-3-manifest.md:17), the
+// full banner's title when the notifications could not be loaded and there is nothing to show;
+// straight apostrophe (D-32 R8).
+const NOTIFICATIONS_LOAD_FAILED_COPY = "Couldn't load your notifications";
+
+// Copy row N2 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:101) — seen and heard.
+const ACCEPTING_COPY = 'Accepting...';
+
+// Copy rows N3-N6 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:102-105), each U+2019
+// written as the straight apostrophe (D-32 R8). Each failure arm passes its own row as the fallback
+// of getFetchErrorMessage, so a code-less failure shows it and a coded one keeps its register line
+// (D-33 row 22). The friend pair is exported because the Friends page's Requests tab shows the same
+// N5 / N6 lines (plan 88.6.1-72): one source per row, never retyped. Chosen over a separate copy
+// module, because this module is already loaded on every page through the header
+// (src/app/Header.js:6) and both files are client modules (the use-client directive on line 1 of
+// this file and of src/app/friends/page.js), so the import is an ordinary one, not a
+// server-to-client reference.
+const ACCEPT_INVITE_FAILED_COPY = "We couldn't accept that invite. Please try again.";
+const DECLINE_INVITE_FAILED_COPY = "We couldn't decline that invite. Please try again.";
+export const ACCEPT_FRIEND_FAILED_COPY = "We couldn't accept that friend request. Please try again.";
+export const DECLINE_FRIEND_FAILED_COPY = "We couldn't decline that friend request. Please try again.";
+
+// Copy rows N9 / N10 (owner ruling #205, RATIFIED 2026-10-13, 88.6.1-PLAN-REVIEW-work/RULINGS.md,
+// section "### #205"; the ids are plan 88.6.1-44's proposal): a successful Decline is announced in
+// the same confirmation slot, tone and 3 s clear as the accept lines.
+const DECLINED_FRIEND_REQUEST_COPY = "Declined friend request.";
+
+// Copy ruling CR-2 (88.6.1 code review A-33, owner ratified 2026-10-19): the triggers' spoken
+// description of the unread count, the REAL count (never the badge's 9+).
+const pendingCountCopy = (count) => `${count} pending`;
+const NONE_PENDING_COPY = 'None pending';
+const declinedInviteCopy = (groupName) => `Declined invite to ${groupName}.`;
+
+/* DECISION Phase 88.6.1-44 (N8, D-19 shape, Req 6): each row button is named for what it acts on
+   (owner-ratified 2026-10-05, copy row N8: Accept invite to {group}, Decline invite to {group},
+   Accept friend request from {name}, Decline friend request from {name}). CHOSEN: a hoisted
+   function fed the row's own displayed value, trimmed at both ends, never truncated and never
+   hand-escaped (React writes the attribute as text), falling back to today's word when the value
+   is empty (no new words, D-31) — mirroring customizeGroupLabel in
+   src/app/components/grouplist.js (plan 88.6.1-54). Every name begins with the button's visible
+   label (WCAG 2.5.3, label in name). The pressed Accept DROPS its name while in flight, so it is
+   heard as copy row N2, a seen-and-heard row, and the name keeps containing the visible text.
+   REJECTED (a): aria-describedby pointing at the row's name text (D-19's rejected option: a
+   skippable hint, and the names stay identical in the rotor and in Voice Control).
+   REJECTED (b): keeping the name while in flight (a screen-reader user would never hear N2, and
+   the name would stop containing the visible Accepting...).
+   REJECTED (c): an in-flight name carrying the group (new words, D-31).
+   REJECTED (d): visually hidden text inside the button (a second naming shape beside D-19's, and
+   the words in the DOM twice for text queries).
+   REJECTED (e): truncating long names.
+   NOTE: Sentry click breadcrumbs copy a clicked control's name; plan 88.6.1-76 (split from 08)
+   keeps only the static prefix of those values (its NAMED_ATTRIBUTE_PREFIXES lists the four N8
+   prefixes). Changing how these buttons are named is a decision, not a cleanup. */
+// The per-row record's key: the row's kind, a colon, then its id (two id spaces from two tables in
+// one map, so the kind rules out a collision). Built only here: it is a map key, never a class, and
+// one spelling keeps all six sites in step. Spelled inline as a literal kind, a colon and an
+// interpolation, it also reads as a Tailwind variant to src/app/interpolatedClassCensus.test.ts.
+function rowKey(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function rowLabelText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function acceptInviteLabel(group) {
+  const n = rowLabelText(group);
+  return n ? `Accept invite to ${n}` : 'Accept';
+}
+
+function declineInviteLabel(group) {
+  const n = rowLabelText(group);
+  return n ? `Decline invite to ${n}` : 'Decline';
+}
+
+function acceptFriendLabel(name) {
+  const n = rowLabelText(name);
+  return n ? `Accept friend request from ${n}` : 'Accept';
+}
+
+function declineFriendLabel(name) {
+  const n = rowLabelText(name);
+  return n ? `Decline friend request from ${n}` : 'Decline';
+}
 
 function NotificationBell({ user, variant = 'icon', label }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -23,7 +116,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      exactly THREE `aria-` attributes in 409 lines (`grep -n 'aria-'`, measured 2026-09-16), and
      both triggers were `onClick={() => setIsOpen(!isOpen)}` with an `aria-label` and nothing
      else. BOTH, not one: the ROW variant is rendered inside the phone hamburger
-     (`src/app/Header.js:287`), the phone-primary surface, which is why it was taken in scope at
+     (`src/app/Header.js:302`, `variant="row" label="Invites"`), the phone-primary surface, which is why it was taken in scope at
      all. The change is ATTRIBUTE-ONLY — no handler change, no markup restructuring, no role added
      to the panel, no visible behaviour — and that smallness is the argument that won the
      exception. The boundary it is an exception TO is a real CONSEQUENCE constraint, stated here
@@ -43,13 +136,73 @@ function NotificationBell({ user, variant = 'icon', label }) {
      it), and it left the phase with two contradictory disclosure-trigger rules. The owner's
      ruling above is SATISFIED, not reopened: `aria-expanded` is unchanged, and `aria-controls`
      still "points at this id" whenever the panel exists. Going back to the unconditional
-     attribute is a decision, not a cleanup. */
+     attribute is a decision, not a cleanup.
+
+     AMENDED 2026-10-15 — DECISION Phase 88.6.1-28 (D-18): the three items the REJECTED ARM above
+     routed onward (the missing Escape handler, the panel's missing role, the outside click that
+     was mousedown-only) are owned and closed by Phase 88.6.1 — register R128
+     (`.planning/deferred/phase-88.6.1.md:63`). The panel is a section named by its heading and
+     the bell dismisses through the shared `useDismissal` hook; see the two DECISION Phase
+     88.6.1-28 markers below. This exception's boundary did not widen: `aria-expanded` and the
+     conditional `aria-controls` are untouched, and the region and dismissal come from D-18, a
+     separate owner-listed decision. */
   const panelId = `${useId()}-notification-panel`;
-  const [actionLoading, setActionLoading] = useState(null);
+  // The panel heading's id, derived from panelId (no second useId call): the section names itself
+  // through it (DECISION Phase 88.6.1-28, D-18, D-33 row 21, at the panel below).
+  const headingId = `${panelId}-heading`;
+  // The count description's id, derived the same way (CR-2 / A-33, the marker at the span below).
+  const countDescriptionId = `${panelId}-count`;
+  // Per-row in-flight record: { [rowKey(kind, id)]: 'accept' | 'decline' } (see rowKey above).
+  const [actionLoading, setActionLoading] = useState({});
+  // The latch: row keys whose request is running. A ref, so a second synchronous press sees it.
+  const inFlightRef = useRef(new Set());
+  // The panel's own "Notifications" heading — focus recovery's fallback target (H9, D-05).
+  const panelHeadingRef = useRef(null);
   // { text, tone: 'success' | 'muted' } — muted is the L-8 "no longer
   // available" notice, which must not render in success-green.
   const [confirmation, setConfirmation] = useState(null);
+  // The failure line of the last row action ('' while there is none) — the assertive region below.
+  const [actionFailure, setActionFailure] = useState('');
+  // Both outcome regions start empty every time the panel opens, and a failure line leaves when
+  // it closes (SPEC Edge R8 empty; finding #52: a request can settle while the panel is closed).
+  // DECISION Phase 88.6.1-44 (R8 empty, finding #52): the clear runs DURING RENDER on the open /
+  // close transition (React's adjust-state-on-change pattern: the stored previous value), chosen
+  // OVER a layout effect (a 'use client' component that still renders on the server, where the
+  // house avoids it, src/app/components/AutoPromptBehaviorBanner.js, anchor
+  // "WHY useEffect AND NOT useLayoutEffect") and OVER a plain effect (the reopened panel would
+  // paint the stale line for one frame). No trigger handler is touched. Moving this into a handler
+  // or an effect is a decision, not a cleanup.
+  // AMENDED 2026-10-19 (88.6.1 code review A-26 / A-30; SPEC Edge R8 amended by the orchestrator): R8's "start empty"
+  // covers a line from an EARLIER open, not a failure that settled while the panel was closed — erasing that one lost an
+  // outcome the person never saw (logged, user told nothing). Such a failure is HELD (heldFailure) and written into the
+  // assertive region by the effect below, after the reopened panel has mounted the region empty, so it is announced
+  // (the house empty-first idiom). CHOSEN OVER a toast while closed (a second announcement channel for one bell) and
+  // over showing it in the render-phase clear (the region would mount already filled and stay silent). A confirmation
+  // that settles while closed still never shows (it reports what the person asked for). The render-phase clear itself
+  // is unchanged.
+  const [shownOpen, setShownOpen] = useState(isOpen);
+  if (shownOpen !== isOpen) {
+    setShownOpen(isOpen);
+    setActionFailure('');
+    if (isOpen) setConfirmation(null);
+  }
+  const [heldFailure, setHeldFailure] = useState('');
+  const isOpenRef = useRef(isOpen);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+    if (isOpen && heldFailure) {
+      setActionFailure(heldFailure);
+      setHeldFailure('');
+    }
+  }, [isOpen, heldFailure]);
+  // Every row-action failure arm writes through here: into the region while the panel is open, held while it is closed.
+  function reportActionFailure(message) {
+    if (isOpenRef.current) setActionFailure(message);
+    else setHeldFailure(message);
+  }
   const dropdownRef = useRef(null);
+  // Whichever trigger renders (row or icon, one per variant) — Escape returns focus here.
+  const triggerRef = useRef(null);
 
   // MOB-08 (Plan 77-01): invites + friendRequests now live in
   // UnreadNotificationProvider so the in-menu badge AND the mobile hamburger
@@ -60,6 +213,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
     friendRequests,
     totalCount,
     loading,
+    // Plan 88.6.1-80: the provider's ONE adapter over both sources; read with optional chaining
+    // below, so a context without it (a mocked suite) renders no banner.
+    loadErrorState,
     setInvites: ctxSetInvites,
   } = useUnreadNotificationCount();
 
@@ -68,19 +224,146 @@ function NotificationBell({ user, variant = 'icon', label }) {
   const {
     acceptRequest: ctxAcceptFriend,
     declineRequest: ctxDeclineFriend,
+    // Plan 88.6.1-66: true while an accept or decline for that request runs, on either surface.
+    isRequestActionPending,
   } = useFriendshipStatus();
 
-  // Click-outside detection to close dropdown
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setIsOpen(false);
-      }
-    }
+  /* DECISION Phase 88.6.1-28 (D-18, D-08a): the bell dismisses through the shared `useDismissal`
+     hook (`src/components/ui/useDismissal.ts`, extracted from KebabMenu by plan 88.6.1-05). CHOSEN:
+     Escape on the container as a React handler that claims the key with `preventDefault`, focus
+     leaving the container closes, an outside mousedown closes, and that outside listener exists
+     only while the panel is open. The bell owns only `isOpen`; `closePanel` sets it false and does
+     nothing else.
+     REJECTED (a): a bell-local copy of those handlers — the duplication tenet; D-18 says "never a
+     copy".
+     REJECTED (b): keeping the mount-time outside mousedown listener with empty deps — it ran on
+     every page for the life of the header and set state on every outside click while closed.
+     REJECTED (c): Escape as a document keydown listener — document listeners run in registration
+     order and cannot be claimed (research P-10).
+     WHY `preventDefault` IS LOAD-BEARING: the row variant renders inside the phone hamburger
+     (`src/app/Header.js:302`, `variant="row" label="Invites"`), whose Escape listener is on the
+     document (`src/app/Header.js:31-42`, `if (!mobileMenuOpen) return;`). The App Router hydrates
+     the document itself (`node_modules/next/dist/client/app-index.js:42`,
+     `const appElement = document;`), so React's root listener and Header's share one node and
+     `stopPropagation` cannot stop Header's — only Header's bail on a default-prevented Escape
+     (plan 88.6.1-45, D-08a) makes one Escape close the bell alone. Pinned by NB-6
+     (`NotificationBell.test.tsx`).
+     Re-inlining these handlers, or moving Escape to a document listener, is a decision, not a
+     cleanup. */
+  const closePanel = () => setIsOpen(false);
+  const { containerProps } = useDismissal({
+    open: isOpen,
+    onDismiss: closePanel,
+    containerRef: dropdownRef,
+    triggerRef,
+  });
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const recovery = useFocusRecovery({ fallback: panelHeadingRef });
+
+  /* DECISION Phase 88.6.1-44 (W016, D-35, rule of POSITION): each row's in-flight state is a
+     PER-ROW record (the map shape the Friends page already ships, src/app/friends/page.js,
+     anchor "actionLoading[request.id] === 'accept'"), keyed by kind and id, plus one ref latch per
+     row that refuses a second press on the handler's first line and is released in finally.
+     CHOSEN: the pressed control is aria-disabled and keeps focus, its row sibling stays natively
+     disabled; Accept in flight reads copy row N2 (text replaces the nameless spinner); Decline
+     keeps its word (D-33 row 15 not taken). Both writes are functional updates, so two presses in
+     one batch never overwrite each other's entry.
+     REJECTED (a): ONE shared id-plus-action value for the whole panel (the research shape,
+     APPENDIX-CT CT-3) — a second row's press overwrites the first row's record, so the first
+     row's pressed control loses its gate and label mid-flight, and the first row's finally clears
+     the second's.
+     REJECTED (b): native disabled on the pressed control — a real browser drops focus to body,
+     and Accept had no name while its spinner showed.
+     REJECTED (c): refusing on the state flag instead of a ref — the state does not land before a
+     second synchronous press (DECISION Phase 88.6-22, src/app/components/FriendInvitePanel.js,
+     anchor "the rule of KIND + the rule of POSITION").
+     REJECTED (d): a spinner beside the text — one in-flight idiom for the same action on two
+     surfaces.
+     VISIBLE DELTA, disclosed: the pressed control takes the gated colour pair (src/app/globals.css,
+     anchor ".btn-primary[aria-disabled='true']") instead of the 50% opacity wash.
+     ACROSS SURFACES (review r3, D-r3-9, H-02): a friend-request row whose request runs from the
+     Friends page (plan 88.6.1-66's in-flight fact, anchor "isRequestActionPending(request.id)") is
+     natively disabled on BOTH buttons here while the bell has no press of its own for that row —
+     chosen OVER leaving them live (the provider refuses an other-kind press with no request sent,
+     and this panel would then show copy row N6 for a decline that was never sent) and OVER an
+     aria-disabled pair (neither button was pressed on this surface, so no focus has to be kept).
+     A press made here keeps its rule of POSITION: the fact is read only while the row has no
+     record of its own.
+     Going back to one shared flag, or dropping either half of the gate, is a decision, not a
+     cleanup. */
+  function beginRowAction(key, action) {
+    if (inFlightRef.current.has(key)) return false;
+    inFlightRef.current.add(key);
+    setActionLoading((prev) => ({ ...prev, [key]: action }));
+    // A new action clears both outcomes, so a repeated outcome is a real text change (R8).
+    setConfirmation(null);
+    setActionFailure('');
+    return true;
+  }
+
+  function endRowAction(key) {
+    inFlightRef.current.delete(key);
+    setActionLoading((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  /* DECISION Phase 88.6.1-44 (H9, D-04, D-05): when a row action removes the row the user stood
+     on, focus goes to the next row's first natively enabled control in panel order (the invites
+     list, then the friend-requests list), else to the panel's own Notifications heading (nothing
+     minted), through the ONE shared hook useFocusRecovery (plan 88.6.1-04). CHOSEN: the hook is
+     armed at the moment the bell issues the row removal, and only when focus is in that row or on
+     body (the Safari / iOS tap shape: WebKit never focuses a tapped button), with the pressed
+     control handed over as the watched node (the from option).
+     REJECTED (a): arming at the start of the action (plan 88.6.1-04's general contract, item 1)
+     — a failed action removes nothing, the hook stays armed, and a later outside click that closes
+     the panel reads as a removal and floors focus to the page heading, scrolling the page; the
+     contract's reason (following a focus move made before the removal) cannot occur here,
+     because the pressed control is aria-disabled and keeps focus.
+     REJECTED (b): focusing the next row inside the handler — it runs before the removal commits
+     (Pitfall P-6; NA-2's ordering half).
+     REJECTED (c): a bell-local focus routine — D-04's one-helper tenet.
+     REJECTED (d): the next row's first button whatever its state — a natively disabled Accept
+     refuses focus and the user lands on the heading past a row they can still act on.
+     REJECTED (e): arming only when focus is inside the row — on Safari and iOS a tapped button is
+     never focused, so nothing would recover there.
+     FRIEND PATHS: they arm on the line after the provider call resolves, because
+     src/app/components/FriendshipStatusProvider.js removes the row only when the server confirms
+     (plan 88.6.1-66, anchor "const reconcileFailedRequest = useCallback(") and React commits that
+     removal in a later task than the continuation that arms (NF-1 pins it against the real
+     provider). They also arm in the catch when the rethrown error carries the provider's
+     row-removed mark (requestRowRemoved), set only when its one-row reconcile removed a row the
+     server no longer lists (a stale not-pending answer, or a 500 sent after the server
+     committed, NF-5); a failure without the mark keeps the row and arms nothing.
+     REJECTED: arming on the status code (a 400) — a 500 after a committed accept removes the row
+     with nothing armed, and a 400 whose reconcile read failed keeps the row with the hook armed;
+     the mark is the provider's own record of what it did. Since the friend row now stays while
+     its request runs, Accepting... paints on friend rows too.
+     Arming earlier, or focusing inside the handler, is a decision, not a cleanup. */
+  function armRowRecovery(pressedEl) {
+    const row = pressedEl?.closest?.('li');
+    if (!row || !row.isConnected) return null;
+    const active = document.activeElement;
+    const focusInRow = Boolean(active) && row.contains(active);
+    const tapShape = active === document.body && row.contains(pressedEl);
+    if (!focusInRow && !tapShape) return null;
+    const panel = dropdownRef.current;
+    if (!panel) return null;
+    // Every row is an li and nothing else in the container is; document order is panel order.
+    const rows = Array.from(panel.querySelectorAll('li'));
+    const kept = rows.slice(rows.indexOf(row) + 1);
+    const preferred = () => {
+      for (const candidate of kept) {
+        if (!candidate.isConnected) continue;
+        const button = candidate.querySelector('button:not([disabled])');
+        if (button) return button;
+      }
+      return null;
+    };
+    return recovery.arm({ preferred, from: pressedEl });
+  }
 
   // Clear confirmation after 3 seconds
   useEffect(() => {
@@ -95,7 +378,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      no inline message and NO Sentry capture — a failed Accept left the row in place and the user
      reasonably concluded it worked. They are now `logger.error('<msg>', err)`, the message string
      kept VERBATIM, and THAT CALL IS THE ESCALATION the ruling asked for: `logger.error` routes to
-     `Sentry.captureException` (`logger.ts:28-30`), so a failed accept/decline now files a real
+     `Sentry.captureException` (`src/lib/logger.ts:45`, `Sentry.captureException(err ?? new Error(msg)`), so a failed accept/decline now files a real
      Sentry EVENT where before it was at most a console breadcrumb (there is no
      `captureConsoleIntegration` in `sentry.client.config.js`, and `QueryCache.onError` covers only
      query-cache errors). A console-only diagnostic is no longer an acceptable end state here.
@@ -145,11 +428,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
      restore — and because the class-only shape exists for a body carrying a reporter's address and
      prose, which an accept/decline does not have. RESIDUAL, accepted by the owner 2026-09-13:
      non-pattern upstream prose (group names, provider prose) reaching Sentry from these paths;
-     pattern PII is redacted by `sentry.scrub.js`'s `beforeSend`. */
-  async function handleAccept(invite) {
-    setActionLoading(invite.id);
+     pattern PII is redacted by `sentry.scrub.js`'s `beforeSend`.
+
+     AMENDED Phase 88.6.1-44 (W026, D-33 row 22): the user-facing half ships. After its unchanged
+     logger.error call, each failure arm writes getFetchErrorMessage(err, fallback) into the
+     panel's assertive region — copy rows N3-N6 for a code-less failure, the register line for a
+     coded one. The escalation is still ONE logger.error per failure path: getFetchErrorMessage
+     logs nothing (src/components/ui/useFetchErrorState.ts). The 410 arms are unchanged. */
+  async function handleAccept(invite, pressedEl) {
+    const key = rowKey('invite', invite.id);
+    if (!beginRowAction(key, 'accept')) return;
+    let settle = null;
     try {
       await invitesAPI.acceptInvite(invite.id);
+      settle = armRowRecovery(pressedEl);
       // Optimistic update via the shared context — drops totalCount
       // immediately for BOTH the bell badge and the mobile hamburger dot.
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
@@ -167,59 +459,102 @@ function NotificationBell({ user, variant = 'icon', label }) {
       // gate). The row is dead — drop it now instead of leaving a button that
       // visibly does nothing until the next refetch INNER-JOINs it out.
       if (err?.status === 410) {
+        settle = armRowRecovery(pressedEl);
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
         const groupName = invite.Group?.name || invite.group_name || 'This group';
         setConfirmation({ text: `${groupName} is no longer available.`, tone: 'muted' });
+      } else if (err?.status === 404) {
+        /* DECISION 88.6.1 code review A-28: the backend's 404 'Pending invite not found' (routes/invites.js, the
+           accept and decline handlers) is its "no longer pending" answer: the invite was already answered by email,
+           on another device or in another tab. CHOSEN: treat it as handled elsewhere, the friend rows' stale-404 rule
+           (FriendshipStatusProvider.js, the `is404` arms) — drop the row, arm the row recovery, no failure line, no
+           error event, and send the groups-refresh signal so a membership created elsewhere shows. REJECTED: the
+           register's not_found failure line (it told the person their already-answered invite failed and left a
+           dead row whose second press failed again); a confirmation (Joined would be false when it was declined
+           elsewhere, and a new "already answered" line is new copy). The decline arm below does the same, silently,
+           as its 410 arm does. Showing a failure for this 404 again is a decision, not a cleanup. */
+        settle = armRowRecovery(pressedEl);
+        ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('nggroups:refresh', '1');
+          window.dispatchEvent(new CustomEvent('nggroups:refresh'));
+        }
       } else {
         logger.error('Failed to accept invite:', err);
+        reportActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_INVITE_FAILED_COPY }));
       }
     } finally {
-      setActionLoading(null);
+      endRowAction(key);
+      settle?.();
     }
   }
 
-  async function handleDecline(invite) {
-    setActionLoading(invite.id);
+  async function handleDecline(invite, pressedEl) {
+    const key = rowKey('invite', invite.id);
+    if (!beginRowAction(key, 'decline')) return;
+    let settle = null;
     try {
       await invitesAPI.declineInvite(invite.id);
+      settle = armRowRecovery(pressedEl);
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
+      setConfirmation({ text: declinedInviteCopy(invite.Group?.name || invite.group_name || 'the group'), tone: 'success' });
     } catch (err) {
       // L-8: dead-group 410 — removing the row is exactly what the user asked
       // for, so no notice needed.
-      if (err?.status === 410) {
+      // A stale-invite 404 is answered elsewhere: removed silently too (see the accept arm's A-28 marker).
+      if (err?.status === 410 || err?.status === 404) {
+        settle = armRowRecovery(pressedEl);
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
       } else {
         logger.error('Failed to decline invite:', err);
+        reportActionFailure(getFetchErrorMessage(err, { fallback: DECLINE_INVITE_FAILED_COPY }));
       }
     } finally {
-      setActionLoading(null);
+      endRowAction(key);
+      settle?.();
     }
   }
 
-  async function handleAcceptFriend(request) {
-    setActionLoading(request.id);
+  async function handleAcceptFriend(request, pressedEl) {
+    const key = rowKey('friend', request.id);
+    if (!beginRowAction(key, 'accept')) return;
+    let settle = null;
     try {
       // Provider handles optimistic removal + 404-stale silencing.
+      // AMENDED Phase 88.6.1-44: since plan 88.6.1-66 the provider removes the row when the server confirms, so this handler arms focus recovery when the call resolves (see the H9 marker).
       // alreadyAccepted means the row was already resolved on another
       // surface (friends page) — we still show the success confirmation
       // since from the user's POV the action they wanted is done.
       await ctxAcceptFriend(request.id);
+      settle = armRowRecovery(pressedEl);
       setConfirmation({ text: 'Accepted friend request!', tone: 'success' });
     } catch (err) {
       logger.error('Failed to accept friend request:', err);
+      if (err?.requestRowRemoved) settle = armRowRecovery(pressedEl);
+      reportActionFailure(getFetchErrorMessage(err, { fallback: ACCEPT_FRIEND_FAILED_COPY }));
     } finally {
-      setActionLoading(null);
+      endRowAction(key);
+      settle?.();
     }
   }
 
-  async function handleDeclineFriend(request) {
-    setActionLoading(request.id);
+  async function handleDeclineFriend(request, pressedEl) {
+    const key = rowKey('friend', request.id);
+    if (!beginRowAction(key, 'decline')) return;
+    let settle = null;
     try {
+      // Any resolve, the provider's stale-404 answer included, means the decline the person wanted is
+      // done, as the accept path above reasons.
       await ctxDeclineFriend(request.id);
+      settle = armRowRecovery(pressedEl);
+      setConfirmation({ text: DECLINED_FRIEND_REQUEST_COPY, tone: 'success' });
     } catch (err) {
       logger.error('Failed to decline friend request:', err);
+      if (err?.requestRowRemoved) settle = armRowRecovery(pressedEl);
+      reportActionFailure(getFetchErrorMessage(err, { fallback: DECLINE_FRIEND_FAILED_COPY }));
     } finally {
-      setActionLoading(null);
+      endRowAction(key);
+      settle?.();
     }
   }
 
@@ -246,19 +581,19 @@ function NotificationBell({ user, variant = 'icon', label }) {
   );
 
   const countBadge = totalCount > 0 ? (
-    <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
+    <span aria-hidden="true" className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
       {totalCount > 9 ? '9+' : totalCount}
     </span>
   ) : null;
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative" ref={dropdownRef} {...containerProps}>
       {variant === 'row' ? (
         // Full-width row hit area — entire surface is one tap target;
         // text-left so the label aligns with surrounding rows.
         // DECISION Phase 87.8 (D-12): pressed state is now an instant opacity dim.
         // DECISION Phase 87.8 — this supersedes the CONTEXT D-02 token-swap idiom (active:bg-surface-card-hover)
-        // previously recorded here: --theme-transition (globals.css:569) transitions
+        // previously recorded here: --theme-transition (src/app/globals.css:1780, `--theme-transition: background-color 0.25s ease`) transitions
         // background-color at 0.25s and does not list opacity, so a background swap
         // is swallowed on an ~80ms tap while an untransitioned opacity change fires
         // instantly. hover:bg-surface-card-hover stays — correct on desktop, inert
@@ -279,19 +614,21 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // DECISION Phase 88.3 (§10.1): this row hovers to `bg-surface-header-hover`
         // (warm-700), chosen OVER `bg-surface-hover` (warm-50) which the other 38 swept
         // sites took. Ground reason: this row renders inside the mobile menu panel on
-        // `bg-surface-header` (Header.js:192) under `text-white` — a warm-50 wash there
+        // `bg-surface-header` (src/app/Header.js:264, `md:hidden absolute top-16`) under `text-white` — a warm-50 wash there
         // measures 1.06:1, while warm-700 measures 10.48:1. The nav links beside it
-        // (Header.js:204, :212) were already on the header family and are the model this
+        // (src/app/Header.js:277, :285, each `bg-surface-header-hover`) were already on the header family and are the model this
         // row should have followed; it had drifted onto the card family.
-        // ThemeToggle.js:32 and FeedbackButton.js:84 are the same row idiom on the same
+        // src/app/components/ThemeToggle.js:37 and src/app/components/FeedbackButton.js:143 (each `bg-surface-header-hover`) are the same row idiom on the same
         // panel and moved with it — all three are cross-referenced back to this marker.
         // Converging these three onto `bg-surface-hover` "for consistency" with the other
         // 38 re-introduces a 1.06:1 hover state; `surfaceHoverSweep.test.ts` test 4b pins
         // all three by name so that goes red. That is a decision, not a cleanup.
         <button
+          ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
           className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
+          aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
           // `aria-controls` is present ONLY while the panel exists (plan 88.6-59, MEDLOW-30).
           aria-expanded={isOpen}
@@ -336,6 +673,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       ) : (
         // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01.
         <button
+          ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
           // Phase 88.3 (Req 7 / UI-SPEC §5.8.2): this icon-only trigger shipped with NO
           // focus-visible ring at all — unlike the row variant above — and fell to the UA
@@ -344,6 +682,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
           // subtree at `Header.js`'s container. See the DECISION marker on the row label below.
           className="relative text-white hover:text-amber-400 transition-colors p-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label="Notifications"
+          aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
           // `aria-controls` is present ONLY while the panel exists (plan 88.6-59, MEDLOW-30).
           aria-expanded={isOpen}
@@ -353,20 +692,48 @@ function NotificationBell({ user, variant = 'icon', label }) {
 
           {/* Red badge with count — absolute-positioned over the bell */}
           {totalCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+            <span aria-hidden="true" className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
               {totalCount > 9 ? '9+' : totalCount}
             </span>
           )}
         </button>
       )}
 
+      {/* DECISION Phase 88.6.1 code review CR-2 / A-33 (owner ratified 2026-10-19, WCAG 1.3.1 /
+          4.1.2): the unread count reaches assistive tech as BOTH triggers' DESCRIPTION, from this
+          always-rendered sr-only span, chosen OVER putting the count in the accessible NAME: the
+          names "Notifications" / "Invites notifications" are the D-19 names and dozens of exact-name
+          queries in the unit and e2e suites depend on them, and a name that changes with the count
+          would also break Voice Control's stable target. The description carries the REAL count
+          (never the visual 9+ cap), and the visible badges are aria-hidden so nothing is read
+          twice. AMENDED 2026-10-19 (scoped check 3, nit 1): the span is `hidden`, not sr-only —
+          a referenced hidden node still supplies the description (accname step 2A), while an
+          sr-only span is also met a second time as loose text by a line-by-line reader.
+          Changing any of this is a decision, not a cleanup. */}
+      <span id={countDescriptionId} hidden>
+        {totalCount > 0 ? pendingCountCopy(totalCount) : NONE_PENDING_COPY}
+      </span>
+
       {/* Dropdown panel — positioning differs by variant:
           - row variant (mobile hamburger): render inline so the panel expands
             within the menu naturally (no fixed/absolute escape from flow).
           - icon variant (desktop nav): fixed/absolute overlay near the bell. */}
+      {/* DECISION Phase 88.6.1-28 (D-18, D-33 row 21): the panel is a `section` named by
+          `aria-labelledby` pointing at its own visible "Notifications" heading — CHOSEN because it
+          gives a named region a VoiceOver user finds in the rotor, with no new words.
+          REJECTED: an `aria-label` on the section (a second copy of the words that can drift from
+          the heading, and a new literal); a dialog role (it promises modal semantics and a focus
+          trap that an inline panel does not have — the row variant sits inside the hamburger); the
+          menu role or the popup-role attribute (FORBIDDEN, DECISION Phase 88.6-16,
+          `src/app/components/KebabMenu.js`); a div carrying an explicit region role (the native
+          element already carries that role).
+          The idref is safe because the heading's children are a fixed literal
+          (`src/components/ui/Heading.tsx:30-37`, anchor "It is NOT a safe").
+          Adding a role, or naming the panel with its own label, is a decision, not a cleanup. */}
       {isOpen && (
-        <div
+        <section
           id={panelId}
+          aria-labelledby={headingId}
           className={
             variant === 'row'
               ? "bg-surface-card border-t border-line-header"
@@ -380,41 +747,101 @@ function NotificationBell({ user, variant = 'icon', label }) {
                 default. LEVEL PRESERVED (P4) — `typeScaleTouchedSurfaces`' EXPECTED_LEVELS entry
                 for this file (`{ 3: 1 }`) is byte-unchanged; only the SOURCE of the rung and the
                 weight moves, and `font-bold` was already what this site shipped. */}
-            <Heading level={3} size="label" className="text-content-primary">
+            <Heading ref={panelHeadingRef} id={headingId} level={3} size="label" className="text-content-primary">
               Notifications
             </Heading>
           </div>
 
-          {/* Confirmation banner — success-green for completed actions, muted
-              for the L-8 "no longer available" notice */}
-          {confirmation && (
-            <div className={`px-4 py-2 border-b border-line ${
-              confirmation.tone === 'success' ? 'bg-status-success-subtle' : 'bg-surface-muted'
-            }`}>
-              {/* DECISION Phase 88.6-31 (D-16, owner ruling ARM A, 2026-09-16): the MUTED arm's
-                  ink moves `text-content-muted` (4.3725) -> `text-content-secondary` (6.9620),
-                  chosen OVER leaving it and OVER changing the GROUND. This is a measured sub-AA
-                  pairing, not a scan artefact: both arms key on the SAME condition
-                  (`confirmation.tone === 'success'`), so the muted ink and the muted
-                  `bg-surface-muted` ground directly above are genuinely co-live. The token was
-                  wrong for this ground, not the ground — this is a NOTICE, and `secondary` is the
-                  shape plan 27 chose for the same class of site. The SUCCESS arm is
-                  byte-unchanged. Its `groundInk.test.ts` OFFENDERS entry is deleted in this same
-                  commit, as that roster's exactness requires.
-                  §4.5: `font-medium` takes the EMPHASIS outcome — DELETED, with the distinction
-                  carried by the colour token each arm already has (dropped-utility spelling, the
-                  same one this plan's tasks 1 and 2 used). */}
-              <p className={`text-sm ${
-                confirmation.tone === 'success' ? 'text-content-status-success' : 'text-content-secondary'
-              }`}>{confirmation.text}</p>
-            </div>
-          )}
+          {/* The panel's two outcome regions, always mounted while it is open: the assertive one for a
+              failed row action (copy rows N3-N6 or a register line), the polite one for the
+              confirmation — success-green for completed actions, muted for the L-8 "no longer
+              available" notice. */}
+          {/* DECISION Phase 88.6.1-44 (Req 8, W026, MEDLOW-28, D-22, D-33 row 22): CHOSEN — two
+              always-mounted StatusRegions with srOnlyWhenEmpty (plan 88.6.1-06), assertive for the
+              N3-N6 failure lines and polite for the confirmation, siblings, both cleared when a row
+              action starts and on every open, the failure also when the panel closes.
+              REJECTED: a conditionally mounted alert paragraph (D-42 says its insertion is
+              announced, but Req 8's target is a text change in a region that was already there,
+              and AC-24 needs the same node before and after); a fixed N-line for every failure
+              (D-33 row 22 ruled fallback: a coded failure keeps its register line); one region
+              for both outcomes (a success must not interrupt; the house pair is one assertive and
+              one polite, never nested); a second screen-reader-only copy beside the visible banner
+              (the words in the DOM twice); plain error ink on the card ground (a second banner
+              shape inside one panel; the tint mirrors the success arm, measured in
+              src/app/tokenContrast.test.ts, anchor "19. Req 6", so the error look stays on existing
+              tokens and nothing routes to 88.9).
+              Merging the regions, or mounting either conditionally, is a decision, not a cleanup. */}
+          <StatusRegion
+            politeness="assertive"
+            srOnlyWhenEmpty
+            className="px-4 py-2 border-b border-line bg-status-error-subtle text-content-status-error"
+            message={actionFailure}
+          />
+          {/* DECISION Phase 88.6-31 (D-16, owner ruling ARM A, 2026-09-16): the MUTED arm's
+              ink moves `text-content-muted` (4.3725) -> `text-content-secondary` (6.9620),
+              chosen OVER leaving it and OVER changing the GROUND. This is a measured sub-AA
+              pairing, not a scan artefact: both arms key on the SAME condition
+              (`confirmation.tone === 'success'`), so the muted ink and the muted
+              `bg-surface-muted` ground directly above are genuinely co-live. The token was
+              wrong for this ground, not the ground — this is a NOTICE, and `secondary` is the
+              shape plan 27 chose for the same class of site. The SUCCESS arm is
+              byte-unchanged. Its `groundInk.test.ts` OFFENDERS entry is deleted in this same
+              commit, as that roster's exactness requires.
+              §4.5: `font-medium` takes the EMPHASIS outcome — DELETED, with the distinction
+              carried by the colour token each arm already has (dropped-utility spelling, the
+              same one this plan's tasks 1 and 2 used).
+              AMENDED Phase 88.6.1-44 (MEDLOW-28): the banner is now the panel's always-mounted
+              polite StatusRegion; the ground and the ink sit on that one element instead of a
+              div over a paragraph. Tokens are byte-unchanged and the two arms are still co-live
+              on one condition. */}
+          <StatusRegion
+            srOnlyWhenEmpty
+            className={
+              confirmation?.tone === 'success'
+                ? 'px-4 py-2 border-b border-line bg-status-success-subtle text-content-status-success'
+                : 'px-4 py-2 border-b border-line bg-surface-muted text-content-secondary'
+            }
+            message={confirmation?.text}
+          />
 
           {/* Content */}
           <div className="max-h-80 overflow-y-auto">
             {loading ? (
               <div className="px-4 py-8 text-center">
-                <div className="inline-block w-5 h-5 border-2 border-line border-t-accent rounded-full animate-spin" />
+                {/* DECISION Phase 88.6.1-28 (D-30 N1): CHOSEN — plain sr-only text inside the
+                    panel, which the user reaches when reading it, with the spinner hidden from
+                    assistive tech.
+                    REJECTED: a status role on this wrapper — it mounts together with the panel,
+                    and a conditionally mounted polite region is not reliably announced (D-42;
+                    `src/components/ui/StatusRegion.tsx:9-12`, anchor "EMPTY-FIRST"); and the
+                    provider's loading flag is first-load only
+                    (`src/app/components/UnreadNotificationProvider.js`, anchors "useState(true)"
+                    and "setLoading(false);"), so there is no later change to announce.
+                    REJECTED: an `aria-label` on the spinner div — a name on a generic element is
+                    not exposed. */}
+                <div className="inline-block w-5 h-5 border-2 border-line border-t-accent rounded-full animate-spin" aria-hidden="true" />
+                <span className="sr-only">{LOADING_NOTIFICATIONS}</span>
+              </div>
+            ) : loadErrorState?.showError ? (
+              <div className="px-4 py-3">
+                {/* DECISION Phase 88.6.1-80 (N7 banner): CHOSEN — the house FULL banner titled
+                    with NOTIFICATIONS_LOAD_FAILED_COPY (copy row N7, D-47), in a branch AFTER the
+                    first load and BEFORE the empty branch (Prohibition 2: the bell never says there
+                    is nothing pending when it could not find out), keyed on the provider's one
+                    adapter; focusTarget is the panel heading, so a successful Try again keeps focus
+                    inside the panel and the dismissal hook keeps it open. Report this behaves as on
+                    every full banner: it appears only after a failed retry (owner ruling
+                    2026-10-05, plan 88.6.1-69), opening the form the app-level report host renders.
+                    REJECTED — A: no report link in the bell (the owner's option A, plan 44's R3);
+                    B: both links from the start; the compact notice (fixed words, no title); a
+                    bell-local banner (a second implementation, tenet); the refresh-failed notice
+                    over partial rows (owner: partial failure not covered in the bell); a report
+                    context string (none ratified). Changing this is a decision, not a cleanup. */}
+                <FetchErrorBanner
+                  state={loadErrorState}
+                  title={NOTIFICATIONS_LOAD_FAILED_COPY}
+                  focusTarget={panelHeadingRef}
+                />
               </div>
             ) : totalCount === 0 ? (
               <div className="px-4 py-8 text-center">
@@ -433,7 +860,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                         const groupName = invite.Group?.name || invite.group_name || 'Unknown Group';
                         const inviterName = invite.Inviter?.username || invite.inviter_name || 'Someone';
                         const memberCount = invite.Group?.memberCount || invite.member_count || null;
-                        const isLoading = actionLoading === invite.id;
+                        const pressed = actionLoading[rowKey('invite', invite.id)];
 
                         return (
                           <li
@@ -453,20 +880,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
                             <div className="flex gap-2 mt-2">
                               <Button
                                 variant="primary"
-                                onClick={() => handleAccept(invite)}
-                                disabled={isLoading}
+                                onClick={(e) => handleAccept(invite, e.currentTarget)}
+                                aria-label={pressed === 'accept' ? undefined : acceptInviteLabel(groupName)}
+                                aria-disabled={pressed === 'accept' ? 'true' : undefined}
+                                disabled={pressed === 'decline'}
                                 className="flex-1"
                               >
-                                {isLoading ? (
-                                  <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                  'Accept'
-                                )}
+                                {pressed === 'accept' ? ACCEPTING_COPY : 'Accept'}
                               </Button>
                               <Button
                                 variant="secondary"
-                                onClick={() => handleDecline(invite)}
-                                disabled={isLoading}
+                                onClick={(e) => handleDecline(invite, e.currentTarget)}
+                                aria-label={declineInviteLabel(groupName)}
+                                aria-disabled={pressed === 'decline' ? 'true' : undefined}
+                                disabled={pressed === 'accept'}
                                 className="flex-1"
                               >
                                 Decline
@@ -488,7 +915,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                     <ul>
                       {friendRequests.map((request) => {
                         const requesterName = request.Requester?.username || 'Someone';
-                        const isLoading = actionLoading === request.id;
+                        const pressed = actionLoading[rowKey('friend', request.id)];
 
                         return (
                           <li
@@ -503,20 +930,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
                             <div className="flex gap-2 mt-2">
                               <Button
                                 variant="primary"
-                                onClick={() => handleAcceptFriend(request)}
-                                disabled={isLoading}
+                                onClick={(e) => handleAcceptFriend(request, e.currentTarget)}
+                                aria-label={pressed === 'accept' ? undefined : acceptFriendLabel(requesterName)}
+                                aria-disabled={pressed === 'accept' ? 'true' : undefined}
+                                disabled={pressed === 'decline' || (!pressed && isRequestActionPending(request.id))}
                                 className="flex-1"
                               >
-                                {isLoading ? (
-                                  <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                  'Accept'
-                                )}
+                                {pressed === 'accept' ? ACCEPTING_COPY : 'Accept'}
                               </Button>
                               <Button
                                 variant="secondary"
-                                onClick={() => handleDeclineFriend(request)}
-                                disabled={isLoading}
+                                onClick={(e) => handleDeclineFriend(request, e.currentTarget)}
+                                aria-label={declineFriendLabel(requesterName)}
+                                aria-disabled={pressed === 'decline' ? 'true' : undefined}
+                                disabled={pressed === 'accept' || (!pressed && isRequestActionPending(request.id))}
                                 className="flex-1"
                               >
                                 Decline
@@ -531,7 +958,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
               </>
             )}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

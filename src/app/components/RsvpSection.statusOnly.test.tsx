@@ -21,7 +21,7 @@
  */
 import type * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { formatDateTime } from '@/lib/datetime';
@@ -254,9 +254,14 @@ describe('RsvpSection status tap is status-only (owner ruling a, 2026-09-01)', (
 //     SOURCE half only: jsdom performs no layout, so the rendered box is measured by the phone
 //     lane arm in `e2e/touch-targets.spec.ts`. Neither substitutes for the other.
 //
-//  9. A CONDITIONALLY MOUNTED FAILURE. A screen reader announces CHANGES to a live region, not
-//     the mount of a new one. PRESENCE-IN-THE-INITIAL-RENDER is asserted SEPARATELY from the
-//     text landing in it — one combined assertion cannot tell the two implementations apart.
+//  9. A CONDITIONALLY MOUNTED FAILURE. CORRECTED Phase 88.6.1-38 (D-42): a conditional mount is
+//     unreliable for a POLITE / status region, whose changes are announced and whose mount is
+//     not; an inserted role="alert" that arrives with its text IS announced. The failure region
+//     is still pinned ALWAYS MOUNTED, for two other reasons: node identity (the text lands in the
+//     node that was already there), and the clear-at-start that makes an identical repeated
+//     failure re-announce. The paragraph it replaced was silent because it had no live role at
+//     all. PRESENCE-IN-THE-INITIAL-RENDER is asserted SEPARATELY from the text landing in it —
+//     one combined assertion cannot tell the two implementations apart.
 //
 // 10. A SILENT SUCCESS, AND ONLY-THE-FIRST-SUCCESS. Same pair the hero's W45(a) arms pin
 //     (`NextGameNightCard.test.tsx`): node identity across two consecutive saves, plus the
@@ -275,6 +280,21 @@ function deferred<T>() {
 
 const statusButton = (status: 'yes' | 'maybe' | 'no') =>
   screen.getByRole('button', { name: statusConfig[status].buttonText });
+
+// The test address of the E11 limit region (plan 88.6.1-38). A single-element status-role query
+// cannot address one of THREE polite regions, so the limit region carries a test id and the
+// visible note-save region is "the one status region that is not it".
+const NOTE_LIMIT_TESTID = 'rsvp-note-limit-status';
+
+// The polite OUTCOME region (the "Note saved" line), excluding the E11 limit region. Asserts that
+// exactly one such region exists, so a duplicate cannot slip past a single-element query.
+const outcomeStatus = () => {
+  const regions = screen
+    .getAllByRole('status')
+    .filter((el) => el.getAttribute('data-testid') !== NOTE_LIMIT_TESTID);
+  expect(regions).toHaveLength(1);
+  return regions[0];
+};
 
 describe('RsvpSection W43 — the note field has a real name and a UA-enforced limit', () => {
   it('the textarea carries an id, a name and an ASSOCIATED label', async () => {
@@ -493,12 +513,14 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
 
     // Captured ONCE and never re-queried: re-querying would pass against a region that is
     // unmounted and remounted per announcement, which is the defect being pinned.
-    const region = screen.getByRole('status');
+    const region = outcomeStatus();
     expect(region.textContent?.trim()).toBe('');
 
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(region.textContent?.trim()).toBe(NOTE_SAVED_COPY));
-    expect(screen.getByRole('status')).toBe(region);
+    expect(outcomeStatus()).toBe(region);
+    // D-22: a set region is visible.
+    expect(region).not.toHaveClass('sr-only');
 
     // SECOND save, deferred so the in-flight window is observable: the region must be EMPTY
     // while the second request is still in flight, which is what proves the clear happened at
@@ -508,13 +530,18 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     expect(region.textContent?.trim()).toBe('');
 
+    // D-22 (plan 88.6.1-38): the empty in-flight window is visually hidden...
+    expect(region).toHaveClass('sr-only');
+
     await act(async () => {
       write.resolve({ id: 'rsvp-own', status: 'yes', note: null });
       await write.promise;
     });
 
     await waitFor(() => expect(region.textContent?.trim()).toBe(NOTE_SAVED_COPY));
-    expect(screen.getByRole('status')).toBe(region);
+    expect(outcomeStatus()).toBe(region);
+    // ...and the region holding text never is (visible-when-set, owner ruling 2026-09-14).
+    expect(region).not.toHaveClass('sr-only');
   });
 
   it('success and failure CLEAR EACH OTHER — the two regions cannot contradict', async () => {
@@ -522,7 +549,7 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     renderSection();
     await screen.findByRole('button', { name: 'Save note' });
 
-    const success = screen.getByRole('status');
+    const success = outcomeStatus();
     const failure = screen.getByRole('alert');
 
     // POSITIVE settle signal first: a success actually lands before the absence is asserted.
@@ -533,11 +560,428 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(failure.textContent?.trim()).not.toBe(''));
     expect(success.textContent?.trim()).toBe('');
+    // D-22: whichever region is empty is visually hidden; whichever holds text is not.
+    expect(success).toHaveClass('sr-only');
+    expect(failure).not.toHaveClass('sr-only');
 
     submitRsvp.mockResolvedValue({ id: 'rsvp-own', status: 'yes', note: null });
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(success.textContent?.trim()).toBe(NOTE_SAVED_COPY));
     expect(failure.textContent?.trim()).toBe('');
+    expect(failure).toHaveClass('sr-only');
+    expect(success).not.toHaveClass('sr-only');
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Phase 88.6.1-38 — D-22 / W029.
+//
+// 14. A VISIBLE OUTCOME FLUSH ON THE COUNT BANNER (W029, WR-301). The two outcome regions sat in
+//     a display-contents wrapper whose comment reasoned from Tailwind v3's adjacent-sibling
+//     selector. Under v4.3.3 the stack rule sets margin-block-end on every child but the last,
+//     so a visible "Could not save..." or "Note saved" line got 16px above and 0px below. The
+//     fix makes both regions DIRECT children of the stack on the D-22 prop (srOnlyWhenEmpty)
+//     with no margin utility. jsdom performs no layout, so these pins are the STRUCTURE half;
+//     the 375px geometry is e2e/rsvp-section-outcome-spacing.spec.ts in the phone project.
+const MARGIN_UTILITY = /(^|\s)m[tbylrx]?-\d/;
+
+describe('RsvpSection D-22 / W029 — the outcome regions sit directly in the spaced stack', () => {
+  it('both regions are direct children of the stack, no contents wrapper, and neither is its last child', async () => {
+    renderSection();
+    const group = await screen.findByRole('group', { name: /^RSVP for / });
+
+    const stack = group.parentElement as HTMLElement;
+    const failure = screen.getByRole('alert');
+    const success = outcomeStatus();
+    expect(failure.parentElement).toBe(stack);
+    expect(success.parentElement).toBe(stack);
+    expect(stack.querySelector('.contents')).toBeNull();
+    // The stack rule gives every child BUT the last its 16px bottom margin; a region as the last
+    // child would hand the visible last child that margin instead.
+    const last = stack.lastElementChild as HTMLElement;
+    expect(last.getAttribute('role')).not.toBe('status');
+    expect(last.getAttribute('role')).not.toBe('alert');
+  });
+
+  it('idle: both regions are empty, visually hidden, and carry no margin utility', async () => {
+    renderSection();
+    // POSITIVE settle signal first (the loaded trio), then the empty-state assertions.
+    await screen.findByRole('button', { name: statusConfig.no.buttonText });
+
+    const failure = screen.getByRole('alert');
+    const success = outcomeStatus();
+    for (const region of [failure, success]) {
+      expect(region.textContent).toBe('');
+      expect(region).toHaveClass('sr-only');
+      expect(region.className).not.toMatch(MARGIN_UTILITY);
+    }
+  });
+
+  it('failure arm: the failure line lands visible in the SAME node, with no margin utility', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const no = await screen.findByRole('button', { name: statusConfig.no.buttonText });
+
+    const failure = screen.getByRole('alert');
+    const success = outcomeStatus();
+    submitRsvp.mockRejectedValue(new Error('network down'));
+    await user.click(no);
+
+    await waitFor(() =>
+      expect(failure.textContent).toBe('Could not save your response. Please try again.')
+    );
+    expect(screen.getByRole('alert')).toBe(failure);
+    expect(failure).not.toHaveClass('sr-only');
+    expect(failure.className).not.toMatch(MARGIN_UTILITY);
+    expect(success.textContent).toBe('');
+    expect(success).toHaveClass('sr-only');
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Phase 88.6.1-38 — AC-25, copy row E11.
+//
+// 15. A SILENT CAP. At 500 characters the note field stops taking input and a screen-reader user
+//     heard nothing. An always-mounted, always-sr-only polite region now announces copy row E11
+//     when the user's OWN typing reaches 500: silent at 499, cleared below 500, re-announced on a
+//     re-reach (same node), never set from hydrated data, cleared on an event switch and by every
+//     hydration of the note (a save the server stored trimmed must not leave a stale E11 under
+//     the cap). A note that LOADS at the cap is told on entry by the counter, the field's
+//     accessible description since Phase 88.6-29 (W43); cases 7 and 8 pin that tie by its
+//     COMPUTED description.
+//
+// Copy row E11 (88.6.1-COPY-TABLE.html), shipped with the straight apostrophe U+0027 (D-32 R8).
+const NOTE_LIMIT_COPY = "You've reached the 500-character limit.";
+
+const limitRegion = () => screen.getByTestId(NOTE_LIMIT_TESTID);
+
+const noteBox = async () =>
+  (await screen.findByLabelText('Add a note (optional)')) as HTMLTextAreaElement;
+
+// Records only TEXT mutations (childList or characterData) under `el`.
+function watchText(el: HTMLElement) {
+  const seen: MutationRecord[] = [];
+  const observer = new MutationObserver((records) => {
+    seen.push(...records);
+  });
+  observer.observe(el, { childList: true, characterData: true, subtree: true });
+  return {
+    count: () => {
+      seen.push(...observer.takeRecords());
+      return seen.filter((r) => r.type === 'childList' || r.type === 'characterData').length;
+    },
+    reset: () => {
+      observer.takeRecords();
+      seen.length = 0;
+    },
+    stop: () => observer.disconnect(),
+  };
+}
+
+// Brings the box to 500 by the user's own typing: 499 set in one change, then one keystroke.
+async function reachCap(user: ReturnType<typeof userEvent.setup>, box: HTMLTextAreaElement, last = 'b') {
+  fireEvent.change(box, { target: { value: 'a'.repeat(499) } });
+  await user.type(box, last);
+  expect(box.value).toHaveLength(500);
+}
+
+describe('RsvpSection AC-25 — the note announces its 500-character limit (E11)', () => {
+  it('R8 empty: all three regions are present and empty in the first post-load render; one assertive region', async () => {
+    renderSection();
+    await screen.findByRole('button', { name: 'Save note' });
+
+    const limit = limitRegion();
+    expect(limit).toHaveAttribute('role', 'status');
+    expect(limit).toHaveAttribute('aria-live', 'polite');
+    expect(limit).toHaveClass('sr-only');
+    expect(limit.textContent).toBe('');
+    expect(outcomeStatus().textContent).toBe('');
+    // R8 adjacency: the card has exactly ONE assertive region, the failure region.
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('alert').textContent).toBe('');
+    // None is nested in another.
+    expect(limit.closest('[role="alert"]')).toBeNull();
+    expect(outcomeStatus().contains(limit)).toBe(false);
+  });
+
+  it('R8 boundary: empty at 499; the E11 string at 500, on the SAME node, straight apostrophe', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const box = await noteBox();
+    const limit = limitRegion();
+
+    fireEvent.change(box, { target: { value: 'a'.repeat(499) } });
+    expect(box.value).toHaveLength(499);
+    expect(limit.textContent).toBe('');
+
+    await user.type(box, 'b');
+    expect(box.value).toHaveLength(500);
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+    expect(limitRegion()).toBe(limit);
+    expect(limit.textContent).not.toContain('’');
+    // Heard-only: it never becomes visible.
+    expect(limit).toHaveClass('sr-only');
+  });
+
+  it('R8 idempotency (held out): a re-reach re-announces on the same node; a keystroke at the cap does not', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const box = await noteBox();
+    const limit = limitRegion();
+    await reachCap(user, box);
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+
+    const watch = watchText(limit);
+    await user.type(box, '{Backspace}');
+    expect(box.value).toHaveLength(499);
+    expect(limit.textContent).toBe('');
+
+    watch.reset();
+    await user.type(box, 'c');
+    expect(box.value).toHaveLength(500);
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+    expect(watch.count()).toBeGreaterThanOrEqual(1);
+    expect(limitRegion()).toBe(limit);
+
+    // A further keystroke at the cap: the UA (or the <= 500 gate) drops it, and nothing new is
+    // announced, because the user was told when they reached it.
+    watch.reset();
+    await user.type(box, 'd');
+    expect(box.value).toHaveLength(500);
+    expect(watch.count()).toBe(0);
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+    watch.stop();
+  });
+
+  it('hydration: a saved 500-character note announces nothing on load, nor on a keystroke at the cap', async () => {
+    const user = userEvent.setup();
+    getEventRsvps.mockResolvedValue(withOwnRsvp('yes', 'a'.repeat(500)));
+    renderSection();
+    const box = await noteBox();
+    // POSITIVE signal first: the saved note has hydrated the box.
+    await waitFor(() => expect(box.value).toHaveLength(500));
+    const limit = limitRegion();
+    expect(limit.textContent).toBe('');
+
+    await user.type(box, 'x');
+    expect(box.value).toHaveLength(500);
+    expect(limit.textContent).toBe('');
+  });
+
+  it('event switch: a limit reached on the previous event is cleared by the effect while the new fetch is pending', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderSection();
+    const box = await noteBox();
+    const limit = limitRegion();
+    await reachCap(user, box);
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+
+    const pending = deferred<ReturnType<typeof withOwnRsvp>>();
+    getEventRsvps.mockImplementation((id: string) =>
+      id === 'evt-switch'
+        ? pending.promise
+        : Promise.resolve(withOwnRsvp('yes', 'running late, start without me'))
+    );
+    rerender(
+      <RsvpSection
+        eventId="evt-switch"
+        self={{ id: SELF_UUID }}
+        eventDate={EVENT_DATE}
+        onRsvpChange={vi.fn()}
+      />
+    );
+    // POSITIVE signal: the new event's fetch was issued. It is still pending, so only the
+    // event-switch effect can have cleared the region here.
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledWith('evt-switch'));
+    expect(limit.textContent).toBe('');
+    expect(limitRegion()).toBe(limit);
+
+    await act(async () => {
+      pending.resolve(withOwnRsvp('yes', 'the other event note'));
+      await pending.promise;
+    });
+    await waitFor(() => expect(box.value).toBe('the other event note'));
+    expect(limit.textContent).toBe('');
+  });
+
+  it('not conflated: Save note leaves E11 standing in flight; after the save the rehydrate clears it on the same node', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const box = await noteBox();
+    const limit = limitRegion();
+    await reachCap(user, box);
+    const typed = box.value;
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+
+    const write = deferred<unknown>();
+    submitRsvp.mockReturnValueOnce(write.promise);
+    // The post-save fetch returns the saved 500-character note (the suite default is a persistent
+    // mock and would rehydrate the 30-character fixture note instead).
+    getEventRsvps.mockResolvedValueOnce(withOwnRsvp('yes', typed));
+    await user.click(screen.getByRole('button', { name: 'Save note' }));
+
+    // In flight: Save note's clear-at-start does not touch the limit region.
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+
+    await act(async () => {
+      write.resolve({ id: 'rsvp-own', status: 'yes', note: typed });
+      await write.promise;
+    });
+    // POSITIVE signal first: the save landed.
+    await waitFor(() => expect(outcomeStatus().textContent).toBe(NOTE_SAVED_COPY));
+    expect(screen.getByRole('alert').textContent).toBe('');
+    expect(limit.textContent).toBe('');
+    expect(limitRegion()).toBe(limit);
+  });
+
+  // Owner principle 2026-10-05 (what a sighted person can tell, a screen-reader user is told):
+  // confirm-only pin of the Phase 88.6-29 (W43) tie — the counter is the field's description.
+  it('case 7: a note that LOADS at the cap is told on entry — the computed description is 500/500, and the counter is not live', async () => {
+    const user = userEvent.setup();
+    getEventRsvps.mockResolvedValue(withOwnRsvp('yes', 'a'.repeat(500)));
+    renderSection();
+    const box = await noteBox();
+    await waitFor(() => expect(box.value).toHaveLength(500));
+
+    expect(box).toHaveAccessibleDescription('500/500');
+    const counter = document.getElementById(box.getAttribute('aria-describedby') ?? '');
+    expect(counter).not.toBeNull();
+    expect(counter?.getAttribute('role')).toBeNull();
+    // A description that is also a live region would speak on every keystroke.
+    expect(
+      counter?.closest('[aria-live], [role="status"], [role="alert"], [role="log"]')
+    ).toBeNull();
+
+    await user.type(box, 'x');
+    expect(box).toHaveAccessibleDescription('500/500');
+  });
+
+  // Owner principle 2026-10-05: confirm-only pin of the Phase 88.6-29 (W43) tie.
+  it('case 8: a short note — the description follows the count (30/500, then 31/500)', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const box = await noteBox();
+    await waitFor(() => expect(box.value).toBe('running late, start without me'));
+
+    expect(box).toHaveAccessibleDescription('30/500');
+    await user.type(box, 'x');
+    expect(box).toHaveAccessibleDescription('31/500');
+  });
+
+  it('case 9 (held out): after a save the server stored trimmed to 499, the next reach to 500 re-announces', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const box = await noteBox();
+    const limit = limitRegion();
+    // 500 characters whose last one is a space.
+    await reachCap(user, box, ' ');
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+
+    // The backend trims the note before storing it (validators.js, body('note') .trim()).
+    getEventRsvps.mockResolvedValueOnce(withOwnRsvp('yes', 'a'.repeat(499)));
+    await user.click(screen.getByRole('button', { name: 'Save note' }));
+    // POSITIVE signal first: the trimmed echo has hydrated the box.
+    await waitFor(() => expect(box.value).toHaveLength(499));
+    await waitFor(() => expect(outcomeStatus().textContent).toBe(NOTE_SAVED_COPY));
+    expect(limit.textContent).toBe('');
+
+    const watch = watchText(limit);
+    await user.type(box, 'z');
+    expect(box.value).toHaveLength(500);
+    expect(limitRegion()).toBe(limit);
+    expect(limit.textContent).toBe(NOTE_LIMIT_COPY);
+    expect(watch.count()).toBeGreaterThanOrEqual(1);
+    watch.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Phase 88.6.1-38 — R10 / AC-31 (shared rule 12), the respondent note.
+//
+// 16. A MEMBER'S NOTE LOSES ITS LINE BREAKS. The respondent note span collapsed typed newlines and
+//     had no wrap rule for a long unbroken string. It now carries the two literal classes every
+//     R10 site uses (whitespace-pre-line, wrap-anywhere), stays a React text child, and renders
+//     through the shared collapseBlankLines (owner ruling #115): single and double breaks as
+//     typed, a run of three or more as one blank line. jsdom pins the classes and the rendered
+//     textContent; the 375px layout half is plan 88.6.1-52's all-sites spec.
+const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
+
+// The viewer's own row carries no note, so the textarea never holds the value under test; a
+// second respondent, Pat, carries it.
+const withOtherNote = (note: string) => ({
+  rsvps: [
+    {
+      id: 'rsvp-own',
+      event_id: EVENT_ID,
+      user_id: SELF_UUID,
+      status: 'yes',
+      note: null,
+      User: { id: SELF_UUID, username: 'me' },
+    },
+    {
+      id: 'rsvp-pat',
+      event_id: EVENT_ID,
+      user_id: OTHER_UUID,
+      status: 'yes',
+      note,
+      User: { id: OTHER_UUID, username: 'Pat' },
+    },
+  ],
+  summary: { yes: 2, maybe: 0, no: 0 },
+});
+
+// Every SPAN whose own textContent equals the RENDERED note value.
+const spansWithText = (text: string) =>
+  Array.from(document.querySelectorAll('span')).filter((el) => el.textContent === text);
+
+async function renderOtherNote(note: string) {
+  getEventRsvps.mockResolvedValue(withOtherNote(note));
+  renderSection();
+  // POSITIVE signal: the respondent list has rendered.
+  await screen.findByText('Pat');
+}
+
+describe('RsvpSection R10 / AC-31 — the respondent note keeps its typed lines and never renders as markup', () => {
+  it('a typed newline survives, and the span carries whitespace-pre-line and wrap-anywhere', async () => {
+    const note = 'Line one\nLine two';
+    await renderOtherNote(note);
+
+    const spans = spansWithText(note);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toHaveClass('whitespace-pre-line', 'wrap-anywhere');
+    expect(spans[0].textContent).toContain('\n');
+  });
+
+  it('encoding (AC-31 pin): <b>x</b> renders as seven literal characters and no b element exists in the row', async () => {
+    const note = '<b>x</b>';
+    await renderOtherNote(note);
+
+    const spans = spansWithText(note);
+    expect(spans).toHaveLength(1);
+    const row = spans[0].parentElement as HTMLElement;
+    expect(row.textContent).toContain('<b>x</b>');
+    expect(row.querySelector('b')).toBeNull();
+  });
+
+  it('R10 empty (held out): three spaces render as typed and three newlines as one blank line, both classes', async () => {
+    await renderOtherNote('   ');
+    const spaces = spansWithText('   ');
+    expect(spaces).toHaveLength(1);
+    expect(spaces[0]).toHaveClass('whitespace-pre-line', 'wrap-anywhere');
+    cleanup();
+
+    await renderOtherNote('\n\n\n');
+    const breaks = spansWithText('\n\n');
+    expect(breaks).toHaveLength(1);
+    expect(breaks[0]).toHaveClass('whitespace-pre-line', 'wrap-anywhere');
+  });
+
+  it('flood (owner ruling #115): Top, 5000 newlines, Bottom renders exactly one blank line between the words', async () => {
+    await renderOtherNote('Top' + '\n'.repeat(5000) + 'Bottom');
+
+    const spans = spansWithText('Top\n\nBottom');
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toHaveClass('whitespace-pre-line', 'wrap-anywhere');
   });
 });
 

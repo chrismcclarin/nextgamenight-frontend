@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId, useRef } from 'react';
 import Link from 'next/link';
 import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
@@ -8,7 +8,14 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { SelectControl } from '../../components/ui/Input';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
+import { StatusRegion } from '../../components/ui/StatusRegion';
+
+// The section's heading, and the refresh notice's spoken section name (copy row P78b, close ruling P-78).
+const GROUP_GAMES_TITLE = 'Group Games';
+
+const SORT_ASCENDING_LABEL = 'Sort order: ascending';
+const SORT_DESCENDING_LABEL = 'Sort order: descending';
 
 function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, timezone }) {
     return (
@@ -86,14 +93,33 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
  *   load renders the shared error treatment instead of falling through to "no game nights logged
  *   yet". This component does not fetch, so it cannot derive this itself. Same contract as
  *   `UpcomingEventsCard` (88-18).
+ * @param {boolean} [props.retained=false] - Plan 88.6.1-56 (AC-29): the page's `useRetainedContent`
+ *   result — true while games loaded for THIS group may stay on screen; the component never derives it.
+ * @param {Object} [props.focusRef=null] - Plan 88.6.1-56 (C12): the page's ref for the games section,
+ *   so the page's focus guard and this component's notice and banner share ONE target; absent, the
+ *   component uses its own.
  */
-export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members, errorState = null }) {
+export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members, errorState = null, retained = false, focusRef = null }) {
     const { timezone } = useTimezone();
     const [sortBy, setSortBy] = useState('name');
     const [sortOrder, setSortOrder] = useState('asc');
+    // What the sort region below says after a press ('' until the first one) — see the A-34 marker there.
+    const [sortAnnouncement, setSortAnnouncement] = useState('');
+    // The arrow's press: the reversed order, with the sort region written to match. Called inside the
+    // `onClick={() => setSortOrder(` call, which controlSizeFloor.test.tsx anchors on.
+    const nextSortOrderAnnounced = () => {
+        const next = sortOrder === 'asc' ? 'desc' : 'asc';
+        setSortAnnouncement(next === 'asc' ? SORT_ASCENDING_LABEL : SORT_DESCENDING_LABEL);
+        return next;
+    };
     const [filterOpen, setFilterOpen] = useState(false);
     const [filterWinner, setFilterWinner] = useState('');
     const [filterPicker, setFilterPicker] = useState('');
+    // The Filter panel's id, for the toggle's open-only aria-controls (88.6.1-48, D-44). Called
+    // here, above both early returns, because hooks run in the same order on every render.
+    const filterPanelId = useId();
+    const ownFocusRef = useRef(null);
+    const gamesFocusRef = focusRef ?? ownFocusRef;
 
     const sortedGames = useMemo(() => {
         if (!games || games.length === 0) return [];
@@ -270,18 +296,52 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
         return 'Players: Unknown';
     };
 
+    const hasGames = Array.isArray(games) && games.length > 0;
+    /* DECISION Phase 88.6.1-56 (AC-29 / RF1, D-50 / D-51): CHOSEN — a failed refresh over games
+       that loaded for this group keeps them and shows plan 88.6.1-70's refresh notice (copy row
+       RF1) above them; a list that loaded EMPTY is retained too (D-50), so the notice sits above
+       the empty state; the full banner shows only while nothing is retained (a first load, a group
+       switch, an access answer — contract C10); focus after a successful Retry or Try again lands
+       on the games section (D-05). The notice is mounted unconditionally (healthy, it is only its
+       empty status region), so its region exists before a failure (C8 b).
+       REJECTED: (a) the banner in place of the list — what shipped: it hides what the person was
+       reading (AC-29); (b) the FULL banner above the retained cards — this plan's earlier fix; its
+       could-not-load title is false over cards that loaded (D-51); (c) the compact banner — both of
+       its sentences are about personal controls; (d) no notice while data is retained — a failed
+       refresh would read as a success (the intent the stale-list test in this component's suite
+       recorded); (e) retention keyed on a non-empty list — D-50 rejected it; (f) the retention hook
+       inside this component — it unmounts whenever the Library tab shows, losing a remembered
+       access answer, so the page computes it; (g) a heading-ref prop added to the shared
+       EmptyState for one consumer — its root, whose first readable text is the empty-state
+       heading, is the target; (h) the C12 focus guard inside this component — its three branches
+       are separate returns, so no spot here survives a withdrawal; the page renders it after this
+       component and hands in focusRef. Changing any of these is a decision, not a cleanup. */
+    const refreshNotice = errorState ? (
+        <RefreshFailedNotice
+            state={errorState}
+            retained={retained}
+            focusTarget={gamesFocusRef}
+            className={hasGames ? 'mb-4' : 'mt-8'}
+            sectionName={GROUP_GAMES_TITLE}
+        />
+    ) : null;
+
     /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): the failed-fetch branch is checked
        BEFORE the empty branch below. That ordering is load-bearing and is the whole fix — an
        errored fetch also has zero games, so flipping these two silently restores the bug where a
-       group with years of history was told it had logged nothing. Do not merge them. */
-    if (errorState?.showError) {
+       group with years of history was told it had logged nothing. Do not merge them.
+       AMENDED Phase 88.6.1-56 (AC-29): the two branches stay separate and failure still comes
+       first whenever nothing is retained; with retained games, or a retained empty list, the
+       refresh notice renders above them, which is not a merge of the failure and empty branches. */
+    if (errorState?.showError && !retained) {
         return (
             <div className="mt-8">
-                <Heading level={2} size="heading" className="text-content-primary mb-4">Group Games</Heading>
+                <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mb-4">{GROUP_GAMES_TITLE}</Heading>
                 <FetchErrorBanner
                     state={errorState}
                     title="We couldn't load this group's games"
                     reportContext="Group games list (group home page)"
+                    focusTarget={gamesFocusRef}
                 />
             </div>
         );
@@ -317,7 +377,10 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                tracked `gamesError`, and passes an `errorState` prop checked in the branch ABOVE
                this one. The warning survives the fix: this branch means "nothing here yet" and
                NOTHING else — do not let a failure reach it again. */
+            <>
+            {refreshNotice}
             <EmptyState
+                ref={gamesFocusRef}
                 icon="Dices"
                 heading="No game nights logged yet"
                 body="Log a night you played and the group's history builds up here."
@@ -338,12 +401,14 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     ) : undefined
                 }
             />
+            </>
         );
     }
 
     return (
         <div>
-            <Heading level={2} size="heading" className="text-content-primary mt-8 mb-4">Group Games</Heading>
+            <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mt-8 mb-4">{GROUP_GAMES_TITLE}</Heading>
+            {refreshNotice}
 
             {/* Sorting Controls */}
             <div className="mb-6 flex items-center justify-between bg-surface-page p-3 md:p-4 rounded-card">
@@ -368,17 +433,63 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             <option value="player_count">Player Count</option>
                         </SelectControl>
                     </label>
+                    {/* DECISION Phase 88.6.1-48 (D-31 sort toggle): the owner ruled this on
+                        2026-10-05, "Ok and ratified" (wording batch 2, row D: the sort arrow's
+                        screen-reader name "Sort order: ascending" / "Sort order: descending",
+                        plan 48 option A; the arrow grows to 44px on phones) — string S1.
+                        CHOSEN: the name in words from the two hoisted constants above; the glyph in
+                        an aria-hidden span; the `title` hover tip kept byte-identical.
+                        REJECTED: the hover tip as the name (it tells a phone user to "click", the
+                        D-16 class); the arrow glyph as the name (a known screen-reader gap);
+                        dropping the `title` the way plan 88.6.1-54 drops the home-card gear's under
+                        D-19 (that title repeated its name word for word; this one carries the one
+                        fact the name lacks, is the only words a sighted desktop user sees, and the
+                        ratified option A keeps it).
+                        WHAT A SCREEN READER HEARS: the name ("Sort order: ascending, button"), then
+                        the `title` as the accessible description ("Ascending (click to reverse)") —
+                        typically straight after the name on NVDA and JAWS, after a pause as a hint
+                        on VoiceOver. Whether iPhone VoiceOver speaks the word "click" is measured in
+                        the phase's VoiceOver check (plan 88.6.1-57); a heard "click" is a wording
+                        question for the owner about the tip's words, never a reason to delete the
+                        tip.
+                        FLOOR: the arrow sits in Filter's row and the phase's 44x44 rule covers it;
+                        phone-scoped `min-h-11 md:min-h-0` like its neighbours, plus
+                        `min-w-11 md:min-w-0` because the arrow is under 44px wide.
+                        Changing any of this is a decision, not a cleanup. */}
                     <button
-                        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
+                        aria-label={sortOrder === 'asc' ? SORT_ASCENDING_LABEL : SORT_DESCENDING_LABEL}
+                        onClick={() => setSortOrder(nextSortOrderAnnounced())}
+                        className="px-3 py-2 min-h-11 md:min-h-0 min-w-11 md:min-w-0 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
                         title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
-                        {sortOrder === 'asc' ? '\u2191' : '\u2193'}
+                        <span aria-hidden="true">{sortOrder === 'asc' ? '\u2191' : '\u2193'}</span>
                     </button>
+                    {/* DECISION 88.6.1 code review A-34: the new order is announced through this polite
+                        region, mounted EMPTY and written only by a press, in the ratified S1 words (the
+                        two hoisted constants). CHOSEN OVER relying on the button's name swap alone: a
+                        label change on the focused control does not announce (UI-SPEC §7.3, restated at
+                        FriendInvitePanel.js), so the list re-sorted with no word. No clear-at-start is
+                        needed: the two values alternate, so every press changes the text. Removing the
+                        region is a decision, not a cleanup. */}
+                    <StatusRegion id="group-games-sort-status" className="sr-only" message={sortAnnouncement} />
                 </div>
+                {/* DECISION Phase 88.6.1-48 (D-21 / D-44): Filter is a DISCLOSURE — it shows and
+                    hides a panel — so it carries `aria-expanded` plus an `aria-controls` that is
+                    present ONLY while the panel exists, the house rule of DECISION Phase 88.6-16
+                    (D-12) and its amendment DECISION Phase 88.6-59. REJECTED: (a) `aria-pressed`,
+                    D-21's first wording, superseded by D-44 because "pressed" would misstate a
+                    control that opens a panel; (b) an always-present `aria-controls`, a dangling
+                    reference while the panel is closed (88.6-59 rejected it by name).
+                    The accent fill and the "Filter (n)" name report filters APPLIED;
+                    `aria-expanded` reports the panel OPEN. Two facts, kept apart on purpose.
+                    FLOOR phone-scoped `min-h-11 md:min-h-0`, in the static part of the className;
+                    no `min-w` because Filter is wider than 44px. Changing this is a decision, not
+                    a cleanup. */}
                 <button
+                    aria-expanded={filterOpen}
+                    {...(filterOpen ? { 'aria-controls': filterPanelId } : {})}
                     onClick={() => setFilterOpen(prev => !prev)}
-                    className={`px-3 py-2 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                    className={`px-3 py-2 min-h-11 md:min-h-0 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                         (filterWinner || filterPicker)
                             ? 'border-line-accent bg-surface-muted text-content-accent hover:bg-surface-elevated'
                             : 'border-line text-content-secondary hover:bg-surface-hover'
@@ -389,7 +500,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
             </div>
 
             {filterOpen && (
-                <div className="mb-6 bg-surface-page p-3 md:p-4 rounded-card border border-line -mt-3 rounded-t-none">
+                <div id={filterPanelId} className="mb-6 bg-surface-page p-3 md:p-4 rounded-card border border-line -mt-3 rounded-t-none">
                     <div className="flex flex-col sm:flex-row gap-3">
                         <label className="flex-1">
                             <span className="text-sm text-content-secondary block mb-1">Winner</span>

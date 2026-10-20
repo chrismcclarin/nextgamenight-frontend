@@ -4,14 +4,15 @@
 // these pins are about the CONTRACT, not the styling taste:
 //   1. `level` (document-outline position) and `size` (type rung) are INDEPENDENT
 //      props — asking for the right outline never changes the type role. The
-//      precedent is EmptyState.tsx:82-89, and ErrorFallback.tsx:78-92 ships an
-//      <h1> rendered at 20px today.
+//      precedent is EmptyState.tsx:83-90, and ErrorFallback.tsx's title ships an
+//      h1 at the 20px rung today (its `DECISION Phase 88.6-36 (D-05)` note).
 //   2. the four sizes are the §4.1 rungs, and every one of them is 700
 //   3. empty children render NO element at all (SPEC AC-3) — and the element that
 //      vanishes takes its `id` with it, which is a live a11y hazard, pinned below
 //   4. the base WRAPS and never clips — `wrap-anywhere` at every rung
-//   5. the two untyped-caller hazards plan 36 makes reachable are closed: an
-//      out-of-range `level`, and a forced `dangerouslySetInnerHTML` (T-88.6-05)
+//   5. the three untyped-caller hazards plan 36 makes reachable are closed: an
+//      out-of-range `level`, a forced `dangerouslySetInnerHTML` (T-88.6-05), and a
+//      `level` naming an Object.prototype key such as "constructor" (W074)
 //
 // Deliberately NOT here: a `heading-order` axe assertion. `heading-order` is a
 // DOCUMENT-level rule and belongs to the composed audits in plans 45-46, not to a
@@ -77,8 +78,9 @@ describe('Heading — the level x size contract', () => {
     expect(el).toHaveClass('font-bold');
   });
 
-  // The independence pin. ErrorFallback.tsx:78-92 already ships an <h1> at 20px,
-  // so this is a shipped fact being formalised, not a new idea.
+  // The independence pin. ErrorFallback.tsx's title already ships an h1 at the 20px
+  // rung (its `DECISION Phase 88.6-36 (D-05)` note), so this is a shipped fact being
+  // formalised, not a new idea.
   it('keeps level and size independent — <Heading level={1} size="label"> is an <h1> at 14px', () => {
     const { container } = render(
       <Heading level={1} size="label">
@@ -110,9 +112,9 @@ describe('Heading — the level x size contract', () => {
     }
   });
 
-  // level goes to 6 because CalendarListView.js:834-845's `DECISION Phase 88.5
+  // level goes to 6 because CalendarListView.js:1020-1027's `DECISION Phase 88.5
   // (DR2-7b)` marker renders h5/h6 through the `headingLevel`/`rowHeadingLevel`
-  // seam (:631-632, :656-657, :849-850, :889). A 1-4 primitive would bulldoze it.
+  // seam (:767-768, :792-793, :1044-1045, :1064). A 1-4 primitive would bulldoze it.
   it.each([1, 2, 3, 4, 5, 6] as const)('renders level={%i} as the matching h1-h6 element', (level) => {
     const { container } = render(<Heading level={level}>Outline</Heading>);
     const el = container.querySelector(`h${level}`);
@@ -206,9 +208,9 @@ describe('Heading — empty children render nothing (SPEC AC-3)', () => {
   // so any `aria-labelledby` / `aria-describedby` pointing at a Heading can go
   // DANGLING at runtime with no error and no failing build.
   //
-  // The live case: Modal.tsx:198 declares the ModalHeader title as "rendered as
-  // the DialogTitle (drives `aria-labelledby`)", while Modal.tsx:159 sets
-  // `aria-describedby={undefined}` — so that title is the dialog's ONLY
+  // The live case: Modal.tsx's `ModalHeaderProps` declares the ModalHeader title as
+  // "rendered as the DialogTitle (drives `aria-labelledby`)", while the dialog content
+  // in Modal.tsx sets `aria-describedby={undefined}` — so that title is the dialog's ONLY
   // accessible name. An empty title there is a nameless dialog.
   //
   // Two softer alternatives are BLOCKED and must not be substituted for this pin:
@@ -271,8 +273,8 @@ describe('Heading — the untyped-caller hazards plan 36 makes reachable', () =>
   // HAZARD 1: an out-of-range `level`.
   //
   // The shipped seams pass the FULL TAG STRING, not a number:
-  // CalendarListView.js:631-632 and :656-657 pass `headingLevel="h5"` /
-  // `rowHeadingLevel="h6"`, and EmptyState.tsx:61's public type is
+  // CalendarListView.js:767-768 and :792-793 pass `headingLevel="h5"` /
+  // `rowHeadingLevel="h6"`, and EmptyState.tsx:62's public type is
   // `'h1' | 'h2' | 'h3'`. A bare `` `h${level}` `` turns "h5" into `hh5`, which
   // document.createElement accepts happily.
   //
@@ -303,6 +305,23 @@ describe('Heading — the untyped-caller hazards plan 36 makes reachable', () =>
     // that would mint a second page title out of a caller's mistake.
     expect(el?.tagName).toBe('H2');
   });
+
+  // HAZARD 3 (W074, Phase 88.6.1 Req 11, AC-32): a `level` naming an Object.prototype key.
+  // The tag map is a plain object literal, so an INHERITED key resolves to a function or an
+  // object instead of missing; the fallback never fires, and React tries to render that
+  // value as the element type. It throws, or renders text with no heading at all. The
+  // documented safe default for any unrecognised level is h2, so every one of these must
+  // render exactly one h2 carrying its children.
+  it.each(['constructor', 'toString', 'hasOwnProperty', 'valueOf', '__proto__'])(
+    'resolves level="%s" (an Object.prototype key) to the h2 fallback (W074)',
+    (key) => {
+      const { container } = render(<UntypedHeading level={key}>Prototype key</UntypedHeading>);
+      const el = container.firstElementChild;
+      expect(el?.tagName).toBe('H2');
+      expect(el?.textContent).toBe('Prototype key');
+      expect(container.childNodes).toHaveLength(1);
+    }
+  );
 
   // HAZARD 2: T-88.6-05. `HeadingProps` Omits `dangerouslySetInnerHTML` out of the
   // extended HTMLAttributes, but `Omit` is erased at runtime and `{...props}`

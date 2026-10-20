@@ -127,9 +127,14 @@ async function proxy(
      matches `X.error` on any receiver) at a site that is not on its roster. A field the scanner
      does not match, that survives the alias drop, is the only shape that works in both.
 
-     ADDITIVE AND CLOSED: nothing else reads this key; the message is unchanged; it leaks
-     nothing the message does not already say. Removing it re-opens the wrong-email
-     mis-attribution, so it is a decision, not a cleanup. */
+     ADDITIVE. [AMENDED Phase 88.6.1-07 (D-24), 2026-10-15: the original claim here, that
+     "nothing else reads this key", was false. The key has TWO readers: `isWrongEmailRefusal`
+     in `src/app/invite/accept/page.js` (a reader since 88.6-23 itself), and `isCsrfRejection`
+     in `src/lib/api.ts`, which `getFetchErrorMessage` reads so a CSRF 403 never prints a role
+     refusal. Renaming or removing the key now ALSO re-opens that mis-attribution at every
+     `getFetchErrorMessage` site; `src/lib/api.test.ts` pins this body literal (A6).] The
+     message is unchanged; it leaks nothing the message does not already say. Removing it
+     re-opens the wrong-email mis-attribution, so it is a decision, not a cleanup. */
   if (UNSAFE_METHODS.has(method) && !isSameOriginRequest(request)) {
     return NextResponse.json(
       { error: 'Cross-origin request rejected', csrf_rejected: true },

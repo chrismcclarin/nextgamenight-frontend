@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
-import { promptSettingsAPI } from '../../lib/api';
+import { promptSettingsAPI, gamesAPI } from '../../lib/api';
 import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, DEADLINE_DAY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
 import { useAppForm } from '../../lib/useAppForm';
 import { FormField } from './form/FormField';
@@ -49,6 +49,11 @@ export default function ScheduleForm({
   // Plan 88.6-63 (review round 2 #25): the synchronous in-flight latch. `aria-disabled` on the
   // submit is advisory, so THIS is the refusal — a ref, not state, because `isSubmitting` is not
   // readable synchronously at the top of `onSubmit`. Released in `finally`.
+  // AMENDED Phase 88.6.1-26 (W001 / R3-M19): the refusal is now `useAppForm`'s — a second press
+  // never re-runs react-hook-form, so `Saving...` and `aria-disabled` hold until the first save
+  // settles (this latch returned early INSIDE the second run, whose settle dropped
+  // `isSubmitting` mid-save). This ref stays as a second, local line of defence for any future
+  // path that calls `onSubmit` outside the hook.
   const submitInFlightRef = useRef(false);
 
   // Detect user's timezone using Intl API
@@ -67,14 +72,25 @@ export default function ScheduleForm({
   };
 
   // Initialize form with the shared rhf + Zod primitive (PRIM-06 / D-10)
+  /* DECISION Phase 88.6.1-26 (carry-in, FormField errorKey): every FormField below (and
+     MemberSelector, which takes the same prop) gets `errorKey={submitCount}`, react-hook-form's
+     per-attempt counter, so each failed submit
+     re-inserts the field alert even when the verdict is identical and focus is already inside
+     the field (a second Enter re-inserted nothing and moved nothing — silent). Chosen OVER a
+     hand-rolled per-field sequence writer (react-hook-form writes these verdicts, and
+     `submitCount` already moves exactly once per verdict; a refused second press, which
+     `useAppForm` stops before react-hook-form runs, is not a verdict and does not bump it) and
+     OVER a key that changes per render (it would re-announce on every unrelated re-render, e.g.
+     the `watch(...)` calls below). Removing it is a decision, not a cleanup. */
   const {
     register,
     handleAppSubmit,
     control,
     watch,
     setValue,
+    getValues,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, submitCount },
   } = useAppForm(scheduleSchema, {
     defaultValues: existingSchedule
       ? {
@@ -156,23 +172,40 @@ export default function ScheduleForm({
       // CHKIN-03 silent fallback: if the user submits with an empty template name,
       // synthesize the auto-generated default rather than blocking the save or
       // showing an inline error. Template names are cosmetic admin labels.
+      // 88.6.1 code review A-39: `game_name` is read from the form, not from `data` — it is a
+      // transient UI field outside `scheduleSchema`, and the schema resolver strips it from `data`,
+      // so `data.game_name` was always undefined here.
+      const typedGameName = getValues('game_name')?.trim() || '';
       let templateName = data.template_name?.trim();
       if (!templateName) {
-        const gameName = data.game_name || 'Game TBD';
+        const gameName = typedGameName || 'Game TBD';
         const dayName = DAYS_OF_WEEK.find(d => d.value === data.schedule_day_of_week)?.label || '';
         templateName = `${gameName} - ${dayName} ${data.schedule_time}`;
       }
 
-      // Normalize game_id: empty string -> null
-      const normalizedData = {
-        ...data,
-        game_id: data.game_id || null,
-        template_name: templateName,
-      };
-      // Strip transient UI-only field — backend doesn't expect it.
-      delete normalizedData.game_name;
-
       try {
+        /* 88.6.1 code review A-39: a typed-but-unpicked game name is RESOLVED to a game id (an
+           existing or new custom game) before saving, the way createEvent.js's onSubmit does
+           (anchor `gamesAPI.resolveGame(newEvent.game_name.trim())`), because the backend's
+           schedule takes only `game_id`. Before this, the name was dropped and the schedule saved
+           as Game TBD while its auto-filled template name and the field's placeholder said the
+           typed game was kept. A failed resolve saves nothing and lands in the catch below, on
+           the same `serverError` alert as a failed save. */
+        let gameId = data.game_id || null;
+        if (!gameId && typedGameName) {
+          const resolvedGame = await gamesAPI.resolveGame(typedGameName);
+          gameId = resolvedGame.id;
+        }
+
+        // Normalize game_id: empty string -> null
+        const normalizedData = {
+          ...data,
+          game_id: gameId,
+          template_name: templateName,
+        };
+        // Strip transient UI-only field — backend doesn't expect it.
+        delete normalizedData.game_name;
+
         if (isEditMode) {
           await promptSettingsAPI.updateSchedule(groupId, existingSchedule.id, normalizedData);
         } else {
@@ -199,7 +232,9 @@ export default function ScheduleForm({
            NO `fallback:` OPTION — the shipped 'Failed to save schedule…' string was hand-rolled
            copy (it is what this file's `FAILED_COPY` roster entry counted), and
            `getFetchErrorMessage(error)` with no fallback already yields ratified copy, so none is
-           authored. Same §6.2 W16 precedent as `AvailabilityForm.js:142`.
+           authored. Same §6.2 W16 precedent as `AvailabilityForm.js`'s
+           `setSubmitError(getFetchErrorMessage(error));` (re-pointed by anchor, Phase 88.6.1-26:
+           the old `:142` had drifted, and that file moves again).
 
            The RE-THROW stays: `handleAppSubmit`'s catch is what routes this to
            `logger.error` -> Sentry (the reachable Sentry path, PRIM-06), so this file needs no
@@ -278,7 +313,7 @@ export default function ScheduleForm({
       <Modal.Body>
         <form onSubmit={handleAppSubmit(onSubmit)}>
           {/* Day of Week */}
-          <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} className="mb-4">
+          <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} errorKey={submitCount} className="mb-4">
             <SelectControl
               {...dayOfWeekField}
               ref={(node) => {
@@ -295,7 +330,7 @@ export default function ScheduleForm({
           </FormField>
 
           {/* Time */}
-          <FormField label="Time" error={errors.schedule_time?.message} className="mb-4">
+          <FormField label="Time" error={errors.schedule_time?.message} errorKey={submitCount} className="mb-4">
             <Input type="time" {...register('schedule_time')} />
           </FormField>
 
@@ -303,6 +338,7 @@ export default function ScheduleForm({
           <FormField
             label="Timezone"
             error={errors.schedule_timezone?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -321,6 +357,7 @@ export default function ScheduleForm({
           <FormField
             label="Response Deadline"
             error={errors.default_deadline_hours?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -341,6 +378,7 @@ export default function ScheduleForm({
           <FormField
             label="Magic Link Expiry"
             error={errors.default_token_expiry_hours?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -375,7 +413,19 @@ export default function ScheduleForm({
               name="schedule-game-name"
               value={{ game_id: watchedGameId, game_name: watchedGameName }}
               onChange={({ game_id, game_name }) => {
-                setValue('game_id', game_id || '', { shouldValidate: true });
+                /* DECISION Phase 88.6.1-26 (game field): write `null` for "no picked game", which
+                   the schema accepts and `onSubmit` already normalises to (Game TBD) — chosen
+                   OVER the empty string this wrote, which `z.string().uuid()` rejected as
+                   `Invalid UUID` on every typed-but-unpicked or cleared game, blocking the save.
+                   REJECTED: loosening the schema to accept an empty string (it would let a
+                   non-UUID string through to the backend). `GameComboInput` emits a database id
+                   or `null`, never an empty string. The game error paragraph below stays as a
+                   schema guard, now reachable only by a non-UUID id, which no `GameComboInput`
+                   path emits.
+                   AMENDED 2026-10-19 (88.6.1 code review A-39): `null` here no longer means the
+                   save is Game TBD when a name was typed — `onSubmit` resolves the typed name to a
+                   game id first (see the note there). Only a blank field saves as Game TBD. */
+                setValue('game_id', game_id ?? null, { shouldValidate: true });
                 setValue('game_name', game_name || '', { shouldValidate: false });
               }}
               groupId={groupId}
@@ -394,6 +444,7 @@ export default function ScheduleForm({
           <FormField
             label="Minimum Participants (optional)"
             error={errors.min_participants?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -416,6 +467,7 @@ export default function ScheduleForm({
           <FormField
             label="Template Name"
             error={errors.template_name?.message}
+            errorKey={submitCount}
             className="mb-4"
             hint={
               <p className="text-xs text-content-muted mt-1">
@@ -449,10 +501,27 @@ export default function ScheduleForm({
                 }
               }}
               error={errors.selected_member_ids?.message}
+              errorKey={submitCount}
             />
           )}
 
           {/* Server Error (inline submit-error UI) */}
+          {/* DECISION Phase 88.6.1-26 (D-42, ST-1 #2): the conditional `role="alert"` below STAYS
+              (an alert inserted with its text is announced, ARIA 1.2 / AT-4); D-23's always-mounted
+              region is not adopted. AT-4 checks for this site: R1 a plain paragraph in a plain box;
+              R2 it renders inside this dialog's form; R3 `setServerError(null)` runs at the start of
+              every accepted submit and the request round trip separates clear from set; R4 nothing
+              moves focus on failure (Save keeps it — 88.6-63); R5 absent at first render. The 7
+              FormField mounts in this form: R1, R2, R5 by the primitive (plan 88.6.1-15's record);
+              R3/R4 through react-hook-form's `_focusError()` on every failed validation, which
+              focuses the first invalid field whose `aria-describedby` speaks the message — EXCEPT a
+              repeat failure while focus is already inside that field, which re-inserts nothing and
+              moves nothing (a residual of the primitive, reported to the orchestrator). This form
+              keeps ONE server-failure region (`serverError`); field validation alerts are per
+              field.
+              AMENDED Phase 88.6.1-26 (carry-in): that residual is CLOSED for this form — each
+              FormField takes `errorKey={submitCount}` (see the DECISION at the `useAppForm` call),
+              so a repeat failure re-inserts the field alert (R3 now PASS for all 7 mounts). */}
           {serverError && (
             <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
               <p role="alert" className="text-content-status-error text-sm">{serverError}</p>
@@ -484,7 +553,12 @@ export default function ScheduleForm({
             {/* DECISION Phase 88.6-63 (review round 2 #25): `aria-disabled` chosen OVER native
                 `disabled`, which blurs a focused button to <body> mid-save, so a keyboard user whose
                 save FAILED was no longer standing on it. The refusal is the latch, not the
-                attribute. Reverting to `disabled` is a decision, not a cleanup. */}
+                attribute. Reverting to `disabled` is a decision, not a cleanup.
+                AMENDED Phase 88.6.1-26 (W001 / R3-M19): the refusal is now `useAppForm`'s
+                `handleAppSubmit`, which refuses a second submit before react-hook-form runs, so
+                `isSubmitting` holds `Saving...` and `aria-disabled` until the first save settles;
+                `submitInFlightRef` stays as a second, local line. The attribute choice itself
+                (`aria-disabled` over native `disabled`) is unchanged. */}
             <Button variant="primary" size="default" type="submit" aria-disabled={isSubmitting ? 'true' : undefined}>
               {isSubmitting
                 ? 'Saving...'

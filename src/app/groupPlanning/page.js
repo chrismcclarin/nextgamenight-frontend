@@ -3,15 +3,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
+import { groupsAPI, promptAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
 import ResponseDashboard from '../components/ResponseDashboard';
 import PromptScheduleSection from '../components/PromptScheduleSection';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { logger, errCtx } from '../../lib/logger';
+
+// The role read's resolved outcome: the shape plan 88.6.1-21's banner reads from a retry's own
+// result to tell a failed Retry (copy row B1). `undefined` means unknown (skipped or superseded).
+const LOAD_OK = Object.freeze({ isError: false });
+const LOAD_FAILED = Object.freeze({ isError: true });
+
+// Copy row G5 (D-30): byte-equal to the route fallback label (groupPlanning/loading.tsx), so the
+// wording does not change when the route boundary hands over to the page.
+const AUTH_LOADING_MESSAGE = "Getting your group's plans...";
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -20,7 +31,8 @@ export default function GroupPlanningPage() {
     // self-fetch (getUser by sub). selfUuid feeds the self-role derive
     // (UUID vs nested member.id) and PromptScheduleSection's currentUserDbId.
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+    // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
@@ -38,7 +50,6 @@ export default function GroupPlanningPage() {
 
     const [group, setGroup] = useState(null);
     const [groupError, setGroupError] = useState(null);
-    const [groupEvents, setGroupEvents] = useState([]);
 
     // Modal state for CreateEvent. When the URL carries prefill params we
     // open the modal automatically so the user lands directly on the event
@@ -49,7 +60,17 @@ export default function GroupPlanningPage() {
     const [heatmapPrompt, setHeatmapPrompt] = useState(null);
     const [heatmapLoading, setHeatmapLoading] = useState(true);
     const [heatmapError, setHeatmapError] = useState(null);
-    const [userRole, setUserRole] = useState(null);
+    // The caller's role, stamped with the group it was read for. `userRole` / `roleError` are
+    // DERIVED at render and read null for any other group, so the render in which `groupId`
+    // changes already passes null to the gated controls (DECISION Phase 88.6.1-16 at the compact
+    // notice below).
+    const [roleRecord, setRoleRecord] = useState({ groupId: null, role: null, error: null });
+    const userRole = roleRecord.groupId === groupId ? roleRecord.role : null;
+    const roleError = roleRecord.groupId === groupId ? roleRecord.error : null;
+    const groupIdRef = useRef(groupId);
+    const roleRunRef = useRef(0);
+    // The open role read's promise, or null (see `retryRole`).
+    const roleInFlightRef = useRef(null);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -58,11 +79,27 @@ export default function GroupPlanningPage() {
         }
     }, [authLoading, user]);
 
+    /* DECISION Phase 88.6.1-16 (W060 double fetch): the group and poll loads run ONCE per user
+       and group; only the role re-derive follows identity. Two effects, chosen OVER the single
+       shared effect that Phase 87.3-05 (FE dabb4a6) gave the identity dependency so the role
+       would re-run once identity resolved — which also re-ran BOTH loads at that moment, fetching
+       each twice on a cold visit, blanking the poll responses to their loading line mid-view and
+       remounting them, and letting a failed second poll fetch hide a good first result behind the
+       error banner (the AC-29 shape). The loads key on the user's sub, following EventCalendar's
+       fetch effect and UserHomePage's upcoming-events effect (a fresh user object per render
+       must not re-fetch); the role effect keeps the user object, unchanged since 87.3-05.
+       Merging them back is a decision, not a cleanup. */
     useEffect(() => {
         if (user?.sub && groupId) {
             fetchGroup();
-            fetchGroupEvents();
             fetchHeatmapData();
+        }
+        // The fetches are re-declared per render; the deps above are the reload triggers on purpose.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.sub, groupId]);
+
+    useEffect(() => {
+        if (user?.sub && groupId) {
             // fetchUserRole self-gates on selfUuid; selfUuid is in the deps so
             // the self-role derive re-runs once identity resolves (D-04).
             fetchUserRole();
@@ -94,13 +131,13 @@ export default function GroupPlanningPage() {
                     const members = await groupsAPI.getGroupMembers(groupId);
                     groupData.Users = members || [];
                 } catch (memberError) {
-                    console.error('Error fetching group members:', memberError);
+                    logger.info('Error fetching group members:', errCtx(memberError));
                 }
             }
 
             setGroup(groupData);
         } catch (error) {
-            console.error('Error fetching group:', error);
+            logger.info('Error fetching group:', errCtx(error));
             /* DECISION Phase 88-25 (Req 14 / Req 11, DEF-88-16-01): a failed group load renders
                the shared fetch-error treatment with a retry, chosen OVER the native browser alert
                this shipped with. A browser alert is unstyled, un-dismissable by keyboard
@@ -115,17 +152,6 @@ export default function GroupPlanningPage() {
             setGroupError(
                 error instanceof Error ? error : new Error("The group request didn't complete.")
             );
-        }
-    };
-
-    const fetchGroupEvents = async () => {
-        if (!groupId) return;
-        try {
-            const events = await eventsAPI.getGroupEvents(groupId);
-            setGroupEvents(events || []);
-        } catch (error) {
-            console.error('Error fetching group events:', error);
-            setGroupEvents([]);
         }
     };
 
@@ -158,16 +184,40 @@ export default function GroupPlanningPage() {
         // Gate on identity resolution — the self-role find keys on the nested
         // member.id vs selfUuid, so we wait until selfUuid resolves rather than
         // storing a wrong "no role". Re-runs when selfUuid lands (in effect deps).
-        if (!groupId || !user?.sub || !selfUuid) return;
-        try {
-            const members = await groupsAPI.getGroupMembers(groupId);
-            const me = (members || []).find(m => m.id === selfUuid);
-            if (me?.UserGroup?.role) {
-                setUserRole(me.UserGroup.role);
+        // A gated call asked nothing, so it resolves undefined (unknown, never announced).
+        // Every read that settles stores what it learned: the found role, null when the
+        // caller is absent, null plus the error when the read failed — never a stale role.
+        if (!groupId || !user?.sub || !selfUuid) return undefined;
+        const run = ++roleRunRef.current;
+        const forGroup = groupId;
+        // Superseded: a newer role read started, or the page moved to another group.
+        const superseded = () => run !== roleRunRef.current || groupIdRef.current !== forGroup;
+        // The run's promise is published SYNCHRONOUSLY, before its await, so a Retry pressed while
+        // it is open joins it (`retryRole` below; A-60, 88.6.1 code review).
+        const thisRun = (async () => {
+            try {
+                const members = await groupsAPI.getGroupMembers(forGroup);
+                if (superseded()) return undefined;
+                const me = (members || []).find(m => m.id === selfUuid);
+                setRoleRecord({ groupId: forGroup, role: me?.UserGroup?.role ?? null, error: null });
+                return LOAD_OK;
+            } catch (err) {
+                // LOG FIRST, then the superseded return: an overtaken read that really failed is
+                // still a failed request (the house order, plan 88.6.1-71's members/events catches).
+                logger.info('Error fetching user role:', errCtx(err));
+                if (superseded()) return undefined;
+                setRoleRecord({
+                    groupId: forGroup,
+                    role: null,
+                    error: err instanceof Error ? err : new Error("The role request didn't complete."),
+                });
+                return LOAD_FAILED;
+            } finally {
+                if (roleInFlightRef.current === thisRun) roleInFlightRef.current = null;
             }
-        } catch (err) {
-            console.error('Error fetching user role:', err);
-        }
+        })();
+        roleInFlightRef.current = thisRun;
+        return thisRun;
     };
 
     /* Adapters onto the shared fetch-error pair, matching the shipped 88-14/88-18 shape
@@ -175,16 +225,27 @@ export default function GroupPlanningPage() {
        `isError`/`error`/`refetch` (useFetchErrorState.ts). `refetch` must be STABLE — the hook
        puts it in a useCallback dep AND in its refocus-recovery effect deps, so handing it a fresh
        function each render would re-subscribe that listener on every render while erroring.
-       These two fetches are re-declared per render (they close over groupId/promptId), hence the
-       ref hop rather than a useCallback on the fetch itself. */
+       These three fetches are re-declared per render (they close over groupId/promptId/selfUuid),
+       hence the ref hop rather than a useCallback on the fetch itself. Each retry RETURNS the
+       fetch's promise, so the hook's retry resolves whatever the fetch resolves (the role read's
+       LOAD_OK / LOAD_FAILED outcome above). */
     const fetchGroupRef = useRef(null);
     const fetchHeatmapRef = useRef(null);
+    const fetchUserRoleRef = useRef(null);
     useEffect(() => {
         fetchGroupRef.current = fetchGroup;
         fetchHeatmapRef.current = fetchHeatmapData;
+        fetchUserRoleRef.current = fetchUserRole;
+        groupIdRef.current = groupId;
     });
     const retryGroup = useCallback(() => fetchGroupRef.current?.(), []);
     const retryHeatmap = useCallback(() => fetchHeatmapRef.current?.(), []);
+    // DECISION 88.6.1 code review A-60: a role Retry (the person's press OR the hook's tab-return
+    // re-attempt) JOINS a role read already in flight — groupHomePage's idiom
+    // (`membersInFlightRef.current ?? …`) — OVER starting a second members request that newest-wins
+    // would only throw away. The identity-keyed effect calls `fetchUserRole` directly and never
+    // joins, so a new identity still supersedes the open read. Changing this is a decision, not a cleanup.
+    const retryRole = useCallback(() => roleInFlightRef.current ?? fetchUserRoleRef.current?.(), []);
 
     const groupErrorState = useFetchErrorState({
         isError: Boolean(groupError),
@@ -196,6 +257,16 @@ export default function GroupPlanningPage() {
         error: heatmapError,
         refetch: retryHeatmap,
     });
+    const roleErrorState = useFetchErrorState({
+        isError: Boolean(roleError),
+        error: roleError,
+        refetch: retryRole,
+    });
+    // ONE compact notice for the caller's personal controls: identity first (see the marker at
+    // the mount below).
+    const personalControlsErrorState = selfIdentityErrorState.showError
+        ? selfIdentityErrorState
+        : roleErrorState;
 
     // Phase 71.2 / Plan 03 hotfix — clear the email-CTA query params (prompt_id,
     // prefillDate, etc.) when the modal closes for any reason. Without this, a
@@ -218,15 +289,10 @@ export default function GroupPlanningPage() {
         if (willClose) clearEventModalParams();
     };
 
-    const handleEventCreated = (newEvent) => {
-        toggleEventModal();
-        // Refresh events after creation
-        fetchGroupEvents();
-    };
 
     if (!user) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
-            {authLoading ? 'Loading...' : 'Redirecting to login...'}
+            {authLoading ? AUTH_LOADING_MESSAGE : 'Redirecting to login...'}
         </div>;
     }
 
@@ -251,16 +317,22 @@ export default function GroupPlanningPage() {
             {/* DECISION Phase 88.6-21 (#175, owner ruling 2026-09-14, option 2 — label all five
                 breadcrumb navs). THIS ATTRIBUTE IS THE ONLY EDIT PLAN 21 MAKES TO THIS FILE. The
                 file is not swept, not migrated, and its `no-console` allowlist entry
-                (`.eslintrc.json:59`) is deliberately untouched: AC-2's convert-on-touch rule is
+                (the `no-console` override list in `.eslintrc.json`) is deliberately untouched: AC-2's convert-on-touch rule is
                 scoped to plans that convert LOGGING, and an `aria-label` converts none — so plan
                 43's census is undisturbed. The ruling is assigned ONCE per nav; the other four
                 belong to plans 17 and 18 and are already done.
                 AMENDED Phase 88.6-53 (2026-09-28): the "not swept, not migrated" half is STALE —
                 plan 88.6-53 swept this file (headings onto Heading, off-scale weights, body text,
                 aria-current on the current crumb). What still stands is the no-console allowlist
-                entry (now at .eslintrc.json:30; the :59 above has drifted): its four console
-                calls are untouched by 53 too, and the entry belongs to the ROADMAP :28
-                milestone-close sweep (ledger P08), not to a type sweep. */}
+                entry (the same override list; the line number first cited above had drifted): its
+                four console calls are untouched by 53 too, and the entry belongs to the ROADMAP :28
+                milestone-close sweep (ledger P08), not to a type sweep.
+                AMENDED Phase 88.6.1-16 (W060, ROADMAP :28 convert-on-touch): the file's four raw
+                console calls are gone — one deleted with the unread events fetch, three moved to
+                the house breadcrumb logger at info with errCtx — and the file's entry in that
+                override list was removed in the same change. ROADMAP :28's convert-on-touch rule
+                applies to a file this phase edits, so the milestone-close sweep (ledger P08) has
+                nothing left here, and lint now guards the file. BOOKKEEPING: nothing breaks. */}
             {/* DECISION Phase 88.6-53 (D-03 / UI-SPEC §4.5; R2 #171): the two links are 400 (the
                 emphasis is carried by the link colour token) and the current crumb is 700 with
                 aria-current="page" — chosen to MATCH this page's parent, the groupHomePage
@@ -270,10 +342,24 @@ export default function GroupPlanningPage() {
                 The links also carry the project focus ring, DECISION Phase 88.3-17 (DEF-88.3-13-04,
                 owner ruling A: the browser default outline is unreadable on some surfaces) — they
                 are the page's FIRST tab stops. The separators are aria-hidden so a screen reader
-                does not read "greater than" between crumbs. Still open elsewhere, for the same
-                88.9 pointer: 3 of the 5 breadcrumbs lack the ring (userProfile's Home link and
-                both gameDetail breadcrumbs' Home links) and 6 separator spans are not hidden. */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word">
+                does not read "greater than" between crumbs. Still open elsewhere at FE 2f3d4c4: five
+                breadcrumb links lacked the ring (userProfile's Home link, both gameDetail Home links
+                and both gameDetail group-name links) and 6 separator spans were not hidden.
+                AMENDED Phase 88.6.1-16 (D-46): as first written this sentence counted three (Home
+                links only); the Phase 88.6.1 research re-count found five, which is D-46. The ring
+                and the six exposed separators are no longer an 88.9 pointer — Phase 88.6.1
+                Requirement 7 fixes them in each page's own plan, and plan 88.6.1-55 pins every
+                breadcrumb link's ring and separator in the shared breadcrumb scan. The crumb-weight
+                question above stays with Phase 88.9. */}
+            {/* DECISION Phase 88.6.1-16 (R7-M7): the nav carries min-w-0 beside its inline-block
+                max-w-full pill. The token is inert today (the nav's parent is a block box) and is
+                KEPT on purpose: if the nav ever becomes a flex item, a minimum width of auto would
+                beat the max-width cap and re-open UAT3-D1 (a long unbroken group name running off a
+                375px screen). Chosen OVER omitting it as inert — the reasoning the groupHomePage
+                breadcrumb marker records (its "deliberately NOT added" sentence), which plan
+                88.6.1-55 amends while it adds the token to the shared breadcrumb scan. Removing it
+                is a decision, not a cleanup. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {group && (
@@ -316,7 +402,42 @@ export default function GroupPlanningPage() {
             {/* D-08: identity-resolution failure hides the self-role affordances
                 (admin poll controls gated on userRole) — surface a compact,
                 non-blocking degrade notice rather than fail silently (D-11). */}
-            <FetchErrorBanner state={selfIdentityErrorState} compact />
+            {/* DECISION Phase 88.6.1-16 (D-25, copy row G6; W060(i)): this compact notice now also
+                tells a failed ROLE read, with the existing sentence (the shipped COMPACT_NOTICE, no
+                new string). Before this, a failed members read was swallowed and every admin
+                control simply vanished with no word to the user.
+                ONE mount serves both causes, identity first: identity is the upstream failure and
+                its Retry is the one that can restore both. Chosen OVER a second compact mount, which
+                would add a second polite region and print the same sentence twice when both fail —
+                and both can, because a failed identity refetch keeps its cached row, so the role
+                read still runs.
+                The role error is cleared only when a read SETTLES, chosen OVER the clear-at-start
+                shape the group load uses, so the pressed Retry stays mounted with its in-flight
+                label and the error state stays true through a failed retry.
+                An unknown role is null — fail closed: the admin-gated controls hide while this
+                notice says why. The role and its error are stamped with the group they were read
+                for and DERIVED at render, chosen OVER resetting them in an effect or after the next
+                read settles — both leave renders in which another group's role reaches the
+                admin-gated controls.
+                Newest wins: a read that settles after the page moved to another group, or after a
+                newer role read started, writes nothing (no role, no error), chosen OVER dropping only
+                on a group change — the hook's error-only refocus refetch can start a second read of
+                the SAME group while a Retry is in flight, and the older answer landing last would
+                put a stale failure (or a stale role) over a newer result. A superseded failure is
+                still LOGGED before it is dropped (the house log-first order), chosen OVER dropping
+                it silently, which would make an outage look smaller than it was.
+                Every read RESOLVES its outcome — LOAD_OK, LOAD_FAILED, or nothing when it was
+                skipped or superseded — because plan 88.6.1-21's banner tells a failed Retry (copy
+                row B1, owner 2026-10-05) only from the retry's own result. Chosen OVER resolving
+                nothing (what the read did first), which would leave this page re-speaking the
+                first-failure sentence after every failed Retry and never saying "still"; a
+                superseded read resolves nothing rather than a failure, so a stale answer is never
+                reported as the outcome of the press.
+                Changing this is a decision, not a cleanup.
+                AMENDED Phase 88.6.1-63 (AC-29): identity counts as failed only with no row held;
+                with a held row the role read runs and, if it fails, it is the failure this notice
+                tells and the request its Retry repeats; the two can no longer show at once. */}
+            <FetchErrorBanner state={personalControlsErrorState} compact />
 
             {/* A failed GROUP load — the page keeps its generic "Plan Game Session" title and the
                 poll tooling below still works, so this is a banner rather than a dead-end page. */}
@@ -387,14 +508,22 @@ export default function GroupPlanningPage() {
                 createEvent already accepts these props; we just need to
                 forward them. The modal auto-opens when prefillDate+Time are
                 present (see useEffect above). */}
+            {/* DECISION Phase 88.6.1-68 (one close owner): chosen — this page passes CreateEvent no
+                created-callback; the dialog's close after a create is CreateEvent's own modaltoggle()
+                alone (plan 88.6.1-81 calls it only while the press's session is open), and it still
+                runs toggleEventModal, so the Phase 71.2 email-link parameters are still cleared on
+                that close. REJECTED — the host closing it too (what shipped: a second call to a TRUE
+                toggle, safe only because both calls ran from closures captured while the dialog was
+                open — a call from a fresh closure reopens it — and a host-side close cannot tell a
+                late success from the current one, the case that reopened dialogs at the other
+                hosts). Nothing on this page renders events (plan 16), so the callback had no other
+                job; this page's dialog opens only from the email link, so no late-success reopen is
+                reachable here today — the change makes all five mounts follow one rule. Re-adding a
+                callback that closes is a decision, not a cleanup. */}
             <CreateEvent
                 group_id={groupId}
                 modal={eventModal}
                 modaltoggle={toggleEventModal}
-                onEventCreated={(newEvent) => {
-                    handleEventCreated(newEvent);
-                    fetchGroupEvents();
-                }}
                 user={user}
                 // Phase 71.2 / Plan 03 hotfix — when arriving via the email CTA
                 // (prompt_id present), surface the visual heatmap so the user

@@ -59,7 +59,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import { feedbackAPI, ApiError } from '@/lib/api';
 import FeedbackButton from './FeedbackButton';
 import FeedbackForm from './FeedbackForm';
-import { FeedbackModalProvider, useFeedbackModal } from './FeedbackModalProvider';
+import { FeedbackModalProvider, useFeedbackModal, useFeedbackReport } from './FeedbackModalProvider';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -364,8 +364,10 @@ describe('FeedbackButton — Phase 88.6-31 (the FAB, the capture, the timer)', (
       await screen.findByText(/Thanks! Your feedback has been submitted\./i);
       expect(screen.getByTestId('probe')).toHaveTextContent('open');
 
-      // The modal can close under it: the close button, Escape, an outside click, a route
-      // change. The component unmounts; the shared provider does not.
+      // The component unmounts; the shared provider does not. Closing the modal (the close
+      // button, Escape, an outside click) unmounts the DIALOG, not this component: that close
+      // path is pinned in FeedbackButton.test.tsx (88.6.1-33, W017). This test pins the
+      // unmount path.
       rerender(<Harness mounted={false} />);
       await vi.advanceTimersByTimeAsync(3000);
 
@@ -373,5 +375,115 @@ describe('FeedbackButton — Phase 88.6-31 (the FAB, the capture, the timer)', (
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// Phase 88.6.1 plan 33 (D-30, copy row F2; D-24 at this surface). A send that fails with NO known
+// cause reads F2, which keeps the typed draft, instead of the register's unknown line, which
+// advises a refresh that would throw the draft away. Every CODED failure keeps its register
+// line. The sentence is asserted LITERALLY here, never through the exported constant, so a
+// changed constant cannot pass silently.
+describe('FeedbackButton — F2 at the unknown arm (88.6.1-33, D-30)', () => {
+  const F2 = "We couldn't send your feedback. Please try again.";
+  const REFRESH_UNKNOWN = 'Something went wrong. Refresh the page to try again.';
+
+  async function failWith(err: unknown) {
+    vi.mocked(feedbackAPI.submitGitHubFeedback).mockRejectedValueOnce(err);
+    const user = await openFeedbackModal();
+    await screen.findByRole('dialog');
+    await user.type(
+      screen.getByPlaceholderText(/what happened|tell us|describe/i),
+      'Something went wrong on this page.'
+    );
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+  }
+
+  it('F2-a: an unknown-coded ApiError reads F2 exactly, with a straight apostrophe, never the refresh line or the upstream string', async () => {
+    await failWith(new ApiError('the backend said something quotable', 'unknown', 418, {}));
+    const line = await screen.findByText(F2);
+    expect(line.textContent).toBe(F2);
+    // D-32 R8: the straight apostrophe, never U+2019.
+    expect(line.textContent).not.toContain('’');
+    expect(screen.queryByText(REFRESH_UNKNOWN)).toBeNull();
+    expect(screen.queryByText(/the backend said something quotable/i)).toBeNull();
+  });
+
+  it('F2-b: a failure that is not an ApiError (a network TypeError) derives unknown and reads F2', async () => {
+    await failWith(new TypeError('Failed to fetch'));
+    expect(await screen.findByText(F2)).toBeInTheDocument();
+    expect(screen.queryByText(REFRESH_UNKNOWN)).toBeNull();
+  });
+
+  it("F2-c (D-24): the proxy's code-less CSRF 403 reads F2, never the role refusal", async () => {
+    await failWith(
+      new ApiError('Cross-origin request rejected', 'forbidden', 403, {
+        error: 'Cross-origin request rejected',
+        csrf_rejected: true,
+      })
+    );
+    expect(await screen.findByText(F2)).toBeInTheDocument();
+    expect(screen.queryByText("You don't have access to this. Refresh the page to try again.")).toBeNull();
+  });
+
+  it('F2-d (guard, confirm-only): an unauthorized failure keeps copy row X1, not F2', async () => {
+    await failWith(new ApiError('', 'unauthorized', 401));
+    expect(
+      await screen.findByText('Your session may have expired. Sign in again to continue.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(F2)).toBeNull();
+  });
+
+  it('F2-e (guard, confirm-only): an internal failure keeps its register line, not F2', async () => {
+    await failWith(new ApiError('x', 'internal', 500, {}));
+    expect(
+      await screen.findByText('Something went wrong on our end. Please try again shortly.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(F2)).toBeNull();
+  });
+});
+
+// WR-04 (88.6.1 code review), confirm-only: the review held that the form -> success swap unmounts
+// the FORM dialog, whose late close-autofocus would spend the stored opener before the real close.
+// Measured here: the swap keeps the same dialog node, and the real close lands on the opener.
+// RP-3/RP-4 (FetchErrorBanner.report.test.tsx) close only via Escape; this pins the success path.
+describe('report host — a successful send returns focus to Report this (WR-04, confirm-only)', () => {
+  function ReportOpener() {
+    const openReport = useFeedbackReport();
+    return (
+      <main>
+        <h1>Page</h1>
+        <button
+          type="button"
+          onClick={(event) =>
+            openReport?.({ subject: 'Broken list', description: 'It broke.', invoker: event.currentTarget })
+          }
+        >
+          Report this
+        </button>
+      </main>
+    );
+  }
+
+  it('WR-04: after the success panel closes, focus lands on the opener, never the page h1 or body', async () => {
+    const user = userEvent.setup();
+    render(
+      <FeedbackModalProvider>
+        <ReportOpener />
+      </FeedbackModalProvider>
+    );
+    const opener = screen.getByRole('button', { name: 'Report this' });
+    await user.click(opener);
+    const formDialog = await screen.findByRole('dialog', { name: 'Report Bug or Suggest Feature' });
+    await user.click(screen.getByRole('button', { name: 'Submit' }));
+    await screen.findByText(/Thank You/i);
+    // The premise WR-04 rested on does not hold: both of FeedbackForm's returns are `<Modal open>` at
+    // the same position, so React keeps ONE dialog instance across the swap — the form dialog never
+    // unmounts and fires no close-autofocus while the report is open. Pinned, because a `key` on
+    // either return would make the review's scenario real.
+    expect(screen.getByRole('dialog')).toBe(formDialog);
+    // The 2 s success timer closes the panel through the provider's closeReport.
+    await waitFor(() => expect(screen.queryByText(/Thank You/i)).toBeNull(), { timeout: 4000 });
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    expect(document.activeElement).not.toBe(screen.getByRole('heading', { level: 1, name: 'Page' }));
   });
 });

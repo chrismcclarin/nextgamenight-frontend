@@ -9,15 +9,25 @@ import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
+import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
 
 /* Phase 88.6-44 (T-88.6-142, WCAG 4.1.3): the sr-only announcement copy for the load path.
    AUTHORED, NOT RATIFIED — UI-SPEC §6.1 carries no entry for a loading announcement; both
    strings are recorded in `88.6-44-SUMMARY.md` as authored copy. Neither is VISIBLE (the regions
    below are `sr-only`), which is why authoring them here does not breach P1. The count in the
-   loaded string is the array length, never backend text. */
+   loaded string is the array length, never backend text.
+   AMENDED Phase 88.6.1-14 (D-32 R6, copy row E9): the zero-count announcement is now the ratified
+   E9 sentence, ONE constant (`EMPTY_COLLECTION_LINE`) shared with the visible empty line.
+   AMENDED Phase 88.6.1-14 (owner ruling 2026-10-05, wording batch 5 row Q): the owner ratified the
+   loading line (`LOADING_ANNOUNCEMENT`) and the non-zero count line (`loadedAnnouncement`'s
+   non-zero arm) AS SHIPPED on 2026-10-05, so the "not ratified" statement above is history, not
+   current state; both are byte-unchanged and pinned by the picker test (J2); changing either is an
+   owner wording decision (D-31), not a cleanup. */
 const LOADING_ANNOUNCEMENT = 'Loading your games...';
+const EMPTY_COLLECTION_LINE = "You haven't added any games to your collection yet.";
+const IDENTITY_FAILURE_LINE = "We couldn't load your games. Close this and try again.";
 const loadedAnnouncement = (count) =>
-  count === 0 ? 'No games in your collection.' : `${count} ${count === 1 ? 'game' : 'games'} loaded.`;
+  count === 0 ? EMPTY_COLLECTION_LINE : `${count} ${count === 1 ? 'game' : 'games'} loaded.`;
 
 /**
  * BringGamePicker - Modal overlay for selecting games to bring to an event
@@ -44,14 +54,39 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
   /* DECISION Phase 88.6-44 (T-88.6-142, WCAG 4.1.3 Status Messages): TWO announcement states
      feeding TWO always-mounted `sr-only` <StatusRegion>s below — one FIXED `polite`, one FIXED
      `assertive` — chosen OVER one region with a `politeness` derived from the outcome. A derived
-     politeness mutates `role` / `aria-live` on a live node (`StatusRegion.tsx:34,40-41`), which
-     assistive tech does not reliably re-read; two fixed-politeness regions is the shipped shape
-     (`userProfile/page.js:2209-2210`). Both start EMPTY: the primitive's contract is empty-first
-     (`StatusRegion.tsx:9-12`), and a region that mounts already populated announces nothing.
+     politeness mutates `role` / `aria-live` on a live node (the primitive's `role`/`aria-live` pair
+     derived from `politeness` in `StatusRegion.tsx`), which assistive tech does not reliably
+     re-read; two fixed-politeness regions is the shipped shape (the profile page's two
+     notification `StatusRegion`s, `politeSaveAnnouncement` / `assertiveSaveAnnouncement` in
+     `userProfile/page.js`). Both start EMPTY: the primitive's contract is empty-first (its
+     EMPTY-FIRST docblock bullet in `StatusRegion.tsx`), and a region that mounts already
+     populated announces nothing.
      `loadError` is the VISIBLE half of the load failure — the copy the list slot paints instead
      of the empty-collection line — and it is a string rather than a flag so the visible branch
      and the assertive region render the SAME ratified sentence. It carries NO live role of its
-     own: one failure, one announcement (UI-SPEC §6.2). */
+     own: one failure, one announcement (UI-SPEC §6.2).
+     AMENDED Phase 88.6.1-14 (D-42): "a region that mounts already populated announces nothing"
+     holds for the POLITE region only. An alert-role region inserted together with its text IS
+     announced (ARIA 1.2's alert role; the TetraLogical 2024 matrix incl. VoiceOver iOS — AT-4).
+     The assertive region still starts empty for the clear-then-set reason `handleClose` records.
+     An identity failure (E10, below) reaches it by TWO real paths (scoped check H-07):
+     (1) REOPEN AFTER A FAILURE. The picker is always mounted (both hosts render it
+     unconditionally and flip `isOpen`), so its identity observer lives as long as the picker does
+     and nothing refetches on open; the query is still in its error state at the open commit, so
+     the open subtree MOUNTS the assertive region already carrying E10 (arm I6). That this mount is
+     announced is [ASSUMED]: AT-4 found an alert-role region inserted with its text announced on
+     every engine it read (ARIA 1.2's creation sentence, WebKit's live-region code, the
+     TetraLogical 2024 matrix, "All announced" for VoiceOver iOS), but whether shipping iOS Safari
+     runs the managed path is UNVERIFIED there, MDN dissents without data, and nobody measured an
+     alert mounting inside a dialog whose opening moves focus in the same commit. The check is
+     routed to plan 88.6.1-57's Not-staged-by-hand list (Event page — Games to Bring reopened),
+     which never records it as heard; it stays [ASSUMED] until a by-hand staging is found. Arm I6
+     pins the mounted TEXT, not the announcement. A clear-then-set on open (mount empty, then set
+     E10) would avoid the assumption, but it is a deliberate design change, not made here.
+     (2) OPEN WHILE IDENTITY IS RESOLVING, or a retry of the errored query from another consumer.
+     The region is already mounted and empty while the query is pending (a fetch of a data-less
+     query resets it to pending with no error — TanStack query-core's `fetchState`), and E10 is
+     SET into it when the fetch fails: a change, announced like any other (arms I2, I3). */
   const [politeAnnouncement, setPoliteAnnouncement] = useState('');
   const [assertiveAnnouncement, setAssertiveAnnouncement] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -61,6 +96,25 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
      would re-populate the assertive one PAST that clear, and the next open would mount it
      already populated — silent. The catch compares the generation it captured at start. */
   const dismissGenerationRef = useRef(0);
+  // 88.6.1-14 (D-35): the Save press latch — see the AMENDED (D-35) note at the Save control.
+  // A REF, not the `saving` state: a state write does not land before a second synchronous
+  // press dispatches.
+  const saveInFlightRef = useRef(false);
+  /* DECISION Phase 88.6.1-14 (D-09b, AC-30; copy row E10, D-33 row 23): the identity failure is
+     read from the SHARED identity query (the page's cached entry — no extra request while it
+     holds data), chosen OVER a new prop from both hosts (the fix would move into the game page,
+     which later plans of this phase own), OVER editing the fetch effect below (Phase 89's fence,
+     `.planning/deferred/phase-89.md`, the BringGamePicker performance entry), and OVER copying the
+     condition into the announcement state from an effect (a second copy of a fact the query
+     already holds, which can go stale across a retry). E10 is a FIXED line — no error object
+     exists for "identity unknown", and the query's error text is never shown. Only the query's
+     ERROR state counts: a query still resolving keeps the spinner, and an error with a cached
+     row (`self` present) is not a failure here. A new observer of an errored identity query makes
+     TanStack retry it once on mount (retryOnMount, query-core 5.101.1) — the same behaviour every
+     other `useSelfIdentity()` consumer already has; for this picker that mount is its host
+     page's mount (both hosts render it unconditionally), never an open. Changing this is a
+     decision, not a cleanup. */
+  const { query: selfIdentityQuery } = useSelfIdentity();
 
   useEffect(() => {
     // Phase 87.3-04: gate the fetch on identity resolution — `self` is undefined
@@ -124,11 +178,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
            2026-09-13): `logger.info` — a Sentry BREADCRUMB — over `logger.error`, AC-2's
            original uniform arm, which was rejected because it buys Session Replay volume the
            `no-console` milestone gate never asked for. `logger.warn` is not a cheaper arm
-           (`Sentry.captureMessage`, `src/lib/logger.ts:31-32`, is also an event). Egress delta
+           (`Sentry.captureMessage`, `src/lib/logger.ts:50`, is also an event). Egress delta
            versus today: NIL — with no `captureConsoleIntegration` in `sentry.client.config.js`
            this was already a breadcrumb and stays one.
            `errCtx(err)` and never the raw `Error`: `info`'s second parameter is
-           `ctx?: Record<string, unknown>` (`src/lib/logger.ts:24`) and `checkJs: false` hides
+           `ctx?: Record<string, unknown>` (`src/lib/logger.ts:31`, `info(msg: string, ctx?: ...)`) and `checkJs: false` hides
            that mistake at a `.js` call site. Converted IN PLACE — a catch inside an async
            effect, not a render body, so no latch is required.
            RECORDED, NOT FIXED (this commit's scope is the channel and the sweep): this path
@@ -164,6 +218,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
 
   if (!isOpen) return null;
 
+  // 88.6.1-14 (AC-30): see the DECISION at the identity read. `failureLine` is whichever failure
+  // the list area shows first — E10 for an identity failure, the load error otherwise.
+  const identityFailed = !self?.user_id && selfIdentityQuery.isError;
+  const failureLine = identityFailed ? IDENTITY_FAILURE_LINE : loadError;
+
   /* DECISION Phase 88.6-44 (T-88.6-142): a LOCAL `handleClose` that EVERY dismissal routes
      through — `Modal`'s `onClose` (where Radix funnels Esc, outside-click and the header close
      control into one call, the `createGroup.js` `DECISION Phase 88-33` precedent), the
@@ -171,7 +230,8 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
      the Skip button alone. Esc is the dominant dismissal on a phone-primary surface; a
      Skip-only clear would leave the assertive region populated across a close, so the NEXT
      identical failure sets identical text — a React bail-out, no DOM change, no announcement
-     (`userProfile/page.js:303-311` records the same mechanism). The visible failure copy is
+     (the profile page records the same mechanism in its note "a React state bail-out — announced
+     once, silent forever after", `userProfile/page.js`). The visible failure copy is
      cleared here too so a reopened picker never paints last time's failure over a fresh fetch.
      Re-pointing any of the three sites straight at the `onClose` prop is a decision, not a
      cleanup. */
@@ -196,11 +256,14 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
   };
 
   const handleSave = async () => {
+    // 88.6.1-14 (D-35): the first-line press latch; released in `finally`.
+    if (saveInFlightRef.current) return;
     // Phase 88.6-57 (CR-101): refuse unless the selection came from a SUCCESSFUL load. The PUT
     // is a FULL REPLACE, and until the load lands `selectedGameIds` is the initial empty Set
     // (or a stale one from a previous open) — saving it wipes the person's brings. The refusal
     // lives HERE so it holds whatever the control's disabled idiom becomes.
-    if (loading || loadError) return;
+    if (loading || loadError || identityFailed) return;
+    saveInFlightRef.current = true;
     const generation = dismissGenerationRef.current;
     // Cleared at the START so a second identical failure is a real change (the
     // `NextGameNightCard` / `RsvpSection` clear-then-set idiom, UI-SPEC §6.3).
@@ -231,6 +294,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
       if (generation !== dismissGenerationRef.current) return;
       setAssertiveAnnouncement(getFetchErrorMessage(err));
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   };
@@ -247,29 +311,41 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
        backdrop + `handleBackdropClick` target-compare are gone rather than ported
        (Radix owns outside-dismiss, Esc and the focus trap).
 
-       The overlay's `p-4` is DELETED, not relocated: it was ALWAYS dead. The
-       unlayered `.modal-overlay` block in globals.css (:1075) declares
-       `padding: 1rem` and an unlayered author rule beats every `@layer utilities`
-       rule — the 87.8 DEC-3 marker at globals.css:1086 cites THIS call site by
-       name as its live proof. So removing it is not a spacing change and must not
-       be read as one.
+       The overlay's `p-4` is DELETED, not relocated: it was ALWAYS dead when it was
+       removed — the unlayered legacy overlay rule in globals.css then declared
+       `padding: 1rem`, and an unlayered author rule beats every `@layer utilities`
+       rule. That legacy rule was itself DELETED later, by Phase 88-31; the amended
+       `DECISION Phase 87.8 DEC-3` marker in `globals.css` records the deletion
+       (re-pointed 88.6.1-14). So removing the `p-4` was not a spacing change and
+       must not be read as one.
 
        The search row stays PINNED above the scrolling list (Modal.Body is `p-0` +
        flex column, the list owns the scroll with `min-h-0`). Collapsing it into a
        single scrolling body would push the search field off-screen as soon as the
        list scrolls — that is a decision, not a cleanup. */
-    <Modal open onClose={handleClose} className="max-w-md max-h-[80vh]">
+    /* DECISION Phase 88.6.1-56 (W023 class): CHOSEN — the 80% height cap is kept (this dialog's
+       own choice) and its unit is the DYNAMIC viewport unit the shared primitive
+       (`Modal.tsx`, `DECISION Phase 88.6-08`) and the day dialog (plan 88.6.1-47) use, so the
+       dialog's bottom and its Save button never sit under a phone's browser toolbar.
+       REJECTED: dropping the override (the dialog would grow to the primitive's 90%, a visible
+       change) and keeping the static unit (W023's defect). Changing this is a decision, not a
+       cleanup. */
+    <Modal open onClose={handleClose} className="max-w-md max-h-[80dvh]">
       <Modal.Header>Games to Bring</Modal.Header>
       <Modal.Body className="flex flex-col p-0 md:p-0">
         {/* Phase 88.6-44 (T-88.6-142): the two always-mounted announcement regions — see the
             DECISION at the state declarations. `sr-only` is LOAD-BEARING: `StatusRegion` is
-            visible by default (`text-sm`, `StatusRegion.tsx:43`), and without it the loading
+            visible by default (`text-sm`, the `cn('text-sm', className)` call in `StatusRegion.tsx`), and without it the loading
             copy would render beside the spinner and the loaded count above the list — a visible
             delta on a UI-SPEC-gated phase. Layout-safe: `sr-only` is absolutely positioned and
             this Body has no `gap`/`space-y`, so two empty divs add nothing. First children on
             purpose, ahead of the search row. */}
         <StatusRegion className="sr-only" message={politeAnnouncement} />
-        <StatusRegion className="sr-only" politeness="assertive" message={assertiveAnnouncement} />
+        <StatusRegion
+          className="sr-only"
+          politeness="assertive"
+          message={identityFailed ? IDENTITY_FAILURE_LINE : assertiveAnnouncement}
+        />
         {/* Search */}
         <div className="shrink-0 p-4 pb-2">
           {/* DECISION Phase 88.6-44 (T-88.6-124, house rule `Input.tsx:11-19`): `id` + `name` +
@@ -277,7 +353,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
               house rule allows `aria-label` alone only where a visible label genuinely cannot
               exist, and here it cannot in THIS phase: a visible "Search" line is NEW VISIBLE
               COPY with no UI-SPEC §6.3 row (P1 forbids an executor minting it) and a new
-              visible row on a `max-h-[80vh]` dialog whose list owns the scroll — ~24px of list
+              visible row on a `max-h-[80dvh]` dialog whose list owns the scroll — ~24px of list
               height at 375px on a phone-primary surface, an unsanctioned look delta. The
               `aria-label` mirrors the placeholder so sighted and spoken names agree. `id`/`name`
               are present regardless: the autofill heuristic does not read ARIA. Adding a visible
@@ -295,11 +371,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
 
         {/* Game List */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
-            </div>
-          ) : loadError ? (
+          {failureLine ? (
             /* Phase 88.6-44 (T-88.6-142): the load-FAILURE branch, checked BEFORE the empty
                branch (UI-SPEC §6.2: an empty state must never render on a fetch failure). Until
                this branch existed a failed load fell through to "You haven't added any games…",
@@ -307,13 +379,23 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                `role` here — the assertive region above is this failure's single announcement.
                Not <FetchErrorBanner>: it composes its own live regions (`Banner` + a polite
                `StatusRegion`) and would double-announce one failure. Error ink, not the empty
-               state's muted ink, so the two branches are visibly distinct as well. */
+               state's muted ink, so the two branches are visibly distinct as well.
+               AMENDED Phase 88.6.1-14 (AC-30): this box is now checked FIRST, ahead of the spinner,
+               and shows whichever failure applies — E10 for an identity failure, the load error
+               otherwise; still no role of its own. Safe for the load error because the load path
+               never holds a failure and the in-flight flag together: a new run clears the error
+               before setting the flag in one synchronous block, a failed run sets the error and
+               clears the flag in one continuation, and a cancelled run sets neither. */
             <div className="text-center py-8">
-              <p className="text-content-status-error text-sm">{loadError}</p>
+              <p className="text-content-status-error text-sm">{failureLine}</p>
+            </div>
+          ) : loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
             </div>
           ) : ownedGames.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-content-muted text-sm">You haven&apos;t added any games to your collection yet</p>
+              <p className="text-content-muted text-sm">{EMPTY_COLLECTION_LINE}</p>
             </div>
           ) : filteredGames.length === 0 ? (
             <div className="text-center py-4">
@@ -373,7 +455,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                         name is the visible label alone. Do NOT copy `alt=""` to a `SafeImage`
                         site without this guard. (`getColorFromText('')` resolves to the muted
                         well colour — the same ground as the `?` glyph branch below — so the
-                        broken-URL fallback loses nothing visible; `QuickSuggestions.js:148`
+                        broken-URL fallback loses nothing visible; `QuickSuggestions.js:154` (`getColorFromText`)
                         records the same routing.) */}
                     <div aria-hidden="true" className="w-8 h-8 rounded-sm shrink-0 overflow-hidden bg-surface-muted">
                       {thumbnail ? (
@@ -458,7 +540,8 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
           Skip for now
         </button>
         {/* 88.6-33 (§3.2/§3.3): `<Button variant="primary" size="default">`. `text-sm` was DEAD
-            under unlayered `.btn`'s `font-size` (globals.css:2201) and is deleted rather than
+            under unlayered `.btn`'s `font-size` (the unlayered `.btn {` rule's `font-size: 0.875rem` in
+            `globals.css`) and is deleted rather than
             moved onto the className. The control KEEPS its NATIVE `disabled={saving}` — the
             plans 17-24 `aria-disabled` conversion is not this plan's work.
             AMENDED Phase 88.6-57 (CR-101, 88.6-REVIEW.md, 2026-09-28): still NATIVE `disabled`.
@@ -468,11 +551,25 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
             Save is now ALSO refused while `loading` and after `loadError` (here and in
             `handleSave`'s first line), because the PUT is a FULL REPLACE and the initial empty
             Set would wipe the person's brings. Re-enabling it on those states is a decision, not
-            a cleanup. */}
+            a cleanup.
+            AMENDED Phase 88.6.1-14 (D-35): D-35 (owner, 2026-10-04) classified this gate. The
+            in-flight half is the control the user just pressed, so it moves to `aria-disabled`
+            plus a synchronous first-line ref latch (`saveInFlightRef`) released in `finally` —
+            the rule of POSITION, `DECISION Phase 88.6-22` in `FriendInvitePanel.js` — chosen OVER
+            leaving it native (a keyboard or switch user is dropped out of the focus order
+            mid-save). The loading, failed-load and identity-failure terms stay NATIVE: nobody
+            pressed Save to cause any of them (the rule of KIND), and CR-101's refusal in
+            `handleSave` still holds for all three. The research note that called this gate
+            "leave, 88.9 / 89" was superseded because neither register owns the in-flight focus
+            drop. Visible delta, disclosed: while saving, the button takes the shipped gated
+            colour pair (`.btn-primary[aria-disabled='true']` in `globals.css`) instead of the
+            `.btn:disabled` 50% wash. Dropping either half, or restoring the native attribute for
+            the in-flight case, is a decision, not a cleanup. */}
         <Button
           variant="primary"
           onClick={handleSave}
-          disabled={saving || loading || !!loadError}
+          disabled={loading || !!loadError || identityFailed}
+          aria-disabled={saving ? 'true' : undefined}
         >
           {saving ? 'Saving...' : 'Save'}
         </Button>

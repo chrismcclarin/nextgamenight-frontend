@@ -28,7 +28,9 @@ const FRONTEND_ROOT = path.resolve(__dirname, '..');          // periodictableto
 const REPO_ROOT = path.resolve(FRONTEND_ROOT, '..');           // repo root
 const SRC_DIR = path.join(FRONTEND_ROOT, 'src');
 const APP_DIR = path.join(SRC_DIR, 'app');
-const LIB_API = path.join(SRC_DIR, 'lib', 'api.js');
+// The API client has been TypeScript since 2026-05-30 (lib/api.js -> lib/api.ts). Reading the
+// old path made the map's API Client table silently empty (0 namespaces) until the wave 6 gate fix.
+const LIB_API = path.join(SRC_DIR, 'lib', 'api.ts');
 const OUTPUT_DIR = path.join(REPO_ROOT, '.ai-context');
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'project-map.md');
 
@@ -186,7 +188,7 @@ function findProviderConsumers(allFiles, providers) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// API Client — parse lib/api.js for namespace + function + method + endpoint
+// API Client — parse lib/api.ts for namespace + function + method + endpoint
 // ──────────────────────────────────────────────────────────────────────────
 
 function extractApiClient() {
@@ -195,7 +197,7 @@ function extractApiClient() {
   const namespaces = [];
 
   // Capture `export const fooAPI = { ... };` blocks. Requires the closing `};`
-  // to live on its own line at column 0 — true for the current api.js style.
+  // to live on its own line at column 0 — true for the current api.ts style.
   const nsRegex = /export\s+const\s+(\w+API)\s*=\s*\{([\s\S]*?)\n\};/g;
   let m;
   while ((m = nsRegex.exec(source)) !== null) {
@@ -210,6 +212,8 @@ function extractApiClient() {
 function parseApiFunctions(body) {
   // Each function in an API namespace looks like:
   //   getThing: (args) => apiFetch(`/path`, { method: 'POST', ... }),
+  //   getThing: (id: string) => apiFetch<Thing>(`/path/${id}`),   (TS type argument)
+  //   getThing: async (t: string) => timedPublicFetch(`${PUBLIC_API_BASE_URL}/path`, { ... }),
   // or method shorthand:
   //   getThing(args) { ... },
   //
@@ -223,7 +227,7 @@ function parseApiFunctions(body) {
   // Reserved names that surface as false positives — known internal helpers
   // or option-object keys at namespace-level indent we don't want emitted.
   const SKIP_NAMES = new Set([
-    'apiFetch', 'fetch', 'method', 'body', 'headers', 'credentials',
+    'apiFetch', 'publicFetch', 'timedPublicFetch', 'fetch', 'method', 'body', 'headers', 'credentials',
     'mode', 'cache', 'signal', 'redirect', 'referrer', 'integrity',
     'if', 'return', 'const', 'let', 'var', 'else', 'try', 'catch', 'throw',
     'await', 'async', 'new',
@@ -246,13 +250,17 @@ function parseApiFunctions(body) {
     if (seen.has(name)) continue;
     seen.add(name);
 
-    // Find the apiFetch call to extract endpoint + method.
+    // Find the fetch call to extract endpoint + method: the authed apiFetch or one of the public
+    // fetchers, with an optional TS type argument (`apiFetch<Group>(...)`). A public fetcher's URL
+    // carries the base-URL prefix, which is stripped so every endpoint reads as a path.
     const lookahead = lines.slice(i, i + 8).join('\n');
-    const fetchMatch = lookahead.match(/apiFetch\s*\(\s*[`'"]([^`'"]*)[`'"]\s*(?:,\s*\{([\s\S]*?)\})?/);
+    const fetchMatch = lookahead.match(
+      /\b(?:apiFetch|publicFetch|timedPublicFetch)\s*(?:<[^()]*?>)?\s*\(\s*[`'"]([^`'"]*)[`'"]\s*(?:,\s*\{([\s\S]*?)\})?/
+    );
     let endpoint = null;
     let method = 'GET';
     if (fetchMatch) {
-      endpoint = fetchMatch[1];
+      endpoint = fetchMatch[1].replace(/^\$\{(?:PUBLIC_)?API_BASE_URL\}/, '');
       const opts = fetchMatch[2] || '';
       const methodMatch = opts.match(/method:\s*['"](\w+)['"]/);
       if (methodMatch) method = methodMatch[1];
@@ -358,7 +366,7 @@ function generate() {
   }
 
   // API Client
-  out.push('## API Client (`lib/api.js`)');
+  out.push('## API Client (`lib/api.ts`)');
   out.push('');
   out.push(`${apiNamespaces.length} namespaces. Method + endpoint extracted where possible.`);
   out.push('');

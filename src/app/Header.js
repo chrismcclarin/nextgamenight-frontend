@@ -8,6 +8,10 @@ import ThemeToggle from './components/ThemeToggle';
 import { useUnreadNotificationCount } from './components/UnreadNotificationProvider';
 import FeedbackButton from './components/FeedbackButton';
 
+// Copy row H5 ("Name of the top navigation bar"), owner-ratified 2026-10-04 (D-30): the name of
+// the one primary-navigation landmark. breadcrumbNavOverflow.test.ts resolves the nav by this name.
+const MAIN_NAV_LABEL = 'Main';
+
 function Header(){
     const { user, error, isLoading } = useUser();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -24,17 +28,48 @@ function Header(){
     const { totalCount } = useUnreadNotificationCount();
 
     // Escape closes the mobile hamburger menu while it's open.
-    // Reuses the FeedbackButton.js:41-50 idiom (document keydown listener,
-    // attached only while open, cleaned up on close/unmount).
+    // The listener is a document keydown listener attached only while the menu
+    // is open and removed on close or unmount. FeedbackButton once carried the
+    // same idiom and removed it under DECISION Phase 88-17 (Req 9)
+    // (src/app/components/FeedbackButton.js:61, `DECISION Phase 88-17 (Req 9)`)
+    // because its modal is a Radix dialog that owns its own Escape; this menu
+    // is not a Radix dialog, so it keeps its own listener.
     // Scope-limited per CONTEXT D-01: closes hamburger only — no app-wide
     // escape-sweep event (no current consumers; YAGNI).
+    //
+    // DECISION Phase 88.6.1-45 (D-08a): CHOSEN — return when the event is
+    // already default-prevented, the precedent at src/app/gameDetail/page.js:606
+    // (the description-collapse listener, `event.defaultPrevented`). A layer
+    // that claimed the Escape owns it: the bell panel's shared useDismissal hook
+    // (src/components/ui/useDismissal.ts) default-prevents the Escape it acts
+    // on, and so does a Radix dialog that dismisses.
+    // WHY it is required, not belt-and-braces: the Next 14 App Router hydrates
+    // React on the document itself (the next package's dist/client/app-index.js
+    // sets its app element to document), so React's root listener and this one
+    // sit on the SAME node; the bell's stopPropagation cannot stop a later
+    // listener there. Without this line one Escape with the Invites panel open
+    // (`variant="row" label="Invites"`, below in this file) closes the panel AND
+    // this menu. Pinned by Header.test.tsx HD-1, which models that order.
+    // REJECTED (a): relying on the claiming layer's stopPropagation — true only
+    // in a jsdom test, where React's root is a div; false in production.
+    // REJECTED (b): registering this listener in the capture phase — it would
+    // run BEFORE the bell's React handler and close the menu first, which is
+    // the bug.
+    // REJECTED (c): copying the precedent's two other bails (an editable
+    // target, an open dialog) — this panel holds no editable control, and a
+    // Radix dialog that consumes an Escape already default-prevents it, so this
+    // one condition covers that case (HD-3).
+    // REJECTED (d): a React onKeyDown on the header instead of a document
+    // listener — it would miss an Escape pressed while focus is outside the
+    // header, and D-08a asked for the bail, not a new listener model.
+    // Removing the default-prevented condition, or moving this listener to the
+    // capture phase, is a decision, not a cleanup.
     useEffect(() => {
         if (!mobileMenuOpen) return;
 
         function handleKeyDown(e) {
-            if (e.key === 'Escape') {
-                setMobileMenuOpen(false);
-            }
+            if (e.key !== 'Escape' || e.defaultPrevented) return;
+            setMobileMenuOpen(false);
         }
 
         document.addEventListener('keydown', handleKeyDown);
@@ -88,7 +123,7 @@ function Header(){
                 MEASURED BASIS: the header/nav chrome is DARK IN BOTH THEMES — a deliberate,
                 shipped choice (`globals.css` `--color-bg-header`: warm-800 light / warm-900
                 dark; `--color-bg-nav`: purple-900; recorded as "intentional, keep" in
-                `.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md:59-60`). Against that dark
+                `.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md:613`, `Header vs nav colors`). Against that dark
                 ground Req 7's purple-700 ring reads 1.93:1 on warm-800, 1.78:1 on purple-900
                 and 1.38:1 on warm-700 (header-hover) — all below WCAG 2.4.11's 3:1 floor. The
                 value dark mode already uses, amber-400, reads 9.00 / 8.30 / 6.27 on those same
@@ -97,7 +132,7 @@ function Header(){
                 first focus-visible ring in this same plan.
 
                 Rejected — overriding `--color-focus-ring` here instead of `--ring`. That shape
-                looks like the shipped `EventScheduler.tsx:228-236` precedent but is INERT on
+                looks like the shipped `src/app/components/EventScheduler.tsx:253` (`THE OVERRIDDEN PROPERTY IS`) precedent but is INERT on
                 this chain. That precedent overrides a ONE-hop alias; this ring chain is TWO
                 hops (`--color-focus-ring` -> `--ring` -> the emitted `--tw-ring-color`), and
                 `--ring: var(--color-focus-ring)` is declared on `:root`, so its `var()` is
@@ -114,7 +149,31 @@ function Header(){
 
                 Changing either of these is a decision, not a cleanup. */}
             <div className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)]">
-                <div className="w-full max-w-7xl mx-auto px-4 h-full">
+                {/* DECISION Phase 88.6.1-45 (AC-18, HEADER-NAV-LANDMARK-RULING, copy row H5):
+                    CHOSEN — this inner container is the ONE nav landmark, named by
+                    MAIN_NAV_LABEL. It is the nearest element that holds BOTH lists — the desktop
+                    list and the phone panel sit in different subtrees below it — so one landmark
+                    serves both widths, with the brand link and the "Toggle menu" button inside
+                    it. A nav is display block like the div it replaced: nothing visible changes.
+                    REJECTED (a): one nav per list, both named "Main" — "exactly one" fails and a
+                    screen reader lists two identical landmarks.
+                    REJECTED (b): a nav around the desktop list only — the phone, the primary
+                    surface, would have none.
+                    REJECTED (c): making the phone panel the nav — the panel is inert while closed
+                    (owner ruling R3-D, below), so at phone width the landmark would leave the
+                    accessibility tree with the menu closed, and the desktop list would still need
+                    its own.
+                    The panel below stays a div (darkChromeLegibility.test.ts test 6 finds it as
+                    one) and keeps its inert attribute; the amber ring override stays on the outer
+                    container and the panel. breadcrumbNavOverflow.test.ts lists this nav by file
+                    and name (NAMED_NAVS).
+                    The brand link and the desktop list's links carry no focus utility on purpose
+                    for now — they paint the browser's default outline (an indicator is present),
+                    and adopting the house ring is a look call routed to Phase 88.9
+                    (.planning/deferred/phase-88.9.md, the entry headed "Header brand link and
+                    desktop nav links ride the browser's default focus outline").
+                    Splitting, moving or renaming this landmark is a decision, not a cleanup. */}
+                <nav aria-label={MAIN_NAV_LABEL} className="w-full max-w-7xl mx-auto px-4 h-full">
                     <div className="flex justify-between items-center h-full">
                         {/* Brand */}
                         <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity">
@@ -214,9 +273,14 @@ function Header(){
                                 - ring-2 ring-surface-header gives the dot a header-bg halo
                                   so it visually separates from the white hamburger lines
                                   (Slack/Discord/Linear pattern).
-                                - aria-hidden because it's decorative; the menu contents
-                                  announce the unread state to screen readers, and the
-                                  button's aria-label "Toggle menu" stays unchanged.
+                                - aria-hidden because it's decorative; the button's
+                                  aria-label "Toggle menu" stays unchanged.
+                                  AMENDED 2026-10-19 (88.6.1 code review CR-2 / A-33): the
+                                  menu contents did NOT announce the unread state (the
+                                  Invites row's name is fixed). The count now reaches
+                                  screen readers as the Invites row trigger's description
+                                  ("N pending" / "None pending", NotificationBell.js at the
+                                  CR-2 DECISION marker), read when the menu is opened.
                                 - Inherits md:hidden from the parent button — desktop
                                   renders zero hamburger UI and therefore zero dot.
                                 - No animation per CONTEXT D (badge appears/disappears
@@ -337,7 +401,7 @@ function Header(){
                             </div>
                         )}
                     </div>
-                </div>
+                </nav>
             </div>
         </>
     );

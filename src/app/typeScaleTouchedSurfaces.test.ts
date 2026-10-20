@@ -1276,6 +1276,8 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // itself is BYTE-UNCHANGED — `headingLevel={rowHeadingLevel}` is the same expression on
       // the same `EventRow` call site. What moved it is this plan's marker appends higher up
       // the file, not an edit to the seam.
+      // Re-pointed again by plan 88.6.1-62: `:1064` -> `:1069`; the seam is byte-unchanged, and
+      // the five lines above it are that plan's optional `busy` prop and its scroll-region attribute.
       //
       // SECOND ENTRY ADDED by plan 88.6-36 task 1 (wave 7, 2026-09-16), and it is a SEEN
       // consequence rather than an absorbed one — the docblock's own instruction. `EmptyState`'s
@@ -1299,7 +1301,7 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // Raising the floor by two would have RED the floor assertion, which is the honest outcome — do
       // not "fix" that by resolving the expression (see `PROP_SEAM_EXPRESSION`).
     ).toEqual([
-      'app/components/CalendarListView.js:1064',
+      'app/components/CalendarListView.js:1069',
       'components/ui/EmptyState.tsx:179',
     ]);
   });
@@ -1637,10 +1639,19 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/components/tutorial/simulated/AvailabilityPromptDemo.js': { 3: 1 },
   'app/components/tutorial/simulated/ProblemSlide.js': { 2: 1 },
   'app/friends/page.js': { 1: 4, 2: 1 },
-  'app/gameDetail/page.js': { 1: 3, 2: 5, 3: 1 },
+  // RAISED { 1: 3, 2: 5, 3: 1 } -> { 1: 3, 2: 6, 3: 1 } by plan 88.6.1-25 task 2 (2026-10-16,
+  // review r2 #180): the event view's message-screen title ("Event not found" and the no-access
+  // title share ONE render helper) is now a `<Heading level={2} size="heading">` instead of a
+  // heading-styled paragraph. One more mutually exclusive branch, not a level change: no existing
+  // heading moved level or size. Not an R7 heading-order finding.
+  'app/gameDetail/page.js': { 1: 3, 2: 6, 3: 1 },
   'app/global-error.tsx': { 1: 1 },
   'app/goodbye/page.tsx': { 1: 2 },
-  'app/groupHomePage/page.js': { 1: 1 },
+  // RAISED { 1: 1 } -> { 1: 1, 2: 1 } by plan 88.6.1-71 task 1 (owner ruling 2026-10-05): the events-failure
+  // arm renders the calendar's own section heading, an h2, only when the calendar does not render — same outline.
+  // RAISED again { 1: 1, 2: 1 } -> { 1: 1, 2: 2 } by plan 88.6.1-89 task 2 (review r2 M25): the calendar's first-load
+  // arm renders the section's own h2 only while the calendar does not render, so the outline is the same in every state; not a level change.
+  'app/groupHomePage/page.js': { 1: 1, 2: 2 },
   'app/groupPlanning/page.js': { 1: 1, 2: 1, 3: 1 },
   'app/invite/accept/page.js': { 1: 3 },
   'app/invite/game/[token]/page.js': { 1: 6 },
@@ -1655,7 +1666,12 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   // unchanged — this is one more branch, not a level change. Not an R7 heading-order finding.
   'app/rsvp/[token]/page.js': { 1: 4 },
   'app/terms/page.js': { 1: 1, 2: 8 },
-  'app/userProfile/page.js': { 1: 1, 2: 7, 3: 4, 4: 2 },
+  // RAISED { 1: 1, ... } -> { 1: 2, ... } by plan 88.6.1-79 task 3 (2026-10-17, orchestrator decision
+  // "a page keeps its h1", D-51): the withdrawn identity arm (an access or gone answer over a kept
+  // row) renders its own `<Heading level={1} size="display">` with the session name in place of the
+  // healthy one. Mutually exclusive with the healthy heading, so the page still renders exactly ONE
+  // h1 at a time; no existing heading moved level or size. Not an R7 heading-order finding.
+  'app/userProfile/page.js': { 1: 2, 2: 7, 3: 4, 4: 2 },
   'components/ui/ErrorFallback.tsx': { 1: 1 },
 };
 
@@ -2511,6 +2527,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // (700) with a `DECISION Phase 88.6-25` marker at the site: it carries the SAME colour token as
   // that label, so the emphasis outcome would have left the live value typographically identical
   // to the static label naming it. Entry DELETED, not zeroed.
+  // The file itself was deleted by plan 88.6.1-82 task 2 (dead code, zero importers); its `DECISION Phase 88.6-25` marker went with it.
   // DELETED by plan 88.6-26 task 3 (wave 7, 2026-09-16): 'app/components/TimezoneNudgeBanner.js'
   // carried sites: 2, and the entry's own two leads were right — they resolved opposite ways. The
   // "Set your timezone" LINK took EMPHASIS (utility deleted): it already carries `underline`,

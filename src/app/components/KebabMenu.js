@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { useDismissal } from '@/components/ui/useDismissal';
 
 /**
  * KebabMenu — reusable ⋮ trigger + dropdown overlay.
@@ -18,9 +19,10 @@ import { StatusRegion } from '@/components/ui/StatusRegion';
  *   - Second tap on same item within 3s: invokes item.onClick + closes menu.
  *   - Timeout or another item tap reverts the armed state.
  *
- * Outside-click closes the menu (mousedown listener on a container ref,
- * mirroring NotificationBell.js). A `focusout` whose relatedTarget is non-null
- * and outside the container is the KEYBOARD half beside it.
+ * Dismissal (outside mousedown, container Escape, the non-null relatedTarget
+ * `focusout` rule, and the guarded focus restore to the trigger) is owned by the
+ * shared hook `src/components/ui/useDismissal.ts` since 88.6.1-05; this component
+ * consumes it and owns only its open / armed / announcement state.
  */
 
 /* The sr-only copy emitted when an armed twoTap item reverts. It is NOT emitted
@@ -71,7 +73,8 @@ export default function KebabMenu({
 
   // PROP-TIME gate, never an on-arm mount: a live region created at the moment
   // of the announcement announces nothing, which is the whole reason for the
-  // StatusRegion idiom (useConfirmAction.ts:162-180).
+  // StatusRegion idiom (useConfirmAction.ts:162-180, `DECISION Phase 88-05`;
+  // `:169` "A remounted live region announces NOTHING").
   const canAnnounce = items.some((item) => item.twoTap);
 
   /* DECISION Phase 88.6-16 (D-12): the announcement region is PORTALED to
@@ -80,15 +83,16 @@ export default function KebabMenu({
      inert the background, deliberately keeps every `[aria-live]` element AND its
      whole ancestor chain unhidden (its own source cites theKashey/aria-hidden#10).
      Two of this component's six render sites are inside the shipped `Modal`
-     (`ManageMembers.js:571`, `:595` under `:378`), so an inline live region there
+     (both `ManageMembers.js` sites, anchor `<KebabMenu`, under the
+     `Modal` at anchor `<Modal open={modal}`), so an inline live region there
      makes the ENCLOSING dialog an ancestor-of-a-kept-target: opening the nested
      invite panel over it no longer sets `aria-hidden="true"` on the members modal,
      which is the shipped BLK-88-12-01 property `ManageMembers.modals.test.tsx`
      pins. Demonstrated: inline = that suite red on "leaves the invite panel live
      and the parent modal aria-hidden"; portaled = green.
      Body level is ALSO the shape the carve-out is designed for, and the shape this
-     codebase already uses by hand — `ManageMembers.js:819-827` mounts its four
-     `statusNode`s OUTSIDE its `<Modal>` (which closes at `:712`) for exactly this
+     codebase already uses by hand — `ManageMembers.js` (anchor `.statusNode}`) mounts
+     its four `statusNode`s OUTSIDE its `<Modal>` (which closes at anchor `</Modal>`) for exactly this
      reason. A shared six-site component cannot ask its hosts to do that, so it does
      it itself.
      REJECTED, kept not deleted: (a) leaving it inline and relaxing the modals
@@ -106,24 +110,74 @@ export default function KebabMenu({
     setPortalTarget(document.body);
   }, []);
 
-  // Outside-click closes the dropdown (mousedown so it fires before click
-  // bubbles, same idiom as NotificationBell).
-  //
-  // KEEP BOTH CLOSE PATHS. This mousedown handler is not wrong, it is
-  // INCOMPLETE: it owns POINTER dismissal only. The `focusout` handler on the
-  // container below is the KEYBOARD half beside it, and it deliberately does
-  // not guess about pointers. Deleting either one leaves a dismissal hole —
-  // that is a decision, not a cleanup.
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
+  /* DECISION Phase 88.6.1-05 (D-18, D-04): this component CONSUMES the shared
+     dismissal hook (`src/components/ui/useDismissal.ts`: the outside mousedown
+     listener, the container Escape, the focusout rule and the guarded trigger
+     restore) and owns only its `open` state and its kebab-specific armed /
+     announcement state.
+     CHOSEN over (a) keeping the four pieces inline here while a second surface
+     (NotificationBell, plan 88.6.1-28) copies them — REJECTED by the duplication
+     tenet (D-18: one hook, never a copy); and over (b) a caller fallback-focus
+     prop — REJECTED: this component's FOCUS behaviour is unchanged (D-04, worded
+     per research MC-4), and focus after a host refresh unmounts the row is the
+     HOST's, through plan 88.6.1-04's focus-recovery helper.
+     A dismissal changes ONLY `open`: `closeMenu` deliberately does NOT reset the
+     armed index, because the close-resets effect below reads the PRE-transition
+     armed index to decide whether to emit the revert copy (KM-17, KM-24).
+     Re-inlining these handlers is a decision, not a cleanup. */
+  const closeMenu = () => setOpen(false);
+  const { containerProps, restoreFocusToTrigger } = useDismissal({
+    open,
+    onDismiss: closeMenu,
+    containerRef,
+    triggerRef,
+  });
+
+  // The Escape / focusout / outside-pointer contract and its DECISION Phase 88.6-16 markers live in src/components/ui/useDismissal.ts since 88.6.1-05.
+
+  /* DECISION Phase 88.6-16 (D-12), the KEBAB-ONLY half of the Escape contract
+     (the shared half moved to `src/components/ui/useDismissal.ts` by 88.6.1-05).
+     `src/app/Header.js:31-42` (`if (!mobileMenuOpen) return;`), the hamburger's
+     Escape, is NOT a live collision for the kebab — opening the hamburger
+     mousedown-closes this menu first (the hook's outside mousedown listener) —
+     noted so nobody "fixes" it.
+
+     THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD, and the plan text for it
+     was WRONG — corrected here from a live measurement (2026-09-15,
+     `keyboardOperability.test.tsx` KM-7), not from the plan. At two of the six
+     render sites — `ManageMembers.js`'s two `<KebabMenu` mounts (the desktop owner-only
+     transfer kebab and the mobile member actions), which
+     render inside the shipped `Modal` at `ManageMembers.js`
+     anchor `<Modal open={modal}` — Radix's `Dialog` (`Modal.tsx:227-228`,
+     `<Dialog open={open}` / `<DialogContent`) binds Escape on `document` in the
+     CAPTURE phase (`@radix-ui/react-use-escape-keydown`), which runs BEFORE any
+     container handler and dismisses the dialog.
+     What the plan said: "this component's Escape never runs there." MEASURED: it
+     DOES run. Radix `preventDefault`s but does not `stopPropagation`, so the event
+     still reaches the React tree in the bubble phase and this handler claims it —
+     proved by an in-dialog ancestor `onKeyDown` spy that never fires.
+     What is ACTUALLY true, and is the thing to carry forward: the OUTCOME. The whole
+     dialog closes and takes the menu with it, and this handler's focus restore is a
+     NO-OP because the trigger unmounts with the dialog — so where focus lands is the
+     dialog's own close-focus behaviour, not this component's.
+     ACCEPTED, not fixed — the alternative is threading `onEscapeKeyDown` into
+     `DialogContent` while a descendant kebab is open, i.e. editing a shared dialog
+     primitive and its call sites, which is a bigger decision than this component.
+     Do NOT restate this as "the innermost open layer claims the press": at those two
+     sites the OUTER layer dismisses, whichever handler ran. */
+
+  /* The trigger restore (the hook's `restoreFocusToTrigger`) is GUARDED on the
+     trigger still being in the document, because a committing Remove can unmount
+     its own row and take the trigger with it (`ManageMembers.js`, anchor
+     `removeUserFromGroup` then `await fetchMembers();`).
+
+     SAID PLAINLY: on that path this guard is exactly equivalent to NO restore —
+     it prevents a crash, not a lost focus position. This component does not close
+     that, and the reason is not difficulty: a caller-supplied fallback target
+     would be a new prop on a six-site shared component with no consumer. The
+     residual moved to Phase 88.6.1's register (`.planning/deferred/phase-88.6.1.md:32`,
+     R063b + R107) and is closed there on the HOST side by plan 88.6.1-04's
+     focus-recovery helper (D-04), not by a prop here. */
 
   // When the menu closes, reset any armed twoTap so reopening starts fresh.
   //
@@ -169,23 +223,6 @@ export default function KebabMenu({
     };
   }, []);
 
-  /* Focus returns to the trigger after a close that unmounted the focused item.
-     GUARDED on the trigger still being in the document, because a committing
-     Remove can unmount its own row and take the trigger with it
-     (`ManageMembers.js:193-211`: `removeUserFromGroup` at `:196` then
-     `await fetchMembers()` at `:197`).
-
-     SAID PLAINLY: on that path this guard is exactly equivalent to NO restore —
-     it prevents a crash, not a lost focus position. This component does not close
-     that, and the reason is not difficulty: a caller-supplied fallback target
-     would be a new prop on a six-site shared component with no consumer. The
-     residual is registered in `.planning/deferred/phase-88.6.md`, paired with the
-     sibling host-target residual plan 28 registers for `MemberChipStack`. */
-  const restoreFocusToTrigger = () => {
-    const trigger = triggerRef.current;
-    if (trigger && trigger.isConnected) trigger.focus();
-  };
-
   const handleItemClick = (item, index) => {
     if (item.disabled) return;
     /* The `ariaDisabled` press is refused in the HANDLER, never by the platform —
@@ -198,15 +235,15 @@ export default function KebabMenu({
         if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
         setArmedIndex(index);
         /* DECISION Phase 88.6-16 (D-12): the armed announcement names THE ITEM,
-           a deliberate DIVERGENCE from `useConfirmAction.ts:76-80` (the contract
-           sentence says the text must name the TARGET) and from its
-           `defaultAnnouncement` at `:153-160`, which builds a TWO-part string
+           a deliberate DIVERGENCE from `useConfirmAction.ts:77-79` (`It MUST name the
+           target`) and from its `defaultAnnouncement` at `:153-160`
+           (`function defaultAnnouncement(`), which builds a TWO-part string
            (`Press again to confirm: ${confirmLabel} ${targetLabel}`). The item
            label is not the target.
            WHY IT IS STILL RIGHT HERE, and it turns entirely on the region being
            per INSTANCE (see the region's own note above): the only shipped
            destructive item's label is the row-invariant 'Remove'
-           (`ManageMembers.js:618`), but arming row 3 after row 1 writes into a
+           (`ManageMembers.js`, anchor `label: 'Remove'`), but arming row 3 after row 1 writes into a
            DIFFERENT component instance's own region, which goes from empty to
            armed text — a change, so it announces. Measured 2026-09-14: every
            shipped menu carries AT MOST ONE twoTap item, so there is no in-instance
@@ -253,8 +290,9 @@ export default function KebabMenu({
        it. Plan 88.6-18 is its first consumer.
 
        Delete must NOT become 'twoTap + keepOpen' on the strength of this flag —
-       the two-tap tiers in `gameDetail/page.js:1270-1274` (D-40/D-07) and
-       `ManageMembers.js:608-618` (AR-DEC-3) reason from the CURRENT auto-close and
+       the two-tap tiers in `gameDetail/page.js:1426-1430` (`D-40 + D-07: explicitly NOT
+       the two-tap tier`) and `ManageMembers.js` (anchor `DECISION Phase 88 AR-DEC-3`) reason
+       from the CURRENT auto-close and
        are unchanged by a per-item opt-out.
 
        The flag opts an item out of one close TRIGGER, never out of dismissal:
@@ -269,75 +307,6 @@ export default function KebabMenu({
     restoreFocusToTrigger();
   };
 
-  /* DECISION Phase 88.6-16 (D-12): Escape is bound on the CONTAINER and claims the
-     key with preventDefault() + stopPropagation() when it ACTS — chosen OVER a
-     `document` listener.
-     WHY: a document listener cannot scope Escape to the innermost open layer. Two
-     document bubble listeners fire in registration order and `preventDefault`
-     cannot un-run the one that already ran. The live ancestor this claim protects
-     is `gameDetail/page.js:384-402`, the `descExpanded` collapse, which bails only
-     on `event.defaultPrevented` at `:387`. Both states can be live at once (expand
-     the description, then open the kebab), so without the claim one Escape would
-     close the menu AND collapse the description.
-     `Header.js:31-42`'s `mobileMenuOpen` Escape is NOT a live collision — opening
-     the hamburger mousedown-closes this menu first (the effect above) — noted so
-     nobody "fixes" it. `FeedbackButton.js:39-43` records the house preference for
-     not stacking document-level Escape listeners.
-
-     THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD, and the plan text for it
-     was WRONG — corrected here from a live measurement (2026-09-15,
-     `keyboardOperability.test.tsx` KM-7), not from the plan. At two of the six
-     render sites — `ManageMembers.js:571` and `:595`, which render inside the
-     shipped `Modal` at `ManageMembers.js:378` — Radix's `Dialog`
-     (`Modal.tsx:149-150`) binds Escape on `document` in the CAPTURE phase
-     (`@radix-ui/react-use-escape-keydown`), which runs BEFORE any container handler
-     and dismisses the dialog.
-     What the plan said: "this component's Escape never runs there." MEASURED: it
-     DOES run. Radix `preventDefault`s but does not `stopPropagation`, so the event
-     still reaches the React tree in the bubble phase and this handler claims it —
-     proved by an in-dialog ancestor `onKeyDown` spy that never fires.
-     What is ACTUALLY true, and is the thing to carry forward: the OUTCOME. The whole
-     dialog closes and takes the menu with it, and this handler's focus restore is a
-     NO-OP because the trigger unmounts with the dialog — so where focus lands is the
-     dialog's own close-focus behaviour, not this component's.
-     ACCEPTED, not fixed — the alternative is threading `onEscapeKeyDown` into
-     `DialogContent` while a descendant kebab is open, i.e. editing a shared dialog
-     primitive and its call sites, which is a bigger decision than this component.
-     Do NOT restate this as "the innermost open layer claims the press": at those two
-     sites the OUTER layer dismisses, whichever handler ran. */
-  const handleKeyDown = (event) => {
-    if (event.key !== 'Escape' || !open) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setOpen(false);
-    restoreFocusToTrigger();
-  };
-
-  /* DECISION Phase 88.6-16 (D-12): a focusout closes the menu ONLY when
-     `relatedTarget` is non-null AND outside the container. A NULL relatedTarget
-     NEVER closes.
-     WHY: null is ambiguous, not "left the document". It is also what a pointer
-     press over non-focusable inside chrome (the `py-1` band on the list) or over a
-     disabled item produces — so closing on null dismisses the menu on an INSIDE
-     tap and silently disarms a live two-tap gate (`ManageMembers.js:620`,
-     `OpenPollsList.js:282`). Pointer dismissal is already owned by the mousedown
-     handler above; this half exists for the keyboard and does not need to guess
-     about pointers.
-     REJECTED, kept not deleted: (a) a deferred `document.activeElement` /
-     `document.hasFocus()` check — it fails the same inside-tap case and is
-     untestable in jsdom (measured: no focusout fires on a disabled item);
-     (b) treating a null relatedTarget as "left the document".
-     Bound through React's onBlur, which is implemented on `focusout` and bubbles
-     (React has no `onFocusOut` prop) — so there is no listener to remove and no
-     per-row leak. */
-  const handleFocusOut = (event) => {
-    if (!open) return;
-    const next = event.relatedTarget;
-    if (!next) return;
-    if (containerRef.current && containerRef.current.contains(next)) return;
-    setOpen(false);
-  };
-
   /* DECISION Phase 88.6-16 (D-12): with NO items the component renders no trigger
      at all — chosen OVER today's unconditional trigger against a default
      `items = []`, which ships a 44x44 control that opens nothing. A deliberate
@@ -349,32 +318,33 @@ export default function KebabMenu({
     <div
       className="relative shrink-0"
       ref={containerRef}
-      onKeyDown={handleKeyDown}
-      onBlur={handleFocusOut}
+      {...containerProps}
     >
       {/* DECISION Phase 88.6-16 (D-12): an sr-only StatusRegion, mounted at PROP
           time on `items.some(i => i.twoTap)` — mounted for the whole life of every
           instance that can ever announce, absent from instances that cannot. A
-          label swap on a focused element does not announce
-          (`useConfirmAction.ts:162-180`), which is why the region exists at all.
+          label swap on a focused element does not announce (the 88.6 UI-SPEC §7.3 rule,
+          restated at `FriendInvitePanel.js:805-806`, "a label change on the element the
+          user is focused on does not announce"), which is why the region exists at all.
 
           THE GATE'S YIELD, MEASURED 2026-09-14 and written here because a wrong
           rationale at a site is inherited as fact: it does NOT thin the per-row
-          count on either surface that can announce. `ManageMembers.js:473` maps the
-          members and the mobile kebab at `:595` ALWAYS carries the `twoTap: true`
-          Remove (`:617-623`); `OpenPollsList.js:176`/`:276`/`:282` is the same
-          shape. So the predicate is TRUE for every row and the region IS per row on
+          count on either surface that can announce. `ManageMembers.js` (anchor `role !== 'pending').map`)
+          maps the members and the mobile kebab (its second `<KebabMenu`) ALWAYS carries the
+          `twoTap: true` Remove (`:723`, `twoTap: true`); `OpenPollsList.js:179`
+          (`prompts.map`) / `:281` (`prompt.can_close === true`) / `:282` (`<KebabMenu`) is the
+          same shape. So the predicate is TRUE for every row and the region IS per row on
           both surfaces — that is the accepted design, and it is precisely what makes
           the item-label announcement sound. What the gate buys is exactly one thing:
           an instance that can NEVER announce carries no region — the shipped example
-          is the desktop owner-only transfer kebab at `ManageMembers.js:571`, whose
-          single item has no twoTap (`:573-583`).
+          is the desktop owner-only transfer kebab in `ManageMembers.js` (its first `<KebabMenu`),
+          whose single item has no twoTap (anchor `label: 'Transfer ownership to this member'`).
 
           The "one region per SURFACE" reading is WRONG and is not restated here:
-          `useConfirmAction.ts:124-128` says "Render it ONCE, unconditionally,
+          `useConfirmAction.ts:124` says "Render it ONCE, unconditionally,
           anywhere inside the surface" — one region per GATE, always mounted — and
-          `ManageMembers.js` mounts FOUR of them on ONE surface (`:819`, `:821`,
-          `:823`, `:827`).
+          `ManageMembers.js` mounts FOUR of them on ONE surface (`:949`, `:951`,
+          `:953`, `:957`, each `.statusNode}`).
 
           RECORDED REJECTED ALTERNATIVE, kept not deleted: hoisting the announcement
           out through a `statusNode` / `onAnnounce` prop the host supplies — an API
@@ -416,8 +386,9 @@ export default function KebabMenu({
           no keyboard close path at all. Claiming it was worse than claiming nothing.
           REJECTED: implementing the full WAI-ARIA menu contract. It would require re-tiering
           the two destructive items to `ConfirmDialog`, reopening AR-DEC-3
-          (`ManageMembers.js:608-618`), for ~90-120 lines. If it is ever chosen, the engine is
-          `@floating-ui/react` — the house engine (`Combobox.tsx:39-58`) — and NEVER Radix
+          (`ManageMembers.js`, anchor `DECISION Phase 88 AR-DEC-3`), for ~90-120 lines. If it is
+          ever chosen, the engine is `@floating-ui/react` — the house engine (`Combobox.tsx:43`,
+          `DECISION Phase 88-08 (OI-6)`) — and NEVER Radix
           DropdownMenu, which is not a dependency and portals by default.
           Re-adding the popup-role attribute in ANY form, including the `="true"` value, is
           FORBIDDEN: ARIA maps that value to the menu role, so it re-asserts the exact claim
@@ -432,7 +403,8 @@ export default function KebabMenu({
            for the removed popup relationship — it says only what is true (this
            trigger controls that list) — and it is rendered ONLY while the menu is
            open, using the conditional-spread form the house idiom uses at
-           `useConfirmAction.ts:386`. The dropdown is conditionally rendered, so a
+           `useConfirmAction.ts:386` (`...(armed ? { 'aria-pressed': true as const } : {})`). The
+           dropdown is conditionally rendered, so a
            permanently-present attribute would name an element that is NOT in the
            document for most of the component's life: a dangling reference, not a
            relationship.
@@ -489,7 +461,7 @@ export default function KebabMenu({
                  The index is ALREADY this component's identity basis for arming
                  (`armedIndex`), so a positional key makes the DOM key and the state
                  key agree, and the one conditionally-spread item
-                 (`ManageMembers.js:625-632`) is spread LAST, so indices never shift
+                 (`ManageMembers.js`, anchor `...(userRole === 'owner' ? [{`) is spread LAST, so indices never shift
                  and a positional key cannot mis-pair a node with a different action.
                  Re-deriving the key from the label later is a REGRESSION, not a
                  cleanup. No `id` field is introduced: measured, zero of the 6 shipped
@@ -503,11 +475,11 @@ export default function KebabMenu({
                   disabled={item.disabled}
                   /* DECISION Phase 88.6-16 (D-12): `aria-pressed` is present ONLY
                      while armed and ABSENT (never "false") at rest — the
-                     conditional-spread form of `useConfirmAction.ts:386`, never an
+                     conditional-spread form of `useConfirmAction.ts:386` (`'aria-pressed': true`), never an
                      `aria-pressed={isArmed}` binding. React stringifies booleans on
                      `aria-*`, so the binding form would stamp `aria-pressed="false"`
                      on every resting item and on non-toggle `twoTap: false` items
-                     (`gameDetail/page.js:1274`), announcing plain actions as unpressed
+                     (`gameDetail/page.js:1430`, `twoTap: false`), announcing plain actions as unpressed
                      toggles — the inverse of the house idiom.
                      This attribute is LEGAL here only because the item role is gone:
                      axe-core 4.12.1's `menuitem.allowedAttrs` permits only posinset,
@@ -525,9 +497,10 @@ export default function KebabMenu({
                      of a request, with the item the user was standing on gone from the
                      focus order and no announcement.
                      THE HOUSE RULE IS HONOURED, NOT INVENTED. It is a SPLIT, stated
-                     verbatim at `NextGameNightCard.tsx:379-390` (`DECISION Phase 88.5`)
-                     and `EmailAddressSection.tsx:1572-1598` (`DECISION Phase 88.8
-                     DR-C`): the control being ACTED ON gets `aria-disabled`; a control
+                     at `NextGameNightCard.tsx:479-487` (`DECISION Phase 88.5 (SPEC Req 4 /
+                     UI-SPEC A-5, narrowed)`) and `EmailAddressSection.tsx:1854` (`DECISION
+                     Phase 88.8 DR-C`; the split restated at `:1870-1872`, "a control nobody
+                     is standing on"): the control being ACTED ON gets `aria-disabled`; a control
                      nobody is standing on may stay natively disabled. `item.disabled`
                      therefore STAYS in the API for that second kind.
                      INERT by default: measured, zero of the 6 shipped render sites

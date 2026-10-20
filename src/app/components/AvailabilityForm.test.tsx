@@ -6,7 +6,7 @@
 // painted grid with no undo, and their gate moved off `window.confirm` onto the
 // shared dialog tier. The gate was previously untested at this level.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 
@@ -23,7 +23,7 @@ vi.mock('@/lib/logger', async (importOriginal) => {
     logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
   };
 });
-// WIDENED by plan 88.6-25 task 2 to the `importOriginal` form FriendInvitePanel.test.tsx:72-80
+// WIDENED by plan 88.6-25 task 2 to the `importOriginal` form FriendInvitePanel.test.tsx (its `vi.mock('@/lib/api', async (importOriginal)` factory)
 // ships, and the reason is a REAL defect this suite would otherwise hide rather than a style
 // preference. The narrow factory replaced the WHOLE module, so `ApiError` came back undefined —
 // and `getFetchErrorMessage`'s `deriveCode` does `error instanceof ApiError`, which THROWS a
@@ -87,7 +87,7 @@ describe('AvailabilityForm submit-error path', () => {
     // proved nothing. It now names the ratified register line this path resolves to, so the
     // suite reds if an upstream string ever renders here again.
     //
-    // WHY THIS EXACT STRING: `submitResponse` performs no `res.ok` check (lib/api.ts:1086-1091),
+    // WHY THIS EXACT STRING: `submitResponse` performs no `res.ok` check (lib/api.ts `submitResponse: async`),
     // so what reaches the catch is a plain `Error` with no `code`; `getFetchErrorMessage` is
     // called with NO fallback, so it resolves `unknown` — MESSAGE_BY_CODE.unknown,
     // useFetchErrorState.ts. That genericness is the RULED RESIDUAL of D62 branch B
@@ -99,7 +99,7 @@ describe('AvailabilityForm submit-error path', () => {
     // `{ error, action }` token/validation arms (pinned confirm-only below). The CODED arms
     // (`prompt_closed`, `prompt_deadline_expired`, `rate_limited`) now reach the catch as an
     // `ApiError` and render their own register lines — the `it.each` cases below. The
-    // `lib/api.ts:1086-1091` cite above is stale; read `submitResponse: async` in lib/api.ts.
+    // cite above names `submitResponse: async` in lib/api.ts (re-pointed by anchor, plan 88.6.1-26).
     //
     // CORRECTED 2026-09-29 by plan 88.6-62 task 3 (review round 2 #12): the mocked plain `Error`
     // this case rejects with models a NON-ApiError throw only. A REAL transport failure no longer
@@ -190,6 +190,19 @@ describe('AvailabilityForm submit-error path', () => {
     expect(thrown).toBeInstanceOf(ApiError);
     expect(thrown.code).toBe('prompt_deadline_expired');
     expect(thrown.upstreamMessage).toBe(backendMessage);
+  });
+
+  // 88.6.1-23 W063 (F1, r2 #158): the submit guard builds the one body-derived ApiError outside
+  // lib/api.ts, so its message arm is capped there too, through the exported capErrorText. The
+  // rendered line is chosen by code and does not change. RED before the fix (uncapped).
+  it('F1: a 5000-character success:false message reaches handleAppSubmit capped at 200 plus the marker', async () => {
+    await submitWith({ success: false, message: 's'.repeat(5000) });
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    const [msg, thrown] = (logger.error as Mock).mock.calls[0];
+    expect(msg).toBe('form submit failed');
+    expect(thrown).toBeInstanceOf(ApiError);
+    expect(thrown.message).toBe('s'.repeat(200) + ' [truncated]');
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong. Refresh the page to try again.');
   });
 
   // ADDED by plan 88.6-62 task 3 (2026-09-29, /code-adversarial-review 88.6 round 2 #11 / #12,
@@ -488,7 +501,7 @@ describe('Phase 88.6-54 (R7 / SC-4, UI-SPEC §7.5) — composed axe audit of the
 // A collapse here would be T-88.6-79 (the empty-vs-failed defect plan 27 closes on
 // EventCalendar.js) newly created on the ANONYMOUS magic-link surface.
 describe('Phase 88.6-25 — prefill failure vs empty success, and no upstream text either way', () => {
-  // The literal a rejected prefill used to interpolate. lib/api.ts:1126/:1159 throw
+  // The literal a rejected prefill used to interpolate. lib/api.ts `prefillFromGcal: async` / `prefillFromSaved: async` throw
   // `new Error(err.error || …)`, i.e. the backend body's own field, so this stands in for
   // real upstream text on an unauthenticated page.
   const UPSTREAM = 'Calendar sync token revoked by upstream';
@@ -526,11 +539,15 @@ describe('Phase 88.6-25 — prefill failure vs empty success, and no upstream te
 
       // Settle on the FAILURE SENTENCE itself, never on the absence of something: an absence
       // assertion is satisfied on the first tick, before the catch has even run.
-      expect(await screen.findByText(a.failureSentence)).toBeTruthy();
+      // AMENDED Phase 88.6.1-26: the sentence now renders TWICE by design — the visible line and
+      // the always-mounted sr-only outcome region (data-testid prefill-status) — so the single-
+      // match queries became `All` queries with exact counts. The assertions are otherwise
+      // unchanged, and the count of 2 also proves the region speaks the same failed-keyed words.
+      expect(await screen.findAllByText(a.failureSentence)).toHaveLength(2);
       // The upstream message reaches NOTHING the user can read.
       expect(document.body.textContent).not.toMatch(/revoked by upstream/i);
       // ...and it is NOT relabelled as the empty-success outcome.
-      expect(screen.queryByText(a.emptySentence)).toBeNull();
+      expect(screen.queryAllByText(a.emptySentence)).toHaveLength(0);
       // AC-2 channel: the raw console call is gone and the house logger carries it, with the
       // error's name and message in the CTX object rather than the raw Error.
       expect(logger.info).toHaveBeenCalledWith(a.logMessage, {
@@ -545,10 +562,11 @@ describe('Phase 88.6-25 — prefill failure vs empty success, and no upstream te
 
       fireEvent.click(screen.getByRole('button', { name: a.trigger }));
 
-      expect(await screen.findByText(a.emptySentence)).toBeTruthy();
+      // Two nodes by design since plan 88.6.1-26 (the visible line + the sr-only region).
+      expect(await screen.findAllByText(a.emptySentence)).toHaveLength(2);
       // This is the half that catches a discriminant keyed on `count === 0`: with one, the
       // legitimate zero-result would paint the failure sentence at an anonymous visitor.
-      expect(screen.queryByText(a.failureSentence)).toBeNull();
+      expect(screen.queryAllByText(a.failureSentence)).toHaveLength(0);
       expect(logger.info).not.toHaveBeenCalled();
     });
   }
@@ -605,6 +623,45 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     expect(spinner.innerHTML).not.toContain('opacity-25');
     expect(spinner.innerHTML).not.toContain('opacity-75');
   });
+
+  // Plan 88.6.1-26 (W001 / R3-M19, AC-12, Edge R4). The latch kept the request count at one, but
+  // a second click re-ran react-hook-form, whose settle dropped `isSubmitting` mid-request: the
+  // CTA read `Submit Availability` again with `aria-disabled="false"`. `useAppForm` now refuses
+  // the second submit before react-hook-form runs.
+  it('A1: a second press while submitting sends nothing, and the CTA keeps Submitting... and aria-disabled', async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    (availabilityFormAPI.submitResponse as Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ success: true });
+        })
+    );
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    await user.click(screen.getByRole('checkbox', { name: /unavailable this week/i }));
+
+    const cta = screen.getByRole('button', { name: /submit availability/i });
+    const form = cta.closest('form') as HTMLFormElement;
+    await user.click(cta);
+    await waitFor(() => expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1));
+    expect(cta).toHaveAccessibleName('Submitting...');
+
+    await user.click(cta);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
+    expect(cta).toHaveAccessibleName('Submitting...');
+    expect(cta).toHaveAttribute('aria-disabled', 'true');
+    expect(cta).not.toHaveAttribute('disabled');
+
+    // A refused submit is default-prevented (no native post) and sends nothing.
+    expect(fireEvent.submit(form)).toBe(false);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
+    expect(cta).toHaveAccessibleName('Submitting...');
+
+    release();
+    await waitFor(() => expect(cta).toHaveAccessibleName('Submit Availability'));
+  });
 });
 
 describe('AvailabilityForm "unavailable this week" toggle — exposes its state (88.6-59, review MEDLOW-26)', () => {
@@ -641,5 +698,210 @@ describe('AvailabilityForm "unavailable this week" toggle — exposes its state 
     expect(glyph).not.toBeNull();
     expect(glyph).toHaveAttribute('aria-hidden', 'true');
     expect(glyph).toHaveAttribute('focusable', 'false');
+  });
+});
+
+// Plan 88.6.1-26 (D-35 rule of POSITION, copy row A5, Requirement 8). The pre-fill button the
+// person pressed stays in the focus order (`aria-disabled` + a first-line ref latch) and names
+// what it is loading; the OTHER button keeps native `disabled`. Before this plan both buttons were
+// natively disabled during either pre-fill (a pressed button dropped a keyboard user to <body>)
+// and BOTH switched to their loading words, because their labels read `prefillStatus`, which is
+// null until the fetch settles. The outcome sentence is now also spoken through an always-mounted
+// sr-only polite region, and one ref-held timer clears it (two timers used to collide).
+describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its timer (D-35, A5)', () => {
+  // Copy row A5, byte-equal to 88.6.1-COPY-TABLE.html (the ellipsis is U+2026).
+  const A5 = 'Loading your availability…';
+  const SAVED = 'Use my saved availability';
+  const GCAL = 'Import from Google Calendar';
+
+  // mockReset, not only clearAllMocks: earlier describes leave persistent and once-only
+  // implementations on the two pre-fill mocks, and an unconsumed once-value would leak across arms.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (availabilityFormAPI.prefillFromSaved as Mock).mockReset();
+    (availabilityFormAPI.prefillFromGcal as Mock).mockReset();
+  });
+
+  function hold<T>(api: 'prefillFromSaved' | 'prefillFromGcal') {
+    let release: (v: T) => void = () => {};
+    (availabilityFormAPI[api] as Mock).mockImplementationOnce(
+      () =>
+        new Promise<T>((resolve) => {
+          release = resolve;
+        })
+    );
+    return (v: T) => release(v);
+  }
+
+  it('P1: Saved pressed — it reads A5, stays aria-disabled (never disabled) at 44px; GCal is natively disabled; one call', async () => {
+    const release = hold<{ slot_ids: string[]; count: number }>('prefillFromSaved');
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability gcalConnected />);
+    const saved = screen.getByRole('button', { name: SAVED });
+    const gcal = screen.getByRole('button', { name: GCAL });
+
+    fireEvent.click(saved);
+    await waitFor(() => expect(saved).toHaveAccessibleName(A5));
+    expect(saved).toHaveAttribute('aria-disabled', 'true');
+    expect(saved).not.toHaveAttribute('disabled');
+    expect(saved).toHaveClass('min-h-11');
+    expect(gcal).toHaveAccessibleName(GCAL);
+    expect(gcal).toBeDisabled();
+
+    fireEvent.click(saved);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(availabilityFormAPI.prefillFromSaved).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    release({ slot_ids: [], count: 0 });
+    await waitFor(() => expect(saved).toHaveAccessibleName(SAVED));
+    expect(saved).not.toHaveAttribute('aria-disabled');
+    expect(gcal).toBeEnabled();
+  });
+
+  it('P2: GCal pressed — it reads Importing… and stays aria-disabled; Saved keeps its name and is natively disabled', async () => {
+    const release = hold<{ slot_ids: string[]; count: number }>('prefillFromGcal');
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability gcalConnected />);
+    const saved = screen.getByRole('button', { name: SAVED });
+    const gcal = screen.getByRole('button', { name: GCAL });
+
+    fireEvent.click(gcal);
+    await waitFor(() => expect(gcal).toHaveAccessibleName('Importing…'));
+    expect(gcal).toHaveAttribute('aria-disabled', 'true');
+    expect(gcal).not.toHaveAttribute('disabled');
+    expect(gcal).toHaveClass('min-h-11');
+    expect(saved).toHaveAccessibleName(SAVED);
+    expect(saved).toBeDisabled();
+
+    fireEvent.click(gcal);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(availabilityFormAPI.prefillFromGcal).toHaveBeenCalledTimes(1);
+
+    release({ slot_ids: [], count: 0 });
+    await waitFor(() => expect(gcal).toHaveAccessibleName(GCAL));
+    expect(gcal).not.toHaveAttribute('aria-disabled');
+    expect(saved).toBeEnabled();
+  });
+
+  describe('one timer (fake timers, this arm only)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('P4: a second pre-fill inside the first one’s 2500 ms keeps its own outcome for its full 4000 ms, in the line AND the region', async () => {
+      vi.useFakeTimers();
+      const EMPTY = 'No saved availability matches this week — paint manually below.';
+      const FAILED = "Couldn't use saved availability.";
+      (availabilityFormAPI.prefillFromSaved as Mock)
+        .mockResolvedValueOnce({ slot_ids: [], count: 0 })
+        .mockRejectedValueOnce(new Error('boom'));
+      render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability />);
+      const saved = screen.getByRole('button', { name: SAVED });
+      const flush = async (ms: number) => {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+      };
+
+      fireEvent.click(saved);
+      await flush(0);
+      // Two nodes by design: the visible line and the sr-only region.
+      expect(screen.getAllByText(EMPTY)).toHaveLength(2);
+
+      await flush(2000);
+      fireEvent.click(saved);
+      await flush(0);
+      const region = screen.getByTestId('prefill-status');
+      expect(region).toHaveTextContent(FAILED);
+      expect(screen.getAllByText(FAILED)).toHaveLength(2);
+
+      // Past the FIRST pre-fill's 2500 ms: its timer must not wipe the second outcome.
+      await flush(600);
+      expect(region).toHaveTextContent(FAILED);
+      expect(screen.getAllByText(FAILED)).toHaveLength(2);
+
+      await flush(4000);
+      expect(region).toHaveTextContent('');
+      expect(screen.queryByText(FAILED)).toBeNull();
+    });
+  });
+
+  it('P5: the outcome region is mounted, EMPTY and sr-only at first render, and the SAME node speaks the sentence (Edge R8 empty)', async () => {
+    (availabilityFormAPI.prefillFromSaved as Mock).mockResolvedValueOnce({
+      slot_ids: ['2026-08-10T18:00:00.000Z', '2026-08-10T18:30:00.000Z', '2026-08-10T19:00:00.000Z'],
+      count: 3,
+    });
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability />);
+    const before = screen.getByTestId('prefill-status');
+    expect(before).toHaveAttribute('role', 'status');
+    expect(before).toHaveClass('sr-only');
+    expect(before.textContent).toBe('');
+
+    fireEvent.click(screen.getByRole('button', { name: SAVED }));
+    const SENTENCE = 'Filled 3 slots from your saved availability.';
+    await waitFor(() => expect(screen.getByTestId('prefill-status')).toHaveTextContent(SENTENCE));
+    // Node identity (C-6): a screen reader announces a CHANGE to a live region, not a new mount.
+    expect(screen.getByTestId('prefill-status')).toBe(before);
+    expect(screen.getAllByText(SENTENCE)).toHaveLength(2);
+  });
+});
+
+// Plan 88.6.1-26 (D-42, Edge R8 idempotency backstop). The time-slot validation box had no role,
+// so the one validation failure on this page was announced by nothing. It is now a conditional
+// `role="alert"` keyed on react-hook-form's `submitCount`, so an identical second failure inserts
+// a NEW node. Whether VoiceOver speaks an identical re-inserted alert is not measured here.
+describe('88.6.1-26 — the time-slot validation error is an alert (D-42)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('V1: each failed submit inserts a fresh alert carrying the time-slot message', async () => {
+    const MESSAGE = 'Please select at least one time slot, or mark yourself as unavailable';
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    const cta = screen.getByRole('button', { name: /submit availability/i });
+
+    fireEvent.click(cta);
+    const first = await screen.findByRole('alert');
+    expect(first).toHaveTextContent(MESSAGE);
+
+    fireEvent.click(cta);
+    await waitFor(() => expect(screen.getByRole('alert')).not.toBe(first));
+    expect(screen.getByRole('alert')).toHaveTextContent(MESSAGE);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(availabilityFormAPI.submitResponse).not.toHaveBeenCalled();
+  });
+});
+
+// Carry-in to plan 88.6.1-39 (deferred-items "AvailabilityForm stale server alert", found by plan
+// 88.6.1-26). A server failure followed by an invalid resubmit used to leave the OLD server
+// failure line on screen beside the NEW time-slot line: the server line was cleared only inside
+// the accepted submit, and react-hook-form never runs that on invalid values. A new submit attempt
+// now clears it before validation runs, so at most one failure line is on screen at a time.
+describe('88.6.1-39 carry-in — a new submit attempt clears the previous server failure line', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('S1: server failure, then an invalid resubmit: only the time-slot alert is on screen', async () => {
+    const SERVER_LINE = 'Something went wrong. Refresh the page to try again.';
+    const SLOT_LINE = 'Please select at least one time slot, or mark yourself as unavailable';
+    // Arrange the server failure here: an earlier describe leaves this mock resolving, and
+    // clearAllMocks keeps implementations.
+    (availabilityFormAPI.submitResponse as unknown as Mock).mockRejectedValueOnce(new Error('Network down'));
+    const user = userEvent.setup();
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    const unavailable = screen.getByRole('checkbox', { name: /unavailable this week/i });
+
+    // A valid submit (unavailable this week) that the server refuses.
+    await user.click(unavailable);
+    await user.click(screen.getByRole('button', { name: /submit availability/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(SERVER_LINE));
+
+    // Now invalid (no slots, not unavailable), and pressed again.
+    await user.click(unavailable);
+    await user.click(screen.getByRole('button', { name: /submit availability/i }));
+
+    // Positive signal first: the time-slot alert has arrived (CF-26).
+    await screen.findByText(SLOT_LINE);
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts, 'two failure lines from two different attempts are on screen').toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent(SLOT_LINE);
+    expect(screen.queryByText(SERVER_LINE), 'the previous attempt\'s server failure is still shown').toBeNull();
+    expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
   });
 });

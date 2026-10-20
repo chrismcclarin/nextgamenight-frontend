@@ -51,13 +51,20 @@ vi.mock('@/lib/api', async (importOriginal) => {
   };
 });
 
-import { FriendshipStatusProvider } from './FriendshipStatusProvider';
+import { FriendshipStatusProvider, useFriendshipStatus } from './FriendshipStatusProvider';
 import ClickableMemberName from './ClickableMemberName';
+
+// Since Phase 88.6.1-66 getStatus also withholds while the first friendship load is in flight, so an absence pin must wait for that load, or it passes on that arm alone.
+function LoadedMarker() {
+  const { loading } = useFriendshipStatus();
+  return loading ? null : <span data-testid="provider-loaded" />;
+}
 
 function renderRow(targetUuid: string) {
   return render(
     <FriendshipStatusProvider>
       <ClickableMemberName userId={targetUuid} username="Alice" />
+      <LoadedMarker />
     </FriendshipStatusProvider>
   );
 }
@@ -79,8 +86,9 @@ describe('FriendshipStatusProvider self-classification async-gating (FE-17)', ()
     mockSelf.selfUuid = undefined; // identity still resolving
     renderRow(OTHER_UUID);
 
-    // Let the provider's initialLoad settle (friends/sent/received → []).
+    // Let the provider's first load settle (friends/sent/received → []).
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    await screen.findByTestId('provider-loaded');
 
     // status is 'unknown' → plain name, NO add-friend affordance on the
     // viewer's own row OR any row, since self cannot yet be ruled out.
@@ -92,6 +100,7 @@ describe('FriendshipStatusProvider self-classification async-gating (FE-17)', ()
     renderRow(OTHER_UUID);
 
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    await screen.findByTestId('provider-loaded');
     expect(screen.getByLabelText(addFriendLabel)).toBeInTheDocument();
   });
 
@@ -100,6 +109,7 @@ describe('FriendshipStatusProvider self-classification async-gating (FE-17)', ()
     renderRow(SELF_UUID);
 
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    await screen.findByTestId('provider-loaded');
     expect(screen.queryByLabelText(addFriendLabel)).not.toBeInTheDocument();
   });
 });

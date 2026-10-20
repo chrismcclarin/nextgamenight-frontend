@@ -46,6 +46,15 @@
 // cell above the time gutter, and it is only NOT a `columnheader` here because the rebuilt
 // scheduler opts out through WeekGrid's `gutterHeaderRole` seam. Had it not, every
 // `toHaveLength(7)` in this file and in the Layer-3 suite would have read 8.
+//
+// DECISION Phase 88.6.1-24 (D-12, owner-confirmed 2026-10-04): behaviour 4's three pin BODIES
+// were edited on 2026-10-15. The property they pin is unchanged - the count badge sits on the
+// LOCAL cell a UTC wire slot converts to. The NAME they locate that cell by moved to copy row C1
+// ("Monday, October 5 at 10:00 AM, 1 of 4 available"), because iOS VoiceOver never spoke the old
+// one (research AT-1, the WebKit leaf rule), and the two half-hours of one hour now carry two
+// names. Chosen OVER keeping the old name as a test anchor: that would have kept the defect to
+// spare a locator. The `columnHeaders()` / `toHaveLength(7)` pins the paragraph above protects
+// are untouched. Changing this is a decision, not a cleanup.
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -93,13 +102,32 @@ vi.mock('./heatmap/WeekGrid', async (importOriginal) => {
   return { ...mod, WeekGrid: Wrapped, default: Wrapped };
 });
 
+// Plan 88.6.1-09 (D-16): a PASS-THROUGH of the shared phone-viewport hook, so VW-1 / VW-2 can
+// force the hook's answer and prove EventScheduler reads its arm from the hook and nowhere else.
+// The wrapper ALWAYS calls the real hook first (stable hook order), then returns the hoisted
+// override only when one is set — so every other pin in this file still runs the real hook, and
+// each stubMatchMedia arm still exercises media stub -> hook -> component. `vi.hoisted` for the
+// same TDZ reason as `capture` above. The inner function's name starts with `use` because
+// rules-of-hooks reads the name.
+const viewportOverride = vi.hoisted(() => ({ value: undefined as boolean | undefined }));
+
+vi.mock('@/lib/hooks/usePhoneViewport', async (importOriginal) => {
+  const mod = (await importOriginal()) as typeof import('@/lib/hooks/usePhoneViewport');
+  function usePhoneViewportPassThrough(): boolean {
+    const real = mod.usePhoneViewport();
+    return viewportOverride.value === undefined ? real : viewportOverride.value;
+  }
+  return { ...mod, usePhoneViewport: usePhoneViewportPassThrough };
+});
+
 import type { ComponentType } from 'react';
 import EventSchedulerDefault from './EventScheduler';
 
 // EventScheduler is still a `.js` component (the FE is mid JS->TS migration, WS-12), so its
 // INFERRED prop type marks every prop required and narrows the defaulted ones to `null`.
-// Cast to an explicit type, per the repo idiom (ScheduleForm.test.tsx:40,
-// AvailabilityForm.test.tsx:32). Doing this in the test rather than annotating the component
+// Cast to an explicit type, per the repo idiom (ScheduleForm.test.tsx:77,
+// AvailabilityForm.test.tsx:56 - each `as unknown as ComponentType<`). Doing this in the test
+// rather than annotating the component
 // is deliberate: the component is being REPLACED this phase, so a JSDoc/TS signature written
 // onto the RBC version would be thrown away in plan 88.1-09. This shape doubles as the prop
 // contract the rebuild has to honour — it is what the pins below actually exercise.
@@ -157,7 +185,31 @@ const WIRE_SLOT = {
   hour: LOCAL_TARGET.getUTCHours(),
 };
 const asLocal = new Date(`${WIRE_SLOT.date}T${pad(WIRE_SLOT.hour)}:00:00Z`);
-const EXPECTED_CELL_LABEL = `Availability for ${isoDay(asLocal)} hour ${asLocal.getHours()}`;
+
+// Plan 88.6.1-24 (D-12, copy row C1): the cell name is "{EEEE, MMMM d} at {h:mm a}" plus
+// ", {n} of {N} available" when the slot has availability. Re-derived here from PLAIN getters and
+// explicit English name tables - never date-fns (the component's own path, so a shared bug would
+// agree with itself) and never a locale-formatting call (its output depends on the runtime's ICU
+// data). The minute is written out (":00" / ":30") rather than read from `asLocal`, because the
+// keyed hour has two half-hour cells and each now carries its own name (AT correction 9).
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const c1PlainName = (d: Date, minute: '00' | '30') => {
+  const h24 = d.getHours();
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const meridiem = h24 < 12 ? 'AM' : 'PM';
+  return `${WEEKDAY_NAMES[d.getDay()]}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()} at ${h12}:${minute} ${meridiem}`;
+};
+const EXPECTED_PLAIN_LABEL = c1PlainName(asLocal, '00');
+const EXPECTED_CELL_LABEL = `${EXPECTED_PLAIN_LABEL}, 3 of 4 available`;
+const EXPECTED_HALF_HOUR_LABEL = `${c1PlainName(asLocal, '30')}, 3 of 4 available`;
+/** The plain C1 shape every cell without availability carries. */
+const PLAIN_NAME_SHAPE = /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2} at \d{1,2}:(00|30) (AM|PM)$/;
+/** The counted C1 suffix; only cells with availability end this way. */
+const COUNTED_NAME_SUFFIX = /, \d+ of \d+ available$/;
 
 const heatmapFixture = {
   totalMembers: 4,
@@ -257,25 +309,71 @@ describe('EventScheduler — availability is keyed on the LOCAL date+hour of a U
   it('puts the count badge on the local cell the UTC slot converts to', () => {
     render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
 
-    // One accessible name per addressable cell; the hour spans two half-hour groups, so the
-    // same name appears on both. Assert the name exists and carries the count.
-    const cells = screen.getAllByLabelText(EXPECTED_CELL_LABEL);
-    expect(cells.length).toBeGreaterThan(0);
-    expect(within(cells[0]).getByText('3')).toBeInTheDocument();
+    // The keyed hour spans two half-hour cells, and since 88.6.1-24 (AT correction 9) each has
+    // its OWN name - ":00" and ":30" - so each is found exactly once, and each carries the count.
+    expect(EXPECTED_HALF_HOUR_LABEL).not.toBe(EXPECTED_CELL_LABEL);
+    const top = screen.getByRole('gridcell', { name: EXPECTED_CELL_LABEL });
+    const half = screen.getByRole('gridcell', { name: EXPECTED_HALF_HOUR_LABEL });
+    expect(within(top).getByText('3')).toBeInTheDocument();
+    expect(within(half).getByText('3')).toBeInTheDocument();
   });
 
   it('leaves every OTHER cell unannotated (only slots with availability are described)', () => {
     render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
-    const described = screen.getAllByLabelText(/^Availability for /);
-    // Every described cell is the one keyed cell — a stray key would widen this set.
-    described.forEach((el) =>
-      expect(el.getAttribute('aria-label')).toBe(EXPECTED_CELL_LABEL)
-    );
+    const cells = screen.getAllByRole('gridcell');
+    const counted = cells
+      .map((el) => el.getAttribute('aria-label') ?? '')
+      .filter((name) => COUNTED_NAME_SUFFIX.test(name));
+    // Exactly the keyed hour's two half-hours - a stray key would widen this set.
+    expect(counted.sort()).toEqual([EXPECTED_CELL_LABEL, EXPECTED_HALF_HOUR_LABEL].sort());
+    cells
+      .map((el) => el.getAttribute('aria-label') ?? '')
+      .filter((name) => !COUNTED_NAME_SUFFIX.test(name))
+      .forEach((name) => expect(name).toMatch(PLAIN_NAME_SHAPE));
   });
 
   it('renders no availability annotations at all when there is no heatmap data', () => {
+    // CONFIRM-ONLY on the pre-88.6.1-24 tree: un-annotated cells already carried the plain shape,
+    // so this arm cannot go red there; the exactly-two arm above is the discriminating one.
     render(<EventScheduler initialDate={WEEK_N} />);
-    expect(screen.queryAllByLabelText(/^Availability for /)).toHaveLength(0);
+    const names = screen.getAllByRole('gridcell').map((el) => el.getAttribute('aria-label') ?? '');
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((name) => COUNTED_NAME_SUFFIX.test(name))).toHaveLength(0);
+    names.forEach((name) => expect(name).toMatch(PLAIN_NAME_SHAPE));
+  });
+});
+
+describe('EventScheduler — every gridcell is a LEAF to assistive tech (88.6.1-24, D-12 / research AT-1)', () => {
+  // iOS VoiceOver (WebKit) lands on a labelled gridcell only when it has NO accessible children;
+  // with one, it speaks the child instead - the owner heard "05 Mon, 1, row 2, column 1", the
+  // count, never the name. So every child of every cell must be hidden, and the name carries the
+  // count. The selected slot is placed ON the keyed cell so the cell holds BOTH children.
+  it('every child node of every gridcell is an aria-hidden element', () => {
+    const start = new Date(
+      asLocal.getFullYear(),
+      asLocal.getMonth(),
+      asLocal.getDate(),
+      asLocal.getHours(),
+      0,
+      0
+    );
+    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    render(
+      <EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} selectedSlot={{ start, end }} />
+    );
+
+    // Anti-vacuity: the keyed cell holds the selection block AND the count badge.
+    const keyed = screen.getByRole('gridcell', { name: EXPECTED_CELL_LABEL });
+    expect(keyed.childNodes).toHaveLength(2);
+
+    const cells = screen.getAllByRole('gridcell');
+    expect(cells.length).toBeGreaterThan(0);
+    cells.forEach((cell) =>
+      cell.childNodes.forEach((node) => {
+        expect(node.nodeType).toBe(Node.ELEMENT_NODE);
+        expect((node as Element).getAttribute('aria-hidden'), cell.getAttribute('aria-label') ?? '').toBe('true');
+      })
+    );
   });
 });
 
@@ -370,7 +468,8 @@ const cellAt = (row: number, col: number, cols: number) => gridcells()[row * col
 const button = (name: RegExp) => screen.getByRole('button', { name });
 
 describe('EventScheduler — roving keyboard navigation moves REAL DOM focus (Req 6)', () => {
-  // The `WeekGrid.test.tsx:78-100` idiom, on the composed scheduler: focus a gridcell, fire a
+  // The `WeekGrid.test.tsx:79` idiom (anchor `arrow keys move REAL DOM focus`), on the composed
+  // scheduler: focus a gridcell, fire a
   // nav key, assert `document.activeElement` actually MOVED. A tabIndex shuffle is not the
   // guarantee — the guarantee is that a keyboard user's focus ring is on the cell they navigated
   // to. The handler under test is `useHeatmapCell`'s; this proves the rebuild WIRED it, which is
@@ -704,7 +803,8 @@ describe('EventScheduler — the committed selection is a FILLED block ON the gr
  * COLUMN index and `clientY` is the ROW index, by construction.
  *
  * This is deliberately NOT the trap `DECISION Phase 88.1-07 Task 2` warns about in
- * `createEvent.integration.test.tsx:254-269`. That warning is about stubbing geometry and then
+ * `createEvent.integration.test.tsx` (anchor: DECISION Phase 88.1-07 Task 2). That warning is
+ * about stubbing geometry and then
  * letting a slot be DERIVED from it — the library divided by the height of a zero-height rect,
  * so the pin would have "passed" on a slot no user could have clicked. Nothing here reads
  * layout: `pointResolver` walks `closest('[data-coord]')` and reads an attribute this repo
@@ -901,7 +1001,8 @@ describe('EventScheduler — the live selection rectangle (DECISION Phase 88-27,
 describe('EventScheduler — the prompt names the gesture the DEVICE can perform (Req 5, UI-SPEC)', () => {
   // Asserted on the RENDERED STRING, never on a viewport measurement (P7: jsdom has no layout).
   // The fork is a matchMedia state fork precisely so this is answerable at all — see the
-  // DECISION marker at `isPhoneViewport`.
+  // DECISION markers in `src/lib/hooks/usePhoneViewport.ts` (DECISION Phase 88.6.1-09 /
+  // DECISION Phase 88.1-11).
   const PHONE_COPY = 'Tap and hold on a day to pick a time.';
   const DESKTOP_COPY = 'Click and drag on the calendar to select a time slot for your event.';
 
@@ -946,6 +1047,42 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
         restore();
         cleanup();
       }
+    }
+  });
+});
+
+describe('EventScheduler — the viewport fork reads the SHARED hook (88.6.1-09, D-16)', () => {
+  // Each arm sets the hook's answer AGAINST the media stub, so it can pass only if the hook is
+  // the component's sole viewport input: a component that read the media query itself would
+  // follow the stub and render the other arm. Same bytes as the prompt describe's constants.
+  const PHONE_COPY = 'Tap and hold on a day to pick a time.';
+  const DESKTOP_COPY = 'Click and drag on the calendar to select a time slot for your event.';
+
+  afterEach(() => {
+    viewportOverride.value = undefined;
+  });
+
+  it('VW-1. the hook answering true renders the phone arm while the media query answers false', () => {
+    // No stub installed: jsdom's global stub answers every media query false.
+    viewportOverride.value = true;
+    render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+    expect(screen.getByText(PHONE_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(DESKTOP_COPY)).not.toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: /choose a day/i })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /calendar view/i })).not.toBeInTheDocument();
+  });
+
+  it('VW-2. the hook answering false renders the desktop arm while the media query matches a phone', () => {
+    const restore = stubMatchMedia(PHONE);
+    try {
+      viewportOverride.value = false;
+      render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+      expect(screen.getByText(DESKTOP_COPY)).toBeInTheDocument();
+      expect(screen.queryByText(PHONE_COPY)).not.toBeInTheDocument();
+      expect(screen.getByRole('group', { name: /calendar view/i })).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    } finally {
+      restore();
     }
   });
 });
@@ -1187,8 +1324,9 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
   });
 
   it('desktop: the tint and the plain surface are never emitted in the SAME class string', () => {
-    // The collapse the exemplar's in-file warning describes (was `MergedHeatmapGrid.js:130-138`,
-    // deleted by plan 88.1-16 — the warning now lives on the exemplar at `EventScheduler.tsx`):
+    // The collapse the exemplar's in-file warning describes (was in `MergedHeatmapGrid.js`,
+    // deleted by plan 88.1-16 in FE commit `a31fd40` — the warning now lives on the exemplar at
+    // `EventScheduler.tsx`):
     // a static `bg-surface-card` with the tint appended renders NOTHING, because
     // `.bg-surface-accent-subtle` is emitted BEFORE `.bg-surface-card` in a real build. It looks
     // identical to a working treatment in every role/text assertion, so it is pinned here.
@@ -1279,7 +1417,7 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
 /** Synthetic per-row offset. No relation to real layout — see the block comment above. */
 const ROW_PX = 20;
 
-/** Build a UTC wire slot from a LOCAL (date, hour) target — the `WIRE_SLOT` idiom at :127-131. */
+/** Build a UTC wire slot from a LOCAL (date, hour) target — the `WIRE_SLOT` idiom at :182-186 (const WIRE_SLOT). */
 const wireSlotAt = (localDay: Date, localHour: number, availableCount: number) => {
   const local = new Date(
     localDay.getFullYear(),
@@ -1329,10 +1467,13 @@ const req13Heatmap = {
   gcalConflicts: [],
 };
 
-/** Exactly what `createEvent.js:84-126` produces for this fixture: the week peak, 19:00. */
+/** Exactly what `createEvent.js` produces for this fixture (anchor: const peakScrollTime): the week peak, 19:00. */
 const REQ13_WEEK_SCROLL_TO_TIME = new Date(2026, 6, 24, 19, 0, 0);
 
-/** The scroll container is the DIRECT PARENT of the `role="grid"` body (`WeekGrid.tsx:419-434`). */
+/**
+ * The scroll container is the DIRECT PARENT of the `role="grid"` body (`WeekGrid.tsx:451`,
+ * anchor: ref={scrollContainerRef}).
+ */
 const scroller = () => screen.getByRole('grid').parentElement as HTMLElement;
 
 describe('EventScheduler — day view lands on the DAY peak, not the week peak (Req 13)', () => {
@@ -1476,9 +1617,10 @@ describe('EventScheduler — assistive-tech affordances on the grid (88.1-21, 88
   it('gives gridcells the project focus-visible ring instead of the UA default outline', () => {
     render(<EventScheduler initialDate={WEEK_N} />);
 
-    // The four tokens copied verbatim from AvailabilityGrid.js:628 — the closest shipped
-    // precedent, itself a heatmap grid cell. `focus:outline-hidden` is DELIBERATE and allowed
-    // (focusAndMotionTreatment.test.ts:20-24); do not "fix" it to outline-none.
+    // The four tokens copied verbatim from AvailabilityGrid.js as it stood at 88-28 — the closest
+    // shipped precedent, itself a heatmap grid cell (the string left that file with the 88.6
+    // convergence, FE commit `ef216d1`). `focus:outline-hidden` is DELIBERATE and allowed
+    // (focusAndMotionTreatment.test.ts:21-24, `DELIBERATELY still allowed`); do not "fix" it to outline-none.
     const cell = screen.getAllByRole('gridcell')[0];
     expect(cell.className).toContain('focus:outline-hidden');
     expect(cell.className).toContain('focus-visible:ring-2');
@@ -1490,8 +1632,8 @@ describe('EventScheduler — assistive-tech affordances on the grid (88.1-21, 88
 describe('EventScheduler — the per-slot conflict tooltip tells self from other (Req 3)', () => {
   // The conflict rides the SAME backwards-constructed wire slot as `heatmapFixture`, so the
   // annotated cell lands inside the visible 10:00-23:59 window on any runner timezone. A
-  // hard-coded UTC hour renders off-grid for some offsets — documented at :117-124, not
-  // hypothetical.
+  // hard-coded UTC hour renders off-grid for some offsets — documented at :174-181 (the
+  // `--- Heatmap fixture` comment), not hypothetical.
   const OTHER_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const SELF_LINE = /You have a Google Calendar conflict at this time/;
   const OTHER_LINE = /Bea: said yes, calendar shows busy/;
@@ -1501,10 +1643,10 @@ describe('EventScheduler — the per-slot conflict tooltip tells self from other
   ) => ({ ...heatmapFixture, gcalConflicts });
 
   const openTooltip = async () => {
-    // HeatmapTooltip attaches useClick to the reference (HeatmapTooltip.js:223) as well as
-    // useFocus (:227); click is the primary path.
-    const cell = screen.getAllByRole('gridcell', { name: EXPECTED_CELL_LABEL })[0];
-    expect(cell).toBeDefined();
+    // HeatmapTooltip attaches useClick to the reference (HeatmapTooltip.js:223, `useClick(context`)
+    // as well as useFocus (:227, `useFocus(context)`); click is the primary path.
+    // The name is unique since 88.6.1-24 (each half-hour has its own), so one getByRole.
+    const cell = screen.getByRole('gridcell', { name: EXPECTED_CELL_LABEL });
     fireEvent.click(cell);
   };
 
@@ -1536,6 +1678,27 @@ describe('EventScheduler — the per-slot conflict tooltip tells self from other
 
     expect(await screen.findByText(OTHER_LINE)).toBeInTheDocument();
     expect(screen.queryByText(SELF_LINE)).not.toBeInTheDocument();
+  });
+
+  it('names a cell annotated ONLY by my calendar conflict with the plain name, and its tooltip still opens (88.6.1-24, D-33 row 10)', async () => {
+    // No availability anywhere, one self-conflict on the keyed hour: the cell is still annotated
+    // (its tooltip opens), but it has no count, so it keeps C1's plain name - no new words.
+    render(
+      <EventScheduler
+        initialDate={WEEK_N}
+        heatmapData={{
+          ...heatmapFixture,
+          slots: [],
+          gcalConflicts: [{ ...WIRE_SLOT, user_id: SELF_UUID, username: 'Me' }],
+        }}
+      />
+    );
+    const cell = screen.getByRole('gridcell', { name: EXPECTED_PLAIN_LABEL });
+    const names = screen.getAllByRole('gridcell').map((el) => el.getAttribute('aria-label') ?? '');
+    expect(names.filter((name) => name.endsWith('available'))).toHaveLength(0);
+
+    fireEvent.click(cell);
+    expect(await screen.findByText(SELF_LINE)).toBeInTheDocument();
   });
 });
 
@@ -1942,5 +2105,57 @@ describe('EventScheduler — W46 live-region half: one polite, always-mounted St
 
     expect(columnHeaders()[0]).toBe(headerBefore);
     expect(region().textContent).toBe(label);
+  });
+});
+
+// Plan 88.6.1-85 (close ruling P-94, owner 2026-10-17): VoiceOver read the time picker's day header
+// as "19 mon" because its only name was the visible 'dd EEE' abbreviation. Each day columnheader is
+// now NAMED with the full weekday and the day number ("Monday 5", never "05"), through WeekGrid's
+// SEAM 7, while the visible text stays 'dd EEE'. Expected names come from the file's own
+// WEEKDAY_NAMES table and plain getters, never date-fns (see the note above WEEKDAY_NAMES). No
+// existing pin in this file was edited; the columnHeaders() helper still reads the visible text.
+describe('EventScheduler — the day header is named with the full day (88.6.1-85, close ruling P-94)', () => {
+  // Wednesday 2026-10-07, local noon: its week runs Monday 5 .. Sunday 11, so it holds five
+  // single-digit days and two two-digit days.
+  const WEEK_OF_OCT_5 = new Date(2026, 9, 7, 12, 0, 0);
+  // Monday 2026-10-05, local noon: a single-digit day for the day view.
+  const MONDAY_OCT_5 = new Date(2026, 9, 5, 12, 0, 0);
+  const spokenDay = (d: Date) => `${WEEKDAY_NAMES[d.getDay()]} ${d.getDate()}`;
+  // DH-2 and DH-3 read the same render, so the named half and the visible half cannot drift.
+  const renderMondayDayView = () =>
+    render(<EventScheduler initialDate={MONDAY_OCT_5} defaultView="day" />);
+
+  it('DH-1 names the seven day columnheaders Monday 5 .. Sunday 11, in DOM order', () => {
+    render(<EventScheduler initialDate={WEEK_OF_OCT_5} />);
+    const expected = Array.from({ length: 7 }, (_, i) => spokenDay(new Date(2026, 9, 5 + i, 12, 0, 0)));
+    // The literal list too, so the getter path cannot quietly agree with a wrong week.
+    expect(expected).toEqual([
+      'Monday 5', 'Tuesday 6', 'Wednesday 7', 'Thursday 8', 'Friday 9', 'Saturday 10', 'Sunday 11',
+    ]);
+    const resolved = expected.map((name) => screen.getByRole('columnheader', { name }));
+    const all = screen.getAllByRole('columnheader');
+    expect(all).toHaveLength(7);
+    resolved.forEach((el, i) => {
+      expect(all[i]).toBe(el);
+    });
+  });
+
+  it('DH-2 the day view on a single-digit day names its one columnheader Monday 5', () => {
+    renderMondayDayView();
+    const header = screen.getByRole('columnheader', { name: spokenDay(MONDAY_OCT_5) });
+    expect(spokenDay(MONDAY_OCT_5)).toBe('Monday 5');
+    const all = screen.getAllByRole('columnheader');
+    expect(all).toHaveLength(1);
+    expect(all[0]).toBe(header);
+    // The named element is the one that still shows the short visible text.
+    expect(header.textContent).toBe('05 Mon');
+  });
+
+  it('DH-3 the same render still shows the visible header text 05 Mon, the text the dd EEE pins read', () => {
+    // CONFIRM-ONLY half: green before and after this plan. The visible text is unchanged, so every
+    // existing columnHeaders() pin keyed on format(day, 'dd EEE') keeps passing unedited.
+    renderMondayDayView();
+    expect(columnHeaders()).toEqual(['05 Mon']);
+    expect(columnHeaders()).toEqual([format(MONDAY_OCT_5, 'dd EEE')]);
   });
 });

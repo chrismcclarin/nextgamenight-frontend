@@ -175,6 +175,10 @@ export default function CalendarListView({
      value rather than a second count. `null` means "no claim is being made" (pending/error);
      `UpcomingCountPill` owns that rule. */
   upcomingCount = null,
+  // Plan 88.6.1-62 (Req 9): sheet arm only, set by the home page while a refresh of an
+  // already-loaded list runs; marks the list's scroll region busy in place. The desktop arms pass
+  // nothing, so their DOM is unchanged.
+  busy = false,
 }) {
   // The phone bottom-sheet arm. Derived once here so the height and the row's
   // game-name treatment can never disagree about which surface they are on.
@@ -627,6 +631,7 @@ export default function CalendarListView({
         ref={containerRef}
         className={scrollRegionClassName}
         style={scrollRegionStyle}
+        aria-busy={busy || undefined}
       >
         <div className="space-y-6">
           {/* DECISION Phase 88.1-17 (SPEC Req 12, owner ruling 2026-08-24): the sheet arm renders

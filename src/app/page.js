@@ -10,6 +10,7 @@ import { groupsAPI, API_BASE_URL } from '../lib/api';
 import { useSelfIdentity } from '../lib/hooks/useSelfIdentity';
 import { logger, errCtx } from '@/lib/logger';
 
+const HOME_LOADING_LABEL = 'Getting your groups...';
 function App(){
 
   // List of groups associated with the logged-in user
@@ -45,13 +46,22 @@ function App(){
       //
       // DECISION Phase 88.6-34 (AC-2 WIDENED 2026-09-09, level AMENDED 2026-09-13): `logger.info`,
       // chosen OVER `logger.error` and OVER `logger.warn`. `logger.error` is `captureException`
-      // with no throttle, dedupe or level gate, and `replaysOnErrorSampleRate` (1.0) against
-      // `replaysSessionSampleRate` (0.1) means most sessions are BUFFERING — so the first captured
-      // event flushes the Session Replay buffer and converts that session to continuous recording
-      // and upload, replay egress bought for a gate that only asked for the raw call to go.
+      // with no throttle, dedupe or level gate, and `replaysOnErrorSampleRate` (0.1,
+      // `sentry.client.config.js`, anchor `replaysOnErrorSampleRate: 0.1,`) against
+      // `replaysSessionSampleRate` (0.1) means most sessions BUFFER (the session sample is 0.1),
+      // and a captured event flushes the Session Replay buffer and converts the session to
+      // continuous recording and upload in roughly one buffering session in ten — replay egress
+      // bought for a gate that only asked for the raw call to go.
       // `logger.warn` is not cheaper (`captureMessage` is an event too, so the flush is identical);
       // only `logger.info` is event-free. What changed is the CHANNEL and the lint gate, NOT the
       // egress: this was a breadcrumb at most before and is a breadcrumb now.
+      // CORRECTED Phase 88.6.1-15 (register .1 reconcile item, rides W009): the rate read 1.0 here
+      // after Phase 88.6 set it to 0.1. Also measured at that edit, in the installed Sentry SDK
+      // (8.55.2): the buffered-replay flush samples only an event that carries an exception, and
+      // a `captureMessage` event carries none unless `attachStacktrace` is on (it is not set in
+      // `sentry.client.config.js`), so the "flush is identical" clause above is not established.
+      // The choice stands on the part that is: `logger.warn` still creates an event and
+      // `logger.info` does not.
       //
       // The ARGUMENT changed too, and that is the point: it used to forward
       // `error.message || 'Unknown error'`, a pre-stringified upstream message that threw away the
@@ -67,6 +77,9 @@ function App(){
       // the signed-in home page as "you have no groups" — no error state, no retry. Routed with
       // its two siblings in `.planning/deferred/phase-88.6.md`; the fix is the shipped
       // `useFetchErrorState` / `FetchErrorBanner` pattern and it is an owner call, not a cleanup.
+      // CORRECTED Phase 88.6.1-15: that routing is history. The live owner is Phase 93 —
+      // `.planning/deferred/phase-93.md`, the `Header.js:55` / `app/page.js` "fail QUIETLY"
+      // entry (register W061; owner-ruled 88.6-46 R102).
       logger.info('Error fetching groups:', errCtx(error));
     }
   };
@@ -119,10 +132,16 @@ function App(){
     setGroupModal(!groupModal);
   }
 
+  // DECISION Phase 88.6.1-15 (copy row H3, D-30): this line reads the same words as the route's
+  // `loading.tsx` RouteFallback, so Home's two loading moments read as one. REJECTED: rendering
+  // `RouteFallback` here (it adds a spinner, a secondary ink and a 60vh box — a look change, Phase
+  // 88.9's). The line shows only while `useUser` reports `isLoading`, before the app knows
+  // whether the visitor is signed in — the moment the owner ratified this wording for. Changing
+  // the words is a copy decision for the owner (D-31), not a cleanup.
   if (isLoading) {
     return (
       <div className="App flex items-center justify-center min-h-screen">
-        <p>Loading...</p>
+        <p>{HOME_LOADING_LABEL}</p>
       </div>
     );
   }

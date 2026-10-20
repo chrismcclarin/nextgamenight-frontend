@@ -3,9 +3,12 @@
 /**
  * ErrorFallback — the ONE error look (Req 3 / D-20).
  *
- * Extracted verbatim from `AppErrorBoundary`'s shipped fallback JSX so the 8 route
+ * Extracted verbatim from `AppErrorBoundary`'s shipped fallback JSX so the route
  * `error.tsx` files plus the root boundary render the same, already-designed screen
- * (plan 88-09) instead of nine hand-rolled variants.
+ * (plan 88-09) instead of hand-rolled variants. 13 mounts today (11 route `error.tsx` files,
+ * `AppErrorBoundary`, and userProfile's session-error branch; corrected Phase 88.6.1-21),
+ * re-countable from periodictabletop/ with
+ * `grep -rn '<ErrorFallback' src --include='*.js' --include='*.tsx' | grep -v '\.test\.'`.
  *
  * SECURITY (T-88-04-01 / ASVS V7): this component renders **designed copy only**. It
  * takes no `error`, and it must never be given one — no `error.message`, no
@@ -25,6 +28,7 @@
 import * as React from 'react';
 
 import { Heading } from './Heading';
+import { useFocusRecovery } from './useFocusRecovery';
 
 export interface ErrorFallbackProps {
   /** Retry handler (a boundary's `reset`/`resetError`). Omit to render no retry. */
@@ -52,7 +56,15 @@ export interface ErrorFallbackProps {
    `border-line-strong`. There is no `--color-strong` token (the bridge
    declares `--color-line-strong`), so `border-strong` emitted nothing and the borders were being
    painted by the base-layer shim, which is not theme-aware — a near-white hairline in dark mode.
-   Fixing it at extraction is what stops the defect shipping x8. */
+   Fixing it at extraction is what stops the defect shipping x8.
+
+   AMENDED Phase 88.6.1-21 (WR-503 / AC-10, Req 7 ring): the "phone 44px floor and a different
+   ring token" clause above no longer argues against anything. The floor (`min-h-11 md:min-h-0`,
+   phone-scoped like `.btn`'s) and the house ring are now plain utilities on these raw buttons; the
+   ring converged at ZERO pixel delta, because the bridge-token spelling and the house spelling
+   both read `var(--ring)` (`globals.css:445`, `--color-ring`, and `:505`, `--color-focus-ring`,
+   inside `@theme inline`). `Button` migration stays REJECTED: `.btn`'s geometry would still fold
+   in unattributably across every error boundary. The original text above is kept as history. */
 
 const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
   (
@@ -67,8 +79,31 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
   ) => {
     const showRetry = Boolean(onRetry) && !loopGuardTripped;
     const handleReload = onReload ?? (() => window.location.reload());
+    const fallbackRecovery = useFocusRecovery();
+
+    /* DECISION Phase 88.6.1-21 (Req 5): `Try again` arms the SAME shared recovery hook as
+       `FetchErrorBanner`, chosen because resetting the boundary removes the pressed button: the
+       floor then lands on the re-rendered page's `main h1`, else `main`, or on this fallback's own
+       `<h1>` if the boundary trips again. `from: event.currentTarget` is the hook's contract (1):
+       this is not a KebabMenu item, and Safari does not focus a clicked button.
+       REJECTED: focusing a target from inside the boundary's `reset` (the boundary does not know
+       the page it re-renders), and doing nothing (focus falls to <body>). `Reload page` is not
+       armed: a full reload needs no focus target. */
+    const handleRetry = (event: React.MouseEvent<HTMLButtonElement>) => {
+      const settle = fallbackRecovery.arm({ from: event.currentTarget });
+      try {
+        onRetry?.();
+      } finally {
+        settle();
+      }
+    };
 
     return (
+      /* DECISION Phase 88.6.1-21 (AC-26): the hand-rolled `role="alert"` root is KEPT over a
+         `StatusRegion` — the whole screen is the message. It is inserted with its designed copy,
+         which is announced (D-42: an inserted alert that arrives with its text IS read). Its
+         buttons carry no in-flight label, so the atomic re-announce defect fixed in
+         `FetchErrorBanner` (a label flip inside the alert) cannot occur here. */
       <div
         ref={ref}
         role="alert"
@@ -149,8 +184,8 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
             {showRetry && (
               <button
                 type="button"
-                onClick={onRetry}
-                className="inline-flex items-center justify-center rounded-btn bg-primary px-5 py-2.5 text-sm text-primary-foreground transition-colors hover:opacity-90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onClick={handleRetry}
+                className="inline-flex min-h-11 md:min-h-0 items-center justify-center rounded-btn bg-primary px-5 py-2.5 text-sm text-primary-foreground transition-colors hover:opacity-90 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               >
                 Try again
               </button>
@@ -158,7 +193,7 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
             <button
               type="button"
               onClick={handleReload}
-              className="inline-flex items-center justify-center rounded-btn border border-line-strong bg-surface-card px-5 py-2.5 text-sm text-content-primary transition-colors hover:bg-surface-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 md:min-h-0 items-center justify-center rounded-btn border border-line-strong bg-surface-card px-5 py-2.5 text-sm text-content-primary transition-colors hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
               Reload page
             </button>

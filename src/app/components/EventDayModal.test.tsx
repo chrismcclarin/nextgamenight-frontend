@@ -38,7 +38,16 @@ vi.mock('@/lib/logger', async (importOriginal) => {
   return { ...actual, logger: { ...actual.logger, info: loggerSpies.info } };
 });
 
-vi.mock('@/app/components/QRCodeModal', () => ({ default: () => null }));
+// 88.6.1-47: the stub still renders nothing (every older test is unchanged by it), but it now
+// records the props it was last rendered with, so the latest-press-wins arms can read WHICH
+// invite URL reached the QR dialog and whether it is open. Default export only, as before.
+const qrProps = vi.hoisted(() => ({ current: null as null | { isOpen?: boolean; url?: string } }));
+vi.mock('@/app/components/QRCodeModal', () => ({
+  default: (props: { isOpen?: boolean; url?: string }) => {
+    qrProps.current = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/TimezoneNudgeBanner', () => ({ default: () => null }));
 
 import EventDayModal from './EventDayModal';
@@ -272,5 +281,168 @@ describe('EventDayModal — R7 composed axe audit + focus contract (88.6-44)', (
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // NAMED identity, never "not body".
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1-47 (D-35 / AC-12, copy row E6, W023): the day dialog's Share Game QR is a PRESSED
+// control. While its row's request is in flight it keeps focus (aria-disabled, never the native
+// attribute) and reads the E6 label; a second press on THAT row sends nothing; and the LATEST
+// press wins — this dialog holds ONE QR state and the QR dialog's title never names the event,
+// so only the newest request may write the URL, open the QR, clear the loading state or toast.
+// Focus itself is confirm-only in jsdom (C-11: jsdom never blurs a disabled element); the
+// page twin's real-browser proof is e2e/share-game-qr-pending.spec.ts.
+// ---------------------------------------------------------------------------
+describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)', () => {
+  const LOADING = 'Loading QR code...';
+  const secondEvent = { ...upcomingEvent, id: 'evt-2', Game: { name: 'Azul' } };
+  const twoEventDay = { date: future, events: [upcomingEvent, secondEvent] };
+
+  // One controlled promise per event id: resolve or reject each request on its own.
+  let pending: Record<string, { resolve: (v: unknown) => void; reject: (r: unknown) => void }>;
+
+  beforeEach(() => {
+    h.getEventInviteToken.mockReset();
+    toastSpies.error.mockClear();
+    loggerSpies.info.mockClear();
+    qrProps.current = null;
+    pending = {};
+    h.getEventInviteToken.mockImplementation(
+      (id: string) =>
+        new Promise((resolve, reject) => {
+          pending[id] = { resolve, reject };
+        })
+    );
+  });
+  afterEach(cleanup);
+
+  function renderDay(day: typeof selectedDay) {
+    const onEventClick = vi.fn();
+    render(<EventDayModal selectedDay={day} onClose={vi.fn()} onEventClick={onEventClick} />);
+    return { onEventClick };
+  }
+
+  it('EQ1: two presses with no render flush send ONE request; the pressed node is aria-disabled with the E6 label and never opens the event', async () => {
+    const { onEventClick } = renderDay(selectedDay);
+    const share = screen.getByRole('button', { name: 'Share Game QR' });
+    share.focus();
+
+    // Both presses inside ONE act: the second reads the previous render's state, so only the
+    // synchronous per-row guard can refuse it.
+    await act(async () => {
+      share.click();
+      share.click();
+    });
+
+    expect(h.getEventInviteToken).toHaveBeenCalledTimes(1);
+    expect(h.getEventInviteToken).toHaveBeenCalledWith('evt-1');
+    const loading = screen.getByRole('button', { name: LOADING });
+    expect(loading).toBe(share);
+    expect(loading).toHaveAttribute('aria-disabled', 'true');
+    expect(loading.hasAttribute('disabled')).toBe(false);
+    // Confirm-only in jsdom (see the describe comment).
+    expect(document.activeElement).toBe(share);
+    // A refused press still stops at the button: the card's pointer handler never ran.
+    expect(onEventClick).not.toHaveBeenCalled();
+  });
+
+  it('EQ2: a press on ANOTHER row while one loads goes through, and the QR that opens is the event pressed LAST, whatever order the responses arrive in', async () => {
+    const { onEventClick } = renderDay(twoEventDay);
+    const [share1, share2] = screen.getAllByRole('button', { name: 'Share Game QR' });
+
+    await act(async () => {
+      share1.click();
+    });
+    await act(async () => {
+      share2.click();
+    });
+
+    expect(h.getEventInviteToken).toHaveBeenCalledTimes(2);
+    expect(h.getEventInviteToken.mock.calls.map((call) => call[0])).toEqual(['evt-1', 'evt-2']);
+    expect(share2).toHaveAccessibleName(LOADING);
+    expect(share2).toHaveAttribute('aria-disabled', 'true');
+    // The superseded row reads idle again.
+    expect(share1).toHaveAccessibleName('Share Game QR');
+    expect(share1).not.toHaveAttribute('aria-disabled');
+    expect(onEventClick).not.toHaveBeenCalled();
+
+    // The NEWEST request resolves first, the superseded one LAST.
+    await act(async () => {
+      pending['evt-2'].resolve({ invite_url: 'https://example.test/i/evt-2' });
+    });
+    await waitFor(() => expect(qrProps.current?.isOpen).toBe(true));
+    expect(qrProps.current?.url).toBe('https://example.test/i/evt-2');
+
+    await act(async () => {
+      pending['evt-1'].resolve({ invite_url: 'https://example.test/i/evt-1' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // Still evt-2's QR after the late response landed.
+    expect(qrProps.current?.isOpen).toBe(true);
+    expect(qrProps.current?.url).toBe('https://example.test/i/evt-2');
+    expect(screen.queryByRole('button', { name: LOADING })).toBeNull();
+  });
+
+  it('EQ3 (control): a failed request toasts, releases the row, and the next press sends a second request', async () => {
+    renderDay(selectedDay);
+    const share = screen.getByRole('button', { name: 'Share Game QR' });
+
+    await act(async () => {
+      share.click();
+    });
+    expect(h.getEventInviteToken).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pending['evt-1'].reject(new Error('boom'));
+    });
+
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    expect(share).toHaveAccessibleName('Share Game QR');
+    expect(share).not.toHaveAttribute('aria-disabled');
+
+    await act(async () => {
+      share.click();
+    });
+    expect(h.getEventInviteToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('EQ4: a SUPERSEDED request that fails writes nothing: no toast, and the newest row keeps its in-flight state', async () => {
+    renderDay(twoEventDay);
+    const [share1, share2] = screen.getAllByRole('button', { name: 'Share Game QR' });
+
+    await act(async () => {
+      share1.click();
+    });
+    await act(async () => {
+      share2.click();
+    });
+    expect(h.getEventInviteToken).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      pending['evt-1'].reject(new Error('superseded'));
+    });
+
+    // POSITIVE signal first (P-6): the developer log fires for every failure, newest or not, so
+    // it proves the superseded rejection has settled before anything is read as absent.
+    await waitFor(() => expect(loggerSpies.info).toHaveBeenCalledTimes(1));
+    expect(loggerSpies.info.mock.calls[0][1]).toEqual({ name: 'Error', message: 'superseded' });
+    expect(share2).toHaveAccessibleName(LOADING);
+    expect(share2).toHaveAttribute('aria-disabled', 'true');
+    expect(toastSpies.error).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pending['evt-2'].resolve({ invite_url: 'https://example.test/i/evt-2' });
+    });
+    await waitFor(() => expect(qrProps.current?.isOpen).toBe(true));
+    expect(qrProps.current?.url).toBe('https://example.test/i/evt-2');
+  });
+
+  it('W1 (W023): the day dialog caps at 80dvh, the dynamic-viewport unit, and the call site wins the merge', () => {
+    renderDay(selectedDay);
+    const classes = screen.getByRole('dialog').className.split(/\s+/);
+    expect(classes).toContain('max-h-[80dvh]');
+    expect(classes).not.toContain('max-h-[80vh]');
+    expect(classes).not.toContain('max-h-[90dvh]');
   });
 });

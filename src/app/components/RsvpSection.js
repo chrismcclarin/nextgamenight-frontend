@@ -11,15 +11,23 @@ import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Heading } from '../../components/ui/Heading';
 import { formatDateTime } from '../../lib/datetime';
+import { collapseBlankLines } from '../../lib/collapseBlankLines';
 import { useTimezone } from './TimezoneProvider';
 import { logger, errCtx } from '@/lib/logger';
 
 /* The ratified note-save success string (UI-SPEC §6.3, owner ruling 2026-09-16, the same
    sitting that ratified the hero's "Response saved"). Declared ONCE here for the same
-   reason `NextGameNightCard.tsx:94` declares its own: the clear-then-set rule below only
+   reason `NextGameNightCard.tsx:94` (`RSVP_SUCCESS_MESSAGE`) declares its own: the clear-then-set rule below only
    works against a FIXED string, and a second spelling of it is the duplication this phase
    exists to remove. Authoring a different string here is copy authorship, not a cleanup. */
 const NOTE_SAVED_MESSAGE = 'Note saved';
+
+// Copy row E11 (88.6.1-COPY-TABLE.html, a Heard row; owner-ratified), declared once here (D-30).
+// The straight apostrophe is deliberate (D-32 R8): the table's typographic one is normalised.
+const NOTE_LIMIT_MESSAGE = "You've reached the 500-character limit.";
+// The E11 region's test address, after `PAGE_STATUS_TESTID` in `availability-form/[token]/page.js`:
+// a single-element status query cannot address one of this card's three polite regions.
+const NOTE_LIMIT_STATUS_TESTID = 'rsvp-note-limit-status';
 
 /**
  * RsvpSection - RSVP interface for a single event
@@ -41,12 +49,14 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [noteSaved, setNoteSaved] = useState('');
+  const [noteLimitMessage, setNoteLimitMessage] = useState('');
 
   const isPastEvent = eventDate ? new Date(eventDate) < new Date() : false;
 
   /* DECISION Phase 88.6-29 (W43): the note field's ids come from `useId`, chosen OVER the
      fixed `id="rsvp-note"` the deferred register entry suggested. gameDetail renders one
-     `RsvpSection` PER interactive upcoming-event card (`gameDetail/page.js:1533`), so a fixed
+     `RsvpSection` PER interactive upcoming-event card (in `gameDetail/page.js`, the
+     `RsvpSection` element under `{interactive && (`), so a fixed
      id would mint duplicate ids on the multi-event arm and `htmlFor` would resolve to whichever
      control the browser saw first — silently mislabelling every card after the first. This is
      the same call `ParticipantRow.js:7-12`'s DECISION Phase 88-21 marker records for the same
@@ -60,13 +70,14 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
      `aria-disabled` rather than the native attribute (see the marker on the trio below), and an
      `aria-disabled` control refuses nothing by itself — the refusal is these refs, read
      SYNCHRONOUSLY on the handler's first line and released in `finally`. Both halves land or
-     neither — `NextGameNightCard.tsx:468-479`, and UI-SPEC D52 at `88.6-UI-SPEC.md:1034`, row
-     A-31 (the plan's inherited `:1008` cite has drifted; re-derived by opening the file). */
+     neither — `NextGameNightCard.tsx:479-488` (`DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5,
+     narrowed)`), and UI-SPEC D52 at `88.6-UI-SPEC.md:1045`, row A-31 (`| A-31 | D52 |`; the
+     plan's inherited `:1008` cite has drifted; re-derived by opening the file). */
   const statusLatch = useRef(false);
   const saveNoteLatch = useRef(false);
 
   /* The group's accessible name, DERIVED from `eventDate` in the port's `RSVP for <when>` shape
-     (`NextGameNightCard.tsx:453`). `formatDateTime` returns '' for a null/undefined/unparseable
+     (`NextGameNightCard.tsx:464`, its `aria-label`). `formatDateTime` returns '' for a null/undefined/unparseable
      date (`src/lib/datetime.ts:287-296`), so the fallback below can never interpolate
      `undefined` or `Invalid Date` — the two shapes a naive template literal produces — and never
      reads the opaque `eventId` aloud.
@@ -114,8 +125,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
   const noteDraft = useRef('');
 
   /* THE PHASE'S ONE STALENESS IDIOM (W61), the same cancelled-generation guard shipped at
-     `NextGameNightCard.tsx:231`/`:236`/`:241`/`:248-250` and adopted by plan 88.6-32's
-     `ResponseDashboard.js:56`. It covers FOUR checkpoints: the success application, the catch,
+     `NextGameNightCard.tsx:231`/`:236`/`:241`/`:248-250` (`let cancelled`) and adopted by plan
+     88.6-32's `ResponseDashboard.js` (its `inFlightGenerationRef` paragraph). It covers FOUR checkpoints: the success application, the catch,
      the finally, AND unmount.
 
      THE COUNTER IS COMPONENT-SCOPE, AND THE PORT IS DELIBERATELY NOT LITERAL — this is the part
@@ -135,7 +146,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
      wrong here is a LATE response writing over a newer one — the guard has to hold for a request
      that has already resolved. It is also inert under test (`rsvpAPI` is `vi.fn()`-mocked in
      every suite covering this component), would force signature widenings on `getEventRsvps`
-     (`api.ts:721`) and, via plan 30, `getDeletionBlockers`, and `apiFetch` rethrows aborts raw
+     (`api.ts`, `getEventRsvps:`) and, via plan 30, `getDeletionBlockers`, and `apiFetch` rethrows aborts raw
      and logs twice per abort. No shipped component uses it. */
   const generationRef = useRef(0);
 
@@ -148,10 +159,14 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     /* Phase 88.6-29: the SAME instance switching events must not carry the previous event's
        outcome. A stale CONFIRMATION is the more urgent of the two — it claims a save the user
        never made for the event now on screen, where a stale error only mis-attributes a
-       failure (the reasoning `NextGameNightCard.tsx:220-225` records for the hero flip).
-       Neither clear may be removed without removing the other's reason with it. */
+       failure (the reasoning `NextGameNightCard.tsx:220-225`, `EXTENDED Phase 88.6-28
+       continuation`, records for the hero flip).
+       Neither clear may be removed without removing the other's reason with it. Phase 88.6.1-38
+       (AC-25): a limit reached on the previous event's draft must not stand on the new event's,
+       so the E11 region is cleared here too. */
     setError(null);
     setNoteSaved('');
+    setNoteLimitMessage('');
   }, [eventId]);
 
   const fetchRsvps = useCallback(async () => {
@@ -180,6 +195,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           if (!noteDirty.current) {
             noteDraft.current = mine.note || '';
             setNote(noteDraft.current);
+            // AC-25: hydration is never typing, so it clears E11 and never sets it (the marker
+            // on the E11 region below says why both halves matter).
+            setNoteLimitMessage('');
           }
         } else {
           setUserRsvp(null);
@@ -187,18 +205,19 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           if (!noteDirty.current) {
             noteDraft.current = '';
             setNote('');
+            setNoteLimitMessage('');
           }
         }
       }
     } catch (err) {
       /* THE GENERATION GUARD IS CHECKED FIRST, ahead of the log and `setError` — this plan's
-         ruled ordering, and a deliberate divergence from plan 32's `ResponseDashboard.js:100-104`,
-         which logs BEFORE its guard because AC-16 requires a Sentry EVENT on that path. This call
+         ruled ordering, and a deliberate divergence from plan 32's `ResponseDashboard.js` (its
+         `catch` and the latched `logger.error` there), which logs BEFORE its guard because AC-16 requires a Sentry EVENT on that path. This call
          is `logger.info`, a breadcrumb: a superseded read is not a diagnostic, and an unguarded
          one would spend a breadcrumb slot per supersession out of a buffer of 100. */
       if (generation !== generationRef.current) return;
       // AC-2 WIDENED (owner 2026-09-09), LEVEL AMENDED (owner 2026-09-13, D2): `logger.info` is
-      // `Sentry.addBreadcrumb` (`logger.ts:34-36`) — a BREADCRUMB, not an event, so this creates
+      // `Sentry.addBreadcrumb` (`src/lib/logger.ts:52-54`, `info(msg, ctx)`) — a BREADCRUMB, not an event, so this creates
       // no new Sentry event and no new Session Replay egress. `logger.error`/`logger.warn` are
       // both captures and are the RECORDED REJECTED alternatives. `errCtx` (never a hand-written
       // `{ name, message }` literal) carries T-84-01's name-and-message-only payload: no RSVP
@@ -359,7 +378,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
         {/* Button group */}
         {!isPastEvent && (
-          /* W44, ported from the shipped sibling (`NextGameNightCard.tsx:446-455`): `role="group"`
+          /* W44, ported from the shipped sibling (`NextGameNightCard.tsx:458-466`, its
+             `role="group"` toggle): `role="group"`
              plus a label naming the EVENT is what distinguishes this trio from any other control
              pair on a page that renders several of them — gameDetail's multi-event arm mounts one
              `RsvpSection` per interactive card. */
@@ -376,13 +396,13 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               return (
                 /* DECISION Phase 88.6-29 (W44, D-07/D-08 · UI-SPEC A-5): the trio STAYS a bare
                    `<button>` — no `.btn`, no `<Button>` — and this is a CONSEQUENCE constraint,
-                   not bookkeeping. `.btn` (`globals.css:2194-2205` — the plan's inherited
-                   `:1955-1967` cite has drifted; re-derived by opening the file) is unlayered and
-                   declares `border-radius: 8px` (`:2199`), `font-weight: 600` (`:2200`) and
-                   `font-size: 0.875rem` (`:2201`); plan 05
+                   not bookkeeping. `.btn` (the unlayered `.btn {` rule in `globals.css` — the
+                   plan's inherited `:1955-1967` cite has drifted; re-derived by opening the file)
+                   is unlayered and declares `border-radius: 8px`, `font-weight: 600` and
+                   `font-size: 0.875rem`; plan 05
                    layers ONLY `border: none`. The radius would override
                    `first:rounded-l-[inherit] last:rounded-r-[inherit]` — which
-                   `NextGameNightCard.tsx:483-487` records as an owner UAT finding of 2026-09-01
+                   `NextGameNightCard.tsx:494-498` (`owner UAT finding`) records as an owner UAT finding of 2026-09-01
                    (without it the overflow clip shaves the selected 2px border off at the corner
                    arcs) — and the weight/size would silently defeat this same plan's type sweep.
                    The shipped port keeps the identical markup on a bare `<button>` under its own
@@ -390,7 +410,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                    overrides a shipped DECISION marker AND an owner UAT fix at once; it is not a
                    consistency cleanup, and it must not be "tidied" later either.
 
-                   THE SPLIT DISABLED TREATMENT, ported from `NextGameNightCard.tsx:466-479`: the
+                   THE SPLIT DISABLED TREATMENT, ported from `NextGameNightCard.tsx:479-488`
+                   (`DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5, narrowed)`): the
                    PRESSED / in-flight button gets `aria-disabled` and NEVER the native attribute —
                    a natively-disabled element leaves the focus order, so in a real browser focus
                    drops to `<body>` mid-submit and a keyboard or switch user is stranded. The
@@ -399,7 +420,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
                    44px FLOOR: `min-h-11`, and it is not optional. It REPLACES the `py-2` half of
                    the shipped `px-3 py-2` pairing, which is exactly what
-                   `NextGameNightCard.tsx:502-506`'s floor marker names as the thing not to
+                   `NextGameNightCard.tsx:513-517`'s floor marker (`44px FLOOR`) names as the thing not to
                    restore: `text-sm` (20px line) plus 16px of vertical padding computes to about
                    36px and fails the touch floor (D-07 constraint i). Disclosed as UI-SPEC §1.2
                    row V-19 and MEASURED by the phone-lane arm in `e2e/touch-targets.spec.ts` —
@@ -433,7 +454,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                       {/* The button deliberately KEEPS focus in flight (`aria-disabled` above), so
                           it must keep an accessible NAME too — otherwise the control the user just
                           activated announces as nothing for the whole round trip (WCAG 4.1.2;
-                          `NextGameNightCard.tsx:526-530`). The busy context is ADDITIONAL to the
+                          `NextGameNightCard.tsx:537-541`, its in-flight `sr-only` name). The busy context is ADDITIONAL to the
                           preserved status word, never a replacement for it: an `aria-label` on the
                           SPINNER is the natural wrong turn here and would leave the focused button
                           announcing as "loading" instead of "Going, saving". */}
@@ -474,11 +495,22 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               id={noteId}
               name={noteId}
               /* `maxLength` moves the 500-character discard from the `onChange` gate below to the
-                 UA and exposes the limit programmatically. STATED HONESTLY: it does NOT announce
-                 anything at the moment the cap is reached — the 501st keystroke is still silently
-                 dropped as far as a screen-reader user's ear is concerned. That residual is
-                 ROUTED on the W43 register entry, not claimed closed. The JS gate stays as the
-                 backstop for programmatic value writes, which `maxLength` does not cover. */
+                 UA and exposes the limit programmatically. The JS gate stays as the backstop for
+                 programmatic value writes, which `maxLength` does not cover.
+                 AMENDED Phase 88.6.1-38 (AC-25): reaching 500 is now ANNOUNCED, by the E11 region
+                 beside the outcome pair (copy row E11), set from the keystroke that reaches the
+                 cap. A further keystroke at the cap is still dropped by the UA with no change
+                 event, so nothing new is announced — the user was told when they reached it. The
+                 W43 register residual is closed by this plan. A note that LOADS at the cap (a
+                 saved 500-character note) is told when the user enters the field: the counter
+                 below is this field's description (`aria-describedby`, Phase 88.6-29), so they
+                 hear 500/500 before any keystroke, the same thing a sighted user sees (owner
+                 principle 2026-10-05; the accept an earlier revision proposed is withdrawn).
+                 Each of these is a regression, not a cleanup: removing that `aria-describedby`
+                 (it silences the loaded case); making the counter a live region (it would speak
+                 on every keystroke); setting E11 from hydrated data (it would speak on page
+                 load); removing the hydration clears in `fetchRsvps` (a save the server trimmed
+                 below the cap would leave a stale E11, and the next reach would be silent). */
               maxLength={500}
               aria-describedby={noteCounterId}
               value={note}
@@ -491,6 +523,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   // `handleSaveNote`'s post-await comparison reads.
                   noteDraft.current = e.target.value;
                   setNote(e.target.value);
+                  // AC-25 / E11: the user's own keystroke reaching 500 sets the limit message;
+                  // anything below clears it, so a re-reach re-announces.
+                  setNoteLimitMessage(e.target.value.length === 500 ? NOTE_LIMIT_MESSAGE : '');
                 }
               }}
               placeholder="Add a note (optional)"
@@ -506,9 +541,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   `aria-disabled` plus the synchronous `saveNoteLatch`, NEVER the native
                   `disabled` it carried. Fixing three buttons on one surface and leaving the
                   fourth would ship a third reading of ONE rule in one component. The split is
-                  already ratified twice: `NextGameNightCard.tsx:466-479`'s
+                  already ratified twice: `NextGameNightCard.tsx:479-488`'s
                   `DECISION Phase 88.5` marker for the trio, and D52 for the deletion modal's
-                  Cancel (`88.6-UI-SPEC.md:1034`, row A-31 — `aria-disabled` plus a first-line handler
+                  Cancel (`88.6-UI-SPEC.md:1045`, row A-31 (`| A-31 | D52 |`) —`aria-disabled` plus a first-line handler
                   guard, "**not** the native `disabled` attribute … the recorded rejected
                   alternative").
 
@@ -545,26 +580,45 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
         {/*
           THE OUTCOME PAIR (W44/P3 + the note-save success). Both regions are ALWAYS MOUNTED and
-          EMPTY-FIRST — `StatusRegion`'s documented contract (`StatusRegion.tsx:9-12`): a screen
-          reader announces CHANGES to a live region, not the conditional mount of a new one, so
-          the `{error && …}` this replaces made the failure silent for exactly the users who need
-          it most. Do NOT add `empty:hidden` either — `display:none` takes the region out of the
-          accessibility tree, which is the same defect wearing a different hat.
+          EMPTY-FIRST — `StatusRegion`'s documented contract (`StatusRegion.tsx:9-17`, the
+          EMPTY-FIRST bullet). CORRECTED Phase 88.6.1-38 (D-42): "a conditionally mounted region is
+          not announced" holds for POLITE / status regions only; an inserted `role="alert"` that
+          arrives with its text IS announced (ARIA 1.2 `alert`). The `{error && …}` paragraph this
+          failure region replaced was silent for another reason: it carried no live role at all
+          (the parent of FE commit `ef216d1` renders it as a bare text-sm error-ink paragraph).
+          The failure region stays always-mounted for two other reasons: node identity (the text
+          lands in the node that was already there), and the clear-at-start below, which makes an
+          identical repeated failure re-announce. Do NOT add `empty:hidden` either — `display:none`
+          takes the region out of the accessibility tree, which is the same defect wearing a
+          different hat.
 
-          THE WRAPPER IS `display: contents`, and that is a requirement rather than tidiness. The
-          parent stack is `space-y-4` (`> * + *`), so an always-mounted normal child would take a
-          permanent 16px top margin while it is empty and zero-height — an idle layout delta on
-          this card that nothing sanctions. A `contents` box generates no box, so the parent's
-          margin never applies, and each region carries its own `mt-4` only when it has something
-          to say. That reproduces the OLD conditional `<p>`'s spacing exactly: 16px when set,
-          nothing when empty. Hoisting either region out of this wrapper re-opens the delta.
+          DECISION Phase 88.6.1-38 (D-22, W029): both regions are DIRECT children of this
+          `space-y-4` stack, on the primitive's `srOnlyWhenEmpty` prop, with NO margin utility.
+          History: Phase 88.6-29 put them in a `display: contents` wrapper on Tailwind v3's
+          adjacent-sibling reasoning; under v4.3.3 the stack rule is
+          `:where(& > :not(:last-child))` setting `margin-block-end`, so nothing supplied the gap
+          BELOW a visible message and it sat flush, 0px, on the count banner (WR-301, W029).
+          Chosen: empty means visually hidden and out of flow, so an idle region adds no gap; set
+          means an in-flow child that gets the stack's own 16px above and below. REJECTED (a)
+          keeping the wrapper and moving the conditional margin to `mb-4` (WR-301's suggested
+          fix): a per-site conditional margin is the idiom D-22 retires, and D-22 rejected a
+          repaired `contents` wrapper as fragile (AT-5). REJECTED (b) direct children without the
+          prop: an empty region would be an in-flow zero-height block whose own 16px
+          `margin-block-end` adds an idle gap. REJECTED (c) the old conditional `mt-4`: it
+          collapses into the previous sibling's margin for 16px above and still leaves 0px below.
+          Do not wrap these regions again or give either a margin utility. Neither may become the
+          stack's LAST child: an out-of-flow last child would hand the visible child before it a
+          16px bottom margin. The count banner, the list or the empty-state line always follows.
 
           DECISION Phase 88.6-29 (W44, the SUCCESS half): the note-save success announces through
           a SIBLING always-mounted POLITE region carrying the ratified string "Note saved"
           (UI-SPEC §6.3, owner ruling 2026-09-16 — this plan WIRES it and does not re-ratify it).
           Visible when set, per the 2026-09-14 ruling (#32 + #166, arm 2) that made this phase's
           new polite regions visible rather than `sr-only`; `sr-only` is the RECORDED REJECTED
-          arm. It is NOT a mirror of the assertive region beside it: that one is `role="alert"` in
+          arm.
+          AMENDED Phase 88.6.1-38 (D-22): the region takes `srOnlyWhenEmpty`. It is hidden only
+          while it has nothing to say and is visible whenever set, so the 2026-09-14 ruling and its
+          rejected arm both stand. It is NOT a mirror of the assertive region beside it: that one is `role="alert"` in
           error ink, and routing a confirmation through it would fire a success at the user as an
           interruption, painted red. Two regions here is not a §6.2 breach — the failure still has
           exactly ONE region, and a success region is not a failure region (the distinction D52
@@ -579,18 +633,42 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           — no DOM mutation, no announcement — so without it only the FIRST save ever announces.
           That same clear IS the mutual clear; there is deliberately no second one in the `catch`.
         */}
-        <div className="contents">
-          <StatusRegion
-            politeness="assertive"
-            className={`text-content-status-error ${error ? 'mt-4' : ''}`}
-            message={error}
-          />
-          <StatusRegion
-            politeness="polite"
-            className={`text-content-secondary ${noteSaved ? 'mt-4' : ''}`}
-            message={noteSaved}
-          />
-        </div>
+        <StatusRegion
+          politeness="assertive"
+          srOnlyWhenEmpty
+          className="text-content-status-error"
+          message={error}
+        />
+        <StatusRegion
+          politeness="polite"
+          srOnlyWhenEmpty
+          className="text-content-secondary"
+          message={noteSaved}
+        />
+
+        {/* DECISION Phase 88.6.1-38 (AC-25, E11): the note's 500-character limit is announced by
+            an always-mounted, always-`sr-only` polite region, set by the user's own keystroke
+            when the value reaches 500 (copy row E11, a Heard row). It clears below 500, on an
+            event switch and wherever `fetchRsvps` hydrates the note from data (a save's rehydrate
+            included), so a re-reach re-announces on the same node.
+            REJECTED (a) deriving it from the note's length: a saved 500-character note hydrated
+            by `fetchRsvps` would announce the limit on page load with no keystroke. REJECTED (b)
+            making the visible counter a live region: it would speak on every keystroke. REJECTED
+            (c) reusing the polite outcome region above: it is visible when set while E11 is
+            heard-only, and a limit message there would erase "Note saved" or be erased by it.
+            REJECTED (d) an `aria-describedby` target for E11: a description is read when the user
+            enters the field, not when it changes. That same property is why the counter's
+            existing description is KEPT beside E11 — it tells a note that LOADS at the cap on
+            entry, E11 tells the moment typing reaches it; complementary, not alternatives.
+            REJECTED (e) the D-22 prop: it is for visible-when-set regions, and E11 is never
+            visible. This is not a failure region, so the card still has exactly ONE assertive
+            region (R8 adjacency). Never the stack's last child: the count banner or list follows. */}
+        <StatusRegion
+          politeness="polite"
+          className="sr-only"
+          data-testid={NOTE_LIMIT_STATUS_TESTID}
+          message={noteLimitMessage}
+        />
 
         {/* Count banner */}
         {totalResponses > 0 && (
@@ -649,7 +727,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                       <div key={rsvp.id} className="flex flex-col">
                         {/* R2 / UI-SPEC §4.3: the respondent NAME is this row's ONE primary
                             string and takes Body 16 (V-4). The counter-argument recorded at
-                            `UpcomingEventsCard.js:265-281` — do NOT promote one span inside an
+                            `UpcomingEventsCard.js:265-283` (`DECISION Phase 88.6-28 (R2`) — do NOT promote one span inside an
                             inline run, because a 16px word beside 14px words on one baseline is
                             an unsanctioned visible delta — does NOT reach here: this row is a
                             `flex flex-col` STACK of a name line over a note line, so the
@@ -672,8 +750,23 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                           /* UI-SPEC §4.2: a member's note is BODY COPY, and Caption's closed role
                              list forbids body copy in as many words. §4.2's stated landing rung
                              for 12px misuse is 14, not 16 — it is this row's metadata line under
-                             the name above it, not running prose. Folds 12 -> 14. */
-                          <span className="text-sm text-content-muted ml-0 mt-0.5">{rsvp.note}</span>
+                             the name above it, not running prose. Folds 12 -> 14.
+
+                             DECISION Phase 88.6.1-38 (R10 / AC-31, shared rule 12): the note
+                             keeps its typed line breaks and wraps a long unbroken string with
+                             `whitespace-pre-line` + `wrap-anywhere`, the one pair decided for all
+                             five R10 sites so plans 29, 38 and 52 agree. Two literal classes,
+                             never interpolated. REJECTED `whitespace-pre-wrap`: it keeps runs of
+                             spaces and leading indentation, which a note does not need, and the
+                             sites must not diverge. The value stays a React text child, never
+                             injected as HTML (SPEC Constraint). Chosen as well (owner ruling
+                             #115, 2026-10-13): it renders through plan 88.6.1-84's shared
+                             `collapseBlankLines`, so a run of three or more breaks shows as one
+                             blank line, over rendering every break as typed (a flood of blank
+                             lines pushes the card off a phone screen) and over a server cap (it
+                             would change stored text); the stored note is untouched. Removing
+                             the call is a decision, not a cleanup. */
+                          <span className="text-sm text-content-muted ml-0 mt-0.5 whitespace-pre-line wrap-anywhere">{collapseBlankLines(rsvp.note)}</span>
                         )}
                       </div>
                     ))}

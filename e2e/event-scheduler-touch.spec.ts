@@ -30,7 +30,7 @@ declare global {
  *
  * WHY THIS FILE EXISTS. SPEC Req 3's stated acceptance is "the Playwright
  * create-event journey is green", but that journey deliberately clicks PAST the
- * scheduler: `e2e/create-event.spec.ts:31-36` switches to manual entry and fills
+ * scheduler: `e2e/create-event.spec.ts:31-37` switches to manual entry and fills
  * the datetime-local input. It would stay green with the scheduler completely
  * broken, or absent. Every test below stays in VISUAL-CALENDAR mode; that single
  * difference is the point of the file.
@@ -66,15 +66,15 @@ declare global {
  * correction plan 88.1-07 made to its `rbc-` gate.)
  *
  * PROJECT GUARD: `journeys` and `phone` share `testMatch: /.*\.spec\.ts/`, so the
- * touch describe skips the DESKTOP project the way touch-targets.spec.ts:138
- * does. The mouse describe at the bottom inverts that guard — mouse range-select
- * is the phase's only analog-free mechanism and nothing else drives it end to end.
+ * touch describe skips the DESKTOP project the way touch-targets.spec.ts:589
+ * does (its R4/R6 phone-only skip). The mouse describe at the bottom inverts that guard — mouse
+ * range-select is the phase's only analog-free mechanism and nothing else drives it end to end.
  *
  * SELECTOR NOTE: every interactive control is located by ROLE / LABEL / TEXT
  * ("Add New Game Event", "Switch to Manual Entry", `role=tab`, `role=columnheader`,
  * the verbatim "Selected Time:" panel). `[data-coord]` appears ONLY in the
  * geometry/painted-state probes — it is WeekGrid's own paint-resolution attribute
- * (`WeekGrid.tsx:474`, the same test-plumbing class as WriteCell's data-slot-id),
+ * (`WeekGrid.tsx:507`, the same test-plumbing class as WriteCell's data-slot-id),
  * and `usePaintGesture` resolves targets through it, so a probe that used
  * anything else would not be measuring the mechanism under test.
  *
@@ -83,9 +83,9 @@ declare global {
  * asserted relative to them, before/after).
  *
  * FIXTURES: `E2E_GROUP_ID` only — the same seeded id create-event.spec.ts:17 and
- * touch-targets.spec.ts:52 read. No new secret is minted and no credential is
- * written here. e2e is CI-only by design (playwright.config.ts:19-21): author
- * locally, verify in the `phone` lane.
+ * touch-targets.spec.ts:71 read (each a const from process.env.E2E_GROUP_ID). No new secret is
+ * minted and no credential is written here. e2e is CI-only by design (playwright.config.ts:22-24,
+ * intentionally absent locally): author locally, verify in the `phone` lane.
  */
 
 /* DECISION Phase 88.1-21 (88.1-CODE-REVIEW.md): NO `?? '1'` fallback here, chosen OVER keeping
@@ -121,7 +121,7 @@ const SLOT_MINUTES = 30;
 // --- Vacuity guard -----------------------------------------------------------
 
 /** A zero-count locator makes every assertion after it vacuous — fail loudly AT
- *  THE LOCATOR instead. Same contract as touch-targets.spec.ts:63. */
+ *  THE LOCATOR instead. Same contract as touch-targets.spec.ts:79-82 (its guardResolved). */
 async function guardResolved(locator: Locator, what: string, atLeast = 1): Promise<void> {
   await expect(
     locator.first(),
@@ -153,7 +153,7 @@ const selectedTimeValue = (page: Page) =>
  * Open the create-event modal and STAY in visual-calendar mode.
  *
  * The "Add New Game Event" button lives on the GROUP HOME page, not on
- * /groupPlanning — create-event.spec.ts:19-24 records why.
+ * /groupPlanning — create-event.spec.ts:19-24 (Group home hosts the button) records why.
  */
 async function openVisualScheduler(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
@@ -173,8 +173,16 @@ async function openVisualScheduler(page: Page): Promise<void> {
 
   // The heatmap fetch resolves after mount; every case below depends on the
   // fetched week being rendered (the wash, the count badges, `scrollToTime`).
+  // The name is copy row C1's COUNTED shape since 88.6.1-24 (D-12), matched end to end, e.g.
+  // "Monday, October 5 at 10:00 AM, 1 of 4 available" - so this guard is also the real-browser
+  // pin on the shape a screen reader hears. A cell without availability keeps the plain name and
+  // cannot satisfy it.
   await expect(
-    dialog(page).getByRole('gridcell', { name: /^Availability for \d{4}-\d{2}-\d{2} hour \d+$/ }).first(),
+    dialog(page)
+      .getByRole('gridcell', {
+        name: /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2} at \d{1,2}:\d{2} (AM|PM), \d+ of \d+ available$/,
+      })
+      .first(),
     'no gridcell carries an availability annotation — the CI fixture group has NO availability data, which makes the scheduler cases vacuous. This is a FIXTURE failure (scripts/e2e-fixtures.js owns the invariant), not a scheduler failure',
   ).toBeVisible();
 }
@@ -227,9 +235,10 @@ interface GridGeometry {
 
 /**
  * Resolve the scroll container STRUCTURALLY, never by class: it is the parent of
- * the `role="grid"` body (`WeekGrid.tsx:419-442`). Everything is scoped to the
- * open dialog because `EventHeatmapBackground` mounts a second WeekGrid on the
- * page BEHIND the modal, and an unscoped `[data-coord]` query would find it.
+ * the `role="grid"` body (`WeekGrid.tsx:449-472`, ref={scrollContainerRef}). Everything is
+ * scoped to the open dialog so nothing outside the modal can be measured. CORRECTED by 88.6.1-24:
+ * this used to say EventHeatmapBackground mounts a second WeekGrid on the page BEHIND the
+ * modal; it renders ReadCells directly (no WeekGrid), INSIDE the modal, in manual mode only.
  */
 async function gridGeometry(page: Page): Promise<GridGeometry | null> {
   return page.evaluate(() => {
@@ -915,7 +924,8 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
        y=661.352 when the modal's reachable box ended at 632.648 — 28.704px outside it. What was
        actually under the finger there was `div.fixed inset-0 z-50 bg-black/80`, the Radix dialog
        BACKDROP, and `elementFromPoint` resolved to null. With no document-level `pointermove`
-       (`usePaintGesture.ts:503-504`) `st.lastY` could never reach an edge position, so the rAF
+       (`usePaintGesture.ts:511-512`, set only by the element-level onPointerMove; the document
+       listeners are pointerup and pointercancel only) `st.lastY` could never reach an edge position, so the rAF
        edge loop never engaged and the column moved 0px. The IMPLEMENTATION was exonerated by the
        same measurement (B2 refuted): the finger simply never landed on the grid.
 
@@ -1096,8 +1106,8 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     // The parent owns start_date + duration_minutes; the scheduler is controlled
     // and holds no selection state of its own (Phase 66-01). The two mode
     // controls are one button whose copy flips — "Switch to Manual Entry" /
-    // "Switch to Visual Calendar" (createEvent.js:961) — located here by
-    // case-insensitive accessible name, the idiom create-event.spec.ts:33 uses.
+    // "Switch to Visual Calendar" (createEvent.js, anchor 'Switch to Manual Entry') — located
+    // here by case-insensitive accessible name, the idiom create-event.spec.ts:34 uses.
     await dialog(page).getByRole('button', { name: /switch to manual entry/i }).click();
     const startInput = dialog(page).getByLabel(/start date & time/i);
     await guardResolved(startInput, 'the manual start date/time input');
@@ -1322,7 +1332,8 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     // The strip cell is `overflow-hidden`, so a label that no longer fits is
     // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
     // The stacked single-letter-over-date shape (copied verbatim from
-    // EventHeatmapBackground.js:216-226) is the M-03 fix; this is its gate.
+    // EventHeatmapBackground.js:287-301, `role="columnheader" className="text-center"`) is the
+    // M-03 fix; this is its gate.
     const clipping = await page.evaluate(() => {
       const root = document.querySelector('[role="dialog"]');
       const measure = (el: Element, what: string) => ({
@@ -1360,7 +1371,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
   test('the day column scrolls INTERNALLY rather than growing the modal', async ({ page }) => {
     await openVisualScheduler(page);
 
-    // The modal stays inside its own `max-h-[90vh]` budget (Modal.tsx:186).
+    // The modal stays inside its own `max-h-[90dvh]` budget (Modal.tsx:345).
     const modalBox = await dialog(page).boundingBox();
     expect(modalBox, 'the create-event dialog has no boundingBox').not.toBeNull();
     const viewportHeight = await page.evaluate(() => window.innerHeight);
@@ -1396,8 +1407,8 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
        version of this case would be green forever against any fixture.
 
        A NULL PEAK IS A FIXTURE FAILURE, NOT A PASS: `peakScrollTime` is null
-       whenever the group has no availability (createEvent.js:81-85, :109), so a
-       silent skip here would mean the fixture stopped seeding and nobody found
+       whenever the group has no availability (createEvent.js, anchor: const peakScrollTime,
+       its first two return-null guards), so a silent skip here would mean the fixture stopped seeding and nobody found
        out. `scripts/e2e-fixtures.js` owns that invariant — see the block it
        added for this case.
 
@@ -1453,7 +1464,11 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
           const labelled = wrapper.matches('[aria-label]')
             ? (wrapper as HTMLElement)
             : (wrapper.querySelector('[aria-label]') as HTMLElement | null);
-          const matched = /^Availability for \d{4}-\d{2}-\d{2} hour (\d+)$/.exec(
+          // The name is copy row C1 since 88.6.1-24 (D-12): "{weekday}, {month} {d} at {h:mm}
+          // {AM|PM}, {n} of {N} available". Only the COUNTED shape is parsed - its 12-hour hour
+          // and meridiem - and converted to the 24-hour key `hours` compares, here in page
+          // context (the Node-side `toMinutes` cannot be called from inside `evaluate`).
+          const matched = /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2} at (\d{1,2}):\d{2} (AM|PM), \d+ of \d+ available$/.exec(
             labelled?.getAttribute('aria-label') ?? '',
           );
           if (!matched) return; // an un-annotated cell carries no availability, by construction
@@ -1463,7 +1478,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
           // empty aria-hidden div. So the cell's own text IS the count.
           const count = Number((wrapper.textContent ?? '').trim());
           if (!Number.isFinite(count)) return;
-          const hour = Number(matched[1]);
+          const hour = (Number(matched[1]) % 12) + (matched[2] === 'PM' ? 12 : 0);
           hours.set(hour, Math.max(hours.get(hour) ?? 0, count));
         });
 
@@ -1658,6 +1673,55 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
         `the desktop arm (7 day columns and the week/day toggle at 375px) stayed on screen for ${lingerMs}ms before the phone arm replaced it — that is long enough to be seen, so the flash has stopped being a sub-frame artefact and is now a visible defect. Trace: ${JSON.stringify(trace)}`,
       ).toBeLessThan(250);
     }
+  });
+});
+
+// =============================================================================
+
+test.describe('Phase 88.6.1-24 (SPEC Req 11, register owner item 66) — the scheduler hour gutter fits its labels (both projects)', () => {
+  // NO project skip, deliberately: the label is `text-xs sm:text-sm`, so it is WIDER at desktop
+  // width than on the phone - "12p" was measured at 20.14px at 375 and 23.05px at 1280 against the
+  // 20px content box a 24px gutter left (plan 88.6-26's measurement, in the register). The gutter is
+  // 32px since the 88.6.1 wave 4 CI gate (WeekGrid's `gutterPx` default; 28px from 88.6.1-24 let
+  // "10p" overflow by 1px here at 1280, CI run 38878098281); this runs at 375 (`phone`) and 1280
+  // (`journeys`) so a regression at either width is caught. The label cell is right-justified, so a
+  // label that no longer fits overflows to the LEFT, out of its own cell.
+  test('the hour gutter fits its widest label at this project\'s width', async ({ page }) => {
+    await openVisualScheduler(page);
+
+    const labels = await page.evaluate(() => {
+      const grid = document.querySelector('[role="dialog"] [role="grid"]');
+      const out: Array<{ text: string; textLeft: number; textRight: number; cellLeft: number; cellRight: number }> = [];
+      grid?.querySelectorAll('[role="row"]').forEach((row) => {
+        const cell = row.firstElementChild as HTMLElement | null;
+        const text = (cell?.textContent ?? '').trim();
+        if (!cell || text === '') return; // the header corner and the :30 rows carry no label
+        const range = document.createRange();
+        range.selectNodeContents(cell);
+        const textBox = range.getBoundingClientRect();
+        const cellBox = cell.getBoundingClientRect();
+        out.push({
+          text,
+          textLeft: textBox.left,
+          textRight: textBox.right,
+          cellLeft: cellBox.left,
+          cellRight: cellBox.right,
+        });
+      });
+      return out;
+    });
+
+    expect(
+      labels.length,
+      'fewer than 7 hour labels were measured (14 labelled hours exist) — the fit check would be vacuous',
+    ).toBeGreaterThanOrEqual(7);
+    const overflowing = labels.filter(
+      (l) => l.textLeft < l.cellLeft - 0.05 || l.textRight > l.cellRight + 0.05,
+    );
+    expect(
+      overflowing,
+      `these hour labels extend past their gutter cell — register owner item 66 has regressed; the gutter is WeekGrid's \`gutterPx\` (32px default since the 88.6.1 wave 4 CI gate): ${JSON.stringify(overflowing)}`,
+    ).toEqual([]);
   });
 });
 

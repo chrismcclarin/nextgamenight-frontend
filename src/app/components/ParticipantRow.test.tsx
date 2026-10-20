@@ -86,6 +86,41 @@ describe('duplicate-name hint (triage A1)', () => {
     // message announces nothing.
     expect(screen.getByRole('status')).toHaveTextContent('');
     expect(screen.getByLabelText('Participant Name')).not.toHaveAttribute('aria-describedby');
+    // D-22 (Phase 88.6.1-06): the empty hint is sr-only, so its mt-1 (the spacing
+    // WHEN SHOWN) reserves no 4px under the name line of every custom row.
+    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    expect(screen.getByRole('status')).toHaveClass('mt-1');
+  });
+
+  it('D-22: the hint is shown and hidden on the SAME node, and stays the input description while shown', () => {
+    // duplicateOfName rides a Record spread, as in renderRow: the JS component's
+    // inferred prop type pins it to its null default.
+    const row = (dup: string | null) => (
+      <ParticipantRow
+        participant={{ user_id: '', username: 'Gary', isFromGroup: false }}
+        index={2}
+        groupMembers={MEMBERS}
+        onParticipantChange={vi.fn()}
+        onToggleParticipant={vi.fn()}
+        {...({ duplicateOfName: dup } as Record<string, unknown>)}
+      />
+    );
+    const { rerender } = render(row(null));
+    const hint = screen.getByRole('status');
+    expect(hint).toHaveClass('sr-only');
+    expect(hint).toHaveTextContent('');
+
+    rerender(row('Gary'));
+    expect(screen.getByRole('status')).toBe(hint);
+    expect(hint).not.toHaveClass('sr-only');
+    expect(hint).toHaveClass('mt-1');
+    expect(hint).toHaveTextContent("Heads up: there's already a participant named Gary.");
+    expect(screen.getByLabelText('Participant Name')).toHaveAttribute('aria-describedby', hint.id);
+
+    rerender(row(null));
+    expect(screen.getByRole('status')).toBe(hint);
+    expect(hint).toHaveClass('sr-only');
+    expect(hint).toHaveTextContent('');
   });
 });
 

@@ -28,10 +28,13 @@
 //      would red a correct implementation.
 //
 // Render props are plan 88.6-33's recorded set (`88.6-33-SUMMARY.md` §2): `isOpen`,
-// `onClose`, `eventId`, `self = { id, user_id }` (the SAME uuid), `onSave`. The three mocks it
-// names are the three load-bearing ones. No delta was needed.
+// `onClose`, `eventId`, `self = { id, user_id }` (the SAME uuid), `onSave`. FOUR mocks are
+// load-bearing: the three API calls it names (`getOwnedGames`, `getEventBrings`,
+// `updateMyBrings`) and, since 88.6.1-14, the shared identity hook — the picker reads
+// `useSelfIdentity()`'s query to tell an identity FAILURE (E10) from an identity still resolving
+// (the spinner), so the hook is mocked with a per-test error switch.
 import * as React from 'react';
-import { render, screen, cleanup, act, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -55,6 +58,10 @@ const api = vi.hoisted(() => ({
   updateMyBrings: vi.fn(),
 }));
 const loggerSpies = vi.hoisted(() => ({ info: vi.fn() }));
+// The shared identity query's state, read on EVERY hook call so a rerender sees a flip. Reset to
+// "not in error" in beforeEach. The hook's own `self` is never read by the picker (it takes
+// `self` as a prop), so it stays undefined here.
+const identity = vi.hoisted(() => ({ isError: false, refetch: vi.fn() }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/api')>();
@@ -75,6 +82,23 @@ vi.mock('@/lib/logger', async (importOriginal) => {
   return { ...actual, logger: { ...actual.logger, info: loggerSpies.info } };
 });
 
+// House shape (`ManageMembers.mutations.test.tsx`, the `useSelfIdentity` mock). The error carries
+// the backend-prose SENTINEL so arm I1 can prove no error text reaches the dialog.
+vi.mock('@/lib/hooks/useSelfIdentity', () => ({
+  SELF_IDENTITY_KEY: ['users', 'self'],
+  useSelfIdentity: () => ({
+    selfUuid: undefined,
+    self: undefined,
+    query: {
+      isError: identity.isError,
+      error: identity.isError ? new Error('SENTINEL_RAW_BACKEND_PROSE_7f3c') : null,
+      isPending: !identity.isError,
+      refetch: identity.refetch,
+    },
+    isPending: !identity.isError,
+  }),
+}));
+
 import BringGamePickerJs from './BringGamePicker';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 
@@ -85,7 +109,10 @@ const BringGamePicker = BringGamePickerJs as unknown as React.ComponentType<Reco
 // The ratified line a code-less rejection resolves to, READ FROM THE MODULE (the
 // createGroup.test idiom): a register edit moves this test with it.
 const RATIFIED_UNKNOWN_COPY = getFetchErrorMessage(new Error('anything at all'));
-const EMPTY_COLLECTION_COPY = "You haven't added any games to your collection yet";
+// Copy row E9 as corrected by D-32 R6 (one sentence, visible AND announced), and copy row E10
+// (D-30), both with the straight apostrophe (D-32 R8).
+const EMPTY_COLLECTION_COPY = "You haven't added any games to your collection yet.";
+const IDENTITY_FAILURE_COPY = "We couldn't load your games. Close this and try again.";
 const LOADING_COPY = 'Loading your games...';
 
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
@@ -104,13 +131,12 @@ const BRINGS = [
   { game_id: 'g1', User: { id: OTHER_ID } },
 ];
 
-/**
- * The consumer's shape (`gameDetail/page.js:2264-2266`): the picker stays MOUNTED and the host
- * flips `isOpen`. A real trigger button is rendered so the close-side focus assertion has a
- * NAMED element to return to. `closeFlipsOpen: false` keeps the dialog mounted after a
- * dismissal so the cleared regions can be read — the DOM cannot be inspected once the
- * component has returned `null`.
- */
+// The consumer's shape (the two picker mounts in `gameDetail/page.js`, each rendering
+// `<BringGamePicker isOpen={showBringPicker}` unconditionally): the picker stays MOUNTED and the
+// host flips `isOpen`. A real trigger button is rendered so the close-side focus assertion has a
+// NAMED element to return to. `closeFlipsOpen: false` keeps the dialog mounted after a
+// dismissal so the cleared regions can be read — the DOM cannot be inspected once the
+// component has returned `null`.
 function Host({
   self = SELF,
   eventId = EVENT_ID,
@@ -149,13 +175,28 @@ function Host({
 const politeRegion = () => screen.getByRole('status');
 const assertiveRegion = () => screen.getByRole('alert');
 
-/** Settle on a BRANCH-SPECIFIC element (a game row), never on the header (88.6-15 recipe). */
+// Settle on a BRANCH-SPECIFIC element (a game row), never on the header (88.6-15 recipe).
 async function settleOnRows() {
   return screen.findByRole('checkbox', { name: 'Catan' });
 }
 
+// Text nodes a sighted person sees: the regions are sr-only, so they are filtered out.
+const visibleText = (text: string) =>
+  screen.queryAllByText(text).filter((node) => !node.className.includes('sr-only'));
+const spinner = () => screen.getByRole('dialog').querySelector('.animate-spin');
+
+// A promise a test settles by hand.
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  identity.isError = false;
   api.getOwnedGames.mockResolvedValue(GAMES);
   api.getEventBrings.mockResolvedValue(BRINGS);
   api.updateMyBrings.mockResolvedValue({});
@@ -210,7 +251,9 @@ describe('BringGamePicker — R7 composed axe audit (UI-SPEC §7.5)', () => {
     api.getOwnedGames.mockResolvedValue([]);
     api.getEventBrings.mockResolvedValue([]);
     render(<Host initiallyOpen />);
-    await screen.findByText(EMPTY_COLLECTION_COPY);
+    // findAll + the sr-only filter, not findByText: since D-32 R6 the polite region carries the
+    // SAME sentence as the visible line, so a single-match query would find two.
+    await waitFor(() => expect(visibleText(EMPTY_COLLECTION_COPY)).toHaveLength(1));
     let dialog = screen.getByRole('dialog');
     expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
@@ -269,8 +312,10 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     // The ONE reachable empty-first render: `isOpen` with `self` UNDEFINED. The identity guard
     // returns early, `fetchData` never runs, and `loading` is `true` from `useState` — so an
     // implementation that DERIVES the loading message from `loading` mounts the region already
-    // populated and FAILS here. (This does not certify the unresolved-identity path as fine —
-    // it is a permanent silent spinner, recorded as a named residual in 88.6-44-SUMMARY.md.)
+    // populated and FAILS here. The identity mock is NOT in its error state here, so this is the
+    // identity-PENDING path, and the spinner is correct for it. The identity-FAILED path — the
+    // permanent silent spinner 88.6-44-SUMMARY.md recorded as a residual — is now the E10 line
+    // and announcement (plan 88.6.1-14; the identity-unknown describe below).
     const { rerender } = render(
       <BringGamePicker isOpen onClose={vi.fn()} eventId={EVENT_ID} self={undefined} />
     );
@@ -387,8 +432,10 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     expect(onClose).not.toHaveBeenCalled();
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog').textContent).not.toContain(SENTINEL);
-    // The button is usable again (native disabled cleared in `finally`).
+    // The button is usable again: the in-flight `aria-disabled` and the press latch are both
+    // released in `finally` (D-35, 88.6.1-14 — the in-flight gate is no longer native).
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save' })).not.toHaveAttribute('aria-disabled');
     expect(loggerSpies.info).toHaveBeenCalledWith('BringGamePicker: failed to save', {
       name: 'Error',
       message: SENTINEL,
@@ -503,6 +550,241 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     await user.click(save);
     expect(api.updateMyBrings).not.toHaveBeenCalled();
   });
+
+  it('J1. an empty collection reads the ONE ratified E9 sentence, visibly and aloud (D-32 R6)', async () => {
+    api.getOwnedGames.mockResolvedValue([]);
+    api.getEventBrings.mockResolvedValue([]);
+    render(<Host initiallyOpen />);
+    // Positive settle: the announcement lands. Then the visible line, exact text.
+    await waitFor(() => expect(politeRegion().textContent).toBe(EMPTY_COLLECTION_COPY));
+    const visible = visibleText(EMPTY_COLLECTION_COPY);
+    expect(visible).toHaveLength(1);
+    expect(visible[0].textContent).toBe(EMPTY_COLLECTION_COPY);
+  });
+
+  it('J2. the loading line and the count line stay EXACTLY as shipped (owner-ratified 2026-10-05)', async () => {
+    // These two strings were ratified AS SHIPPED by the owner on 2026-10-05 (wording batch 5,
+    // row Q). A change to either is an owner wording decision (D-31), not a test fix. Exact
+    // text (`toBe`), never a substring: test 4's `toHaveTextContent` checks would pass on a
+    // longer string.
+    const owned = deferred<typeof GAMES>();
+    api.getOwnedGames.mockReturnValue(owned.promise);
+    render(<Host initiallyOpen />);
+    await waitFor(() => expect(politeRegion().textContent).toBe(LOADING_COPY));
+
+    await act(async () => {
+      owned.resolve([GAMES[0]]);
+    });
+    await settleOnRows();
+    expect(politeRegion().textContent).toBe('1 game loaded.');
+    cleanup();
+
+    api.getOwnedGames.mockResolvedValue(GAMES);
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    expect(politeRegion().textContent).toBe('2 games loaded.');
+  });
+
+  // D-35 (owner, 2026-10-04; 88.6.1-14 Task 3): the Save the person just pressed stays in the
+  // focus order while it saves — `aria-disabled` plus a synchronous first-line latch (the rule of
+  // POSITION, `DECISION Phase 88.6-22` in FriendInvitePanel.js). The RED half is the attributes
+  // and the request count (C-11): jsdom never blurs a disabled element
+  // (`ScheduleForm.test.tsx`, its CONFIRM-ONLY note), so the focus claim is confirm-only here.
+  it('S1. while a save is IN FLIGHT the pressed Save is aria-disabled, NOT natively disabled, and reads Saving... (D-35)', async () => {
+    api.updateMyBrings.mockReturnValue(new Promise(() => {}));
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    const save = screen.getByRole('button', { name: 'Save' });
+    save.focus();
+
+    fireEvent.click(save);
+    expect(save).toHaveTextContent('Saving...');
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toHaveAttribute('disabled');
+    // CONFIRM-ONLY in jsdom (see above): focus is still on the pressed control.
+    expect(document.activeElement).toBe(save);
+  });
+
+  it('S2. two synchronous presses while the first PUT is pending send exactly ONE PUT (Edge R4 idempotency)', async () => {
+    api.updateMyBrings.mockReturnValue(new Promise(() => {}));
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    const save = screen.getByRole('button', { name: 'Save' });
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(api.updateMyBrings).toHaveBeenCalledTimes(1);
+    expect(save).toHaveTextContent('Saving...');
+  });
+
+  it('S3. once the pending PUT REJECTS the gate lifts, and a fresh press sends a second PUT (Edge R4 concurrency)', async () => {
+    let rejectSave: (err: unknown) => void = () => {};
+    api.updateMyBrings.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSave = reject;
+        })
+    );
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    const save = screen.getByRole('button', { name: 'Save' });
+
+    fireEvent.click(save);
+    expect(api.updateMyBrings).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      rejectSave(new Error(SENTINEL));
+    });
+    await waitFor(() => expect(assertiveRegion()).toHaveTextContent(RATIFIED_UNKNOWN_COPY));
+    expect(save).not.toHaveAttribute('disabled');
+    expect(save).not.toHaveAttribute('aria-disabled');
+    expect(save.textContent).toBe('Save');
+
+    fireEvent.click(save);
+    expect(api.updateMyBrings).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Identity unknown (88.6.1-14, AC-30, copy row E10, D-33 row 23).
+// ---------------------------------------------------------------------------
+// When `self` has not resolved AND the shared identity query is in its ERROR state, the picker
+// can never fetch (its effect waits for `self.user_id`), so before 88.6.1-14 it spun forever.
+// Now the list area shows E10 as a fixed line and the assertive region carries the same sentence
+// (one announcement — the visible line has no role). A query still RESOLVING keeps the spinner;
+// an error with a cached `self` is not a failure here.
+describe('BringGamePicker — identity unknown (88.6.1-14, AC-30, E10)', () => {
+  const openUnresolved = () => (
+    <BringGamePicker isOpen onClose={vi.fn()} eventId={EVENT_ID} self={undefined} />
+  );
+
+  it('I1. identity FAILED with self unresolved: E10 shows and is announced once; no spinner, no fetch, Save refused', async () => {
+    const user = userEvent.setup();
+    identity.isError = true;
+    render(openUnresolved());
+    const dialog = screen.getByRole('dialog');
+
+    expect(spinner()).toBeNull();
+    const visible = visibleText(IDENTITY_FAILURE_COPY);
+    expect(visible).toHaveLength(1);
+    expect(visible[0]).not.toHaveAttribute('role');
+    expect(assertiveRegion().textContent).toBe(IDENTITY_FAILURE_COPY);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(politeRegion().textContent).toBe('');
+    expect(api.getOwnedGames).not.toHaveBeenCalled();
+
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(api.updateMyBrings).not.toHaveBeenCalled();
+
+    // E10 is a constant: the query's error text never reaches the dialog.
+    expect(dialog.textContent).not.toContain(SENTINEL);
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('I2. identity resolving, then failing: the SAME assertive node goes from empty to E10; the spinner leaves', () => {
+    const { rerender } = render(openUnresolved());
+    const assertive = assertiveRegion();
+    expect(assertive.textContent).toBe('');
+    expect(spinner()).not.toBeNull();
+
+    identity.isError = true;
+    rerender(openUnresolved());
+    expect(assertiveRegion()).toBe(assertive);
+    expect(assertive.textContent).toBe(IDENTITY_FAILURE_COPY);
+    expect(spinner()).toBeNull();
+  });
+
+  it('I3. a repeat failure (error, retry pending, error) re-sets E10 into the SAME node as a real mutation (R8)', () => {
+    identity.isError = true;
+    const { rerender } = render(openUnresolved());
+    const assertive = assertiveRegion();
+    expect(assertive.textContent).toBe(IDENTITY_FAILURE_COPY);
+
+    const observer = new MutationObserver(() => {});
+    observer.observe(assertive, { childList: true, characterData: true, subtree: true });
+
+    // A retry from another consumer puts the data-less query back to pending (no error).
+    identity.isError = false;
+    rerender(openUnresolved());
+    expect(assertive.textContent).toBe('');
+    observer.takeRecords(); // drop the clear's records; only the second set is measured
+
+    identity.isError = true;
+    rerender(openUnresolved());
+    const atSecondSet = observer.takeRecords();
+    observer.disconnect();
+    expect(assertiveRegion()).toBe(assertive);
+    expect(assertive.textContent).toBe(IDENTITY_FAILURE_COPY);
+    expect(atSecondSet.length).toBeGreaterThan(0);
+  });
+
+  it('I4. recovery: identity resolves and self arrives — the fetch runs, rows render, E10 is gone', async () => {
+    identity.isError = true;
+    const { rerender } = render(openUnresolved());
+    expect(visibleText(IDENTITY_FAILURE_COPY)).toHaveLength(1);
+
+    identity.isError = false;
+    rerender(<BringGamePicker isOpen onClose={vi.fn()} eventId={EVENT_ID} self={SELF} />);
+    await settleOnRows();
+    expect(api.getOwnedGames).toHaveBeenCalledWith(SELF_ID);
+    expect(screen.queryByText(IDENTITY_FAILURE_COPY)).toBeNull();
+    expect(assertiveRegion().textContent).toBe('');
+  });
+
+  it('I5. an identity error WITH a cached self row is not a failure here: the rows render, no E10', async () => {
+    identity.isError = true;
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    expect(screen.queryByText(IDENTITY_FAILURE_COPY)).toBeNull();
+    expect(assertiveRegion().textContent).toBe('');
+  });
+
+  it('I6. close and reopen after an identity failure: the reopened dialog mounts its assertive region already carrying E10', async () => {
+    // The real sequence (scoped check H-07). Both hosts keep the picker MOUNTED and flip
+    // `isOpen`, so its identity observer outlives the close and nothing refetches on open: the
+    // query is still in its error state at the open commit. `self={null}`, not undefined — the
+    // Host's default parameter would replace an explicit undefined with SELF.
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    identity.isError = true;
+    render(<Host initiallyOpen self={null} onClose={onClose} />);
+    expect(visibleText(IDENTITY_FAILURE_COPY)).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Skip for now' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // The identity mock STAYS in its error state. Asserted at the open commit, no waitFor. The
+    // regions are a NEW node after a reopen (the closed picker returns null), so no
+    // node-identity assertion is made across it.
+    await user.click(screen.getByRole('button', { name: 'Bring games' }));
+    expect(spinner()).toBeNull();
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].textContent).toBe(IDENTITY_FAILURE_COPY);
+    expect(visibleText(IDENTITY_FAILURE_COPY)).toHaveLength(1);
+    expect(politeRegion().textContent).toBe('');
+  });
+
+  it('I7. CR-101 after an earlier load: identity lost once the rows loaded — Save is natively disabled and sends no PUT', async () => {
+    // `loading` is true only as its initial value; once `self` has no `user_id` the fetch
+    // effect returns before resetting it, so without the identity term a press would send a
+    // full-replace PUT of the previous selection.
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <BringGamePicker isOpen onClose={vi.fn()} eventId={EVENT_ID} self={SELF} />
+    );
+    await settleOnRows();
+
+    identity.isError = true;
+    rerender(<BringGamePicker isOpen onClose={vi.fn()} eventId={EVENT_ID} self={undefined} />);
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toHaveAttribute('disabled');
+    await user.click(save);
+    expect(api.updateMyBrings).not.toHaveBeenCalled();
+  });
 });
 
 describe('BringGamePicker — the focus contract axe cannot see (T-88.6-141)', () => {
@@ -530,5 +812,15 @@ describe('BringGamePicker — the focus contract axe cannot see (T-88.6-141)', (
     // This is a NAMED identity check; "not body" would pass on a wrong element and red a
     // correct bare-mount render.
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+});
+
+describe('BringGamePicker — the dynamic-viewport cap (88.6.1-56, W023 class)', () => {
+  it('BP-W1. the dialog caps its height at 80% of the DYNAMIC viewport, not the static one', () => {
+    render(<Host initiallyOpen />);
+    const cls = screen.getByRole('dialog').className;
+    expect(cls).toContain('max-h-[80dvh]');
+    expect(cls).not.toContain('max-h-[80' + 'vh]');
+    expect(cls).not.toContain('max-h-[90dvh]');
   });
 });

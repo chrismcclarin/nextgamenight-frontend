@@ -11,10 +11,65 @@ import { wallClockToUtc } from '../../lib/datetime';
 import WriteCell from './heatmap/WriteCell';
 import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 
 // Zero-pad an hour/minute to two digits for the "yyyy-MM-ddTHH:mm" wall-clock
 // string handed to wallClockToUtc. Module-level (stable identity, no deps).
 const pad2 = (n) => String(n).padStart(2, '0');
+
+// Copy row A2 — each check-in cell's accessible name (see DECISION Phase 88.6.1-17 (D-14 /
+// AC-21, copy row A2) at the cellNamePrefixes memo below).
+const CELL_NAME_DAY_FORMAT = 'EEEE, MMMM d';
+const PREFERENCE_WORD_PREFERRED = 'preferred';
+const PREFERENCE_WORD_IF_NEED_BE = 'if need be';
+const PREFERENCE_WORD_NONE = 'not selected';
+
+// "{day} at {time}" + ", " + the state word. Explicit comparisons, never an object-key lookup
+// (a key lookup reaches Object.prototype). The stored wire enum is never spoken.
+function writeCellName(prefix, preference) {
+  let word = PREFERENCE_WORD_NONE;
+  if (preference === 'preferred') word = PREFERENCE_WORD_PREFERRED;
+  else if (preference === 'if-need-be') word = PREFERENCE_WORD_IF_NEED_BE;
+  return prefix + ', ' + word;
+}
+
+// Copy row A3 — the count line under the grid and the spoken summary, one producer for both
+// (see DECISION Phase 88.6.1-39 (D-14 / D-45, R3-M20) at the summary effect below). The words
+// reuse plan 88.6.1-17's state words, so the cell names and the summary speak one spelling.
+const SELECTION_SUMMARY_TAIL = 'slots selected';
+// DECISION Phase 88.6.1-39 (D-16, copy rows A1 / A4): what the line under the grid says when
+// nothing is selected. The instruction branches on the shared phone hook (plan 88.6.1-09,
+// usePhoneViewport), CHOSEN OVER responsive utility classes (DECISION Phase 88.1-11's reason:
+// jsdom applies no stylesheet, so no unit pin could tell the two arms apart) and OVER a copy of
+// the subscription in this file (the duplication tenet). Desktop keeps its sentence
+// byte-identical. The hook starts false and flips after mount, which is harmless here ONLY
+// because the line is no longer live (research CP-5): making it live again would announce that
+// flip. After Clear All the line shows A4 until the next paint, and the instruction returns only
+// when the grid is empty AND no Clear All just happened (D-33 row 17) — CHOSEN OVER returning to
+// the instruction at once (A4 would vanish before a sighted user read it, and the instruction
+// never says anything was cleared). Changing this is a decision, not a cleanup.
+// AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): "Clear All" above
+// now means BOTH clears — the Clear All button and unchecking the All box. Both empty the grid, so
+// both show and speak A4 until the next paint; the instruction's reason above applies equally to
+// Uncheck All, which used to speak the zero count while the line fell back to the instruction.
+const GESTURE_HINT_DESKTOP = 'Click and drag to select your available times';
+const GESTURE_HINT_PHONE = 'Tap a time to select it. Press and hold, then drag, to select several.';
+const ALL_CLEARED_TEXT = 'All times cleared.';
+// Test handles, not user-facing (the tests re-declare these literals; not exported, the
+// magic-link page's own house style for its region handle).
+const GRID_SUMMARY_STATUS_TESTID = 'availability-grid-summary-status';
+const GRID_SUMMARY_LINE_TESTID = 'availability-grid-summary-line';
+
+// "{n} preferred, {m} if need be slots selected", for every count including zero. The count
+// filters on the stored wire enum (unchanged); only the shown and spoken word has spaces.
+function selectionSummaryText(selection) {
+  const preferredCount = selection.filter((s) => s.preference === 'preferred').length;
+  const ifNeedBeCount = selection.filter((s) => s.preference === 'if-need-be').length;
+  return (
+    preferredCount + ' ' + PREFERENCE_WORD_PREFERRED + ', ' +
+    ifNeedBeCount + ' ' + PREFERENCE_WORD_IF_NEED_BE + ' ' + SELECTION_SUMMARY_TAIL
+  );
+}
 
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
@@ -45,6 +100,33 @@ export default function AvailabilityGrid({
   const isDraggingRef = useRef(false);
   const [paintMode, setPaintMode] = useState('preferred'); // 'preferred' | 'if-need-be'
   const gridRef = useRef(null);
+
+  // Plan 88.6.1-39: what the grid's one sr-only summary region says, and when. Declared here, at
+  // the top, so every handler below can use it with no declaration-order hazard. `seq` keys the
+  // rendered text span, so every utterance replaces it; every utterance goes through `announce`,
+  // never through the setter directly (a same-string set is a React bail-out and speaks nothing).
+  // See DECISION Phase 88.6.1-39 (D-14 / D-45, R3-M20) at the summary effect.
+  const [announcement, setAnnouncement] = useState({ seq: 0, text: '' });
+  const announce = useCallback(
+    (text) => setAnnouncement((prev) => ({ seq: prev.seq + 1, text })),
+    []
+  );
+  // A request to speak the summary from the NEXT committed render's value (bumped at gesture
+  // end and after each discrete action); the effect speaks once per bump.
+  const [summaryRequest, setSummaryRequest] = useState(0);
+  // Set where a gesture commits a change; read and reset at gesture end.
+  const gestureChangedRef = useRef(false);
+  // The last request the summary effect has spoken.
+  const handledSummaryRef = useRef(0);
+  // True from a Clear All (or an Uncheck All, CR-7) until the next paint: the line shows A4 instead of the instruction
+  // (see DECISION Phase 88.6.1-39 (D-16, copy rows A1 / A4) at the module constants).
+  const [justCleared, setJustCleared] = useState(false);
+  useEffect(() => {
+    if (value.length > 0) setJustCleared(false);
+  }, [value.length]);
+  // The one phone-viewport hook (plan 88.6.1-09): false on the first render, then the live
+  // answer. Only the empty-grid instruction reads it.
+  const isPhoneViewport = usePhoneViewport();
 
   // ARIA grid roving tabindex (84-10 / F-803/809): AvailabilityGrid is one of
   // the three roving keyboard INPUT grids. The nav-key + select state machine
@@ -170,7 +252,8 @@ export default function AvailabilityGrid({
   // misrouted feature — two similarly-named features, profile *availability* vs
   // weekly *check-in*, were historically conflated, and the multi-day request
   // behind the broadcast belongs to PROFILE availability, where Phase 48-01
-  // already shipped day-pill multi-select — userProfile/page.js:826) and OVER
+  // already shipped day-pill multi-select — the profile page's Days of Week pill
+  // group, days-of-week-label) and OVER
   // (b) any future "re-add linked days here". Derived state cannot desync: the
   // 2026-05-16 "checkbox stays checked after Clear All" bug is impossible by
   // construction. Re-adding a broadcast here is a product decision, not a
@@ -219,6 +302,7 @@ export default function AvailabilityGrid({
       const filtered = value.filter((s) => !dayKeys.has(s.slotId));
       if (filtered.length !== value.length) {
         onChange?.(filtered);
+        setSummaryRequest((n) => n + 1);
       }
     } else {
       // Not full: paint every empty slot in this day column.
@@ -231,6 +315,7 @@ export default function AvailabilityGrid({
       });
       if (additions.length > 0) {
         onChange?.([...value, ...additions]);
+        setSummaryRequest((n) => n + 1);
       }
     }
   }, [days, dayFull, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
@@ -247,10 +332,16 @@ export default function AvailabilityGrid({
   // The owner ruling of 2026-08-02 superseded the driver semantics — the
   // broadcast is removed and `allChecked` is now DERIVED from the painted grid
   // — but the paint-on-toggle expectation 71-05 established still stands.
+  // AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): the uncheck arm
+  // reaches the same empty grid as Clear All, so it now says what Clear All says — it speaks and
+  // shows A4 (`announce(ALL_CLEARED_TEXT)` + `setJustCleared(true)`, the handleClearAll pair)
+  // instead of requesting the zero-count summary. The check arm still requests the count.
   const toggleSelectAll = useCallback(() => {
     if (allChecked) {
       // Uncheck All clears every painted slot — symmetric with the check path.
       onChange?.([]);
+      announce(ALL_CLEARED_TEXT);
+      setJustCleared(true);
     } else {
       // Paint every slot in the grid that isn't already painted.
       const additions = [];
@@ -264,9 +355,10 @@ export default function AvailabilityGrid({
       });
       if (additions.length > 0) {
         onChange?.([...value, ...additions]);
+        setSummaryRequest((n) => n + 1);
       }
     }
-  }, [allChecked, days, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
+  }, [allChecked, days, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange, announce]);
 
   // Format time label for the row. Pure hour/minute -> "h:mm a" (byte-identical
   // to the prior `format(date, 'h:mm a')` output) with no `setHours` — the label
@@ -290,6 +382,42 @@ export default function AvailabilityGrid({
   const formatDayHeader = useCallback((day) => {
     return format(day, 'EEE M/d');
   }, []);
+
+  // DECISION Phase 88.6.1-17 (D-14 / AC-21, copy row A2): what a screen reader hears on a cell.
+  // (a) Each write cell's name is copy row A2 — the column's long day, " at ", the row's time
+  //     label, ", ", the state word — passed through WriteCell's optional name override (the
+  //     ReadCell mechanism).
+  // (b) It is built from the SAME day value the column header shows and the SAME time text the
+  //     row label shows, i.e. the profile-zone wall clock the toolbar's "Times shown in" line
+  //     names. Chosen OVER deriving it from the cell's slot id, a UTC instant that prints the
+  //     browser's zone and disagrees with the labels whenever the profile zone differs (the
+  //     BUG-01 / F-810 class).
+  // (c) The day/time prefixes are computed once per day/slot layout, OVER formatting per cell
+  //     per render: every paint tick re-renders the props of 196-392 cells on a phone, and a
+  //     value-equal string keeps WriteCell's memo short-circuiting (the Phase 87.8 TOUCH
+  //     callback-stability marker below).
+  // (d) The state word is its own constant, OVER speaking the stored value: the stored value is
+  //     the wire enum and must not change; A2 ratifies words with spaces.
+  // (e) The pressed state stays beside the word, OVER dropping either: a boolean cannot carry
+  //     three states, so VoiceOver says both — accepted (AT-3).
+  // (f) REJECTED: row and column index attributes on the grid (D-14) — a restructure that may
+  //     break the VoiceOver double-tap activation the owner measured on 2026-10-04 (D-10).
+  // (g) REJECTED: one shared day-format helper with the scheduler's C1 name (plan 88.6.1-24) —
+  //     the scheduler holds a Date per slot, this grid holds a fixed time of day, and the time
+  //     here must come from this grid's own row label.
+  // (h) The not-selected word repeats WriteCell's fallback on purpose: the fallback is the
+  //     consumer-less write arm's name and stays unchanged (D-45).
+  // (i) The gesture machine is not touched (DECISION Phase 88.1-03, two machines until
+  //     Phase 92).
+  // Changing any of this is a decision, not a cleanup.
+  const cellNamePrefixes = useMemo(
+    () =>
+      days.map((day) => {
+        const dayText = format(day, CELL_NAME_DAY_FORMAT);
+        return timeSlots.map((timeSlot) => dayText + ' at ' + formatTimeLabel(timeSlot));
+      }),
+    [days, timeSlots, formatTimeLabel]
+  );
 
   // Get friendly timezone display name
   const getTimezoneDisplay = useCallback((tz) => {
@@ -327,8 +455,10 @@ export default function AvailabilityGrid({
     const { value, slotMap, paintMode, onChange } = modelRef.current;
     if (slotMap.get(slotId)) {
       onChange?.(value.filter((s) => s.slotId !== slotId));
+      gestureChangedRef.current = true;
     } else {
       onChange?.([...value, { slotId, preference: paintMode }]);
+      gestureChangedRef.current = true;
     }
   }, []);
 
@@ -337,6 +467,7 @@ export default function AvailabilityGrid({
     const { value, slotMap, paintMode, onChange } = modelRef.current;
     if (!slotMap.has(slotId)) {
       onChange?.([...value, { slotId, preference: paintMode }]);
+      gestureChangedRef.current = true;
     }
   }, []);
 
@@ -539,6 +670,19 @@ export default function AvailabilityGrid({
     if (!slotId) return;
     const without = value.filter((s) => s.slotId !== slotId);
     onChange?.(next === null ? without : [...without, { slotId, preference: next }]);
+    // A discrete action: speak the summary once, from the render this change commits in. The
+    // setter is stable, so this handler keeps its empty deps and its identity (87.8 TOUCH).
+    setSummaryRequest((n) => n + 1);
+  }, []);
+
+  // Plan 88.6.1-39: the gesture has ended. If it changed the selection, request ONE summary from
+  // the next committed render; a gesture that changed nothing (a scroll, a slop-cancelled touch,
+  // a click on empty space) speaks nothing. Called only by the document release listeners below,
+  // and only for the event that ends the active gesture.
+  const settleGestureSummary = useCallback(() => {
+    if (!gestureChangedRef.current) return;
+    gestureChangedRef.current = false;
+    setSummaryRequest((n) => n + 1);
   }, []);
 
   // Global pointer up/cancel listeners: end the mouse drag, and settle the
@@ -551,6 +695,7 @@ export default function AvailabilityGrid({
     const handleGlobalPointerUp = (e) => {
       isDraggingRef.current = false;
       const st = touchRef.current;
+      const endsGesture = !st || e.pointerId === st.pointerId;
       if (st && e.pointerId === st.pointerId) {
         if (!st.painting && st.timer) {
           clearTimeout(st.timer);
@@ -559,13 +704,16 @@ export default function AvailabilityGrid({
         }
         clearTouchGesture();
       }
+      if (endsGesture) settleGestureSummary();
     };
     const handleGlobalPointerCancel = (e) => {
       isDraggingRef.current = false;
       const st = touchRef.current;
+      const endsGesture = !st || e.pointerId === st.pointerId;
       if (st && e.pointerId === st.pointerId) {
         clearTouchGesture();
       }
+      if (endsGesture) settleGestureSummary();
     };
 
     document.addEventListener('pointerup', handleGlobalPointerUp);
@@ -575,7 +723,7 @@ export default function AvailabilityGrid({
       document.removeEventListener('pointerup', handleGlobalPointerUp);
       document.removeEventListener('pointercancel', handleGlobalPointerCancel);
     };
-  }, [clearTouchGesture, handleToggleSlot]);
+  }, [clearTouchGesture, handleToggleSlot, settleGestureSummary]);
 
   // NON-PASSIVE touchmove listener — the conditional scroll suppressor. While
   // paint mode is active (and ONLY then) preventDefault stops the native pan so
@@ -595,6 +743,45 @@ export default function AvailabilityGrid({
   // Unmount safety: never leave a live timer or rAF loop behind.
   useEffect(() => () => clearTouchGesture(), [clearTouchGesture]);
 
+  // DECISION Phase 88.6.1-39 (D-14 / D-45, R3-M20): how the check-in grid tells a screen reader
+  // what is selected. Before this plan the visible count line WAS the live region, so a screen
+  // reader heard every painted cell while the finger was still moving (register R3-M20).
+  // (a) The visible line under the grid is plain text, NOT aria-hidden: browse mode keeps it (the
+  //     Combobox precedent, DECISION Phase 88.6-37 (W38)). CHOSEN OVER keeping it live beside a
+  //     second region (every paint spoken twice) and OVER hiding it from assistive technology.
+  // (b) ONE always-mounted sr-only polite region, EMPTY at mount, its text in a span keyed on a
+  //     sequence number (the scheduler's 88.6-52 idiom, EventScheduler.tsx anchor
+  //     `key={announcement.seq}`). CHOSEN OVER making the visible line speak only at gesture end:
+  //     the line must update per paint for sighted users, and its phone/desktop instruction flip
+  //     would be announced.
+  // (c) It speaks ONCE per gesture, at the document pointer-up or pointer-cancel the gesture
+  //     machine already listens on, and only for the event that ends the active gesture (a second
+  //     finger lifting mid-paint settles nothing) — CHOSEN OVER settling on any document release,
+  //     which speaks a partial count while the first finger still paints. Once per discrete action
+  //     (keyboard select, a day box, All). And only when the gesture changed the selection —
+  //     CHOSEN OVER a debounce on value changes (timing-based: it speaks mid-drag when a finger
+  //     pauses, and cannot tell a scroll from a paint) and OVER per-cell announcements (R3-M20).
+  //     AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): "All" here is
+  //     CHECKING the All box; unchecking it speaks A4 through `announce` directly, as Clear All does.
+  // (d) The text is read from the value of the render in which the request landed — the
+  //     committed selection — CHOSEN OVER computing it inside the release listener (a tap's own
+  //     commit has not reached the prop yet, research AT-3) and OVER computing it from the array
+  //     the grid emits (it would disagree with the screen if the parent ever rewrote the
+  //     selection).
+  // (e) The gesture machine's commit logic is untouched: only a changed flag where a gesture
+  //     commits and one gesture-end request were added (DECISION Phase 88.1-03, two touch
+  //     machines until Phase 92).
+  // (f) Always sr-only, so D-22's opt-in prop (srOnlyWhenEmpty) is not adopted: it is for regions
+  //     that show their text.
+  // (g) REJECTED: a shared announcement hook. The idiom is two statements and a keyed span, used
+  //     inline as the house shape (the scheduler, the QR dialog of plan 88.6.1-12).
+  // Changing this is a decision, not a cleanup.
+  useEffect(() => {
+    if (summaryRequest === handledSummaryRef.current) return;
+    handledSummaryRef.current = summaryRequest;
+    announce(selectionSummaryText(value));
+  }, [summaryRequest, value, announce]);
+
   // Toggle paint mode
   const togglePaintMode = useCallback(() => {
     setPaintMode((prev) => (prev === 'preferred' ? 'if-need-be' : 'preferred'));
@@ -606,10 +793,17 @@ export default function AvailabilityGrid({
   // stranded-checkbox bug cannot recur.)
   // Plan 88.6-63: the button stays mounted when the selection is empty (aria-disabled, see the
   // DECISION at the button), so an empty-state press is REFUSED here, on the first line.
+  // AMENDED Phase 88.6.1-39 (D-33 row 17, copy row A4): an accepted press now also speaks
+  // "All times cleared." and shows it on the line under the grid until the next paint (see
+  // DECISION Phase 88.6.1-39 (D-16, copy rows A1 / A4) at the module constants).
+  // AMENDED 2026-10-19 (88.6.1 code review CR-7 / A-07 / IN-08, owner ratified): unchecking the
+  // All box (toggleSelectAll's allChecked arm) now uses this same pair, so the two clears agree.
   const handleClearAll = useCallback(() => {
     if (value.length === 0) return;
     onChange?.([]);
-  }, [onChange, value.length]);
+    announce(ALL_CLEARED_TEXT);
+    setJustCleared(true);
+  }, [onChange, value.length, announce]);
 
   return (
     <div className="w-full">
@@ -888,6 +1082,7 @@ export default function AvailabilityGrid({
                       focused={focused}
                       disabled={disabled}
                       preference={preference}
+                      ariaLabel={writeCellName(cellNamePrefixes[colIndex][rowIndex], preference)}
                       slotId={slotId}
                       onMove={handleCellMove}
                       onSelect={handleCellSelect}
@@ -906,16 +1101,29 @@ export default function AvailabilityGrid({
 
       {/* Selection summary — ONE always-mounted polite StatusRegion (plan 88.6-63, review round 2
           #23): only its CONTENT swaps, because a live region mounted together with its content
-          announces nothing. `text-sm` comes from the primitive's base. */}
-      <StatusRegion className="mt-3 text-content-secondary">
-        {value.length === 0 ? (
-          <span>Click and drag to select your available times</span>
-        ) : (
-          <span>
-            {value.filter((s) => s.preference === 'preferred').length} preferred,{' '}
-            {value.filter((s) => s.preference === 'if-need-be').length} if-need-be slots selected
-          </span>
-        )}
+          announces nothing. `text-sm` comes from the primitive's base.
+          [AMENDED Phase 88.6.1-39 (D-14 / D-45): the visible line below is no longer the live
+          region — it announced on every painted cell (register R3-M20). It is plain text in the
+          same box and type (its own small-type class now, since the primitive no longer supplies
+          it). The always-mounted, content-swapping region this note describes is now the
+          separate sr-only summary after it, which starts empty and speaks once per gesture end
+          (DECISION Phase 88.6.1-39 at the summary effect). The note's premise — a polite region
+          mounted with its content announces nothing — stands (D-42).] */}
+      <div data-testid={GRID_SUMMARY_LINE_TESTID} className="mt-3 text-sm text-content-secondary">
+        {value.length > 0
+          ? selectionSummaryText(value)
+          : justCleared
+            ? ALL_CLEARED_TEXT
+            : isPhoneViewport
+            ? GESTURE_HINT_PHONE
+            : GESTURE_HINT_DESKTOP}
+      </div>
+      <StatusRegion
+        politeness="polite"
+        className="sr-only"
+        data-testid={GRID_SUMMARY_STATUS_TESTID}
+      >
+        <span key={announcement.seq}>{announcement.text}</span>
       </StatusRegion>
     </div>
   );

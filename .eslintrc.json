@@ -23,11 +23,8 @@
       "files": [
         "src/app/api/auth/google-connect/route.js",
         "src/app/api/*/route.ts",
-        "src/app/components/FriendshipStatusProvider.js",
         "src/app/components/TimezoneProvider.js",
-        "src/app/components/UnreadNotificationProvider.js",
-        "src/app/components/tutorial/TutorialProvider.js",
-        "src/app/groupPlanning/page.js"
+        "src/app/components/tutorial/TutorialProvider.js"
       ],
       "rules": {
         "no-console": "off"

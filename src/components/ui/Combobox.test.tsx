@@ -16,7 +16,8 @@
 //      shadcn CLI route rejected in OI-6.
 //   6. axe-clean in the OPEN state (the closed state is trivially clean and proves nothing).
 import * as React from 'react';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { createPortal } from 'react-dom';
+import { act, render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -382,25 +383,27 @@ describe('Combobox — W38: exactly one always-mounted sr-only status region', (
 
   it('mounts the region EMPTY on first render (EMPTY-FIRST, StatusRegion.tsx:9-12)', () => {
     // FIRST RENDER IS THE CLOSED STATE FOR EVERY SHIPPED CONSUMER, measured not assumed:
-    // `GameComboInput.js:34` is `useState(false)` and `userProfile/page.js:378` is
-    // `useState(false)`, so both mount closed and the region's first commit is empty. That
-    // is what makes the first real announcement a CHANGE to a mounted region rather than the
-    // mount of a new one.
+    // `GameComboInput.js:34` is `useState(false)` and the timezone picker's `tzPickerOpen`
+    // state in `userProfile/page.js` is `useState(false)`, so both mount closed and the
+    // region's first commit is empty. That is what makes the first real announcement a
+    // CHANGE to a mounted region rather than the mount of a new one.
     //
     // THE RESIDUAL, stated rather than hidden by picking a friendly fixture: a caller that
     // mounts ALREADY OPEN with results would find the count in the region's initial DOM, and
     // that initial value does not announce. No shipped caller does this, and closing it would
     // need a first-render latch — i.e. exactly the `useState`/`useEffect` the source-shape
-    // pin below forbids, to fix a state nothing produces.
+    // pin below forbids, to fix a state nothing produces. The owner ACCEPTED this residual
+    // (LATENT-AND-DEAD-RULING item 2, 2026-10-03); the site marker is
+    // `DECISION Phase 88.6.1-10 (announce gap, …)` in `Combobox.tsx`.
     render(<Controlled open={false} />);
     expect(region()).toBeInTheDocument();
     expect(region()).toBeEmptyDOMElement();
   });
 
   it('is present and EMPTY while CLOSED, and renders no visible status text (DECISION 88-10 F-359)', () => {
-    // The `open` gate is MANDATORY, not defensive: `userProfile/page.js:451` returns `[]`
-    // when the picker is closed, so an `open`-ungated derivation would speak the empty
-    // label every single time a user closes the picker.
+    // The `open` gate is MANDATORY, not defensive: `userProfile/page.js`'s `timezoneItems`
+    // memo returns an empty list while the picker is closed, so an `open`-ungated derivation
+    // would speak the empty label every single time a user closes the picker.
     render(<Controlled open={false} items={[]} />);
     expect(region()).toBeInTheDocument();
     expect(region()).toBeEmptyDOMElement();
@@ -487,5 +490,163 @@ describe('Combobox — W38: exactly one always-mounted sr-only status region', (
     const stripped = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(stripped.match(/useState/g) ?? []).toHaveLength(1); // the pre-existing activeIndex
     expect(stripped.match(/useEffect/g) ?? []).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// W073 (Phase 88.6.1 plan 10, Req 11, AC-32): the field's key path.
+//
+// Two defects, one site. (a) A consumer `onKeyDown` was overwritten inside the
+// getReferenceProps call, so it never ran. (b) Escape in the open field called
+// `onOpenChange(false)` TWICE: once from floating-ui's useDismiss reference handler and once
+// from the primitive's own Escape arm. The fix chains the consumer handler (never a veto)
+// and lets useDismiss own the close alone.
+//
+// K4 and K5 are REGRESSION GUARDS, green on arrival. They pin what the rejected mechanism
+// (useDismiss told to ignore Escape, with the primitive's own close kept) would break:
+//   - K4: Escape from a trailing sibling inside the combobox root (GameComboInput's Clear
+//     button) must still close the list, because the hosting Modal keeps itself open while
+//     the list is expanded (CR-502) and relies on useDismiss to close the LIST;
+//   - K5 (PORTAL-SCOPED): a portal-hosted field's Escape is consumed while the list is open,
+//     so it does not reach document listeners. It claims nothing about a page-level mount,
+//     where React's root listener is on the document itself.
+// ---------------------------------------------------------------------------------------
+describe('Combobox — W073: a consumer onKeyDown is chained; Escape closes the list exactly once', () => {
+  afterEach(() => {
+    Object.values(onSelectSpies).forEach((spy) => spy.mockClear());
+  });
+
+  const keysOf = (spy: ReturnType<typeof vi.fn>) =>
+    spy.mock.calls.map((call) => (call[0] as React.KeyboardEvent).key);
+
+  // Holds `open` in its own state like `Harness`, and records the FIRST argument of every
+  // `onOpenChange` call before applying it. Only the first argument is asserted, so the
+  // extra arguments useDismiss passes (the native event and a reason) do not matter.
+  function Recording({
+    recorder,
+    trailing,
+  }: {
+    recorder: (open: boolean) => void;
+    trailing?: React.ReactNode;
+  }) {
+    const [value, setValue] = React.useState('cat');
+    const [open, setOpen] = React.useState(true);
+    return (
+      <Combobox
+        aria-label="Search for a game"
+        items={makeItems()}
+        value={value}
+        onValueChange={setValue}
+        open={open}
+        onOpenChange={(next) => {
+          recorder(next);
+          setOpen(next);
+        }}
+        trailing={trailing}
+      />
+    );
+  }
+
+  const firstArgs = (spy: ReturnType<typeof vi.fn>) => spy.mock.calls.map((call) => call[0]);
+
+  it('K1. a consumer onKeyDown runs on every key, and the primitive still navigates and selects', async () => {
+    const user = userEvent.setup();
+    const onKeyDown = vi.fn();
+    render(<Harness onKeyDown={onKeyDown} />);
+    getInput().focus();
+
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    expect(keysOf(onKeyDown)).toEqual(['ArrowDown', 'Enter']);
+    // The primitive's own handler ran AFTER the consumer's: ArrowDown made Catan active and
+    // Enter selected it.
+    expect(onSelectSpies.catan).toHaveBeenCalledTimes(1);
+    expect(onSelectSpies.brass).not.toHaveBeenCalled();
+  });
+
+  it('K2. a consumer onKeyDown sees Escape, and Escape still closes the list and keeps focus', async () => {
+    const user = userEvent.setup();
+    const onKeyDown = vi.fn();
+    render(<Harness onKeyDown={onKeyDown} />);
+    const input = getInput();
+    input.focus();
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+
+    expect(keysOf(onKeyDown)).toEqual(['Escape']);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(input).toHaveFocus();
+  });
+
+  it('K3. Escape in the open field calls onOpenChange exactly once, with false', async () => {
+    const user = userEvent.setup();
+    const recorder = vi.fn();
+    render(<Recording recorder={recorder} />);
+    const input = getInput();
+    input.focus();
+    // Positive settle signal: the list is open before the key is pressed.
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(firstArgs(recorder)).toEqual([false]);
+  });
+
+  it('K4. (guard) Escape from a trailing sibling inside the root closes the list, exactly once', async () => {
+    const user = userEvent.setup();
+    const recorder = vi.fn();
+    render(
+      <Recording
+        recorder={recorder}
+        trailing={<button type="button">Clear game selection</button>}
+      />
+    );
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    const clear = screen.getByRole('button', { name: 'Clear game selection' });
+    act(() => clear.focus());
+    expect(clear).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(firstArgs(recorder)).toEqual([false]);
+  });
+
+  it('K5. (portal-scoped guard) a portal-hosted field consumes Escape while the list is open', async () => {
+    // Mirrors a Modal: its content is portal-hosted, and React also listens on the portal
+    // container. The harness renders through a portal into a separate child of the body,
+    // OUTSIDE the render container, and a bubble-phase document listener records what
+    // reaches the document.
+    const user = userEvent.setup();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const seen: string[] = [];
+    const listener = (event: KeyboardEvent) => {
+      seen.push(event.key);
+    };
+    document.addEventListener('keydown', listener);
+    const PortalHosted = () => createPortal(<Harness />, host);
+    const { unmount } = render(<PortalHosted />);
+    try {
+      const input = getInput();
+      expect(host.contains(input)).toBe(true);
+      input.focus();
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      expect(seen).toEqual([]);
+
+      // Anti-vacuity: with the list closed, the next Escape is not consumed, so the
+      // listener is live and would have seen the first one had it escaped.
+      await user.keyboard('{Escape}');
+      expect(seen).toEqual(['Escape']);
+    } finally {
+      unmount();
+      document.removeEventListener('keydown', listener);
+      host.remove();
+    }
   });
 });

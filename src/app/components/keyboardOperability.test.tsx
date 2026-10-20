@@ -7,9 +7,10 @@
  * 87.8-08 censused every non-`.btn` tappable and scored each on three columns. Two rows came
  * back "NO" in the Kbd column and were deferred to this phase:
  *
- *   `PromptScheduleSection.js:147` — the "Check-ins" expand header, a `div` with an `onClick`
- *     and no role, no tabIndex and no key handler. On groupPlanning it is the ONLY way to open
- *     the check-ins body, so a keyboard-only user could not reach polls at all.
+ *   `PromptScheduleSection.js` (the census row gave line 147 at the time; today the header is
+ *     the element whose onClick toggles setIsExpanded) — the "Check-ins" expand header, a `div`
+ *     with an `onClick` and no role, no tabIndex and no key handler. On groupPlanning it is the
+ *     ONLY way to open the check-ins body, so a keyboard-only user could not reach polls at all.
  *   `ClickableMemberName.js` — the username span. Its popover is opened by HOVER
  *     (`useHover`, `mouseOnly: true`) or by tap, and the mobile "+" shortcut is `md:hidden`.
  *     A keyboard user therefore had no path to the friend-request flow on any surface.
@@ -227,7 +228,7 @@ describe('ClickableMemberName username is keyboard-operable (87.8-08 -> 88-28)',
     await waitFor(() => expect(addFriend).toHaveFocus());
     fireEvent.click(addFriend);
 
-    const failure = await screen.findByText('Failed to send request');
+    const failure = await screen.findByText("We couldn't send that request.");
     expect(failure.closest('[role="alert"]')).not.toBeNull();
   });
 
@@ -312,6 +313,9 @@ describe('ClickableMemberName username is keyboard-operable (87.8-08 -> 88-28)',
  * (`.planning/deferred/phase-88.6.md`), and 88.5 makes it worse by adding descendants to it.
  * These tests pin the per-descendant floor that phase committed to instead; they are not a
  * substitute for the structural fix, and they must NOT be read as closing that item.
+ * AMENDED Phase 88.6.1-54: that structural defect was closed by plan 88.6-21 (W42); the card is
+ * no longer a role=button, and the GL describe below mounts the real card under an axe
+ * nested-interactive pin. These tests still pin the per-descendant floor.
  * ========================================================================================== */
 
 const CHIP_MEMBERS = [
@@ -323,9 +327,12 @@ const CHIP_MEMBERS = [
 const CHIP_STACK_NAME = 'Members: ada, grace. Show all members.';
 
 /**
- * Mirrors `grouplist.js:359-370`: the stack renders inside a `role="button"` card carrying its
- * own click AND key handler. One spy behind both, because "expanding also navigated to the
- * group" is the same defect whichever handler fired.
+ * Mirrors the `grouplist.js` card shape from BEFORE plan 88.6-21: the stack renders inside a
+ * `role="button"` card carrying its own click AND key handler. Since DECISION Phase 88.6-21 in
+ * grouplist.js the card keeps only a pointer onClick and the keyboard target is its title block;
+ * this synthetic wrapper is kept on purpose, because it isolates the per-descendant
+ * stopPropagation floor, and the real card is pinned by the GL describe. One spy behind both,
+ * because "expanding also navigated to the group" is the same defect whichever handler fired.
  */
 function renderChipStack() {
   const onCardActivate = vi.fn();
@@ -555,9 +562,11 @@ describe('KebabMenu Escape — the STANDALONE composition (four of the six rende
     // class this phase fixes elsewhere (W44, W45).
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
-    // The handler CLAIMED the key: an ancestor listener does not also see it. That claim is what
-    // stops one Escape from both closing this menu and collapsing gameDetail's expanded
-    // description (`gameDetail/page.js:384-402`, which bails only on `event.defaultPrevented`).
+    // The handler CLAIMED the key: an ancestor listener does not also see it. Its preventDefault
+    // half is what stops one Escape from both closing this menu and collapsing gameDetail's
+    // expanded description (`src/app/gameDetail/page.js:519-537`, `if (!descExpanded) return;`),
+    // which bails on `event.defaultPrevented` at `:522`; in production that document listener
+    // still runs, so the bail, not the stopPropagation, is what protects it (useDismissal.ts).
     expect(ancestorKeyDown).not.toHaveBeenCalled();
   });
 
@@ -578,13 +587,13 @@ describe('KebabMenu Escape — the STANDALONE composition (four of the six rende
 });
 
 describe('KebabMenu Escape INSIDE the shipped Modal — the two ManageMembers sites, MEASURED', () => {
-  /* 2 of the 6 render sites are the `ManageMembers` menus inside a dialog (`:571`, `:595` under
-     the `Modal` at `:378`), and that is the destructive row-action path D-40 makes the sole phone
-     entry point. The standalone arm above cannot see this composition, so it is measured here
+  /* 2 of the 6 render sites are the `ManageMembers` menus inside a dialog (`:650` and `:698`,
+     each `<KebabMenu`, under the `Modal` at `:449`, `<Modal open={modal}`), and that is the
+     destructive row-action path D-40 makes the sole phone entry point. The standalone arm above cannot see this composition, so it is measured here
      rather than assumed.
 
      MEASURED 2026-09-15, and it CORRECTS the plan text and the first draft of the code marker:
-     Radix's capture-phase document Escape (`Modal.tsx:149-150` ->
+     Radix's capture-phase document Escape (`Modal.tsx:227-228`, `<Dialog open={open}` ->
      `@radix-ui/react-use-escape-keydown`) does run FIRST and dismisses the dialog — but it does
      NOT stop propagation, so the event still reaches this component's container handler in the
      bubble phase and that handler DOES run. What is true is the OUTCOME the user gets: the whole
@@ -684,7 +693,8 @@ describe('KebabMenu focusout — the keyboard half beside the shipped mousedown 
   it('KM-8 (iii). and an ARMED twoTap item is still armed after that null focusout', () => {
     // The case the null rule exists for: a pointer press over the list's own non-focusable
     // chrome, or over a disabled item, produces a null relatedTarget. Closing on it would
-    // silently disarm a live two-tap gate (`ManageMembers.js:620`, `OpenPollsList.js:282`).
+    // silently disarm a live two-tap gate (`ManageMembers.js:723` and `OpenPollsList.js:288`,
+    // each `twoTap: true`).
     render(<KebabMenu ariaLabel={KEBAB_LABEL} items={TWO_TAP_ITEMS()} />);
     const { list } = openKebab();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
@@ -751,7 +761,8 @@ describe('KebabMenu aria-pressed — present only while armed (legal only once t
           // a twoTap item, unarmed
           { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
           // a NON-toggle action: `aria-pressed="false"` here would announce a plain action as an
-          // unpressed toggle, which is the inverse of the house idiom (`gameDetail/page.js:1274`).
+          // unpressed toggle, which is the inverse of the house idiom (`gameDetail/page.js:1430`,
+          // `twoTap: false`).
           { label: 'Delete', danger: true, twoTap: false, onClick: vi.fn() },
         ]}
       />,
@@ -791,8 +802,8 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
   });
 
   it('KM-13. the PROP-TIME gate: an instance that can never announce carries no region', () => {
-    // The shipped example is the desktop owner-only transfer kebab (`ManageMembers.js:571`),
-    // whose single item has no twoTap (`:573-583`).
+    // The shipped example is the desktop owner-only transfer kebab (`ManageMembers.js:650`,
+    // `<KebabMenu`), whose single item has no twoTap (`:654`, `label: 'Transfer ownership to this member'`).
     //
     // LABELLED, because it matters when reading the red-then-green record: this arm is one of the
     // three in this section that ALSO pass against the pre-88.6-16 component — trivially, because
@@ -809,7 +820,7 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
 
   it('KM-14. the per-surface region COUNT is the gate\'s measured yield, asserted not summarised', () => {
     // Shaped like the surface the gate was argued from: N member-row kebabs that each carry a
-    // twoTap item (`ManageMembers.js:595`) plus one that carries none (`:571`). The predicate is
+    // twoTap item (`ManageMembers.js:698`, `<KebabMenu`) plus one that carries none (`:650`). The predicate is
     // TRUE for every row, so the region IS per row — that is the accepted design, and it is
     // exactly what makes the item-label announcement below sound.
     const N = 3;
@@ -1116,6 +1127,57 @@ describe('KebabMenu edge coverage — SPEC E6 empty / zero-one-many (R5)', () =>
   });
 });
 
+// Phase 88.6.1-05 (D-18): the POINTER half of the kebab's dismissal now runs through the shared
+// hook in src/components/ui/useDismissal.ts. Before this describe, no test fired a mousedown at the
+// kebab at all (research ST-4), so the outside close was pinned by nothing.
+describe('KebabMenu outside pointer — the pointer half, extracted to useDismissal (88.6.1-05)', () => {
+  it('KM-23. an outside mousedown closes the open menu; a mousedown on an item or on the trigger does not', () => {
+    render(
+      <>
+        <KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />
+        <button type="button">outside</button>
+      </>,
+    );
+    const { trigger, list } = openKebab();
+
+    // The two INSIDE presses: the list is still there after each.
+    fireEvent.mouseDown(within(list).getAllByRole('button')[0]);
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    fireEvent.mouseDown(trigger);
+    expect(screen.getByRole('list')).toBeInTheDocument();
+
+    // The OUTSIDE press closes it.
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'outside' }));
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  it('KM-24. an outside mousedown while ARMED emits the revert copy (the third close path)', () => {
+    // The close-resets marker in KebabMenu.js names outside-mousedown / Escape / focusout while
+    // armed as the paths that DO emit the revert. KM-17 pins Escape; this pins the pointer path.
+    // It reds if the dismissal callback ever also resets the armed index, because the close-resets
+    // effect would then see no armed item and emit nothing.
+    render(
+      <>
+        <KebabMenu
+          ariaLabel={KEBAB_LABEL}
+          items={[
+            { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+          ]}
+        />
+        <button type="button">outside</button>
+      </>,
+    );
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove');
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'outside' }));
+
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Confirmation cancelled.');
+  });
+});
+
 /* ============================================================================================
  * Phase 88.6-21 (W42/W62b) — the group CARD itself, not just its descendants.
  *
@@ -1157,13 +1219,13 @@ const GL_GROUP = {
   Events: [],
 };
 
-async function renderGroupCard(overrides?: Record<string, unknown>) {
-  gl.getUserGroups.mockResolvedValue([{ ...GL_GROUP, ...overrides }]);
+async function renderGroupCards(groups: Array<Record<string, unknown>>) {
+  gl.getUserGroups.mockResolvedValue(groups);
   const onGroupSelect = vi.fn();
   const utils = render(
     <FriendshipContext.Provider value={friendshipValue as never}>
       {/* GroupList is untyped JS; a typed-any bag keeps JSX from demanding unrelated props —
-          the same shape `grouplist.identity.test.tsx:87` uses.
+          the same shape `grouplist.identity.test.tsx:87` (the listProps bag) uses.
 
           [Rule 3 fix, plan 88.6-40] The `eslint-disable-next-line
           @typescript-eslint/no-explicit-any` line that used to sit here named a rule this
@@ -1171,20 +1233,29 @@ async function renderGroupCard(overrides?: Record<string, unknown>) {
           `@typescript-eslint` plugin, so ESLint raised `Definition for rule … was not found`
           as an ERROR and `npm run lint` — and therefore `npm run build` — exited 1 TREE-WIDE.
           The comment suppressed nothing, because the rule it named was never running. Deleted
-          rather than replaced: `grouplist.identity.test.tsx:87` writes the identical `any` cast
+          rather than replaced: `grouplist.identity.test.tsx:87` (the listProps bag) writes the identical `any` cast
           with no disable comment at all, which is the house shape here. */}
       <GroupList {...({ user: { sub: 'auth0|self' }, onGroupSelect } as any)} />
     </FriendshipContext.Provider>,
   );
   // Settle on a BRANCH-SPECIFIC element, never on chrome: the "Your Groups" header renders above
   // every branch including the loading one (88.6-15's recipe, trap 1).
-  await screen.findByRole('button', { name: 'Invite member to group' });
+  // 88.6.1-54 (D-19): a PREFIX, because the name is per card now — GL-9 and NM-3/NM-4 render
+  // other names, and the empty-name fallback starts with the same words.
+  await screen.findAllByRole('button', { name: /^Invite member to / });
   return { ...utils, onGroupSelect };
 }
 
+async function renderGroupCard(overrides?: Record<string, unknown>) {
+  return renderGroupCards([{ ...GL_GROUP, ...overrides }]);
+}
+
 const glTitleBlock = () => screen.getByRole('button', { name: GL_GROUP.name });
-const glInvite = () => screen.getByRole('button', { name: 'Invite member to group' });
-const glCog = () => screen.getByRole('button', { name: 'Customize group' });
+// 88.6.1-54 (D-19, copy rows H1/H2): exact per-card names, so GL-1..GL-8 also pin the new names.
+// Both are role + COMPUTED-name queries: the gear is found through its title because its glyph
+// is aria-hidden (D-52).
+const glInvite = () => screen.getByRole('button', { name: `Invite member to ${GL_GROUP.name}` });
+const glCog = () => screen.getByRole('button', { name: `Customize ${GL_GROUP.name}` });
 const glChipStack = () =>
   screen.getByRole('button', { name: 'Members: ada. Show all members.' });
 
@@ -1292,10 +1363,144 @@ describe('grouplist row — the card and every control inside it are independent
     await renderGroupCard({ id: 'g2', name: quoted });
 
     // By ROLE plus NAME, never by reading an attribute — the name is COMPUTED from the subtree
-    // and there is deliberately no `aria-label` to read (EventDayModal.js:343-347).
+    // and there is deliberately no `aria-label` to read (EventDayModal.js, the note beginning
+    // "NO aria-label, deliberately (88.3 code-adversarial-review run 4").
     const block = screen.getByRole('button', { name: quoted });
     expect(block).not.toHaveAttribute('aria-label');
     expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(quoted);
+  });
+});
+
+// 88.6.1-54 (D-19, D-52, AC-20, SPEC edge R6): every card's gear and Invite are named after
+// THAT card's group (copy rows H1 "Customize {group}" and H2 "Invite member to {group}"), with
+// today's words as the fallback for a nameless group (D-33 row 13). The gear's ONLY name source
+// is its title (D-52), so its glyph must be aria-hidden. No case here asserts the gear's
+// accessible DESCRIPTION: both dom-accessibility-api copies report the title again as the
+// description even when it was the name, so that read cannot tell right from wrong. How a
+// screen reader speaks it is plan 88.6.1-57's VoiceOver step.
+function nmGroup(id: string, name?: string): Record<string, unknown> {
+  // An owner self-member, so canEdit is true and BOTH buttons render on every card. A
+  // missing name argument leaves the key out entirely (NM-3's no-name card).
+  const group: Record<string, unknown> = {
+    id,
+    Users: [{ id: GL_SELF, username: 'me', UserGroup: { role: 'owner' } }],
+    Events: [],
+  };
+  if (name !== undefined) group.name = name;
+  return group;
+}
+
+const escapeForRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+describe('grouplist card button names carry the group name (88.6.1-54 — D-19, AC-20, edge R6)', () => {
+  beforeEach(() => {
+    gl.push.mockClear();
+    gl.getUserGroups.mockReset();
+  });
+
+  it('NM-1. three cards expose three distinct gear names and three distinct Invite names, each inside its own card (AC-20, edge R6 adjacency)', async () => {
+    const names = ['Alpha Crew', 'Beta Crew', 'Gamma Crew'];
+    await renderGroupCards([nmGroup('nm-a', names[0]), nmGroup('nm-b', names[1]), nmGroup('nm-c', names[2])]);
+
+    for (const name of names) {
+      // The title block (DECISION Phase 88.6-47's test id is on the card root above it).
+      const card = screen.getByRole('button', { name }).closest('[data-testid="group-card"]');
+      expect(card, `the "${name}" title block sits inside a group card`).not.toBeNull();
+      const scoped = within(card as HTMLElement);
+      expect(scoped.getByRole('button', { name: 'Customize ' + name })).toBeInTheDocument();
+      expect(scoped.getByRole('button', { name: 'Invite member to ' + name })).toBeInTheDocument();
+    }
+
+    const gears = screen.getAllByRole('button', { name: /^Customize / });
+    expect(gears).toHaveLength(3);
+    expect(new Set(gears.map((g) => g.getAttribute('title'))).size).toBe(3);
+
+    const invites = screen.getAllByRole('button', { name: /^Invite member to / });
+    expect(invites).toHaveLength(3);
+    expect(new Set(invites.map((b) => b.getAttribute('aria-label'))).size).toBe(3);
+    for (const invite of invites) {
+      // WCAG 2.5.3 (label in name): the computed name begins with the visible text.
+      const visible = (invite.textContent ?? '').trim();
+      expect(visible.length).toBeGreaterThan(0);
+      expect(invite).toHaveAccessibleName(new RegExp('^' + escapeForRegExp(visible), 'i'));
+    }
+  });
+
+  it('NM-2. the gear is named by its title ALONE: no aria-label, all of its text aria-hidden; Invite has no title (D-52)', async () => {
+    await renderGroupCard();
+
+    const gear = glCog();
+    expect(gear).toHaveAttribute('title', 'Customize Alpha Crew');
+    expect(gear).not.toHaveAttribute('aria-label');
+    const hidden = gear.querySelector('[aria-hidden="true"]');
+    expect(hidden, 'the gear glyph sits in an aria-hidden wrapper').not.toBeNull();
+    // ALL of the button's text is hidden, so the content contributes nothing to the name and
+    // the title is what names it (accname 1.2 steps 2F then 2I).
+    expect(hidden?.textContent).toBe(gear.textContent);
+
+    // One name source on Invite too: its aria-label, and no title beside it.
+    expect(glInvite()).not.toHaveAttribute('title');
+  });
+
+  it('NM-3. an empty, blank or missing name falls back to today\'s words; a padded name is trimmed, not replaced (edge R6 empty, backstop)', async () => {
+    await renderGroupCards([
+      nmGroup('nm-e1', ''),
+      nmGroup('nm-e2', '   '),
+      nmGroup('nm-e3'),
+      nmGroup('nm-e4', '  Padded Crew  '),
+    ]);
+
+    // getAllByTestId follows render order, which is the order the API returned.
+    const cards = screen.getAllByTestId('group-card');
+    expect(cards).toHaveLength(4);
+
+    for (const card of cards.slice(0, 3)) {
+      const scoped = within(card);
+      // By role and computed name AND by the attribute that carries it (D-52).
+      expect(scoped.getByRole('button', { name: 'Customize group' })).toHaveAttribute('title', 'Customize group');
+      expect(scoped.getByRole('button', { name: 'Invite member to group' })).toHaveAttribute(
+        'aria-label',
+        'Invite member to group',
+      );
+    }
+
+    // The positive control: the fallback is not what every input gets.
+    const padded = within(cards[3]);
+    expect(padded.getByRole('button', { name: 'Customize Padded Crew' })).toHaveAttribute(
+      'title',
+      'Customize Padded Crew',
+    );
+    expect(padded.getByRole('button', { name: 'Invite member to Padded Crew' })).toHaveAttribute(
+      'aria-label',
+      'Invite member to Padded Crew',
+    );
+  });
+
+  it('NM-4. a name with quotes, an ampersand, angle brackets, an emoji and 100+ characters reaches both labels byte-equal and untruncated (edge R6 encoding, backstop)', async () => {
+    const LONG = 'Bob\'s "Board" & <Crew> 🎲 ' + 'x'.repeat(100);
+    expect(LONG.length).toBeGreaterThan(100);
+    await renderGroupCards([nmGroup('nm-long', LONG)]);
+
+    const card = screen.getByRole('button', { name: LONG }).closest('[data-testid="group-card"]');
+    expect(card, 'the long-named title block sits inside a group card').not.toBeNull();
+    const scoped = within(card as HTMLElement);
+
+    const gear = scoped.getByRole('button', { name: 'Customize ' + LONG });
+    const gearTitle = gear.getAttribute('title');
+    expect(gearTitle).toBe('Customize ' + LONG);
+    expect(gearTitle?.length).toBe('Customize '.length + LONG.length);
+
+    const invite = scoped.getByRole('button', { name: 'Invite member to ' + LONG });
+    const inviteLabel = invite.getAttribute('aria-label');
+    expect(inviteLabel).toBe('Invite member to ' + LONG);
+    expect(inviteLabel?.length).toBe('Invite member to '.length + LONG.length);
+
+    // No hand-made entity escaping: React writes the attribute as text.
+    for (const value of [gearTitle ?? '', inviteLabel ?? '']) {
+      for (const entity of ['&quot;', '&amp;', '&lt;', '&#']) {
+        expect(value, `the label carries a hand-escaped ${entity}`).not.toContain(entity);
+      }
+    }
   });
 });
 

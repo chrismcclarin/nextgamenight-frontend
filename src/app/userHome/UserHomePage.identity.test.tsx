@@ -18,7 +18,8 @@
 // This is the same class as grouplist's WR-03 stuck-spinner bug (87.5), one
 // state over: that one hung on terminal failure, this one LIES while pending.
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, within, act, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -69,6 +70,20 @@ vi.mock('@/lib/api', async (importOriginal) => {
       ...actual.eventsAPI,
       // Never settles: the in-flight BFF attempt against a dead backend.
       getUserEvents: vi.fn(() => new Promise(() => {})),
+    },
+  };
+});
+
+// 88.6.1 code review A-66 / WR-10: record the `refetch` each fetch-error source hands the shared
+// hook, so a test can call the upcoming adapter (`retryUpcoming`) directly. The real hook still runs.
+const fetchErrorSources = vi.hoisted(() => ({ refetches: [] as Array<() => Promise<unknown>> }));
+vi.mock('@/components/ui/useFetchErrorState', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/ui/useFetchErrorState')>();
+  return {
+    ...actual,
+    useFetchErrorState: (source: Parameters<typeof actual.useFetchErrorState>[0]) => {
+      fetchErrorSources.refetches.push(source.refetch as () => Promise<unknown>);
+      return actual.useFetchErrorState(source);
     },
   };
 });
@@ -136,5 +151,71 @@ describe('M2 — Upcoming Events while identity is still resolving', () => {
     renderHome();
 
     expect(await screen.findByText('Nothing on the calendar')).toBeInTheDocument();
+  });
+});
+
+// 88.6.1-63 (AC-29): a failed identity re-read keeps its row (TanStack keeps `data` beside
+// `isError`), and every control works from that row, so it is not an identity failure: the card,
+// the sheet and the count stay. Only a failure with NO row degrades (the M2 case above).
+describe('a held identity row is not an identity failure (88.6.1-63, AC-29)', () => {
+  const KEPT_ROW_EVENT = {
+    id: 'e-kept',
+    group_id: 'g1',
+    game_id: 'game-kept',
+    start_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+    status: 'scheduled',
+    Game: { name: 'Kept Row Game' },
+    Group: { name: 'Alpha' },
+    EventParticipations: [],
+  };
+
+  async function renderHeldRowFailure() {
+    const api = await import('@/lib/api');
+    (api.eventsAPI.getUserEvents as ReturnType<typeof vi.fn>).mockResolvedValue([KEPT_ROW_EVENT]);
+    h.selfUuid = SELF_UUID;
+    h.isError = true;
+    renderHome();
+  }
+
+  it('K1: the card lists its events and the Calendar button carries its count', async () => {
+    await renderHeldRowFailure();
+
+    expect((await screen.findAllByText('Kept Row Game')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Calendar, 1 upcoming game this week' })
+    ).toBeInTheDocument();
+  });
+
+  it('K2: the phone sheet shows its list, not the compact notice', async () => {
+    await renderHeldRowFailure();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: /^calendar\b/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Kept Row Game')).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(/some personal controls are (still )?unavailable/i)
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('A-66 / WR-10 — a Retry of the upcoming list never hangs while identity is unresolved', () => {
+  it('the upcoming adapter resolves (with an unknown outcome) when no run can start for a missing selfUuid', async () => {
+    h.selfUuid = undefined;
+    h.isError = false;
+    fetchErrorSources.refetches.length = 0;
+    renderHome();
+
+    // The upcoming source is the page's LAST useFetchErrorState call in a render (identity first).
+    const retryUpcoming = fetchErrorSources.refetches[fetchErrorSources.refetches.length - 1];
+    expect(typeof retryUpcoming).toBe('function');
+    let settled: unknown = 'pending';
+    await act(async () => {
+      void retryUpcoming().then((value) => {
+        settled = value;
+      });
+    });
+    await waitFor(() => expect(settled).toBeUndefined());
   });
 });

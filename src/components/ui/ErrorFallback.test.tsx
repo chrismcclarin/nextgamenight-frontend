@@ -1,7 +1,10 @@
 // Contract pins for <ErrorFallback> — the ONE error look (Req 3 / D-20), extracted
-// from AppErrorBoundary's shipped JSX so 9 route boundaries reuse it in plan 88-09.
+// from AppErrorBoundary's shipped JSX so the route boundaries reuse it (plan 88-09). It has 13
+// mounts today (11 route error.tsx files, AppErrorBoundary, userProfile's session-error branch;
+// corrected Phase 88.6.1-21), re-countable from periodictabletop/ with
+//   grep -rn '<ErrorFallback' src --include='*.js' --include='*.tsx' | grep -v '\.test\.'
 //
-// The pins are about the contract the 9 adopters depend on:
+// The pins are about the contract the 13 mounts depend on:
 //   1. it announces: role="alert" + aria-live="assertive" on the wrapper
 //   2. "Try again" / "Reload page" call the caller's handlers
 //   3. `loopGuardTripped` hides the retry affordance and swaps the copy — the
@@ -11,7 +14,7 @@
 //   5. the borders use `border-line-strong`, which actually resolves — the
 //      extracted-from source used `border-strong`, which is not a token
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -166,12 +169,39 @@ describe('ErrorFallback', () => {
   });
 
   it('keeps the focus-visible ring on both affordances', () => {
+    // REWRITTEN IN PLACE, Phase 88.6.1-21 (Req 7 ring): both affordances carry the house ring,
+    // byte-identical to Button.tsx:113 / cascadeOrder.test.ts:68-69 (HOUSE_RING_FULL). The
+    // bridge-token spelling it replaced painted the same var(--ring) (globals.css:445 and :505),
+    // so the convergence moves zero pixels; the old ring class must be gone.
+    const HOUSE_RING =
+      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
     render(<ErrorFallback onRetry={vi.fn()} onReload={vi.fn()} />);
     for (const name of ['Try again', 'Reload page']) {
       const btn = screen.getByRole('button', { name });
-      expect(btn.className).toMatch(/focus-visible:ring-2/);
-      expect(btn.className).toMatch(/focus-visible:outline-hidden/);
+      expect(btn.className, name).toContain(HOUSE_RING);
+      expect(btn.className.split(/\s+/), `${name}: no bridge-token ring`).not.toContain('focus-visible:ring-ring');
     }
+  });
+
+  // Phase 88.6.1-21 (Req 5): resetting the boundary removes the pressed `Try again`; focus must
+  // land on the re-rendered page's heading, never on <body>.
+  it('E1: a successful Try again lands focus on the page heading, never <body>', async () => {
+    const user = userEvent.setup();
+    function BoundaryHost() {
+      const [failed, setFailed] = React.useState(true);
+      return (
+        <main>
+          <h1>Group page</h1>
+          {failed ? <ErrorFallback onRetry={() => setFailed(false)} /> : <p>content</p>}
+        </main>
+      );
+    }
+    render(<BoundaryHost />);
+    const heading = screen.getByRole('heading', { level: 1, name: 'Group page' });
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByText('content')).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
   it('passes an axe audit with no violations', async () => {

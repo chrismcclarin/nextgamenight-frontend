@@ -35,14 +35,16 @@
  * forwarded link leaks.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
-import { groupsAPI, ApiError, type RestorePreview } from '@/lib/api';
+import { groupsAPI, ApiError, isCsrfRejection, type RestorePreview } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 import { formatLongDate } from '@/lib/datetime';
 
 type Status =
@@ -90,6 +92,29 @@ const SESSION_EXPIRED =
  */
 const PREVIEW_UNAVAILABLE =
   "We couldn't check this link. It may be a connection problem — please try again.";
+
+/** D-30 copy row L2: the loading line, which names what is loading (was a bare "Loading..."). */
+const CHECKING_LINK = 'Checking your restore link...';
+
+/**
+ * The slot-0 status region's test handle (plan 88.6.1-36). NOT EXPORTED, for the reason the RSVP
+ * page records (`rsvp/[token]/page.js`, anchor `NOT EXPORTED, deliberately`): Next's route types
+ * constrain a page module's named exports. The test re-declares the literal.
+ */
+const PAGE_STATUS_TESTID = 'restore-page-status';
+
+// Strings this page already rendered before plan 88.6.1-36, hoisted so each branch's markup and the
+// screen-reader announcement read ONE source and cannot drift apart (no new words, D-31).
+const PREVIEW_LEAD_IN = 'Bring this group back';
+const PREVIEW_DEADLINE_LEAD = 'It was deleted, but you can restore it and take over as owner until';
+const RESTORED_DETAIL = "You're the owner now. Taking you to the group...";
+const ALREADY_RESTORED_HEADLINE = 'Someone else already brought this group back';
+const ERROR_HEADLINE = 'Unable to restore this group';
+
+/** Join the non-empty parts of an announcement with one space (never a trailing space). */
+function joinParts(...parts: Array<string | null | undefined>): string {
+  return parts.filter(Boolean).join(' ');
+}
 
 /**
  * Read the live group's id off a raw error body.
@@ -165,6 +190,34 @@ function RestoreGroupPage() {
   // clear. This flag lets scheduleRedirect refuse to schedule at all after
   // unmount, closing the gap L-3's clearTimeout alone cannot cover.
   const unmountedRef = useRef(false);
+  // Req 5 (plan 88.6.1-36): the settled branch's <h1> (only one renders at a time), the in-flight
+  // line that replaces a pressed button (the accepting line or the loading line, one at a time),
+  // and the one-shot arm a take-over or Try again press sets. See the DECISION Phase 88.6.1-36
+  // (R8 / Req 5 / R3-A29) marker at the fragment.
+  const settledHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const inFlightLineRef = useRef<HTMLParagraphElement | null>(null);
+  const outcomeFocusArmedRef = useRef(false);
+
+  // R8 idempotency (A-61, 88.6.1 code review): while this flag is on the slot-0 region reads ''.
+  // A Try again (preview or acceptance) turns it on; a REGION_EMPTY_DWELL_MS timer turns it off.
+  // STATE, not a ref, because the timer's end is what refills the region when an instant failure
+  // committed first. It gates ONLY the region's text — never the request, the branch or focus.
+  // See the DWELL paragraph of the DECISION Phase 88.6.1-36 marker at the fragment.
+  const [regionDwell, setRegionDwell] = useState(false);
+  const regionDwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+  }, []);
+
+  /** Start (or restart, on a repeat press) the region's empty hold. */
+  function startRegionDwell() {
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+    setRegionDwell(true);
+    regionDwellTimerRef.current = setTimeout(() => {
+      regionDwellTimerRef.current = null;
+      setRegionDwell(false);
+    }, REGION_EMPTY_DWELL_MS);
+  }
 
   useEffect(() => {
     // Reset on mount: strict-mode's dev mount-unmount-remount cycle would
@@ -232,6 +285,29 @@ function RestoreGroupPage() {
   // comment-inflates-the-grep trap this phase hit five times.)
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    // DECISION Phase 88.6.1-36 (R112): CHOSEN — the per-run flag, COPIED inline from the house
+    // idiom (`invite/game/[token]/page.js`, its preview effect's per-run flag), in keeping with
+    // `DECISION Phase 88.2 D-02` at the top of this file (the guards on this page are copied,
+    // not extracted into a shared hook). It stops a superseded run's late answer from
+    // overwriting the live run (a StrictMode double-run, or a token change): before it, a late
+    // 404 from the superseded run replaced a valid preview with "no longer valid".
+    // THE RSVP PAGE DIFFERS ON PURPOSE — do not "harmonize" the two: its effect is a latched
+    // single-shot MUTATION (a submit latch plus an unmount-scoped ref, plan 88.6.1-36 #40),
+    // while this one is a GET that a Try again must be able to re-run.
+    // REJECTED (a): gating the writes on `unmountedRef` — it is page-lifetime, so a superseded
+    // run on a live page would still write.
+    // REJECTED (b): the same flag on Effect 2 — its one async continuation, `routeToLiveGroup`,
+    // is issued once per page load behind `redirectRef`, so cancelling it when Effect 2 re-runs
+    // on a new `user` identity would leave the hand-off on "One moment..." for good (the re-run
+    // returns at the latch); its late writes are already safe (`scheduleRedirect` refuses after
+    // unmount, R-1).
+    // REJECTED (c): an abort signal — `publicFetch` takes none, and ignoring the late answer is
+    // all the page needs.
+    // REJECTED (d): the RSVP page's latch-plus-unmount-ref shape — this effect re-runs on
+    // `[token, attempt]` and `retryPreview` bumps `attempt`, so a latch would refuse the very
+    // retry M-6 offers.
+    let cancelled = false;
+
     if (!token) {
       setStatus('error');
       setError(LINK_DEAD);
@@ -241,6 +317,7 @@ function RestoreGroupPage() {
     async function fetchPreview() {
       try {
         const data = await groupsAPI.getRestorePreview(token);
+        if (cancelled) return;
 
         // F-190 guard, copied verbatim in intent from the invite page: a 2xx
         // with a falsy body leaves the preview state falsy forever, the accept
@@ -264,6 +341,7 @@ function RestoreGroupPage() {
           setStatus('already-restored');
         }
       } catch (err) {
+        if (cancelled) return;
         // M-6: only an actual REJECTION gets the terminal LINK_DEAD copy. The
         // backend returns one byte-identical 404 for expired / invalid / purged
         // so the endpoint cannot be used to probe which tokens ever existed;
@@ -282,10 +360,15 @@ function RestoreGroupPage() {
     }
 
     fetchPreview();
+    return () => {
+      cancelled = true;
+    };
   }, [token, attempt]);
 
   /** M-6: re-run the preview fetch after a retryable failure. */
   function retryPreview() {
+    outcomeFocusArmedRef.current = true;
+    startRegionDwell();
     setRecovery(null);
     setError(null);
     setStatus('loading');
@@ -294,6 +377,7 @@ function RestoreGroupPage() {
 
   /** R-3: re-fire the acceptance after a retryable failure (unlatched below). */
   function retryAccept() {
+    startRegionDwell();
     setRecovery(null);
     setError(null);
     handleTakeOver();
@@ -303,6 +387,8 @@ function RestoreGroupPage() {
   // Effect 2 -- resolve which surface the visitor gets once auth has settled and
   // a preview exists. Since M-3 this effect never fires the acceptance POST --
   // that lives in handleTakeOver, behind an explicit tap.
+  // It deliberately carries NO per-run flag: see `DECISION Phase 88.6.1-36 (R112)`
+  // at Effect 1, REJECTED (b), before "completing" the pair.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (authLoading || !preview) return;
@@ -347,6 +433,8 @@ function RestoreGroupPage() {
   async function handleTakeOver() {
     if (acceptingRef.current) return;
     acceptingRef.current = true;
+    // Req 5: armed AFTER the latch, so a swallowed double tap arms nothing.
+    outcomeFocusArmedRef.current = true;
 
     setStatus('accepting');
     try {
@@ -391,7 +479,17 @@ function RestoreGroupPage() {
           setRecovery('sign-in');
           return;
         }
-        if (err.status === 403) {
+        // DECISION Phase 88.6.1-36 (D-24): CHOSEN — the proxy's CSRF refusal is not a
+        // membership verdict; it falls through to this page's own retryable failure line below
+        // (GENERIC_FAILURE plus Try again). A retry is safe because the same-origin proxy
+        // refused the unsafe-method request BEFORE forwarding it (`api/[...path]/route.ts`,
+        // anchor `UNSAFE_METHODS`), so no acceptance happened and the one-shot nonce is
+        // untouched. The predicate is plan 88.6.1-07's one structural read of the proxy body;
+        // `DECISION Phase 88.6-23` stands (the proxy body is unchanged).
+        // REJECTED (a): a new sentence for the case (D-31; copy row X2 says no new sentence).
+        // REJECTED (b): matching the proxy's prose. REJECTED (c): dropping the arm — a real
+        // 403 still means the visitor was not a member, and stays terminal and latched.
+        if (err.status === 403 && !isCsrfRejection(err)) {
           setStatus('error');
           setError(NOT_A_MEMBER);
           return;
@@ -410,6 +508,8 @@ function RestoreGroupPage() {
       // copy promised a retry the stuck state machine could never deliver.
       // Unlatch on the retryable failures only (network, 5xx, and the 401
       // above); the 403/409/410 arms stay terminal and latched.
+      // [AMENDED Phase 88.6.1-36 (D-24): a CSRF-flagged 403 is not a refusal and
+      // reaches this arm, retryable.]
       acceptingRef.current = false;
       setStatus('error');
       setError(GENERIC_FAILURE);
@@ -417,225 +517,337 @@ function RestoreGroupPage() {
     }
   }
 
+  // Req 5 (plan 88.6.1-36; D-04, D-05, D-07): the focus edge for a take-over or Try again press.
+  // While the request is in flight the pressed button is gone, so focus goes to the line that
+  // replaced it and the arm STAYS on; on the first settled render the arm is dropped and, only
+  // when focus is lost (that line has just unmounted), the outcome's <h1> takes focus, else the
+  // shared page floor. Nothing moves on first load (never armed) or when the user moved focus.
+  // No floor in flight: the floor would park focus on a connected `main`, focus would then not
+  // read as lost at settle, and the heading move would never fire.
+  useEffect(() => {
+    if (!outcomeFocusArmedRef.current) return;
+    if (authLoading || status === 'loading' || status === 'accepting') {
+      if (isFocusLost()) focusElement(inFlightLineRef.current);
+      return;
+    }
+    outcomeFocusArmedRef.current = false;
+    if (!isFocusLost()) return;
+    if (!focusElement(settledHeadingRef.current)) focusPageFloor();
+  }, [status, authLoading]);
+
   const groupName = preview?.group_name ?? 'this group';
   const deadline =
     preview && preview.status === undefined ? formatLongDate(preview.purge_after) : '';
   const returnTo = `/api/auth/login?returnTo=${encodeURIComponent(`/restore/group/${token}`)}`;
 
-  if (authLoading || status === 'loading') {
-    return (
+  // Render values the branches AND the announcement read (plan 88.6.1-36, one source each).
+  const acceptingLine = `Bringing back ${groupName}...`;
+  const restoredHeadline = `${groupName} is back`;
+  const alreadyRestoredDetail = `Nothing to do -- ${groupName} is up and running again.`;
+  const isLoadingView = authLoading || status === 'loading';
+  const showPreview = status === 'preview' && preview !== null && preview.status === undefined;
+
+  // The slot-0 announcement, MIRRORING the render dispatch below so it cannot describe a branch
+  // other than the one on screen. In flight (loading, accepting) it is '' — the line that replaced
+  // the pressed button takes focus and focus speaks it, so the region saying it too would be heard
+  // twice; the '' between two settled outcomes is also what lets an identical outcome re-announce.
+  // The already-restored hand-off line is left out: it changes mid-read (R-7). Every part is a
+  // string this page already renders; a caught error's message is never read.
+  let announcement = '';
+  if (regionDwell) {
+    announcement = '';
+  } else if (isLoadingView || status === 'accepting') {
+    announcement = '';
+  } else if (showPreview && preview) {
+    announcement = joinParts(
+      PREVIEW_LEAD_IN,
+      preview.group_name,
+      deadline ? `${PREVIEW_DEADLINE_LEAD} ${deadline}.` : ''
+    );
+  } else if (status === 'restored') {
+    announcement = joinParts(restoredHeadline, RESTORED_DETAIL);
+  } else if (status === 'already-restored') {
+    announcement = joinParts(ALREADY_RESTORED_HEADLINE, alreadyRestoredDetail);
+  } else if (status === 'error') {
+    announcement = joinParts(ERROR_HEADLINE, error);
+  }
+
+  let body: ReactNode;
+
+  if (isLoadingView) {
+    // DECISION Phase 88.6.1-36 (L2): the spinner's label and the visible line come from ONE
+    // constant, so the two cannot drift. The accepting spinner is not named by it (its own
+    // R3-A29 verdict, plan 88.6.1-36).
+    body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-6 sm:p-8 max-w-md w-full mx-4 text-center">
           <div
             role="status"
-            aria-label="Loading"
+            aria-label={CHECKING_LINK}
             className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4"
           />
-          <p className="text-content-secondary">Loading...</p>
+          <p ref={inFlightLineRef} className="text-content-secondary">{CHECKING_LINK}</p>
         </div>
+      </div>
+    );
+  } else {
+    body = (
+      <div className="min-h-screen bg-surface-page flex items-center justify-center">
+        {/* Phone-forward: one column, the shared Card at max-w-md with a 375px-safe
+            gutter, every control full-width and at least 44px tall. */}
+        <Card className="p-6 sm:p-8 max-w-md w-full mx-4 shadow-theme-md">
+
+          {/* Public preview (logged out). D-02: the group name and the deadline,
+              and nothing else. */}
+          {showPreview && preview && (
+            <div className="text-center">
+              <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle-strong rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-content-accent-strong" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+              </div>
+
+              <p className="text-sm text-content-muted mb-1">{PREVIEW_LEAD_IN}</p>
+              {/* DECISION Phase 88.6-23: the call-site `wrap-break-word` is DELETED rather than
+                  carried onto the primitive, at this heading and at the restored one below.
+                  `Heading`'s cva base already carries `wrap-anywhere` (`Heading.tsx:60`), and
+                  the two are the same tailwind-merge conflict group — so keeping the call-site
+                  utility would make it WIN and silently DOWNGRADE this group name from
+                  `overflow-wrap: anywhere` to `break-word`. The primitive's own docblock records
+                  why that is worse: `break-word` does not count in min-content, so inside a flex
+                  parent without `min-w-0` it cannot stop a long unbroken group name inducing
+                  horizontal scroll at 375px. Re-adding it here is a decision, not a cleanup. */}
+              <Heading level={1} size="display" className="text-content-primary mb-3" ref={settledHeadingRef}>
+                {preview.group_name}
+              </Heading>
+
+              {deadline && (
+                <p className="text-content-secondary mb-6">
+                  {PREVIEW_DEADLINE_LEAD}{' '}
+                  <strong className="text-content-primary">{deadline}</strong>.
+                </p>
+              )}
+
+              {user ? (
+                // M-3 (owner, 2026-07-27): explicit consent. The tap, not the
+                // page load, is what transfers ownership.
+                <Button
+                  variant="primary"
+                  size="default"
+                  onClick={handleTakeOver}
+                  className="w-full text-center"
+                >
+                  Take over this group
+                </Button>
+              ) : (
+                <>
+                  {/* §3.2 `asChild`: stays an `<a>` — `returnTo` is the Auth0 handoff URL built
+                      at the top of the render and must survive byte-identical. */}
+                  <Button asChild variant="primary" size="default" className="w-full text-center">
+                    <a href={returnTo}>
+                      Sign in to bring it back
+                    </a>
+                  </Button>
+
+                  <p className="text-xs text-content-muted mt-4">
+                    You&apos;ll be brought straight back here after signing in.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Accepting */}
+          {status === 'accepting' && (
+            <div className="text-center">
+              <div
+                aria-hidden="true"
+                className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4"
+              />
+              <p ref={inFlightLineRef} className="text-content-primary">{acceptingLine}</p>
+            </div>
+          )}
+
+          {/* Restored */}
+          {status === 'restored' && (
+            <div className="text-center">
+              <div className="mx-auto mb-4 w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-content-status-success" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              {/* h1 @ 20 STAYS at 20 (D-04 row 2): a mutually-exclusive status branch, not the
+                  page title. `wrap-break-word` deleted for the reason marked at the title h1. */}
+              <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
+                {restoredHeadline}
+              </Heading>
+              <p className="text-content-secondary">
+                {RESTORED_DETAIL}
+              </p>
+            </div>
+          )}
+
+          {/* Already restored -- reached from the preview (the common case) and
+              from a 409 (the concurrent loser). A success, not a failure. */}
+          {status === 'already-restored' && (
+            <div className="text-center">
+              <div className="mx-auto mb-4 w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-content-status-success" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
+                {ALREADY_RESTORED_HEADLINE}
+              </Heading>
+              <p className="text-content-secondary mb-6">
+                {alreadyRestoredDetail}
+              </p>
+
+              {user ? (
+                handoff === 'link-only' ? (
+                  // L-3: no destination id ever arrived, so no redirect was
+                  // scheduled -- offer the way forward instead of implying one.
+                  <Button asChild variant="primary" size="default" className="w-full text-center">
+                    <Link href="/">
+                      Open your groups
+                    </Link>
+                  </Button>
+                ) : (
+                  // R-7: while the membership probe is still in flight (handoff
+                  // null), promise nothing — the copy otherwise says "Taking you
+                  // to the group" and then flips mid-read for a non-member.
+                  <p className="text-content-secondary">
+                    {handoff === null
+                      ? 'One moment...'
+                      : handoff === 'home'
+                        ? 'Taking you to your groups...'
+                        : 'Taking you to the group...'}
+                  </p>
+                )
+              ) : (
+                <>
+                  <Button asChild variant="primary" size="default" className="w-full text-center">
+                    <a href={returnTo}>
+                      Sign in to open it
+                    </a>
+                  </Button>
+                  <p className="text-xs text-content-muted mt-4">
+                    You&apos;ll be brought straight back here after signing in.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Terminal error */}
+          {status === 'error' && (
+            <div className="text-center">
+              <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
+                {ERROR_HEADLINE}
+              </Heading>
+              <p className="text-content-secondary mb-6">{error}</p>
+              {(recovery === 'preview-retry' || recovery === 'accept-retry') && (
+                // M-6 / R-3: a retryable failure gets a way back, not a dead end.
+                <Button
+                  variant="primary"
+                  size="default"
+                  onClick={recovery === 'preview-retry' ? retryPreview : retryAccept}
+                  className="w-full text-center mb-3"
+                >
+                  Try again
+                </Button>
+              )}
+              {recovery === 'sign-in' && (
+                // R-4: the expired-session 401 — the remedy is the login
+                // round-trip, which lands right back on this page.
+                <Button asChild variant="primary" size="default" className="w-full text-center mb-3">
+                  <a href={returnTo}>
+                    Sign in to try again
+                  </a>
+                </Button>
+              )}
+              {/* The one variant that is COMPUTED: the template literal
+                  `` `btn ${recovery ? 'btn-secondary' : 'btn-primary'}` `` becomes the
+                  `variant` prop. Same two outcomes, expressed once. */}
+              <Button
+                asChild
+                variant={recovery ? 'secondary' : 'primary'}
+                size="default"
+                className="w-full text-center"
+              >
+                <Link href="/">
+                  Go Home
+                </Link>
+              </Button>
+            </div>
+          )}
+
+        </Card>
       </div>
     );
   }
 
+  /* DECISION Phase 88.6.1-36 (R8 / Req 5 / R3-A29): ONE always-mounted `StatusRegion` at FRAGMENT
+     SLOT 0, rendered by the page itself and never from inside a branch — the shape ported from
+     `DECISION Phase 88.6-24` on the RSVP magic-link page. It is the SAME DOM node across every
+     loading / preview / accepting / outcome flip, because React reconciles same-type children by
+     index, so each outcome is a CHANGE to a live region, which is what a screen reader announces.
+     REJECTED (1): a region inside each branch — mounted together with its text, a polite region
+     is not reliably announced (D-42 keeps that premise for polite regions).
+     REJECTED (2): a shared wrapper box — the loading root and the card root differ, and a
+     fragment adds no box at all.
+     REJECTED (3): a route layout hosting the region — it cannot read this page's state.
+     VISIBILITY: always `sr-only`, because it repeats text already on screen beside it; D-22's
+     opt-in `srOnlyWhenEmpty` prop is deliberately not adopted (ST-2 group A).
+
+     FOCUS — CHOSEN: focus never sits on <body> after a take-over or a Try again (SPEC Req 5).
+     While the request is in flight, the line that replaced the pressed button takes focus; the
+     settled <h1> takes focus ONCE after it; each only when focus is lost (the effect above
+     `groupName`). Exactly ONE channel speaks each in-flight line: focus. The region is '' in
+     flight, or VoiceOver would say the line twice.
+     REJECTED (a): keeping the pressed button mounted with `aria-disabled` — rejected on the
+     page's branch structure, not on words: the take-over button lives in the preview branch and
+     Try again in the error branch, and the in-flight state replaces the whole branch (the
+     accepting branch; the loading view), so keeping the button would mean rebuilding both
+     branches around it, and every outcome replaces the branch again, so the heading move is
+     needed in every case.
+     REJECTED (b): plan 88.6.1-04's recovery hook — it acts on the first focus-losing commit, the
+     in-flight one, before the outcome heading exists.
+     REJECTED (c): focusing on first load — nothing the user operated was removed.
+
+     THE DWELL — AMENDED 2026-10-19 (88.6.1 code review A-61): after a Try again (preview or
+     acceptance) the region stays '' until the outcome has committed AND `REGION_EMPTY_DWELL_MS`
+     has passed — ported from `invite/game/[token]/page.js` (`DECISION Phase 88.6.1-19`, THE REGION
+     DWELL), the one constant imported from `StatusRegion`, not repeated. Source: AT-4,
+     `research/APPENDIX-AT.md` (`emptyRegionSettleDelay`, WebKit re-announces identical text only
+     after the region has stayed empty that long). REJECTED: relying on the round trip for the gap
+     — an offline failure rejects in milliseconds (`publicFetch`'s TypeError arm in `api.ts`), so
+     the same failure text came back in the same tick and VoiceOver stayed silent. The first
+     take-over press is NOT held: its outcome text always differs from the preview it replaces.
+
+     R3-A29 verdicts for this file's two hand-rolled status spinners. The LOADING spinner is KEPT
+     with its status role and the L2 label: on first load it is present from the first paint and
+     the slot-0 region is empty, so the two never speak at once. After a preview Try again it
+     REMOUNTS after the tap with its label already set, which D-42 says a polite region does not
+     reliably announce — what speaks there is the `CHECKING_LINK` line, focused in flight. The
+     ACCEPTING spinner is CONVERTED: it mounts only after a tap, so its polite region was not
+     reliably announced, and its "Loading" named nothing; it is now `aria-hidden`, and the
+     accepting line beside it speaks by taking focus. Changing either verdict, or moving the
+     region into a branch, is a decision, not a cleanup. */
   return (
-    <div className="min-h-screen bg-surface-page flex items-center justify-center">
-      {/* Phone-forward: one column, the shared Card at max-w-md with a 375px-safe
-          gutter, every control full-width and at least 44px tall. */}
-      <Card className="p-6 sm:p-8 max-w-md w-full mx-4 shadow-theme-md">
-
-        {/* Public preview (logged out). D-02: the group name and the deadline,
-            and nothing else. */}
-        {status === 'preview' && preview && preview.status === undefined && (
-          <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle-strong rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-accent-strong" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-            </div>
-
-            <p className="text-sm text-content-muted mb-1">Bring this group back</p>
-            {/* DECISION Phase 88.6-23: the call-site `wrap-break-word` is DELETED rather than
-                carried onto the primitive, at this heading and at the restored one below.
-                `Heading`'s cva base already carries `wrap-anywhere` (`Heading.tsx:60`), and
-                the two are the same tailwind-merge conflict group — so keeping the call-site
-                utility would make it WIN and silently DOWNGRADE this group name from
-                `overflow-wrap: anywhere` to `break-word`. The primitive's own docblock records
-                why that is worse: `break-word` does not count in min-content, so inside a flex
-                parent without `min-w-0` it cannot stop a long unbroken group name inducing
-                horizontal scroll at 375px. Re-adding it here is a decision, not a cleanup. */}
-            <Heading level={1} size="display" className="text-content-primary mb-3">
-              {preview.group_name}
-            </Heading>
-
-            {deadline && (
-              <p className="text-content-secondary mb-6">
-                It was deleted, but you can restore it and take over as owner until{' '}
-                <strong className="text-content-primary">{deadline}</strong>.
-              </p>
-            )}
-
-            {user ? (
-              // M-3 (owner, 2026-07-27): explicit consent. The tap, not the
-              // page load, is what transfers ownership.
-              <Button
-                variant="primary"
-                size="default"
-                onClick={handleTakeOver}
-                className="w-full text-center"
-              >
-                Take over this group
-              </Button>
-            ) : (
-              <>
-                {/* §3.2 `asChild`: stays an `<a>` — `returnTo` is the Auth0 handoff URL built
-                    at the top of the render and must survive byte-identical. */}
-                <Button asChild variant="primary" size="default" className="w-full text-center">
-                  <a href={returnTo}>
-                    Sign in to bring it back
-                  </a>
-                </Button>
-
-                <p className="text-xs text-content-muted mt-4">
-                  You&apos;ll be brought straight back here after signing in.
-                </p>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Accepting */}
-        {status === 'accepting' && (
-          <div className="text-center">
-            <div
-              role="status"
-              aria-label="Loading"
-              className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4"
-            />
-            <p className="text-content-primary">Bringing back {groupName}...</p>
-          </div>
-        )}
-
-        {/* Restored */}
-        {status === 'restored' && (
-          <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            {/* h1 @ 20 STAYS at 20 (D-04 row 2): a mutually-exclusive status branch, not the
-                page title. `wrap-break-word` deleted for the reason marked at the title h1. */}
-            <Heading level={1} size="heading" className="text-content-primary mb-2">
-              {groupName} is back
-            </Heading>
-            <p className="text-content-secondary">
-              You&apos;re the owner now. Taking you to the group...
-            </p>
-          </div>
-        )}
-
-        {/* Already restored -- reached from the preview (the common case) and
-            from a 409 (the concurrent loser). A success, not a failure. */}
-        {status === 'already-restored' && (
-          <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <Heading level={1} size="heading" className="text-content-primary mb-2">
-              Someone else already brought this group back
-            </Heading>
-            <p className="text-content-secondary mb-6">
-              Nothing to do -- {groupName} is up and running again.
-            </p>
-
-            {user ? (
-              handoff === 'link-only' ? (
-                // L-3: no destination id ever arrived, so no redirect was
-                // scheduled -- offer the way forward instead of implying one.
-                <Button asChild variant="primary" size="default" className="w-full text-center">
-                  <Link href="/">
-                    Open your groups
-                  </Link>
-                </Button>
-              ) : (
-                // R-7: while the membership probe is still in flight (handoff
-                // null), promise nothing — the copy otherwise says "Taking you
-                // to the group" and then flips mid-read for a non-member.
-                <p className="text-content-secondary">
-                  {handoff === null
-                    ? 'One moment...'
-                    : handoff === 'home'
-                      ? 'Taking you to your groups...'
-                      : 'Taking you to the group...'}
-                </p>
-              )
-            ) : (
-              <>
-                <Button asChild variant="primary" size="default" className="w-full text-center">
-                  <a href={returnTo}>
-                    Sign in to open it
-                  </a>
-                </Button>
-                <p className="text-xs text-content-muted mt-4">
-                  You&apos;ll be brought straight back here after signing in.
-                </p>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Terminal error */}
-        {status === 'error' && (
-          <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <Heading level={1} size="heading" className="text-content-primary mb-2">
-              Unable to restore this group
-            </Heading>
-            <p className="text-content-secondary mb-6">{error}</p>
-            {(recovery === 'preview-retry' || recovery === 'accept-retry') && (
-              // M-6 / R-3: a retryable failure gets a way back, not a dead end.
-              <Button
-                variant="primary"
-                size="default"
-                onClick={recovery === 'preview-retry' ? retryPreview : retryAccept}
-                className="w-full text-center mb-3"
-              >
-                Try again
-              </Button>
-            )}
-            {recovery === 'sign-in' && (
-              // R-4: the expired-session 401 — the remedy is the login
-              // round-trip, which lands right back on this page.
-              <Button asChild variant="primary" size="default" className="w-full text-center mb-3">
-                <a href={returnTo}>
-                  Sign in to try again
-                </a>
-              </Button>
-            )}
-            {/* The one variant that is COMPUTED: the template literal
-                `` `btn ${recovery ? 'btn-secondary' : 'btn-primary'}` `` becomes the
-                `variant` prop. Same two outcomes, expressed once. */}
-            <Button
-              asChild
-              variant={recovery ? 'secondary' : 'primary'}
-              size="default"
-              className="w-full text-center"
-            >
-              <Link href="/">
-                Go Home
-              </Link>
-            </Button>
-          </div>
-        )}
-
-      </Card>
-    </div>
+    <>
+      <StatusRegion
+        className="sr-only"
+        data-testid={PAGE_STATUS_TESTID}
+        message={announcement}
+      />
+      {body}
+    </>
   );
 }
 

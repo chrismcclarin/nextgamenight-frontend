@@ -17,7 +17,7 @@ import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
  *   - deadline: now + 72 hours, matches the recurring-schedule worker default
  *     (workers/promptWorker.js: effectiveDeadlineHours = 72).
  *   - week_identifier: ISO-week of the deadline (computed via getISOWeek below,
- *     ported from workers/promptWorker.js:54-61).
+ *     ported from the backend's workers/promptWorker.js, anchor `function getISOWeek`).
  *   - auto_schedule_enabled: false — D-ADAPT-04 removed auto-event-creation
  *     entirely; explicit-false avoids ambiguity in the persisted row.
  *   - blind_voting_enabled: false.
@@ -30,8 +30,8 @@ import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
  * @param {Function} props.onSuccess - Called after successful create with the new prompt
  */
 
-// ISO-week identifier (e.g. "2026-W19"). Ported from workers/promptWorker.js:54-61
-// so the frontend default matches the format the recurring-schedule worker
+// ISO-week identifier (e.g. "2026-W19"). Ported from the backend's workers/promptWorker.js
+// (anchor `function getISOWeek`) so the frontend default matches the format the recurring-schedule worker
 // stores. See the source comment for context — kept in lockstep deliberately.
 function getISOWeek(date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -65,14 +65,35 @@ function defaultDeadlineLocal() {
   );
 }
 
+// Copy row R1 (D-32 R1, ratified 2026-10-04; D-30 placement, straight apostrophe per D-32 R8):
+// the line a code-less or proxy-blocked failure shows instead of the register's `unknown` line.
+const START_CHECKIN_FALLBACK = "We couldn't start that check-in. Please try again.";
+
+// The failure line's id: the deadline field points at it while the failure is the field's own
+// (#185, the createGroup.js field-to-error shape). Not user-facing.
+const START_POLL_ERROR_ID = 'start-poll-error';
+
 export default function StartPollModal({ groupId, group, isOpen, onClose, onSuccess }) {
   const [deadlineLocal, setDeadlineLocal] = useState(defaultDeadlineLocal);
   const [customMessage, setCustomMessage] = useState('');
   const [gameId, setGameId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // #184: advances on EVERY failure with a message, so each failure inserts a NEW alert node
+  // (D-42: an alert inserted WITH its text is announced; an unchanged node is not re-announced).
+  const [errorSeq, setErrorSeq] = useState(0);
+  // #185: which field the current failure belongs to ('deadline' or null).
+  const [errorField, setErrorField] = useState(null);
   // 88-33 Task 4 (UAT row 291): initial-focus target.
   const deadlineInputRef = useRef(null);
+  // D-35: the first-line submit latch (a ref, refused synchronously; see the footer marker).
+  const submitInFlightRef = useRef(false);
+
+  const showFailure = (message, field = null) => {
+    setError(message);
+    setErrorField(field);
+    setErrorSeq((n) => n + 1);
+  };
 
   // Reset form whenever the modal is re-opened — without this a closed-then-
   // re-opened modal would carry stale state (especially errors from a prior
@@ -83,7 +104,11 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
       setCustomMessage('');
       setGameId('');
       setError(null);
-      setSubmitting(false);
+      setErrorField(null);
+      // #35: MIRROR the latch, never clear it. A modal reopened while the first POST is still
+      // in flight (Escape and the header Close stay live) keeps saying it is working; the
+      // `finally` that releases the latch also clears `submitting`.
+      setSubmitting(submitInFlightRef.current);
     }
   }, [isOpen]);
 
@@ -107,26 +132,31 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // D-35: refused AFTER preventDefault, so a refused Enter-submit never posts natively.
+    if (submitInFlightRef.current) return;
     setError(null);
+    setErrorField(null);
 
     if (!deadlineLocal) {
-      setError('Please pick a deadline.');
+      showFailure('Please pick a deadline.', 'deadline');
       return;
     }
     const deadlineDate = new Date(deadlineLocal);
     if (Number.isNaN(deadlineDate.getTime())) {
-      setError('Deadline is not a valid date.');
+      showFailure('Deadline is not a valid date.', 'deadline');
       return;
     }
     if (deadlineDate.getTime() <= Date.now()) {
-      setError('Deadline must be in the future.');
+      showFailure('Deadline must be in the future.', 'deadline');
       return;
     }
     if (customMessage.length > 280) {
-      setError('Custom message must be 280 characters or fewer.');
+      showFailure('Custom message must be 280 characters or fewer.');
       return;
     }
 
+    // Validation passed: only now does the latch hold (a validation failure never holds it).
+    submitInFlightRef.current = true;
     setSubmitting(true);
     try {
       const body = {
@@ -153,32 +183,47 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
          WHAT WAS REJECTED AND WHY. The regexes couple this modal to backend copy: the
          D-ADAPT-02 comment that stood here said "keep frontend mirror in sync if backend copy
          ever changes", which is a maintenance contract nobody can enforce across two repos. The
-         raw `setError(msg)` else arm was worse — `ApiError.message` is
-         `body.message ?? body.error ?? 'HTTP error! status: N'` (api.ts:308-310), so an
+         raw `setError(msg)` else arm was worse — `ApiError.message` was
+         `body.message ?? body.error ?? 'HTTP error! status: N'` (then `api.ts:308-310`; today
+         `api.ts`, anchor `function extractErrorMessage`, reads `body?.message` only), so an
          unhandled 500 painted a raw status string at the user (T-88-25-01).
 
          THE PRECONDITION THE CODE ARMS REST ON, confirmed by reading the handler rather than
          assumed: `POST /prompts` emits EXACTLY ONE 403
-         (`availabilityPrompt.js:446`, the not-an-active-member gate) and EXACTLY ONE 409
-         (`:480`, the one-open-manual-poll partial unique index) across its whole body
-         (`:396-539`). `statusToCode` already maps 403 -> `forbidden` and 409 -> `conflict`
-         (api.ts:278, :285), so the two overrides below are unambiguous. STATUS IS THE CONTRACT;
+         (`availabilityPrompt.js:446`, anchor `status(403)`, the not-an-active-member gate) and
+         EXACTLY ONE 409 (`:480`, anchor `status(409)`, the one-open-manual-poll partial unique
+         index) across its whole body (`:396-539`, anchor `router.post('/prompts'`).
+         `statusToCode` already maps 403 -> `forbidden` and 409 -> `conflict` (`api.ts`, anchor
+         `function statusToCode(`), so the two overrides below are unambiguous. STATUS IS THE CONTRACT;
          the prose is not. This is FE-only — no backend edit, and none is needed.
 
          NO `fallback` IS PASSED, deliberately. `getFetchErrorMessage` applies `fallback` only
-         when the derived code is `unknown` (useFetchErrorState.ts:171), so a fallback here would
+         when the derived code is `unknown` (`useFetchErrorState.ts`, anchor
+         `code === 'unknown' && options.fallback`), so a fallback here would
          keep an authored string alive on the very surface this sweep converges. A code-less
          failure resolves to the register's `unknown` line instead.
 
-         THIS IS ALSO WHAT KEEPS THE MODAL CORRECT AFTER PLAN 42 drops api.ts:309's `body?.error`
-         alias: `POST /prompts` returns raw `{ error }` bodies, so `ApiError.message` becomes
+         THIS IS ALSO WHAT KEEPS THE MODAL CORRECT AFTER PLAN 42 drops the `body?.error` alias
+         (then `api.ts:309`; now gone, see `function extractErrorMessage`): `POST /prompts` returns raw `{ error }` bodies, so `ApiError.message` becomes
          `HTTP error! status: N` — which the old regexes would miss and the old else arm would
          have painted at the user verbatim.
 
          The two override strings are this modal's OWN shipped copy moved across, not new copy.
-         Going back to prose matching is a decision, not a cleanup. */
-      setError(
+         Going back to prose matching is a decision, not a cleanup.
+
+         ——— AMENDED Phase 88.6.1-30 (D-32 R1, D-24), every sentence above KEPT AS HISTORY:
+         (1) a `fallback` IS now passed: copy row R1 (`START_CHECKIN_FALLBACK`). The register's
+         `unknown` line tells the user to refresh, and refreshing discards the form this modal is
+         non-dismissable to protect (`dismissable={false}`), so "NO fallback IS PASSED" is
+         superseded. The status-keyed `byCode` arms are unchanged. (2) The "EXACTLY ONE 403"
+         precondition is amended: the BFF proxy's CSRF gate is a second 403 producer IN FRONT OF
+         the handler (`src/app/api/[...path]/route.ts`, anchor `csrf_rejected: true`). After plan
+         88.6.1-07 that 403 resolves its message through the `unknown` arm (`isCsrfRejection`), so
+         it shows R1 and never the membership sentence; the membership arm stays for the
+         backend's own 403. */
+      showFailure(
         getFetchErrorMessage(err, {
+          fallback: START_CHECKIN_FALLBACK,
           byCode: {
             conflict: 'This group already has an open poll. Close it before starting another.',
             forbidden: 'You must be an active group member to start a poll.',
@@ -186,6 +231,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
         })
       );
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
   };
@@ -201,7 +247,8 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
       <Modal.Header>Start a check-in</Modal.Header>
       <Modal.Body>
         {/* UI-SPEC §4.5: the four `<label>`s below moved 500 -> 400, matching the shipped
-            field primitive byte-for-byte — `FormField.tsx:98` renders
+            field primitive byte-for-byte — `form/FormField.tsx` (anchor
+            `labelClassName ?? 'block text-sm font-normal text-content-primary mb-1'`) renders
             `block text-sm font-normal text-content-primary mb-1`. Chosen OVER 700 (these are
             field labels, not hierarchy) and OVER simply deleting the utility (the explicit
             `font-normal` is what makes the convergence onto FormField's spelling visible). */}
@@ -211,7 +258,17 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
 
         {error && (
           <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
-            <p className="text-content-status-error text-sm">{error}</p>
+            {/* Req 8 / D-42: an alert inserted WITH its text is announced, so the conditional mount
+                stays, the sibling ScheduleForm.js error box's shape; the key inserts a NEW node per
+                failure (#184), so a repeat of the same failure is announced again. */}
+            <p
+              key={errorSeq}
+              id={START_POLL_ERROR_ID}
+              role="alert"
+              className="text-content-status-error text-sm"
+            >
+              {error}
+            </p>
           </div>
         )}
 
@@ -228,6 +285,8 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               value={deadlineLocal}
               onChange={(e) => setDeadlineLocal(e.target.value)}
               required
+              aria-invalid={errorField === 'deadline' ? 'true' : undefined}
+              aria-describedby={errorField === 'deadline' ? START_POLL_ERROR_ID : undefined}
             />
             <p className="text-xs text-content-muted mt-1">
               Default is 72 hours from now &mdash; the same as recurring schedules.
@@ -302,6 +361,17 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
         </form>
       </Modal.Body>
       <Modal.Footer>
+        {/* DECISION Phase 88.6.1-30 (D-35, StartPollModal's two gates): Start poll is the PRESSED
+            control, so while the request works it reads unavailable through aria-disabled and a
+            first-line REF latch refuses a second submit — the rule of POSITION
+            (`FriendInvitePanel.js`, anchor `DECISION Phase 88.6-22 (R3 #149`). Cancel is a
+            SIBLING nobody pressed, so it keeps the native disabling attribute while submitting.
+            REJECTED: the native attribute on Start poll (it drops the focus of the control just
+            pressed); the `submitting` state as the latch (a second synchronous submit dispatches
+            before the state lands); aria-disabled on Cancel (nobody pressed it); clearing the
+            latch on reopen (#35: a second POST whose only guard is the backend's 409). CHOSEN
+            instead: the reopen reset mirrors the latch into `submitting`, so a reopened modal
+            still says it is working. Changing this is a decision, not a cleanup. */}
         <Modal.Action
           variant="secondary"
           onClick={onClose}
@@ -313,7 +383,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
           variant="primary"
           type="submit"
           form="start-poll-form"
-          disabled={submitting}
+          aria-disabled={submitting || undefined}
         >
           {submitting ? 'Starting...' : 'Start poll'}
         </Modal.Action>

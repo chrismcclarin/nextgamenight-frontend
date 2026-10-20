@@ -4,19 +4,23 @@ import TutorialGrid from './TutorialGrid';
 import { HEATMAP_DENSITY, SCHEDULE_DRAG_PATH } from '../mockData';
 
 /**
- * ScheduleDemo — Step 4 of 5.
+ * ScheduleDemo — the schedule step, `Step 5 of 6` on the tutorial's indicator.
  *
- * Same heatmap as Step 3, but now a click-drag selects the peak slot range
+ * Same heatmap as Step 4, but now a drag selects the peak slot range
  * (Fri 7:00-8:00 PM) to define an event window. Selected cells get a strong
  * blue selection ring on top of their density color so users see exactly
  * what the gesture produces. After the drag completes, a mini "create event"
  * confirmation card slides in to communicate the outcome.
  *
- * The same drag mechanic that fed the heatmap (Step 2) now consumes the
- * heatmap to produce an event — the system loop closes.
+ * The same drag mechanic that fed the heatmap (the availability drag of Step 3)
+ * now consumes the heatmap to produce an event — the system loop closes.
+ *
+ * The badge above the grid names the gesture, and its wording forks on the
+ * `isPhoneViewport` prop the overlay passes (see the DECISION Phase 88.6.1-51
+ * marker above the component).
  *
  * Stage progression:
- *   0 - heatmap visible (same as end of Step 3), no selection
+ *   0 - heatmap visible (as Step 4 left it), no selection
  *   1..N - drag advances to SCHEDULE_DRAG_PATH[N-1]
  *   SCHEDULE_DRAG_PATH.length+1 - all selected, "Create event" card visible
  */
@@ -29,7 +33,20 @@ const HEAT_COLORS = [
   'bg-green-500 border-green-600 text-white',
 ];
 
-export default function ScheduleDemo({ stage }) {
+// Badge wording, one constant per arm (D-30 placement).
+// R4 (D-32), phone arm.
+const SCHEDULE_BADGE_PHONE = "Press and hold, then drag to schedule across the peak";
+// Badge, desktop — unchanged (D-16).
+const SCHEDULE_BADGE_DESKTOP = "Drag to schedule across the peak";
+
+/* DECISION Phase 88.6.1-51 (D-16, R4): CHOSEN — the badge's arm arrives as the overlay's
+   isPhoneViewport prop (TutorialOverlay reads the shared usePhoneViewport hook once).
+   REJECTED: calling the shared hook here — a hook instance mounted with the schedule step starts
+   false, so a phone would paint the desktop badge for one frame and then re-wrap it to two lines.
+   Plan 88.6.1-09 expected each consumer to call the hook, but nothing depends on that: its census
+   counts viewport reads, not hook calls. Re-adding a viewport read here is a decision, not a
+   cleanup. */
+export default function ScheduleDemo({ stage, isPhoneViewport = false }) {
   const selectedCount = Math.min(stage, SCHEDULE_DRAG_PATH.length);
   const allSelected = selectedCount >= SCHEDULE_DRAG_PATH.length;
 
@@ -66,7 +83,7 @@ export default function ScheduleDemo({ stage }) {
     <div className="text-center">
       <div className="bg-surface-card rounded-t-card border border-line border-b-0 px-3 py-2 inline-block">
         <span className="text-xs text-content-secondary">
-          Drag to schedule across the peak
+          {isPhoneViewport ? SCHEDULE_BADGE_PHONE : SCHEDULE_BADGE_DESKTOP}
         </span>
       </div>
 

@@ -252,6 +252,12 @@ describe('Req 6 status text sweep — every status text site reads the text-safe
     //          BYTE-UNCHANGED and still counted here.
     //     The PROPERTY is intact: no surviving `border-status-*` call site was edited, and a loose
     //     `s/status-error/content-status-error/` still drags ~41 sites through this assertion.
+    //
+    //     UNCHANGED by plan 88.6.1-49 (Req 14, SUGGESTION-CARD-RULING: retire, 2026-10-16 Pacific):
+    //     SuggestionCard.js's two border tokens, the success and warning returns of its
+    //     getScoreColor() (lines 125 and 127 before the deletion), left with the file. Neither was
+    //     renamed. The tree measured 43 before and 41 after, so it still meets the floor (at zero
+    //     margin) and the number is not lowered.
     expect(totalAcrossSrc(files, BORDER)).toBeGreaterThanOrEqual(41);
 
     // (b) MEASURED 71 (plus 5 `-subtle-hover`, which `base()` does not fold in).
@@ -271,16 +277,29 @@ describe('Req 6 status text sweep — every status text site reads the text-safe
     //     The comment-stripped tree stood at **69** immediately before this plan, not 71 — some
     //     earlier wave-7 sweep took two without lowering the floor, which was legitimate (69 is
     //     still >= 68) but leaves the stated measurement wrong for the next reader. 69 - 2 = 67.
+    //
+    //     UNCHANGED by plan 88.6.1-49 (Req 14, SUGGESTION-CARD-RULING: retire, 2026-10-16 Pacific):
+    //     SuggestionCard.js's two subtle tokens, the same two getScoreColor() returns (lines 125
+    //     and 127 before the deletion), left with the file. Neither was renamed. The tree measured
+    //     71 before and 69 after, so it still meets the floor and the number is not lowered.
     expect(totalAcrossSrc(files, SUBTLE)).toBeGreaterThanOrEqual(67);
 
-    // (c) The four SOLID `bg-status-*` glyph fills, pinned by file so the floor cannot be met by
-    //     one cluster. A substring detector would read the 71 `-subtle` tokens as solids and make
-    //     this test vacuous; `base()` compares the whole token.
+    // (c) The SOLID `bg-status-*` glyph fills, pinned by file so the floor cannot be met by one
+    //     cluster. A substring detector would read the `-subtle` tokens as solids and make this
+    //     test vacuous; `base()` compares the whole token.
+    //
+    //     LOWERED 4 -> 2 by plan 88.6.1-49 (Req 14, SUGGESTION-CARD-RULING: retire, 2026-10-16
+    //     Pacific), with BOTH departing glyphs NAMED per (a)'s rule. They are SuggestionCard.js's
+    //     two participant-breakdown dots: the success dot (line 168 before the deletion) and the
+    //     warning dot (line 174). Both left with the file, which the owner retired; neither was
+    //     renamed. That file's per-file pin went with them: a deleted file cannot be read, so the
+    //     pin would have thrown ENOENT rather than failed an assertion. The two surviving per-file
+    //     pins below, PromptScheduleReadOnly.js and AvailabilityForm.js, now cover every remaining
+    //     solid glyph (measured 2 after the deletion, one in each file).
     const solidIn = (r: string): number =>
       classUses(fs.readFileSync(path.join(SRC, r), 'utf8'), SOLID).length;
     expect(solidIn('app/components/PromptScheduleReadOnly.js')).toBeGreaterThanOrEqual(1);
-    expect(solidIn('app/components/SuggestionCard.js')).toBeGreaterThanOrEqual(2);
     expect(solidIn('app/components/AvailabilityForm.js')).toBeGreaterThanOrEqual(1);
-    expect(totalAcrossSrc(files, SOLID)).toBeGreaterThanOrEqual(4);
+    expect(totalAcrossSrc(files, SOLID)).toBeGreaterThanOrEqual(2);
   });
 });

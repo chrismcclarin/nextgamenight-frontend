@@ -80,7 +80,8 @@ export default function AvailabilityFormPage() {
   // Validate token and fetch existing response on mount
   useEffect(() => {
     // AC-13 (owner ruling 2026-09-09, option 1). Idiom copied VERBATIM from the sibling
-    // magic-link page `invite/game/[token]/page.js:69,74,77,100`: `let cancelled = false`, an
+    // magic-link page `invite/game/[token]/page.js` (anchors `let cancelled = false` and
+    // `if (cancelled) return`, inside its invite-preview fetch effect): `let cancelled = false`, an
     // `if (cancelled) return` ahead of every post-resolve state write, and a cleanup that sets
     // it true. Confined to this page — no shared hook, no util.
     let cancelled = false;
@@ -191,11 +192,11 @@ export default function AvailabilityFormPage() {
       } catch (error) {
         if (cancelled) return;
         /* AC-2 (owner ruling 2026-09-09, level AMENDED 2026-09-13): the raw `console.error` is
-           retired onto the house logger at `info` — `Sentry.addBreadcrumb` (`logger.ts:34-36`),
+           retired onto the house logger at `info` — `Sentry.addBreadcrumb` (`logger.ts`, inside `logger.info`),
            NOT an event, so no new Sentry event and no new Session Replay egress. Message string
            verbatim; the caught error rides in the CONTEXT OBJECT through the shared `errCtx`
            helper, never as a raw `Error` (`logger.info(msg, ctx)`'s second parameter is
-           `ctx?: Record<string, unknown>`, `logger.ts:24`, and `checkJs: false` means no
+           `ctx?: Record<string, unknown>`, `logger.ts` anchor `info(msg: string`, and `checkJs: false` means no
            typecheck catches that at a `.js` call site). `errCtx` also keeps the `message:` key
            off this line, which is what stops a correct conversion redding R1's gate. */
         logger.info('Token validation error:', errCtx(error));
@@ -222,7 +223,10 @@ export default function AvailabilityFormPage() {
            200 with `valid: false`" was FALSE: the backend answers a bad token with a 400
            `token_invalid` envelope (Sonnet/routes/magicAuth.js `sendError(res, 'token_invalid',
            …)`), which `validateToken` RESOLVES — 400 is the one non-OK status it does not throw
-           on — into the `!validation.valid` branch above. The conclusion held; the mechanism was
+           on — into the `!validation.valid` branch above. [AMENDED Phase 88.6.1-23 (R3-M7/M9):
+           validateToken now resolves a non-OK answer only when its code is token_invalid; a 400
+           with any other code, or none, throws and renders FAILURE_HEADLINE over its register
+           line.] The conclusion held; the mechanism was
            wrong. (2) The transport / 429 / 5xx failures this marker says arrive as coded
            `ApiError`s now actually do (lib/api.ts `timedPublicFetch` / `guardedJson` /
            `validateToken`, plan 88.6-62 task 1); before, they were plain `Error`s and rendered
@@ -499,7 +503,20 @@ export default function AvailabilityFormPage() {
      UI-SPEC's "exactly one live region … Do not add a second region" is scoped to FAILURE
      announcement, so a SUBMITTED-success region does not violate it. They coexist DELIBERATELY:
      this one survives the branch flip, the form's unmounts with the form. Hence the
-     `data-testid` — a bare `getByRole('status')` matches two elements on READY. */
+     `data-testid` — a bare `getByRole('status')` matches two elements on READY.
+     [AMENDED Phase 88.6.1-39 (R3-M13/M21): FOUR, not two — the plan that wrote this amendment
+     expected THREE, and plan 88.6.1-26 had meanwhile added a fourth, so the number is counted,
+     not inherited. On READY the form now brings THREE always-mounted polite status nodes besides
+     this one: (a) the confirm region above; (b) the form's pre-fill outcome region (sr-only,
+     `data-testid` `prefill-status`, plan 88.6.1-26), which speaks the pre-fill outcome sentence
+     already on screen; (c) the grid's sr-only selection summary (DECISION Phase 88.6.1-39 in
+     AvailabilityGrid.js), which speaks the selection counts once per gesture and "All times
+     cleared." Before 88.6.1-39 the grid's node was its VISIBLE count line (plan 88.6-63 #23),
+     plain text now. (c) announces selection state, not a failure, so UI-SPEC's one-failure-region
+     rule does not cover it either; (b) is the ONE region for a pre-fill outcome, a failed one
+     included (plan 88.6.1-26's DECISION marker at that region carries its reasoning). A bare status-role query
+     matches FOUR on READY, hence the data-testid. `page.test.tsx` counts all four against the
+     REAL form, so the number cannot drift silently again.] */
   return (
     <>
       <StatusRegion

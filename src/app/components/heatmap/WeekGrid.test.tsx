@@ -52,8 +52,11 @@ describe('WeekGrid — CSS-grid geometry (88.1-02 C12)', () => {
     render(
       <WeekGrid variant="read" days={3} slots={2} getCell={readCell} ariaLabel="geometry" />
     );
+    // The default gutter is 32px since the 88.6.1 wave 4 CI gate (28px from 88.6.1-24, 24px
+    // before): register owner item 66, the hour label overflowing its gutter cell - "12p" at 24px,
+    // then "10p" at 28px in CI's desktop project. See the DECISION on `gutterPx` in WeekGrid.tsx.
     expect(screen.getByRole('grid')).toHaveStyle({
-      gridTemplateColumns: '24px repeat(3, 1fr)',
+      gridTemplateColumns: '32px repeat(3, 1fr)',
     });
   });
 
@@ -181,6 +184,63 @@ describe('WeekGrid — seam 2: renderDayHeader', () => {
     const headers = screen.getAllByRole('columnheader');
     expect(headers[1]).toHaveTextContent('Mon');
     expect(headers[2]).toHaveTextContent('Tue');
+  });
+});
+
+// Plan 88.6.1-85 (close ruling P-94, owner 2026-10-17): SEAM 7 gives each day column header an
+// opt-in spoken name. The name sits on WeekGrid's own columnheader element as an aria-label, so the
+// header's visible text is untouched and a caller that does not opt in gets no attribute at all.
+// The arms resolve headers by role and COMPUTED accessible name, which is what a screen reader gets.
+describe('WeekGrid — seam 7: dayHeaderLabel (88.6.1-85, close ruling P-94)', () => {
+  it('SEAM7-1 names each day columnheader with the label while its visible text stays the dayLabels', () => {
+    render(
+      <WeekGrid
+        variant="read"
+        days={2}
+        slots={1}
+        dayLabels={['Mon', 'Tue']}
+        getCell={readCell}
+        dayHeaderLabel={(col) => ['Monday 5', 'Tuesday 6'][col]}
+        ariaLabel="seam7"
+      />
+    );
+    const monday = screen.getByRole('columnheader', { name: 'Monday 5' });
+    const tuesday = screen.getByRole('columnheader', { name: 'Tuesday 6' });
+    // The visible half is unchanged: the label names the header, it does not replace its text.
+    expect(monday.textContent).toBe('Mon');
+    expect(tuesday.textContent).toBe('Tue');
+    // headers[0] is the gutter corner (SEAM 6 default); the label never lands on it.
+    expect(screen.getAllByRole('columnheader')[0]).not.toHaveAttribute('aria-label');
+  });
+
+  it('SEAM7-2 without the prop no columnheader carries an aria-label (byte-identical for callers that do not opt in)', () => {
+    // CONFIRM-ONLY guard: green before and after this plan. It pins that the seam is opt-in.
+    render(
+      <WeekGrid variant="read" days={2} slots={1} dayLabels={['Mon', 'Tue']} getCell={readCell} ariaLabel="seam7" />
+    );
+    const headers = screen.getAllByRole('columnheader');
+    // The corner plus two day headers.
+    expect(headers).toHaveLength(3);
+    for (const header of headers) {
+      expect(header).not.toHaveAttribute('aria-label');
+    }
+  });
+
+  it('SEAM7-3 with renderDayHeader too, the custom node renders INSIDE the columnheader and the name is the label', () => {
+    render(
+      <WeekGrid
+        variant="read"
+        days={2}
+        slots={1}
+        dayLabels={['Mon', 'Tue']}
+        getCell={readCell}
+        renderDayHeader={(col) => <span data-testid={`dh7-${col}`}>day {col}</span>}
+        dayHeaderLabel={(col) => ['Monday 5', 'Tuesday 6'][col]}
+        ariaLabel="seam7"
+      />
+    );
+    expect(screen.getByRole('columnheader', { name: 'Monday 5' })).toContainElement(screen.getByTestId('dh7-0'));
+    expect(screen.getByRole('columnheader', { name: 'Tuesday 6' })).toContainElement(screen.getByTestId('dh7-1'));
   });
 });
 
@@ -323,7 +383,8 @@ describe('WeekGrid — seam 5: keyboard commit on a read cell (SPEC Req 6)', () 
 // the per-coordinate callback cache instead of being handed to the cells directly. During a drag
 // the consumer re-renders WeekGrid on every pointermove with a fresh overlay and (typically) fresh
 // handler identities; if that reached the cells, React.memo on ~196 of them would be defeated —
-// "the smooth/janky boundary on a phone, not a micro-optimization" (AvailabilityGrid.js:368-373).
+// "the smooth/janky boundary on a phone, not a micro-optimization" (AvailabilityGrid.js, anchor
+// `smooth/janky boundary`).
 describe('WeekGrid — seams are memo-stable across a simulated drag', () => {
   it('re-rendering with NEW onCellSelect/gestureHandlers/overlay identities does not re-render cells', () => {
     const stableGetCell = (row: number, col: number) =>

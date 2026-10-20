@@ -33,11 +33,40 @@ import {
 // Phase 87.3-07 (D-02): the viewer's User.id UUID resolves via the shared
 // ['users','self'] query instead of an ad-hoc getUser self-fetch.
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 // ML-17 (87.5 review): WR-03 identity-failure degrade for the upcoming-events
 // zone — without it, terminal identity failure renders a lying "no upcoming
 // events" empty state (its siblings grouplist/EventCalendar already degrade).
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import {
+    FetchErrorBanner,
+    RefreshFailedNotice,
+    RetainedContentFocusGuard,
+    useRetainedContent,
+} from '../../components/ui/FetchErrorBanner';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '../../components/ui/StatusRegion';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+
+// Plan 88.6.1-62: ONE stable empty list, handed to the card and the sheet list while nothing has
+// loaded for the current identity (every consumer filters into a new array before sorting).
+const NO_UPCOMING_EVENTS = [];
+
+// DECISION 88.6.1 code review CR-4 / A-69 (owner ratified 2026-10-19): the removed-from-group
+// notice is ONE fixed sentence, chosen OVER naming the group from the `removedFrom` query value —
+// that value is whatever the link says, so naming it let any link put its own free text inside a
+// first-party banner (and, since plan 82, a live region). The param is PRESENCE ONLY. Rejected
+// also: capping/pattern-checking the name (still attacker text) and resolving the name from the
+// id (the group is one the person just lost access to). Changing this is a decision, not a cleanup.
+const REMOVED_FROM_GROUP_TEXT = "You're no longer a member of that group.";
+
+// Plan 88.6.1-62 (88.6.1-70 contract C4): resolve every Retry caller waiting on the upcoming
+// run with that run's outcome, and empty the list. Module-level so the fetch effect reads no
+// component function (its dependency list stays exactly as it was).
+function settlePendingUpcomingRetries(pendingRef, outcome) {
+    const waiting = pendingRef.current;
+    pendingRef.current = [];
+    waiting.forEach((resolve) => resolve(outcome));
+}
 
 // List of all the groups for the logged in User
 function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
@@ -49,7 +78,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     // Guest-pill distinction. Phase 87.3-07 (D-02): resolved via the shared
     // ['users','self'] query instead of a per-page getUser self-fetch.
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+    // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
     const [selectedGroup, setSelectedGroup] = useState(null);
     const [invitePanelOpen, setInvitePanelOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
@@ -57,6 +87,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     const [upcomingLoading, setUpcomingLoading] = useState(false);
     // The selfUuid whose upcoming-events fetch last SETTLED (resolved or rejected); see the M2 marker.
     const [upcomingSettledFor, setUpcomingSettledFor] = useState(null);
+    // Plan 88.6.1-62: the selfUuid whose upcoming-events fetch last RESOLVED (a rejection never sets it).
+    const [upcomingLoadedFor, setUpcomingLoadedFor] = useState(null);
     /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserEvents failure is tracked instead of
        being left in the `console.error` it used to stop at. The unhandled rejection left
        `upcomingEvents` at [], so UpcomingEventsCard rendered its empty state — telling someone
@@ -74,11 +106,49 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
     // GROUP-05 (display half): show soft acknowledgment banner when arriving from
     // a 403 redirect set by Plan 69-04 (router.push('/?removedFrom=...')).
-    const removedFromName = searchParams?.get('removedFrom') || null;
+    // AMENDED 2026-10-19 (88.6.1 code review CR-4 / A-69, owner ratified): the param's VALUE (now
+    // the group id) is never read for display — only whether it is present. The param is left in
+    // the URL: clearing it with router.replace would empty `searchParams` and cancel the D-42
+    // dwell timer below before the notice is shown; with the sentence fixed, a replayed link
+    // shows nothing the link chose.
+    const removedFromPresent = Boolean(searchParams?.get('removedFrom'));
     const [removedBannerVisible, setRemovedBannerVisible] = useState(false);
+    // Plan 88.6.1-82 (D-42): the flag is set ONLY by this timer, after the empty region has been
+    // on the page for REGION_EMPTY_DWELL_MS — never during render, never synchronously here.
     useEffect(() => {
-        if (removedFromName) setRemovedBannerVisible(true);
-    }, [removedFromName]);
+        if (!removedFromPresent) return undefined;
+        const timer = setTimeout(() => setRemovedBannerVisible(true), REGION_EMPTY_DWELL_MS);
+        return () => clearTimeout(timer);
+    }, [removedFromPresent]);
+    const removedNoticeShown = removedBannerVisible && removedFromPresent;
+    // No `fallback`: the notice belongs to no section, so Dismiss lands on the page floor (`main`).
+    const removedNoticeRecovery = useFocusRecovery();
+    // 88.6.1 code review WR-08: `from: event.currentTarget` (consumer contract (1)) — iOS Safari
+    // does not focus a tapped button, so a bare `arm()` would seed from <body> and disarm.
+    const dismissRemovedNotice = (event) => {
+        const settle = removedNoticeRecovery.arm({ from: event?.currentTarget ?? null });
+        setRemovedBannerVisible(false);
+        settle();
+    };
+
+    // Plan 88.6.1-62: the card's `Upcoming Events` heading — owned HERE and handed to the card as
+    // `headingRef`, so the card's RF1 notice and this page's one C12 guard share ONE target.
+    const upcomingHeadingRef = useRef(null);
+    // The open Calendar sheet's dialog element (BottomSheet forwards its ref to the dialog content).
+    const calendarSheetRef = useRef(null);
+    // C4 waiters, and whether an upcoming run is in flight (a re-attempt then joins it, r2 #148).
+    const pendingUpcomingRetriesRef = useRef([]);
+    const upcomingRunInFlightRef = useRef(false);
+    // r2 #226: plan 04's shared recovery for a SUCCESSFUL run that removes the focused row. The
+    // fallback follows the sheet: the card's heading while it is closed, none while it is open
+    // (the floor then finds the open sheet's title). The effect reaches `arm` and the latest
+    // `retained` through refs, the same idiom as `upcomingRetryRef` below.
+    const upcomingRecovery = useFocusRecovery({
+        fallback: calendarSheetOpen ? undefined : upcomingHeadingRef,
+    });
+    const upcomingRecoveryArmRef = useRef(null);
+    upcomingRecoveryArmRef.current = upcomingRecovery.arm;
+    const upcomingRetainedRef = useRef(false);
 
     // Phase 71.1 GAMP-07: fetch upcoming events for the user.
     // GET /events/user/:user_id was UNIONed in Plan 71.1-01 to include
@@ -88,15 +158,38 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         // Mount-fire gate: wait for the caller's own Users.id UUID. selfUuid is
         // in the dep array (async-resolution rule) so the fetch fires once
         // identity resolves, not only at initial mount.
-        if (!selfUuid) return;
+        if (!selfUuid) {
+            // 88.6.1 code review A-66 / WR-10: no run starts, so settle any Retry waiting on one
+            // with `undefined` (an unknown outcome) — otherwise its promise would hang until unmount.
+            settlePendingUpcomingRetries(pendingUpcomingRetriesRef, undefined);
+            return;
+        }
         let cancelled = false;
+        // Plan 88.6.1-62: `{ isError }` for the Retry callers this run settles (contract C4).
+        let outcome = { isError: true };
         setUpcomingLoading(true);
-        setUpcomingError(null);
+        // Contract C2: the error is NOT cleared here — only the newest SUCCESS clears it (in `.then`).
+        upcomingRunInFlightRef.current = true;
+        // r2 #226: arm the shared recovery only while focus sits in the retained list (the card or
+        // the open sheet); the run's commit then never leaves it on the top of the document.
+        const active = document.activeElement;
+        // 88.6.1 code review IN-17: the card root by its own marker attribute, not the heading's
+        // direct parent — wrapping the heading must not silently turn this check false.
+        const cardRoot = upcomingHeadingRef.current?.closest('[data-upcoming-events-card]') ?? null;
+        const focusInUpcomingList =
+            upcomingRetainedRef.current &&
+            Boolean(active) &&
+            active !== document.body &&
+            (Boolean(cardRoot?.contains(active)) || Boolean(calendarSheetRef.current?.contains(active)));
+        const settleRecovery = focusInUpcomingList ? upcomingRecoveryArmRef.current?.() : null;
         eventsAPI.getUserEvents(selfUuid).then(evts => {
             if (cancelled) return;
             const list = Array.isArray(evts) ? evts : [];
             // UpcomingEventsCard does its own filter+sort; pass the raw list.
             setUpcomingEvents(list);
+            setUpcomingLoadedFor(selfUuid);
+            setUpcomingError(null);
+            outcome = { isError: false };
         }).catch(err => {
             /* W17 / AC-2 (R1, A8), at the level the owner amended it to on 2026-09-13: the raw
                `console.error` is REPLACED by the house logger at `logger.info`, not kept beside
@@ -136,9 +229,18 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             if (!cancelled) {
                 setUpcomingLoading(false);
                 setUpcomingSettledFor(selfUuid);
+                upcomingRunInFlightRef.current = false;
+                settleRecovery?.();
+                settlePendingUpcomingRetries(pendingUpcomingRetriesRef, outcome);
             }
         });
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            // Plan 88.6.1-62: a superseded run is no longer in flight (the run replacing it sets the
+            // flag again in the same flush; an early return for a lost identity leaves it clear).
+            upcomingRunInFlightRef.current = false;
+            settleRecovery?.();
+        };
     }, [user?.sub, refreshKey, selfUuid, upcomingRetryKey]);
 
     // Adapter onto the shared fetch-error pair (88-14 friends pattern): the hook
@@ -146,12 +248,25 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     // and `retry` must be stable — it sits in a useCallback dep AND in the hook's
     // refocus-recovery effect deps. Bumping the key re-runs the effect above rather
     // than duplicating the fetch body.
+    // AMENDED Phase 88.6.1-62 (88.6.1-70 contract C4): the key bump stays (the reason above holds).
+    // The returned promise now settles with the outcome of the run it caused — `{ isError }`,
+    // resolved by the NEXT run to settle (a superseded run resolves nothing; unmount resolves the
+    // leftovers with `undefined`; it never rejects) — so the RF1 notice and plan 21's banner read a
+    // real result instead of an immediate `undefined`. A re-attempt while a run is in flight JOINS
+    // that run (r2 #148): with C2 the hook's tab-return listener stays armed for the whole flight,
+    // so bumping again would re-send the GET and supersede the run before it. Only this retry path
+    // folds; a settings save (`refreshKey`) still starts a fresh run, and the latest still wins.
     const upcomingRetryRef = useRef(null);
     upcomingRetryRef.current = () => setUpcomingRetryKey(k => k + 1);
     const retryUpcoming = useCallback(() => {
-        upcomingRetryRef.current?.();
-        return Promise.resolve();
+        const settled = new Promise((resolve) => {
+            pendingUpcomingRetriesRef.current.push(resolve);
+        });
+        if (!upcomingRunInFlightRef.current) upcomingRetryRef.current?.();
+        return settled;
     }, []);
+    // Unmount: every Retry still waiting resolves with `undefined` (an unknown outcome), never hangs.
+    useEffect(() => () => settlePendingUpcomingRetries(pendingUpcomingRetriesRef, undefined), []);
     const upcomingErrorState = useFetchErrorState({
         isError: Boolean(upcomingError),
         error: upcomingError,
@@ -210,11 +325,63 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        list during every re-fetch. The settled-for marker says "not fetched for THIS identity"
        without touching the list.
        Removing the third clause restores a one-commit lie that only a recorder can see — a
-       decision, not a cleanup. */
+       decision, not a cleanup.
+       AMENDED Phase 88.6.1-62 (D-09a / D-37): REJECTED (3) was rejected for the FIRST-load frame,
+       where no earlier count exists. A refresh of a list this identity already loaded is the
+       owner's D-09a / D-37 window, a different one: it keeps the last resolved count and rows
+       (the first-load signal below, `upcomingShowsLoader`). The three clauses of
+       `upcomingPending` are unchanged, and the hero still reads them whole. */
     const upcomingPending =
         upcomingLoading ||
         (!selfUuid && !selfIdentityErrorState.showError) ||
         (Boolean(selfUuid) && upcomingSettledFor !== selfUuid);
+
+    /* DECISION Phase 88.6.1-62 (Req 9, D-09a / D-37 / D-41 / RF1): CHOSEN — the loader and the
+       count suppression hold until the first SUCCESSFUL load for this identity
+       (`upcomingLoadedFor`); a refresh keeps the rows and the count, marked busy; a failed refresh
+       keeps what loaded earlier — rows or the earlier empty answer — under plan 70's RF1 notice on
+       the card and in the sheet (88.6.1-70 contract C1-C10; owner rulings RF1 / D-47, D-50 and
+       D-51). `retained` is `useRetainedContent(hasLoadedForSelf, ...)`, so a 401 / 403 / 404 / 410
+       answer withdraws the rows behind the full banner and its register line until the next
+       success (C10); otherwise the full banner shows only while nothing has loaded for this
+       identity. Merits vs record: D-09a's text says a failed refresh shows 'the error banner' above
+       the rows (88.6.1-CONTEXT.md:105-108); D-51 amends that half, and D-09a's has-loaded rule
+       stays as C3.
+       REJECTED: (a) keying on `upcomingSettledFor` — it is set in `finally` for a rejection too,
+       so a Retry after a failed first load would print "Nothing on the calendar" (pinned by S3);
+       (b) keying "retained" on the list's length — a successful empty answer is a real answer
+       (D-09a's own reason; C3); (c) dropping the raw in-flight flag from `upcomingPending` — the
+       hero's gate (c) still needs "any fetch in flight"; (d) the full banner above retained
+       content (the record's shape before RF1, retired by the convergence decision); (e) the banner
+       in place of the retained rows (the AC-29 defect); (f) clearing the error at the start of
+       every run (C2 — it would hide the notice at the Retry press); (g) passing the bare
+       has-loaded flag as `retained`, or a local list of access codes — an expired session or a
+       lost permission would then show the old rows as merely stale (C10; pinned by S8 / S9);
+       (h) for C12 — two guards, or a guard inside the card: there is ONE `retained` value (one
+       guard, contract C12), and the card is not mounted around the sheet; one guard in UserHome
+       targets the card's heading while the sheet is closed and passes no target while it is open
+       (AMENDED r2 #225: the sheet can be open at `md` and up — a phone turned sideways — with the
+       card column showing behind it, and leaning on the hidden heading failing plan 04's outcome
+       check would put focus behind the modal there; the floor then hands focus to the sheet's
+       title) — no per-surface focus code (D-04); (i) starting a second run for a re-attempt that
+       arrives while one is in flight (r2 #148) — C2 keeps the tab-return listener armed for the
+       whole flight, so every return to the tab would re-send the GET and supersede the run before
+       it; the re-attempt joins the run in flight instead, and only the retry path folds (a
+       settings save still starts a fresh run).
+       Note: the sheet's busy marker exists because the sheet CAN be open during a refresh (the
+       notice's Retry and the error-only tab-return refetch). The recovery for a SUCCESSFUL run
+       that removes the focused row (r2 #226) is plan 04's shared hook, armed in the fetch effect
+       only while focus is in the retained list — the card (found from its heading) or the open
+       sheet; a focused notice `Retry` there lands on the same target either way, and the
+       nothing-loaded banner's `Try again` is left to plan 21's own recovery (not armed: nothing is
+       retained then). Changing this is a decision, not a cleanup. */
+    const hasLoadedForSelf = Boolean(selfUuid) && upcomingLoadedFor === selfUuid;
+    const upcomingShowsLoader = upcomingPending && !hasLoadedForSelf;
+    const upcomingRefreshing = upcomingLoading && hasLoadedForSelf;
+    const shownUpcomingEvents = hasLoadedForSelf ? upcomingEvents : NO_UPCOMING_EVENTS;
+    // 88.6.1-70 contract C10: the ONE `retained` both surfaces (and the C12 guard) read.
+    const upcomingRetained = useRetainedContent(hasLoadedForSelf, upcomingErrorState);
+    upcomingRetainedRef.current = upcomingRetained;
 
     /* SPEC Req 2 (88.5-07): ONE clock, ONE selector call, ONE value per render.
        `now` is passed EXPLICITLY rather than leaning on the selector's `new Date()`
@@ -347,9 +514,14 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        see DECISION Phase 88-33 above for why that window is up to ~60s with the backend
        unreachable. Rendering it as a confident zero is the exact lie 88-33 fixed on
        UpcomingEventsCard. Collapsing this into a plain `count === 0` check restores that bug
-       and changes nothing observable until the backend is slow — a decision, not a cleanup. */
+       and changes nothing observable until the backend is slow — a decision, not a cleanup.
+       AMENDED Phase 88.6.1-62 (D-09a / D-37): the suppression holds for the FIRST load per
+       identity (`upcomingShowsLoader`) and while either error shows. A refresh holds the
+       previously loaded list, not `[]` (the effect never clears it), so the premise above does
+       not describe that window and the count is kept. After a failed refresh the count stays
+       suppressed: a count is a claim about now, and the sheet carries the RF1 notice instead. */
     const upcomingCount =
-        upcomingPending || selfIdentityErrorState.showError || upcomingErrorState.showError
+        upcomingShowsLoader || selfIdentityErrorState.showError || upcomingErrorState.showError
             ? null
             : upcomingWithin7Days.length;
 
@@ -430,23 +602,51 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
            bottom padding from 1.5rem to 0, with no gate to catch it (padding-budget.spec.ts is
            phone-only). */
         <div className="user-home-container p-4 md:p-6 md:pb-6">
-            {removedBannerVisible && removedFromName && (
-                <div
-                    role="status"
-                    className="mb-4 px-4 py-3 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-100 flex items-center justify-between gap-3"
-                >
-                    <span className="text-sm">
-                        You&apos;re no longer a member of <strong>{removedFromName}</strong>.
-                    </span>
+            {/* Plan 88.6.1-62 (88.6.1-70 contract C12): ONE guard for the ONE `retained`, first in the
+                container and outside every arm a withdrawal swaps; it renders nothing. Its target
+                follows the sheet — see the DECISION Phase 88.6.1-62 marker above. */}
+            <RetainedContentFocusGuard retained={upcomingRetained} focusTarget={calendarSheetOpen ? undefined : upcomingHeadingRef} />
+            {/* DECISION Phase 88.6.1-82 (Req 8 / Req 5, D-22 / D-42 / D-31): CHOSEN — ONE always-mounted
+                polite region (the shared StatusRegion primitive with srOnlyWhenEmpty, D-22) that IS the
+                visible sentence: rendered empty from UserHome's first render and filled by a timer of
+                REGION_EMPTY_DWELL_MS started after mount; the amber box styling and Dismiss apply only
+                while shown and sit OUTSIDE the region; Dismiss arms useFocusRecovery (D-04) with no host
+                target, so focus lands on the page floor (D-07: main h1, which this page does not
+                render, then main). REJECTED: (a) the inserted status box it replaces — a polite region
+                inserted already holding its text is not announced (research/APPENDIX-AT.md:297-299);
+                (b) deriving the shown flag during render — the region would mount holding its text;
+                (c) setting the flag in the bare effect with no dwell — React can run a passive effect
+                before the browser has rendered the empty region, so the accessibility tree may first
+                see it full; (d) a second, screen-reader-only copy of the sentence beside the visible
+                one — the words would be in the page twice, and D-31's reuse holds only while heard and
+                seen are one node; (e) Dismiss inside the region — an atomic region would speak
+                "Dismiss" with the sentence; (f) a host focus target — the notice belongs to no
+                section, no heading is minted (D-05), GroupList owns its own heading (plan 41), and the
+                phone-only Calendar button would give desktop a different rule. AC-14's "section
+                heading" fallback has no section to name here. Accepted: the notice appears
+                REGION_EMPTY_DWELL_MS after the page renders. The wrapper carries no role (a live region
+                nested in a live region would speak the sentence twice) and no class while nothing is
+                shown. Changing this is a decision, not a cleanup. */}
+            <div
+                className={
+                    removedNoticeShown
+                        ? "mb-4 px-4 py-3 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-100 flex items-center justify-between gap-3"
+                        : undefined
+                }
+            >
+                <StatusRegion srOnlyWhenEmpty data-testid="removed-from-group-status">
+                    {removedNoticeShown ? REMOVED_FROM_GROUP_TEXT : null}
+                </StatusRegion>
+                {removedNoticeShown && (
                     <button
-                        onClick={() => setRemovedBannerVisible(false)}
+                        onClick={dismissRemovedNotice}
                         className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0"
                         aria-label="Dismiss"
                     >
                         Dismiss
                     </button>
-                </div>
-            )}
+                )}
+            </div>
             <div className="flex flex-col md:flex-row gap-4 md:gap-6">
                 {/* Req 11b (UI-SPEC S4): the phone-only entry point to the calendar, above the
                     group list. It lives HERE and not inside `grouplist.js`, because desktop
@@ -557,11 +757,14 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                            CTA in as `action` — do NOT wire a bare /groupPlanning link. Raised with
                            the owner at 88-18's checkpoint. */
                         <UpcomingEventsCard
-                            events={upcomingEvents}
-                            loading={upcomingPending}
+                            events={shownUpcomingEvents}
+                            loading={upcomingShowsLoader && !upcomingErrorState.showError}
                             showGroupName={true}
                             viewerDbUserId={selfUuid ?? null}
                             errorState={upcomingErrorState}
+                            busy={upcomingRefreshing}
+                            retained={upcomingRetained}
+                            headingRef={upcomingHeadingRef}
                         />
                     )}
                 </div>
@@ -611,6 +814,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                    fetch ALSO has zero events, so flipping any of these branches shows "No events"
                    at someone whose request failed — the exact `DECISION Phase 88-18` bug in a new
                    host (T-88.1-27).
+                   AMENDED Phase 88.6.1-62 (RF1, D-51): with nothing loaded for this identity the
+                   full banner stands alone; after a failed REFRESH the RF1 notice leads and the
+                   retained list — rows or its empty line — stays below it. The identity arm stays
+                   first (88.6.1-70 contract C10's ordering).
 
                 3. PHONE ROWS CARRY NO RSVP COUNTS, BY CONSTRUCTION. This page's fetch omits
                    `includeRsvpSummary` (the calendar's own fetch sets it), so the counts would be
@@ -634,6 +841,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 reads RSVPs for its own single event and the list rows' md-gated RSVP block is
                 untouched. */}
             <BottomSheet
+                ref={calendarSheetRef}
                 open={calendarSheetOpen}
                 onClose={() => setCalendarSheetOpen(false)}
                 /* Matches the button label so the tap has an obvious destination. */
@@ -645,7 +853,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             >
                 {selfIdentityErrorState.showError ? (
                     <FetchErrorBanner state={selfIdentityErrorState} compact />
-                ) : upcomingErrorState.showError ? (
+                ) : upcomingErrorState.showError && !upcomingRetained ? (
                     <FetchErrorBanner
                         state={upcomingErrorState}
                         title="We couldn't load your calendar"
@@ -653,6 +861,14 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     />
                 ) : (
                     <>
+                        {/* Plan 88.6.1-62 (88.6.1-70 contract C6): mounted in this arm on every render,
+                            above the list; no `focusTarget` — the sheet is a titled dialog, so the
+                            floor finds its title. */}
+                        <RefreshFailedNotice
+                            state={upcomingErrorState}
+                            retained={upcomingRetained}
+                            className="mb-4 shrink-0"
+                        />
                         {/* DECISION Phase 88.5 (SPEC Req 3): the hero is a `shrink-0` SIBLING
                             ABOVE the list, inside THIS branch, and gated on the events fetch
                             being SETTLED. Three separate choices, each with a real rejection:
@@ -669,6 +885,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                                 would paint event details over an identity-error or fetch-error
                                 banner — a surface claiming to know the next game night while
                                 telling the user it could not load the calendar (T-88.5-26).
+                                AMENDED Phase 88.6.1-62: the error now also renders THIS branch
+                                (RF1 over retained content), so the hero is gated on the error flag
+                                explicitly and is withheld under RF1 too. Gate (c) already removed it
+                                for the refresh, so it is not retained content; T-88.5-26 holds.
 
                             (c) GATED ON `upcomingPending`, not merely on "is there a selected
                                 event". The fetch effect never clears `upcomingEvents` before a
@@ -678,13 +898,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                                 beside it is knowingly re-fetching. This reuses the SAME pending
                                 signal `CalendarListView` gates its own skeleton on — a second
                                 loading flag here could drift from it.
+                                AMENDED Phase 88.6.1-62: the list beside it now takes the first-load
+                                signal (`upcomingShowsLoader`) because it keeps its rows through a
+                                refresh; the hero keeps the stricter `upcomingPending` on purpose.
 
                             The hero is handed an ALREADY-SELECTED event, so there is no second
                             definition of "next" anywhere in the tree. Zero upcoming needs no
                             branch of its own: `NextGameNightCard` returns null for a null event
                             (verified at its `if (!event) return null`), which is also why there
                             is no skeleton implying an event exists. */}
-                        {!upcomingPending && (
+                        {!upcomingPending && !upcomingErrorState.showError && (
                             <NextGameNightCard
                                 event={nextUpcoming}
                                 selfUuid={selfUuid ?? null}
@@ -692,9 +915,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                             />
                         )}
                         <CalendarListView
-                            events={upcomingEvents}
+                            events={shownUpcomingEvents}
                             onEventClick={handleCalendarSheetEventClick}
-                            loading={upcomingPending}
+                            loading={upcomingShowsLoader}
+                            busy={upcomingRefreshing}
                             variant="sheet"
                             /* The id sets and the one count — see the OWNER RULING 2a marker
                                above (AMENDED 88.6-27, which added the third set). The sheet

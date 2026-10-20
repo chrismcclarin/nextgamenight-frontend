@@ -16,7 +16,7 @@
 // The clock is FIXED (vi.setSystemTime) because the card reads the wall clock through the
 // selector's default `now` — without pinning it these fixtures would age out of the window.
 import * as React from 'react';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, screen, cleanup, within, act, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({
@@ -28,6 +28,7 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 }));
 
 import UpcomingEventsCard from './UpcomingEventsCard';
+import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 
 /** Fixed "now": Saturday 2026-08-22T12:00:00Z. The +7d boundary is 2026-08-29T12:00:00Z. */
 const NOW = new Date('2026-08-22T12:00:00.000Z');
@@ -193,5 +194,157 @@ describe('UpcomingEventsCard — the 44px row floor is PHONE-scoped (owner D-13)
 
     const row = screen.getByRole('button', { name: /Game One/ });
     expect(row.className.split(/\s+/)).not.toContain('btn');
+  });
+});
+
+describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
+  // Copy row RF1 / D-47 (plan 88.6.1-70's REFRESH_FAILED_NOTICE), written once here (contract
+  // C7). While the notice shows it is in the DOM twice: the visible line and its polite region.
+  const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+  // 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this notice passes `sectionName`,
+  // so its polite region and the Retry's description say "Upcoming game nights: " first and the visible line
+  // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
+  const SPOKEN = "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.";
+  const LOAD_TITLE = "We couldn't load your upcoming events";
+  const failed = {
+    showError: true,
+    message: 'Something went wrong on our end. Please try again.',
+    code: 'internal',
+    retry: vi.fn(() => Promise.resolve({ isError: false })),
+  };
+  const healthy = { ...failed, showError: false, message: '' };
+  const TWO_ROWS = [
+    ev('a', '2026-08-23T23:00:00.000Z', 'Alpha Game'),
+    ev('b', '2026-08-24T23:00:00.000Z', 'Beta Game'),
+  ];
+  const card = () =>
+    screen.getByRole('heading', { name: 'Upcoming Events' }).parentElement as HTMLElement;
+  // A notice mounted while its failure already shows fills its region after the empty dwell
+  // (plan 70's quietOnMount); this suite fakes timers, so the dwell is advanced by hand.
+  const passDwell = () =>
+    act(() => {
+      vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    });
+  const precedes = (a: Node, b: Node) =>
+    Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('U1 (C8 a): a failed refresh keeps the rows under the RF1 notice, never the full banner', () => {
+    renderCard({ events: TWO_ROWS, retained: true, errorState: failed });
+    passDwell();
+
+    const copies = within(card()).getAllByText(RF1);
+    expect(copies).toHaveLength(1);
+    expect(within(card()).getByText(SPOKEN)).toBeInTheDocument();
+    expect(within(card()).getByText('Alpha Game')).toBeInTheDocument();
+    expect(within(card()).getByText('Beta Game')).toBeInTheDocument();
+    const line = copies.find((n) => !n.closest('[role="status"]'));
+    expect(line, 'the visible RF1 line').toBeDefined();
+    const firstRow = within(card()).getByRole('button', { name: /Alpha Game/ });
+    expect(precedes(line as Node, firstRow)).toBe(true);
+    expect(screen.queryByText(LOAD_TITLE)).not.toBeInTheDocument();
+    expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
+  });
+
+  it('U1-CR6 (CR-6 / A-22): the notice names Upcoming game nights in its region and in the Retry description, never visibly', () => {
+    renderCard({ events: TWO_ROWS, retained: true, errorState: failed });
+    passDwell();
+    const region = within(card()).getAllByRole('status').find((n) => n.textContent === SPOKEN);
+    expect(region, 'the region holds the named sentence').toBeDefined();
+    expect(within(card()).getAllByText(RF1)).toHaveLength(1);
+    expect(within(card()).getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(SPOKEN);
+  });
+
+  it('U2 (R9 empty, nothing loaded): the full banner stands alone, never RF1 or the empty state', () => {
+    renderCard({ events: [ev('far', '2026-09-01T23:00:00.000Z', 'Far Game')], errorState: failed });
+    passDwell();
+
+    expect(screen.getByText(LOAD_TITLE)).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Far Game/ })).not.toBeInTheDocument();
+  });
+
+  it('U2b (C3, D-50 ruling Y): an earlier EMPTY answer is retained — RF1 above "Nothing on the calendar"', () => {
+    renderCard({ events: [], retained: true, errorState: failed });
+    passDwell();
+
+    const copies = within(card()).getAllByText(RF1);
+    expect(copies).toHaveLength(1);
+    expect(within(card()).getByText(SPOKEN)).toBeInTheDocument();
+    const empty = within(card()).getByText('Nothing on the calendar');
+    const line = copies.find((n) => !n.closest('[role="status"]')) as Node;
+    expect(precedes(line, empty)).toBe(true);
+    expect(screen.queryByText(LOAD_TITLE)).not.toBeInTheDocument();
+  });
+
+  it('U3 (Req 9): the rows wrapper is marked busy while a refresh runs, and the attribute is absent at rest', () => {
+    const view = renderCard({ events: TWO_ROWS, busy: true });
+    const wrapper = screen.getByRole('button', { name: /Alpha Game/ }).parentElement as HTMLElement;
+    expect(wrapper).toHaveAttribute('aria-busy', 'true');
+    view.unmount();
+
+    renderCard({ events: TWO_ROWS });
+    const restWrapper = screen.getByRole('button', { name: /Alpha Game/ }).parentElement as HTMLElement;
+    expect(restWrapper).not.toHaveAttribute('aria-busy');
+  });
+
+  it('U3b (r2 #230): the retained-empty arm is marked busy in place too, and the attribute is absent at rest', () => {
+    const view = renderCard({ events: [], busy: true });
+    const busyWrap = screen.getByText('Nothing on the calendar').closest('[aria-busy]');
+    expect(busyWrap, 'an element wrapping the empty state carries aria-busy').not.toBeNull();
+    expect(busyWrap).toHaveAttribute('aria-busy', 'true');
+    view.unmount();
+
+    renderCard({ events: [] });
+    expect(screen.getByText('Nothing on the calendar').closest('[aria-busy]')).toBeNull();
+  });
+
+  it('U4 (C8 b, Req 8): RF1 is spoken by a status region that was already on the page before the failure', () => {
+    const view = renderCard({ events: TWO_ROWS, retained: true, errorState: healthy });
+    const before = within(card()).getAllByRole('status');
+
+    const Card = UpcomingEventsCard as unknown as React.ComponentType<Record<string, unknown>>;
+    view.rerender(
+      <Card
+        events={TWO_ROWS}
+        showGroupName={false}
+        loading={false}
+        viewerDbUserId={null}
+        errorState={failed}
+        action={null}
+        retained
+      />
+    );
+
+    const holder = within(card())
+      .getAllByRole('status')
+      .find((n) => n.textContent === SPOKEN);
+    expect(holder, 'a status node carries RF1').toBeDefined();
+    expect(before).toContain(holder);
+  });
+
+  it('U5 (r2 #227, Req 5): the overflow toggle is ONE node — pressing it keeps focus and flips aria-expanded', () => {
+    renderCard({
+      events: [
+        ev('e1', '2026-08-23T23:00:00.000Z', 'Game One'),
+        ev('e2', '2026-08-24T23:00:00.000Z', 'Game Two'),
+        ev('e3', '2026-08-25T23:00:00.000Z', 'Game Three'),
+        ev('e4', '2026-08-26T23:00:00.000Z', 'Game Four'),
+        ev('e5', '2026-08-27T23:00:00.000Z', 'Game Five'),
+      ],
+    });
+    const toggle = screen.getByRole('button', { name: /\+ 2 more/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    act(() => toggle.focus());
+    fireEvent.click(toggle);
+
+    expect(document.activeElement).toBe(toggle);
+    expect(toggle).toHaveAccessibleName('Show less');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(toggle);
+    expect(document.activeElement).toBe(toggle);
+    expect(toggle).toHaveAccessibleName('+ 2 more');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 });

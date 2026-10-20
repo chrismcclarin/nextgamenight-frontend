@@ -19,6 +19,7 @@ import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
+import { SHARE_GAME_QR_LOADING_LABEL } from './shareGameQrCopy';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { eventsAPI } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
@@ -42,8 +43,8 @@ export default function EventDayModal({
   /* DECISION Phase 88.6-27 (W16 / D-31, UI-SPEC §12 A-4): the cancelled-generation guard for
      the toast below, and the mechanism here is NOT the one it looks like it should be.
 
-     THIS COMPONENT IS UNMOUNTED BY ITS HOST. `EventCalendar.js:242` is `{selectedDay && (`
-     around `<EventDayModal` at `:243`, and `EventCalendar.js` is this component's ONLY
+     THIS COMPONENT IS UNMOUNTED BY ITS HOST. `EventCalendar.js` wraps its `<EventDayModal`
+     mount in `{selectedDay && (`, and `EventCalendar.js` is this component's ONLY
      production caller. The toast still lands after the modal is gone, because `toast.error` is
      a MODULE-LEVEL IMPERATIVE call reached from the SURVIVING promise continuation — React
      unmounting a component cancels neither the in-flight `eventsAPI.getEventInviteToken` nor
@@ -53,11 +54,12 @@ export default function EventDayModal({
      REJECTED: comparing against `selectedDay`, or against any component state. Post-unmount
      that closure is unreachable as a signal — the handler holds the render's values and
      nothing re-runs to update them, so the guard would be a guard in name only.
-     REJECTED: `AbortController`, which `88.6-29-PLAN.md:29` rejects for this class by name.
+     REJECTED: `AbortController`, which `88.6-29-PLAN.md` rejects for this class by name
+     (`AbortController is rejected here, not deferred`).
 
      CHOSEN: a ref invalidated in an unmount cleanup, checked before the toast fires — the same
-     cancelled-generation shape the phase defines once (shipped source:
-     `NextGameNightCard.tsx:197/204-205/209-211`). WHY THIS IS NOT BOOKKEEPING: W16's whole
+     cancelled-generation shape the phase defines once (shipped source: `NextGameNightCard.tsx`'s
+     `let cancelled = false;` effect guard). WHY THIS IS NOT BOOKKEEPING: W16's whole
      ruled purpose is that "the user's context must not move", and a toast landing on the
      calendar the user navigated back to, about a modal they already closed, moves context in
      exactly the way the ruling forbids. */
@@ -69,16 +71,49 @@ export default function EventDayModal({
     };
   }, []);
 
+  // 88.6.1-47 (D-35): the per-row guard and the request generation — see the marker at
+  // `handleShowGameQR`. Declared above the early return below (hooks order).
+  const gameQRLoadingRef = useRef(null); // the event id of the NEWEST in-flight request; null when none
+  const qrRequestGenRef = useRef(0); // the request generation, read after the await
+
   if (!selectedDay) return null;
 
+  /* DECISION Phase 88.6.1-47 (D-35): CHOSEN — the pressed control stays focusable
+     (`aria-disabled`), and the LATEST press wins. A per-row guard (`gameQRLoadingRef`, the newest
+     in-flight row's event id) refuses a second press on the row that is loading, and a request
+     generation (`qrRequestGenRef`, in the shape of the `mountedRef` guard above: a ref read after
+     the await) lets only the NEWEST request open the QR, set its URL, clear the loading state or
+     show the failure toast. This dialog holds ONE QR state and the QR dialog's title never names
+     the event, so a superseded response must never reach it: today's race, where the response
+     that RESOLVES last wrote the URL, is closed. The W16 toast condition gains this second check
+     in the same shape; the W16 marker above stays true as written. The developer log is outside
+     both checks (a developer log is not context). `stopPropagation` stays FIRST, so a refused press
+     never reaches the card's pointer handler and never opens the event.
+     REJECTED — (a) the native attribute: it drops focus off the control the user just pressed,
+     and the QR dialog then has no opener to return focus to (W014 case 1); (b) a dialog-wide latch
+     that refuses another row's press while one loads: it silently drops the user's later choice and
+     then opens the FIRST event's QR, which the user cannot tell apart (the race a per-row guard
+     alone would leave, two loads writing the one invite URL, is closed by the generation guard
+     instead); (c) natively disabling the OTHER rows' buttons while one loads: a new visible wash on
+     rows nobody pressed, a look change outside this phase's charter.
+     The look follows the owner's accent answer recorded by plan 88.6.1-22: answer 2Q (2026-10-16),
+     the gated accent colour pair on the accent rule's `aria-disabled` state, worn only by the
+     pressed (newest) row — no colour, opacity or disabled utility at this call site.
+     Putting the native attribute back is a decision, not a cleanup. */
   const handleShowGameQR = async (e, event) => {
     e.stopPropagation(); // Prevent navigating to event detail
+    if (gameQRLoadingRef.current === event.id) return;
+    const generation = ++qrRequestGenRef.current;
+    const isNewest = () => qrRequestGenRef.current === generation;
+    gameQRLoadingRef.current = event.id;
     setGameQRLoading(true);
     setQrEventId(event.id);
     try {
       const data = await eventsAPI.getEventInviteToken(event.id);
-      setGameInviteUrl(data.invite_url);
-      setShowGameQR(true);
+      if (isNewest()) {
+        setGameInviteUrl(data.invite_url);
+        setShowGameQR(true);
+      }
     } catch (err) {
       /* W16 (D-31, UI-SPEC §12 A-4): the TOAST arm, not a banner. This is an action failure
          inside an OPEN modal, so the user's context must not move, and a `FetchErrorBanner`
@@ -86,11 +121,11 @@ export default function EventDayModal({
          `getFetchErrorMessage` already yields the ratified `unknown` string, so no new copy is
          authored here. Before this, the user tapped "Share Game QR", nothing happened, and
          nothing told them why. */
-      if (mountedRef.current) toast.error(getFetchErrorMessage(err));
+      if (mountedRef.current && isNewest()) toast.error(getFetchErrorMessage(err));
       /* AC-2, at the level the owner amended it to on 2026-09-13: `logger.info`, REPLACING the
          raw `console.error` rather than sitting beside it — the module's contract is that call
          sites use `logger.*` instead of raw `console.*`. STATE THE COST HONESTLY: `logger.info`
-         is `Sentry.addBreadcrumb` (`logger.ts:34-36`), so this failure reaches Sentry only
+         is `Sentry.addBreadcrumb` (`logger.ts`, `Sentry.addBreadcrumb({ message: msg, level: 'info'`), so this failure reaches Sentry only
          ATTACHED TO a later event in the same session; it does not become independently visible
          to an operator. Whether these paths deserve a Sentry EVENT is routed to the owner, not
          decided here. `errCtx(err)` and never the raw `Error`: `logger.info(msg, ctx)`'s second
@@ -99,8 +134,13 @@ export default function EventDayModal({
          else (T-84-01). Fires regardless of mount state — a developer log is not context. */
       logger.info('Failed to get game invite token', errCtx(err));
     } finally {
-      setGameQRLoading(false);
-      setQrEventId(null);
+      // Only the newest request re-enables: a superseded request's finally changes nothing, so
+      // it can never clear the row pressed since.
+      if (isNewest()) {
+        gameQRLoadingRef.current = null;
+        setGameQRLoading(false);
+        setQrEventId(null);
+      }
     }
   };
 
@@ -114,6 +154,11 @@ export default function EventDayModal({
           (SPEC Req 4). The 80vh cap is deliberately preserved via className
           (the primitive's default is 90vh) — this surface is a scrolling day
           list and its shorter cap is a shipped choice, not a leftover.
+          [AMENDED Phase 88.6.1-47 (W023)] The 80% cap is KEPT (the recorded
+          choice above); only its UNIT moves, onto the primitive's dynamic-viewport
+          unit, whose default is `max-h-[90dvh]` (`Modal.tsx`'s content shell), so
+          this dialog stops being the one member of the family on the static
+          viewport unit. The earlier sentence's "default is 90vh" was stale.
 
           QRCodeModal moves OUT of the overlay to a SIBLING of <Modal>. It used
           to live inside the backdrop div; nesting one Radix dialog inside
@@ -121,7 +166,7 @@ export default function EventDayModal({
           scope. As siblings, each portals to <body> in mount order and the QR
           dialog layers above the day list, which is the shipped behaviour.
           Re-nesting it is a decision, not a cleanup. */}
-      <Modal open onClose={onClose} className="max-w-2xl max-h-[80vh]">
+      <Modal open onClose={onClose} className="max-w-2xl max-h-[80dvh]">
         <Modal.Header>{formatLongDate(selectedDay.date)}</Modal.Header>
         <Modal.Body>
           {/* Phase 62-02: nudge user to set profile TZ if not yet set so the
@@ -223,6 +268,10 @@ export default function EventDayModal({
                 // row leaves the TEXT_ON_LIGHT + white-shadow branch and takes
                 // the plain-ground pole, which is what it always should have had.
                 const isThemedRow = !hasBgImage && !ground;
+                // 88.6.1-47 (D-35): true only on the row whose request is the NEWEST in flight —
+                // exactly the row the handler's guard refuses, so the exposed state and the
+                // refusal agree by construction.
+                const qrInFlight = gameQRLoading && qrEventId === event.id;
                 /*
                  * DECISION Phase 88.3 (R2-6): the title and subtitle treatments
                  * are computed TWICE — against the stored hex for dark mode and
@@ -342,7 +391,8 @@ export default function EventDayModal({
                        (a) D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` ->
                        `hover:shadow-theme-md`. The alias spelling resolved to Tailwind v4's
                        INLINED BLACK default instead of this app's warm theme tier
-                       (`DECISION Phase 87.7`, `globals.css:1141-1155`), so the hover HUE
+                       (`globals.css`'s `DECISION Phase 87.7 (Plan 06, RESEARCH Pitfall 2)`
+                       marker on the `--shadow-theme-*` keys), so the hover HUE
                        changes visibly and on purpose. PLAIN `hover:`, NOT `enabled-hover:` —
                        this is a card `div`, not a `.btn`, and there is no gated control here
                        to withhold the lift from.
@@ -359,13 +409,16 @@ export default function EventDayModal({
                        nearest — and `border-line` is also what this element's own `border`
                        utility already declared, so the non-past arm simply stops being
                        overridden. REJECTED: `border-line-strong` for the darker arm.
-                       `globals.css:1138-1155` retires the hairline-to-`border-strong`
-                       migration outright and reserves 3:1 for CONTROL boundaries; a resting
+                       `globals.css` retires the hairline-to-`border-strong` migration outright
+                       (`RETIRED, not deferred`) and reserves 3:1 for CONTROL boundaries; a resting
                        card row is not one. NAMED TRADE-OFF, not an oversight:
-                       `border-line-control`'s NAME is about an input edge
-                       (`globals.css:467-473`) and it is used here for its VALUE as the one
+                       `border-line-control`'s NAME is about a control edge — [CORRECTED Phase
+                       88.6.1-47 (W020): it was "an input edge"; `globals.css` bridges it as
+                       `the SECONDARY-CONTROL ring`, and the input-box edge is the 3:1 line-strong
+                       token] — and it is used here for its VALUE as the one
                        shipped step lighter than `border-line`. DISCLOSED CONSEQUENCE: in DARK
-                       mode `--color-border-control` is `transparent` (`globals.css:1851`), so
+                       mode `--color-border-control` is `transparent` (`globals.css`'s `.dark`
+                       block, `--color-border-control: transparent;`), so
                        a past row's edge disappears — it was already effectively invisible
                        there (10% black over a dark card), while the NON-past row GAINS the
                        theme border the hardcoded black had been suppressing. Re-introducing an
@@ -444,7 +497,7 @@ export default function EventDayModal({
                                 `--shadow-xs` is UNDECLARED in `globals.css`, so the old class
                                 fell through to Tailwind's default black hairline — off-tier by
                                 the D-14b rule. `--shadow-sm` is `0 0 #0000` in BOTH themes
-                                (`globals.css:1361`, `:1765`), so this snap REMOVES that black
+                                (`globals.css`, `--shadow-sm: 0 0 #0000;` in `:root` and in `.dark`), so this snap REMOVES that black
                                 hairline rather than recolouring it: a disclosed visible delta,
                                 and the disc keeps its `border-2 border-line` edge, which is
                                 what actually separates it from the card.
@@ -533,7 +586,7 @@ export default function EventDayModal({
                                no dark fork at all — `bg-green-100 text-green-800` painted a pale
                                mint chip with dark-green ink on a DARK card. It takes the shipped
                                Req 6 pair `bg-status-success-subtle text-content-status-success`,
-                               which is the same pair `PromptScheduleSection.js:192` already
+                               which is the same pair `PromptScheduleSection.js`'s status chip already
                                wears, and the dark arm arrives with the tokens rather than being
                                authored here.
                                MEASURED with `src/lib/wcag.ts`, both themes, so the move is not
@@ -610,7 +663,7 @@ export default function EventDayModal({
                           <Button
                             variant="accent"
                             onClick={(e) => handleShowGameQR(e, event)}
-                            disabled={gameQRLoading && qrEventId === event.id}
+                            aria-disabled={qrInFlight || undefined}
                             /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c),
                                2026-08-28): `btn-secondary` -> `btn-accent`. Owner: "The Share game
                                qr button still looks odd. Lets make it amber, like the create event
@@ -619,16 +672,19 @@ export default function EventDayModal({
                                `var(--amber-700)` literal here. White on amber-700 = 5.0216 (AA);
                                hover white on amber-800 = 7.0900. `font-semibold` and the house
                                focus-ring string match the Create-Event button this copies
-                               (`groupHomePage/page.js:794,798-804`); the ring is applied PER-SITE
+                               (the amber Create-Event CTA in `groupHomePage/page.js`, which has
+                               since converged onto the primitive's accent variant as this one has);
+                               the ring is applied PER-SITE
                                rather than as `.btn:focus-visible`, which would be a 119-call-site
                                change belonging to 88.6. A byte-identical TWIN of this button lives
-                               at `gameDetail/page.js:1601` and moved in the same commit — one
+                               in `gameDetail/page.js` (its `onClick={handleShowGameQR}` button) and
+                               moved in the same commit — one
                                control, one treatment. Full marker at the `.btn-accent` rule. */
                             /* Phase 88.6-27: the legacy accent class pair is retired onto the
                                primitive's accent variant above (the class string is NOT quoted
                                here — test 47 counts BOTH spellings file-wide, comments included,
                                and expects exactly one accent-treated control per file). SEVEN classes were DEAD
-                               under unlayered `.btn` (`globals.css:2195-2205` declares
+                               under unlayered `.btn` (the unlayered `.btn {` rule in `globals.css` declares
                                `display: inline-flex`, `align-items: center`, `gap`,
                                `font-weight: 600`, `font-size` and `padding`) and are deleted, not
                                moved: the 600 weight, `text-xs`, `px-3`, `py-1.5`, `inline-flex`,
@@ -636,7 +692,7 @@ export default function EventDayModal({
                                margin, so it was never dead. The per-site focus-ring string goes in
                                THIS SAME EDIT rather than as a later tidy: on the primitive
                                spelling the ring comes from the primitive's own cva base
-                               (`Button.tsx:113`), and `tokenContrast.test.ts` test 47 reds a
+                               (`Button.tsx`'s cva base string, `focus:outline-hidden focus-visible:ring-2`), and `tokenContrast.test.ts` test 47 reds a
                                migrated site that keeps a per-site copy of it.
                                NOTE FOR A FUTURE EDITOR OF THIS COMMENT: test 47 locates this
                                control by walking BACK from the tooltip attribute below to the
@@ -644,20 +700,23 @@ export default function EventDayModal({
                                detect a ballooned slice. So neither that tag's literal text nor
                                that attribute's literal spelling may appear in this marker — both
                                are described rather than quoted, deliberately.
-                               The control KEEPS its native `disabled`. */
+                               [AMENDED Phase 88.6.1-47 (D-35)] The control no longer carries the
+                               native attribute: it is gated by `aria-disabled` plus the handler's
+                               per-row latch (see the marker at `handleShowGameQR`). */
                             className="mt-2"
                             title="Share Game QR"
                           >
-                            {/* Decorative: the visible "Share Game QR" / "Loading..." label already
+                            {/* Decorative: the visible "Share Game QR" label, or the in-flight label
+                                (copy row E6), already
                                 gives this button its accessible name, so the icon is hidden from AT
                                 rather than announced as a stray image before the label. House
-                                convention — the sibling at `invite/game/[token]/page.js:210` carries
-                                the same pair. */}
+                                convention — the decorative status glyphs in `invite/game/[token]/page.js`
+                                (`aria-hidden="true" focusable="false"`) carry the same pair. */}
                             <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                             </svg>
-                            {gameQRLoading && qrEventId === event.id ? 'Loading...' : 'Share Game QR'}
+                            {qrInFlight ? SHARE_GAME_QR_LOADING_LABEL : 'Share Game QR'}
                           </Button>
                         )}
                       </div>
@@ -681,7 +740,6 @@ export default function EventDayModal({
         onClose={() => setShowGameQR(false)}
         url={gameInviteUrl}
         title="Game Night Invite QR"
-        showReset={false}
       />
     </>
   );

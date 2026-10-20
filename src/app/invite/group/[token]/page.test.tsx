@@ -1,7 +1,8 @@
 // Phase 88.6-23 task 1 — the guard net over the group-invite landing page.
 //
 // NOT IN THE PLAN'S FILE LIST, and here deliberately. The plan instructs AC-13's cancellation
-// idiom be copied "VERBATIM" from `invite/game/[token]/page.js:69,74,77,100` — a per-effect-run
+// idiom be copied "VERBATIM" from the `invite/game/[token]/page.js` preview effect (anchor
+// `let cancelled = false;`) — a per-effect-run
 // `let cancelled = false` with a cleanup that sets it true. Applied to THIS page's `autoJoin`
 // effect that idiom is a DEFECT, because this effect carries the BUG-02 single-shot
 // `joiningRef` latch and the sibling's preview effect does not:
@@ -188,5 +189,127 @@ describe('invite/group/[token] — R1 and the migrated anchors', () => {
       `/api/auth/login?returnTo=${encodeURIComponent(`/invite/group/${TOKEN}`)}`
     );
     expect(signIn.tagName).toBe('A');
+  });
+});
+
+// Plan 88.6.1-19 task 1 — R8 (register round-2 MED/LOW #24), copy row L1 (D-30) and SPEC
+// Prohibition 2 (a failed preview request is never called an invalid link).
+//
+// The region's test handle is re-declared here, never imported: the page must not export it
+// (Next's generated route types reject a page module's non-route named exports).
+const PAGE_STATUS_TESTID = 'group-invite-page-status';
+
+describe('invite/group/[token] — R8 page announcement, L1 and the preview failure (plan 88.6.1-19)', () => {
+  it('G1 (L1): the loading line names what is loading', async () => {
+    preview().mockReturnValue(new Promise(() => {}));
+
+    render(<GroupInvitePage />);
+
+    expect(await screen.findByText('Loading your group invite...')).toBeInTheDocument();
+    expect(screen.queryByText('Loading...')).toBeNull();
+  });
+
+  it('G2 (region, joined): one always-mounted sr-only region at slot 0, empty while joining, the SAME node carries the outcome', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(PREVIEW_BODY);
+    let resolveJoin: (v: unknown) => void = () => {};
+    join().mockReturnValue(
+      new Promise((resolve) => {
+        resolveJoin = resolve;
+      })
+    );
+
+    const { container } = render(<GroupInvitePage />);
+
+    // Positive signal first: the join POST is in flight.
+    await screen.findByText(/joining tuesday night crew/i);
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region.textContent).toBe('');
+    expect(container.firstElementChild, 'the region sits at fragment slot 0').toBe(region);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(region).toHaveClass('sr-only');
+
+    await act(async () => {
+      resolveJoin({ success: true, group_id: GROUP_ID });
+    });
+    await screen.findByRole('heading', { name: "You've joined Tuesday Night Crew!" });
+
+    expect(
+      screen.getByTestId(PAGE_STATUS_TESTID),
+      'node identity: a region remounted with its text announces nothing'
+    ).toBe(region);
+    expect(region.textContent).toBe(
+      "You've joined Tuesday Night Crew! Redirecting to your group..."
+    );
+    expect(container.querySelectorAll('svg:not([aria-hidden="true"])')).toHaveLength(0);
+  });
+
+  it('G3 (already-member): the region carries the heading and the redirect line', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(PREVIEW_BODY);
+    join().mockResolvedValue({ already_member: true, group_id: GROUP_ID });
+
+    const { container } = render(<GroupInvitePage />);
+
+    await screen.findByRole('heading', { name: "You're already a member of Tuesday Night Crew" });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      "You're already a member of Tuesday Night Crew Redirecting to your group..."
+    );
+    expect(container.querySelectorAll('svg:not([aria-hidden="true"])')).toHaveLength(0);
+  });
+
+  it('G4 (join error): the region carries the error heading and the register line; the error glyph is silent', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(PREVIEW_BODY);
+    join().mockRejectedValue(
+      new ApiError('HTTP error! status: 403', 'forbidden', 403, { error: 'nope' })
+    );
+
+    const { container } = render(<GroupInvitePage />);
+
+    await screen.findByRole('heading', { name: /unable to join group/i });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      "Unable to join group You don't have access to this. Refresh the page to try again."
+    );
+    expect(container.querySelectorAll('svg:not([aria-hidden="true"])')).toHaveLength(0);
+  });
+
+  it('G5 (signed-out preview): the region names the group and its member count', async () => {
+    preview().mockResolvedValue(PREVIEW_BODY);
+
+    render(<GroupInvitePage />);
+
+    await screen.findByRole('link', { name: /join tuesday night crew/i });
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe('Tuesday Night Crew 4 members');
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('G6 (Prohibition 2): a network failure on the preview shows the register line, never "no longer valid"', async () => {
+    preview().mockRejectedValue(
+      new ApiError('Network error: Could not connect to the server.', 'network', 0)
+    );
+
+    render(<GroupInvitePage />);
+
+    await screen.findByRole('heading', { name: 'Unable to join group' });
+    expect(
+      screen.getByText("We couldn't reach the server. Check your connection and try again.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText('This invite link is no longer valid.')).toBeNull();
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      "Unable to join group We couldn't reach the server. Check your connection and try again."
+    );
+  });
+
+  it('G7 (regression pin): a 404 on the preview keeps the invalid-link line of the page', async () => {
+    preview().mockRejectedValue(
+      new ApiError('HTTP error! status: 404', 'not_found', 404, { error: 'Invalid invite link' })
+    );
+
+    render(<GroupInvitePage />);
+
+    await screen.findByRole('heading', { name: 'Unable to join group' });
+    expect(screen.getByText('This invite link is no longer valid.')).toBeInTheDocument();
   });
 });

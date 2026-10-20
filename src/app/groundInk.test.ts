@@ -42,18 +42,21 @@
 // DECLARED LIMITATIONS — what a green run here does NOT prove
 // -----------------------------------------------------------
 //  * FUNCTION-RETURNED GROUND IS INVISIBLE. `inkGroundPairs` cannot resolve a ground returned
-//    from a function body (`${getScoreColor()}`), so `SuggestionCard.js`'s roster UNDERCOUNTS
-//    by THREE live AA failures at TWO ratios: `:92` and `:116` are `text-content-muted`
-//    (4.3725) and `:122` is `text-content-link` (3.9909). A single ratio for three sites would
-//    be wrong on its face. They are carried on the UNRESOLVABLE roster below and MEASURED by
-//    their own `it`, not asserted from a hand-written number.
+//    from a function body (a `${helper()}` interpolation): the walk reads class TEXT in opening
+//    tags and never evaluates a function. No live instance remains. The last one, the retired
+//    SuggestionCard.js's score-colour helper, had its three forbidden-ink sites fixed by plan
+//    88.6-42 and its file deleted by plan 88.6.1-49 (Req 14). A new instance would be invisible
+//    to this suite and must be declared on the UNRESOLVABLE roster below. (Rewritten by plan
+//    88.6.1-49; plan 88.6.1-02's cross-plan note records that the old wording, which still
+//    claimed three live failures in that file, was already false.)
 //  * COMPONENT-SET GROUND IS INVISIBLE. A ground applied by a component (`<Card>`) is not a
 //    class in any opening tag this walk reads.
 //  * ALPHA IS INVISIBLE. The walk resolves TOKENS. An `opacity-*` utility, or a `text-*`/`bg-*`
 //    alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites the
 //    rendered colour — so a PASS here is NOT a WCAG 1.4.3 pass. Live specimen:
-//    `CalendarMonthView.js:246` (`isAdjacent ? 'opacity-60 ' : ''`) over the ink at `:259`
+//    `CalendarMonthView.js:324` (`isAdjacent ? 'opacity-60 ' : ''`) over the ink at `:444`
 //    (`isAdjacent ? 'text-content-muted' :`), the SAME condition, so genuinely co-live.
+//    (Cites corrected in place by plan 88.6.1-02; they predated plan 88.6-27's moves.)
 //  * RAW-PALETTE INK IS INVISIBLE. Ink written `text-<hue>-<n>` (87 non-test occurrences) is
 //    not a semantic token and is `rawColorValues.test.ts`'s and plan 10's territory.
 //  * VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.
@@ -110,11 +113,15 @@ const FORBIDDEN = FORBIDDEN_INK_CLASSES;
 // DECISION Phase 88.6-09 (AC-11, owner ruling 2026-09-09): the tree is enumerated, read and
 // comment-stripped exactly ONCE, here at module scope, and EVERY assertion below consumes this
 // constant. This deliberately diverges from the shipped un-hoisted idiom
-// (`surfaceHoverSweep.test.ts:133`, `controlSizeFloor.test.tsx:145`, which re-read the tree
+// (`surfaceHoverSweep.test.ts:137`, `function sitesOf`, which re-reads the tree at `:140`
 // inside a per-assertion helper). REJECTED arm, recorded on the same date: match the shipped
 // idiom for consistency — rejected because one full pass measures ~353 ms over the real tree
 // (194 non-test files, 2.46 MB; the read+strip component of that is 204 ms) and this file
-// carries eight assertions, paid again on every `npm test`.
+// carries several assertions, each of which would pay that pass again on every `npm test`.
+// (amended 88.6.1-02: the suite goes 8 -> 9 here and back to 8 in plan 88.6.1-49, so no
+// count is written here. Cites amended too: the old surfaceHoverSweep cite had drifted, and
+// `controlSizeFloor.test.tsx` is no longer an example of the un-hoisted idiom — it has since
+// hoisted its own module-scope pass, `const SOURCES` at `controlSizeFloor.test.tsx:148`.)
 // The divergence is confined to this NEW file; no shipped suite was touched.
 //
 // THE HOIST IS INTRA-FILE ONLY. `vitest.config.mts` sets `environment: 'jsdom'` at `:56` and
@@ -129,10 +136,32 @@ interface Row {
   grounds: { token: string; chunk: number; frameLine: number; copresence: string }[];
 }
 
+// An ANCHOR is an ink (or ground) site's repo-relative file plus its TRIMMED physical source
+// line, joined by ANCHOR_SEP. It is used ONLY to look up the declared false positives below.
+// Every COUNT in this suite stays keyed by siteOf (file plus line number), because identical
+// lines can exist in one file and must stay two sites. See the DECISION Phase 88.6.1-02 marker
+// above FALSE_POSITIVES.
+//
+// Declared ABOVE FILES and ROWS on purpose: the ROWS pass below fills TRIMMED_LINES while the
+// module loads, so a const declared further down would still be in its temporal dead zone.
+// anchorKey is a function declaration (hoisted) for the same reason.
+const ANCHOR_SEP = '::';
+const TRIMMED_LINES = new Map<string, string[]>();
+function anchorKey(file: string, line: string): string {
+  return file + ANCHOR_SEP + line;
+}
+
 const FILES = sourceFiles(SRC);
 const ROWS: Row[] = FILES.flatMap((file) => {
   const rel = path.relative(SRC, file);
-  return inkGroundPairs(fs.readFileSync(file, 'utf8'), { ink: INK, ground: GROUND }).map((r) => ({
+  // ONE read per file (the 88.6-09 hoist above): the same text feeds the walk and the anchors.
+  const text = fs.readFileSync(file, 'utf8');
+  const found = inkGroundPairs(text, { ink: INK, ground: GROUND });
+  // Trimmed lines are kept only for a file that reports a row. Every anchor, ink and ground
+  // alike, lives in such a file; an anchor naming any other file resolves to zero lines and
+  // test 9 reds loudly rather than passing. This is a cost choice only.
+  if (found.length > 0) TRIMMED_LINES.set(rel, text.split('\n').map((l) => l.trim()));
+  return found.map((r) => ({
     file: rel,
     line: r.line,
     inkToken: r.inkToken,
@@ -144,6 +173,26 @@ const ROWS: Row[] = FILES.flatMap((file) => {
 /** A SITE is `file:line`, never a row: candidate fan-out must not inflate any count below. */
 const siteOf = (r: Row): string => `${r.file}:${r.line}`;
 const onMuted = (r: Row): boolean => r.grounds.some((g) => g.token === MUTED);
+
+// The ANCHOR of a row: its file plus the trimmed text of its own ink line. For the
+// false-positive lookup only; never for a count.
+const anchorOf = (r: Row): string => anchorKey(r.file, TRIMMED_LINES.get(r.file)?.[r.line - 1] ?? '');
+
+// Every 1-based line in the anchor's file whose trimmed text EQUALS the anchor text. Exact
+// equality on purpose, never a substring or a RegExp: a partial match could select a second
+// line silently. A file with no kept text (not scanned, or reported no row) gives no lines.
+function anchorLines(anchor: string): number[] {
+  const at = anchor.indexOf(ANCHOR_SEP);
+  if (at < 0) return [];
+  const lines = TRIMMED_LINES.get(anchor.slice(0, at));
+  if (!lines) return [];
+  const text = anchor.slice(at + ANCHOR_SEP.length);
+  const out: number[] = [];
+  lines.forEach((l, i) => {
+    if (l === text) out.push(i + 1);
+  });
+  return out;
+}
 
 /** Every forbidden RESTING ink site the walk resolved onto a muted ground, before exclusions. */
 const FORBIDDEN_ON_MUTED = ROWS.filter((r) => FORBIDDEN.has(r.inkToken) && onMuted(r));
@@ -256,6 +305,10 @@ const OFFENDERS: ExemptionRoster = {
  * Test 5 MEASURES the count rather than trusting it: a hand-written number in a blind spot goes
  * stale silently, which is the "prose instead of a gate" failure D-16 exists to end.
  */
+// AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): test 5 was deleted with SuggestionCard.js,
+// the file it measured. The limitation itself is still not gone: it is structural (sourceScan's
+// declared limitation 2). Test 2's resolved-ground floor is now what stops "empty list" from
+// being reached by a walk that went blind.
 const UNRESOLVABLE: ExemptionRoster = {
   // EMPTIED by plan 88.6-42 task 3 (wave 8, 2026-09-17). The entry carried sites: 3 — :92 and
   // :116 (text-content-muted, 4.3725) and :122 (text-content-link, 3.9909), all three under the
@@ -270,6 +323,11 @@ const UNRESOLVABLE: ExemptionRoster = {
   // supply the root ground) and now measures ZERO forbidden ink under it. A negative control over
   // a real blind spot beats an empty list with no instance behind it, and it is what plan 09 own
   // fallback design contemplated.
+  // AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): the owner retired SuggestionCard.js, so
+  // test 5 was deleted with it; the live instance named above is gone and none survives. The
+  // limitation itself is still not gone (structural, sourceScan's declared limitation 2). Test 2's
+  // resolved-ground floor is now what stops "empty list" from being reached by a walk that went
+  // blind.
   //
   // A NEW blind-spot instance still has to be DECLARED here rather than dropped silently — test 4
   // is what makes that a red rather than a shrug.
@@ -295,15 +353,60 @@ const UNRESOLVABLE: ExemptionRoster = {
 type FalsePositive = Omit<Exemption, 'owner'> & {
   owner: {
     kind: 'false-positive';
-    inkLine: string;
-    groundLine: string;
+    // Both are ANCHORS (anchorKey: file plus trimmed source line), never line numbers.
+    inkAnchor: string;
+    groundAnchor: string;
     /** The two conditions that make the ink arm and the ground arm mutually exclusive. */
     conditions: [string, string];
   };
 };
 
-/** Keyed by `file:line` — the ink site, because one file can hold both real debt and a FP. */
+// The six false-positive ANCHORS. Each text is the TRIMMED source line, copied byte-for-byte
+// from the component, never retyped. Test 9 proves each one names exactly one line of its file.
+// Quoting: double quotes where the text holds single quotes or a template-literal opener (a
+// template literal here would interpolate), single quotes where it holds double quotes.
+const FP_CMV_ADJACENT_INK = anchorKey('app/components/CalendarMonthView.js', "isAdjacent ? 'text-content-muted' :");
+const FP_CMV_PAST_DATE_INK = anchorKey(
+  'app/components/CalendarMonthView.js',
+  "variant === 'full' && isPastDate ? 'text-content-muted' :",
+);
+const FP_CMV_TODAY_GROUND = anchorKey(
+  'app/components/CalendarMonthView.js',
+  "isCurrentDay ? 'bg-surface-muted border-line-accent' :",
+);
+const FP_FIP_USERNAME_INK = anchorKey(
+  'app/components/FriendInvitePanel.js',
+  "<p className={`truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>",
+);
+const FP_FIP_IN_GROUP_INK = anchorKey(
+  'app/components/FriendInvitePanel.js',
+  '<span className="text-xs text-content-muted italic shrink-0">',
+);
+const FP_FIP_SELECTED_GROUND = anchorKey(
+  'app/components/FriendInvitePanel.js',
+  "? 'border-accent bg-surface-muted cursor-pointer'",
+);
+
+// Keyed by the ink site's ANCHOR (anchorKey: file plus trimmed source line), because one file
+// can hold both real debt and a false positive. The owner names the ground the same way.
+//
+// DECISION Phase 88.6.1-02 (Req 14 prerequisite, SPEC Boundaries "re-keyed on a content
+// anchor"): the false-positive LOOKUP is keyed on EXACT trimmed-line anchors, and only the
+// lookup. REJECTED, each with its reason:
+//   - Re-pointing line keys by hand: five re-points in 88.6 (plans 22, 27, 40, 41, 58), and a
+//     stale key reds a correct tree (a declared false positive silently becomes a REAL offender).
+//   - Keying COUNTS on content: identical lines exist in one file (FriendInvitePanel.js:589 and
+//     :773 carry the same "or" label span), so content-keyed counting would merge two real
+//     sites. siteOf stays file plus line number for every count.
+//   - Substring or RegExp anchors: they can match two lines silently.
+//   - A marker comment planted in the product file: that puts test plumbing in shipped code,
+//     in files this plan does not own.
+//   - Comment-stripped text: that needs a second strip pass against 88.6-09's measured budget.
+//     A comment that copies an anchor line reds loudly in test 9, never silently.
+// Going back to line keys is a decision, not a cleanup.
 const FALSE_POSITIVES: Record<string, FalsePositive> = {
+  // RE-KEYED by plan 88.6.1-02 (2026-10): these two entries are keyed by content anchor now,
+  // so a line move cannot red them. The line numbers in the history below are HISTORY.
   // RE-POINTED AGAIN by plan 88.6-40 (wave 8, 2026-09-17): ink 280 -> 433 and 281 -> 434,
   // ground 263 -> 316. Re-derived BY CONTENT after that plan's LAST edit to the component, not
   // after its first — it moved this file in all three of its task commits, and an intermediate
@@ -320,29 +423,31 @@ const FALSE_POSITIVES: Record<string, FalsePositive> = {
   // plan added ABOVE these lines. The MECHANISM is untouched: the ink ternary still tests
   // isCurrentDay first and the muted ground candidate still requires isCurrentDay. Re-pointed,
   // NOT re-engineered — this roster is nobody's sweep to redesign.
-  'app/components/CalendarMonthView.js:444': {
+  [FP_CMV_ADJACENT_INK]: {
     sites: 1,
     why: 'The ink ternary tests isCurrentDay FIRST (-> text-content-accent), so the isAdjacent arm can only be reached when isCurrentDay is false — while the muted ground candidate requires isCurrentDay. Structurally impossible, not debt.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/CalendarMonthView.js:444',
-      groundLine: 'app/components/CalendarMonthView.js:327',
+      inkAnchor: FP_CMV_ADJACENT_INK,
+      groundAnchor: FP_CMV_TODAY_GROUND,
       conditions: ['ink requires !isCurrentDay && isAdjacent', 'ground requires isCurrentDay'],
     },
   },
-  'app/components/CalendarMonthView.js:445': {
+  [FP_CMV_PAST_DATE_INK]: {
     sites: 1,
     why: 'Same ink ternary: the "variant === full && isPastDate" arm is reached only when isCurrentDay and isAdjacent are both false, while the muted ground candidate requires isCurrentDay. Structurally impossible, not debt.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/CalendarMonthView.js:445',
-      groundLine: 'app/components/CalendarMonthView.js:327',
+      inkAnchor: FP_CMV_PAST_DATE_INK,
+      groundAnchor: FP_CMV_TODAY_GROUND,
       conditions: [
         'ink requires !isCurrentDay && !isAdjacent && variant === "full" && isPastDate',
         'ground requires isCurrentDay',
       ],
     },
   },
+  // RE-KEYED by plan 88.6.1-02 (2026-10): these two entries are keyed by content anchor now,
+  // so a line move cannot red them. The line numbers in the history below are HISTORY.
   // RE-POINTED by plan 88.6-22 task 1 (wave 7, 2026-09-16): 364 -> 484, 370 -> 490, ground
   // 350 -> 467. The MECHANISM is unchanged and still holds — only the line numbers moved, because
   // the sweep added a comment above the friend-name `<p>`. Two corrections to the old `why` while
@@ -356,36 +461,37 @@ const FALSE_POSITIVES: Record<string, FalsePositive> = {
   //       to this component must re-point all three. A content-anchored keying would be the
   //       durable fix; no 88.6 plan declares this file, so plan 22 re-points rather than
   //       re-engineers a gate it does not own, and routes the structural change instead.
+  //       That durable fix is now DONE: plan 88.6.1-02 re-keyed these entries on content anchors.
   // RE-POINTED AGAIN by plan 88.6-58 task 2 (2026-09-28, review H3): 484 -> 507, 490 -> 513,
   // ground 467 -> 490 (+23 each). The MECHANISM is unchanged — the three lines are byte-identical
   // to FE d03f728's :484/:490/:467; plan 58 added the INVALID_EMAIL_MESSAGE constant (+4) near the
   // top and amended the email-invite catch's DECISION marker (+19), both ABOVE these lines. Caught
   // by the full `npx vitest run`, not by the task's targeted suites — the same way plan 88.6-42's
   // PROVEN_LOCAL move was caught. The `why` line cites below are re-derived in place.
-  'app/components/FriendInvitePanel.js:507': {
+  [FP_FIP_USERNAME_INK]: {
     sites: 1,
-    why: 'The muted ground arm at :490 requires !isInGroup && selectedFriends.has(friend.id); the ink at :507 is the isInGroup arm of its own ternary. The two conditions are negations of each other, so the pairing cannot render. Plan 88.6-22 is this file\'s sweep owner and confirmed the mechanism at execution; it is a false positive, not debt that plan should have closed.',
+    why: 'The muted ground is the selectedFriends.has(friend.id) arm of the friend row\'s label className, reached only when !isInGroup; the ink is the isInGroup arm of the username paragraph\'s own ternary. The two conditions are negations of each other, so the pairing cannot render. Plan 88.6-22 is this file\'s sweep owner and confirmed the mechanism at execution; it is a false positive, not debt that plan should have closed.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/FriendInvitePanel.js:507',
-      groundLine: 'app/components/FriendInvitePanel.js:490',
+      inkAnchor: FP_FIP_USERNAME_INK,
+      groundAnchor: FP_FIP_SELECTED_GROUND,
       conditions: ['ink requires isInGroup', 'ground requires !isInGroup && selectedFriends.has(friend.id)'],
     },
   },
-  'app/components/FriendInvitePanel.js:513': {
+  [FP_FIP_IN_GROUP_INK]: {
     sites: 1,
-    why: 'Same ground arm at :490 (!isInGroup && selected); the "In group" label at :513 renders only inside an isInGroup guard. Mutually exclusive, so not debt. Same sweep-owner confirmation as :507.',
+    why: 'Same ground: the selectedFriends.has(friend.id) arm of the friend row\'s label className (!isInGroup && selected); the "In group" label renders only inside an isInGroup guard. Mutually exclusive, so not debt. Same sweep-owner confirmation (plan 88.6-22) as the username paragraph\'s entry.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/FriendInvitePanel.js:513',
-      groundLine: 'app/components/FriendInvitePanel.js:490',
+      inkAnchor: FP_FIP_IN_GROUP_INK,
+      groundAnchor: FP_FIP_SELECTED_GROUND,
       conditions: ['ink requires isInGroup', 'ground requires !isInGroup && selectedFriends.has(friend.id)'],
     },
   },
 };
 
 /** Real, structurally-possible offenders: everything the false-positive list does not name. */
-const REAL = FORBIDDEN_ON_MUTED.filter((r) => !(siteOf(r) in FALSE_POSITIVES));
+const REAL = FORBIDDEN_ON_MUTED.filter((r) => !(anchorOf(r) in FALSE_POSITIVES));
 
 /** DISTINCT INK SITES per file — the shape `assertExactCounts` compares against the roster. */
 const MEASURED: Record<string, number> = (() => {
@@ -473,6 +579,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // one of FIVE arms in the template ternary, and asserting on grounds[0] / first / last is
     // exactly how the arbitrary single-ground pick this contract removes gets reinstated.
     //
+    // RE-KEYED by plan 88.6.1-02: the subject and its ground are now read from the false-positive
+    // entry (its ink anchor and its ground anchor), so a line move in the component cannot red
+    // this test. The line numbers in the history below are HISTORY.
+    //
     // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), NOT deleted: the subject moves from the
     // now-fixed "+N more" row (:788) to the file's SURVIVING rostered site, the empty-day "+"
     // hint (:858), whose ground is the SAME five-arm ternary at the SAME muted arm (:263, was
@@ -492,15 +602,21 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // candidate, which is a property of the WALK, not of whether the site is debt. Deleting the
     // block with the fixed site would quietly retire the only thing proving the walk fans out at
     // all, and the by-name set above is empty now, so nothing else here would notice.
-    const cell = FORBIDDEN_ON_MUTED.find((r) => siteOf(r) === 'app/components/CalendarMonthView.js:444');
+    const cell = FORBIDDEN_ON_MUTED.find((r) => anchorOf(r) === FP_CMV_ADJACENT_INK);
     expect(cell, 'the day cell\'s reported ink site must still be visible to the walk').toBeDefined();
     expect(
       cell!.grounds.length,
       'the five-arm ternary must produce candidate fan-out, otherwise the membership assertion below is trivially satisfied',
     ).toBeGreaterThan(1);
+    // The muted ground's line is RESOLVED from the false-positive entry's ground anchor, so this
+    // test stands on its own: exactly one line, or it says so here rather than in test 9 only.
+    const groundLines = anchorLines(FALSE_POSITIVES[FP_CMV_ADJACENT_INK].owner.groundAnchor);
+    expect(groundLines, 'the day cell\'s ground anchor must name exactly one line').toHaveLength(1);
     expect(
-      cell!.grounds.some((g) => g.token === MUTED && g.frameLine === 327),
-      `:444 must CONTAIN a ${MUTED} candidate whose frame line is 327; got ${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
+      cell!.grounds.some((g) => g.token === MUTED && g.frameLine === groundLines[0]),
+      `${FP_CMV_ADJACENT_INK} must CONTAIN a ${MUTED} candidate on the line of its ground anchor ` +
+        `${FALSE_POSITIVES[FP_CMV_ADJACENT_INK].owner.groundAnchor}; got ` +
+        `${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
     ).toBe(true);
   });
 
@@ -514,61 +630,56 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // and a future plan adding one must add it here deliberately. Test 5 keeps the blind-spot
     // MECHANISM exercised as a negative control, so 'empty list' cannot be reached by the walk
     // quietly going blind.
+    // AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): test 5 was deleted with
+    // SuggestionCard.js. The limitation is still not gone (structural, sourceScan's declared
+    // limitation 2); test 2's resolved-ground floor is now what stops "empty list" from being
+    // reached by a walk that went blind.
     expect(assertRosterShape(UNRESOLVABLE)).toEqual([]);
     expect(Object.keys(UNRESOLVABLE)).toEqual([]);
   });
 
-  it('5. the SuggestionCard blind spot is MEASURED — mechanism live, debt now ZERO', () => {
-    const rel = 'app/components/SuggestionCard.js';
-    const src = fs.readFileSync(path.join(SRC, rel), 'utf8');
-
-    // First pin the MECHANISM, so this row measures the blind spot rather than any three sites:
-    // the root element's ground really does come from a function body.
-    expect(src).toContain("if (!suggestion.meets_minimum) return 'bg-surface-muted border-line';");
-    expect(src).toMatch(/className=\{`rounded-card border-2 p-4 \$\{getScoreColor\(\)\}`\}/);
-
-    // Then count the forbidden RESTING ink in this file that the walk did NOT resolve onto a
-    // muted ground. Those are exactly the descendants of the getScoreColor() ground.
-    const blind = [...new Set(
-      ROWS.filter((r) => r.file === rel && FORBIDDEN.has(r.inkToken) && !onMuted(r)).map((r) => r.line),
-    )].sort((a, b) => a - b);
-    //
-    // INVERTED by plan 88.6-42 task 3 (2026-09-17): this was `[92, 116, 122]` cross-checked
-    // against `UNRESOLVABLE[rel].sites`. All three took `text-content-secondary`, so the roster
-    // entry is gone and the measurement is ZERO. The two MECHANISM pins above are what keep this
-    // row from being vacuous: they prove the walk really is blind here, so a zero means "no
-    // forbidden ink under a ground the walk cannot see" rather than "nothing was scanned".
-    expect(blind).toEqual([]);
-    expect(UNRESOLVABLE[rel]).toBeUndefined();
-    // Anti-vacuity for the scan itself: this file IS in the scanned corpus and DOES report ink
-    // rows — they are simply all sanctioned now.
-    expect(ROWS.filter((r) => r.file === rel).length).toBeGreaterThan(0);
-  });
+  // DECISION Phase 88.6.1-49 (Req 14 / D-29): test 5 is DELETED with its subject, chosen OVER
+  // two alternatives. Its subject, SuggestionCard.js, was retired by the owner's ruling
+  // (SUGGESTION-CARD-RULING: retire); the test read that file directly, so it could only throw.
+  //   REJECTED (a): re-pointing it to a surviving instance, the way test 3 was re-pointed by
+  //   plans 88.6-27 and 88.6-40. None exists. Test 5 measured a FUNCTION-RETURNED muted ground,
+  //   and a census of functions returning the muted ground class (plan 88.6.1-49's census C1,
+  //   run 2026-10-16) found only the deleted file. The other function-returned className in the
+  //   tree, WriteCell.tsx's preferenceColor() (src/app/components/heatmap/WriteCell.tsx:156,
+  //   anchor `${preferenceColor(preference, disabled)}`), never returns the muted ground
+  //   (src/lib/availabilityColor.ts:245-248, its four returns).
+  //   REJECTED (b): a fixture-only stand-in like test 8. It would pin a LIMITATION of the walk,
+  //   so the day the walk learns to read function bodies it would red on an improvement.
+  // STILL GUARDING: test 4's EMPTY pin, test 2's resolved-ground floor (a walk going blind) and
+  // the header's declared limitation. Numbering: tests 6-9 keep their numbers so
+  // cross-references in this file and in plan records stay true. The suite is back at 8, its
+  // drift-gate floor (periodictabletop/.github/workflows/ci.yml:363). Re-adding a blind-spot
+  // measurement needs a live instance; that is a decision, not a cleanup.
 
   it('6. the false-positive list is exact, live, and disjoint from the offender roster', () => {
     // Three checks, because three different things can go wrong.
     // (a) EXACT LENGTH — a fifth entry cannot be added quietly.
-    expect(Object.keys(FALSE_POSITIVES).sort()).toEqual([
-      // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), 259/260 -> 280/281. This literal is the
-      // SECOND place the line pin is written; both must move together.
-      'app/components/CalendarMonthView.js:444',
-      'app/components/CalendarMonthView.js:445',
-      // RE-POINTED by plan 88.6-22 task 1 (2026-09-16), 364/370 -> 484/490. This literal is the
-      // SECOND place the line pin is written; both must move together. See the re-point note on
-      // the entries themselves. RE-POINTED AGAIN by plan 88.6-58 task 2 (2026-09-28),
-      // 484/490 -> 507/513 — same note on the entries.
-      'app/components/FriendInvitePanel.js:507',
-      'app/components/FriendInvitePanel.js:513',
-    ]);
+    // RE-KEYED by plan 88.6.1-02 (2026-10): the expected keys are the four ink ANCHOR constants,
+    // so a line move in either component no longer reds this check. The line numbers in the
+    // history below are HISTORY: before the re-key this list was the SECOND place each line
+    // pin was written, and both had to move together.
+    // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), 259/260 -> 280/281 (CalendarMonthView).
+    // RE-POINTED by plan 88.6-22 task 1 (2026-09-16), 364/370 -> 484/490 (FriendInvitePanel).
+    // RE-POINTED AGAIN by plan 88.6-58 task 2 (2026-09-28), 484/490 -> 507/513 — same note on
+    // the entries.
+    expect(Object.keys(FALSE_POSITIVES).sort()).toEqual(
+      [FP_CMV_ADJACENT_INK, FP_CMV_PAST_DATE_INK, FP_FIP_USERNAME_INK, FP_FIP_IN_GROUP_INK].sort(),
+    );
     // (b) NOT A FOSSIL — every entry must still be a pairing the walk actually reports. An
     //     entry whose site was deleted or re-inked would otherwise sit here forever.
-    const reported = new Set(FORBIDDEN_ON_MUTED.map(siteOf));
+    const reported = new Set(FORBIDDEN_ON_MUTED.map(anchorOf));
     const stale = Object.keys(FALSE_POSITIVES).filter((s) => !reported.has(s));
     expect(stale, 'these false-positive entries are no longer reported; delete them').toEqual([]);
-    // (c) DISJOINT by `file:line` from everything owned as real debt. This is what stops the
-    //     false-positive list becoming a place to hide debt: an entry cannot be both.
+    // (c) DISJOINT by anchor from everything owned as real debt (re-keyed by plan 88.6.1-02 from
+    //     the old file-plus-line form). This is what stops the false-positive list becoming a
+    //     place to hide debt: an entry cannot be both.
     const debt = new Set([
-      ...REAL.map(siteOf),
+      ...REAL.map(anchorOf),
       // The two `app/gameDetail/page.js` rows left this set with their fix (plan 88.6-18), and
       // `app/friends/page.js:748` left it with its fix (plan 88.6-19). A fixed site must LEAVE
       // this set: it is no longer debt, and the disjointness check below is about what IS.
@@ -595,8 +706,8 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     for (const [site, entry] of Object.entries(FALSE_POSITIVES)) {
       expect(entry.owner.kind, `${site} must never be spec-owned`).toBe('false-positive');
       expect(entry.owner.conditions).toHaveLength(2);
-      expect(entry.owner.inkLine).toBe(site);
-      expect(entry.owner.groundLine).not.toBe(site);
+      expect(entry.owner.inkAnchor).toBe(site);
+      expect(entry.owner.groundAnchor).not.toBe(site);
     }
   });
 
@@ -627,5 +738,44 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     expect(scan(resting)).toHaveLength(1);
     // ...so the zero below is a skip, not a blind spot.
     expect(scan(variant)).toHaveLength(0);
+  });
+
+  it('9. every false-positive anchor names exactly ONE line, and its ground anchor is a muted ground the walk pairs with that ink', () => {
+    // Added by plan 88.6.1-02. Anchors replace line numbers, so AMBIGUITY is the new failure
+    // mode, and this test makes it loud. An ambiguous ink anchor would also HIDE a real
+    // offender: REAL excludes every row whose anchor is a key, so an anchor matching two lines
+    // would exclude both (T-88.6.1-41). A missing anchor (0 lines) is a stale entry by another
+    // name.
+    //
+    // D-29 floor note: this it takes the suite 8 -> 9. Plan 88.6.1-49 deletes test 5 (the
+    // SuggestionCard blind spot, one of D-29's four reddening suites) and returns it to 8, the
+    // drift-gate floor at periodictabletop/.github/workflows/ci.yml:363. Never merge this it
+    // into test 6: that would leave plan 49 at 7, below the floor (P-8).
+    for (const [key, entry] of Object.entries(FALSE_POSITIVES)) {
+      const inkLines = anchorLines(key);
+      expect(
+        inkLines.length,
+        `${key} matched ${inkLines.length} lines; an anchor must name exactly one line — make it unique, never loosen the match`,
+      ).toBe(1);
+      const groundLines = anchorLines(entry.owner.groundAnchor);
+      expect(
+        groundLines.length,
+        `${entry.owner.groundAnchor} matched ${groundLines.length} lines; an anchor must name exactly one line — make it unique, never loosen the match`,
+      ).toBe(1);
+      // Both halves of one exclusion live in the same file.
+      expect(entry.owner.groundAnchor.slice(0, entry.owner.groundAnchor.indexOf(ANCHOR_SEP))).toBe(
+        key.slice(0, key.indexOf(ANCHOR_SEP)),
+      );
+      // The walk reports this ink, on the anchor's own line...
+      const row = FORBIDDEN_ON_MUTED.find((r) => anchorOf(r) === key);
+      expect(row, `${key} is not reported by the walk`).toBeDefined();
+      expect(row!.line).toBe(inkLines[0]);
+      // ...and pairs it with a muted ground on the ground anchor's line. By MEMBERSHIP, never by
+      // index: the same rule test 3 states for candidate fan-out.
+      expect(
+        row!.grounds.some((g) => g.token === MUTED && g.frameLine === groundLines[0]),
+        `${key} has no ${MUTED} candidate on the ground anchor's line ${groundLines[0]}`,
+      ).toBe(true);
+    }
   });
 });

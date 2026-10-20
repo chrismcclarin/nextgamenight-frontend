@@ -343,35 +343,21 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
     file: 'app/components/FriendshipStatusProvider.js',
     contains: "const is404 = err?.message?.includes('404') || err?.status === 404;",
     why:
-      'CONTROL FLOW. Two sites (:180, :198), same line text: a not-found probe that ' +
+      'CONTROL FLOW. Two sites (handleAcceptRequest and handleDeclineRequest), same line text: a not-found probe that ' +
       'resolves to a boolean and picks a UI state. Status-first, same shape as the 409 ' +
       'entry above. Never displayed. No 88.6 plan declares this file.',
   },
-  {
-    file: 'app/invite/game/[token]/page.js',
-    contains: "const msg = err?.message || '';",
-    why:
-      'CONTROL FLOW. `classifyError`\'s local — a classifier over fetch-`TypeError` text ' +
-      'that picks transient-vs-permanent. AMENDED by plan 88.6-23 (wave 7, 2026-09-16), ' +
-      'which executed the removal the previous wording predicted: the FIVE backend-prose ' +
-      'arms of `isPermanent` are GONE and that half now reads `httpStatus === 404 || ' +
-      'httpStatus === 410`. What this local still feeds is the `isTransient` half, whose ' +
-      'arms match text the CLIENT produces (fetch / `TypeError`), so plan 88.6-42\'s ' +
-      'alias drop cannot reach them and this read is not on a path to zero. Never ' +
-      'displayed: the copy the classifier selects is ratified register copy.',
-  },
-  {
-    file: 'app/invite/game/[token]/page.js',
-    contains: "lowerMsg.includes('failed to fetch') ||",
-    why:
-      'CONTROL FLOW, and it is on the "Failed to X" assertion, not the raw-message one: ' +
-      "the lower-cased literal 'failed to fetch' is the browser's own TypeError text being " +
-      'MATCHED, not copy being authored. AMENDED by plan 88.6-23 (wave 7, 2026-09-16): the ' +
-      'previous wording said "Removed with the classifier by 88.6-23", which was WRONG in ' +
-      'both halves — the classifier survives and this arm was deliberately left untouched. ' +
-      'Only the prose arms of `isPermanent` were removed. This entry is PERMANENT unless the ' +
-      'transient classification itself is redesigned.',
-  },
+  // DELETED by plan 88.6.1-19 (W048 / WR-410, 2026-10-15), in the SAME COMMIT as the code they
+  // matched: BOTH `app/invite/game/[token]/page.js` entries. The first allow-listed
+  // `classifyError`'s local that copied the error's message into a string (a raw-message read);
+  // the second allow-listed the arm that matched the lower-cased browser fetch-failure text (a
+  // "Failed to X" match, not authored copy). Their matched code is GONE: the classifier now
+  // decides on the HTTP status alone (404 or 410 permanent, everything else transient) and
+  // reads no message text at all, so STANDING RULE (1) above requires both rows to go. The
+  // phase outline's "correct the two `why` strings" was overtaken: once the arms were deleted
+  // the entries had nothing left to describe. The review's gated alternative (keep the text arms
+  // for errors with no status) was rejected as dead code — see the AMENDED paragraph of the
+  // page's `DECISION Phase 88.6-23` marker in `classifyError`.
   // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16): the third
   // `app/invite/game/[token]/page.js` entry, which allow-listed the prose-matched 410 guard
   // `if (err.message && (err.message.includes('expired') || …))`. That line no longer exists —
@@ -468,6 +454,10 @@ const countByFile = (hits: Hit[]): Record<string, number> => {
 // an anti-vacuity subject (every one of its files must be in the scanned set) and as the
 // record of what a hand census misses — `StartPollModal.js:151` is a live raw render it
 // does not contain at all.
+// AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): the census's one SuggestionCard.js site
+// left with its file, which the owner retired, so its row was removed in the deletion commit
+// (check (b) below would red on a census path that is no longer in the scanned set). 24 sites
+// across 15 files remain; the rest stays the historical record and is not re-pointed.
 const CENSUS_SITES = [
   'app/invite/accept/page.js:59',
   'app/invite/group/[token]/page.js:109',
@@ -480,7 +470,6 @@ const CENSUS_SITES = [
   'app/components/BrowseMoreModal.js:120',
   'app/components/ResponseDashboard.js:49',
   'app/components/ResponseDashboard.js:99',
-  'app/components/SuggestionCard.js:56',
   'app/components/GameComboInput.js:131',
   'app/components/GroupSettings.js:481',
   'app/components/GroupSettings.js:532',
@@ -596,7 +585,7 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // one answer.
   //   - `:49` is a LOAD arm. It does NOT call `getFetchErrorMessage` at all; the state now
   //     stores the ERROR OBJECT and the component adopts the house synthetic-adapter contract
-  //     (`groupPlanning/page.js:172-196`), so `useFetchErrorState` derives the copy from
+  //     (`groupPlanning/page.js`, anchor `Adapters onto the shared fetch-error pair`), so `useFetchErrorState` derives the copy from
   //     `ApiError.code`. Storing a flattened string there would have gone GREEN on this roster
   //     while making every failure resolve to `unknown` — the silent-green this note exists to
   //     warn the next reader about. The error branch renders `FetchErrorBanner` in the same

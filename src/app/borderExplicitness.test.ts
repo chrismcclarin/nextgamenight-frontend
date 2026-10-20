@@ -276,9 +276,12 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
     'active status button `border-2`: the colour comes from `statusConfig[status].activeBorder`, ' +
     'and all three entries (yes/maybe/no) name one. `status` is bounded by the literal ' +
     "['yes','maybe','no'] the buttons map over, so there is no fourth key to miss.",
-  'app/components/SuggestionCard.js':
-    'score card `border-2`: the colour comes from `getScoreColor()`, whose three returns each ' +
-    'name a border colour (line / status-success / status-warning) and which has no fallthrough',
+  // REMOVED by plan 88.6.1-49 (Req 14, 2026-10-16 Pacific): the retired suggestion card's score
+  // card, whose width utility took its colour from a helper's three returns. The site left with
+  // its file: SuggestionCard.js was deleted under the owner's retire ruling, so its exemption had
+  // to go in the same commit or test 2 (allow-list staleness) would red on a file that no longer
+  // exists. Removed because the site is gone, not tidied. Seven of this block's eight
+  // width-utility entries remain.
   'app/rsvp/[token]/page.js':
     'success card `border-t-4`: the colour comes from `STATUS_CONFIG[...] || STATUS_CONFIG.yes`, ' +
     'all three entries name one and the `||` guarantees a member',

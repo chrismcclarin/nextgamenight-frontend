@@ -144,6 +144,11 @@ interface RenderGroup {
  * says nothing when there ARE results). Named in `88.6-37-SUMMARY.md` so a copy review can
  * rule on it. Module scope, not inline in the destructure, so the default is one stable
  * function identity rather than a fresh closure on every render.
+ *
+ * RATIFIED UNCHANGED (D-30, Phase 88.6.1): the 88.6.1 copy table kept this wording as it
+ * is. The owner ratified the table on 2026-10-04, and its "Not changing" list says the
+ * search dropdown keeps "{n} results available". Rewording it is a copy decision for the
+ * owner, not a cleanup.
  */
 const defaultCountLabel = (count: number): string =>
   `${count} result${count === 1 ? '' : 's'} available`;
@@ -166,6 +171,7 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
       className,
       inputClassName,
       listClassName,
+      onKeyDown: consumerOnKeyDown,
       ...inputProps
     },
     forwardedRef
@@ -271,10 +277,38 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
       if (event.key === 'Escape') {
         setActiveIndex(null);
         if (open) {
-          onOpenChange(false);
           inputRef.current?.focus();
         }
       }
+    };
+
+    /* DECISION Phase 88.6.1-10 (W073, Req 11): the field's key handler CHAINS. The consumer's
+       handler runs first, then this primitive's runs, always. And the Escape close belongs to
+       floating-ui's useDismiss ALONE: its reference handler closes the list from the field,
+       its document listener closes it from a sibling inside the combobox root. The Escape arm
+       above only resets the active option and refocuses the field.
+
+       REJECTED 1 — letting the primitive's handler overwrite the consumer's inside the
+       getReferenceProps call. That was the W073 defect: a consumer handler never ran.
+       REJECTED 2 — a veto, skipping the primitive when the consumer's handler (or anything
+       before it) set defaultPrevented. Inside a Modal, Escape arrives ALREADY
+       default-prevented by preventComboboxEscape in Radix's document capture listener, so
+       that gate would skip this primitive in every dialog.
+       REJECTED 3 — telling useDismiss to ignore Escape and keeping the close in the handler
+       above (the research pick). The deciding reason: Escape from a trailing control inside
+       the root (GameComboInput's Clear button) would then close NOTHING, while the Modal
+       guard keeps the dialog open because the list is expanded (CR-502 relies on useDismiss
+       to close the list). A second reason holds ONLY when this renders inside a portal (a
+       Modal, where React also listens on the portal container): the field's Escape would
+       lose useDismiss's stopPropagation and reach document listeners such as the header's
+       mobile-menu listener. That stopPropagation does NOT shield a page-level mount: there
+       React's root listener is on the document itself (the App Router hydrates the
+       document), so a page-level field's Escape reaches that listener with or without the
+       option. Calling the close here as well is the double call W073 removed.
+       Changing any of this is a decision, not a cleanup. */
+    const handleFieldKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+      consumerOnKeyDown?.(event);
+      handleKeyDown(event);
     };
 
     const groups = React.useMemo<RenderGroup[]>(() => {
@@ -322,6 +356,17 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
        count. Derived INLINE in the render body on purpose — no `useState`, no `useEffect`;
        a state-write here would keep the node and double the render on every text change,
        which the node-identity pin in `Combobox.test.tsx` cannot catch by construction. */
+    /* DECISION Phase 88.6.1-10 (announce gap, LATENT-AND-DEAD-RULING item 2): a caller that
+       mounts this primitive ALREADY OPEN with results puts the count into the region's FIRST
+       commit, and a polite region that mounts with its text announces nothing
+       (`StatusRegion.tsx:9-12`). Both shipped callers mount closed (`GameComboInput.js:34`;
+       the timezone picker's `tzPickerOpen` state in `userProfile/page.js`), so nothing
+       produces the gap today. The owner ACCEPTED it on 2026-10-03, chosen OVER a first-render
+       latch: an extra state write and an effect in a shared primitive, for a state no caller
+       produces, and the source-shape pin in `Combobox.test.tsx` forbids both.
+       TO THE FIRST CALLER THAT MOUNTS THIS OPEN: mount it closed and open it after the first
+       commit, or bring the latch back as a decision. Never ship an open mount silently.
+       Adding the latch is a decision, not a cleanup. */
     const announcement = !open
       ? ''
       : loading
@@ -349,8 +394,8 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
             REJECTED ALTERNATIVE 1 — hoisting the VISIBLE row out of `{open && (` and making
             it always-mounted. That row is padded, visible copy: an always-mounted version
             renders "No results found" under every CLOSED combobox on all five render paths
-            (`GameComboInput` at `createEvent.js:1025`, `ScheduleForm.js:357`,
-            `BallotOptionsEditor.js:23`; `userProfile/page.js:2175`). It also cannot move
+            (`GameComboInput` in `createEvent.js` and `ScheduleForm.js`,
+            `BallotOptionsEditor.js:23`; the timezone picker in `userProfile/page.js`). It also cannot move
             INSIDE the listbox node — a `listbox` may own only `option`/`group`, which the
             comment at that node records.
 
@@ -360,7 +405,8 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
             throws on more than one). The visible row therefore LOSES its role and becomes
             plain text. It is deliberately NOT `aria-hidden`: hiding it would remove it from
             browse mode, a regression for the sighted screen-reader user who can see it. The
-            house precedent for this exact split is `EmailAddressSection.tsx:1437-1446` — one
+            house precedent for this exact split is the block headed
+            "THE SECTION'S ONE LIVE REGION" in `EmailAddressSection.tsx` — one visually hidden
             region fed a derived string, with the visible text not itself a region.
 
             HOW OFTEN THIS SPEAKS, stated rather than assumed. The `loading` arm PRECEDES the
@@ -392,7 +438,7 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
             className={cn(trailing && 'pr-11', inputClassName)}
             {...getReferenceProps({
               ...inputProps,
-              onKeyDown: handleKeyDown,
+              onKeyDown: handleFieldKeyDown,
             })}
           />
           {trailing}

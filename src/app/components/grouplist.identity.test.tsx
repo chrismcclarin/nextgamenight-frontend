@@ -9,7 +9,7 @@
 // Follows the established `<name>.identity.test.tsx` convention
 // (groupHomePage.identity.test.tsx shows the useSelfIdentity mocking approach).
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -45,11 +45,14 @@ vi.mock('@/components/ui/useFetchErrorState', () => ({
 // groups-fetch failure (which used to be flattened into `setGroups([])` and shown
 // as "No groups yet"). The stub renders the `title` so the two are tellable apart;
 // the testid is kept for the pre-existing WR-03 assertions.
-vi.mock('@/components/ui/FetchErrorBanner', () => ({
+// 88.6.1-70 contract C9: keep the real module so useRetainedContent and isAccessOrGoneError stay real; the notice itself is proven in grouplist.refresh.test.tsx against the real module.
+vi.mock('@/components/ui/FetchErrorBanner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/ui/FetchErrorBanner')>()),
   FetchErrorBanner: ({ state, title }: { state: { showError: boolean }; title?: string }) =>
     state.showError ? (
       <div data-testid="identity-degrade-banner">{title ?? 'degraded'}</div>
     ) : null,
+  RefreshFailedNotice: () => null,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -181,5 +184,209 @@ describe('GroupList empty vs failed groups fetch (Req 6 / T-88-18-01)', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'No groups yet' })).toBeNull();
     expect(screen.queryByText('No groups yet!')).toBeNull();
+  });
+});
+
+// Phase 88.6.1-41 (D-37, Req 9): the home list refreshes IN PLACE.
+//
+// Before this plan every refresh of the home list (a settings save, a bell invite accept, a
+// member add, a retry) set the whole component back to its "Loading groups..." return and then
+// redrew every card from scratch, and a failed refresh put the full groups banner where the
+// cards had been. D-37 keeps "Loading groups..." for the FIRST load of the signed-in identity
+// only (a has-loaded flag keyed on that identity, 88.6.1-70 contract C3), keeps the same card
+// nodes mounted while a refresh is in flight with aria-busy on the cards wrapper only, never
+// covers what loaded with the full banner (D-51; D-50 makes a list that loaded EMPTY retained
+// content too), and lets the newest request win. The RF1 notice over retained content is plan
+// 88.6.1-77's and is asserted in its real-module suite, not here.
+//
+// Every absence below is asserted SYNCHRONOUSLY after a positive signal or a deterministic flush,
+// never inside a waitFor (FE-TESTING-CONVENTIONS CF-26).
+const OTHER_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+// No members and no events: no chip stack, no role controls, so each card's only control is its
+// title block, whose accessible name is the group name.
+const crew = (id: string, name: string) => ({ id, name, Users: [], Events: [] });
+const ALPHA = crew('g-alpha', 'Alpha Crew');
+const BETA = crew('g-beta', 'Beta Crew');
+const GAMMA = crew('g-gamma', 'Gamma Crew');
+const ZETA = crew('g-zeta', 'Zeta Crew');
+
+const BANNER_TEXT = "We couldn't load your groups";
+
+describe('D-37 — the home list refreshes in place (Req 9)', () => {
+  const getUserGroups = () => groupsAPI.getUserGroups as Mock;
+  const titleBlock = (name: string) => screen.getByRole('button', { name });
+  const cardOf = (name: string) => titleBlock(name).closest('[data-testid="group-card"]');
+  const flush = async () => {
+    await act(async () => {});
+  };
+
+  beforeEach(() => {
+    // A mockResolvedValueOnce queue survives clearAllMocks; reset it so no case inherits one.
+    getUserGroups().mockReset();
+    h.selfUuid = SELF_UUID;
+  });
+
+  it('R1. a refresh keeps the SAME card nodes, marks only their wrapper busy, and applies the result in place', async () => {
+    getUserGroups().mockResolvedValueOnce([ALPHA, BETA]);
+    const { rerender } = render(<GroupList {...listProps} refreshTrigger={0} />);
+    await screen.findByRole('button', { name: 'Alpha Crew' });
+    const alphaCard = cardOf('Alpha Crew');
+    expect(alphaCard).not.toBeNull();
+
+    const refresh = deferred<unknown[]>();
+    getUserGroups().mockReturnValueOnce(refresh.promise);
+    rerender(<GroupList {...listProps} refreshTrigger={1} />);
+    // POSITIVE signal first: the refresh request really started.
+    await waitFor(() => expect(getUserGroups()).toHaveBeenCalledTimes(2));
+
+    expect(screen.queryByText('Loading groups...')).toBeNull();
+    expect(alphaCard!.isConnected).toBe(true);
+    expect(cardOf('Alpha Crew')).toBe(alphaCard);
+    expect(alphaCard!.parentElement).toHaveAttribute('aria-busy', 'true');
+
+    await act(async () => {
+      refresh.resolve([ALPHA, GAMMA]);
+    });
+    await waitFor(() => expect(titleBlock('Gamma Crew')).toBeInTheDocument());
+
+    expect(screen.queryByRole('button', { name: 'Beta Crew' })).toBeNull();
+    expect(cardOf('Alpha Crew')).toBe(alphaCard);
+    expect(document.querySelector('[aria-busy]')).toBeNull();
+  });
+
+  it('R2. a FAILED refresh keeps the loaded cards and never puts the full groups banner over them (D-51)', async () => {
+    getUserGroups().mockResolvedValueOnce([ALPHA]);
+    const { rerender } = render(<GroupList {...listProps} refreshTrigger={0} />);
+    await screen.findByRole('button', { name: 'Alpha Crew' });
+    const alphaCard = cardOf('Alpha Crew');
+
+    getUserGroups().mockRejectedValueOnce(new Error('boom'));
+    rerender(<GroupList {...listProps} refreshTrigger={1} />);
+    await waitFor(() => expect(getUserGroups()).toHaveBeenCalledTimes(2));
+    await flush();
+    await flush();
+
+    expect(alphaCard!.isConnected).toBe(true);
+    expect(cardOf('Alpha Crew')).toBe(alphaCard);
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'No groups yet' })).toBeNull();
+    expect(document.querySelector('[aria-busy]')).toBeNull();
+  });
+
+  it('R3. a list that loaded EMPTY is retained content: a failed refresh keeps "No groups yet" and shows no full banner (D-50)', async () => {
+    getUserGroups().mockResolvedValueOnce([]);
+    const { rerender } = render(<GroupList {...listProps} refreshTrigger={0} />);
+    await screen.findByRole('heading', { name: 'No groups yet' });
+
+    getUserGroups().mockRejectedValueOnce(new Error('boom'));
+    rerender(<GroupList {...listProps} refreshTrigger={1} />);
+    await waitFor(() => expect(getUserGroups()).toHaveBeenCalledTimes(2));
+    await flush();
+    await flush();
+
+    // What loaded earlier stays; the failure is plan 88.6.1-77's RF1 notice above it (its RF-4).
+    expect(screen.getByRole('heading', { name: 'No groups yet' })).toBeInTheDocument();
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+    expect(document.querySelector('[aria-busy]')).toBeNull();
+  });
+
+  it('R4. the LATEST request wins: an older refresh that settles last never overwrites a newer one (edge R9 ordering)', async () => {
+    getUserGroups().mockResolvedValueOnce([ALPHA]);
+    const { rerender } = render(<GroupList {...listProps} refreshTrigger={0} />);
+    await screen.findByRole('button', { name: 'Alpha Crew' });
+
+    const older = deferred<unknown[]>();
+    const newer = deferred<unknown[]>();
+    getUserGroups().mockReturnValueOnce(older.promise);
+    rerender(<GroupList {...listProps} refreshTrigger={1} />);
+    getUserGroups().mockReturnValueOnce(newer.promise);
+    rerender(<GroupList {...listProps} refreshTrigger={2} />);
+    await waitFor(() => expect(getUserGroups()).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      newer.resolve([BETA]);
+    });
+    await waitFor(() => expect(titleBlock('Beta Crew')).toBeInTheDocument());
+
+    await act(async () => {
+      older.resolve([GAMMA]);
+    });
+    await flush();
+
+    expect(screen.queryByRole('button', { name: 'Gamma Crew' })).toBeNull();
+    expect(titleBlock('Beta Crew')).toBeInTheDocument();
+    expect(document.querySelector('[aria-busy]')).toBeNull();
+  });
+
+  it('R5. while nothing is retained, the full banner stays up through its own in-flight retry (88.6.1-70 contract C2)', async () => {
+    getUserGroups().mockRejectedValueOnce(new Error('boom'));
+    const { rerender } = render(<GroupList {...listProps} refreshTrigger={0} />);
+    await screen.findByText(BANNER_TEXT);
+
+    const retry = deferred<unknown[]>();
+    getUserGroups().mockReturnValueOnce(retry.promise);
+    rerender(<GroupList {...listProps} refreshTrigger={1} />);
+    await waitFor(() => expect(getUserGroups()).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByText(BANNER_TEXT)).toBeInTheDocument();
+    expect(screen.queryByText('Loading groups...')).toBeNull();
+
+    await act(async () => {
+      retry.resolve([ALPHA]);
+    });
+    await waitFor(() => expect(titleBlock('Alpha Crew')).toBeInTheDocument());
+
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+  });
+
+  // AMENDED Phase 88.6.1-63 (AC-29): the compact sentence is false with a held row (every control
+  // works from it), so this case flips from one notice to none; an access answer is told by the
+  // list's own request. The no-row rule lives in selfIdentityErrorSource.ts.
+  it('R6. AC-29: a failed self-identity refetch with a RETAINED id keeps the working list, and no compact notice shows (88.6.1-63)', async () => {
+    h.selfUuid = SELF_UUID;
+    h.isError = true;
+    getUserGroups().mockResolvedValueOnce([ALPHA]);
+    render(<GroupList {...listProps} refreshTrigger={0} />);
+
+    expect(await screen.findByRole('button', { name: 'Alpha Crew' })).toBeInTheDocument();
+    // The file's banner stub renders this test id for every mounted banner whose state shows an
+    // error: none here (the groups request succeeded, and a held row is not an identity failure).
+    expect(screen.queryAllByTestId('identity-degrade-banner')).toHaveLength(0);
+  });
+
+  it('R7. a change of signed-in identity is a FIRST load again: the previous identity cards never paint (88.6.1-70 contract C3)', async () => {
+    h.selfUuid = SELF_UUID;
+    getUserGroups().mockResolvedValueOnce([ALPHA]);
+    const { rerender } = render(<GroupList {...listProps} refreshTrigger={0} />);
+    await screen.findByRole('button', { name: 'Alpha Crew' });
+
+    h.selfUuid = OTHER_UUID;
+    const firstForOther = deferred<unknown[]>();
+    getUserGroups().mockReturnValueOnce(firstForOther.promise);
+    rerender(<GroupList {...listProps} refreshTrigger={0} />);
+    // POSITIVE signal: the request for the NEW identity really started.
+    await waitFor(() => expect(getUserGroups()).toHaveBeenLastCalledWith(OTHER_UUID));
+
+    expect(screen.getByText('Loading groups...')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+
+    await act(async () => {
+      firstForOther.resolve([ZETA]);
+    });
+    await waitFor(() => expect(titleBlock('Zeta Crew')).toBeInTheDocument());
+
+    expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
   });
 });

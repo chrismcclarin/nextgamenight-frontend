@@ -3,7 +3,7 @@
 // catch logs to logger.error -> Sentry (the reachable, tested Sentry path).
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@/lib/logger', () => ({
@@ -11,7 +11,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 // Plan 88.6-32: `importOriginal` + spread, NOT the full-replacement factory this used to be.
 // `onSubmit` now derives its copy through `getFetchErrorMessage`, and `deriveCode` resolves the
-// code with `error instanceof ApiError` (`useFetchErrorState.ts:116`). A full replacement
+// code with `error instanceof ApiError` (`useFetchErrorState.ts` `deriveCode`). A full replacement
 // DELETES `ApiError` from this module, and `x instanceof undefined` is a TypeError — so the
 // old factory would have turned a correct migration into a crash inside the catch.
 vi.mock('../../lib/api', async (importOriginal) => ({
@@ -20,6 +20,8 @@ vi.mock('../../lib/api', async (importOriginal) => ({
     createSchedule: vi.fn().mockRejectedValue(new Error('Server boom')),
     updateSchedule: vi.fn(),
   },
+  // 88.6.1 code review A-39: a typed-but-unpicked game name is resolved to a game id before saving.
+  gamesAPI: { resolveGame: vi.fn() },
 }));
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }));
 // ScheduleForm consumes useSelfIdentity (87.5-11: feeds selfUuid to GameComboInput's
@@ -29,22 +31,28 @@ vi.mock('../../lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({ selfUuid: undefined, self: undefined }),
 }));
 // Phase 88.6-44: a FAITHFUL stand-in, not a bare div. It renders exactly what the real
-// `GameComboInput` forwards to its text input (`GameComboInput.js:215-235`: `id`, `name`,
+// `GameComboInput` forwards to its text input (`GameComboInput.js:215-237`, the `<Combobox` block: `id`, `name`,
 // `aria-label={placeholder}`, the external `inputRef`), so the composed audit below sees what
 // THIS FORM passes — which is what the house-rule finding on this surface was about. The real
 // combobox's own ARIA is pinned by `Combobox.test.tsx`'s axe audit; mounting it here would add
 // floating-ui + a search debounce to every test in this file for no additional signal.
+// Plan 88.6.1-26 (G1): the stand-in now also forwards TYPING the way `GameComboInput.js`
+// `handleInputChange` does — `onChange({ game_id: null, game_name: text || null })` — because
+// without it the form's game-field write was never exercised here, which is how a typed name
+// being rejected as `Invalid UUID` went unseen.
 vi.mock('./GameComboInput', () => ({
   default: ({
     id,
     name,
     placeholder,
     inputRef,
+    onChange,
   }: {
     id?: string;
     name?: string;
     placeholder?: string;
     inputRef?: { current: HTMLInputElement | null };
+    onChange?: (v: { game_id: string | null; game_name: string | null }) => void;
   }) => (
     <input
       type="text"
@@ -54,6 +62,7 @@ vi.mock('./GameComboInput', () => ({
       ref={(node) => {
         if (inputRef) inputRef.current = node;
       }}
+      onChange={(e) => onChange?.({ game_id: null, game_name: e.target.value || null })}
       data-testid="game-combo"
     />
   ),
@@ -69,7 +78,7 @@ vi.mock('./MemberSelector', () => ({
 import type { ComponentType } from 'react';
 import ScheduleFormDefault from './ScheduleForm';
 import { logger } from '@/lib/logger';
-import { promptSettingsAPI } from '../../lib/api';
+import { promptSettingsAPI, gamesAPI } from '../../lib/api';
 
 // ScheduleForm is a JS component; its inferred prop type marks every prop
 // required. Cast to a permissive type so the test can render with only the
@@ -294,5 +303,135 @@ describe('88.6-63 (review round 2 #25) — the submit is aria-disabled + latched
 
     held.reject(new Error('Server boom'));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+
+  // Plan 88.6.1-26 (W001 / R3-M19, AC-12, Edge R4 concurrency). The latch above already kept the
+  // request count at one, but it returned early INSIDE react-hook-form's second run, whose settle
+  // flipped `isSubmitting` back to false: the button read `Create Schedule` again and lost
+  // `aria-disabled` while the first save was still pending. `useAppForm` now refuses first.
+  it('S1: after a second press the button still reads Saving... and stays aria-disabled until the FIRST save settles', async () => {
+    const held = holdCreate();
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    const submit = screen.getByRole('button', { name: /create schedule/i });
+    const form = submit.closest('form') as HTMLFormElement;
+    await user.click(submit);
+    await waitFor(() => expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1));
+
+    await user.click(submit);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveAccessibleName('Saving...');
+    expect(submit).toHaveAttribute('aria-disabled', 'true');
+    expect(submit).not.toHaveAttribute('disabled');
+
+    // A refused submit is default-prevented (no native post), and still sends nothing.
+    expect(fireEvent.submit(form)).toBe(false);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveAccessibleName('Saving...');
+
+    held.reject(new Error('Server boom'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(UNKNOWN_COPY));
+    expect(submit).toHaveAccessibleName('Create Schedule');
+  });
+});
+
+// Plan 88.6.1-26 (Requirement 11 class, found at plan time). The game field wrote `game_id: ''`
+// on every keystroke, and `z.string().uuid()` rejects an empty string, so a typed-but-unpicked
+// game blocked the save with the unratified `Invalid UUID`. The field now writes `null` itself.
+// AMENDED 2026-10-19 (88.6.1 code review A-39): a typed name is no longer dropped to Game TBD —
+// `onSubmit` resolves it to a game id the way createEvent.js does (`gamesAPI.resolveGame`), because
+// the backend's schedule takes only `game_id`. Only a blank field saves as Game TBD.
+describe('88.6.1-26 / A-39 — a typed game name is resolved and kept (game field)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const GAME_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const UNKNOWN_COPY = 'Something went wrong. Refresh the page to try again.';
+  const createMock = () => promptSettingsAPI.createSchedule as unknown as ReturnType<typeof vi.fn>;
+  const resolveMock = () => gamesAPI.resolveGame as unknown as ReturnType<typeof vi.fn>;
+
+  it('G1: typing a game name and saving resolves it and sends that game id, with no Invalid UUID', async () => {
+    resolveMock().mockResolvedValueOnce({ id: GAME_ID, name: 'Board Night Special' });
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    await user.type(screen.getByTestId('game-combo'), 'Board Night Special');
+    await user.click(screen.getByRole('button', { name: /create schedule/i }));
+
+    await waitFor(() => expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1));
+    expect(gamesAPI.resolveGame).toHaveBeenCalledWith('Board Night Special');
+    const payload = createMock().mock.calls[0][1];
+    expect(payload.game_id).toBe(GAME_ID);
+    expect(payload).not.toHaveProperty('game_name');
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/Invalid UUID/i);
+  });
+
+  it('G2: a failed resolve saves nothing and shows the register line in the form alert', async () => {
+    resolveMock().mockRejectedValueOnce(new Error('resolve down'));
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    await user.type(screen.getByTestId('game-combo'), 'Board Night Special');
+    await user.click(screen.getByRole('button', { name: /create schedule/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(UNKNOWN_COPY));
+    expect(promptSettingsAPI.createSchedule).not.toHaveBeenCalled();
+  });
+
+  it('G3: a blank game field resolves nothing and saves as Game TBD (game_id null) (confirm-only)', async () => {
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+    await user.click(screen.getByRole('button', { name: /create schedule/i }));
+    await waitFor(() => expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1));
+    expect(gamesAPI.resolveGame).not.toHaveBeenCalled();
+    expect(createMock().mock.calls[0][1].game_id).toBeNull();
+  });
+});
+
+// Phase 88.6.1-26 carry-in (the FormField register entry "FormField's error alert does not
+// re-announce an identical second verdict", AT-4 R3). react-hook-form keeps the same error object
+// across failed submits, so a repeat failure while focus is ALREADY inside the invalid field (a
+// second Enter) re-inserted nothing and moved nothing: silent to a screen reader. The form now
+// passes react-hook-form's per-attempt `submitCount` to each FormField as `errorKey`, so every
+// failed submit inserts a fresh alert node.
+describe('88.6.1-26 carry-in — an identical second field verdict is inserted again (FormField errorKey)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('K1: pressing Enter twice in an emptied Timezone field inserts the field alert twice', async () => {
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+    const timezone = screen.getByRole('textbox', { name: 'Timezone' });
+    const form = timezone.closest('form') as HTMLFormElement;
+    let submits = 0;
+    form.addEventListener('submit', () => {
+      submits += 1;
+    });
+    const inserted: Element[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const r of records)
+        r.addedNodes.forEach((n) => {
+          if (!(n instanceof Element)) return;
+          const alert = n.matches('[role="alert"]') ? n : n.querySelector('[role="alert"]');
+          if (alert && alert.textContent === 'Timezone is required') inserted.push(alert);
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    await user.clear(timezone);
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Timezone is required');
+    await waitFor(() => expect(document.activeElement).toBe(timezone));
+
+    await user.keyboard('{Enter}');
+    // Positive signal first: the second submit really ran (CF-26).
+    await waitFor(() => expect(submits).toBe(2));
+    await waitFor(() => expect(inserted).toHaveLength(2));
+    observer.disconnect();
+    expect(inserted[0]).not.toBe(inserted[1]);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(document.activeElement).toBe(timezone);
+    expect(promptSettingsAPI.createSchedule).not.toHaveBeenCalled();
   });
 });

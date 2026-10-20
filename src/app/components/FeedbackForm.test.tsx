@@ -19,7 +19,8 @@
  * the unauthenticated POST handler).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
+import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 
 // Logged-out: no Auth0 user. Retained for the 87.6 transport proof below even
@@ -575,21 +576,46 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     expect(glyph).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('A-23 (WCAG 2.4.3): a successful attach hands focus to Remove screenshot, never the dialog container or body', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const input = fileInput();
+    input.focus();
+    await user.upload(input, goodFile('shot.png'));
+    const remove = await screen.findByRole('button', { name: /remove screenshot/i });
+    await waitFor(() => expect(document.activeElement).toBe(remove));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('A-23 (guard): a REJECTED file keeps the input mounted and moves focus nowhere', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const input = fileInput();
+    input.focus();
+    await user.upload(input, overSizeFile('huge.png'));
+    expect(screen.queryByRole('button', { name: /remove screenshot/i })).toBeNull();
+    expect(document.activeElement).toBe(input);
+  });
+
   // ---- the attach-success region (V-18) ----
 
-  it('NODE IDENTITY — the attach region exists, is `status` (never `alert`), and is EMPTY before any attach; the SAME node carries the message after', async () => {
+  it('NODE IDENTITY, D-22 house shape — the attach region exists, is `status` (never `alert`), EMPTY and sr-only before any attach; the SAME node carries copy row F1, visible, after', async () => {
     const user = userEvent.setup();
     render(<FeedbackForm onClose={() => {}} />);
 
     const before = attachStatusRegion();
     expect(before).toHaveAttribute('role', 'status');
     expect(before).not.toHaveAttribute('role', 'alert');
-    expect(before).toHaveTextContent('');
-    // NO idle delta: no margin and no min-height while empty (V-18).
-    expect(before.className).not.toMatch(/\bmt-\d/);
+    expect(before.textContent).toBe('');
+    // AMENDED Phase 88.6.1-34 (D-22): the region takes the house srOnlyWhenEmpty prop. The prop
+    // hides an EMPTY region only, so the 2026-09-14 visible-when-set ruling (V-18) is kept: an
+    // empty region is out of flow, so its unconditional mt-1 costs no idle layout.
+    expect(before).toHaveClass('sr-only');
+    expect(before).toHaveClass('mt-1');
+    expect(before).toHaveClass('truncate');
     expect(before.className).not.toMatch(/\bmin-h-/);
-    // `sr-only` is the RECORDED REJECTED ARM — the line is VISIBLE when set.
-    expect(before.className).not.toContain('sr-only');
 
     await user.upload(fileInput(), goodFile('evidence.png'));
 
@@ -597,9 +623,22 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     // look-up of the SAME id must return the IDENTICAL node object.
     const after = attachStatusRegion();
     expect(after).toBe(before);
-    expect(after).toHaveTextContent('evidence.png');
-    // Bounded visually, unbounded in text content.
+    // Copy row F1 (D-30), exact bytes.
+    expect(after.textContent).toBe('Screenshot attached: evidence.png');
+    // Visible when set (V-18 kept); bounded visually, unbounded in text content.
+    expect(after).not.toHaveClass('sr-only');
     expect(after.className).toContain('truncate');
+  });
+
+  it('T-88.6.1-681 encoding — a file name that looks like markup is rendered as TEXT in the attach line (F1), never as an element', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    await user.upload(fileInput(), goodFile('<b>x</b>.png'));
+
+    const region = attachStatusRegion();
+    expect(region.textContent).toBe('Screenshot attached: <b>x</b>.png');
+    expect(region.querySelector('b')).toBeNull();
   });
 
   it('THE DISCRIMINATING ASSERTION — a REJECTED file leaves the attach region EMPTY while `screenshotError` populates (a `screenshot`-derived region cannot tell these apart)', async () => {
@@ -616,7 +655,9 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     await waitFor(() =>
       expect(document.querySelector('[id$="-screenshot-error"]')).toHaveTextContent(/too large/i)
     );
-    expect(attachStatusRegion()).toHaveTextContent('');
+    expect(attachStatusRegion().textContent).toBe('');
+    // D-22 (Phase 88.6.1-34): a rejected file leaves the attach region empty, so it stays hidden.
+    expect(attachStatusRegion()).toHaveClass('sr-only');
   });
 
   it('remove-then-reattach of the SAME file announces TWICE — the region clears on Remove and is re-set on the next attach', async () => {
@@ -624,15 +665,17 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     render(<FeedbackForm onClose={() => {}} />);
 
     await user.upload(fileInput(), goodFile('same.png'));
-    expect(attachStatusRegion()).toHaveTextContent('same.png');
+    expect(attachStatusRegion().textContent).toBe('Screenshot attached: same.png');
 
     await user.click(await screen.findByRole('button', { name: /remove screenshot/i }));
     await waitFor(() => expect(fileInput()).toBeInTheDocument());
     // CLEAR PATH 1 — a region still asserting an attachment after Remove is wrong, not stale.
-    expect(attachStatusRegion()).toHaveTextContent('');
+    expect(attachStatusRegion().textContent).toBe('');
+    // D-22: empty again, so visually hidden again (Phase 88.6.1-34).
+    expect(attachStatusRegion()).toHaveClass('sr-only');
 
     await user.upload(fileInput(), goodFile('same.png'));
-    expect(attachStatusRegion()).toHaveTextContent('same.png');
+    expect(attachStatusRegion().textContent).toBe('Screenshot attached: same.png');
   });
 
   // ---- the post-success reset ----
@@ -704,5 +747,463 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
        — called with NO `fallback`, so no copy was authored (P1) — answers with
        `MESSAGE_BY_CODE.network` (`useFetchErrorState.ts:47`). */
     expect(box()).toHaveTextContent(/couldn't reach the server/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PHASE 88.6.1-34, TASK 2 — the screenshot field's real name (MEDLOW-32, AC-22), the silent
+// required stars (AC-33 clause 2, W024, register N-1), and the D-22 house empty-region shape on
+// the remaining three regions (screenshot error, submit error, gate line), plus Edge R8 adjacency.
+// Every arm was run against the tree as task 1 left it; the adjacency case is labelled
+// PRESERVATION because it was already true and pins what must not move.
+// ---------------------------------------------------------------------------
+
+describe('FeedbackForm — Phase 88.6.1-34 task 2 (MEDLOW-32, AC-33 stars, D-22 regions, R8 adjacency)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement;
+  const overSizeFile = (name: string) =>
+    new File([new Uint8Array(2 * 1024 * 1024 + 1)], name, { type: 'image/png' });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = undefined;
+    h.query = {};
+    fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  it('MEDLOW-32 — the file input is named "Screenshot (optional)" first, and still contains the drop zone words (WCAG 2.5.3 label-in-name)', () => {
+    render(<FeedbackForm onClose={() => {}} />);
+    const input = fileInput();
+    expect(input).toHaveAccessibleName(/^Screenshot \(optional\)/);
+    expect(input).toHaveAccessibleName(/Click to attach a screenshot/);
+  });
+
+  it('MEDLOW-32 — aria-labelledby lists exactly the section label then the drop zone; the drop zone keeps its for, the section label gains none', () => {
+    render(<FeedbackForm onClose={() => {}} />);
+    const input = fileInput();
+    const ids = (input.getAttribute('aria-labelledby') ?? '').split(' ').filter(Boolean);
+    expect(ids).toHaveLength(2);
+    // getElementById, never a CSS id selector: useId ids contain colons.
+    const section = document.getElementById(ids[0]);
+    const dropzone = document.getElementById(ids[1]);
+    expect(section?.tagName).toBe('LABEL');
+    expect(dropzone?.tagName).toBe('LABEL');
+    expect(section!.textContent).toMatch(/^Screenshot \(optional\)$/);
+    expect(dropzone!.textContent).toMatch(/Click to attach a screenshot/);
+    expect(ids[0]).toMatch(/-screenshot-label$/);
+    expect(ids[1]).toMatch(/-screenshot-dropzone$/);
+    // Neither label gains or loses a for: the drop zone still opens the picker, the heading never does.
+    expect(dropzone).toHaveAttribute('for', input.id);
+    expect(section).not.toHaveAttribute('for');
+  });
+
+  it('AC-33 / W024 — the two required stars are aria-hidden, keep their colour, and the inputs are named without them and stay required', () => {
+    render(<FeedbackForm onClose={() => {}} />);
+    const stars = Array.from(document.querySelectorAll('label span.text-red-500'));
+    expect(stars).toHaveLength(2);
+    stars.forEach((star) => {
+      expect(star).toHaveAttribute('aria-hidden', 'true');
+      expect(star.textContent).toBe('*');
+    });
+    const subject = screen.getByPlaceholderText(/Brief description/i);
+    const description = screen.getByPlaceholderText(/provide as much detail/i);
+    expect(subject).toHaveAccessibleName('Subject');
+    expect(description).toHaveAccessibleName('Description');
+    expect(subject).toBeRequired();
+    expect(description).toBeRequired();
+  });
+
+  it('D-22 — the screenshot-error region (assertive) is sr-only while empty, and the SAME node is visible with its classes when a file is rejected', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    const before = regionByIdSuffix('-screenshot-error');
+    expect(before.textContent).toBe('');
+    expect(before).toHaveClass('sr-only');
+
+    await user.upload(fileInput(), overSizeFile('huge.png'));
+
+    await waitFor(() => expect(regionByIdSuffix('-screenshot-error')).toHaveTextContent(/too large/i));
+    const after = regionByIdSuffix('-screenshot-error');
+    expect(after).toBe(before);
+    expect(after).not.toHaveClass('sr-only');
+    expect(after).toHaveClass('text-xs');
+    expect(after).toHaveClass('text-content-status-error');
+    expect(after).toHaveClass('mt-1');
+  });
+
+  it('D-22 — the submit-error region (assertive) is sr-only while empty, and the SAME node is the visible error box after a failed send', async () => {
+    fetchMock.mockImplementation(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    const before = regionByIdSuffix('-submit-error');
+    expect(before.textContent).toBe('');
+    expect(before).toHaveClass('sr-only');
+
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description.');
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+
+    await waitFor(() => expect((regionByIdSuffix('-submit-error').textContent ?? '').length).toBeGreaterThan(0));
+    const after = regionByIdSuffix('-submit-error');
+    expect(after).toBe(before);
+    expect(after).not.toHaveClass('sr-only');
+    expect(after).toHaveClass('bg-status-error-subtle');
+    expect(after).toHaveClass('border-status-error');
+    expect(after).toHaveClass('text-content-status-error');
+  });
+
+  it('D-22 — the gate line (polite) is sr-only while empty with no reserved min-height, and the SAME node is visible when the reply-to line is set', () => {
+    const { rerender } = render(<FeedbackForm onClose={() => {}} />);
+    const before = gateStatusRegion();
+    expect(before.textContent).toBe('');
+    expect(before).toHaveClass('sr-only');
+    expect(before.className).not.toMatch(/\bmin-h-/);
+
+    h.self = { id: 'u1', email: SYNTHETIC };
+    rerender(<FeedbackForm onClose={() => {}} />);
+
+    const after = gateStatusRegion();
+    expect(after).toBe(before);
+    expect(after).toHaveTextContent(/couldn't load your email address/i);
+    expect(after).not.toHaveClass('sr-only');
+    expect(after.className).not.toMatch(/\bmin-h-/);
+  });
+
+  it('PRESERVATION, Edge R8 adjacency — exactly two alert regions (the two errors) and two status regions (attach, gate); no region nests in another', () => {
+    render(<FeedbackForm onClose={() => {}} />);
+    const regions = {
+      screenshotError: regionByIdSuffix('-screenshot-error'),
+      submitError: regionByIdSuffix('-submit-error'),
+      attach: regionByIdSuffix('-screenshot-attached'),
+      gate: regionByIdSuffix('-submit-status'),
+    };
+    expect(regions.screenshotError).toHaveAttribute('role', 'alert');
+    expect(regions.submitError).toHaveAttribute('role', 'alert');
+    expect(regions.attach).toHaveAttribute('role', 'status');
+    expect(regions.gate).toHaveAttribute('role', 'status');
+    const form = regions.gate.closest('form')!;
+    expect(form.querySelectorAll('[role="alert"]')).toHaveLength(2);
+    expect(form.querySelectorAll('[role="status"]')).toHaveLength(2);
+    const all = Object.values(regions);
+    all.forEach((outer) => {
+      all.forEach((inner) => {
+        if (outer !== inner) expect(outer.contains(inner)).toBe(false);
+      });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PHASE 88.6.1-34, TASK 3 — Submit while sending (D-35, AC-12, Edge R4), focus after a send
+// (Req 5, AC-14, Edge R5), copy row F2 on an unexplained failure (D-30, CP-2), the repeat
+// failure re-announce (Edge R8 idempotency, backstop) and the late send after a close (review
+// r1 #39). Cases labelled PRESERVATION or BACKSTOP were green before the change and pin what
+// must not move; every other case was run RED against the tree as task 2 left it.
+// ---------------------------------------------------------------------------
+
+describe('FeedbackForm — Phase 88.6.1-34 task 3 (D-35, Req 5, F2, R8 idempotency, late send #39)', () => {
+  const OK_RESPONSE = { ok: true, status: 200, text: async () => JSON.stringify({ success: true }) };
+  const PAYLOAD_TOO_LARGE = {
+    ok: false,
+    status: 413,
+    text: async () => JSON.stringify({ error: 'Payload Too Large' }),
+  };
+
+  // A fetch stub whose response the test releases by hand.
+  const deferredFetch = () => {
+    let release: (value: unknown) => void = () => {};
+    let fail: (reason: unknown) => void = () => {};
+    const pending = new Promise((resolve, reject) => {
+      release = resolve;
+      fail = reject;
+    });
+    const fn = vi.fn(() => pending);
+    return { fn, release: (v: unknown) => release(v), fail: (e: unknown) => fail(e) };
+  };
+
+  const fill = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description.');
+  };
+  const submitButton = () => screen.getByRole('button', { name: /^(Submit|Submitting\.\.\.)$/ });
+  const flushMacrotask = () => act(() => new Promise((r) => setTimeout(r, 0)));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = undefined;
+    h.query = {};
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  it('D-35 latch, Edge R4 idempotency — two submits in one act while the first send is pending file exactly ONE request, and the refused submit is defaultPrevented', async () => {
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    const form = submitButton().closest('form')!;
+    const second = new Event('submit', { bubbles: true, cancelable: true });
+    act(() => {
+      fireEvent.submit(form);
+      fireEvent(form, second);
+    });
+
+    await waitFor(() => expect(d.fn).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(d.fn).toHaveBeenCalledTimes(1);
+    expect(second.defaultPrevented).toBe(true);
+
+    d.fail(new TypeError('Failed to fetch'));
+    await waitFor(() => expect(submitButton()).toHaveTextContent('Submit'));
+  });
+
+  it('D-35 attributes, Edge R4 concurrency — while sending, the pressed Submit is aria-disabled (never natively), reads "Submitting...", keeps focus, and a second press sends nothing; all of it releases when the FIRST send settles', async () => {
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    await user.click(submitButton());
+    await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+    await user.click(submitButton());
+    await flushMacrotask();
+
+    const pressed = submitButton();
+    expect(pressed).toHaveAttribute('aria-disabled', 'true');
+    expect(pressed).not.toHaveAttribute('disabled');
+    expect(pressed).toHaveTextContent('Submitting...');
+    // CONFIRM-ONLY in jsdom (C-11: jsdom never blurs a disabled element); the phone spec's
+    // Test C proves the focus half in a real browser. The two attribute lines above are the red half.
+    expect(document.activeElement).toBe(pressed);
+    expect(d.fn).toHaveBeenCalledTimes(1);
+
+    d.fail(new TypeError('Failed to fetch'));
+    await waitFor(() => expect(submitButton()).toHaveTextContent('Submit'));
+    expect(submitButton()).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('PRESERVATION, D-35 rule of KIND and POSITION — an empty Subject keeps Submit natively disabled with no aria-disabled; while sending, the sibling Cancel stays natively disabled', async () => {
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    expect(submitButton()).toBeDisabled();
+    expect(submitButton()).not.toHaveAttribute('aria-disabled');
+
+    await fill(user);
+    await user.click(submitButton());
+    await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+
+    d.fail(new TypeError('Failed to fetch'));
+    await waitFor(() => expect(submitButton()).toHaveTextContent('Submit'));
+  });
+
+  it('Req 5, Edge R5 ordering (backstop) — focus stays on Submit while the send is pending, then lands on the success title "Thank You!", never <body> and never the dialog container', async () => {
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    const pressed = submitButton();
+    await user.click(pressed);
+    await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).toBe(pressed);
+
+    d.release(OK_RESPONSE);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Thank You!' }))
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
+  });
+
+  it('Req 5, the Safari shape — a send whose Submit never took focus (Safari does not focus a clicked button) still lands on "Thank You!" through the submitter', async () => {
+    // Deviation pin (Phase 88.6.1-34, consumer contract point 1): the hook is armed with the
+    // event's submitter. Without it, focus on <body> at the press leaves the hook nothing to
+    // watch, and Radix moves focus to the dialog CONTAINER when the form is swapped out.
+    const d = deferredFetch();
+    vi.stubGlobal('fetch', d.fn);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    const pressed = submitButton();
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+    Object.defineProperty(submitEvent, 'submitter', { value: pressed });
+    act(() => {
+      fireEvent(pressed.closest('form')!, submitEvent);
+    });
+    await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+
+    d.release(OK_RESPONSE);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Thank You!' }))
+    );
+  });
+
+  it('F2 (D-30, CP-2) — an unexplained failure (a code-less 413 maps to unknown) shows exactly copy row F2 in the assertive error region', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => PAYLOAD_TOO_LARGE));
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+    await user.click(submitButton());
+
+    const box = regionByIdSuffix('-submit-error');
+    await waitFor(() => expect((box.textContent ?? '').length).toBeGreaterThan(0));
+    expect(box.textContent).toBe("We couldn't send your feedback. Please try again.");
+  });
+
+  it('BACKSTOP, Edge R8 idempotency — the same failure twice is a real clear-then-set on the SAME assertive node, so it is announced twice', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => PAYLOAD_TOO_LARGE));
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await fill(user);
+
+    const box = regionByIdSuffix('-submit-error');
+    await user.click(submitButton());
+    await waitFor(() => expect((box.textContent ?? '').length).toBeGreaterThan(0));
+    const firstText = box.textContent;
+
+    let removed = 0;
+    let added = 0;
+    const observer = new MutationObserver((records) => {
+      records.forEach((r) => {
+        removed += r.removedNodes.length;
+        added += r.addedNodes.length;
+      });
+    });
+    observer.observe(box, { childList: true, characterData: true, subtree: true });
+    await user.click(submitButton());
+    await waitFor(() => expect(added).toBeGreaterThan(0));
+    observer.disconnect();
+
+    expect(removed).toBeGreaterThan(0);
+    expect(regionByIdSuffix('-submit-error')).toBe(box);
+    expect(box.textContent).toBe(firstText);
+  });
+
+  it('review r1 #39 — a send that settles after its form was closed (Escape) never closes the re-opened form, and the new typed Subject survives', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const d = deferredFetch();
+      vi.stubGlobal('fetch', d.fn);
+      const hostOnClose = vi.fn();
+      // Both real mount sites render the form only while open, so a close UNMOUNTS it
+      // (Footer.js, the setShowFeedbackForm(false) arrow).
+      function Host() {
+        const [open, setOpen] = useState(true);
+        return (
+          <>
+            <button type="button" onClick={() => setOpen(true)}>
+              Reopen
+            </button>
+            {open && (
+              <FeedbackForm
+                onClose={() => {
+                  hostOnClose();
+                  setOpen(false);
+                }}
+              />
+            )}
+          </>
+        );
+      }
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<Host />);
+      await fill(user);
+      await user.click(submitButton());
+      await waitFor(() => expect(d.fn).toHaveBeenCalledTimes(1));
+
+      // Close mid-send the way a person can (Cancel stays natively disabled while sending).
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByPlaceholderText(/Brief description/i)).toBeNull());
+      await user.click(screen.getByRole('button', { name: 'Reopen' }));
+      const newSubject = await screen.findByPlaceholderText(/Brief description/i);
+      await user.type(newSubject, 'Typed after reopening');
+      const closesAfterReopen = hostOnClose.mock.calls.length;
+
+      d.release(OK_RESPONSE);
+      await vi.advanceTimersByTimeAsync(2500);
+
+      // POSITIVE signal first: the re-opened form is still there, holding the typed text.
+      expect(screen.getByPlaceholderText(/Brief description/i)).toHaveValue('Typed after reopening');
+      expect(hostOnClose.mock.calls.length).toBe(closesAfterReopen);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// Phase 88.6.1-79 (AC-29): a refetch that fails over a held row keeps the row (TanStack
+// reports `isError` with `data`), and the form already sends that row's address as the
+// reply-to — so the missing-reply-to line must follow the no-row rule, not the raw flag.
+describe('a held identity row is a known reply-to (88.6.1-79, AC-29)', () => {
+  const REPLY_TO_LINE = "We couldn't load your email address, so we won't be able to reply to this.";
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  const fileOne = async () => {
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description here.');
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    return JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = undefined;
+    h.query = {};
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  it('FF1: a held row with a usable address and the flag in error shows no missing-reply-to line and sends that address', async () => {
+    h.self = { id: 'u-1', email: APP_EMAIL };
+    h.query = { isError: true, isFetching: false };
+    render(<FeedbackForm onClose={() => {}} />);
+
+    expect(screen.queryByText(REPLY_TO_LINE)).not.toBeInTheDocument();
+    const body = await fileOne();
+    expect(body.user_email).toBe(APP_EMAIL);
+  });
+
+  it('FF2 (guard): no row and the flag in error shows the line and sends no address', async () => {
+    h.query = { isError: true, isFetching: false };
+    render(<FeedbackForm onClose={() => {}} />);
+
+    expect(screen.getByText(REPLY_TO_LINE)).toBeInTheDocument();
+    const body = await fileOne();
+    expect(body.user_email).toBeNull();
   });
 });

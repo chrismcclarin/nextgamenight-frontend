@@ -1,12 +1,14 @@
 // Phase 88.1-07 (D-08 Layer 3) — parent-integration pins for the create-event scheduler.
 //
 // THIS FILE MOUNTS THE REAL `EventScheduler` ON PURPOSE. Every other create-event suite
-// stubs it (`createEvent.participants.test.tsx:39` — "EventScheduler/heatmap pull in
-// react-big-calendar"); this one exists precisely because a stub cannot prove the wiring.
+// stubs it (`createEvent.participants.test.tsx:42`, `vi.mock('@/app/components/EventScheduler'`;
+// its reason, at `:9-11`: "EventScheduler/heatmap are expensive to mount (a 28-row x
+// 7-column grid plus its gesture machine)"); this one exists precisely because a stub cannot
+// prove the wiring.
 //
 // THE BUG THIS EXISTS TO CATCH: navigating the visual scheduler to another week left the
 // heatmap FETCH on the old week. `currentWeekStart` is what the fetch effect
-// (`createEvent.js:310-353`) reads, and it is only ever written from the `onWeekChange`
+// (`createEvent.js`, the heatmap fetch `useEffect`) reads, and it is only ever written from the `onWeekChange`
 // prop body. If that write stops happening — a dropped prop during the WeekGrid rebuild, a
 // `resolveWeekNav` result that is computed and discarded, a nav handler that updates the
 // grid's own internal date and nothing else — the calendar moves, no fetch re-fires,
@@ -22,7 +24,7 @@
 // are on the API SPY, which is implementation-independent by construction. Plan 88.1-09
 // swaps react-big-calendar for WeekGrid underneath this file; it must stay green unedited.
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addDays, addMinutes, addWeeks, format, parseISO, startOfWeek, subDays } from 'date-fns';
 
@@ -43,7 +45,7 @@ const fixtures = vi.hoisted(() => ({
   ],
 }));
 
-// TZ-01. The profile timezone must be the one that reaches the fetch — `createEvent.js:335`
+// TZ-01. The profile timezone must be the one that reaches the fetch — `createEvent.js`'s `availabilityAPI.getGroupHeatmap(group_id` call
 // resolves "today" through `effectiveTz` and passes it as the third argument. Picking a
 // profile TZ that is deliberately NOT the runner's browser TZ is what makes the assertion
 // bite: a regression to `Intl.resolvedOptions().timeZone` (or to `browserTimezone`) sends a
@@ -61,6 +63,7 @@ const api = vi.hoisted(() => ({
   getGroupMembers: vi.fn(),
   searchAll: vi.fn(),
   createEvent: vi.fn(),
+  getEvent: vi.fn(),
   getBallot: vi.fn(),
   getGroupHeatmap: vi.fn(),
   getPromptHeatmap: vi.fn(),
@@ -85,7 +88,8 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // mode's surface, not the scheduler's, so it stays mocked.
 vi.mock('@/app/components/EventHeatmapBackground', () => ({ default: () => null }));
 // Phase 88.6-44: a FAITHFUL stand-in, not a bare div — it renders what the real component
-// forwards to its text input (`GameComboInput.js:215-235`: `id`, `name`, `aria-label` from the
+// forwards to its text input (`GameComboInput.js:215-267`, the `<Combobox` block: `id={id}` at
+// `:220`, `name={name}` at `:221`; `id`, `name`, `aria-label` from the
 // placeholder, the external `inputRef`), so the composed audit at the end of this file sees what
 // createEvent PASSES. The real combobox's ARIA is pinned by `Combobox.test.tsx`; the reasons it
 // stays stubbed here (floating-ui, debounce, ~25 render-count tests) are unchanged.
@@ -150,7 +154,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     groupsAPI: { ...actual.groupsAPI, getGroupMembers: api.getGroupMembers },
     gamesAPI: { ...actual.gamesAPI, searchAll: api.searchAll },
-    eventsAPI: { ...actual.eventsAPI, createEvent: api.createEvent },
+    eventsAPI: { ...actual.eventsAPI, createEvent: api.createEvent, getEvent: api.getEvent },
     ballotAPI: { ...actual.ballotAPI, getBallot: api.getBallot },
     availabilityAPI: { ...actual.availabilityAPI, getGroupHeatmap: api.getGroupHeatmap },
     promptAPI: { ...actual.promptAPI, getPromptHeatmap: api.getPromptHeatmap },
@@ -301,7 +305,7 @@ describe('CreateEvent + real EventScheduler — week nav re-fires the heatmap fe
 describe('CreateEvent + real EventScheduler — the poll-CTA week anchor (Phase 71.2)', () => {
   // The `promptId` journey: arriving from a closed-poll notification, the heatmap is the
   // POLL's responses and carries its own `weekStart`, which reaches the scheduler through
-  // `calendarInitialDate` (createEvent.js:815-817) only AFTER the fetch resolves. So
+  // `calendarInitialDate` (createEvent.js, `const calendarInitialDate = useMemo(`) only AFTER the fetch resolves. So
   // `initialDate` is a HYBRID contract — mount seed AND post-mount re-sync. A rebuilt
   // scheduler that treats it as a mount-only seed opens on the CURRENT week, shows no poll
   // slots, and passes every other pin in this harness. The component-level half of the same
@@ -346,7 +350,7 @@ describe('CreateEvent + real EventScheduler — the poll-CTA week anchor (Phase 
    So the GESTURE half (drag/tap -> `onTimeSelected`) belongs to the Playwright spec in plan
    88.1-14, and the STATE half is pinned here. What these tests actually exercise is the
    whole Phase 66-01 mechanism: the parent owns `start_date` + `duration_minutes`,
-   `derivedSelectedSlot` (createEvent.js:64-74) is a pure projection of them, and the
+   `derivedSelectedSlot` (createEvent.js, `const derivedSelectedSlot = useMemo(`) is a pure projection of them, and the
    scheduler is CONTROLLED through the `selectedSlot` prop. Both modes read and write the
    same two fields, so entering from manual traverses exactly the same wire as entering from
    a drag would. Do not "complete" this by mocking geometry — that is a decision, not a
@@ -427,7 +431,7 @@ describe('CreateEvent + real EventScheduler — the Phase 66-01 controlled round
 });
 
 // DELIBERATE COPY, not an accident: `stubMatchMedia` duplicates the shape at
-// `EventScheduler.test.tsx:490-513`. That helper is file-local and NOT exported; exporting it
+// `EventScheduler.test.tsx`'s `function stubMatchMedia(`. That helper is file-local and NOT exported; exporting it
 // from a `.test.tsx` to import here would make one suite's harness load-bearing for another's.
 // If the media-query fork ever changes, both copies change. (Hoisted to file scope by 88.6-44:
 // the CR-01 describe below and the composed audit at the end of the file share this ONE copy.)
@@ -457,8 +461,8 @@ function stubMatchMedia() {
 
 describe('CreateEvent + real EventScheduler — the displayed day survives the heatmap fetch (CR-01)', () => {
   // CR-01 (88.1-REVIEW.md). `createEvent.js` re-emits the FETCHED WEEK'S MONDAY as a fresh `Date`
-  // after every group-heatmap fetch (`:359` setHeatmapWeekStart(effectiveMonday) -> `:840`
-  // calendarInitialDate's fallthrough), and the scheduler's `initialDate` re-sync effect used to
+  // after every group-heatmap fetch (its `setHeatmapWeekAnchor({` -> `calendarInitialDate`'s
+  // fallthrough), and the scheduler's `initialDate` re-sync effect used to
   // take it unconditionally. In the DAY arm — the only arm below `md` — that moved the displayed
   // day to Monday on every non-Monday. Only this harness can catch it: the churn originates in the
   // PARENT's memo, so a component-level rerender pin cannot reproduce the source.
@@ -554,7 +558,7 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
     // scheduler's guard — which suppresses only the displayed week's MONDAY — lets it through.
     //
     // Wednesday 2026-09-16 at local noon. Its Monday is 2026-09-14, its Sunday 2026-09-20.
-    // Guarded, exactly as the `:417` fixture is: slid onto a Monday or a Sunday this case
+    // Guarded, exactly as this file's `THURSDAY.getDay()).toBe(4)` fixture is: slid onto a Monday or a Sunday this case
     // would go vacuous, so it must fail LOUDLY instead.
     const WEDNESDAY = new Date(2026, 8, 16, 12, 0, 0);
     expect(WEDNESDAY.getDay()).toBe(3);
@@ -570,7 +574,8 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
     expect(columnHeaders()[0]).toBe(format(WEDNESDAY, 'dd EEE'));
 
     // Step Next until the header crosses into next week — i.e. until it reads a Monday.
-    // Bounded at seven with an explicit throw naming the last header (the `:458` idiom).
+    // Bounded at seven with an explicit throw naming the last header (this file's
+    // `if (steps >= 7) {` idiom).
     let steps = 0;
     while (!/Mon$/.test(columnHeaders()[0] ?? '')) {
       if (steps >= 7) {
@@ -755,7 +760,8 @@ describe('createEvent — the paint-gesture flag is WRITTEN here and subscribed 
   it('a plain SCROLL (slop-cancel) touches neither the flag nor any subscriber', async () => {
     const before = await openVisualScheduler();
 
-    // A TOUCH press that breaks slop before the hold threshold — the `:470` teardown, and the
+    // A TOUCH press that breaks slop before the hold threshold — the teardown at
+    // `heatmap/usePaintGesture.ts:344` (`const teardown = useCallback(`), and the
     // single most frequent way a pointer sequence over this grid ends. It never engaged, so
     // there is no `true` and therefore no `false` either.
     fireEvent.pointerDown(gridEl(), { pointerId: 2, pointerType: 'touch', clientX: 2, clientY: 4 });
@@ -793,14 +799,15 @@ describe('createEvent — the paint-gesture flag is WRITTEN here and subscribed 
 // touched only `groundInk.test.ts`. So the tree audited here is the final migrated one.
 //
 // TWO media-query forks exist on this audited tree and BOTH are audited by stub, not by
-// resize: `createEvent.js:65` reads `matchMedia('(hover: none)')` (swipe gating), and the real
+// resize: `createEvent.js` reads `matchMedia('(hover: none)')` (swipe gating), and the real
 // `EventScheduler` forks its layout on `max-width` (the DAY arm below `md`). The desktop arm is
 // the setup-file stub (`matches: false` for every query); the phone arm is `stubMatchMedia`
 // above (375px + coarse pointer). jsdom has no layout and neither rule is viewport-dependent,
 // so a resize would measure nothing.
 //
 // The house rule is asserted HERE because `formLabels.audit.test.tsx`'s fixed roster never
-// included createEvent — its own docblock (`:10-12`) names this suite as the backstop.
+// included createEvent — its own docblock (`formLabels.audit.test.tsx:10-12`, "The heavier
+// surfaces (createEvent, ...") names this suite as the backstop.
 // `GameComboInput` is the faithful stand-in declared at the top of this file; `MemberSelector`
 // is REAL here (its checkboxes are audited in the composed tree).
 // ---------------------------------------------------------------------------
@@ -853,7 +860,7 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
     await auditThisFork();
   });
 
-  it('2. PHONE fork (375px + hover:none — createEvent.js:65 and the EventScheduler DAY arm) passes the same three', async () => {
+  it('2. PHONE fork (375px + hover:none — createEvent.js swipe gating and the EventScheduler DAY arm) passes the same three', async () => {
     restoreMatchMedia = stubMatchMedia();
     await auditThisFork();
   });
@@ -886,29 +893,157 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
     expect(dialog.querySelector('label[for="event-game-name"]')).toHaveTextContent('Game');
   });
 
-  it('4. focus: on OPEN the header Close control (the recorded fallback while members load); on CLOSE the NAMED trigger', async () => {
+  it('4. focus: on a cold open the header Close holds focus while the members load and the waiting region is marked busy; when the form arrives focus moves to the game input; on CLOSE the NAMED trigger', async () => {
     const user = userEvent.setup();
+    // Hold the members read so the wait is observable.
+    let releaseMembers: (v: unknown) => void = () => {};
+    api.getGroupMembers.mockReturnValueOnce(
+      new Promise((r) => {
+        releaseMembers = r;
+      })
+    );
     render(<AuditHost />);
     const trigger = screen.getByRole('button', { name: 'Plan Game Session' });
     trigger.focus();
     await user.click(trigger);
     const dialog = await screen.findByRole('dialog');
     // DERIVED BEFORE WRITING, from the site itself: `createEvent.js` passes
-    // `initialFocusRef={gameInputRef}`, but its own marker (the 88-33 Task 4 paragraph above
-    // the `return`) records that while the members fetch is pending the game input is NOT
-    // mounted, `applyInitialFocus` declines, and Radix's default stands — the header Close
-    // control. That is the target on a cold open, NAMED. Initial focus is applied once, on
-    // open, so it does not move when the input mounts a tick later (recorded, accepted:
-    // 88.6-44-SUMMARY.md).
+    // `initialFocusRef={gameInputRef}`, but while the members fetch is pending the game input is
+    // NOT mounted, `applyInitialFocus` declines, and Radix's default stands — the header Close
+    // control, NAMED. AMENDED Phase 88.6.1-68 (#233): this arm used to pin that focus STAYS on
+    // Close once the form arrives (the 88.6-44 "accepted by record" fallback, 88.6-44-SUMMARY.md).
+    // Plan 88.6.1-68 overrides that acceptance: the region the gate swaps is marked busy while it
+    // waits, and when the form arrives focus moves to the game input if it is still where the
+    // dialog put it. This arm is the create-mode twin of ED7 below.
     const close = screen.getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
-    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
+    // 88.6.1 code review A-45: the loading line itself is never inside the busy subtree, which some
+    // screen readers leave out of the virtual buffer until it settles.
+    expect(screen.getByText('Loading group members...').closest('[aria-busy]')).toBeNull();
+
+    await act(async () => {
+      releaseMembers(fixtures.members);
+    });
     await screen.findByText('Alice');
-    expect(document.activeElement).toBe(close);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Game')));
+    expect(dialog.querySelector('[aria-busy]')).toBeNull();
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // NAMED identity, never "not body".
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('A-44 (88.6.1 code review): the late initial focus does not depend on the close button\'s label text', async () => {
+    const user = userEvent.setup();
+    let releaseMembers: (v: unknown) => void = () => {};
+    api.getGroupMembers.mockReturnValueOnce(
+      new Promise((r) => {
+        releaseMembers = r;
+      })
+    );
+    render(<AuditHost />);
+    await user.click(screen.getByRole('button', { name: 'Plan Game Session' }));
+    await screen.findByRole('dialog');
+    const close = screen.getByRole('button', { name: 'Close' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    // A future rename (a translation, 'Close dialog'): the focus policy must survive it.
+    close.setAttribute('aria-label', 'Close dialog');
+    await act(async () => {
+      releaseMembers(fixtures.members);
+    });
+    await screen.findByText('Alice');
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Game')));
+  });
+
+  it('ED7 (88.6.1-68, #233): in EDIT mode the wait for the fresh read is marked busy, and focus reaches the game input when the form arrives', async () => {
+    const editFixture = {
+      id: '77777777-7777-4777-8777-777777777777',
+      group_id: GROUP_ID,
+      game_id: '66666666-6666-4666-8666-666666666666',
+      Game: { name: 'Catan' },
+      EventParticipations: [],
+      duration_minutes: 120,
+      comments: 'v1 notes',
+    };
+    let releaseRead: (v: unknown) => void = () => {};
+    api.getEvent.mockReturnValueOnce(
+      new Promise((r) => {
+        releaseRead = r;
+      })
+    );
+    // Not `renderModal`: it awaits `Alice`, which an edit-mode opening hides until the populate ran.
+    render(
+      <CreateEvent
+        group_id={GROUP_ID}
+        modal
+        modaltoggle={vi.fn()}
+        onEventCreated={vi.fn()}
+        user={{ sub: 'auth0|self' }}
+        userRole="owner"
+        editingEvent={editFixture as never}
+      />
+    );
+    const dialog = await screen.findByRole('dialog');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }));
+    // 88.6.1 code review A-45 (edit-mode twin): the loading line sits outside the busy subtree.
+    expect(screen.getByText('Loading game night...').closest('[aria-busy]')).toBeNull();
+
+    await act(async () => {
+      releaseRead(editFixture);
+    });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Game')));
+    expect(dialog.querySelector('[aria-busy]')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-15 (copy row C2, D-30) — the two required SECTION titles (Date & Time,
+// Participants) hide their star glyph and speak the ratified words "(required)" through an
+// sr-only span beside it. VoiceOver reads an exposed star as "star", never "required". The
+// two manual-entry labels already hide their stars and their inputs carry `required`, so they
+// gain no "(required)" — a second one there would double it.
+// ---------------------------------------------------------------------------
+describe('createEvent — required section titles are announced as required (88.6.1-15, copy row C2)', () => {
+  it('C2-A: the participants group is named exactly "Participants (required)"', async () => {
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('group', { name: 'Participants (required)' })).toBeInTheDocument();
+  });
+
+  it('C2-B: default visual branch — both section stars are hidden, look the same, and each is followed by an sr-only "(required)"', async () => {
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    const stars = within(dialog).getAllByText('*');
+    expect(stars).toHaveLength(2);
+    for (const star of stars) {
+      expect(star).toHaveAttribute('aria-hidden', 'true');
+      expect(star).toHaveClass('text-content-status-error');
+      const spoken = star.nextElementSibling;
+      expect(spoken).not.toBeNull();
+      expect(spoken).toHaveClass('sr-only');
+      expect(spoken?.textContent).toBe('(required)');
+    }
+    expect(within(dialog).getAllByText('(required)')).toHaveLength(2);
+  });
+
+  it('C2-C: manual branch — four stars, all hidden; "(required)" only on the two section titles; the start date is required', async () => {
+    const user = userEvent.setup();
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Switch to Manual Entry' }));
+    const startDate = await within(dialog).findByLabelText(/start date & time/i);
+    const stars = within(dialog).getAllByText('*');
+    expect(stars).toHaveLength(4);
+    for (const star of stars) {
+      expect(star).toHaveAttribute('aria-hidden', 'true');
+    }
+    expect(within(dialog).getAllByText('(required)')).toHaveLength(2);
+    expect(startDate).toBeRequired();
   });
 });

@@ -19,12 +19,66 @@ import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import MemberChipStack from './MemberChipStack';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
+
+/* DECISION Phase 88.6.1-54 (D-19, D-52, copy rows H1/H2, D-33 row 13): each group card's
+   gear and Invite button are named after THAT card's group, so a screen-reader or Voice
+   Control user hears N different controls instead of N identical ones.
+   CHOSEN:
+   - the names are built per card from `group.name` by the two functions below: "Customize
+     {group}" (copy row H1) and "Invite member to {group}" (copy row H2). The name is trimmed at
+     both ends and is never truncated or escaped by hand; React writes the attribute as text.
+   - an empty, whitespace-only or non-string name falls back to today's words, "Customize group"
+     and "Invite member to group" (D-33 row 13: no new words, D-31).
+   - the gear's ONLY name source is its `title` (owner ruling 2026-10-05, D-52: the desktop hover
+     tooltip stays and now shows the name), with its glyph in an `aria-hidden` span so the title
+     is what names it. Invite has visible text and is named by its `aria-label` alone.
+   REJECTED:
+   (a) `aria-describedby` pointing at the card heading: a skippable hint, and the names would
+       stay identical in the rotor and in Voice Control (D-19);
+   (b) naming the gear by `aria-label` and dropping its `title` (this plan's first draft): the
+       owner kept the hover tooltip (D-52);
+   (c) `aria-label` AND `title` together: the title becomes the description and the name can be
+       read twice (the swatch rule in GroupSettings.js, round-3 #30);
+   (d) leaving the glyph exposed: the emoji, not the title, becomes the gear's name;
+   (e) truncating long names (SPEC edge R6 encoding: untruncated);
+   (f) the copy table's alternate "Settings for {group}" (H1 was ratified as proposed, D-30);
+   (g) bare template literals at the two sites with no fallback, which give an empty name the
+       bare word "Customize".
+   NOTE: Sentry's click selector strings copy a clicked control's `aria-label` / `title`. Plan
+   88.6.1-76's scrubber keeps only the static prefix ("Customize ", "Invite member to ") and
+   redacts the rest, so its prefix list must follow any change to these two templates.
+   Changing this is a decision, not a cleanup. */
+const CUSTOMIZE_GROUP_FALLBACK = 'Customize group';
+const INVITE_MEMBER_FALLBACK = 'Invite member to group';
+const groupNameForLabel = (name) => (typeof name === 'string' ? name.trim() : '');
+const customizeGroupLabel = (name) => {
+  const n = groupNameForLabel(name);
+  return n ? `Customize ${n}` : CUSTOMIZE_GROUP_FALLBACK;
+};
+const inviteMemberLabel = (name) => {
+  const n = groupNameForLabel(name);
+  return n ? `Invite member to ${n}` : INVITE_MEMBER_FALLBACK;
+};
+
+// DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
+// passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
+// notices that share its page are told apart by ear — in the region and in the Retry's
+// description, never visibly. The name is the owner's ratified word, chosen OVER the section's
+// visible heading (the review's lead): the ruling fixed short names per page.
+// Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
+const GROUPS_SECTION_NAME = 'Groups';
+
+// The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
+const LOAD_OK = Object.freeze({ isError: false });
+const LOAD_FAILED = Object.freeze({ isError: true });
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -36,9 +90,58 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // flips value at PR-C). selfUuid resolves ASYNC, so role derivation runs in its own effect
   // gated on resolution (D-04 async-resolution constraint).
   const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
-  const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
+  // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
+  const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
   const [groups, setGroups] = useState([]);
+  // From Phase 88.6.1-41 on, `loading` means only "a groups request is in flight"; the render
+  // reads it solely for the cards wrapper's `aria-busy`. The first-load gate is `hasLoaded` below.
   const [loading, setLoading] = useState(true);
+  /* DECISION Phase 88.6.1-41 (D-37, Req 9): the home list blanks only on the FIRST load for the
+     signed-in identity, and a refresh changes it in place.
+     CHOSEN:
+     - "Loading groups..." is keyed on `hasLoaded`, a has-loaded flag for the CURRENT identity: the
+       identity whose latest request SETTLED (success or failure), compared against the identity
+       now resolved, so a change of signed-in identity is a first load again (88.6.1-70 contract
+       C3, the same first-load-only rule D-09a gives Manage Members);
+     - a refresh keeps the SAME card nodes mounted, with `aria-busy` on the cards wrapper only;
+     - a failed refresh keeps what loaded: the cards, or the empty-state sentence of a list that
+       loaded empty (D-50, owner ruling Y). The full groups banner renders only while nothing has
+       loaded for this identity (`groupsRetained`, a has-loaded flag, never a row count). The
+       shared RF1 notice that qualifies retained content is mounted by plan 88.6.1-77;
+     - the groups error is cleared on a SUCCESSFUL result, so a pressed retry keeps its banner up
+       until the result is known (88.6.1-70 contract C2);
+     - a generation guard bumped at the START of every fetch, and checked by every post-await write.
+       This is the `QuickSuggestions.js` staleness idiom, which bumps in an effect cleanup; here
+       three of the callers are handlers (the retry, `onUpdate`, `onGroupDeleted`), not an effect.
+     REJECTED, each so it is not re-proposed as a tidy-up:
+     (a) keying the loader on the row count: a user with no groups would blank on every refresh;
+     (b) a visible "Updating" line: D-09 grants one to Browse Games only, and no ratified string
+         exists for this surface (D-31);
+     (c) `aria-busy` on the scroll div: it also holds the alert banner (RESEARCH A3);
+     (d) dimming the cards while busy: a look item, Phase 88.9 per D-09;
+     (e) clearing the error at refresh start: it unmounts a pressed retry mid-flight;
+     (f) the full banner above retained cards (the D-09a clause D-37 inherits, AMENDED by D-51,
+         the RF1 convergence the owner ratified 2026-10-05): a "couldn't load" banner over loaded
+         cards contradicts itself;
+     (g) a row count in the retained rule: the owner ruled 2026-10-05 (D-50, ruling Y) that a list
+         that loaded EMPTY is retained content; the full banner there throws away what the last
+         good read found and hints at groups the user cannot see;
+     (h) a plain has-loaded boolean: after a change of signed-in identity the previous identity's
+         cards, with their gear and Invite controls, would stay on screen until the new list lands.
+     Changing this is a decision, not a cleanup. */
+  const [groupsSettledFor, setGroupsSettledFor] = useState(null);
+  const hasLoaded = groupsSettledFor === selfUuid;
+  const generationRef = useRef(0);
+  // The identity whose cards are on screen. Written only by a SUCCESSFUL result (88.6.1-70
+  // contract C3), never inferred from the row count.
+  const [groupsLoadedFor, setGroupsLoadedFor] = useState(null);
+  // Req 5 (H7/H8): see the DECISION Phase 88.6.1-41 (D-04, D-05, H7/H8) marker at
+  // armIfFocusInList below. "Your Groups" is the fallback; each card and its title block are
+  // tracked by group id through callback refs (never by the group-card test id).
+  const groupsHeadingRef = useRef(null);
+  const cardNodesRef = useRef(new Map());
+  const cardTitleNodesRef = useRef(new Map());
+  const listFocus = useFocusRecovery({ fallback: groupsHeadingRef });
   const [settingsGroup, setSettingsGroup] = useState(null);
   const [userRoles, setUserRoles] = useState({});
   /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserGroups failure is tracked as its own
@@ -78,17 +181,82 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     setUserRoles(roles);
   }, [groups, selfUuid]);
 
+  /* DECISION Phase 88.6.1-41 (D-04, D-05, H7/H8): focus when a refresh removes the control a
+     keyboard or screen-reader user stands on.
+     CHOSEN:
+     - plan 88.6.1-04's ONE shared hook (`useFocusRecovery`), armed at the APPLY: synchronously,
+       immediately before the state writes that may remove the focused node, and only when focus
+       is inside one of this list's CARDS (#204); settled right after those writes;
+     - preferred = the title block of the card that held focus, when that card survives;
+       fallback = "Your Groups"; plan 04's page floor after that;
+     - a card the apply only MOVES (#46: the list GET has no ORDER BY, so a settings save can
+       reorder) keeps its focused control through React DOM's own commit-time restore: the commit
+       that moves a node re-focuses the element that held focus before it when that element is
+       still in the document (`restoreSelection`, called from `resetAfterCommit`, in react-dom and
+       in the copy Next bundles). Measured by grouplist.focus.test.tsx F8, green with no host code;
+     - H8 rides on plan 88.6.1-20's dialog close restore to the gear (D-07), which D-37 keeps
+       connected through the refresh.
+     REJECTED, each so it is not re-proposed as a tidy-up:
+     (a) arming at refresh start or in onUpdate / onGroupDeleted. Focus is then inside the closing
+         settings dialog, or on <body> because its Save is natively disabled (GroupSettings.js:1545)
+         while saving, and a watched-null arm disarms on the dialog's own removal. An arm held
+         across the network wait would also pull focus into
+         this list from an unrelated removal elsewhere (the bell's nggroups:refresh);
+     (b) "Your Groups" for every case: after D-37 a stack or gear removal leaves its card
+         standing, and jumping to the list head loses the user's place on a phone;
+     (c) an in-component restore in MemberChipStack: D-04, and it has no target left;
+     (d) a static tabIndex on the heading: plan 04's focusElement adds tabindex="-1" on first use,
+         so no markup edit is needed (how long it stays is plan 88.6.1-04's tabindex-lifetime
+         rule, not restated here);
+     (e) reading the group-card test id at runtime: DECISION Phase 88.6-47 keeps it inert;
+     (f) handling the reorder inside plan 04's hook: its still-connected rule cannot tell a moved
+         node from a blank-area click, so every host would get focus pulled back after a
+         deliberate click on blank space;
+     (g) arming on any focus inside the list root: the full banner's Try again would arm a second
+         hook beside plan 21's, and the landing would then rest on observer creation order;
+     (h) a host-local re-focus of the moved control after the commit (what the plan specified for
+         #46): React DOM has already re-focused it by the time any effect runs, so that code
+         could never act. Measured, not assumed: F8 is green on the tree before this marker.
+     Plan 04's contract (1) says "at the START of the action". For a refresh the action that
+     removes is the apply, and arming there keeps the contract's purpose: armed while the node is
+     live, before the removal commits. No `from` is passed: there is no event in hand, and the
+     arm runs only after a live focused element was found inside a card, which is the hook's
+     own seed. Changing this is a decision, not a cleanup. */
+  const armIfFocusInList = () => {
+    const active = document.activeElement;
+    if (!active) return null;
+    let focusedGroupId = null;
+    for (const [groupId, cardNode] of cardNodesRef.current) {
+      if (cardNode.contains(active)) {
+        focusedGroupId = groupId;
+        break;
+      }
+    }
+    if (focusedGroupId === null) return null;
+    return listFocus.arm({ preferred: () => cardTitleNodesRef.current.get(focusedGroupId) ?? null });
+  };
+
   const fetchGroups = async () => {
     // Mount-fire gate: wait for the caller's own Users.id UUID to resolve. This
     // guard IS the resolution gate (paired with selfUuid in the effect deps).
     if (!selfUuid) return;
+    // D-37 (edge R9 ordering, latest wins): see the DECISION Phase 88.6.1-41 (D-37) marker above.
+    const generation = ++generationRef.current;
+    const requestedFor = selfUuid;
 
     try {
       setLoading(true);
-      setGroupsError(null);
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
       const groupsData = await groupsAPI.getUserGroups(selfUuid);
+      if (generation !== generationRef.current) return;
+      // Req 5: armed at the APPLY, before the writes that may remove the focused node.
+      const settle = armIfFocusInList();
       setGroups(groupsData || []);
+      setGroupsLoadedFor(requestedFor);
+      // Cleared on SUCCESS, not at refresh start (88.6.1-70 contract C2).
+      setGroupsError(null);
+      settle?.();
+      return LOAD_OK;
     } catch (error) {
       // A DEVELOPER log, deliberately NOT routed through `getFetchErrorMessage`: this line is
       // diagnostic only and never reaches a person. The user-facing copy for this failure comes
@@ -99,19 +267,25 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       // scan matches ONE PHYSICAL LINE and its user-facing-sink pattern ends in a bare
       // `message:` arm, so spelling the key at the call site reds a gate this line never touched.
       logger.info('Error fetching groups:', errCtx(error));
+      if (generation !== generationRef.current) return;
       // Keep the ERROR object, not a flattened string: useFetchErrorState reads
       // `ApiError.code` off it to pick the right user-facing copy.
       setGroupsError(
         error instanceof Error ? error : new Error("The groups request didn't complete.")
       );
+      return LOAD_FAILED;
     } finally {
-      setLoading(false);
+      // Only the latest request clears the busy flag and records the settle.
+      if (generation === generationRef.current) {
+        setLoading(false);
+        setGroupsSettledFor(requestedFor);
+      }
     }
   };
 
   // Adapter onto the shared fetch-error pair, matching the 88-14 friends-page
-  // pattern: the hook documents that it reads ONLY isError/error/refetch
-  // (useFetchErrorState.ts:89). `retry` must be stable — the hook puts it in a
+  // pattern: the hook documents that it reads ONLY isError/error/refetch (its docblock, anchor
+  // "only `isError`/`error`/`refetch` are read"). `retry` must be stable — the hook puts it in a
   // useCallback dep AND in its refocus-recovery effect deps.
   const fetchGroupsRef = useRef(null);
   useEffect(() => {
@@ -123,7 +297,27 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     error: groupsError,
     refetch: retryGroups,
   });
-
+  // D-37 / D-50 / D-51: something loaded for the CURRENT identity, success only. A has-loaded
+  // flag and never a row count (88.6.1-70 contract C3), so a list that loaded EMPTY is retained
+  // content too. The flag goes through plan 70's retained-content hook (contract C10, the marker
+  // below); the render below reads only these two names.
+  /* DECISION Phase 88.6.1-77 (C10, access or gone): an answer saying the viewer may no longer
+     see the list, or that it is gone, is never a refresh failure.
+     CHOSEN: `retained` comes from plan 70's `useRetainedContent` on plan 41's has-loaded flag —
+     the one predicate for every 401 / 403 / 404 / 410 form, remembered until the next success —
+     so such an answer withdraws the cards (and a loaded-empty list's sentence) for the full
+     banner's register line, and the RF1 notice never offers a Retry for it.
+     REJECTED: (a) plan 41's bare has-loaded flag here — a 401 after a session expired mid-visit
+     would keep the cards under the notice's "showing what loaded earlier" with a Retry that
+     cannot fix a sign-in, while the register line names the remedy; (b) a local list of codes
+     (contract C10: one predicate in plan 70's module; a local list drifts the day a code is
+     added — plan 70's map fails the build instead); (c) special-casing only 401 because the list
+     route answers 403 only for another user's id — the predicate is phase-wide and a narrower
+     local rule is a second standard.
+     Changing this is a decision, not a cleanup. */
+  const groupsRetained = useRetainedContent(groupsLoadedFor === selfUuid, groupsErrorState);
+  // The full groups banner holds the list's place only while nothing is retained (contract C6).
+  const groupsBannerShown = groupsErrorState.showError && !groupsRetained;
 
   const handleGroupClick = (group, e) => {
     // Navigate to group page instead of opening modal
@@ -138,6 +332,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // HERE instead (banner where the list would be), mirroring the
   // groupHomePage/friends identity-error pattern. The header shell is kept so the
   // error state looks intentional, not a broken half-render.
+  // AMENDED Phase 88.6.1-41 (AC-29): with a RETAINED identity a failed self refetch no longer
+  // replaces a working list. A failed refetch keeps the query's data, so `selfUuid` stays
+  // defined; this shell is for a terminal failure with NO id, and the compact notice in the
+  // list below carries the retained case.
+  // AMENDED Phase 88.6.1-63 (AC-29): the held-row case no longer shows the compact notice either,
+  // because after a non-access failure its sentence is false while every control works from the
+  // held row, and an access answer is told by the list's own request (C10). The no-row rule now
+  // lives in selfIdentityErrorSource.ts, so this condition reads the error state alone.
   if (selfIdentityErrorState.showError) {
     return (
       <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
@@ -163,7 +365,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     );
   }
 
-  if (loading) {
+  if (!hasLoaded) {
     return (
       <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
@@ -187,7 +389,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     // not a cleanup.
     <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-        <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
+        <Heading ref={groupsHeadingRef} level={2} size="heading" className="text-content-primary">Your Groups</Heading>
         {onCreateGroup && (
           /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
           <Button
@@ -202,19 +404,68 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         )}
       </div>
 
-      {/* D-08: if identity resolution permanently fails, per-group role
-          affordances (Invite / settings) silently vanish — surface a compact,
-          non-blocking degrade notice instead of failing silently (D-11). */}
-      <FetchErrorBanner state={selfIdentityErrorState} compact />
+      {/* DECISION Phase 88.6.1-63 (AC-29): CHOSEN — the identity shell (the early return above)
+          is the list's one identity notice, and it shows whenever identity failed with no row
+          held. REJECTED — keeping a second compact identity mount here: this return renders only
+          once the list has loaded, which needs a resolved identity id, and the no-row rule never
+          reports a failure while that id is held, so the mount could never render (a dead element
+          under a comment saying it shows). D-08's intent, never failing silently, is kept by the
+          shell. */}
+
+      {/* DECISION Phase 88.6.1-77 (C12, focus when the list is withdrawn): focus never falls to
+          the page body when an access or gone answer withdraws the cards.
+          CHOSEN: plan 70's shared guard, placed beside the RF1 notice outside the scroll area,
+          handed "Your Groups" — so when an access or gone answer withdraws the cards while a card
+          control holds focus, pressed or not (the hook's tab-return re-attempt presses nothing),
+          focus lands on the heading the notice and plan 41's apply-time arm also land on; never
+          the page body. ONE guard, in the main return only: contract C12's position rule (2) is
+          met because the only flip that switches this component to another return (the
+          first-load return, or the identity shell) is a change of signed-in identity, and that is
+          a different identity query (`useSelfIdentity` keys it per Auth0 subject), which this app
+          reaches only through a page load; within a session every flip (access or gone, by Retry
+          or by tab return) keeps the main return, so the guard is one instance.
+          REJECTED: (a) the guard inside the scroll area or the cards wrapper — it would unmount
+          with the cards it watches; (b) relying on plan 41's apply-time arm — it arms in the
+          success path only, and a withdrawal is a failure; (c) focus code written in this file
+          (D-04: one shared mechanism; plan 70 owns it); (d) the floor as the landing — the home
+          page has no h1, and `main` is the top of the page, far from the list on a phone.
+          Changing this is a decision, not a cleanup. */}
+      <RetainedContentFocusGuard retained={groupsRetained} focusTarget={groupsHeadingRef} />
+
+      {/* DECISION Phase 88.6.1-77 (AC-29 / RF1, owner ruling 2026-10-05): a failed REFRESH of
+          the home list says so with plan 88.6.1-70's shared notice.
+          CHOSEN: a failed REFRESH keeps what loaded — the cards, or the "No groups yet" of a list
+          that loaded empty (D-50, ruling Y) — and shows the shared RefreshFailedNotice and its
+          Retry, gated by `groupsRetained` (a has-loaded flag, never a row count). It sits between
+          the header block and the scrolling list: OUTSIDE the scroll area (on a phone that area
+          is capped at 60vh, and a notice inside it scrolls away with the card the user acted on)
+          and OUTSIDE the cards wrapper that carries `aria-busy` (a busy element must not contain
+          a live region, RESEARCH M-3.1 A3). Focus after a successful Retry goes to "Your Groups"
+          through plan 70's retry recovery on the notice (`focusTarget={groupsHeadingRef}`)
+          ALONE — plan 41's apply-time arm covers only a card that holds focus and never fires
+          for the notice's Retry, which sits in no card.
+          REJECTED: (a) the full banner above retained content (the earlier D-09a / D-37
+          arrangement) — D-51, ratified 2026-10-05; (b) the notice inside the scroll area, above
+          the cards — it scrolls out of view on a phone; (c) inside the `aria-busy` wrapper (A3);
+          (d) a sentence or notice written in this file — one constant ships everywhere (contract
+          C7); (e) the floor (`main`) as the Retry landing — the home page has no h1, and `main`
+          is the top of the page, far from the list on a phone; (f) the full banner over a list
+          that loaded empty — D-50: the owner ruled a loaded-empty list is retained content.
+          Changing this is a decision, not a cleanup. */}
+      <RefreshFailedNotice state={groupsErrorState} retained={groupsRetained} focusTarget={groupsHeadingRef} className="mb-4" sectionName={GROUPS_SECTION_NAME} />
 
       <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
-        {groupsErrorState.showError ? (
+        {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary
+            that put the full banner in place of retained cards (see DECISION Phase 88.6.1-41
+            (D-37, Req 9) above). The banner holds the list's place only while nothing loaded. */}
+        {groupsBannerShown && (
           <FetchErrorBanner
             state={groupsErrorState}
             title="We couldn't load your groups"
             reportContext="Your groups list (home page)"
           />
-        ) : groups.length === 0 ? (
+        )}
+        {!groupsBannerShown && groups.length === 0 && (
           /* DECISION Phase 88-18 (Req 6): this EmptyState's CTA is rendered IN ADDITION to the
              identical header button above, not instead of it — the opposite call to
              OpenPollsList/PromptScheduleManager, which suppress theirs. The difference is where
@@ -240,8 +491,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               ) : undefined
             }
           />
-        ) : (
-          groups.map((group) => {
+        )}
+        {!groupsBannerShown && groups.length > 0 && (
+          // aria-busy sits on this wrapper, never on the scroll div that also holds the alert
+          // banner (RESEARCH M-3.1, A3). It reproduces the scroll div's column gap, so the
+          // layout is unchanged; the map body below is deliberately not re-indented.
+          <div className="flex flex-col gap-4" aria-busy={loading || undefined}>
+          {groups.map((group) => {
             // Get users from the group (Users array from backend)
             const groupUsers = group.Users || [];
             const lastEvent = group.Events?.[0]; // First event from the included events
@@ -378,8 +634,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               /* DECISION Phase 88.6-21 (W42/W62b, SPEC A11y mandate): the KEYBOARD target is the
                  TITLE BLOCK below, not this card. The card keeps a pointer-only `onClick`;
                  `role="button"` / `tabIndex` / `onKeyDown` moved onto the title `<div>` (NO
-                 aria-label — see the note there). This is `EventDayModal.js:280-359`'s H1 remedy
-                 applied VERBATIM, not a second similar-looking fix.
+                 aria-label — see the note there). This is EventDayModal's H1 remedy (its
+                 `AMENDED Phase 88.3 code-adversarial-review run 3 (H1` paragraph) applied
+                 VERBATIM, not a second similar-looking fix.
 
                  WHAT WAS MEASURED HERE BEFORE THE FIX (2026-09-16, at FE `5a648e4`), because the
                  88.5 marker below says there is no axe pin on this list to catch either half:
@@ -400,7 +657,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  REJECTED: a `target !== currentTarget` guard on the card's own `onKeyDown` — it
                  fixes the hijack and leaves every descendant hidden from AT, which is the half
                  88.9's chip-adoption widening is blocked on.
-                 The markers at `:491-510` below describe the pre-fix shape as deliberate; what
+                 The markers below (the NESTED-INTERACTIVE paragraph of the `DECISION Phase 88.5
+                 (SPEC Req 5, UI-SPEC 6.5)` marker) describe the pre-fix shape as deliberate; what
                  changed is this phase's A11y mandate plus 88.9's blocked dependency, named here
                  rather than overridden silently. A decision, not a cleanup. */
               /* DECISION Phase 88.6-47 (row 4 of the 2026-09-17 CI e2e red): the keyboard-target
@@ -426,6 +684,10 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  Owner ruling 2026-09-21, decision (1): default stands. */
               <div
                 key={group.id}
+                ref={(node) => {
+                  if (node) cardNodesRef.current.set(group.id, node);
+                  else cardNodesRef.current.delete(group.id);
+                }}
                 data-testid="group-card"
                 className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
@@ -515,11 +777,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           — the no-colour half of the fork already resolves to
                           `var(--color-content-primary)`. */}
                       <div
+                        ref={(node) => {
+                          if (node) cardTitleNodesRef.current.set(group.id, node);
+                          else cardTitleNodesRef.current.delete(group.id);
+                        }}
                         role="button"
                         tabIndex={0}
                         /* NO aria-label, deliberately — the EventDayModal remedy this applies
-                           carries the same rejection verbatim (`EventDayModal.js:343-347`, "NO
-                           aria-label ... 88.3 code-adversarial-review run 4, 2026-08-28"): on a
+                           carries the same rejection verbatim (EventDayModal's note, anchor "NO
+                           aria-label, deliberately (88.3 code-adversarial-review run 4"): on a
                            role="button" an explicit label REPLACES the name computed from the
                            subtree, and the subtree here IS the group name. Computing it means a
                            quote-bearing name like `Bob's "Board" Crew` arrives intact with no
@@ -656,7 +922,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  * Removing them is a decision, not a cleanup.
                  *
                  * `tinted` is gated on `!hasBgImage`, and that gate is LOAD-BEARING (verified
-                 * 2026-09-01, `colorUtils.js:739`). The tinted chip arm paints `bg-white/85` and
+                 * 2026-09-01, `colorUtils.js` `groupInkVars`, its background-IMAGE arm). The
+                 * tinted chip arm paints `bg-white/85` and
                  * takes its initials from `var(--group-ink-l, var(--t-color-l))`. On a card with
                  * a background PHOTO `groupInkVars` returns `{}`, so that chain falls through to
                  * `--t-color-l`, which `getTextStyle`'s image branch sets to WHITE — white
@@ -764,7 +1031,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       CHOSEN: on the tinted arm both spans read the CARD INK PAIR out of the
                       cascade — `--group-ink` / `--group-ink-l` for the row, the 85% muted rung
                       `--group-ink-muted` / `--group-ink-muted-l` for the 12px date — exactly as the
-                      card title at `:398` already forks on `--t-color`. The ink is STORED per preset
+                      card title `Heading` (its `[color:var(--t-color-l)] dark:[color:var(--t-color)]`
+                      class) already forks on `--t-color`. The ink is STORED per preset
                       per theme and is selected by the SAME `dark:` fork that selects the ground, so
                       the pole is a function of the RENDERED ground by construction. Req 8's failure
                       mode — a pole chosen by "does this group have a colour" — cannot occur here.
@@ -819,7 +1087,10 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         (FriendInvitePanel exposes QR + link to all roles); only
                         the Reset invite link button inside FriendInvitePanel is
                         admin-only (D-INV-02). The settings cog below stays
-                        admin-gated via `canEdit`. */}
+                        admin-gated via `canEdit`. AMENDED Phase 88.6.1-54 (plan 27,
+                        R14 / W015): that FriendInvitePanel reset was never rendered (no
+                        mount passed the flag) and plan 88.6.1-27 deleted it; the
+                        invite-link reset lives in Manage Members. */}
                     {userRole && userRole !== 'pending' && (
                       /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
                       <Button
@@ -831,7 +1102,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                             onGroupSelect(group);
                           }
                         }}
-                        aria-label="Invite member to group"
+                        aria-label={inviteMemberLabel(group.name)}
                       >
                         Invite Member
                       </Button>
@@ -986,6 +1257,21 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                          88.6 D-09. It is the base, not the size variant, that holds the sibling
                          at 44px.)
 
+                         AMENDED Phase 88.6.1-54 (D-19, D-52), everything above KEPT AS HISTORY:
+                         the anchor named in (a) moved WITH the label, by decision. The gear's
+                         name is now computed per card (copy row H1) and carried by its `title`
+                         alone (D-52: the owner kept the hover tooltip; no `aria-label`), so
+                         `groupColourRendering.test.ts` test 19 and `controlSizeFloor.test.tsx`'s
+                         `homeCardCog` subject both anchor on the opening-tag text
+                         `title={customizeGroupLabel(group.name)}`. Both were re-anchored in the
+                         same commit as the label change, with no assertion weakened. The glyph
+                         sits in an `aria-hidden` span so the title is the name; unwrapping it
+                         makes the emoji the gear's name, and any later glyph (88.9's SVG item)
+                         must stay hidden the same way. The rule that a red class pin means the
+                         ELEMENT is wrong, never the assertion, still stands. Renaming
+                         `customizeGroupLabel` or its argument, or moving the name back to an
+                         `aria-label`, reds both scans, and that is intended.
+
                          Any of this is a decision, not a cleanup. */
                       <button
                         className="min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
@@ -993,17 +1279,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           e.stopPropagation();
                           setSettingsGroup(group);
                         }}
-                        aria-label="Customize group"
-                        title="Customize group"
+                        title={customizeGroupLabel(group.name)}
                       >
-                        ⚙️
+                        <span aria-hidden="true">⚙️</span>
                       </button>
                     )}
                   </div>
                 </div>
               </div>
             );
-          })
+          })}
+          </div>
         )}
       </div>
       

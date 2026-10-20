@@ -51,7 +51,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import RsvpPage from './page';
-import { rsvpPublicAPI } from '@/lib/api';
+import { ApiError, rsvpPublicAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -209,8 +209,8 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
     // for them at all. So a `code`-only body reaching the generic error screen IS the shipped
     // contract today, and this assertion documents it rather than reporting a defect.
     //
-    // WHAT CHANGES IT: Phase 93 landing the backend `code` on Sonnet/routes/rsvp.js:293-296 and
-    // :302-306 is the precondition, recorded as a blocking entry in
+    // WHAT CHANGES IT: Phase 93 landing the backend `code` on the Sonnet/routes/rsvp.js 410 bodies
+    // (anchors `error: 'event_cancelled',` and `error: 'event_passed',`) is the precondition, recorded as a blocking entry in
     // `.planning/deferred/phase-93.md` under `[cleanup] Retighten`. When that lands, this
     // assertion INVERTS — `event_passed` by code must then reach EVENT_PASSED — and it must be
     // inverted deliberately, in the same change, never deleted to make a red go away.
@@ -410,25 +410,22 @@ describe('rsvp/[token] — r2 #181 / AC-19: the LOADING to result swap is announ
 });
 
 describe('rsvp/[token] — AC-13: the mount effect cannot write state after unmount', () => {
-  it("a superseded effect run's late response does not overwrite the live run's page state", async () => {
-    // WHY THIS SHAPE, and not the obvious one. The obvious arm — unmount mid-flight and assert
-    // no "setState on an unmounted component" warning — is VACUOUS on React 18: that warning was
-    // removed and the late write is a silent no-op, so the arm passes with the guard DELETED.
-    // Measured, not assumed: deleting the flag and the cleanup left it green (see the
-    // red-then-green ledger in 88.6-24-SUMMARY.md).
+  it('opening the link sends the RSVP ONCE per page instance under StrictMode, and its answer lands (#40, plan 88.6.1-36)', async () => {
+    // REWRITTEN IN PLACE by plan 88.6.1-36 (#40). This arm used to measure StrictMode's double
+    // run as TWO requests and assert that the superseded run's late body did not overwrite the
+    // live run's. That premise is gone: the token is single-use (the backend consumes it before
+    // it records anything), so the second request always landed on a spent token, and the
+    // per-run flag dropped run 1's real answer. The page then showed the used-link state for an
+    // RSVP that WAS recorded. With the submit latch, run 2 never sends, so there is no
+    // superseded-run write left to guard; what is pinned now is the latch contract.
     //
-    // The write the guard really suppresses is a SUPERSEDED RUN's. StrictMode mounts, cleans up
-    // and re-runs the effect, so two requests are in flight and run 1 is already cancelled. If
-    // run 1 resolves LAST without the guard, its stale body lands on top of the live run's — the
-    // user is shown the wrong outcome for their RSVP. Measured here: StrictMode issues exactly 2
-    // calls.
-    const resolvers: Array<(v: unknown) => void> = [];
-    respond().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolvers.push(resolve);
-        })
-    );
+    // RED against the shipped per-run flag: two calls, and the used-link heading (run 1's
+    // success dropped by its own cleanup, run 2's expired_link lands). RED against the
+    // wrong-but-plausible half-fix, a latch BESIDE the per-run flag: one call, but run 1's
+    // answer is still dropped and the page never leaves "Recording your RSVP...".
+    respond()
+      .mockResolvedValueOnce(BODY_SUCCESS)
+      .mockResolvedValueOnce(BODY_EXPIRED_LINK_403);
 
     render(
       <React.StrictMode>
@@ -436,27 +433,14 @@ describe('rsvp/[token] — AC-13: the mount effect cannot write state after unmo
       </React.StrictMode>
     );
 
-    // Positive settle: both runs really are in flight before anything resolves.
-    await screen.findByText('Recording your RSVP...');
-    expect(resolvers).toHaveLength(2);
-
-    // The LIVE run (2) answers first, with the real outcome.
-    await act(async () => {
-      resolvers[1](BODY_SUCCESS);
-    });
-    await screen.findByRole('heading', { name: "You're in!" });
-
-    // The SUPERSEDED run (1) answers late, with a different outcome.
-    await act(async () => {
-      resolvers[0](BODY_PASSED_410);
-    });
-
+    // Positive signal first: the success heading from the ONE request.
     expect(
-      screen.getByRole('heading', { name: "You're in!" }),
-      "without the `cancelled` cleanup flag the superseded run's late body overwrites the live " +
-        "run's, and the page shows the already-happened screen for an RSVP that was recorded"
+      await screen.findByRole('heading', { name: "You're in!" }),
+      'the first request is the one that records the RSVP; its answer must reach the page'
     ).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'This event has already happened' })).toBeNull();
+    expect(respond()).toHaveBeenCalledTimes(1);
+    expect(respond()).toHaveBeenCalledWith(TOKEN, EVENT_ID, USER_ID, 'yes');
+    expect(screen.queryByRole('heading', { name: 'This link has already been used' })).toBeNull();
   });
 
   it('an unmount mid-flight is survivable — no throw, and the page stays gone', async () => {
@@ -537,5 +521,198 @@ describe('rsvp/[token] — AC-2: the submission failure is a house-logger breadc
     await screen.findByRole('heading', { name: 'This event has already happened' });
 
     expect(logger.info).not.toHaveBeenCalled();
+  });
+});
+
+// Plan 88.6.1-36 (D-25 / D-32 copy row R3 / MEDLOW-17, and the owner's R9 ruling of 2026-10-05).
+// A request that did not complete (ApiError code network: a transport failure or the 20 s
+// deadline) and an answer the page could not use (ApiError code internal: a status of 500 or
+// above, or a body under 500 that is not JSON) both mean the request MAY have reached the app,
+// which consumes the single-use token before the work that can fail. So the page must not tell
+// the person to tap the link again. The arms key on the instance and the code, never the
+// message (plan 88.6.1-23 appends a timeout suffix to the message).
+const R3_DETAIL =
+  "We couldn't confirm your RSVP — the connection timed out. Sign in and open the event to check your answer.";
+const R9_DETAIL = "We couldn't confirm your RSVP. Sign in and open the event to check your answer.";
+const RETAP_DETAIL =
+  'This link may be invalid or expired. Please try clicking the RSVP link from your email again.';
+
+describe('rsvp/[token] — D-25 / R3 / R9: a request that did not complete, or an answer that could not be read (plan 88.6.1-36)', () => {
+  it('U1. a network rejection shows R3 under the error headline, never the retap advice, and files the same breadcrumb', async () => {
+    respond().mockRejectedValue(new ApiError('rsvp respond request did not complete', 'network', 0));
+
+    render(<RsvpPage />);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' })
+    ).toBeInTheDocument();
+    expect(screen.getByText(R3_DETAIL)).toBeInTheDocument();
+    expect(screen.queryByText(/try clicking the RSVP link/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      `Something went wrong ${R3_DETAIL}`
+    );
+
+    // The breadcrumb is the shipped one, unchanged: name and message only, no token.
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect((logger.info as unknown as Mock).mock.calls[0][0]).toBe('RSVP submission error:');
+    const ctx = (logger.info as unknown as Mock).mock.calls[0][1];
+    expect(Object.keys(ctx).sort()).toEqual(['message', 'name']);
+    expect(JSON.stringify((logger.info as unknown as Mock).mock.calls[0])).not.toContain(TOKEN);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('U2. the LOADING to R3 flip fills the SAME slot-0 region (node identity), and the page keeps one region', async () => {
+    let rejectRespond: (e: unknown) => void = () => {};
+    respond().mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectRespond = reject;
+      })
+    );
+
+    render(<RsvpPage />);
+    await screen.findByText('Recording your RSVP...');
+    const regionBefore = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(regionBefore.textContent).toBe('');
+
+    await act(async () => {
+      rejectRespond(new ApiError('rsvp respond request did not complete', 'network', 0));
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+
+    const regionAfter = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(regionAfter).toBe(regionBefore);
+    expect(regionAfter.textContent).toBe(`Something went wrong ${R3_DETAIL}`);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('U3. the timeout-shaped message reaches R3 too — the page keys on the code, never the message', async () => {
+    respond().mockRejectedValue(
+      new ApiError('rsvp respond request did not complete (timed out after 20000 ms)', 'network', 0)
+    );
+
+    render(<RsvpPage />);
+
+    await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+    expect(screen.getByText(R3_DETAIL)).toBeInTheDocument();
+    expect(screen.queryByText(/try clicking the RSVP link/)).toBeNull();
+  });
+
+  it('U4. an internal rejection (the 5xx guard of plan 88.6.1-23) shows R9 — no cause stated, never the retap advice', async () => {
+    // The owner's R9 ruling of 2026-10-05. This is the exact shape respondViaToken rejects with
+    // for the backend's own JSON 500; the page keys on the code only, so the status is not read.
+    respond().mockRejectedValue(new ApiError('rsvp respond request did not complete', 'internal', 500));
+
+    render(<RsvpPage />);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' })
+    ).toBeInTheDocument();
+    expect(screen.getByText(R9_DETAIL)).toBeInTheDocument();
+    expect(screen.queryByText(/try clicking the RSVP link/)).toBeNull();
+    expect(screen.queryByText(/timed out/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      `Something went wrong ${R9_DETAIL}`
+    );
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('U5. REGRESSION PIN: a duck-typed object that is not an ApiError instance keeps the error copy, whatever its code', async () => {
+    // Green before and after this plan, by design: the arms read the instance, so a plain
+    // object named ApiError (the shape of the AC-2 pin above) stays on the generic copy.
+    for (const code of ['network', 'internal']) {
+      respond().mockRejectedValue({ name: 'ApiError', code, message: 'x' });
+      render(<RsvpPage />);
+
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+      expect(screen.getByText(RETAP_DETAIL)).toBeInTheDocument();
+      expect(screen.queryByText(R3_DETAIL)).toBeNull();
+      expect(screen.queryByText(R9_DETAIL)).toBeNull();
+      cleanup();
+    }
+  });
+});
+
+// Plan 88.6.1-87 (close ruling P-77, owner 2026-10-18, his word "ratified"; key per owner ruling
+// D4 "Option A"). The backend's post-consume 404 for an event that is gone now carries the token
+// event_not_found, and respondViaToken rejects ApiError('not_found', 404) for it ONLY (pinned in
+// src/lib/api.test.ts Y5..Y8). This page enters EVENT_GONE on the instance plus that code and
+// shows the owner's words on the amber link-state card (owner ruling "amber", 2026-10-18). The
+// two literals are written once here, copy rows P77a / P77b, straight apostrophe (D-32 R8).
+// G1 and G3 were RED before the page change; G2 and G4 are regression pins, green before and
+// after. The page suite mocks respondViaToken, so it never sees a status or a body token.
+const EVENT_GONE_HEADLINE = 'This game night was cancelled';
+const EVENT_GONE_DETAIL =
+  "The event this link was for no longer exists, so there is nothing to answer. If you think that's a mistake, ask the organizer.";
+
+describe('rsvp/[token] — the event is gone (88.6.1-87, close ruling P-77)', () => {
+  it('G1. a not_found rejection shows the ratified headline and detail, Go to Home, and the same words in the one region', async () => {
+    respond().mockRejectedValue(new ApiError('rsvp respond: the event no longer exists', 'not_found', 404));
+
+    render(<RsvpPage />);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: EVENT_GONE_HEADLINE })
+    ).toBeInTheDocument();
+    expect(screen.getByText(EVENT_GONE_DETAIL)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
+      `${EVENT_GONE_HEADLINE} ${EVENT_GONE_DETAIL}`
+    );
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.queryByText(/try clicking the RSVP link/)).toBeNull();
+    expect(screen.queryByText('Something went wrong')).toBeNull();
+  });
+
+  it('G2. REGRESSION PIN: a RESOLVED prose body still shows the error copy (the page never reads the prose)', async () => {
+    // Green before and after: the legacy body resolves (api.test.ts Y8) and this page has no
+    // discriminant for it, so it stays on ERROR with the retap detail, never EVENT_GONE.
+    respond().mockResolvedValue({ error: 'Event not found' });
+
+    render(<RsvpPage />);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' })
+    ).toBeInTheDocument();
+    expect(screen.getByText(RETAP_DETAIL)).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_GONE_HEADLINE)).toBeNull();
+  });
+
+  it('G3. the LOADING to EVENT_GONE flip fills the SAME slot-0 region (node identity)', async () => {
+    let rejectRespond: (e: unknown) => void = () => {};
+    respond().mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectRespond = reject;
+      })
+    );
+
+    render(<RsvpPage />);
+    await screen.findByText('Recording your RSVP...');
+    const regionBefore = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(regionBefore.textContent).toBe('');
+
+    await act(async () => {
+      rejectRespond(new ApiError('rsvp respond: the event no longer exists', 'not_found', 404));
+    });
+    await screen.findByRole('heading', { level: 1, name: EVENT_GONE_HEADLINE });
+
+    const regionAfter = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(regionAfter).toBe(regionBefore);
+    expect(regionAfter.textContent).toBe(`${EVENT_GONE_HEADLINE} ${EVENT_GONE_DETAIL}`);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('G4. REGRESSION PIN: a duck-typed not_found object that is not an ApiError instance stays on the error copy', async () => {
+    // U5's rule: the arms read the instance, so a plain object named ApiError never enters
+    // EVENT_GONE. Green before and after.
+    respond().mockRejectedValue({ name: 'ApiError', code: 'not_found', message: 'x' });
+
+    render(<RsvpPage />);
+
+    await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+    expect(screen.getByText(RETAP_DETAIL)).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_GONE_HEADLINE)).toBeNull();
   });
 });

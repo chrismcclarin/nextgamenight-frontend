@@ -105,3 +105,56 @@ describe('WriteCell — disabled / roving tabIndex rule', () => {
     expect(b).toHaveAttribute('tabindex', '-1');
   });
 });
+
+// Plan 88.6.1-17 (D-14 / D-45): the container may hand the cell its whole accessible name
+// (day + time + state, copy row A2 on the check-in grid) through an OPTIONAL override — the
+// mechanism ReadCell already has. An absent or empty override falls back to the preference
+// name above, so the fallback pins stay unchanged. Review #170: a disabled cell is the grid's
+// unavailable-week MODE gate on a div with no native disabled, so it exposes aria-disabled.
+describe('88.6.1-17 (D-14 / D-45) — optional ariaLabel override', () => {
+  it('W1: a non-empty override wins, and aria-pressed is still present', () => {
+    render(
+      <WriteCell
+        row={0}
+        col={0}
+        rows={1}
+        cols={1}
+        preference="preferred"
+        ariaLabel="Monday, October 5 at 7:00 PM, preferred"
+      />
+    );
+    const cell = screen.getByRole('button');
+    expect(cell).toHaveAttribute('aria-label', 'Monday, October 5 at 7:00 PM, preferred');
+    expect(cell).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('W2: an empty override falls back to the preference name — never a nameless button', () => {
+    render(<WriteCell row={0} col={0} rows={1} cols={1} preference={null} ariaLabel="" />);
+    expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'not selected');
+  });
+
+  it('W3: an override with no preference is used as given, and aria-pressed reads false', () => {
+    render(
+      <WriteCell
+        row={0}
+        col={0}
+        rows={1}
+        cols={1}
+        preference={null}
+        ariaLabel="Monday, October 5 at 7:00 PM, not selected"
+      />
+    );
+    const cell = screen.getByRole('button');
+    expect(cell).toHaveAttribute('aria-label', 'Monday, October 5 at 7:00 PM, not selected');
+    expect(cell).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('W4: a disabled cell exposes aria-disabled="true"; an enabled one carries no aria-disabled (#170)', () => {
+    const { rerender } = render(
+      <WriteCell row={0} col={0} rows={1} cols={1} preference={null} disabled />
+    );
+    expect(screen.getByRole('button')).toHaveAttribute('aria-disabled', 'true');
+    rerender(<WriteCell row={0} col={0} rows={1} cols={1} preference={null} />);
+    expect(screen.getByRole('button')).not.toHaveAttribute('aria-disabled');
+  });
+});

@@ -42,14 +42,14 @@
  *
  * All fixed user-facing copy lives in module-level constants and is NEVER
  * interpolated from a server string (DECISION Phase 88-25, at
- * `useFetchErrorState.ts:120-139`).
+ * `useFetchErrorState.ts:161`, the block opening `user-facing failure copy is DERIVED`).
  *
  * DESIGN CONTRACTS INHERITED BY CITATION (D-34). No visual contract document was
  * produced for this phase, on the owner's ruling, because this section is 100%
  * shipped primitives and introduces no new visual element. It inherits
- * `88-UI-SPEC.md` 8.1 (button), 8.2 (input), 6.2 `:349-351` (receipt wording as
- * object plus past-tense verb), `:336` (toast lifetime), `:512` (visible
- * labels), and `DESIGN-SYSTEM-REFERENCE-2026.md` `:330` (reflow) / `:334-349`
+ * `88-UI-SPEC.md` 8.1 (button), 8.2 (input), 6.2 `:405-407` (receipt wording as
+ * object plus past-tense verb), `:392` (toast lifetime), `:571` (visible
+ * labels), and `DESIGN-SYSTEM-REFERENCE-2026.md` `:374` (reflow) / `:378-391`
  * (flatten). If a NEW visual element turns out to be wanted — a status pill, say
  * — stop and raise it rather than inventing one.
  *
@@ -76,6 +76,7 @@ import type { FetchErrorMessageOptions } from '@/components/ui/useFetchErrorStat
 import { ApiError, usersAPI } from '@/lib/api';
 import { invalidateSelfCache, patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 import { SELF_IDENTITY_KEY, useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
+import { selfIdentityFailedWithNoRow } from '@/lib/hooks/selfIdentityErrorSource';
 import { EmailChangeResponseSchema } from '@/lib/schemas/users';
 import type { EmailChangeResponse } from '@/lib/schemas/users';
 import { isSyntheticAddress } from '@/lib/syntheticAddress';
@@ -100,7 +101,8 @@ const SYNTHETIC_HELPER =
   "We don't have a working address for you yet, so nothing we send can reach you. Add one below.";
 
 const UNRESOLVED_COPY = 'Loading the address we have for you…';
-const UNAVAILABLE_COPY =
+// Exported (Phase 88.6.1-79) so the Profile suite reads the one spelling; the value is unchanged.
+export const UNAVAILABLE_COPY =
   "We couldn't load the address we have for you. Refresh the page to try again.";
 
 const NOT_VERIFIED_LABEL = 'Not verified yet';
@@ -111,7 +113,7 @@ const MALFORMED_EMAIL_ERROR = "That doesn't look like an email address";
 const INCOMPLETE_CODE_ERROR = 'Enter all 8 characters from the email';
 /* The Crockford alphabet omits I, L, O and U. Plan 09's verify handler DECODES
    the first three before validating (`CROCKFORD_CONFUSABLES = { O: '0', I: '1',
-   L: '1' }`, routes/users.js:1750), and this section decodes them identically —
+   L: '1' }`, routes/users.js:2091), and this section decodes them identically —
    so a hand-transcribed I, L or O is ACCEPTED, not rejected, and naming those
    three here would send a user hunting for characters the server takes happily.
    `U` has no decode on either side, and neither does stray punctuation. */
@@ -155,12 +157,12 @@ const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
       integer in a comment rots silently and this is the second time this one has:
         - frontend: SIX call sites, ENUMERATED rather than counted by a grep, because a
           grep for the helper's own name matches this comment and would count itself:
-            * `EmailAddressSection.tsx:498`  — the idle display (`currentIsSynthetic`)
-            * `EmailAddressSection.tsx:772`  — the Save pre-flight
-            * `EmailAddressSection.tsx:1440` — the BLUR pre-check (round 6 #21)
-            * `FeedbackForm.js:64`           — the prefill gate
-            * `FeedbackForm.js:204`          — the `user_email` write
-            * `userProfile/page.js:1705`     — the profile header address line
+            * `EmailAddressSection.tsx:689`  — the idle display (`currentIsSynthetic`)
+            * `EmailAddressSection.tsx:1142` — the Save pre-flight
+            * `EmailAddressSection.tsx:2040` — the BLUR pre-check (round 6 #21)
+            * `FeedbackForm.js:66`           — the prefill gate
+            * `FeedbackForm.js:274`          — the `user_email` write
+            * `userProfile/page.js:1711`     — the profile header address line
           NOT four. The two the old count missed are this file's blur pre-check and
           `FeedbackForm.js`'s prefill gate — both shipped in the SAME 2026-09-07 fix set
           that wrote "four", which is how a census goes stale inside its own commit.
@@ -196,7 +198,7 @@ const CANCELLED_MID_SAVE_COPY =
 /* THE SAME CASE, WITH THE MAIL REFUSED (round 6 #12 as re-worded 2026-09-07). The first
    version of this arm reused MAIL_REFUSED_COPY, which ends "use Resend code to try
    again" — and Resend lives in the awaiting-code panel, which this arm does not land in.
-   VERIFIED rather than assumed: hydration is one-shot and ref-guarded (`:513`), so the
+   VERIFIED rather than assumed: hydration is one-shot and ref-guarded (`:743`), so the
    `invalidateSelfCache` refetch above brings back a row carrying `pending_email_change`
    and the section STAYS IDLE; only a reload re-runs the hydration that reads it. So the
    copy names a reload, which is the one action that actually reaches the code from here.
@@ -211,6 +213,14 @@ const REVERT_HELPER = 'This puts your address back to the one you sign in with.'
 const CHANGED_RECEIPT = 'Email address changed';
 const REVERTED_RECEIPT = 'Email address reverted';
 const DISCARDED_RECEIPT = 'Email change discarded';
+/* Copy row P2 as corrected by D-32 (R7): "We sent a code to {address}" with NO period.
+   ONE builder shared by the `code_sent` arm and the Save drift reconcile (Phase 88.6.1-13),
+   so the two spellings of the same line cannot drift apart. The address is the server's
+   string, rendered as a React text child. The Resend line is a different sentence and
+   keeps its own spelling. */
+function sentCodeLine(address: string): string {
+  return `We sent a code to ${address}`;
+}
 
 const LABEL_CHANGE = 'Change';
 const LABEL_SAVE = 'Save';
@@ -221,8 +231,8 @@ const LABEL_DISCARD = 'Discard change';
 const LABEL_REVERT = 'Use my sign-in address';
 
 /* ── CODE NORMALISATION ─────────────────────────────────────────────────────
-   Mirrors routes/users.js `normaliseEmailChangeCode` (:910-912) plus its
-   confusable decode (:1750) and its alphabet (:1751), so this client is never
+   Mirrors routes/users.js `normaliseEmailChangeCode` (:1037-1039) plus its
+   confusable decode (:2091) and its alphabet (:2092), so this client is never
    STRICTER than the contract. A client-side gate that rejected a code the server
    would accept is a defect, not a safety margin. */
 const CROCKFORD_CONFUSABLES: Record<string, string> = { O: '0', I: '1', L: '1' };
@@ -302,7 +312,7 @@ const STALE_ACTION_ERROR = 'That action is no longer available — reload the pa
  * section-wide default says. The Save route does NOT: every other `validation` it can
  * return is pre-gated client-side by the four checks in `handleSave` — and the shape and
  * length gates are the SAME regex and the SAME cap the backend applies
- * (`routes/users.js:960`, EMAIL_MAX_LENGTH 255), verified rather than assumed — so the
+ * (`routes/users.js:962`, EMAIL_MAX_LENGTH 255), verified rather than assumed — so the
  * only refusal that can survive them is the synthetic-address gate.
  */
 function messageFor(error: unknown, overrides: FetchErrorMessageOptions['byCode'] = {}): string {
@@ -325,7 +335,7 @@ function isUsableMutationBody(body: EmailChangeResponse | undefined | null): boo
      `lib/schemas/users.ts` says a `switch` here that misses an outcome literal is
      "a TYPE error rather than a runtime fall-through" — but that only holds if the
      value actually IS the declared type, and nothing checked. `apiFetch<T>` is a
-     generic CAST, not a parse (`lib/api.ts:848`), and `EmailChangeResponseSchema`
+     generic CAST, not a parse (`lib/api.ts:621`), and `EmailChangeResponseSchema`
      had zero call sites in the repo. So the stated safety net did not exist: a
      ninth outcome literal, or a body missing `verification_sent`, reached the UI
      unchallenged — exactly the silent fall-through the comment claims is
@@ -411,16 +421,155 @@ export function shouldAnnounceCancelledMidSave(
   return outcome === 'code_sent' && stateAtLanding === 'idle';
 }
 
-export function EmailAddressSection() {
+/**
+ * The slice of a refetched self row the two drift reconciles read (Phase 88.6.1-13, D-11).
+ * Read from the CACHE after the section's own refetch settles, never from the `self`
+ * closure, which is the pre-refetch row.
+ */
+export type SelfRowSnapshot = {
+  id?: string | null;
+  email?: string | null;
+  pending_email_change?: { address?: string | null } | null;
+};
+
+/**
+ * Two addresses are the same address under the SERVER's normaliser: trim, then lowercase —
+ * `periodictabletopbackend_v2/Sonnet/services/provisioningService.js:134-135` (`function
+ * normaliseEmail`), applied to the request at `routes/users.js:1409` and stored on the
+ * pending change, so a pending address and a post-verify `email` are the lowercased form
+ * while the address the user typed may not be. A strict `===` would miss every mixed-case
+ * address.
+ *
+ * NOTHING ON THE BACKEND SIDE POINTS BACK HERE (its docblock names only friend search as
+ * the rule's mirror), so the failure mode if that rule ever widens is stated now: the
+ * Verify reconcile is unaffected, because both sides of its compare are already in the
+ * server's form; the Save reconcile compares the TYPED value and would fall through to the
+ * unreadable-answer copy, which is honest and recoverable. Both sides must be non-empty.
+ */
+function sameAddress(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const left = a.trim().toLowerCase();
+  const right = b.trim().toLowerCase();
+  return left.length > 0 && left === right;
+}
+
+/**
+ * THE VERIFY DRIFT ARM'S SUCCESS TEST (Phase 88.6.1-13, D-11 R124 A). True only when the
+ * refetched row PROVES the change landed: its `email` is the target AND it carries no pending
+ * change. The case it must not get wrong: an EXPIRED pending row ALSO reads
+ * `pending_email_change: null` (the server's loader filters on `expires_at > now()`), so "no
+ * pending" alone is never success — the email has to have moved too. A still-pending row,
+ * no rows, an undefined row and a missing target are all false.
+ */
+export function driftedVerifyLanded(
+  rows: ReadonlyArray<SelfRowSnapshot | undefined>,
+  target: string | null | undefined
+): boolean {
+  if (typeof target !== 'string' || target.trim().length === 0) return false;
+  return rows.some((row) => Boolean(row) && !row?.pending_email_change && sameAddress(row?.email, target));
+}
+
+/**
+ * THE SUPPRESSION COUNTER'S ONE ARMING DECISION (Phase 88.6.1-13, D-26 W011). The Verify
+ * drift arm arms the counter only when the refetched rows carry NO pending change (the
+ * section's own refetch is about to render a null) AND the expiry effect could otherwise
+ * speak for it — a send this session and a live pending row seen. Any row with a pending
+ * change, or either flag false, means the effect would stay silent anyway, and arming then
+ * is exactly the leak W011 recorded: an armed count nobody spends swallows the next GENUINE
+ * expiry. No rows at all means no pending is known, so with both flags set it arms.
+ */
+export function shouldSuppressOwnNull(
+  rows: ReadonlyArray<SelfRowSnapshot | undefined>,
+  sentThisSession: boolean,
+  sawPending: boolean
+): boolean {
+  if (!sentThisSession || !sawPending) return false;
+  return !rows.some((row) => Boolean(row?.pending_email_change));
+}
+
+/**
+ * THE SAVE DRIFT ARM'S RECONCILE TEST (Phase 88.6.1-13, D-11 R124 B). Returns the refetched
+ * row's pending address — the SERVER's form, which is what the code panel then shows — when
+ * it is the address the user just submitted under the server's normaliser (`sameAddress`),
+ * else null. A different pending address, no pending change and no rows are all null: the
+ * section then cannot tell what the server holds, and keeps the honest generic error.
+ */
+export function driftedSavePendingAddress(
+  rows: ReadonlyArray<SelfRowSnapshot | undefined>,
+  submitted: string
+): string | null {
+  for (const row of rows) {
+    const address = row?.pending_email_change?.address;
+    if (typeof address === 'string' && sameAddress(address, submitted)) return address;
+  }
+  return null;
+}
+
+export interface EmailAddressSectionProps {
+  /**
+   * True while the host withdrew the identity row after an access or gone answer (Profile's
+   * `identityWithdrawn`). Absent = false. Decided at RENDER time: the section shows its existing
+   * unavailable arm while it is true and its held state again when it goes false.
+   */
+  identityWithdrawn?: boolean;
+}
+
+/* DECISION Phase 88.6.1-79 (D-51, withdrawn row): CHOSEN — a render-time prop from the one page
+   that knows the identity answer was an access answer (Profile), FOLDED into `showUnavailable`, so
+   the section's existing unavailable arm and its one announcement path carry it, and the held state
+   returns when the prop goes false. REJECTED: (a) the sticky `'unavailable'` state (or
+   `hydratedRef`) — a recovered session would keep a dead card for the visit; (b) a code-aware
+   no-row rule — `selfIdentityFailedWithNoRow` stays code-blind, because the feedback form and plan
+   88.6.1-63's hosts need it so; (c) leaving the card painting the withdrawn address with a working
+   Change below a header that withdrew it (D-51, "content is withdrawn"); (d) the prop as a guard
+   BESIDE `showUnavailable` — the arm's only text is the region fed by the effect keyed on
+   `showUnavailable`, so a guard beside it paints the arm with no sentence.
+   It also records the DOUBLE ANNOUNCEMENT, chosen: one withdrawal is announced twice — the header's
+   full banner (its register line) and then this card's sentence — because they are two different
+   facts (why the session's content went, and that this card has nothing to show). REJECTED:
+   silencing this card's sentence, which would need a second, non-live rendering of it in this arm
+   against the section's one-node rule (round 5 #36) and would leave a screen-reader user meeting an
+   unannounced change. No new words either way. Changing this is a decision, not a cleanup. */
+export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressSectionProps = {}) {
   const { self, query: selfQuery } = useSelfIdentity();
   const queryClient = useQueryClient();
 
   const [state, setState] = React.useState<SectionState>('unresolved');
   const [emailInput, setEmailInput] = React.useState('');
   const [codeInput, setCodeInput] = React.useState('');
-  const [emailError, setEmailError] = React.useState<string | null>(null);
-  const [codeError, setCodeError] = React.useState<string | null>(null);
-  const [revertError, setRevertError] = React.useState<string | null>(null);
+  /* AT-4 R3 at the two FIELD verdicts (Phase 88.6.1-79, carry-in from plan 88.6.1-26): the same
+     one-writer idiom as the three lanes below. `FormField` takes an optional `errorKey`, used ONLY
+     as its alert paragraph's `key` (plan 88.6.1-26), so every NON-NULL verdict write bumps the
+     field's sequence and an identical second verdict (Save twice on an empty address, Verify
+     twice on a short code) re-inserts the alert and is spoken again. A clear never bumps, and a
+     render that writes no verdict keeps the key, so nothing re-announces on unrelated renders. */
+  const [emailError, setEmailErrorState] = React.useState<string | null>(null);
+  const [emailErrorSeq, setEmailErrorSeq] = React.useState(0);
+  const setEmailError = React.useCallback((message: string | null) => {
+    setEmailErrorState(message);
+    if (message !== null) setEmailErrorSeq((n) => n + 1);
+  }, []);
+  const [codeError, setCodeErrorState] = React.useState<string | null>(null);
+  const [codeErrorSeq, setCodeErrorSeq] = React.useState(0);
+  const setCodeError = React.useCallback((message: string | null) => {
+    setCodeErrorState(message);
+    if (message !== null) setCodeErrorSeq((n) => n + 1);
+  }, []);
+  /* AT-4 R3, ONE WRITER PER ALERT LANE (Phase 88.6.1-13; plan 88.6.1-15's keyed-reinsert
+     idiom, `errorSeq` + `key`). The request arms clear their lane before the await, but the
+     GATE refusals (busy, self unavailable, cooldown) write without clearing — so a second
+     identical press set an equal string, React kept the same alert node, and nothing was
+     spoken. Every NON-NULL write of a lane now bumps that lane's sequence, and ONLY the
+     lane's alert paragraph is keyed on it, so an identical refusal re-inserts a fresh alert
+     node; its `id` and every `aria-describedby` that points at it stay unchanged, so the
+     pressed control keeps focus and keeps its description. A clear does not bump. The three
+     lanes below use the same shape: revert (the idle block), editing, action. */
+  const [revertError, setRevertErrorState] = React.useState<string | null>(null);
+  const [revertErrorSeq, setRevertErrorSeq] = React.useState(0);
+  const setRevertError = React.useCallback((message: string | null) => {
+    setRevertErrorState(message);
+    if (message !== null) setRevertErrorSeq((n) => n + 1);
+  }, []);
   const [sentLine, setSentLine] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<{ tone: 'error' | 'success' | 'info'; text: string } | null>(
     null
@@ -465,13 +614,23 @@ export function EmailAddressSection() {
      test and worse to reason about, for a case the 30-second cooldown already
      rate-limits. RESIDUAL, stated rather than hidden: two resends to the SAME
      address more than 30s apart announce identical text, and the second is
-     silent. The visible line and the toast still change. */
+     silent. The visible line and the toast still change.
+     AMENDED Phase 88.6.1-13 (Edge R8 idempotency): the RESIDUAL is CLOSED by clearing at
+     the START of the action — `handleSave` and `handleResend` each `announce('')`
+     synchronously after their gates, so the same outcome twice puts an empty region
+     between the two equal strings and both are heard. Still no timer, so the rejected
+     clear-then-set timer stays rejected for the reason above. */
   const announce = setAnnouncement;
   /* Failures of Resend / Discard / Revert used to be written into `codeError`,
      which `FormField` turns into `aria-invalid="true"` on the code input — marking
      a field the user has not mistyped, and often has not touched (code review #35).
      Those failures are about the ACTION, not the field, so they get their own lane. */
-  const [actionError, setActionError] = React.useState<string | null>(null);
+  const [actionError, setActionErrorState] = React.useState<string | null>(null);
+  const [actionErrorSeq, setActionErrorSeq] = React.useState(0);
+  const setActionError = React.useCallback((message: string | null) => {
+    setActionErrorState(message);
+    if (message !== null) setActionErrorSeq((n) => n + 1);
+  }, []);
   /* THE EDITING BLOCK'S OWN ACTION LANE (round 5 #35/#39). The rule one lane up applies
      verbatim here and the editing block had no surface to apply it to: Cancel's busy gate
      and Save's missing-self-row gate were written into `emailError`, which `FormField`
@@ -480,8 +639,17 @@ export function EmailAddressSection() {
      4.1.2). `emailError` now carries ONLY the field's own verdicts (empty, too long,
      malformed, and the reserved-domain refusal); everything that is a fact about the
      ACTION lands here, beside the buttons, exactly as `actionError` does for the
-     awaiting-code block and `revertError` for the idle one. */
-  const [editActionError, setEditActionError] = React.useState<string | null>(null);
+     awaiting-code block and `revertError` for the idle one.
+     AMENDED Phase 88.6.1-13 (D-11a): the Save path's two drift exits (the schema-drift arm
+     and a verify-path outcome on the request route) and every thrown Save failure except
+     `unsupported_address` now land HERE too. The parenthesis above stands as the list of
+     `emailError`'s field verdicts, the server half of the reserved-domain refusal included. */
+  const [editActionError, setEditActionErrorState] = React.useState<string | null>(null);
+  const [editActionErrorSeq, setEditActionErrorSeq] = React.useState(0);
+  const setEditActionError = React.useCallback((message: string | null) => {
+    setEditActionErrorState(message);
+    if (message !== null) setEditActionErrorSeq((n) => n + 1);
+  }, []);
   /* THE SAVE REQUEST, NOT THE SAVE STATE (round 6 HIGH). `state === 'saving'` stops being
      true the instant Cancel is pressed — that is the whole point of Cancel — so the lane
      `mutating` describes fell OPEN while the POST was still on the wire, and Change,
@@ -529,7 +697,15 @@ export function EmailAddressSection() {
      plan gives both schema-drift arms the same refetch, so "a null we caused" becomes a
      reachable class and the arm needs a way to recognise it. A COUNT and not a boolean
      because two locally-initiated refetches can overlap; ONE-SHOT on consume, so a later
-     GENUINE expiry is never suppressed by a ref nobody brings down. */
+     GENUINE expiry is never suppressed by a ref nobody brings down.
+
+     AMENDED Phase 88.6.1-13 (D-26 W011, as re-shaped by D-11). The paragraph above is kept
+     as the history of why the counter exists; its arming rule is not current. The counter
+     now has ONE arming site — the Verify drift arm, in its row-gone case — decided ONCE,
+     after that arm's awaited refetch settles, through `shouldSuppressOwnNull`. The refetch
+     helper no longer arms it, so the Save drift arm, the abandoned-success path and a
+     hydrated session's Verify drift cannot leak an armed count that would swallow a later
+     genuine expiry (W011). It stays a count and stays one-shot on consume. */
   const localNullSuppressRef = React.useRef(0);
   /* The state as of LANDING TIME, not as of the closure. A response resolves long after
      the render that started it, and the user may be in a different panel by then — see
@@ -578,7 +754,7 @@ export function EmailAddressSection() {
 
   /* ── HYDRATION, ONE SHOT ──────────────────────────────────────────────────
      The idiom is already shipped in this component's host page at
-     `src/app/userProfile/page.js:798-839`, and the reason is stated there in
+     `src/app/userProfile/page.js:875-949`, and the reason is stated there in
      the repo's own words: the self cache is `staleTime: Infinity` and mutation
      handlers own their own local-state updates and cache writes, "so a reactive
      re-init on every `self` change would risk clobbering an in-progress edit".
@@ -599,17 +775,19 @@ export function EmailAddressSection() {
        (a) deriving the state reactively from `self` on every render — it
            clobbers an in-progress change on the section's OWN cache patch;
        (b) a mount-only `useEffect` with an empty dependency array — at mount
-           `self` is `undefined` (`useSelfIdentity.ts:117` returns `query.data`
+           `self` is `undefined` (`useSelfIdentity.ts:118` returns `query.data`
            on an `enabled`-gated, `staleTime: Infinity` query), so a user with a
            pending change would NEVER reach awaiting-code. That is the PRIMARY
            flow: "request the change, leave to read the mail on your phone, come
            back";
        (c) rendering idle while unresolved — an empty address with a live
            Change action beside it.
-     Restoring any of the three is a decision, not a cleanup. */
+     Restoring any of the three is a decision, not a cleanup.
+     AMENDED Phase 88.6.1-79 (AC-29): the error test below is the shared no-row rule
+     (`selfIdentityFailedWithNoRow`) — a failed re-read over a held row hydrates from the row. */
   React.useEffect(() => {
     if (hydratedRef.current) return;
-    if (selfQuery.isError) {
+    if (selfIdentityFailedWithNoRow(selfQuery, self?.id)) {
       hydratedRef.current = true;
       setState('unavailable');
       return;
@@ -631,7 +809,7 @@ export function EmailAddressSection() {
        Change, which mints a fresh code. "That code has expired" lives on the
        VERIFY round trip (`outcome: 'expired'`), the only path that knows the
        difference, and plan 09's resend predicate carries NO `expires_at` clause
-       (routes/users.js:1326-1346) so the Resend that outcome promotes can
+       (routes/users.js:1550-1575) so the Resend that outcome promotes can
        actually serve the row.
 
        NEVER key hydration on `verification_sent`. That is a
@@ -641,7 +819,7 @@ export function EmailAddressSection() {
        primary flow dies with no code input on screen.
 
        And do NOT copy the phone block's hydration mapping at
-       `userProfile/page.js:824-839`: it maps a stored-but-unverified value to
+       `userProfile/page.js:937-944`: it maps a stored-but-unverified value to
        `'idle'` and never re-enters the pending state from the self row. Its
        STATE MACHINE is worth mirroring; that mapping would make the mailed code
        unusable after any reload inside its 30-minute life (SPEC A9), with
@@ -653,6 +831,10 @@ export function EmailAddressSection() {
       return;
     }
     setState('idle');
+    // Phase 88.6.1-79: `selfIdentityFailedWithNoRow` reads only `selfQuery.isError`, so the
+    // dependency list keeps that flag and `self`; adding the whole query object would re-run
+    // the effect on every query result for no new input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [self, selfQuery.isError]);
 
   /* ── THE ONE DEFENSIVE ARM ────────────────────────────────────────────────
@@ -680,7 +862,15 @@ export function EmailAddressSection() {
      refetches on the drift paths are suppressed BY CONSTRUCTION, because every one
      of them goes through `refetchSelfAfterLocalMutation` and arms the counter this
      effect consumes. Do NOT rewrite this as "this plan introduced the first
-     mounted-client refetch"; it did not. */
+     mounted-client refetch"; it did not.
+
+     AMENDED Phase 88.6.1-13 (D-11, D-26 W011). "Every one of them ... arms the
+     counter" is no longer true and is kept above as history. The locally-initiated
+     refetches no longer arm anything; only the Verify drift arm's row-gone case does,
+     once, after its awaited refetch settles (`shouldSuppressOwnNull`). Every other
+     drift outcome now renders its own state from the refetched row before this effect
+     sees it: a landed verify leaves awaiting-code for `verified`, and a still-pending
+     row never reaches the null branch. */
   React.useEffect(() => {
     if (!hydratedRef.current) return;
     if (self?.pending_email_change) {
@@ -722,7 +912,24 @@ export function EmailAddressSection() {
          `useSelfIdentity`, so the rule would look correct in tests and fail in production).
 
          Moving the consume, or moving the disarm into this branch, is a decision, not a
-         cleanup — and the colocated suite reds on both. */
+         cleanup — and the colocated suite reds on both.
+
+         AMENDED Phase 88.6.1-13 (D-11, D-26 W011). The "WHY NOT CLEARED HERE" premise —
+         an un-awaited refetch still in flight at the `'verifying'` -> `'awaiting-code'`
+         commit — no longer holds: the Verify drift arm now AWAITS the refetch before it
+         moves state, and that arm's own commit already renders the refetched row, because
+         `useQuery` computes its result from the query's CURRENT state at render
+         (`node_modules/@tanstack/react-query/build/modern/useBaseQuery.js:55`,
+         `observer.getOptimisticResult`). The settle-time disarm the paragraph points at is
+         retired with it: the arming decision moved INTO that arm, after the settle, where
+         the rows are read once. Both placements still stand, for a smaller reason: the
+         consume STAYS last and this branch STAYS clear-free, because the consume must be
+         spent only by the null branch (the one arming site arms exactly when its row is
+         gone, so its own commit reaches the consume), and a clear here would spend it on
+         any pending render in between. Moving either is still a decision, not a cleanup.
+         The expiry arm below now also clears the ACTION lane: the unreadable-answer copy
+         lives there since D-11a, so EXPIRED no longer overwrites it in a shared slot, and
+         a stale "couldn't read the answer" must not sit beside "That code has expired". */
       return;
     }
     if (state !== 'awaiting-code') return;
@@ -733,7 +940,14 @@ export function EmailAddressSection() {
       localNullSuppressRef.current -= 1;
       return;
     }
-    setCodeError(EXPIRED_CODE_ERROR);
+    // The raw setter: a clear never bumps the lane's sequence, and React keeps a state
+    // setter stable, so the effect's dependency list stays honest.
+    setActionErrorState(null);
+    // The code field's verdict through its raw setters (Phase 88.6.1-79): the same one-writer
+    // shape as `setCodeError` — a non-null verdict bumps the sequence — spelled with the two
+    // stable state setters so this effect's dependency list stays honest.
+    setCodeErrorState(EXPIRED_CODE_ERROR);
+    setCodeErrorSeq((n) => n + 1);
     setResendPromoted(true);
     setSentLine(null);
   }, [self?.pending_email_change, state]);
@@ -783,7 +997,7 @@ export function EmailAddressSection() {
    * that a refetch which comes back STILL PENDING brings the ref down deterministically —
    * otherwise one armed suppression outlives its cause and swallows the next genuine
    * expiry. The signal is the invalidation PROMISE settling
-   * (`selfIdentityCache.ts:48-50` returns `queryClient.invalidateQueries`, which resolves
+   * (`selfIdentityCache.ts:49-50` returns `queryClient.invalidateQueries`, which resolves
    * after the refetch), read against the CACHE rather than against a rendered value:
    * at settle time React may not have re-rendered yet, so anything derived from `self`
    * would still be the pre-refetch row. Attaching a settle handler is NOT the same as
@@ -795,22 +1009,24 @@ export function EmailAddressSection() {
    * cache and spends the clear before the null lands — see the DECISION marker at the
    * effect), and clearing on a user action (the drift copy names Resend as the way out
    * while keeping Verify re-pressable, so a press arrives mid-flight).
+   *
+   * AMENDED Phase 88.6.1-13 (D-11, D-26 W011). Everything above is kept as the history of
+   * the 88.6-38 design; three of its claims are no longer true. (1) This is STILL the one
+   * way the section refetches the self row, but it now RETURNS the settle promise — typed
+   * `Promise<void>`, never rejecting, so an awaiting arm can never be thrown into its own
+   * catch by a failed invalidation — and every caller awaits it inside its own closed lane.
+   * (2) It ARMS NOTHING: the "deliberately deferred `await`+reconcile design" is TAKEN
+   * (D-11), and the arming decision moved to the one arm that can see the refetched row —
+   * the Verify drift arm's row-gone case, through `shouldSuppressOwnNull`. (3) The
+   * settle-time disarm is RETIRED with it: an arm that decides after the settle has
+   * nothing left to take back. Its prefix read of the cache went with it; the drift arms
+   * read through `readSelfRows`, which keeps only the signed-in user's own row.
    */
-  const refetchSelfAfterLocalMutation = React.useCallback(() => {
-    localNullSuppressRef.current += 1;
-    const disarm = () => {
-      if (localNullSuppressRef.current > 0) localNullSuppressRef.current -= 1;
-    };
-    void invalidateSelfCache(queryClient).then(() => {
-      /* Read the CACHE, not `self`: see the docblock. `getQueriesData` prefix-matches the
-         sub-scoped live key exactly as `patchSelfCache` does. */
-      const stillPending = queryClient
-        .getQueriesData<{ pending_email_change?: unknown } | undefined>({
-          queryKey: SELF_IDENTITY_KEY,
-        })
-        .some(([, row]) => Boolean(row?.pending_email_change));
-      if (stillPending) disarm();
-    }, disarm /* the invalidation itself failed, so no refetched null is coming either */);
+  const refetchSelfAfterLocalMutation = React.useCallback((): Promise<void> => {
+    return invalidateSelfCache(queryClient).then(
+      () => undefined,
+      () => undefined
+    );
   }, [queryClient]);
 
   const applyToCache = React.useCallback(
@@ -830,6 +1046,58 @@ export function EmailAddressSection() {
     // line, a toast or a URL either.
     setCodeInput('');
   }, []);
+
+  /* THE REFETCHED SELF ROW, READ ONCE BY A DRIFT ARM AFTER ITS AWAITED REFETCH (Phase
+     88.6.1-13, D-11). From the CACHE, never from `self` — the closure is the pre-refetch row.
+     SCOPED TO THE SIGNED-IN USER'S OWN ROW: `SELF_IDENTITY_KEY` is only the PREFIX and the
+     live key is per account (`useSelfIdentity.ts:28-31`, `:86`), so an unscoped prefix read
+     would let another account's cached entry decide this user's toast, verified state, code
+     panel and suppression. Filtered on the row's `id` against `selfId`, never on the sign-in
+     subject; no `selfId`, no rows. A handler-local read, not a reactive re-derivation, so
+     `DECISION Phase 88.8 (D-39)` one-shot hydration is honoured. */
+  const readSelfRows = (): SelfRowSnapshot[] => {
+    if (!selfId) return [];
+    return queryClient
+      .getQueriesData<SelfRowSnapshot | undefined>({ queryKey: SELF_IDENTITY_KEY })
+      .map(([, row]) => row)
+      .filter((row): row is SelfRowSnapshot => Boolean(row) && row?.id === selfId);
+  };
+
+  /* THE VERIFIED OUTCOME, shared by the server-answered `verified` branch and the Verify
+     drift arm's landed reconcile (Phase 88.6.1-13, D-11 R124 A, copy row 19 reuses
+     `CHANGED_RECEIPT` — no new words). The body is the verified branch exactly as it was,
+     so that path is byte-identical in behaviour. Its focus move to Change STAYS: the
+     verified state unmounts the awaiting block and the Verify button with it, so without
+     the move focus would drop to the page body. */
+  const enterVerified = () => {
+    sentThisSessionRef.current = false;
+    setState('verified');
+    setSentLine(null);
+    setResendPromoted(false);
+    setNotice(null);
+    toast.success(CHANGED_RECEIPT);
+    setFocusTarget('change');
+  };
+
+  /* THE CODE PANEL, ENTERED WITH A SENT CODE — shared by the `code_sent` arm (when the mail
+     went out) and the Save drift reconcile (Phase 88.6.1-13, D-11 R124 B). The body is the
+     `code_sent` + `verification_sent` branch exactly as it was; the line comes from the one
+     `sentCodeLine` builder (copy row P2 per D-32 R7). Its focus move to the code input STAYS:
+     entering the panel unmounts the editing block and the Save button with it, so without the
+     move focus would drop to the page body. */
+  const enterCodePanel = (address: string) => {
+    sentThisSessionRef.current = true;
+    setState('awaiting-code');
+    clearCodeField();
+    setCodeError(null);
+    const sentText = sentCodeLine(address);
+    setSentLine(sentText);
+    announce(sentText);
+    setNotice(null);
+    setResendPromoted(false);
+    startCooldown();
+    setFocusTarget('code');
+  };
 
   /* ── HANDLERS ─────────────────────────────────────────────────────────── */
 
@@ -937,6 +1205,9 @@ export function EmailAddressSection() {
 
     setEmailError(null);
     setEditActionError(null);
+    // 88.6.1-13 (Edge R8): empty the region at the START, after the gates, so the same
+    // outcome twice is heard twice and a refused press clears nothing.
+    announce('');
     setNotice(null);
     setState('saving');
     const run = ++saveRunRef.current;
@@ -960,8 +1231,45 @@ export function EmailAddressSection() {
            the abandoned one is precisely the case where the server may have acted and
            NOBODY downstream is left to refetch — a return before the invalidation would
            leave the one path with no other owner as the only path with no refresh. */
-        refetchSelfAfterLocalMutation();
-        if (abandoned) return;
+        /* DECISION Phase 88.6.1-13 (D-11, R124 B; D-32 R7): AWAIT the refetch while the
+           section still reads `saving` with `saveInFlight` set — so the shared lane stays
+           closed until the self row is fresh (`DECISION Phase 88.8 (code review HIGH-2)`
+           honoured) — and RECONCILE into the code panel. Chosen: the await stays ABOVE the
+           `abandoned` return (88.6-38's placement, kept for its reason above); after it the
+           arm returns when the response was abandoned OR the run token moved DURING the
+           await (a Cancel pressed while the refetch was pending — `DECISION Phase 88.8
+           post-merge #2` honoured, so Cancel still wins); then the signed-in user's own
+           refetched row is read once, and when it holds a pending change whose address is
+           the submitted one under the server's normaliser the section enters the code panel
+           exactly as a `code_sent` landing does, through the one `sentCodeLine` builder,
+           showing the SERVER's form of the address. Rejected: the register's no-flow-change
+           alternative for (B) (the user still could not reach the code panel this
+           session); a strict `===` compare (every mixed-case address would miss — the BE
+           stores the lowercased form); re-deriving state from `self` (`DECISION Phase 88.8
+           (D-39)` option (a)). KNOWN-UNKNOWN, accepted by the owner (ruling #15, 2026-10-13,
+           option A; `88.6.1-PLAN-REVIEW-work/RULINGS.md`, anchor "#15 — plan 13 Save-drift
+           reconcile"): the reconcile shows "We sent a code to {address}" and starts the 30 s
+           Resend cooldown (`RESEND_COOLDOWN_MS`) without proof the mail went out — the drift
+           body is exactly the answer that could not be read, so `verification_sent` is
+           unknown here. The line is true in the common case (an unreadable body, mail sent);
+           it is false only when an unreadable response body AND a provider refusal coincide
+           (the BE sets `verification_sent` from the mail send's result,
+           `periodictabletopbackend_v2/Sonnet/routes/users.js:1503`, anchor
+           `verificationSent = await sendEmailChangeCodeMail`), and then Resend is locked for
+           30 s and recovers after it. Rejected there: (B) skipping the cooldown and
+           promoting Resend — it invites a Resend that revokes the code already in the inbox
+           in the common case; (C) no sent line — the common case loses its confirmation.
+           D-11 (`88.6.1-CONTEXT.md:117-118`, anchor "the Save arm moves to the code panel")
+           stands. With nothing pending, the generic error goes to the EDITING lane beside
+           Save (D-11a) and NO focus moves — see `DECISION Phase 88.6.1-13 (D-11a, Save
+           catch)` for why. Changing any of this is a decision, not a cleanup. */
+        await refetchSelfAfterLocalMutation();
+        if (abandoned || saveRunRef.current !== run) return;
+        const pendingTarget = driftedSavePendingAddress(readSelfRows(), value);
+        if (pendingTarget) {
+          enterCodePanel(pendingTarget);
+          return;
+        }
         /* RESIDUAL, STATED RATHER THAN HIDDEN (Phase 88.6-38, item 1g — routed to the owner
            in `88.6-38-SUMMARY.md`). The refetch above can come back carrying a NON-NULL
            `pending_email_change`: the server did act, and only its answer was unreadable.
@@ -977,28 +1285,19 @@ export function EmailAddressSection() {
            panel when the refetched row shows the change genuinely pending — is the better
            design on the merits and is DELIBERATELY not taken here: it needs the same
            `await`+reconcile machinery the Verify arm's residual defers, and it is a
-           user-visible change to an account-identity flow whose decisions 88.8 locked. */
+           user-visible change to an account-identity flow whose decisions 88.8 locked.
+
+           AMENDED Phase 88.6.1-13: item 1g is TAKEN by D-11 — the reconcile above moves the
+           user to the code panel when the refetched row shows the change pending. The
+           hydration effect is STILL one-shot (`DECISION Phase 88.8 (D-39)` honoured): the
+           reconcile is a handler-local read of the refetched row, not a reactive
+           re-derivation from `self`. What remains below is the case the row cannot settle,
+           and its message now goes beside Save, not on the address field (D-11a). */
         setState('editing');
-        setEmailError(messageFor(null));
-        setFocusTarget('email');
+        setEditActionError(messageFor(null));
         return;
       }
       if (abandoned) {
-        /* REFETCH, NEVER PATCH (round 6 HIGH). The server DID act and the immortal self
-           row must not stay stale — but this body is one the section already knows is
-           out of date, and writing it wholesale was a real corruption: Save A stalls,
-           Cancel, Change, Save B, B lands and the user is verifying B, then A lands late
-           and patched `pending_email_change` (plus `email`, `email_changed_at` and
-           `revert_available`) back to A underneath them. `staleTime: Infinity` means that
-           wrong row then survives the entire session. A refetch cannot resurrect A over
-           B: it asks the server what is true NOW, which is B. `patchSelfCache` stays on
-           the non-abandoned path, where the body IS the freshest thing the client has.
-           `invalidateSelfCache` is the module's existing helper for exactly this case
-           ("the authoritative post-mutation state must come from the server"). */
-        /* Phase 88.6-38: routed through the shared helper so this site ARMS the suppression
-           like the other three. It is the same invalidation it always was; what is new is
-           that the defensive expiry arm can now tell this null apart from an expiry. */
-        refetchSelfAfterLocalMutation();
         /* AND THE NOTICE ONLY SPEAKS INTO THE SESSION IT IS ABOUT. `stateRef` is read
            rather than the closure's `state`, which is frozen at the render that started
            this request: by landing time the user may have opened a new edit or be sitting
@@ -1034,6 +1333,33 @@ export function EmailAddressSection() {
             setNotice({ tone: 'error', text: CANCELLED_MID_SAVE_UNSENT_COPY });
           }
         }
+        /* REFETCH, NEVER PATCH (round 6 HIGH). The server DID act and the immortal self
+           row must not stay stale — but this body is one the section already knows is
+           out of date, and writing it wholesale was a real corruption: Save A stalls,
+           Cancel, Change, Save B, B lands and the user is verifying B, then A lands late
+           and patched `pending_email_change` (plus `email`, `email_changed_at` and
+           `revert_available`) back to A underneath them. `staleTime: Infinity` means that
+           wrong row then survives the entire session. A refetch cannot resurrect A over
+           B: it asks the server what is true NOW, which is B. `patchSelfCache` stays on
+           the non-abandoned path, where the body IS the freshest thing the client has.
+           `invalidateSelfCache` is the module's existing helper for exactly this case
+           ("the authoritative post-mutation state must come from the server"). */
+        /* Phase 88.6-38: routed through the shared helper so this site ARMS the suppression
+           like the other three. It is the same invalidation it always was; what is new is
+           that the defensive expiry arm can now tell this null apart from an expiry.
+           AMENDED Phase 88.6.1-13 (D-26 W011): this site NO LONGER ARMS anything — the
+           helper arms nothing and the counter's one arming site is the Verify drift arm.
+           The call moved below the notice logic (unchanged) and is now AWAITED, so the
+           section's lane reopens only after the self row is fresh (the marker below). */
+        /* DECISION Phase 88.6.1-13 (W011, lane): every locally initiated self refetch
+           settles INSIDE the request lane that caused it, so this abandoned path awaits its
+           refetch as its last statement and `finally` reopens the lane only afterwards —
+           Change and Save stay `aria-disabled` and answer the busy line until the row is
+           fresh. Rejected: leaving it un-awaited — a slow refetch snapshot could land after
+           a newer Save's cache patch and serve the older row, and the suppression counter
+           that used to mask the null it brings has no arming site here any more. Changing
+           this is a decision, not a cleanup. */
+        await refetchSelfAfterLocalMutation();
         return;
       }
       /* LAST WRITE WINS. Defensive: any newer Save bumps `saveRunRef`, so an older run is
@@ -1068,33 +1394,30 @@ export function EmailAddressSection() {
         return;
       }
       if (body.outcome === 'code_sent') {
+        if (body.verification_sent) {
+          // 88.6.1-13: the shared entry, so the drift reconcile and this arm say one line.
+          enterCodePanel(body.pending_email_change?.address ?? value);
+          return;
+        }
+        // A mail the PROVIDER refused. Never the "code sent" line — the token
+        // survives (the owner's 2026-09-04 ruling) so Resend is the remedy. This branch
+        // is unchanged by 88.6.1-13.
         sentThisSessionRef.current = true;
         setState('awaiting-code');
         clearCodeField();
         setCodeError(null);
-        if (body.verification_sent) {
-          const line = `We sent a code to ${body.pending_email_change?.address ?? value}`;
-          setSentLine(line);
-          announce(line);
-          setNotice(null);
-          setResendPromoted(false);
-          startCooldown();
-        } else {
-          // A mail the PROVIDER refused. Never the "code sent" line — the token
-          // survives (the owner's 2026-09-04 ruling) so Resend is the remedy.
-          setSentLine(null);
-          // Not announce()d here (round 3 #38): an error-tone Banner is itself an
-          // assertive live region, so the region would say it twice.
-          setNotice({ tone: 'error', text: MAIL_REFUSED_COPY });
-          setResendPromoted(true);
-        }
+        setSentLine(null);
+        // Not announce()d here (round 3 #38): an error-tone Banner is itself an
+        // assertive live region, so the region would say it twice.
+        setNotice({ tone: 'error', text: MAIL_REFUSED_COPY });
+        setResendPromoted(true);
         setFocusTarget('code');
         return;
       }
-      // Contract drift: a request answering with a verify-path outcome.
+      // Contract drift: a request answering with a verify-path outcome. 88.6.1-13 (D-11a):
+      // a fact about the ANSWER, not the address, so it goes beside Save and moves no focus.
       setState('editing');
-      setEmailError(messageFor(null));
-      setFocusTarget('email');
+      setEditActionError(messageFor(null));
     } catch (error) {
       // The cooldown is the SERVER's rate limiter and is armed either way.
       if (isRateLimited(error)) startCooldown();
@@ -1112,9 +1435,40 @@ export function EmailAddressSection() {
          (`utils/errors.js:104`), so the specific code now carries the specific copy and
          `validation` falls back to the section-wide stale-action default, exactly as it
          does on the four sibling routes. The pre-check above is unchanged and still means
-         this should never fire from our own UI. */
-      setEmailError(messageFor(error, { unsupported_address: RESERVED_ADDRESS_ERROR }));
-      setFocusTarget('email');
+         this should never fire from our own UI.
+         AMENDED Phase 88.6.1-13 (D-11a, AT-4 R4): the message is computed as above, then
+         the LANE splits by code. `unsupported_address` is a verdict on the typed address —
+         the server half of the pre-check and the blur check — so it stays on the email field
+         and keeps its focus move there, where FormField associates it. Every other code
+         (network, internal, forbidden, rate-limited, and `validation`'s stale-action
+         sentence) is a fact about the ACTION: it goes to the editing lane beside Save and
+         moves NO focus. See the marker below. */
+      /* DECISION Phase 88.6.1-13 (D-11a, Save catch): SPLIT BY CODE — the address verdict on
+         the field, every other failure in the action lane. Rejected: everything on the field
+         (what this read before — it contradicts the editing-lane docblock above, which says
+         `emailError` carries only the field's own verdicts); everything in the action lane
+         (the reserved-domain refusal IS about the address, and its client half already lands
+         on the field, so moving only the server half would split one verdict across two
+         lanes). FOCUS (AT-4 R4, plan review r1 A2): chosen — the Save path's action-lane
+         failures (both drift exits and this catch's non-address codes) move no focus, so
+         Save keeps it and already references the lane, the idiom Resend's and Discard's
+         catches use; the `unsupported_address` exception keeps its move to the email
+         input, and the code-panel reconcile keeps its move to the code input because its
+         block unmounts. Rejected: moving focus to the email input (it does not reference
+         the lane, the move competes with the alert's insertion, and in the Chromium phone
+         emulation this plan measures — the `phone` project forces `browserName:
+         'chromium'`, `playwright.config.ts`, `DECISION Phase 87.7 D-14` — the move back into
+         the input after a tap on Save reopens the keyboard for a failure whose remedy is
+         pressing Save again; iOS Safari is not measured here, plan 88.6.1-57's real-device
+         pass owns it); adding the lane's id to the input's description (spoken twice, and it
+         re-blames the field). Changing any of this is a decision, not a cleanup. */
+      const message = messageFor(error, { unsupported_address: RESERVED_ADDRESS_ERROR });
+      if (error instanceof ApiError && error.code === 'unsupported_address') {
+        setEmailError(message);
+        setFocusTarget('email');
+      } else {
+        setEditActionError(message);
+      }
     } finally {
       // The REQUEST is over either way, so the lane reopens either way — including on
       // the abandoned paths above, which return early out of the `try`.
@@ -1123,6 +1477,9 @@ export function EmailAddressSection() {
   };
 
   const handleVerify = async () => {
+    // The address this verify is about, captured before anything moves (88.6.1-13, D-11):
+    // the drift reconcile compares the refetched row against it.
+    const target = pendingAddress;
     // Round 3 #1/#35: Verify consults the shared lane. Before this it guarded on its
     // own state only, so Resend-then-Verify let the verify race the resend's revoke and
     // the user was told "That code isn't right" about a code that was right — the exact
@@ -1149,6 +1506,9 @@ export function EmailAddressSection() {
     }
 
     setCodeError(null);
+    // 88.6.1-13 (D-11a): the action lane is this press's too now, so a fresh press clears
+    // it — after the gates, so a refused press keeps its busy line.
+    setActionError(null);
     setState('verifying');
     try {
       const body = await usersAPI.verifyEmailChange(selfId, normaliseEmailChangeCode(codeInput));
@@ -1176,30 +1536,78 @@ export function EmailAddressSection() {
            now" and, through the remembered pending value, as "Not verified yet". Suppressing
            the false EXPIRED report is what this plan ships; telling the user the change
            SUCCEEDED requires awaiting the invalidation and reconciling, which is recorded as
-           a named follow-up for whichever phase next owns the email-verification contract. */
-        refetchSelfAfterLocalMutation();
+           a named follow-up for whichever phase next owns the email-verification contract.
+
+           AMENDED Phase 88.6.1-13: item 1e is CLOSED by this phase per D-11 — see the
+           marker below. The paragraph above is kept as the record of what was routed. */
+        /* DECISION Phase 88.6.1-13 (D-11, R124 A; D-26 W011): AWAIT the refetch inside
+           `verifying` and RECONCILE from the cache. Chosen: the refetch is awaited while the
+           section still reads `verifying`, so the shared lane stays closed until the self
+           row is fresh (`DECISION Phase 88.8 (code review HIGH-2)` honoured); the refetched
+           row is read ONCE from the cache, and ONLY the signed-in user's own row (`id`
+           equals `selfId` — the key is per account, `useSelfIdentity.ts:28-31`, and the
+           prefix read would otherwise match every account's entry); success is claimed
+           only when that row PROVES it — `email` equals the target under the server's
+           normaliser AND no pending change — and then the section shows the verified
+           outcome with `CHANGED_RECEIPT` (copy row 19, no new words). Anything else keeps
+           the unreadable-answer copy, now in the action lane (D-11a), with no focus move.
+           The suppression counter is armed HERE and nowhere else, by one, only when the
+           rows carry no pending change and the expiry effect could otherwise speak
+           (`shouldSuppressOwnNull`), in the same synchronous run as the state move — the
+           arm's own commit renders the refetched row, so that commit spends it.
+           Rejected: leaving the residual routed (88.6-38's choice; this is the phase it was
+           routed to); reconciling from `self` (the closure is the pre-refetch row);
+           IN-104's settle-time disarm reading `stateRef` (`stateRef` is written in a passive
+           effect, one commit behind this arm, and two decrement sites can spend an
+           overlapping suppression — research DF-1); reconciling the row-gone case straight
+           to the expired copy (this arm cannot tell an expiry from a discard in another
+           tab, and the unreadable copy asks for the re-press whose server answer is the
+           authority). KNOWN LIMIT, told to the owner with D-11: a hung refetch holds
+           `verifying` and the closed lane, because `apiFetch` has no request timeout
+           (`src/lib/api.ts`, the 88.6-42 transport note "NOTHING in this module had one,
+           apiFetch included" — an owned residual of Phase 93). Changing any of this is a
+           decision, not a cleanup. */
+        await refetchSelfAfterLocalMutation();
+        const rows = readSelfRows();
+        if (driftedVerifyLanded(rows, target)) {
+          clearCodeField();
+          enterVerified();
+          return;
+        }
+        if (shouldSuppressOwnNull(rows, sentThisSessionRef.current, sawPendingRef.current)) {
+          localNullSuppressRef.current += 1;
+        }
         setState('awaiting-code');
-        setCodeError(UNREADABLE_ANSWER_ERROR);
-        setFocusTarget('code');
+        setActionError(UNREADABLE_ANSWER_ERROR);
         return;
       }
       applyToCache(body);
       clearCodeField();
 
       if (body.outcome === 'verified') {
-        sentThisSessionRef.current = false;
-        setState('verified');
-        setSentLine(null);
-        setResendPromoted(false);
-        setNotice(null);
-        toast.success(CHANGED_RECEIPT);
-        setFocusTarget('change');
+        enterVerified();
         return;
       }
+      /* 88.6.1 code review A-15: an `expired` answer carries `pending_email_change: null` (the
+         server's re-read filters on `expires_at > now()`), and `applyToCache` just wrote that
+         null — so in a session that sent the code, the expiry effect would ALSO see pending go
+         null on this commit and write EXPIRED a second time, re-inserting the keyed alert and
+         speaking the sentence twice. This null is one the section caused, so it is armed through
+         the ONE arming decision the Verify drift arm uses (`shouldSuppressOwnNull`), and the
+         effect spends it instead of writing. The effect's two other writes are done here so the
+         screen is unchanged: the action lane was cleared before the request, and the sent line
+         is cleared below. */
+      const ownExpiryNull =
+        body.outcome === 'expired' &&
+        shouldSuppressOwnNull([body as SelfRowSnapshot], sentThisSessionRef.current, sawPendingRef.current);
+      if (ownExpiryNull) localNullSuppressRef.current += 1;
       setState('awaiting-code');
       if (body.outcome === 'expired') {
         setCodeError(EXPIRED_CODE_ERROR);
         setResendPromoted(true);
+        if (ownExpiryNull) setSentLine(null);
+        // A verdict on the code: FormField associates it, so the move lets it be spoken.
+        setFocusTarget('code');
       } else if (body.outcome === 'address_taken') {
         /* NAMED, never collapsed into `invalid` — telling this user their code "isn't
            right" would be false and would hide a real account conflict behind a retry
@@ -1214,12 +1622,18 @@ export function EmailAddressSection() {
            the field, so preserving them helps nobody. The server's 30-minute grace is a
            COURTESY that keeps a re-verify possible, not a UI contract this section is
            obliged to hold state for. Contrast the transport arms above, where the retry
-           is immediate and the code genuinely is the next keystroke. */
-        setCodeError(ADDRESS_TAKEN_ERROR);
+           is immediate and the code genuinely is the next keystroke.
+
+           AMENDED Phase 88.6.1-13 (D-11a): the ruling above is about the CODE and stands —
+           it is still cleared. Only the LANE changed: a conflict about the ADDRESS is not a
+           verdict on the code, so it is written to the action lane, and it moves no focus
+           (see the marker at the catch below). */
+        setActionError(ADDRESS_TAKEN_ERROR);
       } else {
         setCodeError(INVALID_CODE_ERROR);
+        // A verdict on the code: FormField associates it, so the move lets it be spoken.
+        setFocusTarget('code');
       }
-      setFocusTarget('code');
     } catch (error) {
       /* Round 5 #1: THE SAME RULE AS THE BRANCH ABOVE, which round 4 applied to the
          unparseable-body arm and left contradicted here. This is the branch that
@@ -1229,10 +1643,29 @@ export function EmailAddressSection() {
          code is KEPT and Verify can be pressed again; `messageFor(error)` names what
          actually failed and never claims the code is still valid. Resend stays mounted
          beside it for the residual case where the request did land. */
+      /* DECISION Phase 88.6.1-13 (D-11a, Verify): the code field's lane carries ONLY the
+         code's own verdicts — incomplete, out-of-alphabet, invalid, expired. The unreadable
+         answer, every thrown failure here and `address_taken` go to the ACTION lane that
+         Verify already points at (round 6 #32, Verify's `aria-describedby`). `validation`
+         counts as an action fact on this route: the server's malformed-code 400 is pre-gated
+         by `checkCode`, which mirrors its alphabet and decode, and `messageFor` maps
+         `validation` to the stale-action sentence. Rejected: leaving them on the code field
+         (an `aria-invalid` input the user did not get wrong — the rule this file already
+         states for Resend, Discard and Revert at the `actionError` lane); clearing the
+         action lane on a code keystroke (it would erase a failed Resend's message).
+         FOCUS (AT-4 R4, plan review r1 A2): chosen — the action-lane arms move NO focus, so
+         the control that was pressed keeps it, and it already references the lane (the
+         idiom Resend's and Discard's catches use); `invalid` and `expired` keep their move to
+         the code input, because FormField associates the code's own verdict and the target
+         speaks it; the drift-landed reconcile keeps its move to Change because its block
+         unmounts. Rejected: moving focus to the code input (it does not reference the lane,
+         and a move in the same commit as the alert's insertion competes with it); adding
+         the lane's id to the input's description (the message is spoken twice, and it
+         re-blames the field D-11a just cleared). Changing any of this is a decision, not a
+         cleanup. */
       setState('awaiting-code');
-      setCodeError(messageFor(error));
+      setActionError(messageFor(error));
       if (isRateLimited(error)) startCooldown();
-      setFocusTarget('code');
     }
   };
 
@@ -1250,6 +1683,8 @@ export function EmailAddressSection() {
       return;
     }
     setActionError(null);
+    // 88.6.1-13 (Edge R8): empty the region at the start, so a repeat outcome is heard.
+    announce('');
     setBusy('resend');
     try {
       const body = await usersAPI.resendEmailChangeCode(selfId);
@@ -1382,9 +1817,17 @@ export function EmailAddressSection() {
      code the user is halfway through typing. In practice the hook cannot
      re-enter those flags (`staleTime: Infinity`, and its docblock states the
      self row "NEVER self-refreshes"), so this is a guard against a future change
-     to the hook rather than against today's behaviour. */
+     to the hook rather than against today's behaviour.
+     AMENDED Phase 88.6.1-79 (AC-29): the "cannot re-enter" premise was false — a failed
+     refetch keeps the row AND sets the error flag (TanStack `isRefetchError`), and this
+     section's own `refetchSelfAfterLocalMutation` is the app's one self refetch. Both arms
+     (this one and the hydration effect) now test for NO row, through the shared
+     `selfIdentityFailedWithNoRow`. */
   const preHydration = !hydratedRef.current;
-  const showUnavailable = state === 'unavailable' || (preHydration && selfQuery.isError);
+  const showUnavailable =
+    identityWithdrawn ||
+    state === 'unavailable' ||
+    (preHydration && selfIdentityFailedWithNoRow(selfQuery, self?.id));
   const showUnresolved = !showUnavailable && (state === 'unresolved' || (preHydration && !self));
 
   /* Round 4 #29: the loading→failed transition happened in plain <p>s below the always-
@@ -1393,6 +1836,10 @@ export function EmailAddressSection() {
      it, and the section is aria-busy while unresolved. */
   React.useEffect(() => {
     if (showUnavailable) setAnnouncement(UNAVAILABLE_COPY);
+    // Phase 88.6.1-79 (D-51): the arm can now LEAVE (a withdrawal ends on the next success), so on
+    // true -> false drop this one sentence — any other message stands — or the main arm's
+    // always-mounted region would keep reading it beside the restored address. A no-op on mount.
+    else setAnnouncement((a) => (a === UNAVAILABLE_COPY ? '' : a));
   }, [showUnavailable]);
   if (showUnavailable) {
     return (
@@ -1405,7 +1852,7 @@ export function EmailAddressSection() {
             each region's accessible name — the one hazard `Heading.tsx`'s own docblock names
             ("It is NOT a safe `aria-labelledby` idref target unless the caller guarantees
             non-empty content"). That guarantee HOLDS here and is why the idref is safe: the child
-            is the module constant `SECTION_TITLE` (`:95`), never a prop, never interpolated, never
+            is the module constant `SECTION_TITLE` (`:96`), never a prop, never interpolated, never
             empty — so `Heading`'s AC-3 empty-children early return is unreachable at these three
             sites. Chosen OVER leaving them raw `<h2>`s (the file would be the phase's only
             un-migrated heading surface) and OVER giving the `<section>` an `aria-label` instead
@@ -1416,7 +1863,7 @@ export function EmailAddressSection() {
           {SECTION_TITLE}
         </Heading>
         {/* NO fallback to the Auth0 session address here. The profile page's own
-            terminal arm does exactly that at page.js:809-821 — for the USERNAME,
+            terminal arm does exactly that at page.js:883-891 — for the USERNAME,
             where a wrong display name is cosmetic. For the ADDRESS it is the
             stale value this whole correction removes, and offering Change
             against an address we cannot read invites a change to the value the
@@ -1433,7 +1880,7 @@ export function EmailAddressSection() {
             region that mounts WITH its content announces nothing, and this arm can be the
             section's FIRST render when the self query is already settled-errored. */}
         {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): the authored `text-sm` was DEAD and is deleted —
-            `StatusRegion`'s own base already supplies it (`StatusRegion.tsx:44`, `cn('text-sm',
+            `StatusRegion`'s own base already supplies it (`StatusRegion.tsx:103`, `cn('text-sm',
             className)`), so this was the size utility restating what the primitive gives, the
             §4.3 "dead size utility → delete it" shape. Zero look delta by construction. The ink
             token STAYS: that is a real choice, not a restatement. */}
@@ -1469,7 +1916,7 @@ export function EmailAddressSection() {
      DR-C's SECOND half only (a fixed error naming what is missing) and not its first, so
      a screen-reader or switch user was told the control was available, pressed it, and
      got an error instead of an action. DR-C's contract is both halves together
-     (`:123-127`), and the five controls already carry the shape for `mutating` and the
+     (`:135-139`), and the five controls already carry the shape for `mutating` and the
      cooldown — this is the same shape applied to the one condition that was missing it,
      not a new rule. Still `aria-disabled`, never native `disabled`. */
   const selfRowMissing = !selfId;
@@ -1510,7 +1957,7 @@ export function EmailAddressSection() {
             address are FIELD LABELS in everything but the tag — the code review that added the
             second one says so ("LABELLED, not a bare paragraph… naming what it IS"). §4.3 puts a
             label on Label 14, §4.2's caption role list is closed and does NOT contain "field
-            label", and this file's REAL labels (`FormField`'s, `FormField.tsx:97`) already render
+            label", and this file's REAL labels (`FormField`'s, its default label class) already render
             at 14 — so 12 here was the file disagreeing with itself. */}
         <p className="text-sm text-content-muted">{CURRENT_ADDRESS_LABEL}</p>
         <p className="text-base text-content-primary break-words">
@@ -1518,7 +1965,7 @@ export function EmailAddressSection() {
               stores `<sub>@auth0.local` in `Users.email` as a SENTINEL, not a
               contact handle, and guards it in 19 places; this frontend guarded
               it in zero until this plan. Cite: DECISION Phase 88.2 NIX-AUTH0
-              (services/groupOwnershipOfferService.js:97-114) — the BROAD
+              (services/groupOwnershipOfferService.js:97-115) — the BROAD
               `@auth0` substring is deliberate and re-narrowing it to
               `@auth0.local` is a decision, not a cleanup. A falsy address takes
               the same branch: "no address" and "a sentinel" read identically to
@@ -1597,8 +2044,21 @@ export function EmailAddressSection() {
       {(state === 'idle' || state === 'verified') && revertAvailable && (
         <p className="text-xs text-content-muted mt-1">{REVERT_HELPER}</p>
       )}
+      {/* THE IDLE BLOCK'S LANE (revert and Change's busy gate). DECISION Phase 88.6.1-13 (D-42):
+          this alert stays CONDITIONALLY MOUNTED WITH ITS TEXT, chosen OVER an always-mounted
+          empty assertive region, because an alert inserted with its text is announced reliably
+          (ARIA 1.2; research AT-4, CONTEXT D-42) — and converting the three lanes would put up
+          to three empty assertive regions in one section. Its AT-4 record, measured on the tree
+          88.6.1-13 Task 2 left: R1 PASS — a plain paragraph child of the section card, which is
+          a direct child of the profile page's container, with no hidden or display-contents
+          ancestor. R2 PASS — no dialog; the card is top-level on the profile page. R3 PASS by
+          this plan's fix — every non-null write of the lane bumps its sequence and only this
+          paragraph is keyed on it, so an identical gate refusal re-inserts (test "R3-revert").
+          R4 PASS — the revert failure arms move focus to the revert control, which describes
+          this lane; Change's busy gate moves no focus and Change describes the same lane.
+          R5 PASS — the lane starts null, so nothing is present at first render. */}
       {revertError && (
-        <p id={`${reactId}-revert-error`} role="alert" className="text-content-status-error text-xs mt-1">
+        <p key={revertErrorSeq} id={`${reactId}-revert-error`} role="alert" className="text-content-status-error text-xs mt-1">
           {revertError}
         </p>
       )}
@@ -1606,7 +2066,12 @@ export function EmailAddressSection() {
       {/* ── EDITING / SAVING ──────────────────────────────────────────────── */}
       {inEditing && (
         <div>
-          <FormField label="New email address" htmlFor={emailFieldId} error={emailError ?? undefined}>
+          <FormField
+            label="New email address"
+            htmlFor={emailFieldId}
+            error={emailError ?? undefined}
+            errorKey={emailErrorSeq}
+          >
             {/* The house form-field rule at `Input.tsx:11-19`: id + name + an
                 associated label on every control, because browser autofill does
                 not read ARIA. `FormField` injects the id and the aria
@@ -1621,9 +2086,9 @@ export function EmailAddressSection() {
               value={emailInput}
               /* Validation runs on Save (and on blur), NEVER on change:
                  `FormField`'s error slot is unconditionally `role="alert"`
-                 (FormField.tsx:104-108), and an alert on every keystroke talks
+                 (FormField's error paragraph, rendered when `error` is set), and an alert on every keystroke talks
                  over the person mid-entry. The phone block above records
-                 exactly this reason at page.js:1524-1533. */
+                 exactly this reason at page.js:1802-1808. */
               onChange={(e) => {
                 setEmailInput(e.target.value);
                 // Round 3 #36: resuming entry clears the stale error (and its
@@ -1685,9 +2150,22 @@ export function EmailAddressSection() {
               `role="alert"`, and pointed at by BOTH controls' `aria-describedby` so a
               user who returns to a gated Save or Cancel hears WHY rather than meeting a
               dimmed control with no reason (WCAG 4.1.2, and the consistency the three
-              siblings already have). */}
+              siblings already have).
+              DECISION Phase 88.6.1-13 (D-42): kept CONDITIONALLY MOUNTED WITH ITS TEXT, chosen
+              OVER an always-mounted empty assertive region — an alert inserted with its text is
+              announced reliably (ARIA 1.2; research AT-4, CONTEXT D-42), and converting would put
+              up to three empty assertive regions in one section. AT-4 record, measured on the
+              tree Task 2 left: R1 PASS — a plain paragraph in the editing block, no hidden or
+              display-contents ancestor. R2 PASS — no dialog. R3 PASS by this plan's fix — the
+              lane's per-write sequence keys only this paragraph, so an identical refusal
+              re-inserts (test "R3-edit"). R4 PASS because of this plan's focus edits — both
+              Save drift exits and the catch's non-address codes move no focus, so the pressed
+              Save (or Cancel) keeps it and already describes this lane; the two moves kept are
+              the address verdict (to the email input, which FormField describes) and the
+              code-panel reconcile (to the code input, because this block unmounts). R5 PASS —
+              the lane starts null. */}
           {editActionError && (
-            <p id={`${reactId}-edit-error`} role="alert" className="text-content-status-error text-xs mt-2">
+            <p key={editActionErrorSeq} id={`${reactId}-edit-error`} role="alert" className="text-content-status-error text-xs mt-2">
               {editActionError}
             </p>
           )}
@@ -1731,6 +2209,7 @@ export function EmailAddressSection() {
             label="Code from the email"
             htmlFor={codeFieldId}
             error={codeError ?? undefined}
+            errorKey={codeErrorSeq}
             hint={
               <p id={codeHintId} className="text-xs text-content-muted mt-1">
                 {CODE_FORMAT_HINT}
@@ -1738,8 +2217,8 @@ export function EmailAddressSection() {
             }
           >
             {/* THE FORMAT INSTRUCTION IS ASSOCIATED, NOT MERELY ADJACENT. BOTH
-                halves are required: `FormField` renders `hint` at :103 but never
-                puts it into `aria-describedby` (:79-83), so `hint` alone is
+                halves are required: `FormField` renders `hint` after the control but never
+                puts it into `aria-describedby` (its `describedBy` merge), so `hint` alone is
                 decorative to assistive technology; and `FormField` MERGES the
                 child's own `aria-describedby` into the computed value rather
                 than overwriting it, so setting it here keeps the hint associated
@@ -1802,7 +2281,7 @@ export function EmailAddressSection() {
                  with the re-press blocked in the handler (DR-C). NO ticking
                  countdown text lives inside any Banner or StatusRegion —
                  `Banner` wraps its children in an assertive `aria-atomic`
-                 region (Banner.tsx:87, :103-109), so a per-second label change
+                 region (Banner.tsx:87, :103-106), so a per-second label change
                  would re-announce the whole banner. */
               variant={resendPromoted ? 'secondary' : 'ghost'}
               onClick={handleResend}
@@ -1827,9 +2306,23 @@ export function EmailAddressSection() {
               belongs beside the buttons — not in the code field's error slot,
               where `FormField` would set `aria-invalid="true"` on an input the
               user has not mistyped and may not have touched. Mirrors the shape of
-              the revert error below. */}
+              the revert error below.
+              DECISION Phase 88.6.1-13 (D-42): kept CONDITIONALLY MOUNTED WITH ITS TEXT, chosen
+              OVER an always-mounted empty assertive region — an alert inserted with its text is
+              announced reliably (ARIA 1.2; research AT-4, CONTEXT D-42), and converting would put
+              up to three empty assertive regions in one section. AT-4 record, measured on the
+              tree Task 2 left: R1 PASS — a plain paragraph in the awaiting block, no hidden or
+              display-contents ancestor. R2 PASS — no dialog. R3 PASS by this plan's fix — the
+              lane's per-write sequence keys only this paragraph, so an identical refusal
+              re-inserts (test "R3-action"). R4 PASS because of this plan's focus edits — the
+              unreadable answer, the Verify catch and the address conflict move no focus, so the
+              pressed Verify keeps it and Verify, Resend and Discard all describe this lane, as
+              the Resend and Discard catches already did; the moves kept are the code's own
+              verdicts (invalid, expired: to the code input, which FormField describes) and the
+              landed reconcile (to Change, because this block unmounts). R5 PASS — the lane
+              starts null. */}
           {actionError && (
-            <p id={`${reactId}-action-error`} role="alert" className="text-content-status-error text-xs mt-2">
+            <p key={actionErrorSeq} id={`${reactId}-action-error`} role="alert" className="text-content-status-error text-xs mt-2">
               {actionError}
             </p>
           )}
@@ -1842,7 +2335,7 @@ export function EmailAddressSection() {
 /* DECISION Phase 88.8 D-30: this section is built from the HOUSE primitives —
    `FormField`, `Input`, `Button`, `Banner`, `StatusRegion`, `Icon` — chosen OVER
    matching the phone-verification block that sits directly above it on the same
-   page (`userProfile/page.js:1480-1680`). Copying the neighbour for local
+   page (`userProfile/page.js:1740-1994`). Copying the neighbour for local
    visual consistency is the obvious move and it LOSES here: that block's buttons
    are hand-rolled markup carrying neither the shared `.btn` class nor any height
    floor, so mirroring it would ship a phone-forward regression on a brand-new
@@ -1868,7 +2361,7 @@ export function EmailAddressSection() {
    second instance of the class.
 
    THE PRECEDENT IS HONOURED, NOT OVERTURNED. `DECISION Phase 88.5` at
-   `NextGameNightCard.tsx:379-390` splits it as: the control being ACTED ON gets
+   `NextGameNightCard.tsx:479-487` splits it as: the control being ACTED ON gets
    `aria-disabled`; a control nobody is standing on may be natively disabled.
    There, the natively-disabled buttons are the OTHER RSVP options while one is
    submitting. This section simply has no control of that second kind.

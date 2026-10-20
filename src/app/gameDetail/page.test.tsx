@@ -40,8 +40,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
-const GAME_ID = 'GAME1';
-const GROUP_ID = 'GROUP1';
+// The page guards all three URL ids (game_id, event_id, group_id) with isUuid at the
+// one URL read (88.6.1-25, D-03 / CSPT), so every id the harness puts in the URL must be
+// UUID-shaped, and each fixture id is distinct from every other one.
+const GAME_ID = '77777777-7777-4777-8777-777777777777';
+const GROUP_ID = '44444444-4444-4444-8444-444444444444';
+// A valid UUID that is NOT the event's group (88.6.1-25 task 3, D-41 precedence).
+const URL_ONLY_GROUP_ID = '66666666-6666-4666-8666-666666666666';
 
 /**
  * Group role of the CALLER, as it will appear on their roster row.
@@ -49,7 +54,7 @@ const GROUP_ID = 'GROUP1';
  */
 export type CallerRole = 'owner' | 'admin' | 'member' | 'pending' | 'game-only';
 
-const EVENT_ID = 'EVT1';
+const EVENT_ID = '55555555-5555-4555-8555-555555555555';
 
 // `search` is hoisted state, not a literal, because gameDetail renders a WHOLLY
 // DIFFERENT tree for `?event_id=` (the single-event view: participant strip,
@@ -62,6 +67,25 @@ const h = vi.hoisted(() => ({
   // same way `selfUuid` models the identity half. Defaults to the shipped literal,
   // so every pre-existing test is byte-equivalent.
   userSub: 'auth0|self-sub' as string | undefined,
+  // 88.6.1-25: `useUser().isLoading`, so a test can hold the session unsettled (the SPEC
+  // backstop `concurrency / R1`). False by default, so every older test is unchanged.
+  authLoading: false as boolean,
+  // 88.6.1-25: ONE router push spy and ONE identity refetch spy for the whole file, so a
+  // test can assert a navigation (AC-7) or the D-02 identity recheck. Both used to be a
+  // fresh vi.fn() per render, which nothing could observe.
+  push: vi.fn(),
+  selfRefetch: vi.fn(),
+  // 88.6.1-25 task 3: every CreateEvent render's props, newest last (AC-7, the edit modal).
+  createEventProps: [] as Array<Record<string, unknown>>,
+  // 88.6.1-68: how many CreateEvent instances are mounted right now (a mount effect counts up, its
+  // cleanup counts down), so an arm can tell whether the host closed (unmounted) its dialog.
+  createEventMounts: 0,
+}));
+
+// 88.6.1-25 S2: the RsvpSection stub records its latest props so a test can fire
+// onRsvpChange; it still renders the same testid marker, so nothing that queries it moves.
+const rsvpProps = vi.hoisted(() => ({
+  current: null as null | { onRsvpChange?: (status: string) => void },
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -69,18 +93,18 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({
     selfUuid: h.selfUuid,
     self: h.selfUuid ? { id: h.selfUuid, user_id: 'auth0|self-sub' } : undefined,
-    query: { isError: false, error: null, isPending: !h.selfUuid, refetch: vi.fn() },
+    query: { isError: false, error: null, isPending: !h.selfUuid, refetch: h.selfRefetch },
     isPending: !h.selfUuid,
   }),
 }));
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(h.search),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: h.push, replace: vi.fn() }),
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: h.userSub ? { sub: h.userSub } : undefined, isLoading: false }),
+  useUser: () => ({ user: h.userSub ? { sub: h.userSub } : undefined, isLoading: h.authLoading }),
 }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -97,17 +121,52 @@ vi.mock('@/app/components/FriendshipStatusProvider', () => ({
 // Testid markers, not bare nulls (88-33 Task 7): the fork G split asserts WHERE
 // these mount (Upcoming cards yes, history cards no), which a null stub can't pin.
 vi.mock('@/app/components/RsvpSection', () => ({
-  default: () => <div data-testid="rsvp-section" />,
+  default: (props: { onRsvpChange?: (status: string) => void }) => {
+    rsvpProps.current = props;
+    return <div data-testid="rsvp-section" />;
+  },
 }));
+// 88.6.1-74 (SR-7, SR-26): the stub echoes its `userRsvpStatus` prop, nothing else changes.
 vi.mock('@/app/components/BallotSection', () => ({
-  default: () => <div data-testid="ballot-section" />,
+  default: ({ userRsvpStatus }: { userRsvpStatus?: string | null }) => (
+    <div data-testid="ballot-section" data-rsvp-status={userRsvpStatus ?? ''} />
+  ),
 }));
 vi.mock('@/app/components/BringGamePicker', () => ({ default: () => null }));
 vi.mock('@/app/components/BringSummary', () => ({
   default: () => <div data-testid="bring-summary" />,
 }));
-vi.mock('@/app/components/createEvent', () => ({ default: () => null }));
-vi.mock('@/app/components/GameSuggestionCard', () => ({ default: () => null }));
+// 88.6.1-25 task 3: CreateEvent records its props (AC-7 asserts which group the edit modal gets)
+// and still renders nothing; GameSuggestionCard renders one button named for its game, so a test
+// can tap a Recommended Games card. Every older case resolves suggestions to [], so no card renders.
+vi.mock('@/app/components/createEvent', async () => {
+  const { useEffect } = await import('react');
+  function CreateEventStub(props: Record<string, unknown>) {
+    h.createEventProps.push(props);
+    // 88.6.1-68: the mount counter (see `h.createEventMounts`).
+    useEffect(() => {
+      h.createEventMounts += 1;
+      return () => {
+        h.createEventMounts -= 1;
+      };
+    }, []);
+    return null;
+  }
+  return { default: CreateEventStub };
+});
+vi.mock('@/app/components/GameSuggestionCard', () => ({
+  default: ({
+    game,
+    onClick,
+  }: {
+    game: { id: string; name: string };
+    onClick?: (game: { id: string; name: string }) => void;
+  }) => (
+    <button type="button" onClick={() => onClick?.(game)}>
+      {game.name}
+    </button>
+  ),
+}));
 vi.mock('@/app/components/QRCodeModal', () => ({ default: () => null }));
 vi.mock('@/app/components/TimezoneNudgeBanner', () => ({ default: () => null }));
 vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
@@ -217,7 +276,28 @@ export interface RenderGameDetailOptions {
    * reached — the page picks its branch from this payload, and D-38's CTA sits
    * after BOTH branches, so both need covering.
    */
-  game?: Record<string, unknown>;
+  game?: Record<string, unknown> | null;
+  /**
+   * The URL query (88.6.1-25). Default `game_id=GAME_ID&group_id=GROUP_ID`; a test of the
+   * URL guard passes its own (a rejected or missing id).
+   */
+  search?: string;
+  /**
+   * 88.6.1-74: render inside a `<main>` container, the layout's shape (`layout.js`, the
+   * `<main className="flex-1">`), so plan 04's focus floor has a `main`. Default false.
+   */
+  inMain?: boolean;
+  /** 88.6.1-74: render with the self identity unresolved (`selfUuid` undefined). Default false. */
+  identityPending?: boolean;
+}
+
+// 88.6.1-74: the container a render with `inMain` uses. Testing Library's cleanup removes a
+// container it was handed when that container's parent is document.body.
+function renderPage(inMain: boolean) {
+  if (!inMain) return render(<GameDetailPage />);
+  return render(<GameDetailPage />, {
+    container: document.body.appendChild(document.createElement('main')),
+  });
 }
 
 /**
@@ -226,15 +306,23 @@ export interface RenderGameDetailOptions {
  * @example renderGameDetail({ role: 'member' })
  */
 export function renderGameDetail(options: RenderGameDetailOptions = {}) {
-  const { role = 'member', events = [SESSION], reviews = [], game = GAME } = options;
-  h.selfUuid = SELF_UUID;
-  h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+  const {
+    role = 'member',
+    events = [SESSION],
+    reviews = [],
+    game = GAME,
+    search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`,
+    inMain = false,
+    identityPending = false,
+  } = options;
+  h.selfUuid = identityPending ? undefined : SELF_UUID;
+  h.search = search;
   (gamesAPI.getGame as Mock).mockResolvedValue(game);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue(events);
   (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue(reviews);
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor(role));
   (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
-  return render(<GameDetailPage />);
+  return renderPage(inMain);
 }
 
 /**
@@ -263,6 +351,43 @@ export function participantRow(
 export interface RenderEventDetailOptions {
   role?: CallerRole;
   participants?: Array<Record<string, unknown>>;
+  /**
+   * The URL `group_id` (88.6.1-25). Default GROUP_ID (the event's own group); `null` drops
+   * the param, as the event-created notification link does.
+   */
+  urlGroupId?: string | null;
+  /** When set, `getEvent` rejects with this value instead of resolving the fixture. */
+  getEventRejectsWith?: unknown;
+  /** Merged over the event fixture (e.g. a location a test asserts is NOT on screen). */
+  eventOverrides?: Record<string, unknown>;
+  /**
+   * Render with the self identity still unresolved (`selfUuid` undefined), so a test can resolve
+   * it later and drive the fetch effect's identity re-run. Default false: every older test is
+   * unchanged.
+   */
+  identityPending?: boolean;
+  /** 88.6.1-74: render inside a `<main>` container (see RenderGameDetailOptions.inMain). */
+  inMain?: boolean;
+}
+
+/**
+ * The event `getEvent` resolves for EVENT_ID, in its flattened backend shape. Exported so a
+ * test can queue it with `mockResolvedValueOnce(eventFixture())` before a retry.
+ */
+export function eventFixture(
+  overrides: Record<string, unknown> = {},
+  participants: Array<Record<string, unknown>> = [participantRow()]
+) {
+  return {
+    id: EVENT_ID,
+    title: 'Game Night',
+    start_date: '2026-03-01T18:00:00Z',
+    duration_minutes: 120,
+    group_id: GROUP_ID,
+    Group: { id: GROUP_ID, name: 'The Group' },
+    EventParticipations: participants,
+    ...overrides,
+  };
 }
 
 /**
@@ -272,23 +397,28 @@ export interface RenderEventDetailOptions {
  * @example renderEventDetail({ role: 'owner', participants: [participantRow()] })
  */
 export function renderEventDetail(options: RenderEventDetailOptions = {}) {
-  const { role = 'owner', participants = [participantRow()] } = options;
-  h.selfUuid = SELF_UUID;
-  h.search = `event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
-  (eventsAPI.getEvent as Mock).mockResolvedValue({
-    id: EVENT_ID,
-    title: 'Game Night',
-    start_date: '2026-03-01T18:00:00Z',
-    duration_minutes: 120,
-    group_id: GROUP_ID,
-    Group: { id: GROUP_ID, name: 'The Group' },
-    EventParticipations: participants,
-  });
+  const {
+    role = 'owner',
+    participants = [participantRow()],
+    urlGroupId = GROUP_ID,
+    getEventRejectsWith,
+    eventOverrides = {},
+    identityPending = false,
+    inMain = false,
+  } = options;
+  h.selfUuid = identityPending ? undefined : SELF_UUID;
+  h.search =
+    urlGroupId === null ? `event_id=${EVENT_ID}` : `event_id=${EVENT_ID}&group_id=${urlGroupId}`;
+  if (getEventRejectsWith !== undefined) {
+    (eventsAPI.getEvent as Mock).mockRejectedValue(getEventRejectsWith);
+  } else {
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture(eventOverrides, participants));
+  }
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor(role));
   (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
   (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
   (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
-  return render(<GameDetailPage />);
+  return renderPage(inMain);
 }
 
 /** Open the See-all participants modal and return its dialog element. */
@@ -335,6 +465,15 @@ beforeEach(() => {
   h.selfUuid = undefined;
   h.search = '';
   h.userSub = 'auth0|self-sub';
+  // 88.6.1-25: the session settles by default, the two shared spies forget any queued
+  // behaviour, and the sign-in latch never leaks between cases (jsdom sessionStorage is real).
+  h.authLoading = false;
+  h.push.mockReset();
+  h.selfRefetch.mockReset();
+  rsvpProps.current = null;
+  h.createEventProps.length = 0;
+  h.createEventMounts = 0;
+  window.sessionStorage.clear();
 });
 
 afterEach(cleanup);
@@ -549,6 +688,41 @@ describe('gameDetail sessions header (D-39)', () => {
     expect(filterToggle.className).toContain('w-full');
     expect(filterToggle.className).toContain('sm:w-auto');
   });
+
+  // 88.6.1-47 (D-21 / D-44, AC-19): the toggle is a DISCLOSURE — aria-expanded, and an
+  // aria-controls present only while the panel is mounted (the KM-2 pair, KebabMenu's house
+  // form). The arrow glyphs are hidden, so the name is exactly the words. No aria-pressed.
+  it('F1: Show Filters & Sort is a disclosure whose name is the words and whose aria-controls exists only while open', async () => {
+    const user = userEvent.setup();
+    renderGameDetail();
+    const header = await sessionsHeader();
+    const toggle = within(header).getByRole('button', { name: 'Show Filters & Sort' });
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+    expect(toggle).not.toHaveAttribute('aria-pressed');
+    expect(within(toggle).getByText('▼')).toHaveAttribute('aria-hidden', 'true');
+
+    await user.click(toggle);
+    const open = within(header).getByRole('button', { name: 'Hide Filters' });
+    expect(open).toBe(toggle);
+    expect(open).toHaveAttribute('aria-expanded', 'true');
+    expect(open).not.toHaveAttribute('aria-pressed');
+    expect(within(open).getByText('▲')).toHaveAttribute('aria-hidden', 'true');
+    const panelId = open.getAttribute('aria-controls');
+    expect(panelId).toBeTruthy();
+    const panel = document.getElementById(panelId as string);
+    expect(panel).not.toBeNull();
+    expect(
+      (panel as HTMLElement).contains(screen.getByRole('heading', { name: 'Filter & Sort Sessions' }))
+    ).toBe(true);
+
+    await user.click(open);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+    expect(toggle).not.toHaveAttribute('aria-pressed');
+    expect(toggle).toHaveAccessibleName('Show Filters & Sort');
+  });
 });
 
 // D-40 / F-6c / F-6d. jsdom applies no media queries, so BOTH breakpoint
@@ -668,6 +842,112 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Delete this session?')).toBeInTheDocument();
     expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+  });
+
+  // 88.6.1-47 (H6 / D-04 / D-05, AC-14): the confirmed delete is followed by the dialog's own
+  // restore to the opener, and only once the DEFERRED refetch removes the card does focus land on
+  // the list heading — never <body>. Ordering backstop (host half): the first waitFor is the
+  // restored opener, so a settle-time focus move would fail it.
+  it('H6a: after a confirmed delete focus returns to the opener, then lands on Game Sessions (N) once the refetch removes the card', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+
+    const sessions = await sessionsSection();
+    const refetch = deferred(eventsAPI.getGroupEvents as Mock);
+    const desktopDelete = within(sessions).getByRole('button', { name: 'Delete' });
+    await user.click(desktopDelete);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(SESSION.id);
+    await waitFor(() => expect(document.activeElement).toBe(desktopDelete));
+
+    await act(async () => {
+      refetch.settle([]);
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Game Sessions (0)' }))
+    );
+  });
+});
+
+// 88.6.1-47 (H6, AC-14 adjacency + empty): deleting an UPCOMING session lands focus on the
+// heading of the list that held it — `Upcoming (N)` while that section survives, else
+// `Game Sessions (N)` (the Upcoming section is omitted when empty, DECISION Phase 88-33 Task 7
+// step 1b rider). Fixtures derive from FUTURE_SESSION, so this describe pins the clock in its
+// OWN hooks (the W64 rule above TEST_NOW).
+describe('gameDetail session delete — focus lands on the list heading (88.6.1-47, H6)', () => {
+  const FUTURE_2 = {
+    ...FUTURE_SESSION,
+    id: 'evt-future-2',
+    comments: 'The second upcoming night',
+    start_date: new Date(TEST_NOW.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(TEST_NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function deleteFirstUpcomingThroughKebab(
+    user: ReturnType<typeof userEvent.setup>,
+    upcomingHeadingName: string
+  ) {
+    const heading = await screen.findByRole('heading', { name: upcomingHeadingName });
+    const card = heading.closest('.card') as HTMLElement;
+    const [trigger] = await within(card).findAllByRole('button', { name: 'Session actions' });
+    await user.click(trigger);
+    const list = document.getElementById(trigger.getAttribute('aria-controls') as string);
+    expect(list, 'the Session actions kebab names its open list through aria-controls').not.toBeNull();
+    await user.click(within(list as HTMLElement).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    return trigger;
+  }
+
+  it('H6b: with another upcoming session left, focus lands on Upcoming (1)', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner', events: [FUTURE_SESSION, FUTURE_2] });
+    await screen.findByRole('heading', { name: 'Upcoming (2)' });
+    const refetch = deferred(eventsAPI.getGroupEvents as Mock);
+
+    const trigger = await deleteFirstUpcomingThroughKebab(user, 'Upcoming (2)');
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(FUTURE_SESSION.id);
+    // The dialog's own restore: back on the named kebab trigger first.
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    await act(async () => {
+      refetch.settle([FUTURE_2]);
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Upcoming (1)' }))
+    );
+  });
+
+  it('H6c: deleting the LAST upcoming session unmounts that section, and focus lands on Game Sessions (1)', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner', events: [SESSION, FUTURE_SESSION] });
+    await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    await screen.findByRole('heading', { name: 'Game Sessions (1)' });
+    const refetch = deferred(eventsAPI.getGroupEvents as Mock);
+
+    const trigger = await deleteFirstUpcomingThroughKebab(user, 'Upcoming (1)');
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(FUTURE_SESSION.id);
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    await act(async () => {
+      refetch.settle([SESSION]);
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Game Sessions (1)' }))
+    );
+    expect(screen.queryByRole('heading', { name: /^Upcoming/ })).toBeNull();
   });
 });
 
@@ -1037,7 +1317,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(sending.className).not.toMatch(/(^|[\s:])disabled:opacity-/);
   });
 
-  it('keeps focus ON the control while sending, and does not move it when the outcome settles', async () => {
+  it('keeps focus ON the control while sending, and lands it on the settled chip once (D-06)', async () => {
     const user = userEvent.setup();
     const invite$ = deferredInvite();
     renderEventDetail({ role: 'owner', participants: [GUEST] });
@@ -1051,13 +1331,12 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     await act(async () => {
       invite$.settle({});
     });
-    await screen.findByText('Invite sent!');
-    // RECORDED, not asserted as a landing target: focus is NOT moved. Under arm B
-    // the button is replaced by a non-focusable status chip, so the user lands
-    // wherever its removal leaves them — `<body>`. This is a DOM fact and belongs
-    // in the jsdom half; it is disclosed in 88.6-18-SUMMARY.md rather than
-    // silently absorbed.
-    expect(document.activeElement).toBe(document.body);
+    const chip = await screen.findByText('Invite sent!');
+    // D-06 (owner 2026-10-04, 88.6.1-47): the chip takes focus ONCE, through the shared
+    // useFocusRecovery hook armed at the press. Before this, the button was replaced by a
+    // non-focusable chip and the user landed on <body> (this test pinned that landing; it is
+    // flipped in place). A named target, never "not body" (C-5).
+    await waitFor(() => expect(document.activeElement).toBe(chip));
   });
 
   it('re-enables and re-sends after a failure — the latch clears in the error branch only', async () => {
@@ -1097,7 +1376,8 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(chip.tagName).toBe('SPAN');
     expect(chip).not.toHaveAttribute('role');
     expect(chip).not.toHaveAttribute('aria-live');
-    expect(chip).not.toHaveAttribute('tabindex');
+    // D-06 (88.6.1-47): programmatically focusable, still OUT of the Tab order.
+    expect(chip).toHaveAttribute('tabindex', '-1');
     // The branch `title` is the only fuller explanation each settled state has.
     expect(chip).toHaveAttribute('title', 'Invite sent!');
     // Geometry survives: on a <span> nothing supplies what `.btn` supplied.
@@ -1118,7 +1398,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     // mounted on this page unconditionally (gameDetail is one of the six call sites that fix
     // closes), and a page-wide count of 1 became a count of 2. The ASSERTION'S INTENT is
     // unchanged and is now actually enforced where it claims to be: the GuestInvite region is
-    // this chip's own sibling (`gameDetail/page.js:294-306` returns the two inside one
+    // this chip's own sibling (`gameDetail/page.js:295-308`, GuestInviteButton's `if (settled) {`, returns the two inside one
     // fragment), so scoping to the chip's parent is the subtree the comment always meant. A
     // page-wide count here would also have gone red for any unrelated surface adding a region,
     // which is the wrong gate to hand the next executor.
@@ -1141,6 +1421,88 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     }
     // `min-h-11` is still present — from the cva base, not the call site.
     expect(invite.className).toContain('min-h-11');
+  });
+
+  // 88.6.1-47 (D-06 / W041, AC-14): the settled-chip focus landing at its other mounts and
+  // edges. The shared useFocusRecovery hook (plan 88.6.1-04) is armed at the press with the chip
+  // as the preferred target, so focus moves only when it was lost, and never off a user who went
+  // elsewhere.
+  it('D6-3: inside the See-all dialog the settled chip takes focus, and focus stays inside the dialog', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [...SIX_PARTICIPANTS, GUEST] });
+    const dialog = await openParticipantsModal(user);
+
+    await user.click(within(dialog).getByRole('button', { name: INVITE }));
+    await act(async () => {
+      invite$.settle({});
+    });
+
+    const chip = await within(dialog).findByText('Invite sent!');
+    // Before D-06 the removed button sent focus to the dialog CONTAINER (C-5).
+    await waitFor(() => expect(document.activeElement).toBe(chip));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it('D6-4: a 409 pending outcome pressed in the Safari click shape (no focus on the button) lands on the Invite pending chip', async () => {
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    // The Safari shape: a click that does NOT focus the button. Asserted first, because the
+    // whole arm turns on it — `user.click` would focus the button and pass with or without the
+    // hook's `from` seed. (Read as the tag name: the flipped D-06 pin retired the old <body>
+    // landing assertion from this describe, and this is a PRECONDITION, not a landing.)
+    expect(document.activeElement?.tagName).toBe('BODY');
+    fireEvent.click(invite);
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      invite$.fail(new ApiError('This person already has a pending invite', 'invite_pending', 409));
+    });
+
+    const chip = await screen.findByText('Invite pending');
+    await waitFor(() => expect(document.activeElement).toBe(chip));
+  });
+
+  it('D6-5 (control): a user who moved focus elsewhere while sending is not moved when the chip renders', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await user.click(invite);
+    const share = screen.getByRole('button', { name: 'Share Game QR' });
+    act(() => {
+      share.focus();
+    });
+    expect(document.activeElement).toBe(share);
+
+    await act(async () => {
+      invite$.settle({});
+    });
+    // POSITIVE settle signal first (P-6), then the "not moved" read.
+    await screen.findByText('Invite sent!');
+    expect(document.activeElement).toBe(share);
+  });
+
+  it('D6-6 (control): an error outcome keeps focus on the same node, now named Retry', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await user.click(invite);
+    const sending = screen.getByRole('button', { name: 'Sending...' });
+    expect(sending).toBe(invite);
+
+    await act(async () => {
+      invite$.fail(new Error('network'));
+    });
+
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    expect(retry).toBe(invite);
+    expect(document.activeElement).toBe(retry);
   });
 });
 
@@ -1567,6 +1929,93 @@ function deferred(mock: Mock) {
   return { settle: (v?: unknown) => settle(v), fail: (r?: unknown) => fail(r) };
 }
 
+// 88.6.1-47 (D-35, AC-12, copy row E6): the event page's Share Game QR is a PRESSED control.
+// While its invite-token request is in flight it keeps focus (aria-disabled, never the native
+// attribute), reads the E6 label, and a synchronous ref latch refuses a second press, so two
+// presses send ONE request. The label literal below is byte-equal to the copy table's row E6.
+//
+// The jsdom focus claim here is NODE IDENTITY only: jsdom never blurs a natively disabled
+// element (FE-TESTING-CONVENTIONS C-11), so `document.activeElement` staying on the button
+// would pass on the unfixed tree too. The RED halves are the attributes, the label and the
+// request count. The real-browser focus proof (and the QR dialog handing focus back) is the
+// phone e2e, e2e/share-game-qr-pending.spec.ts, run in CI.
+describe('gameDetail Share Game QR in flight (88.6.1-47, D-35)', () => {
+  const LOADING = 'Loading QR code...';
+
+  it('Q1: two presses with no render flush between them send ONE request, and the pressed node stays focusable', async () => {
+    deferred(eventsAPI.getEventInviteToken as Mock);
+    renderEventDetail({ role: 'member' });
+    const share = await screen.findByRole('button', { name: 'Share Game QR' });
+    share.focus();
+
+    // The no-flush shape (the GuestInvite gate's): both presses inside ONE act, so the second
+    // press reads the previous render's state. Only a synchronous latch can refuse it.
+    await act(async () => {
+      share.click();
+      share.click();
+    });
+
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledWith(EVENT_ID);
+    const loading = screen.getByRole('button', { name: LOADING });
+    expect(loading).toBe(share);
+    expect(loading).toHaveAttribute('aria-disabled', 'true');
+    expect(loading.hasAttribute('disabled')).toBe(false);
+    // Confirm-only in jsdom (see the describe comment).
+    expect(document.activeElement).toBe(share);
+  });
+
+  it('Q2: the in-flight state persists through a second press and ends only when the FIRST request settles', async () => {
+    const token = deferred(eventsAPI.getEventInviteToken as Mock);
+    renderEventDetail({ role: 'member' });
+    const share = await screen.findByRole('button', { name: 'Share Game QR' });
+
+    await act(async () => {
+      share.click();
+    });
+    await act(async () => {
+      share.click();
+    });
+
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
+    const loading = screen.getByRole('button', { name: LOADING });
+    expect(loading).toBe(share);
+    expect(loading).toHaveAttribute('aria-disabled', 'true');
+    expect(loading.hasAttribute('disabled')).toBe(false);
+
+    await act(async () => {
+      token.settle({ invite_url: 'https://example.test/i/q2' });
+    });
+
+    const idle = await screen.findByRole('button', { name: 'Share Game QR' });
+    expect(idle).toBe(share);
+    expect(idle).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('Q3 (control): a failed request releases the latch, so the next press sends a second request', async () => {
+    const token = deferred(eventsAPI.getEventInviteToken as Mock);
+    renderEventDetail({ role: 'member' });
+    const share = await screen.findByRole('button', { name: 'Share Game QR' });
+
+    await act(async () => {
+      share.click();
+    });
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      token.fail(new Error('boom'));
+    });
+
+    const idle = await screen.findByRole('button', { name: 'Share Game QR' });
+    expect(idle).not.toHaveAttribute('aria-disabled');
+
+    await act(async () => {
+      idle.click();
+    });
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('gameDetail event-actions kebab: the three authorization gates (D56)', () => {
   it.each(['owner', 'admin'] as const)(
     'gives a group %s the Cancel item and NOT the Leave item',
@@ -1748,6 +2197,11 @@ describe('gameDetail breadcrumb landmarks are named (#175)', () => {
 // THIS ASSERTS THE DERIVATION, NOT A DATE: each bound is set from a variable and then
 // CHANGED, so a hard-coded bound reds. The empty case is pinned too — this filter starts
 // empty on both ends, and an empty-string bound is a real bound of nothing.
+//
+// [AMENDED Phase 88.6.1-52 (D-25, E5)] The typed path's explanation is no longer routed to
+// Phase 88.9: it was ratified as copy row E5 on 2026-10-04 (D-30) and now ships on To Date,
+// pinned by the E5 describe at the end of this file. The bounds themselves are unchanged, and
+// the test below is byte-unchanged.
 describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
   it('bounds each date control by its sibling, and places no bound while the sibling is empty', async () => {
     const user = userEvent.setup();
@@ -1794,13 +2248,15 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 // 41's (which never touched this file); the plan-45 must_have amendment predicted exactly this.
 //
 // THE AUDITED TREES HAVE NO `matchMedia` FORK. `gameDetail/page.js` calls `window.matchMedia` at
-// exactly two sites (`:2444`, `:2513`, measured 2026-09-22), both inside the game-TITLE overflow
+// exactly two sites (the two `window.matchMedia('(max-width: 767px)')` reads inside the game
+// title's expand handlers in `gameDetail/page.js`; measured 2026-09-22, re-counted 2026-10-16 by
+// plan 88.6.1-52), both inside the game-TITLE overflow
 // handlers on the page body — neither is reachable from any dialog rendered here. One tree, one run
 // per rule set per dialog, no resize.
 //
 // THIS FILE HAS NO STACKED `ConfirmDialog`-over-`Modal` STATE, contrary to RESEARCH §Q1's reading
-// of its two imports: `removeParticipantGate` (`page.js:903`) is `tier: 'two-tap'` and renders
-// `null` by design (DECISION Phase 88-05 D-07), and `deleteSessionGate` (`:1101`) opens from the
+// of its two imports: `removeParticipantGate` (`page.js:1104`, `const removeParticipantGate`) is `tier: 'two-tap'` and renders
+// `null` by design (DECISION Phase 88-05 D-07), and `deleteSessionGate` (`:1364`, `const deleteSessionGate`) opens from the
 // page-level session rows, never from inside a `Modal`. The three dialogs this file CAN show are
 // audited one at a time below; the stacked-pair audit lives in `ManageMembers.modals.test.tsx`.
 //
@@ -1810,6 +2266,7 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 // ---------------------------------------------------------------------------
 import { axe } from 'vitest-axe';
 import { auditFormControls } from '../../test-utils/formControlAudit';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
 const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
@@ -1854,7 +2311,7 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
     opener.focus();
     await user.click(opener);
     const dialog = await screen.findByRole('dialog', { name: 'Participants (6)' });
-    // DERIVED BEFORE WRITING: `page.js:2033` mounts `<Modal open onClose>` with no `initialFocusRef`,
+    // DERIVED BEFORE WRITING: `page.js:2369` (`<Modal open={showAllParticipants}`) mounts `<Modal open onClose>` with no `initialFocusRef`,
     // so the `Modal.tsx` default stands — `<Modal.Header>`'s Close control.
     const close = within(dialog).getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
@@ -1871,7 +2328,7 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
     opener.focus();
     await user.click(opener);
     const dialog = await screen.findByRole('dialog', { name: 'Write a Review' });
-    // `page.js:3088`: `<Modal open onClose className="max-w-md">`, no `initialFocusRef`.
+    // `page.js:3440` (`<Modal open={showReviewForm}`): `<Modal open onClose className="max-w-md">`, no `initialFocusRef`.
     const close = within(dialog).getByRole('button', { name: 'Close' });
     await waitFor(() => expect(document.activeElement).toBe(close));
     await user.keyboard('{Escape}');
@@ -1898,5 +2355,2291 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
     // focus when the dialog opened is the kebab TRIGGER (`KebabMenu.js` restores to it on close,
     // before the dialog's FocusScope reads `activeElement`). NAMED identity, never "not body".
     await waitFor(() => expect(document.activeElement).toBe(kebab));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88.6.1-25 — Requirement 1: an event link shows the screen that matches WHY the event did
+// not load (D-01, D-02, D-03, D-41; AC-1..AC-7). Before this plan every failure, signed out
+// included, said "Event not found". Comments here are line comments only (CF-9), and every
+// absence is asserted after a POSITIVE settle signal (CF-26).
+// ---------------------------------------------------------------------------
+
+const REAL_LOCATION = window.location;
+const SECOND_EVENT_ID = '88888888-8888-4888-8888-888888888888';
+const SIGN_IN_LATCH = `ngevent:signinRedirect:${EVENT_ID}`;
+const UNAUTHORIZED = () => new ApiError('Unauthorized', 'unauthorized', 401);
+const FORBIDDEN = () => new ApiError('Access denied', 'forbidden', 403);
+const ACCOUNT_DELETED = () => new ApiError('gone', 'account_deleted', 410);
+// Copy rows E1-E3 (88.6.1-COPY-TABLE.html, straight apostrophes per D-32 R8) and X1, the
+// register's unauthorized line shipped by plan 88.6.1-07. Asserted byte-exactly.
+const NO_ACCESS_TITLE = "You don't have access to this event";
+const NO_ACCESS_DETAIL =
+  "You may be signed in with a different account, or you haven't been invited yet.";
+const EVENT_LOAD_FAILED = "We couldn't load this event";
+const X1_SENTENCE = 'Your session may have expired. Sign in again to continue.';
+
+// The useFetchErrorState.test.tsx idiom: set the document's visibility, then dispatch.
+function fireVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+// C-4: jsdom cannot navigate, so window.location becomes a spy-able stub. Returns the
+// replace spy. The origin fields keep next/link's URL helpers on solid ground.
+function stubLocation({ search, hash = '' }: { search: string; hash?: string }) {
+  const replace = vi.fn();
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: {
+      origin: 'http://localhost',
+      protocol: 'http:',
+      host: 'localhost',
+      hostname: 'localhost',
+      port: '',
+      pathname: '/gameDetail',
+      search,
+      hash,
+      href: `http://localhost/gameDetail${search}${hash}`,
+      replace,
+      assign: vi.fn(),
+    },
+  });
+  return replace;
+}
+
+// One macrotask inside act, so every settled promise and the commit after it have landed.
+async function flushMacrotask() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+// Every request the page builds from a URL id (the first must_have's eight). The
+// self-identity fetch is page chrome and is mocked as a hook, so it is not in this list.
+function urlBuiltFetches(): Array<[string, unknown]> {
+  return [
+    ['getEvent', eventsAPI.getEvent],
+    ['getEventSuggestions', suggestionsAPI.getEventSuggestions],
+    ['getGroupMembers', groupsAPI.getGroupMembers],
+    ['getEventRsvps', rsvpAPI.getEventRsvps],
+    ['getEventBrings', eventBringsAPI.getEventBrings],
+    ['getGame', gamesAPI.getGame],
+    ['getGroupEvents', eventsAPI.getGroupEvents],
+    ['getGameReviews', gameReviewsAPI.getGameReviews],
+  ];
+}
+
+// Every fetch the page could make resolves to a harmless value, so a call shows up as a
+// COUNT rather than as a crash that happens to look like zero requests.
+function armAllFetches() {
+  (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture());
+  (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
+  (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('owner'));
+  (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
+  (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
+  (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+  (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+  (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+}
+
+function renderAt(search: string) {
+  armAllFetches();
+  h.selfUuid = SELF_UUID;
+  h.search = search;
+  return render(<GameDetailPage />);
+}
+
+async function findTextOrFail(text: string, context: string) {
+  try {
+    return await screen.findByText(text);
+  } catch {
+    throw new Error(`${context}: "${text}" never rendered`);
+  }
+}
+
+// G5: a rejected game_id is "Game not found" with ZERO URL-built requests, whatever else
+// the URL carries.
+async function expectGameNotFoundWithZeroRequests(search: string) {
+  renderAt(search);
+  expect(await findTextOrFail('Game not found', search)).toBeInTheDocument();
+  expect(screen.queryByText('No game selected')).toBeNull();
+  expect(screen.queryByText('Event not found')).toBeNull();
+  expect(screen.queryByText('Loading game night...')).toBeNull();
+  expect(screen.queryByText(/^Loading game details/)).toBeNull();
+  // Zero requests leave userScope at 'none', so the scope-aware link is the Home one.
+  expect(screen.getByRole('link', { name: '← Back to Home' })).toHaveAttribute('href', '/');
+  await flushMacrotask();
+  for (const [name, fn] of urlBuiltFetches()) {
+    expect(fn, `${search}: ${name} must not be called`).not.toHaveBeenCalled();
+  }
+}
+
+describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: REAL_LOCATION,
+    });
+  });
+
+  it('G1: a present-but-invalid event_id is "Event not found" with zero URL-built requests (AC-6)', async () => {
+    // URLSearchParams decodes the second to ../users/me (the CSPT shape); the third is an
+    // empty value, which counts as present; the fourth is a 35-character near-miss.
+    const inputs = ['not-a-uuid', '..%2Fusers%2Fme', '', EVENT_ID.slice(0, -1)];
+    for (const raw of inputs) {
+      const context = `event_id=${raw}`;
+      const replace = stubLocation({ search: `?event_id=${raw}&group_id=${GROUP_ID}` });
+      renderAt(`event_id=${raw}&group_id=${GROUP_ID}`);
+      expect(await findTextOrFail('Event not found', context)).toBeInTheDocument();
+      expect(
+        screen.getByText('This event no longer exists or has been cancelled.'),
+        context
+      ).toBeInTheDocument();
+      await flushMacrotask();
+      for (const [name, fn] of urlBuiltFetches().slice(0, 5)) {
+        expect(fn, `${context}: ${name} must not be called`).not.toHaveBeenCalled();
+      }
+      expect(replace, `${context}: no sign-in redirect`).not.toHaveBeenCalled();
+      cleanup();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('G2 (control): a valid event_id fetches the event exactly once, with that id', async () => {
+    renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(eventsAPI.getEvent).toHaveBeenCalledTimes(1);
+    expect(eventsAPI.getEvent).toHaveBeenCalledWith(EVENT_ID);
+  });
+
+  it('G3: a traversal group_id on the event view is dropped; the roster comes from the event group (CSPT)', async () => {
+    renderEventDetail({ urlGroupId: '..%2Fusers%2Fme' });
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(GROUP_ID));
+    expect(groupsAPI.getGroupMembers).not.toHaveBeenCalledWith('../users/me');
+  });
+
+  it('G4: a traversal group_id on the game view is dropped; no group-scoped fetch runs (CSPT)', async () => {
+    renderGameDetail({ search: `game_id=${GAME_ID}&group_id=..%2Fx` });
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    await flushMacrotask();
+    expect(eventsAPI.getGroupEvents).not.toHaveBeenCalled();
+    expect(gameReviewsAPI.getGameReviews).not.toHaveBeenCalled();
+    expect(groupsAPI.getGroupMembers).not.toHaveBeenCalled();
+  });
+
+  it('G5a: a traversal game_id is "Game not found" with zero requests (CSPT)', async () => {
+    await expectGameNotFoundWithZeroRequests(`game_id=..%2Fusers%2Fme&group_id=${GROUP_ID}`);
+  });
+
+  it('G5b: a non-UUID game_id is "Game not found" with zero requests', async () => {
+    await expectGameNotFoundWithZeroRequests('game_id=not-a-uuid');
+  });
+
+  it('G5c: a rejected game_id beside a VALID event id and group id is still "Game not found", never the event view', async () => {
+    await expectGameNotFoundWithZeroRequests(
+      `game_id=..%2Fusers%2Fme&event_id=${EVENT_ID}&group_id=${GROUP_ID}`
+    );
+  });
+
+  it('F1: every back link on the message screens carries the phone 44px floor and the house focus ring', async () => {
+    const scenarios: Array<{ label: string; linkName: string; setup: () => void }> = [
+      {
+        label: 'Event not found (a real 404)',
+        linkName: '← Back to Home',
+        setup: () => {
+          renderEventDetail({ getEventRejectsWith: new ApiError('Not found', 'not_found', 404) });
+        },
+      },
+      {
+        label: 'No game selected',
+        linkName: '← Back to Home',
+        setup: () => {
+          renderAt('');
+        },
+      },
+      {
+        label: 'Game not found, group member',
+        linkName: '← Back to Group',
+        setup: () => {
+          renderGameDetail({ role: 'member', game: null });
+        },
+      },
+      {
+        label: 'Game not found, game-only caller with a group id',
+        linkName: '← Back to Home',
+        setup: () => {
+          renderGameDetail({ role: 'game-only', game: null });
+        },
+      },
+      {
+        label: 'Game not found, no group id',
+        linkName: '← Back to Home',
+        setup: () => {
+          renderGameDetail({ game: null, search: `game_id=${GAME_ID}` });
+        },
+      },
+    ];
+    for (const s of scenarios) {
+      s.setup();
+      const link = await screen.findByRole('link', { name: s.linkName });
+      // An UNPREFIXED token: a breakpoint-gated min-h does not count (plan 21's rule).
+      const tokens = link.className.split(/\s+/);
+      expect(tokens, `${s.label}: the unprefixed min-h-11 floor`).toContain('min-h-11');
+      expect(tokens, `${s.label}: the house focus ring`).toContain('focus-visible:ring-2');
+      cleanup();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('R1: a signed-out 401 replaces the page with sign-in once, returning to the same event and its #vote (AC-1)', async () => {
+    h.userSub = undefined;
+    const search = `?event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search, hash: '#vote' });
+    renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}#vote`)
+    );
+    expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBe('1');
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    // Prohibition 1: the redirect path paints no event detail.
+    expect(document.body.textContent).not.toContain('The Group');
+    const returnTo = new URL(replace.mock.calls[0][0] as string, 'http://localhost').searchParams.get(
+      'returnTo'
+    ) as string;
+    expect(returnTo.startsWith('/')).toBe(true);
+    expect(returnTo.startsWith('//')).toBe(false);
+  });
+
+  it('R2: a 401 with a session the app still sees (stale) redirects too (D-01: any 401)', async () => {
+    const search = `?event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search });
+    renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}`)
+    );
+  });
+
+  it('R3: a re-run of the event fetch while redirecting never replaces a second time (idempotency)', async () => {
+    h.userSub = undefined;
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    const { rerender } = renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    h.selfUuid = '33333333-3333-4333-8333-333333333333';
+    rerender(<GameDetailPage />);
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(2));
+    await flushMacrotask();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('B1 (backstop, concurrency / R1): no redirect while the session is still loading; exactly one once it settles', async () => {
+    h.userSub = undefined;
+    h.authLoading = true;
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    const { rerender } = renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(1));
+    await flushMacrotask();
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    h.authLoading = false;
+    rerender(<GameDetailPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    await flushMacrotask();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('L1: the shared loader reads copy row E4 and is a labelled status', async () => {
+    renderGameDetail();
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText(/^Loading game details/)).toBeNull();
+    expect(screen.getByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    // Settle, so the game's resolution does not land after cleanup.
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  it('S1: a superseded event run never paints its bring indicators onto the next event (review r2 #29)', async () => {
+    let settleA: (value: unknown) => void = () => {};
+    // Event A's brings stay in flight; event B's resolve empty.
+    (eventBringsAPI.getEventBrings as Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            settleA = resolve;
+          })
+      )
+      .mockResolvedValueOnce([]);
+    const { rerender } = renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledTimes(1));
+    (eventsAPI.getEvent as Mock).mockResolvedValue(
+      eventFixture({ id: SECOND_EVENT_ID, title: 'Second Night' })
+    );
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledTimes(2));
+    await flushMacrotask();
+    // A's held answer lands LAST and names B's participant.
+    await act(async () => {
+      settleA([{ User: { id: OTHER_UUID } }]);
+    });
+    await flushMacrotask();
+    expect(screen.getByText('Someone Else')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Bringing a game')).toBeNull();
+  });
+
+  it('S2: a user-triggered bring refresh still paints the indicator (review r3 M-15)', async () => {
+    renderEventDetail();
+    expect(await screen.findByText('Someone Else')).toBeInTheDocument();
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledTimes(1));
+    await flushMacrotask();
+    expect(screen.queryByLabelText('Bringing a game')).toBeNull();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([{ User: { id: OTHER_UUID } }]);
+    await act(async () => {
+      rsvpProps.current?.onRsvpChange?.('yes');
+    });
+    expect(await screen.findByLabelText('Bringing a game')).toBeInTheDocument();
+  });
+
+  // ---- Task 2: every other answer the event fetch can get has its own honest screen ----
+
+  it('C1: a 401 with the latch already set (back from sign-in) renders the E3 banner with X1, never a second redirect (AC-2)', async () => {
+    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByText(X1_SENTENCE)).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    // A 401 never clears the latch (review r2 #305): clearing it would rebuild the loop.
+    expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBe('1');
+  });
+
+  it('C2: a latch read that throws fails CLOSED: the banner, never a redirect (P-4)', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage blocked');
+    });
+    try {
+      const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+      renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+      expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+      expect(replace).not.toHaveBeenCalled();
+    } finally {
+      getItem.mockRestore();
+    }
+  });
+
+  it('C3: a latch write that throws fails CLOSED: the banner, never a redirect (P-4)', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage full');
+    });
+    try {
+      const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+      renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+      expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+      expect(replace).not.toHaveBeenCalled();
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
+  it('C4: a successful event load clears the latch', async () => {
+    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBeNull());
+  });
+
+  it('C5: a 403 renders the no-access screen (E1, E2) with Back to Home, no banner, no redirect (AC-3)', async () => {
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    expect(screen.getByText(NO_ACCESS_DETAIL)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Back to Home/ })).toHaveAttribute('href', '/');
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('C6: a 403 on the re-fetch of an event already on screen paints NO event detail (Prohibition 1)', async () => {
+    const { rerender } = renderEventDetail({ eventOverrides: { location: 'The Cafe' } });
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.getByText(/The Cafe/)).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockRejectedValue(FORBIDDEN());
+    h.userSub = 'auth0|other-sub';
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    const text = document.body.textContent ?? '';
+    for (const detail of ['Game Night', 'The Cafe', 'The Group', 'Someone Else']) {
+      expect(text, `"${detail}" must not be on the no-access screen`).not.toContain(detail);
+    }
+  });
+
+  it('C7: back from sign-in (latch set) and the answer is 403: the no-access screen, no second redirect (SPEC adjacency / R1)', async () => {
+    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('C7b: an answer that proves the session (403) clears the latch (review r2 #305)', async () => {
+    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    await waitFor(() => expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBeNull());
+  });
+
+  it('C8: a 404 keeps today\'s words, now as a heading, with the Back link, no banner and no redirect (AC-4)', async () => {
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    renderEventDetail({ getEventRejectsWith: new ApiError('Not found', 'not_found', 404) });
+    expect(await screen.findByText('This event no longer exists or has been cancelled.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Back to Home/ })).toHaveAttribute('href', '/');
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    // The heading half (review r2 #180): the title is found by its heading role.
+    expect(screen.getByRole('heading', { name: 'Event not found' })).toBeInTheDocument();
+  });
+
+  it('C9: a 500 renders the E3 banner with the register line, and Try again loads the event (AC-5)', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ getEventRejectsWith: new ApiError('Server error', 'internal', 500) });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(
+      screen.getByText('Something went wrong on our end. Please try again shortly.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    (eventsAPI.getEvent as Mock).mockResolvedValueOnce(eventFixture());
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(eventsAPI.getEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it('C10: a network failure renders the E3 banner with the register network line (AC-5)', async () => {
+    renderEventDetail({ getEventRejectsWith: new ApiError('Network error', 'network', 0) });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(
+      screen.getByText("We couldn't reach the server. Check your connection and try again.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+  });
+
+  it('C11: a 410 account_deleted holds the loader while the identity recheck is in flight (D-02)', async () => {
+    // The recheck never settles in this test: the goodbye route is under way.
+    h.selfRefetch.mockReturnValue(new Promise(() => {}));
+    renderEventDetail({ getEventRejectsWith: ACCOUNT_DELETED() });
+    await waitFor(() => expect(h.selfRefetch).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  it('C11b: a 410 whose identity recheck settles with no redirect falls through to the E3 banner, never a dead-end loader (review r2 #31)', async () => {
+    h.selfRefetch.mockResolvedValue({});
+    renderEventDetail({ getEventRejectsWith: ACCOUNT_DELETED() });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByText('Event not found')).toBeNull();
+  });
+
+  it('C12 (control, P-2): a roster 403 after a good event leaves the event rendered', async () => {
+    renderEventDetail();
+    // renderEventDetail arms getGroupMembers to resolve; the roster is fetched only after the
+    // event resolves, so re-arming it here (synchronously after render) is in time.
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(FORBIDDEN());
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(GROUP_ID));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  it('C13: a DIFFERENT event that fails starts from a clean slate: the banner, never the previous event', async () => {
+    const { rerender } = renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockRejectedValue(new ApiError('Server error', 'internal', 500));
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+  });
+
+  it('C14: a DIFFERENT event drops the previous event\'s role: no owner controls on a roster 403 (review r2 #30)', async () => {
+    const { rerender } = renderEventDetail({ role: 'owner' });
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Edit Event' })).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockResolvedValue(
+      eventFixture({ id: SECOND_EVENT_ID, title: 'Second Night' })
+    );
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(FORBIDDEN());
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledTimes(2));
+    await flushMacrotask();
+    expect(screen.queryByRole('button', { name: 'Edit Event' })).toBeNull();
+    // The kebab TRIGGER, not its Cancel item: an item is not in the DOM until the menu opens
+    // (review r3 L-12), so a Cancel query could never fail.
+    expect(screen.queryByRole('button', { name: 'Event actions' })).toBeNull();
+  });
+
+  it('C15: a final answer (404) does not refetch on refocus; a failure that can change (500) does (review r2 #139)', async () => {
+    try {
+      renderEventDetail({ getEventRejectsWith: new ApiError('Not found', 'not_found', 404) });
+      expect(await screen.findByText('Event not found')).toBeInTheDocument();
+      fireVisibility('visible');
+      await flushMacrotask();
+      expect(eventsAPI.getEvent, '404: refocus must not refetch').toHaveBeenCalledTimes(1);
+      cleanup();
+      vi.clearAllMocks();
+      // The armed side: without it, C15 could pass because no listener exists at all.
+      renderEventDetail({ getEventRejectsWith: new ApiError('Server error', 'internal', 500) });
+      expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+      fireVisibility('visible');
+      await waitFor(() => expect(eventsAPI.getEvent, '500: refocus refetches').toHaveBeenCalledTimes(2));
+    } finally {
+      delete (document as unknown as { visibilityState?: string }).visibilityState;
+    }
+  });
+
+  // ---- Task 3: the event's own group wins (D-41, AC-7, D-03) ----
+
+  // The props the edit modal's CreateEvent received most recently.
+  function lastCreateEventGroupId() {
+    const last = h.createEventProps[h.createEventProps.length - 1];
+    return last?.group_id;
+  }
+
+  it('A1: from a link with no group_id, cancelling goes to the event\'s own group (AC-7)', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', urlGroupId: null });
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
+  });
+
+  it('A2: from a link with no group_id, the edit modal receives the event\'s own group (AC-7)', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', urlGroupId: null });
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
+    expect(lastCreateEventGroupId()).toBe(GROUP_ID);
+  });
+
+  it('A3: from a link with no group_id, a Recommended Games tap keeps the event\'s own group (D-03)', async () => {
+    const user = userEvent.setup();
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: 'g-azul', name: 'Azul' }]);
+    renderEventDetail({ role: 'owner', urlGroupId: null });
+    await user.click(await screen.findByRole('button', { name: 'Azul' }));
+    expect(h.push).toHaveBeenCalledWith(`/gameDetail?game_id=g-azul&group_id=${GROUP_ID}`);
+  });
+
+  it('A4: a DIFFERENT valid URL group_id loses to the event\'s own group at every site, and suggestions are fetched once (D-41, review r2 #140)', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', urlGroupId: URL_ONLY_GROUP_ID });
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(GROUP_ID));
+    expect(groupsAPI.getGroupMembers).not.toHaveBeenCalledWith(URL_ONLY_GROUP_ID);
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
+    expect(lastCreateEventGroupId()).toBe(GROUP_ID);
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
+    // getEventSuggestions is event-scoped: the group only decides WHETHER to ask, so the URL hint
+    // giving way to the event's group must not ask a second time.
+    await flushMacrotask();
+    expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(1);
+  });
+
+  it('A5 (control): a URL group_id equal to the event\'s group carries that group at every site', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: 'g-azul', name: 'Azul' }]);
+    renderEventDetail({ role: 'owner', urlGroupId: GROUP_ID });
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(GROUP_ID));
+    await user.click(await screen.findByRole('button', { name: 'Azul' }));
+    expect(h.push).toHaveBeenCalledWith(`/gameDetail?game_id=g-azul&group_id=${GROUP_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
+    expect(lastCreateEventGroupId()).toBe(GROUP_ID);
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
+  });
+
+  it('S3: a superseded event\'s suggestions never land on the next event (clean-slate rule, Rule 2 deviation)', async () => {
+    let settleA: (value: unknown) => void = () => {};
+    // Event A's suggestions stay in flight; event B's resolve empty.
+    (suggestionsAPI.getEventSuggestions as Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            settleA = resolve;
+          })
+      )
+      .mockResolvedValueOnce([]);
+    const { rerender } = renderEventDetail();
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockResolvedValue(
+      eventFixture({ id: SECOND_EVENT_ID, title: 'Second Night' })
+    );
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    await waitFor(() => expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(2));
+    await flushMacrotask();
+    // A's held answer lands LAST.
+    await act(async () => {
+      settleA([{ id: 'g-azul', name: 'Azul' }]);
+    });
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Azul' })).toBeNull();
+  });
+
+  it('S4: suggestions that land before identity resolves survive the identity re-run of the SAME event (wave 4 CI gate)', async () => {
+    // CI run 38878098281 (game-suggestion-card.spec.ts, phone): Recommended Games never rendered.
+    // The first event load is still in flight when identity resolves, so the fetch effect re-runs
+    // fetchEventOnly for the same event before the first run stamped it as loaded. That re-run's
+    // reset used to clear the suggestions, and the suggestions effect (keyed on the event, not on
+    // identity) never asked again. S3 above still pins the different-event half of the rule.
+    let settleFirstGetEvent: (value: unknown) => void = () => {};
+    (eventsAPI.getEvent as Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settleFirstGetEvent = resolve;
+        })
+    );
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([
+      { id: 'g-catan', name: 'Catan' },
+    ]);
+    const { rerender } = renderEventDetail({ identityPending: true });
+    // The suggestions answer lands while the first event load is still held.
+    await waitFor(() => expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(1));
+    await flushMacrotask();
+    // Identity resolves: the fetch effect re-runs fetchEventOnly for the SAME event.
+    h.selfUuid = SELF_UUID;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Catan' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Recommended Games' })).toBeInTheDocument();
+    // Suggestions are event-scoped: the identity re-run must not ask again.
+    expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(1);
+    // The superseded first load settles last and applies nothing.
+    await act(async () => {
+      settleFirstGetEvent(eventFixture());
+    });
+    await flushMacrotask();
+    expect(screen.getByRole('button', { name: 'Catan' })).toBeInTheDocument();
+  });
+
+  it('S5: suggestions already on screen for one event are cleared when the page moves to a DIFFERENT event (the other half of S4)', async () => {
+    // S4 narrowed the clean-slate clear to an event id change; this pins that the narrowed clear
+    // still fires for a new event. Event A's suggestions render; event B's stay in flight, so
+    // anything still showing on B can only be A's.
+    (suggestionsAPI.getEventSuggestions as Mock)
+      .mockResolvedValueOnce([{ id: 'g-azul', name: 'Azul' }])
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const { rerender } = renderEventDetail();
+    expect(await screen.findByRole('button', { name: 'Azul' })).toBeInTheDocument();
+    (eventsAPI.getEvent as Mock).mockResolvedValue(
+      eventFixture({ id: SECOND_EVENT_ID, title: 'Second Night' })
+    );
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Second Night' })).toBeInTheDocument();
+    await waitFor(() => expect(suggestionsAPI.getEventSuggestions).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('button', { name: 'Azul' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Recommended Games' })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-52 (R10 / AC-31, shared rule 12) — typed line breaks at the game page's three
+// typed-text sites: the session card's comments, the own review and the other reviews.
+// The jsdom half pins the two classes and the typed characters; the layout half (separate lines,
+// no overflow at 375px) is e2e/typed-line-breaks.spec.ts, which runs in CI's phone project.
+// Elements are found by EXACT textContent: Testing Library's text matchers collapse whitespace,
+// which would hide the very thing under test.
+// ---------------------------------------------------------------------------
+function exactTextElements(root: HTMLElement, tag: string, text: string): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(tag)).filter((el) => el.textContent === text);
+}
+
+function expectTypedTextClasses(el: HTMLElement) {
+  expect(el).toHaveClass('whitespace-pre-line');
+  expect(el).toHaveClass('wrap-anywhere');
+}
+
+const OTHER_REVIEW = {
+  ...SAVED_REVIEW,
+  id: 'rev-other',
+  User: { id: OTHER_UUID, username: 'Someone Else' },
+};
+
+describe('gameDetail typed line breaks (R10, 88.6.1-52)', () => {
+  it('R10-1: the session comments paragraph keeps a typed line break and wraps a long string', async () => {
+    renderGameDetail({ events: [{ ...SESSION, comments: 'Line one\nLine two' }] });
+    const section = await sessionsSection();
+    const matches = exactTextElements(section, 'p', 'Line one\nLine two');
+    expect(matches).toHaveLength(1);
+    expectTypedTextClasses(matches[0]);
+    expect(matches[0].textContent).toContain('\n');
+  });
+
+  it('R10-2: the own-review paragraph keeps a typed line break and wraps a long string', async () => {
+    renderGameDetail({ role: 'member', reviews: [{ ...SAVED_REVIEW, review_text: 'Mine one\nMine two' }] });
+    const section = await reviewsSection();
+    await within(section).findByText('(You)');
+    const matches = exactTextElements(section, 'p', 'Mine one\nMine two');
+    expect(matches).toHaveLength(1);
+    expectTypedTextClasses(matches[0]);
+    expect(matches[0].textContent).toContain('\n');
+  });
+
+  it('R10-3: an other-review paragraph keeps a typed line break and wraps a long string', async () => {
+    renderGameDetail({ role: 'member', reviews: [{ ...OTHER_REVIEW, review_text: 'Theirs one\nTheirs two' }] });
+    const section = await reviewsSection();
+    await within(section).findByText('Someone Else');
+    const matches = exactTextElements(section, 'p', 'Theirs one\nTheirs two');
+    expect(matches).toHaveLength(1);
+    expectTypedTextClasses(matches[0]);
+    expect(matches[0].textContent).toContain('\n');
+  });
+
+  // SPEC Edge Coverage encoding / R10 (an AC-31 pin, green before and after by construction):
+  // the value is a React text child, so markup in it renders as its own characters.
+  it('R10-4: typed markup renders literally at all three sites and no b element exists', async () => {
+    renderGameDetail({
+      role: 'member',
+      events: [{ ...SESSION, comments: '<b>x</b>' }],
+      reviews: [
+        { ...SAVED_REVIEW, review_text: '<b>x</b>' },
+        { ...OTHER_REVIEW, review_text: '<b>x</b>' },
+      ],
+    });
+    const sessions = await sessionsSection();
+    const reviews = await reviewsSection();
+    await within(reviews).findByText('(You)');
+    await within(reviews).findByText('Someone Else');
+    expect(exactTextElements(sessions, 'p', '<b>x</b>')).toHaveLength(1);
+    expect(exactTextElements(reviews, 'p', '<b>x</b>')).toHaveLength(2);
+    expect(sessions.querySelector('b')).toBeNull();
+    expect(reviews.querySelector('b')).toBeNull();
+  });
+
+  // SPEC Edge Coverage empty / R10 (backstop, held out). Three spaces render as typed; three
+  // newlines render as two (owner ruling #115: a run of three or more breaks is one blank line).
+  it('R10-5: whitespace-only and blank-line values render as their rendered text with both classes', async () => {
+    renderGameDetail({
+      role: 'member',
+      events: [
+        { ...SESSION, id: 'evt-ws-1', comments: '   ' },
+        { ...SESSION, id: 'evt-ws-2', start_date: '2026-01-10T18:00:00Z', comments: '\n\n\n' },
+      ],
+      reviews: [
+        { ...SAVED_REVIEW, review_text: '\n\n\n' },
+        { ...OTHER_REVIEW, review_text: '   ' },
+      ],
+    });
+    await screen.findByRole('heading', { name: 'Game Sessions (2)' });
+    const sessions = await sessionsSection();
+    const reviews = await reviewsSection();
+    await within(reviews).findByText('(You)');
+    const cases: Array<[HTMLElement, string]> = [
+      [sessions, '   '],
+      [sessions, '\n\n'],
+      [reviews, '\n\n'],
+      [reviews, '   '],
+    ];
+    for (const [root, rendered] of cases) {
+      const matches = exactTextElements(root, 'p', rendered);
+      expect(matches, `one paragraph renders ${JSON.stringify(rendered)}`).toHaveLength(1);
+      expectTypedTextClasses(matches[0]);
+      expect(matches[0].textContent).toBe(rendered);
+    }
+  });
+
+  // Owner ruling #115 (2026-10-13): a flood of typed breaks renders as one blank line, at render
+  // only, through plan 88.6.1-84's collapseBlankLines.
+  it('R10-6: 5000 typed breaks render as one blank line at all three sites', async () => {
+    const flood = '\n'.repeat(5000);
+    renderGameDetail({
+      role: 'member',
+      events: [{ ...SESSION, comments: `S-top${flood}S-end` }],
+      reviews: [
+        { ...SAVED_REVIEW, review_text: `M-top${flood}M-end` },
+        { ...OTHER_REVIEW, review_text: `T-top${flood}T-end` },
+      ],
+    });
+    const sessions = await sessionsSection();
+    const reviews = await reviewsSection();
+    await within(reviews).findByText('(You)');
+    await within(reviews).findByText('Someone Else');
+    const cases: Array<[HTMLElement, string]> = [
+      [sessions, 'S-top\n\nS-end'],
+      [reviews, 'M-top\n\nM-end'],
+      [reviews, 'T-top\n\nT-end'],
+    ];
+    for (const [root, rendered] of cases) {
+      const matches = exactTextElements(root, 'p', rendered);
+      expect(matches, `one paragraph renders ${JSON.stringify(rendered)}`).toHaveLength(1);
+      expectTypedTextClasses(matches[0]);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-52 (D-25, copy row E5, AC-32) — a backwards Sessions date range explains itself.
+// The ratified sentence shows under To Date through the house FormField (role="alert", the To
+// input aria-invalid and described by it) only while BOTH values are complete dates and To sorts
+// before From. Every absence assertion follows a positive settle on the input's own value.
+// ---------------------------------------------------------------------------
+const E5_TEXT = 'To Date must be on or after From Date.';
+
+async function openSessionFilters() {
+  fireEvent.click(await screen.findByRole('button', { name: /Show Filters/ }));
+  return {
+    from: screen.getByLabelText('From Date') as HTMLInputElement,
+    to: screen.getByLabelText('To Date') as HTMLInputElement,
+  };
+}
+
+function expectToDateValid(to: HTMLInputElement) {
+  expect(screen.queryByText(E5_TEXT)).toBeNull();
+  expect(to).not.toHaveAttribute('aria-invalid');
+  expect(to).not.toHaveAttribute('aria-describedby');
+}
+
+describe('gameDetail Sessions date filter explains a backwards range (E5, 88.6.1-52)', () => {
+  it('E5-1: a To date before the From date shows E5 as an alert wired to the To input', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    const msg = await screen.findByText(E5_TEXT);
+    expect(msg).toHaveAttribute('role', 'alert');
+    expect(msg.id).toBe('session-filter-date-to-error');
+    expect(to).toHaveAttribute('aria-invalid', 'true');
+    expect(to).toHaveAttribute('aria-describedby', msg.id);
+    expect(from).not.toHaveAttribute('aria-invalid');
+  });
+
+  // SPEC Edge Coverage empty / R11: the empty list now says why it is empty.
+  it('E5-2: the empty session list and E5 show together', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(await screen.findByText('No sessions match your filters.')).toBeInTheDocument();
+    expect(screen.getByText(E5_TEXT)).toBeInTheDocument();
+  });
+
+  it('E5-3: clearing To removes E5 and both attributes, and equal dates are valid', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(await screen.findByText(E5_TEXT)).toBeInTheDocument();
+
+    fireEvent.change(to, { target: { value: '' } });
+    expect(to.value).toBe('');
+    expectToDateValid(to);
+
+    fireEvent.change(from, { target: { value: '2026-05-01' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(from.value).toBe('2026-05-01');
+    expect(to.value).toBe('2026-05-01');
+    expectToDateValid(to);
+  });
+
+  // Control (green before and after): zero look change at rest.
+  it('E5-4: at rest the To label keeps its exact classes and the To input carries no error wiring', async () => {
+    renderGameDetail({ role: 'member' });
+    const { to } = await openSessionFilters();
+    const toLabel = document.querySelector('label[for="session-filter-date-to"]') as HTMLLabelElement;
+    const fromLabel = document.querySelector('label[for="session-filter-date-from"]') as HTMLLabelElement;
+    expect(toLabel.className).toBe('block text-sm text-content-secondary mb-1');
+    expect(toLabel.textContent).toBe('To Date');
+    expect(fromLabel.className).toBe('block text-sm text-content-secondary mb-1');
+    expect(to).not.toHaveAttribute('aria-invalid');
+    expect(to).not.toHaveAttribute('aria-describedby');
+  });
+
+  // #212: Chrome hands the page progressive year values (0002-, 0020-, 0202-) while a desktop
+  // year is typed; a raw string compare would alert mid-entry because '0002' sorts before '2026'.
+  it('E5-5: a year still being typed shows no E5', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(await screen.findByText(E5_TEXT)).toBeInTheDocument();
+
+    fireEvent.change(to, { target: { value: '0002-05-01' } });
+    expect(to.value).toBe('0002-05-01');
+    expectToDateValid(to);
+  });
+
+  // #59: a five-digit year. A raw string compare sorts '10000-' before '2026-' by its first
+  // character. jsdom keeps the value (its date sanitiser accepts four or more year digits); the
+  // read-back below is this arm's precondition.
+  it('E5-6: a five-digit year shows no E5', async () => {
+    renderGameDetail({ role: 'member' });
+    const { from, to } = await openSessionFilters();
+    fireEvent.change(from, { target: { value: '2026-05-10' } });
+    fireEvent.change(to, { target: { value: '2026-05-01' } });
+    expect(await screen.findByText(E5_TEXT)).toBeInTheDocument();
+
+    fireEvent.change(to, { target: { value: '10000-01-01' } });
+    expect(to.value).toBe('10000-01-01');
+    expectToDateValid(to);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.1-52 (D-46 / AC-23, R7-M7) — both gameDetail breadcrumbs reach the house standard:
+// the house focus ring on the Home and group links (DECISION Phase 88.3-17, per site), the ">"
+// separators hidden from assistive tech, and min-w-0 on the nav. Separators are read by TEXT, as
+// groupPlanning/page.test.tsx explains: a role query would pass without the attribute.
+// ---------------------------------------------------------------------------
+const HOUSE_RING_TOKENS = [
+  'focus:outline-hidden',
+  'focus-visible:ring-2',
+  'focus-visible:ring-focus-ring',
+  'focus-visible:ring-offset-2',
+];
+
+function expectHouseBreadcrumb(nav: HTMLElement) {
+  for (const token of ['inline-block', 'max-w-full', 'wrap-break-word', 'min-w-0']) {
+    expect(nav).toHaveClass(token);
+  }
+  const links = within(nav).getAllByRole('link');
+  expect(links).toHaveLength(2);
+  for (const link of links) {
+    for (const token of HOUSE_RING_TOKENS) {
+      expect(link.className.split(/\s+/)).toContain(token);
+    }
+  }
+  const separators = within(nav).getAllByText('>');
+  expect(separators).toHaveLength(2);
+  for (const sep of separators) {
+    expect(sep).toHaveAttribute('aria-hidden', 'true');
+  }
+}
+
+describe('gameDetail breadcrumbs — ring, hidden separators, min-w-0 (D-46 / R7-M7, 88.6.1-52)', () => {
+  it('BC-1: the event view breadcrumb rings Home and the group link, hides both separators and carries min-w-0', async () => {
+    renderEventDetail({ role: 'owner' });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    await within(nav).findByRole('link', { name: 'The Group' });
+    expectHouseBreadcrumb(nav);
+  });
+
+  it('BC-2: the game view breadcrumb rings Home and the group link, hides both separators and carries min-w-0', async () => {
+    renderGameDetail({ role: 'member' });
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    await within(nav).findByRole('link', { name: 'Group' });
+    expectHouseBreadcrumb(nav);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// 88.6.1-74 — RF1 on the event and game views (owner ruling 2026-10-05, merits over record):
+// a failed REFRESH over content already on screen keeps the content and says so; access and
+// gone answers still withdraw it (plan 70's C10); focus never falls to <body> (C12).
+// ---------------------------------------------------------------------------------------------
+
+// Copy row RF1 / D-47 (contract C7): the ratified refresh-failed sentence, written once. It is
+// expected TWICE while the notice shows (the visible line and its polite region).
+const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+const SERVER_500 = () => new ApiError('Server error', 'internal', 500);
+
+// Force ONE same-key refresh of whatever the page shows, the way plan 25's C6 does: the fetch
+// effect keys on `user?.sub`, so a changed sub re-runs it for the same event or game.
+function forceRefresh(rerender: (ui: React.ReactElement) => void, sub = 'auth0|other-sub') {
+  h.userSub = sub;
+  rerender(<GameDetailPage />);
+}
+
+// The RF1 region: the `role="status"` node whose whole text is the sentence.
+function rf1Region(): HTMLElement | undefined {
+  return screen.getAllByRole('status').find((n) => n.textContent === RF1);
+}
+
+// Render the event view and reach a failed same-event refresh (EV-1's state).
+async function reachEventRf1(options: RenderEventDetailOptions = {}) {
+  const r = renderEventDetail(options);
+  await screen.findByRole('heading', { name: 'Game Night' });
+  (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+  forceRefresh(r.rerender);
+  await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+  return r;
+}
+
+describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: REAL_LOCATION,
+    });
+  });
+
+  // Wave 7 CI gate (run 39020174955): the e2e arm's own sequence (gamedetail-refresh-failed.spec.ts,
+  // event): the first load lands while identity is still pending, identity then resolves and that
+  // same-key re-run's event read answers 500. In jsdom the event stays under RF1; the browser
+  // withdrew it to the full banner, so the cause is outside this page's state machine as jsdom runs it.
+  it('EV-20. identity resolving after the first load, then a failed re-run, keeps the event under RF1', async () => {
+    const r = renderEventDetail({ identityPending: true });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    h.selfUuid = SELF_UUID;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  // Wave 8 CI gate (run 39026336968, the spec's DIAG trail): the event view renders its record as
+  // soon as the primary read succeeds (the `singleEvent` branch precedes the loader gate), while the
+  // run's side reads are still in flight. In CI, identity resolved in that window: the same-key re-run
+  // found no settled run for this key, took the new-key reset, flashed the loader over the event, and
+  // its 500 landed on an empty page (the full banner). The e2e order: the first load's primary has
+  // answered, its roster read is still out, identity resolves, the re-run's event read answers 500.
+  it('EV-21. identity resolving while the first load\'s side reads are in flight keeps the event (no loader flash) and a failed re-run shows RF1', async () => {
+    const r = renderEventDetail({ identityPending: true });
+    const roster = deferred(groupsAPI.getGroupMembers as Mock);
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(1));
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    h.selfUuid = SELF_UUID;
+    r.rerender(<GameDetailPage />);
+    // The re-run starts in that commit: the event stays and the loader never replaces it.
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Loading game night...' })).toBeNull();
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    // The superseded first run's late roster answer writes nothing over the re-run's outcome.
+    await act(async () => roster.settle([]));
+    expect(screen.getAllByText(RF1)).toHaveLength(2);
+  });
+
+  it('EV-1. a failed refresh keeps the event and shows RF1 with one Retry (C8 a)', async () => {
+    await reachEventRf1();
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByText('Event not found')).toBeNull();
+    const line = screen.getAllByText(RF1).find((n) => n.getAttribute('role') !== 'status');
+    expect(line).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+  });
+
+  it('EV-2. the RF1 region is a status node present before the failure (C8 b)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const before = screen.getAllByRole('status');
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(rf1Region()).toBeTruthy());
+    expect(before).toContain(rf1Region());
+  });
+
+  it('EV-3. Retry recovers and focus lands on the event heading (C8 c)', async () => {
+    const user = userEvent.setup();
+    await reachEventRf1();
+    const calls = (eventsAPI.getEvent as Mock).mock.calls.length;
+    (eventsAPI.getEvent as Mock).mockResolvedValueOnce(eventFixture());
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    const heading = screen.getByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(calls + 1);
+  });
+
+  it('EV-4. while a pressed Retry is held the event stays and Retry keeps focus (C2)', async () => {
+    const user = userEvent.setup();
+    await reachEventRf1();
+    const held = deferred(eventsAPI.getEvent as Mock);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    const button = await screen.findByRole('button', { name: 'Retrying…' });
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toHaveAttribute('disabled');
+    expect(document.activeElement).toBe(button);
+    await act(async () => held.settle(eventFixture()));
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+  });
+
+  it('EV-5. a 403 refresh withdraws the event to E1, never RF1 (C10)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-6. a 401 refresh redirects once and shows the loader, never RF1 (C10, C8 e)', async () => {
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(UNAUTHORIZED());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-7. a 404 refresh is "Event not found", never RF1 (C10)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(new ApiError('Not found', 'not_found', 404));
+    forceRefresh(r.rerender);
+    expect(await screen.findByRole('heading', { name: 'Event not found' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-8. an account_deleted refresh holds the loader, never RF1 (C10)', async () => {
+    h.selfRefetch.mockReturnValue(new Promise(() => {}));
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(ACCOUNT_DELETED());
+    forceRefresh(r.rerender);
+    expect(await screen.findByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText('Event not found')).toBeNull();
+  });
+
+  it('EV-9. a FIRST-load failure is unchanged: the E3 banner, no RF1 (control)', async () => {
+    renderEventDetail({ getEventRejectsWith: SERVER_500() });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-10. a superseded refresh that fails after a newer success shows no RF1 (ordering / R9)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    let failOlder: (e: unknown) => void = () => {};
+    (eventsAPI.getEvent as Mock)
+      .mockImplementationOnce(() => new Promise((_, reject) => { failOlder = reject; }))
+      .mockResolvedValueOnce(eventFixture());
+    forceRefresh(r.rerender, 'auth0|older-sub');
+    forceRefresh(r.rerender, 'auth0|newer-sub');
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(3));
+    await flushMacrotask();
+    await act(async () => failOlder(SERVER_500()));
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+  });
+
+  it('EV-11. a second failed Retry re-announces through the same node and keeps focus (R8 backstop)', async () => {
+    const user = userEvent.setup();
+    await reachEventRf1();
+    const region = rf1Region() as HTMLElement;
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(region.textContent).toBe('');
+    await waitFor(() => expect(region.textContent).toBe(RF1));
+    const button = screen.getByRole('button', { name: 'Retry' });
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('EV-12. a gone (410) refresh is plan 70\'s widened set: E3 with its register line, never RF1 (C10)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const eGone = new ApiError('Gone', 'gone', 410);
+    (eventsAPI.getEvent as Mock).mockRejectedValue(eGone);
+    forceRefresh(r.rerender);
+    expect(await screen.findByText(getFetchErrorMessage(eGone))).toBeInTheDocument();
+    expect(screen.getByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-13. a network failure on refresh keeps the event under RF1 (C8 e)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(new ApiError('Network', 'network', 0));
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  it('EV-14. an unpressed 403 withdraws the event while Home holds focus: focus lands on E1\'s title (C12 a)', async () => {
+    await reachEventRf1({ inMain: true });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(FORBIDDEN());
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    within(nav).getByRole('link', { name: 'Home' }).focus();
+    await act(async () => fireVisibility('visible'));
+    const title = await screen.findByRole('heading', { name: NO_ACCESS_TITLE });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(screen.queryByText('Game Night')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  // A-56 (88.6.1 code review): the event banner (iii) carries the withdrawal target too.
+  it('EV-14b. an unpressed gone (410) withdraws the event to the banner while Home holds focus: focus lands on the banner (C12 a)', async () => {
+    await reachEventRf1({ inMain: true });
+    (eventsAPI.getEvent as Mock).mockRejectedValue(new ApiError('Gone', 'gone', 410));
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    within(nav).getByRole('link', { name: 'Home' }).focus();
+    await act(async () => fireVisibility('visible'));
+    const bannerTitle = await screen.findByText(EVENT_LOAD_FAILED);
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.querySelector('main'));
+      expect(document.activeElement?.contains(bannerTitle)).toBe(true);
+    });
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-15. Retry holds focus and an unpressed refresh succeeds: focus lands on the heading (C12 b)', async () => {
+    await reachEventRf1();
+    screen.getByRole('button', { name: 'Retry' }).focus();
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture());
+    await act(async () => fireVisibility('visible'));
+    const heading = screen.getByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('EV-16. a rejected event_id URL renders its screen without a ReferenceError (C12 a declaration order)', async () => {
+    renderAt('event_id=not-a-uuid');
+    expect(await screen.findByRole('heading', { name: 'Event not found' })).toBeInTheDocument();
+  });
+
+  it('EV-17. the event-to-game key change moves focus to main, never <body> (C12, #308 / H-01)', async () => {
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: GAME_ID, name: 'Azul' }]);
+    const r = renderEventDetail({ inMain: true });
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    const card = await screen.findByRole('button', { name: 'Azul' });
+    card.focus();
+    expect(document.activeElement).toBe(card);
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(document.querySelector('main'));
+  });
+
+  it('EV-18. an in-page key change never inserts a one-commit "Game not found" (L-02)', async () => {
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: GAME_ID, name: 'Azul' }]);
+    const r = renderEventDetail();
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    await screen.findByRole('button', { name: 'Azul' });
+    const held = deferred(gamesAPI.getGame as Mock);
+    const added: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const rec of records) rec.addedNodes.forEach((n) => added.push(n));
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    expect(await screen.findByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    for (const rec of observer.takeRecords()) rec.addedNodes.forEach((n) => added.push(n));
+    expect(added.some((n) => (n.textContent ?? '').includes('Game not found'))).toBe(false);
+    expect(screen.queryByText('Game not found')).toBeNull();
+    await act(async () => held.settle(GAME));
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    for (const rec of observer.takeRecords()) rec.addedNodes.forEach((n) => added.push(n));
+    observer.disconnect();
+    expect(added.some((n) => (n.textContent ?? '').includes('Game not found'))).toBe(false);
+  });
+
+  it('EV-19. a REVISITED game key never inserts its stale game view for one commit (M2-01)', async () => {
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: GAME_ID, name: 'Azul' }]);
+    const r = renderEventDetail();
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    await screen.findByRole('button', { name: 'Azul' });
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    h.search = `event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const held = deferred(gamesAPI.getGame as Mock);
+    const added: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const rec of records) rec.addedNodes.forEach((n) => added.push(n));
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    const isStaleTitle = (n: Node) =>
+      n instanceof Element &&
+      [n, ...Array.from(n.querySelectorAll('h1'))].some(
+        (el) => el.tagName === 'H1' && el.textContent === 'Wingspan'
+      );
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    expect(await screen.findByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    for (const rec of observer.takeRecords()) rec.addedNodes.forEach((n) => added.push(n));
+    expect(added.some(isStaleTitle)).toBe(false);
+    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+    observer.disconnect();
+    await act(async () => held.settle(GAME));
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(gamesAPI.getGame).toHaveBeenCalledTimes(2);
+  });
+});
+
+const GAME_LOAD_FAILED = "We couldn't load this game";
+// A second valid game id (UUID-shaped, so plan 25's guard lets it through to a request).
+const SECOND_GAME_ID = '99999999-9999-4999-8999-999999999999';
+
+// Render the game view and reach a failed same-game refresh (GV-1's state).
+async function reachGameRf1(options: RenderGameDetailOptions = {}) {
+  const r = renderGameDetail(options);
+  await screen.findByRole('heading', { name: 'Wingspan' });
+  (gamesAPI.getGame as Mock).mockRejectedValueOnce(SERVER_500());
+  forceRefresh(r.rerender);
+  await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+  return r;
+}
+
+// A refresh whose primary read answers `error`, from a loaded game view.
+async function refreshGameRejecting(error: unknown, options: RenderGameDetailOptions = {}) {
+  const r = renderGameDetail(options);
+  await screen.findByRole('heading', { name: 'Wingspan' });
+  (gamesAPI.getGame as Mock).mockRejectedValue(error);
+  forceRefresh(r.rerender);
+  return r;
+}
+
+describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', () => {
+  it('GV-1. a failed refresh keeps the game and its lists and shows RF1 (C8 a)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const sessions = (await screen.findByRole('heading', { name: /^Game Sessions \(\d+\)$/ })).textContent;
+    (gamesAPI.getGame as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByText('Game not found')).toBeNull();
+    expect(screen.getByRole('heading', { name: /^Game Sessions \(/ }).textContent).toBe(sessions);
+  });
+
+  it('GV-2. the RF1 region is a status node present before the failure (C8 b)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const before = screen.getAllByRole('status');
+    (gamesAPI.getGame as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(rf1Region()).toBeTruthy());
+    expect(before).toContain(rf1Region());
+  });
+
+  it('GV-3. Retry recovers and focus lands on the game title (C8 c)', async () => {
+    const user = userEvent.setup();
+    await reachGameRf1();
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    const heading = screen.getByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-4. a pressed Retry keeps the notice and focus while held (C2)', async () => {
+    const user = userEvent.setup();
+    await reachGameRf1();
+    const held = deferred(gamesAPI.getGame as Mock);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    const button = await screen.findByRole('button', { name: 'Retrying…' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).toBe(button);
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    await act(async () => held.settle(GAME));
+    await waitFor(() => expect(screen.queryAllByText(RF1)).toHaveLength(0));
+  });
+
+  it('GV-5. a failed FIRST load of a second game never shows the first game (C3)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    (gamesAPI.getGame as Mock).mockRejectedValue(SERVER_500());
+    h.search = `game_id=${SECOND_GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledWith(SECOND_GAME_ID));
+    expect(await screen.findByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-5b. a 404 on a second game is "Game not found", never the first game (C3)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    (gamesAPI.getGame as Mock).mockRejectedValue(new ApiError('Not found', 'not_found', 404));
+    h.search = `game_id=${SECOND_GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledWith(SECOND_GAME_ID));
+    expect(await screen.findByText('Game not found')).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+  });
+
+  it('GV-6. a superseded refresh that fails after a newer success shows no RF1 (ordering / R9)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    let failOlder: (e: unknown) => void = () => {};
+    (gamesAPI.getGame as Mock)
+      .mockImplementationOnce(() => new Promise((_, reject) => { failOlder = reject; }))
+      .mockResolvedValueOnce(GAME);
+    forceRefresh(r.rerender, 'auth0|older-sub');
+    forceRefresh(r.rerender, 'auth0|newer-sub');
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledTimes(3));
+    await flushMacrotask();
+    await act(async () => failOlder(SERVER_500()));
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  it('GV-7. a 403 refresh drops the game to the full banner with its register line (C10, C8 e)', async () => {
+    const e403 = new ApiError('Access denied', 'forbidden', 403);
+    await refreshGameRejecting(e403);
+    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(screen.getByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-7b. a 404 refresh is "Game not found" (C10)', async () => {
+    await refreshGameRejecting(new ApiError('Not found', 'not_found', 404));
+    expect(await screen.findByText('Game not found')).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-8. a 401 refresh drops the game to the full banner with its register line (C10, C8 e)', async () => {
+    const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
+    await refreshGameRejecting(e401);
+    expect(await screen.findByText(getFetchErrorMessage(e401))).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-9. a network failure on refresh keeps the game under RF1 (C8 e)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    (gamesAPI.getGame as Mock).mockRejectedValueOnce(new ApiError('Network', 'network', 0));
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+  });
+
+  it('GV-10. a gone (410) refresh is plan 70\'s widened set: the full banner, never RF1 (C10)', async () => {
+    const eGone = new ApiError('Gone', 'gone', 410);
+    await refreshGameRejecting(eGone);
+    expect(await screen.findByText(getFetchErrorMessage(eGone))).toBeInTheDocument();
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  // AMENDED 2026-10-19 (88.6.1 code review A-56): focus lands on the banner that explains the
+  // withdrawal (its box carries the withdrawal target), no longer on bare `main`.
+  it('GV-11. an unpressed 403 withdraws the game while Home holds focus: focus lands on the banner (C12 a)', async () => {
+    await reachGameRf1({ inMain: true });
+    (gamesAPI.getGame as Mock).mockRejectedValue(new ApiError('Access denied', 'forbidden', 403));
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    within(nav).getByRole('link', { name: 'Home' }).focus();
+    await act(async () => fireVisibility('visible'));
+    const bannerTitle = await screen.findByText(GAME_LOAD_FAILED);
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.querySelector('main'));
+      expect(document.activeElement?.contains(bannerTitle)).toBe(true);
+    });
+    expect(screen.queryByText('Wingspan')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-12. an unpressed 404 withdraws the game: focus lands on "Game not found" (C12 a, #338)', async () => {
+    await reachGameRf1({ inMain: true });
+    (gamesAPI.getGame as Mock).mockRejectedValue(new ApiError('Not found', 'not_found', 404));
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    within(nav).getByRole('link', { name: 'Home' }).focus();
+    await act(async () => fireVisibility('visible'));
+    const title = await screen.findByText('Game not found');
+    await waitFor(() => expect(document.activeElement).toBe(title));
+  });
+
+  it('GV-13. Retry holds focus and an unpressed refresh succeeds: focus lands on the title (C12 b)', async () => {
+    await reachGameRf1();
+    screen.getByRole('button', { name: 'Retry' }).focus();
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    await act(async () => fireVisibility('visible'));
+    const heading = screen.getByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('GV-14. a late event run cannot silence the game view\'s RF1 (cross-view supersede, #84)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([SESSION]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    const heldEvent = deferred(eventsAPI.getEvent as Mock);
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(2));
+    h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await act(async () => heldEvent.settle(eventFixture()));
+    await flushMacrotask();
+    (gamesAPI.getGame as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender, 'auth0|third-sub');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  it('GV-15. a late game run cannot silence the event view\'s RF1 (cross-view supersede, M-02)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture());
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
+    const heldGame = deferred(gamesAPI.getGame as Mock);
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledTimes(2));
+    h.search = `event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await act(async () => heldGame.settle(GAME));
+    await flushMacrotask();
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender, 'auth0|third-sub');
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+  });
+
+  it('GV-16. a 404 never arms the tab-return re-attempt; a 500 does (review r2 #139)', async () => {
+    await refreshGameRejecting(new ApiError('Not found', 'not_found', 404));
+    await screen.findByText('Game not found');
+    await flushMacrotask();
+    const calls404 = (gamesAPI.getGame as Mock).mock.calls.length;
+    await act(async () => fireVisibility('visible'));
+    await flushMacrotask();
+    expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(calls404);
+    cleanup();
+    h.userSub = 'auth0|self-sub';
+    await reachGameRf1();
+    const calls500 = (gamesAPI.getGame as Mock).mock.calls.length;
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    await act(async () => fireVisibility('visible'));
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(calls500 + 1));
+  });
+
+  // Carry-in (deferred-items.md, "The game view's `fetchGameData` has no per-run generation
+  // guard"): two game ids in flight, the OLDER answer lands last, the newer game stays.
+  it('CARRY-1. a superseded game load never paints over the next game (game-view generation guard)', async () => {
+    let settleOlder: (v: unknown) => void = () => {};
+    (gamesAPI.getGame as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { settleOlder = resolve; })
+    );
+    const r = renderGameDetail();
+    (gamesAPI.getGame as Mock).mockResolvedValue({ ...GAME, id: SECOND_GAME_ID, name: 'Azul' });
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalledWith(GAME_ID));
+    h.search = `game_id=${SECOND_GAME_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    expect(await screen.findByRole('heading', { name: 'Azul' })).toBeInTheDocument();
+    await act(async () => settleOlder(GAME));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Azul' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+  });
+});
+
+// owner ruling D8-r2 (2026-10-13; copy rows GD1 / GD2 / E16) and its follow-up (2026-10-15; E17,
+// E18, GD3, GD4): the seven never-loaded section lines, each written once here.
+const REVIEWS_LOAD_FAILED = "Couldn't load reviews.";
+const SESSIONS_LOAD_FAILED = "Couldn't load game sessions.";
+const ROSTER_LOAD_FAILED = "Couldn't load who's coming.";
+const REPLIES_LOAD_FAILED = "Couldn't load who's replied.";
+const BRINGS_LOAD_FAILED = "Couldn't load who's bringing games.";
+const MY_RSVPS_LOAD_FAILED = "Couldn't load your RSVPs.";
+const GROUP_ROLE_LOAD_FAILED = "Couldn't load your group role.";
+const SECTION_LINES = [
+  REVIEWS_LOAD_FAILED,
+  SESSIONS_LOAD_FAILED,
+  ROSTER_LOAD_FAILED,
+  REPLIES_LOAD_FAILED,
+  BRINGS_LOAD_FAILED,
+  MY_RSVPS_LOAD_FAILED,
+  GROUP_ROLE_LOAD_FAILED,
+];
+const CODELESS = () => new Error('side read down');
+const OTHER_YES = { rsvps: [{ User: { id: OTHER_UUID }, status: 'yes' }] };
+const OTHER_BRINGS = [{ User: { id: OTHER_UUID } }];
+const BRINGING = 'Bringing a game';
+const UPCOMING_SESSION = {
+  ...SESSION,
+  id: 'evt-up',
+  comments: 'Next week at the cafe',
+  start_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+};
+const SIDE_REVIEW = {
+  id: 'rev-1',
+  rating: 4,
+  review_text: 'Great with five players',
+  is_recommended: true,
+  User: { id: OTHER_UUID, username: 'Someone Else' },
+};
+const CTA = 'Plan a game night with this';
+
+// The visible line of a notice (never its polite region).
+function visibleLine(text: string): HTMLElement {
+  const line = screen.getAllByText(text).find((n) => n.getAttribute('role') !== 'status');
+  if (!line) throw new Error(`no visible line for "${text}"`);
+  return line;
+}
+
+// The Retry whose accessible description is the given notice line.
+function retryFor(text: string): HTMLElement {
+  const button = screen
+    .getAllByRole('button', { name: 'Retry' })
+    .find((b) => b.getAttribute('aria-describedby') && document.getElementById(b.getAttribute('aria-describedby') as string)?.textContent === text);
+  if (!button) throw new Error(`no Retry described by "${text}"`);
+  return button;
+}
+
+// The lowest ancestor of `a` that also contains `b`.
+function commonAncestor(a: Element, b: Element): Element {
+  let el: Element | null = a;
+  while (el && !el.contains(b)) el = el.parentElement;
+  return el as Element;
+}
+
+function expectNoSectionLines() {
+  for (const line of SECTION_LINES) expect(screen.queryAllByText(line), line).toHaveLength(0);
+}
+
+describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: REAL_LOCATION,
+    });
+  });
+
+  it('SR-1. a failed RSVP-list refresh keeps the participant\'s pill and shows RF1', async () => {
+    const r = renderEventDetail();
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue(OTHER_YES);
+    await screen.findByText('Going');
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByText('Going')).toBeInTheDocument();
+  });
+
+  it('SR-2. a failed brings refresh keeps the dice and shows RF1', async () => {
+    const r = renderEventDetail();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    const count = screen.getAllByLabelText(BRINGING).length;
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getAllByLabelText(BRINGING)).toHaveLength(count);
+  });
+
+  it('SR-3. a side 403 never silences RF1 over the kept event (P-2 under C10)', async () => {
+    const r = renderEventDetail();
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue(OTHER_YES);
+    await screen.findByText('Going');
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValueOnce(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.getByText('Going')).toBeInTheDocument();
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+  });
+
+  it('SR-4. a first-render roster 403 keeps the event with no notice of any kind (control)', async () => {
+    renderEventDetail();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(FORBIDDEN());
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryAllByText(ROSTER_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-5. a new event never inherits the previous event\'s dice', async () => {
+    const r = renderEventDetail();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture({ id: SECOND_EVENT_ID }));
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(SERVER_500());
+    h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledWith(SECOND_EVENT_ID));
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await flushMacrotask();
+    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+    // The section notice shows; a CODED failure reads the register sentence for its code (SR-23's
+    // mechanism), so the expected line comes from getFetchErrorMessage, never typed.
+    await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(SERVER_500()))).toHaveLength(2));
+    expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-6. a failed group-events refresh keeps Upcoming and the session count, and shows RF1', async () => {
+    const r = renderGameDetail({ events: [UPCOMING_SESSION, SESSION] });
+    await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    const sessions = (await screen.findByRole('heading', { name: /^Game Sessions \(\d+\)$/ })).textContent;
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Upcoming (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Game Sessions \(/ }).textContent).toBe(sessions);
+  });
+
+  it('SR-7. a failed RSVP fan-out refresh keeps the ballot\'s RSVP input and shows RF1', async () => {
+    const r = renderGameDetail({ events: [UPCOMING_SESSION, SESSION] });
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [{ User: { id: SELF_UUID }, status: 'yes' }] });
+    await waitFor(() => expect(screen.getByTestId('ballot-section')).toHaveAttribute('data-rsvp-status', 'yes'));
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByTestId('ballot-section')).toHaveAttribute('data-rsvp-status', 'yes');
+  });
+
+  // A loaded member game view with an upcoming session, a past session and a review.
+  async function renderLoadedGroupGame(options: RenderGameDetailOptions = {}) {
+    const r = renderGameDetail({ events: [UPCOMING_SESSION, SESSION], reviews: [SIDE_REVIEW], ...options });
+    await screen.findByText(SIDE_REVIEW.review_text);
+    await screen.findByRole('button', { name: CTA });
+    return r;
+  }
+
+  function expectGroupContentWithdrawn() {
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Upcoming \(/ })).toBeNull();
+    expect(screen.queryByText(SESSION.comments)).toBeNull();
+    expect(screen.queryByText(UPCOMING_SESSION.comments)).toBeNull();
+    expect(screen.queryByText(SIDE_REVIEW.review_text)).toBeNull();
+    expect(screen.queryByRole('button', { name: CTA })).toBeNull();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    expect(screen.queryByText('Game not found')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  }
+
+  it('SR-8. a group-events access answer withdraws the group content and keeps the game', async () => {
+    const r = await renderLoadedGroupGame();
+    const calls = (eventsAPI.getGroupEvents as Mock).mock.calls.length;
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((eventsAPI.getGroupEvents as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    expectGroupContentWithdrawn();
+  });
+
+  it('SR-8b. a reviews access answer withdraws the group content and keeps the game', async () => {
+    const r = await renderLoadedGroupGame();
+    const calls = (gameReviewsAPI.getGameReviews as Mock).mock.calls.length;
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((gameReviewsAPI.getGameReviews as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    expectGroupContentWithdrawn();
+  });
+
+  it('SR-8c. a roster not_found withdraws the group content and is never "Game not found"', async () => {
+    const r = await renderLoadedGroupGame();
+    const calls = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('Not found', 'not_found', 404));
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    expectGroupContentWithdrawn();
+  });
+
+  it('SR-9. a roster that first runs on run 2 and fails shows its section notice, never RF1 (D12)', async () => {
+    h.userSub = undefined;
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(SERVER_500());
+    h.userSub = 'auth0|self-sub';
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    // The section notice shows; a CODED failure reads the register sentence for its code (SR-23's
+    // mechanism), so the expected line comes from getFetchErrorMessage, never typed.
+    await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(SERVER_500()))).toHaveLength(2));
+    expect(screen.queryAllByText(ROSTER_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-10. a game roster that first runs on run 2 and fails shows its section notice, never RF1 (D12)', async () => {
+    h.userSub = undefined;
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await flushMacrotask();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(SERVER_500());
+    h.userSub = 'auth0|self-sub';
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    // The section notice shows; a CODED failure reads the register sentence for its code (SR-23's
+    // mechanism), so the expected line comes from getFetchErrorMessage, never typed.
+    await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(SERVER_500()))).toHaveLength(2));
+    expect(screen.queryAllByText(GROUP_ROLE_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-11. with identity unresolved, a loaded group-events read that fails shows RF1 (the derive rule)', async () => {
+    const r = renderGameDetail({ identityPending: true });
+    const sessions = (await screen.findByRole('heading', { name: /^Game Sessions \(\d+\)$/ })).textContent;
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValueOnce(SERVER_500());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: /^Game Sessions \(/ }).textContent).toBe(sessions);
+  });
+
+  it('SR-12. a game-only caller (group reads 403 on every run) never sees RF1 or a notice', async () => {
+    const r = renderGameDetail();
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(FORBIDDEN());
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(FORBIDDEN());
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await flushMacrotask();
+    const groupCalls = (eventsAPI.getGroupEvents as Mock).mock.calls.length;
+    const reviewCalls = (gameReviewsAPI.getGameReviews as Mock).mock.calls.length;
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((eventsAPI.getGroupEvents as Mock).mock.calls.length).toBe(groupCalls + 1));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    expectNoSectionLines();
+    expect((gameReviewsAPI.getGameReviews as Mock).mock.calls.length).toBe(reviewCalls);
+  });
+
+  it('SR-13. a group withdrawal that removes the focused session control lands focus on the game title (C12)', async () => {
+    const r = renderGameDetail({ inMain: true, role: 'owner', events: [UPCOMING_SESSION] });
+    await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    const control = (await screen.findAllByRole('button', { name: 'Session actions' }))[0];
+    control.focus();
+    expect(document.activeElement).toBe(control);
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Upcoming (1)' })).toBeNull());
+    const title = screen.getByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+  });
+
+  it('SR-14. an older run\'s brings answer never overwrites a newer run\'s (review r2 #85)', async () => {
+    const r = renderEventDetail();
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await flushMacrotask();
+    let settleOlder: (v: unknown) => void = () => {};
+    (eventBringsAPI.getEventBrings as Mock)
+      .mockImplementationOnce(() => new Promise((resolve) => { settleOlder = resolve; }))
+      .mockResolvedValueOnce(OTHER_BRINGS);
+    const before = (eventBringsAPI.getEventBrings as Mock).mock.calls.length;
+    forceRefresh(r.rerender, 'auth0|older-sub');
+    // The older run must reach its brings read (held) before the newer run starts.
+    await waitFor(() => expect((eventBringsAPI.getEventBrings as Mock).mock.calls.length).toBe(before + 1));
+    forceRefresh(r.rerender, 'auth0|newer-sub');
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await act(async () => settleOlder([]));
+    await flushMacrotask();
+    expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0);
+  });
+
+  it('SR-15. a user-triggered brings write lands for an upper-case event id in the URL (review r2 #86)', async () => {
+    // EVENT_ID is all digits, so its upper case is the same string; this id carries hex letters.
+    const LETTERED_EVENT_ID = 'abcdef12-3456-4789-8abc-def123456789';
+    h.selfUuid = SELF_UUID;
+    h.search = `event_id=${LETTERED_EVENT_ID.toUpperCase()}&group_id=${GROUP_ID}`;
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture({ id: LETTERED_EVENT_ID }));
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('owner'));
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
+    render(<GameDetailPage />);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
+    await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
+    await flushMacrotask();
+    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+  });
+
+  it('SR-16. an event whose access comes back never shows the pre-drop dice as current (review r2 #310)', async () => {
+    const r = renderEventDetail();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    (eventsAPI.getEvent as Mock).mockRejectedValueOnce(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await screen.findByRole('heading', { name: NO_ACCESS_TITLE });
+    (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture());
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(SERVER_500());
+    forceRefresh(r.rerender, 'auth0|third-sub');
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await flushMacrotask();
+    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+  });
+
+  it('SR-17. a group read\'s 401 takes the primary-401 path: the sign-in line, never a silent page (review r2 #311)', async () => {
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(e401);
+    forceRefresh(r.rerender);
+    expect(await screen.findByText(getFetchErrorMessage(e401))).toBeInTheDocument();
+    expect(screen.getByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+  });
+
+  it('SR-18. the event roster\'s own 403 removes the member actions and keeps the event (review r2 #316)', async () => {
+    const r = renderEventDetail({ role: 'owner' });
+    await screen.findByRole('button', { name: 'Event actions' });
+    const calls = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(FORBIDDEN());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Event actions' })).toBeNull();
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('SR-19. the event roster\'s 401 is an ordinary side failure: RF1, the member actions kept (review r3 M-01)', async () => {
+    const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    const r = renderEventDetail({ role: 'owner' });
+    await screen.findByRole('button', { name: 'Event actions' });
+    const calls = (groupsAPI.getGroupMembers as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(UNAUTHORIZED());
+    forceRefresh(r.rerender);
+    await waitFor(() => expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(calls + 1));
+    await flushMacrotask();
+    expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
+    expect(screen.getAllByText(RF1)).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Event actions' })).toBeInTheDocument();
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('SR-20. reviews that failed and never loaded: no count, no "Be the first", the D8-r2 notice and a working Retry', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(CODELESS());
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(screen.getAllByText(REVIEWS_LOAD_FAILED)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Reviews' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Reviews \(\d+\)$/ })).toBeNull();
+    expect(screen.queryByText('No reviews yet. Be the first to review this game.')).toBeNull();
+    expect(retryFor(REVIEWS_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Review' })).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    const calls = (gamesAPI.getGame as Mock).mock.calls.length;
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([SIDE_REVIEW]);
+    await user.click(retryFor(REVIEWS_LOAD_FAILED));
+    expect(await screen.findByRole('heading', { name: 'Reviews (1)' })).toBeInTheDocument();
+    expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(calls + 1);
+    await waitFor(() => expect(screen.queryAllByText(REVIEWS_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-21. sessions that failed and never loaded: no count, no empty sentence, the D8-r2 notice; tab return recovers', async () => {
+    renderGameDetail();
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(CODELESS());
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(screen.getAllByText(SESSIONS_LOAD_FAILED)).toHaveLength(2));
+    expect(screen.getByRole('heading', { name: 'Game Sessions' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Game Sessions \(/ })).toBeNull();
+    expect(screen.queryByText(/^No game sessions yet/)).toBeNull();
+    expect(screen.getByText('Show Filters & Sort')).toBeInTheDocument();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([SESSION]);
+    await act(async () => fireVisibility('visible'));
+    expect(await screen.findByRole('heading', { name: 'Game Sessions (1)' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryAllByText(SESSIONS_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-22. an event roster that failed and never loaded shows its notice above the RSVP section; Retry recovers', async () => {
+    const user = userEvent.setup();
+    renderEventDetail();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(CODELESS());
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(screen.getAllByText(ROSTER_LOAD_FAILED)).toHaveLength(2));
+    const line = visibleLine(ROSTER_LOAD_FAILED);
+    expect(line.compareDocumentPosition(screen.getByTestId('rsvp-section')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: /^Participants \(/ })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText(NO_ACCESS_TITLE)).toBeNull();
+    expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
+    const calls = (eventsAPI.getEvent as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('owner'));
+    await user.click(retryFor(ROSTER_LOAD_FAILED));
+    await waitFor(() => expect(screen.queryAllByText(ROSTER_LOAD_FAILED)).toHaveLength(0));
+    expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(calls + 1);
+  });
+
+  it('SR-23. a CODED never-loaded reviews failure shows the register sentence, not the ratified line', async () => {
+    renderGameDetail({ role: 'member' });
+    const eNet = new ApiError('Network', 'network', 0);
+    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(eNet);
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(eNet))).toHaveLength(2));
+    expect(screen.queryAllByText(REVIEWS_LOAD_FAILED)).toHaveLength(0);
+  });
+
+  it('SR-24. an RSVP list that failed and never loaded: no "No reply", no ballot, the E17 notice; Retry recovers', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'member' });
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValue(CODELESS());
+    await screen.findByText('Someone Else');
+    await waitFor(() => expect(screen.getAllByText(REPLIES_LOAD_FAILED)).toHaveLength(2));
+    const card = commonAncestor(screen.getByRole('heading', { name: /^Participants \(/ }), visibleLine(REPLIES_LOAD_FAILED));
+    expect(within(card as HTMLElement).queryByTestId('rsvp-section')).toBeNull();
+    expect(screen.queryByText('No reply')).toBeNull();
+    expect(screen.queryByTestId('ballot-section')).toBeNull();
+    const calls = (eventsAPI.getEvent as Mock).mock.calls.length;
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue(OTHER_YES);
+    await user.click(retryFor(REPLIES_LOAD_FAILED));
+    expect(await screen.findByText('Going')).toBeInTheDocument();
+    expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(calls + 1);
+    expect(screen.getByTestId('ballot-section')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryAllByText(REPLIES_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  // A-48 (88.6.1 code review): the roster read has its own catch, so its failure no longer skips the
+  // RSVP-list and brings reads — skipped, the ballot told a viewer who had said Yes to RSVP first.
+  it('SR-24b. a first-load roster 500 still reads the RSVP list and brings: the ballot carries the viewer\'s Yes', async () => {
+    renderEventDetail({ role: 'member' });
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(SERVER_500());
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [{ User: { id: SELF_UUID }, status: 'yes' }] });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalled());
+    await waitFor(() => expect(rsvpAPI.getEventRsvps).toHaveBeenCalled());
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('ballot-section')).toHaveAttribute('data-rsvp-status', 'yes'));
+  });
+
+  it('SR-25. brings that failed and never loaded show the E18 notice; a user-triggered Set clears it', async () => {
+    renderEventDetail({ role: 'member' });
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(CODELESS());
+    await screen.findByText('Someone Else');
+    await waitFor(() => expect(screen.getAllByText(BRINGS_LOAD_FAILED)).toHaveLength(2));
+    const card = commonAncestor(screen.getByRole('heading', { name: /^Participants \(/ }), visibleLine(BRINGS_LOAD_FAILED));
+    expect(within(card as HTMLElement).queryByTestId('rsvp-section')).toBeNull();
+    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-26. an RSVP fan-out that failed and never loaded shows the GD3 notice and no upcoming ballot', async () => {
+    renderGameDetail({ events: [UPCOMING_SESSION, SESSION] });
+    (rsvpAPI.getEventRsvps as Mock).mockRejectedValue(CODELESS());
+    const upcoming = await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    await waitFor(() => expect(screen.getAllByText(MY_RSVPS_LOAD_FAILED)).toHaveLength(2));
+    const card = commonAncestor(upcoming, visibleLine(MY_RSVPS_LOAD_FAILED));
+    expect(within(card as HTMLElement).queryByText(SESSION.comments)).toBeNull();
+    expect(within(card as HTMLElement).queryByTestId('ballot-section')).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+  });
+
+  it('SR-27. a game roster that failed and never loaded shows the GD4 notice in the game card; Retry recovers', async () => {
+    const user = userEvent.setup();
+    renderGameDetail();
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(CODELESS());
+    const title = await screen.findByRole('heading', { name: 'Wingspan' });
+    await waitFor(() => expect(screen.getAllByText(GROUP_ROLE_LOAD_FAILED)).toHaveLength(2));
+    const card = commonAncestor(title, visibleLine(GROUP_ROLE_LOAD_FAILED));
+    expect(within(card as HTMLElement).queryByRole('heading', { name: /^Game Sessions/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: CTA })).toBeNull();
+    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    const calls = (gamesAPI.getGame as Mock).mock.calls.length;
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('member'));
+    await user.click(retryFor(GROUP_ROLE_LOAD_FAILED));
+    expect(await screen.findByRole('button', { name: CTA })).toBeInTheDocument();
+    expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(calls + 1);
+    await waitFor(() => expect(screen.queryAllByText(GROUP_ROLE_LOAD_FAILED)).toHaveLength(0));
+  });
+
+  it('SR-28. a failed user-triggered brings refresh changes nothing (seam pass S2-4)', async () => {
+    renderEventDetail();
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
+    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    const count = screen.getAllByLabelText(BRINGING).length;
+    (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(SERVER_500());
+    await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
+    await flushMacrotask();
+    expect(screen.getAllByLabelText(BRINGING)).toHaveLength(count);
+    expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0);
+  });
+});
+
+// Plan 88.6.1-68: a host's created-callback only refreshes; the one close after a success is
+// CreateEvent's own `modaltoggle()`, which plan 88.6.1-81 calls only while the press's dialog
+// session is still open. The stub records each render's props, so an arm can call the callbacks
+// the host handed the dialog while it was open. See DECISION Phase 88.6.1-68 (one close owner).
+describe("gameDetail hosts leave the dialog's close to CreateEvent (88.6.1-68)", () => {
+  type CreateEventProps = {
+    modal: boolean;
+    editingEvent: { id: string } | null;
+    onEventCreated: (data: unknown) => void;
+    modaltoggle: () => void;
+  };
+
+  it('GD-1: event view — a late update success refreshes the page and leaves the (reopened) Edit dialog open', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner' });
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventMounts).toBe(1));
+    const p = h.createEventProps.at(-1) as CreateEventProps;
+    expect(p.modal).toBe(true);
+    expect(p.editingEvent?.id).toBe(EVENT_ID);
+    const reads = (eventsAPI.getEvent as Mock).mock.calls.length;
+    const brings = (eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === EVENT_ID).length;
+
+    await act(async () => {
+      p.onEventCreated(null);
+    });
+    await waitFor(() => expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(reads + 1));
+    await waitFor(() =>
+      // Greater than, not "+1": the refresh reads the brings twice (refreshBringersSet and the
+      // brings refresh-key bump), measured 2026-10-17.
+      expect((eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === EVENT_ID).length).toBeGreaterThan(
+        brings
+      )
+    );
+    expect(h.createEventMounts).toBe(1);
+  });
+
+  it('GD-1o: event view, ordinary path (confirm-only) — callback then modaltoggle refreshes and closes', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner' });
+    await user.click(await screen.findByRole('button', { name: 'Edit Event' }));
+    await waitFor(() => expect(h.createEventMounts).toBe(1));
+    const p = h.createEventProps.at(-1) as CreateEventProps;
+    const reads = (eventsAPI.getEvent as Mock).mock.calls.length;
+    const brings = (eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === EVENT_ID).length;
+
+    await act(async () => {
+      p.onEventCreated(null);
+      p.modaltoggle();
+    });
+    await waitFor(() => expect((eventsAPI.getEvent as Mock).mock.calls.length).toBe(reads + 1));
+    await waitFor(() =>
+      // Greater than, not "+1": the refresh reads the brings twice (refreshBringersSet and the
+      // brings refresh-key bump), measured 2026-10-17.
+      expect((eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === EVENT_ID).length).toBeGreaterThan(
+        brings
+      )
+    );
+    expect(h.createEventMounts).toBe(0);
+    expect(screen.getByRole('button', { name: 'Edit Event' })).toBeInTheDocument();
+  });
+  // Task 3: the game view's two mounts (Edit from the sessions list, Create from the CTA).
+  async function openGameViewEdit() {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'owner' });
+    const sessions = await sessionsSection();
+    await user.click(await within(sessions).findByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(h.createEventMounts).toBe(1));
+    const p = h.createEventProps.at(-1) as CreateEventProps;
+    expect(p.editingEvent?.id).toBe(SESSION.id);
+    return p;
+  }
+
+  async function openGameViewCreate() {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'owner' });
+    await user.click(await screen.findByRole('button', { name: 'Plan a game night with this' }));
+    await waitFor(() => expect(h.createEventMounts).toBe(1));
+    const p = h.createEventProps.at(-1) as CreateEventProps;
+    expect(p.editingEvent).toBeNull();
+    return p;
+  }
+
+  it('GD-2: game view Edit — a late update success refreshes the page and leaves the (reopened) Edit dialog open', async () => {
+    const p = await openGameViewEdit();
+    const games = (gamesAPI.getGame as Mock).mock.calls.length;
+    const brings = (eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === SESSION.id).length;
+
+    await act(async () => {
+      p.onEventCreated(null);
+    });
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
+    await waitFor(() =>
+      expect((eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === SESSION.id).length).toBeGreaterThan(
+        brings
+      )
+    );
+    expect(h.createEventMounts).toBe(1);
+  });
+
+  it('GD-2o: game view Edit, ordinary path (confirm-only) — callback then modaltoggle refreshes and closes', async () => {
+    const p = await openGameViewEdit();
+    const games = (gamesAPI.getGame as Mock).mock.calls.length;
+    const brings = (eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === SESSION.id).length;
+
+    await act(async () => {
+      p.onEventCreated(null);
+      p.modaltoggle();
+    });
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
+    await waitFor(() =>
+      expect((eventBringsAPI.getEventBrings as Mock).mock.calls.filter((c) => c[0] === SESSION.id).length).toBeGreaterThan(
+        brings
+      )
+    );
+    expect(h.createEventMounts).toBe(0);
+  });
+
+  it('GD-3: game view Create — a late create success refreshes the page and leaves the (reopened) Create dialog open', async () => {
+    const p = await openGameViewCreate();
+    const games = (gamesAPI.getGame as Mock).mock.calls.length;
+
+    await act(async () => {
+      p.onEventCreated({ id: 'e-new' });
+    });
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
+    expect(h.createEventMounts).toBe(1);
+  });
+
+  it('GD-3o: game view Create, ordinary path (confirm-only) — callback then modaltoggle refreshes and closes', async () => {
+    const p = await openGameViewCreate();
+    const games = (gamesAPI.getGame as Mock).mock.calls.length;
+
+    await act(async () => {
+      p.onEventCreated({ id: 'e-new' });
+      p.modaltoggle();
+    });
+    await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
+    expect(h.createEventMounts).toBe(0);
   });
 });

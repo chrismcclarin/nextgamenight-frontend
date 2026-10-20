@@ -9,6 +9,8 @@ import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './suppo
 // A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
 // a spec file, so importing it adds no collected suite.
 import { focusByKeyboard } from './support/contrast';
+// 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
+import { expectNoApiWrites, holdWrites } from './support/inFlight';
 
 /**
  * Phase 87.8 Plan 08 — SPEC R4 (44x44 effective hit areas) + SPEC R6 (pressed-state
@@ -600,7 +602,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
     // Census row 5: "Invite Member" — one per group card; the fixture user owns at
     // least one group, so at least one must render (guard asserts, no silent skip).
-    const inviteMember = page.getByRole('button', { name: /invite member to group/i });
+    // The name is per card since 88.6.1-54 (D-19, copy row H2); this prefix matches every card
+    // and the nameless-group fallback, and guardResolved / assertMin44 read .first().
+    const inviteMember = page.getByRole('button', { name: /^invite member to /i });
     await guardResolved(inviteMember, 'the per-card "Invite Member" CTA (grouplist.js census row 5)');
     await assertMin44(inviteMember, '"Invite Member"');
 
@@ -2159,6 +2163,134 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     //    Removing this step is a decision, not a cleanup.
     await discard.click();
     await expect(page.getByRole('button', { name: 'Change', exact: true })).toBeVisible();
+  });
+
+  // 88.6.1-48 (T-88.6.1-962): the toggle arms below only flip client-side state and open a panel.
+  // Each arm fails on any POST / PUT / PATCH / DELETE to an `/api/` path while they press, so a
+  // press that started writing to the fixture account would be caught, not shipped.
+  // [88.6.1 code review WR-03: the arms used a request RECORDER that only observed, so such a
+  // write still reached the shared CI fixture account before the arm failed. They now use the
+  // shared write HOLD (./support/inFlight holdWrites + expectNoApiWrites, DECISION Phase
+  // 88.6.1-43), which keeps the write inside the browser. It is registered where the recorder
+  // was, after the page has loaded, so the scope is unchanged: the presses, not the page load.]
+
+  test('R4 (88.6.1-48, AC-19 / D-21): the Profile Days-of-Week toggles and All measure >= 44x44 at 375px and report pressed state', async ({ page }) => {
+    await page.goto('/userProfile');
+    await page.getByRole('button', { name: '+ Add Schedule' }).click();
+
+    // Seven day toggles plus All / Clear, all inside the group the visible "Days of Week" names.
+    // A missing control is a failure, never a skip.
+    const days = page.getByRole('group', { name: 'Days of Week' }).getByRole('button');
+    await guardResolved(days, 'the Days of Week row (seven day toggles and All)', 8);
+    for (const button of await days.all()) {
+      await assertMin44(button, `"${(await button.textContent())?.trim()}" (Days of Week, 375px)`);
+    }
+
+    const hold = await holdWrites(page);
+    const group = page.getByRole('group', { name: 'Days of Week' });
+    const mon = group.getByRole('button', { name: 'Mon', exact: true });
+    await mon.click();
+    await expect(mon).toHaveAttribute('aria-pressed', 'true');
+    await mon.click();
+    await expect(mon).toHaveAttribute('aria-pressed', 'false');
+
+    // All / Clear is an action (D-21): no pressed state in either label.
+    await expect(group.getByRole('button', { name: 'All', exact: true })).not.toHaveAttribute('aria-pressed');
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      'the page scrolls sideways at 375px with the Days row open',
+    ).toBe(true);
+    // Save Schedule is never pressed; nothing above may write.
+    // A toggle press would have sent a write to the API (held in the browser, never sent).
+    expectNoApiWrites(hold);
+  });
+
+  test('R4 (88.6.1-48, AC-19 / D-21): the group Library owner chips measure >= 44x44 at 375px and report pressed state', async ({ page }) => {
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await page.getByRole('button', { name: 'Library', exact: true }).click();
+
+    // The chip bar is a group named in the owner's ratified words (#210, 2026-10-13). Scoping to
+    // it keeps the game rows' own owner-name buttons out of the set.
+    const bar = page.getByRole('group', { name: 'Filter by owner' });
+    const allChip = bar.getByRole('button', { name: 'All', exact: true });
+    await guardResolved(allChip, 'the Library "All" owner chip');
+    const chips = bar.getByRole('button');
+    await guardResolved(chips, 'the Library owner chips (All plus at least one member)', 2);
+    for (const chip of await chips.all()) {
+      await assertMin44(chip, `owner chip "${(await chip.textContent())?.trim()}" (Library, 375px)`);
+    }
+    await expect(allChip).toHaveAttribute('aria-pressed', 'true');
+
+    const hold = await holdWrites(page);
+    const member = chips.nth(1);
+    await member.click();
+    await expect(member).toHaveAttribute('aria-pressed', 'true');
+    await expect(allChip).toHaveAttribute('aria-pressed', 'false');
+    // A member chip is two-way: pressing it again returns to All.
+    await member.click();
+    await expect(allChip).toHaveAttribute('aria-pressed', 'true');
+
+    // The bar scrolls inside itself; the page must not.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      'the page scrolls sideways at 375px on the Library tab',
+    ).toBe(true);
+    // An owner-chip press would have sent a write to the API (held in the browser, never sent).
+    expectNoApiWrites(hold);
+  });
+
+  test('R4 (88.6.1-48, AC-19 / D-44): the group games Filter is a disclosure and measures >= 44x44 at 375px', async ({ page }) => {
+    // The Overview tab is the default and mounts the Group Games list.
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+
+    const filter = page.getByRole('button', { name: /^Filter( \(\d+\))?$/ });
+    await guardResolved(filter, 'the Group Games "Filter" toggle');
+    await assertMin44(filter, '"Filter" (Group Games, 375px)');
+    await expect(filter).toHaveAttribute('aria-expanded', 'false');
+    await expect(filter).not.toHaveAttribute('aria-controls');
+
+    const hold = await holdWrites(page);
+    await filter.click();
+    await expect(filter).toHaveAttribute('aria-expanded', 'true');
+    const panelId = await filter.getAttribute('aria-controls');
+    expect(panelId, 'the open Filter names no panel').toBeTruthy();
+    // An attribute selector, because a React useId value contains colons.
+    const panel = page.locator(`[id="${panelId}"]`);
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText('Winner', { exact: true })).toBeVisible();
+
+    await filter.click();
+    await expect(filter).toHaveAttribute('aria-expanded', 'false');
+    await expect(filter).not.toHaveAttribute('aria-controls');
+    // A Filter press would have sent a write to the API (held in the browser, never sent).
+    expectNoApiWrites(hold);
+  });
+
+  test('R4 (88.6.1-48, AC-19 / D-31): the group games sort toggle is named in words and measures >= 44x44 at 375px', async ({ page }) => {
+    // Owner ruling 2026-10-05 (S1, option A): named "Sort order: ascending" / "Sort order:
+    // descending"; the arrow and its hover tip unchanged; 44px on phones.
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+
+    const sort = page.getByRole('button', { name: /^Sort order: (ascending|descending)$/ });
+    await guardResolved(sort, 'the Group Games sort-direction toggle');
+    await assertMin44(sort, 'the sort arrow (Group Games, 375px)');
+    await expect(sort).toHaveAccessibleName('Sort order: ascending');
+    await expect(sort).toHaveAttribute('title', 'Ascending (click to reverse)');
+
+    const hold = await holdWrites(page);
+    await sort.click();
+    await expect(sort).toHaveAccessibleName('Sort order: descending');
+    await expect(sort).toHaveAttribute('title', 'Descending (click to reverse)');
+    await sort.click();
+    await expect(sort).toHaveAccessibleName('Sort order: ascending');
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      'the page scrolls sideways at 375px on the Overview tab',
+    ).toBe(true);
+    // A sort press would have sent a write to the API (held in the browser, never sent).
+    expectNoApiWrites(hold);
   });
 });
 
