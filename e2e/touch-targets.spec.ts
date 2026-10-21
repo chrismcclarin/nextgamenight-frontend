@@ -1921,6 +1921,126 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     });
   });
 
+  test('R4 (quick-261021-ffb): the Bringing section\'s Add games / Edit control clears 44x44 at 375px', async ({
+    page,
+  }, testInfo) => {
+    await page.goto(E2E_EVENT_DETAIL_PATH);
+    await assertDarkTheme(page);
+
+    // --- half 1: the planted replica, unconditional --------------------------------------
+    // BringSummary.js's header row and its ONE viewer control, whose class string is byte-matched
+    // here (string S of the quick-261021-ffb plan). Both labels are measured: they are the same
+    // element, and `Edit` is the short one. Every class below is worn by a `src/` file, so it is
+    // emitted even though `e2e/` is outside the `@source` globs.
+    const measured = await page.evaluate(() => {
+      const host = document.createElement('div');
+      // 375px from an INLINE style, never a Tailwind class (see the RSVP trio test above).
+      host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
+
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between mb-3';
+      const heading = document.createElement('span');
+      heading.textContent = 'Bringing';
+      row.appendChild(heading);
+
+      const controlClass =
+        'inline-flex items-center justify-end min-h-11 md:min-h-0 min-w-11 md:min-w-0 text-sm ' +
+        'text-content-link hover:text-content-link-hover active:opacity-75 transition-colors ' +
+        'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+      const make = (label: string, className: string) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = className;
+        el.textContent = label;
+        return el;
+      };
+      const controls = [make('Edit', controlClass), make('Add games', controlClass)];
+      for (const el of controls) row.appendChild(el);
+
+      // Negative control: the Edit class string BringSummary.js carried at 16d2669, before this
+      // change. It must measure BELOW 44 tall — proof this measurement can fail.
+      const legacy = make('Edit', 'text-sm text-content-link hover:text-content-link-hover transition-colors');
+      const legacyRow = document.createElement('div');
+      legacyRow.className = 'flex items-center justify-between mb-3';
+      legacyRow.appendChild(legacy);
+
+      host.appendChild(row);
+      host.appendChild(legacyRow);
+      document.body.appendChild(host);
+
+      const hostWidth = host.getBoundingClientRect().width;
+      const sizes = controls.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { label: el.textContent ?? '', width: r.width, height: r.height };
+      });
+      const negativeControlHeight = legacy.getBoundingClientRect().height;
+      host.remove();
+      return { hostWidth, sizes, negativeControlHeight };
+    });
+
+    expect(
+      measured.hostWidth,
+      'quick-261021-ffb: the planted container did not measure 375px, so every measurement below is against the wrong width. The width comes from an inline style on purpose — a Tailwind width class would not be emitted for e2e/',
+    ).toBeCloseTo(375, 0);
+    expect(
+      measured.sizes,
+      'quick-261021-ffb: the planted header row did not render two controls — every assertion below would be vacuous',
+    ).toHaveLength(2);
+    for (const { label, width, height } of measured.sizes) {
+      expect(
+        height,
+        `quick-261021-ffb (planted): BringSummary.js's "${label}" control measures ${height}px tall at 375px — expected >= 44 from the house pair min-h-11 md:min-h-0`,
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        width,
+        `quick-261021-ffb (planted): BringSummary.js's "${label}" control measures ${width}px wide at 375px — expected >= 44 from the house pair min-w-11 md:min-w-0 (Edit is under 44px wide at text-sm without it)`,
+      ).toBeGreaterThanOrEqual(44);
+    }
+    expect(
+      measured.negativeControlHeight,
+      `quick-261021-ffb (negative control): the pre-change Edit class string measured ${measured.negativeControlHeight}px tall — expected BELOW 44. If this passes 44, the planted measurement above cannot fail and proves nothing`,
+    ).toBeLessThan(44);
+
+    // --- half 2: the shipped control, when the fixture renders it -------------------------
+    // Located by ACCESSIBLE NAME, never a class. The card appears only after its brings read
+    // settles, so wait for its heading (bounded, never asserted: the planted half is the gate),
+    // and record whether it was found. CI's viewer has no RSVP on the seeded event, so the
+    // control is expected to be absent there; a zero is reported, never a silent skip.
+    const bringingHeading = page.getByRole('heading', { name: 'Bringing', exact: true });
+    const bringingCardFound = await bringingHeading
+      .first()
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    const shipped = page.getByRole('button', { name: 'Add games', exact: true });
+    const shippedFound = await shipped.count();
+    const shippedSizes: { ownWidth: number; ownHeight: number }[] = [];
+    if (shippedFound > 0) {
+      // No settleOpenAnimation here: that helper waits on an open dialog, and this control sits on
+      // the page, not in a dialog.
+      const geometry = await readEffectiveGeometry(shipped);
+      shippedSizes.push({ ownWidth: geometry.ownWidth, ownHeight: geometry.ownHeight });
+      expect(
+        geometry.ownHeight,
+        `quick-261021-ffb (shipped): the Add games control measures ${geometry.ownHeight}px tall on its own box at 375px — expected >= 44 from BringSummary.js's min-h-11`,
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        geometry.ownWidth,
+        `quick-261021-ffb (shipped): the Add games control measures ${geometry.ownWidth}px wide on its own box at 375px — expected >= 44 from BringSummary.js's min-w-11`,
+      ).toBeGreaterThanOrEqual(44);
+    }
+
+    await attachDiagnostics(testInfo, 'bring-control-touch-floor', {
+      plantedSizes: measured.sizes,
+      negativeControlHeight: measured.negativeControlHeight,
+      bringingCardFound,
+      shippedFound,
+      shippedSizes,
+      detailPath: E2E_EVENT_DETAIL_PATH,
+    });
+  });
+
   test('R4 (SPEC Req 5): the COLLAPSED member-chip stack is one target and clears 44x44', async ({
     page,
   }) => {
