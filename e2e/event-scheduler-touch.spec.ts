@@ -1456,9 +1456,10 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
         grid.querySelectorAll('[data-coord$=":0"]').forEach((wrapper) => {
           const row = Number((wrapper.getAttribute('data-coord') ?? '').split(':')[0]);
           if (!Number.isFinite(row)) return;
-          // `offsetTop` is relative to WeekGrid's positioned body — exactly the value the landing
-          // effect assigns (`container.scrollTop = cell.offsetTop`), so an exact match proves THAT
-          // effect ran rather than some other scroll.
+          // `offsetTop` is relative to WeekGrid's positioned body, which also holds the sticky
+          // header row ahead of row 0. The landing effect assigns `cell.offsetTop` MINUS row 0's
+          // own `offsetTop` (quick-261020-tz3, VO-P2-2), so an exact match on that difference
+          // proves THAT effect ran rather than some other scroll.
           rowOffsets.push({ row, offsetTop: (wrapper as HTMLElement).offsetTop });
 
           const labelled = wrapper.matches('[aria-label]')
@@ -1557,13 +1558,18 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
         expectedRow === null
           ? null
           : reading.rowOffsets.find((r) => r.row === expectedRow)?.offsetTop ?? null;
+      // Row 0's offset is the sticky header's height plus the grid gap — what the landing
+      // subtracts so the peak row sits exactly where row 0 sits unscrolled, fully below the
+      // header (quick-261020-tz3, VO-P2-2; measured pre-fix in run 39559380129: 37px hidden).
+      const row0Offset = reading.rowOffsets.find((r) => r.row === 0)?.offsetTop ?? 0;
       perDay.push({
         index: i,
         header: reading.header,
         hours: reading.hours,
         expectedRow,
         // The browser clamps a scrollTop beyond the scrollable extent, and so must the expectation.
-        expectedScrollTop: offsetForRow === null ? null : Math.min(offsetForRow, reading.maxScroll),
+        expectedScrollTop:
+          offsetForRow === null ? null : Math.min(offsetForRow - row0Offset, reading.maxScroll),
         scrollTop: reading.scrollTop,
       });
     }

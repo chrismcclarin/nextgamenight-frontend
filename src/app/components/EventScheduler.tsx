@@ -705,9 +705,11 @@ export default function EventScheduler({
   // ---------------------------------------------------------------------------
   // The opening scroll position. WeekGrid's `scrollContainerRef` is ONE seam with three
   // consumers — this, the rAF edge auto-scroll (88.1-03) and the phone day column (88.1-12).
-  // Resolve the row, then read its authored offset; no geometry is fabricated, so in jsdom
-  // (where every box is zero) this is an inert no-op rather than a false pass — plan 88.1-18's
-  // pins make it observable by stubbing `offsetTop`, which is a test-side mechanism only.
+  // Resolve the row, then read its authored offset RELATIVE TO THE FIRST TIME ROW (row 0's own
+  // offset is subtracted — see the DECISION at the assignment); no geometry is fabricated, so in
+  // jsdom (where every box is zero) this is an inert no-op rather than a false pass — plan
+  // 88.1-18's pins and quick-261020-tz3's VO-P2-2 pin make it observable by stubbing `offsetTop`,
+  // which is a test-side mechanism only.
   //
   // TWO ARMS AS OF SPEC Req 13. The WEEK arm is the original Phase 66-03 CREVT-06 parity path
   // and still lands on the parent's week-wide `scrollToTime`. The DAY arm no longer reads
@@ -754,7 +756,19 @@ export default function EventScheduler({
     );
     const cell = container.querySelector(`[data-coord="${row}:0"]`) as HTMLElement | null;
     if (!cell) return;
-    container.scrollTop = cell.offsetTop;
+    /* DECISION quick-261020-tz3 (VO-P2-2, owner 2026-10-20: "I see a sliver of the selected time
+       at the top of the time picker"): the scroll target is the cell's offset MINUS the first time
+       row's offset, CHOSEN OVER the raw `cell.offsetTop`. The sticky day header lives in the same
+       positioned grid as the cells (`heatmap/WeekGrid.tsx`, anchor: className="grid gap-px
+       relative"), so row r's offsetTop already includes the header's height and the raw value
+       landed row r UNDER the header (measured in CI, run 39559380129: 37px of the row hidden on
+       every strip day). Row 0's offset IS that header height plus the grid gap, so subtracting it
+       lands row r exactly where row 0 sits unscrolled, fully below the header, with no pixel
+       value written anywhere. REJECTED: a hard-coded header height and `scroll-margin-top` — both
+       need a pixel value, and neither is measurable for the VoiceOver path. DECISION 88.1-18's
+       row choice above is untouched; only the offset base changed. */
+    const firstRow = container.querySelector('[data-coord="0:0"]') as HTMLElement | null;
+    container.scrollTop = cell.offsetTop - (firstRow?.offsetTop ?? 0);
   }, [scrollToTime, effectiveView, currentDate, dayPeakHour]);
 
   // ---------------------------------------------------------------------------
