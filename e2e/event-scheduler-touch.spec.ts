@@ -1604,6 +1604,161 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     ).toBe(true);
   });
 
+  test('VO-P2-2: a landed day column leaves no row as a sliver under the sticky day header (quick-261020-tz3)', async ({ page }) => {
+    /* THE OWNER'S WORDS (VoiceOver Part 2 walk, 2026-10-20, Findings row VO-P2-2): "It scrolls to
+       kinda past the time, I see a sliver of the selected time at the top of the time picker."
+       This MEASURES the opening landing in a real browser before anything is changed: after each
+       strip-day landing, the first time row that shows below the sticky day header must start at
+       or below that header's bottom edge — a row whose top is hidden under the header is the
+       sliver. The VoiceOver activation scroll the owner actually triggered is a WebKit path the
+       Chromium phone project cannot stage (playwright.config.ts, DECISION Phase 87.7 D-14); only
+       the landing arithmetic is engine-independent, and that is what this pins. */
+    await openVisualScheduler(page);
+
+    const tabs = dialog(page).getByRole('tab');
+    await expect(
+      tabs,
+      'the phone strip did not render seven day tabs — without the strip there is no way to change the DISPLAYED day, so this case could not measure a landing per day',
+    ).toHaveCount(7);
+
+    type SliverReading = {
+      index: number;
+      header: string;
+      scrollTop: number;
+      maxScroll: number;
+      headerBottom: number;
+      topRow: { row: number; top: number; bottom: number } | null;
+    };
+    const readings: SliverReading[] = [];
+
+    for (let i = 0; i < 7; i += 1) {
+      const tabLabel = await tabs.nth(i).getAttribute('aria-label');
+      const dayOfMonth = /\s(\d{1,2}),/.exec(tabLabel ?? '')?.[1];
+      expect(
+        dayOfMonth,
+        `strip tab ${i} has no parseable day-of-month in its accessible name ("${tabLabel}") — the tab naming changed, and without it this case cannot tell which day it is measuring`,
+      ).toBeDefined();
+
+      await tabs.nth(i).click();
+      await expect(dialog(page).getByRole('columnheader')).toHaveText(
+        new RegExp(`^${String(Number(dayOfMonth)).padStart(2, '0')} `),
+      );
+
+      // Settle exactly as the landing case above does: two identical readings in a row.
+      let previous = Number.NaN;
+      await expect
+        .poll(
+          async () => {
+            const now = await columnScrollTop(page);
+            const stable = Object.is(now, previous);
+            previous = now;
+            return stable;
+          },
+          {
+            message: `the day column's scroll position never settled after tapping strip day ${i} — something is still writing scrollTop, so no sliver measurement below would be meaningful`,
+            timeout: 10_000,
+          },
+        )
+        .toBe(true);
+
+      const reading = must(
+        await page.evaluate(() => {
+          const root = document.querySelector('[role="dialog"]');
+          const grid = root?.querySelector('[role="grid"]') as HTMLElement | null;
+          const scroller = grid?.parentElement as HTMLElement | null;
+          const headerEl = grid?.querySelector('[role="columnheader"]') as HTMLElement | null;
+          if (!grid || !scroller || !headerEl) return null;
+          const headerBottom = headerEl.getBoundingClientRect().bottom;
+          const rows: Array<{ row: number; top: number; bottom: number }> = [];
+          grid.querySelectorAll('[data-coord$=":0"]').forEach((cell) => {
+            const row = Number((cell.getAttribute('data-coord') ?? '').split(':')[0]);
+            if (!Number.isFinite(row)) return;
+            const r = (cell as HTMLElement).getBoundingClientRect();
+            rows.push({ row, top: r.top, bottom: r.bottom });
+          });
+          rows.sort((a, b) => a.row - b.row);
+          return {
+            header: headerEl.textContent ?? '',
+            scrollTop: scroller.scrollTop,
+            maxScroll: scroller.scrollHeight - scroller.clientHeight,
+            headerBottom,
+            // The first row (by row number) that shows below the header at all.
+            topRow: rows.find((r) => r.bottom > headerBottom + 0.5) ?? null,
+          };
+        }),
+        `the day column's geometry for strip day ${i}`,
+      );
+      readings.push({ index: i, ...reading });
+    }
+
+    // Landed and not clamped: a day at the top, or clamped at the end of the column, says nothing
+    // about where the landing arithmetic puts a row.
+    const landed = readings.filter((d) => d.scrollTop > 0 && d.scrollTop < d.maxScroll - 1);
+    expect(
+      landed.length,
+      `no strip day landed mid-column — either the fixture group has no availability (a FIXTURE failure, owned by scripts/e2e-fixtures.js, never a pass) or every landing clamped, and this case cannot measure the sliver at all. Per-day readings: ${JSON.stringify(readings)}`,
+    ).toBeGreaterThanOrEqual(1);
+
+    for (const day of landed) {
+      const top = must(day.topRow, `the first visible time row for strip day ${day.index}`);
+      expect(
+        top.top,
+        `VO-P2-2 (the owner's "sliver"): strip day ${day.index} ("${day.header}") landed at scrollTop ${day.scrollTop}px and its first visible row ${top.row} starts at ${top.top}px, ABOVE the sticky day header's bottom edge at ${day.headerBottom}px — ${day.headerBottom - top.top}px of that row is hidden under the header. Per-day readings: ${JSON.stringify(readings)}`,
+      ).toBeGreaterThanOrEqual(day.headerBottom - 0.5);
+    }
+  });
+
+  test('the day header keeps its full-bleed surface under the aria-hidden wrapper (quick-261020-tz3, visual unchanged)', async ({ page }) => {
+    /* CONFIRM-ONLY. quick-261020-tz3 (VO-P2-5) wrapped the labelled day header's content in one
+       inline aria-hidden span and made the header tabindex -1, so iOS VoiceOver lands on its
+       "Monday 2" name instead of the "02 Mon" text. The tint `renderDayHeader` returns is a
+       `block -my-2 py-2` surface that must still cover the whole header (EventScheduler.tsx, its
+       full-bleed DECISION). jsdom reports every box as zero, so this is the geometric proof that
+       the wrapper moved nothing visible. */
+    await openVisualScheduler(page);
+
+    const m = must(
+      await page.evaluate(() => {
+        const root = document.querySelector('[role="dialog"]');
+        const grid = root?.querySelector('[role="grid"]') as HTMLElement | null;
+        const header = grid?.querySelector('[role="columnheader"]') as HTMLElement | null;
+        if (!header) return null;
+        const surface = Array.from(header.querySelectorAll('*')).find(
+          (el) => getComputedStyle(el).display === 'block',
+        ) as HTMLElement | undefined;
+        if (!surface) return null;
+        const h = header.getBoundingClientRect();
+        const sr = surface.getBoundingClientRect();
+        return {
+          header: { left: h.left, right: h.right, top: h.top, bottom: h.bottom },
+          surface: { left: sr.left, right: sr.right, top: sr.top, bottom: sr.bottom },
+          borderBottom: parseFloat(getComputedStyle(header).borderBottomWidth) || 0,
+          tabindex: header.getAttribute('tabindex'),
+          ariaLabel: header.getAttribute('aria-label') ?? '',
+          childrenHidden: Array.from(header.children).map((c) => c.getAttribute('aria-hidden')),
+          text: header.textContent ?? '',
+        };
+      }),
+      "the day header and its block surface (renderDayHeader's tint)",
+    );
+
+    const geometry = JSON.stringify(m);
+    expect(Math.abs(m.surface.left - m.header.left), `surface left edge moved: ${geometry}`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(m.surface.right - m.header.right), `surface right edge moved: ${geometry}`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(m.surface.top - m.header.top), `surface top edge moved: ${geometry}`).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs(m.surface.bottom - (m.header.bottom - m.borderBottom)),
+      `surface bottom edge is not the header's bottom minus its border: ${geometry}`,
+    ).toBeLessThanOrEqual(0.5);
+    expect(m.tabindex, `the labelled day header must be a focusable leaf (tabindex -1): ${geometry}`).toBe('-1');
+    expect(m.ariaLabel, `the header's name must be weekday + day number: ${geometry}`).toMatch(/^[A-Z][a-z]+day \d{1,2}$/);
+    expect(m.childrenHidden.length, `the header has no element child: ${geometry}`).toBeGreaterThan(0);
+    for (const hidden of m.childrenHidden) {
+      expect(hidden, `every element child of the header must be aria-hidden: ${geometry}`).toBe('true');
+    }
+    expect(m.text, `the header's visible text changed: ${geometry}`).toMatch(/^\d{2} [A-Z][a-z]{2}$/);
+  });
+
   test('characterizes the desktop-arm first frame (plan 88.1-12 deviation 3)', async ({ page }) => {
     /* THE ONE DEFECT PLAN 88.1-12 KNOWINGLY SHIPPED, measured here because it is
        unobservable anywhere else. `isPhoneViewport` starts FALSE and is corrected
