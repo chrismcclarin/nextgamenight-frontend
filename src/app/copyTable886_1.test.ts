@@ -194,6 +194,9 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'P78h', text: "Prompt schedule: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/PromptScheduleManager.js', kind: 'concat', parts: ['Prompt schedule'], code: ['sectionName={PROMPT_SCHEDULE_SECTION_NAME}'] },
   // VoiceOver Part 2 walk ruling (owner 2026-10-20, Findings row VO-P2-3; quick-261020-tz3): the spoken range says 'to'
   { id: 'VO3', text: ' to ', site: 'app/components/EventScheduler.tsx', kind: 'chunk' },
+  // Games to Bring re-entry ruling (owner 2026-10-21, deferred/phase-91.3.md; quick-261021-ffb)
+  { id: 'GB1', text: 'Add games', site: 'app/components/BringSummary.js', kind: 'chunk' },
+  { id: 'GB2', text: "No one has said what they're bringing yet.", site: 'app/components/BringSummary.js', kind: 'chunk' },
 ];
 
 // The exact roster: a dropped or renamed row fails.
@@ -214,6 +217,8 @@ const EXPECTED_IDS = [
   'P78d', 'P78e', 'P78f', 'P78g', 'P78h',
   // VoiceOver Part 2 walk ruling (owner 2026-10-20, Findings row VO-P2-3; quick-261020-tz3): the spoken range says 'to'
   'VO3',
+  // Games to Bring re-entry ruling (owner 2026-10-21, deferred/phase-91.3.md; quick-261021-ffb)
+  'GB1', 'GB2',
 ];
 
 // Rows that ship no literal of their own.
@@ -392,11 +397,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (123 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (125 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(123);
+    expect(ids).toHaveLength(125);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });

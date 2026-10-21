@@ -620,6 +620,26 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-h', 'h'],
       label: "ResponseDashboard's `Refresh` button, height (SPEC Constraints 44x44 floor)",
     },
+    // quick-261021-ffb (owner 2026-10-21, Games to Bring re-entry): BringSummary's ONE viewer control,
+    // labelled `Add games` (no brings) or `Edit` (has brings), sits on the house phone-scoped pair
+    // `min-h-11 md:min-h-0 min-w-11 md:min-w-0` (`GroupGamesList.js:462`). Both axes are pinned
+    // because `Edit` is a short word. The floor is MET, so no D13_FLOOR_ROSTER entry.
+    bringSummaryControl: {
+      anchor: 'onClick={onEditClick}',
+      expectedFile: 'app/components/BringSummary.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "BringSummary's viewer control (`Add games` / `Edit`), height",
+    },
+    bringSummaryControlWidth: {
+      anchor: 'onClick={onEditClick}',
+      expectedFile: 'app/components/BringSummary.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "BringSummary's viewer control (`Add games` / `Edit`), width; `Edit` is under 44px wide at text-sm",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */
