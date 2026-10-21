@@ -202,12 +202,25 @@ function formatDuration(start: Date, end: Date): string {
  * Plan 88.6-52 (W46 live-region half, SPEC R5 P1): the Selected Time panel's label and range text,
  * declared ONCE so the panel and the live region cannot drift. The region speaks exactly what the
  * panel prints — no new words.
+ * AMENDED quick-261020-tz3 (VO-P2-3), the above kept as history: EXCEPT the separator. iOS
+ * VoiceOver reads the panel's dash as nothing ("3pm 5pm 2 hours", owner 2026-10-20), so the spoken
+ * line says "to" — the owner's own wording, ratified 2026-10-20 (R12; copy row VO3). The panel
+ * keeps the dash.
  */
 const SELECTED_TIME_LABEL = 'Selected Time:';
+// DECISION quick-261020-tz3 (VO-P2-3): the SPOKEN range joins the times with "to", chosen OVER the
+// panel's dash — VoiceOver speaks the dash as nothing. REJECTED: changing the visible panel too (not
+// asked, and the e2e parser `readSelection` in e2e/event-scheduler-touch.spec.ts reads the dash).
+// One formatter, two separators; a second range formatter or a string-replace of the dash is a
+// decision, not a cleanup.
+const SPOKEN_RANGE_SEPARATOR = ' to ';
 
-/** The panel's range text, e.g. "Wednesday, July 22, 7:00 PM - 9:30 PM". */
-function formatSlotRange(start: Date, end: Date): string {
-  return `${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')}`;
+/**
+ * The panel's range text, e.g. "Wednesday, July 22, 7:00 PM - 9:30 PM". The live region passes
+ * `SPOKEN_RANGE_SEPARATOR` instead of the panel's default dash (VO-P2-3).
+ */
+function formatSlotRange(start: Date, end: Date, separator: string = ' - '): string {
+  return `${format(start, 'EEEE, MMMM d, h:mm a')}${separator}${format(end, 'h:mm a')}`;
 }
 
 /**
@@ -668,8 +681,14 @@ export default function EventScheduler({
          (`.planning/deferred/phase-92.md`, the 2026-10-04 APPEND) — amended in place by
          88.6.1-24 (D-10; AT correction 7, which also corrected the long-press-only touch claim
          this sentence used to make). The utterance is the panel's printed text verbatim (label +
-         range + duration), so a screen-reader user hears no new words. */
-      announce(`${SELECTED_TIME_LABEL} ${formatSlotRange(start, end)} (${formatDuration(start, end)})`);
+         range + duration), so a screen-reader user hears no new words.
+         AMENDED quick-261020-tz3 (VO-P2-3), the above kept as history: EXCEPT the separator — iOS
+         VoiceOver reads the dash as nothing ("3pm 5pm 2 hours", owner 2026-10-20), so the spoken
+         range says "to", the owner's own wording, ratified 2026-10-20 (R12). The panel keeps the
+         dash. */
+      announce(
+        `${SELECTED_TIME_LABEL} ${formatSlotRange(start, end, SPOKEN_RANGE_SEPARATOR)} (${formatDuration(start, end)})`
+      );
     },
     [columnDates, onTimeSelected, announce]
   );

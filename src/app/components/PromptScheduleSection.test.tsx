@@ -254,10 +254,25 @@ describe('Check-ins panel classes and loading badge (W018, G4)', () => {
     expect((panel as HTMLElement).className).toBe('mt-3');
   });
 
-  it('G1. while the open-polls query is pending, the badge says what is loading', async () => {
+  // quick-261020-tz3 (VO-P2-7, owner VoiceOver walk 2026-10-20): VoiceOver read the three ASCII
+  // full stops aloud inside the header button's name ("check-ins three periods expanded"), so G4
+  // moved to ONE U+2026 ellipsis — the same words, one glyph.
+  it('G1. while the open-polls query is pending, the badge says what is loading, with one ellipsis character', async () => {
     vi.mocked(promptAPI.getOpenPrompts).mockImplementationOnce(() => new Promise(() => {}) as never);
     renderSection({ defaultExpanded: false });
-    expect(within(header()).getByText('Loading check-ins...')).toBeInTheDocument();
-    expect(header()).toHaveAccessibleName(/Loading check-ins\.\.\./);
+    expect(within(header()).getByText('Loading check-ins\u2026')).toBeInTheDocument();
+    expect(header()).toHaveAccessibleName(/Loading check-ins\u2026/);
+    expect(header()).not.toHaveAccessibleName(/\.\.\./);
+  });
+
+  it('G1b. expanded while pending: the badge and the list loading line say the same thing in the same glyph (VO-P2-7)', async () => {
+    // One fetch serves both (the shared openPolls key), so one never-resolving mock holds both.
+    vi.mocked(promptAPI.getOpenPrompts).mockImplementationOnce(() => new Promise(() => {}) as never);
+    renderSection({ defaultExpanded: true });
+    expect(await screen.findAllByText('Loading check-ins\u2026')).toHaveLength(2);
+    const dotted = Array.from(document.body.querySelectorAll('*')).filter((el) =>
+      Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').includes('...'))
+    );
+    expect(dotted).toHaveLength(0);
   });
 });

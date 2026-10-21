@@ -1892,6 +1892,9 @@ describe('EventScheduler — the active-change handler does NO state work of its
 // same shape the panel and the header already print, never copied from component output. The
 // "rendered twice" assertions are the proof that the region and the visible surface share one
 // formatter.
+// ONE EXCEPTION, the separator (quick-261020-tz3, VO-P2-3, owner VoiceOver walk 2026-10-20): iOS
+// VoiceOver reads the panel's dash as nothing ("3pm 5pm 2 hours"), so the SPOKEN range joins the
+// two times with the owner-ratified "to"; the visible panel keeps the dash.
 // =========================================================================================
 describe('EventScheduler — W46 live-region half: one polite, always-mounted StatusRegion (88.6-52)', () => {
   let restoreResolver: () => void;
@@ -1904,9 +1907,9 @@ describe('EventScheduler — W46 live-region half: one polite, always-mounted St
 
   const monday = startOfWeek(WEEK_N, { weekStartsOn: 1 });
   const region = () => screen.getByRole('status');
-  /** The commit utterance: exactly the panel's printed label + range + duration. */
+  /** The commit utterance: the panel's label + range + duration, the range spoken with "to" (VO-P2-3). */
   const commitUtterance = (start: Date, end: Date, duration: string) =>
-    `Selected Time: ${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')} (${duration})`;
+    `Selected Time: ${format(start, 'EEEE, MMMM d, h:mm a')} to ${format(end, 'h:mm a')} (${duration})`;
 
   it('is mounted EMPTY on every render, polite, sr-only, and the root\'s FIRST element child', () => {
     const { container } = render(
@@ -1942,6 +1945,8 @@ describe('EventScheduler — W46 live-region half: one polite, always-mounted St
     expect(onTimeSelected).toHaveBeenCalledTimes(1);
     expect(onTimeSelected).toHaveBeenCalledWith(start, end);
     expect(region().textContent).toBe(commitUtterance(start, end, '30 min'));
+    // VO-P2-3: iOS VoiceOver speaks the dash as nothing — the spoken line carries none.
+    expect(region().textContent).not.toContain(' - ');
   });
 
   it('announces a keyboard Space commit in the DAY arm', () => {

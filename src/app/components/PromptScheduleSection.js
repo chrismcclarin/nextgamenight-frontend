@@ -19,7 +19,10 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 
 // Copy row G4, owner-ratified 2026-10-04 (D-30): byte-equal to the copy table, three ASCII dots as
 // ratified (CP-4a: each row keeps its own ellipsis glyph). Hoisted at the site per D-30's placement rule.
-const CHECK_INS_LOADING_LABEL = 'Loading check-ins...';
+// AMENDED quick-261020-tz3 (VO-P2-7), the above kept as history: G4 moved from three ASCII full stops
+// to ONE U+2026 ellipsis — VoiceOver read the full stops aloud inside the header button's name
+// ("check-ins three periods expanded", owner 2026-10-20). The same words; not new copy.
+const CHECK_INS_LOADING_LABEL = 'Loading check-ins…';
 
 /**
  * PromptScheduleSection - Collapsible section for the group planning page.
