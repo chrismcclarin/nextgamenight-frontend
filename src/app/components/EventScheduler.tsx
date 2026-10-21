@@ -764,9 +764,11 @@ export default function EventScheduler({
        landed row r UNDER the header (measured in CI, run 39559380129: 37px of the row hidden on
        every strip day). Row 0's offset IS that header height plus the grid gap, so subtracting it
        lands row r exactly where row 0 sits unscrolled, fully below the header, with no pixel
-       value written anywhere. REJECTED: a hard-coded header height and `scroll-margin-top` — both
-       need a pixel value, and neither is measurable for the VoiceOver path. DECISION 88.1-18's
-       row choice above is untouched; only the offset base changed. */
+       value written anywhere. REJECTED: a hard-coded header height (a pixel constant that is wrong
+       the day the header's padding or font changes, and the jsdom pin runs two header heights so
+       that constant cannot pass it) and `scroll-margin-top` (it only applies to `scrollIntoView`
+       and scroll snapping, never to a direct `scrollTop` assignment, so it could not act here at
+       all). DECISION 88.1-18's row choice above is untouched; only the offset base changed. */
     const firstRow = container.querySelector('[data-coord="0:0"]') as HTMLElement | null;
     container.scrollTop = cell.offsetTop - (firstRow?.offsetTop ?? 0);
   }, [scrollToTime, effectiveView, currentDate, dayPeakHour]);

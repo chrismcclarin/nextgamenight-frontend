@@ -1615,8 +1615,12 @@ describe('EventScheduler — day view lands on the DAY peak, not the week peak (
 // number models the thing that precedes row 0) and expects the landing to subtract it back out by
 // reading row 0's own offset — not a pixel constant.
 // =============================================================================================
-describe('EventScheduler — the landing offset is taken from the first time row, so the sticky day header covers nothing (VO-P2-2, quick-261020-tz3)', () => {
-  const HEADER_PX = 37;
+// Two header heights, deliberately: with a single value a hard-coded `- 37` would pass this pin
+// just as well as reading row 0's offset, and the DECISION marker forbids exactly that constant.
+// 37 is the measured header; 52 is any other header.
+describe.each([37, 52])(
+  'EventScheduler — the landing offset is taken from the first time row, so the sticky day header covers nothing (VO-P2-2, quick-261020-tz3) [HEADER_PX=%i]',
+  (HEADER_PX) => {
   let originalOffsetTop: PropertyDescriptor | undefined;
 
   beforeEach(() => {
@@ -1677,7 +1681,8 @@ describe('EventScheduler — the landing offset is taken from the first time row
     );
     expect(scroller().scrollTop).toBe(0);
   });
-});
+  }
+);
 
 describe('EventScheduler — assistive-tech affordances on the grid (88.1-21, 88.1-CODE-REVIEW.md)', () => {
   const SELECTED = {
