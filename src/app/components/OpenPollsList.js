@@ -240,7 +240,8 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
           Retry is plan 70's. Changing this is a decision, not a cleanup. */}
       <RetainedContentFocusGuard retained={pollsRetained} focusTarget={focusFallbackRef} />
       {loading ? (
-        <p className="text-content-muted text-sm py-4 text-center">Loading check-ins...</p>
+        // Matches copy row G4 (CHECK_INS_LOADING_LABEL in PromptScheduleSection.js), one U+2026 — VO-P2-7.
+        <p className="text-content-muted text-sm py-4 text-center">Loading check-ins…</p>
       ) : pollsErrorState.showError && !pollsRetained ? (
         <FetchErrorBanner
           state={pollsErrorState}

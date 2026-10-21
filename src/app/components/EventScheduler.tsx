@@ -202,12 +202,25 @@ function formatDuration(start: Date, end: Date): string {
  * Plan 88.6-52 (W46 live-region half, SPEC R5 P1): the Selected Time panel's label and range text,
  * declared ONCE so the panel and the live region cannot drift. The region speaks exactly what the
  * panel prints — no new words.
+ * AMENDED quick-261020-tz3 (VO-P2-3), the above kept as history: EXCEPT the separator. iOS
+ * VoiceOver reads the panel's dash as nothing ("3pm 5pm 2 hours", owner 2026-10-20), so the spoken
+ * line says "to" — the owner's own wording, ratified 2026-10-20 (R12; copy row VO3). The panel
+ * keeps the dash.
  */
 const SELECTED_TIME_LABEL = 'Selected Time:';
+// DECISION quick-261020-tz3 (VO-P2-3): the SPOKEN range joins the times with "to", chosen OVER the
+// panel's dash — VoiceOver speaks the dash as nothing. REJECTED: changing the visible panel too (not
+// asked, and the e2e parser `readSelection` in e2e/event-scheduler-touch.spec.ts reads the dash).
+// One formatter, two separators; a second range formatter or a string-replace of the dash is a
+// decision, not a cleanup.
+const SPOKEN_RANGE_SEPARATOR = ' to ';
 
-/** The panel's range text, e.g. "Wednesday, July 22, 7:00 PM - 9:30 PM". */
-function formatSlotRange(start: Date, end: Date): string {
-  return `${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')}`;
+/**
+ * The panel's range text, e.g. "Wednesday, July 22, 7:00 PM - 9:30 PM". The live region passes
+ * `SPOKEN_RANGE_SEPARATOR` instead of the panel's default dash (VO-P2-3).
+ */
+function formatSlotRange(start: Date, end: Date, separator: string = ' - '): string {
+  return `${format(start, 'EEEE, MMMM d, h:mm a')}${separator}${format(end, 'h:mm a')}`;
 }
 
 /**
@@ -668,8 +681,14 @@ export default function EventScheduler({
          (`.planning/deferred/phase-92.md`, the 2026-10-04 APPEND) — amended in place by
          88.6.1-24 (D-10; AT correction 7, which also corrected the long-press-only touch claim
          this sentence used to make). The utterance is the panel's printed text verbatim (label +
-         range + duration), so a screen-reader user hears no new words. */
-      announce(`${SELECTED_TIME_LABEL} ${formatSlotRange(start, end)} (${formatDuration(start, end)})`);
+         range + duration), so a screen-reader user hears no new words.
+         AMENDED quick-261020-tz3 (VO-P2-3), the above kept as history: EXCEPT the separator — iOS
+         VoiceOver reads the dash as nothing ("3pm 5pm 2 hours", owner 2026-10-20), so the spoken
+         range says "to", the owner's own wording, ratified 2026-10-20 (R12). The panel keeps the
+         dash. */
+      announce(
+        `${SELECTED_TIME_LABEL} ${formatSlotRange(start, end, SPOKEN_RANGE_SEPARATOR)} (${formatDuration(start, end)})`
+      );
     },
     [columnDates, onTimeSelected, announce]
   );
@@ -686,9 +705,11 @@ export default function EventScheduler({
   // ---------------------------------------------------------------------------
   // The opening scroll position. WeekGrid's `scrollContainerRef` is ONE seam with three
   // consumers — this, the rAF edge auto-scroll (88.1-03) and the phone day column (88.1-12).
-  // Resolve the row, then read its authored offset; no geometry is fabricated, so in jsdom
-  // (where every box is zero) this is an inert no-op rather than a false pass — plan 88.1-18's
-  // pins make it observable by stubbing `offsetTop`, which is a test-side mechanism only.
+  // Resolve the row, then read its authored offset RELATIVE TO THE FIRST TIME ROW (row 0's own
+  // offset is subtracted — see the DECISION at the assignment); no geometry is fabricated, so in
+  // jsdom (where every box is zero) this is an inert no-op rather than a false pass — plan
+  // 88.1-18's pins and quick-261020-tz3's VO-P2-2 pin make it observable by stubbing `offsetTop`,
+  // which is a test-side mechanism only.
   //
   // TWO ARMS AS OF SPEC Req 13. The WEEK arm is the original Phase 66-03 CREVT-06 parity path
   // and still lands on the parent's week-wide `scrollToTime`. The DAY arm no longer reads
@@ -735,7 +756,21 @@ export default function EventScheduler({
     );
     const cell = container.querySelector(`[data-coord="${row}:0"]`) as HTMLElement | null;
     if (!cell) return;
-    container.scrollTop = cell.offsetTop;
+    /* DECISION quick-261020-tz3 (VO-P2-2, owner 2026-10-20: "I see a sliver of the selected time
+       at the top of the time picker"): the scroll target is the cell's offset MINUS the first time
+       row's offset, CHOSEN OVER the raw `cell.offsetTop`. The sticky day header lives in the same
+       positioned grid as the cells (`heatmap/WeekGrid.tsx`, anchor: className="grid gap-px
+       relative"), so row r's offsetTop already includes the header's height and the raw value
+       landed row r UNDER the header (measured in CI, run 39559380129: 37px of the row hidden on
+       every strip day). Row 0's offset IS that header height plus the grid gap, so subtracting it
+       lands row r exactly where row 0 sits unscrolled, fully below the header, with no pixel
+       value written anywhere. REJECTED: a hard-coded header height (a pixel constant that is wrong
+       the day the header's padding or font changes, and the jsdom pin runs two header heights so
+       that constant cannot pass it) and `scroll-margin-top` (it only applies to `scrollIntoView`
+       and scroll snapping, never to a direct `scrollTop` assignment, so it could not act here at
+       all). DECISION 88.1-18's row choice above is untouched; only the offset base changed. */
+    const firstRow = container.querySelector('[data-coord="0:0"]') as HTMLElement | null;
+    container.scrollTop = cell.offsetTop - (firstRow?.offsetTop ?? 0);
   }, [scrollToTime, effectiveView, currentDate, dayPeakHour]);
 
   // ---------------------------------------------------------------------------

@@ -667,7 +667,24 @@ describe.each(AXE_VIEWPORTS)('EventScheduler — axe on the $name arm (Req 6)', 
           }}
         />
       );
-      expect(await axe(container)).toHaveNoViolations();
+      // DECISION quick-261020-tz3 (VO-P2-5): the full axe run here keeps every rule EXCEPT the
+      // best-practice `empty-table-header` (impact minor), chosen OVER keeping it and reverting the
+      // day header to an exposed text child. That rule's only check is `has-visible-text`, which
+      // counts AT-visible subtree text and IGNORES the header's aria-label — while iOS VoiceOver
+      // honours the label only when the header has NO accessible children (WebKit's ColumnHeader
+      // rule; owner's iPhone walk 2026-10-20 heard "zero two mon"). The two cannot both hold. In its
+      // place this test pins the property the rule exists for: every day columnheader has a
+      // non-empty name, and it is the focusable leaf iOS lands on. WCAG 4.1.2 stays fully audited
+      // (the rule is not in that set). Re-enabling the rule is a decision, not a cleanup.
+      expect(
+        await axe(container, { rules: { 'empty-table-header': { enabled: false } } })
+      ).toHaveNoViolations();
+      const dayHeaders = within(container).getAllByRole('columnheader');
+      expect(dayHeaders.length).toBeGreaterThan(0);
+      for (const header of dayHeaders) {
+        expect(header.getAttribute('aria-label') ?? '').toMatch(/^[A-Z][a-z]+day \d{1,2}$/);
+        expect(header).toHaveAttribute('tabindex', '-1');
+      }
     } finally {
       restore();
     }
@@ -1400,7 +1417,8 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
 // A DELIBERATE, SCOPED NARROWING OF THIS FILE'S GEOMETRY EXCLUSION (see ":P7, anything geometric"
 // in the preamble). That rule stands for REAL layout — jsdom computes none, so column widths and
 // strip cell heights remain Playwright's. What is answerable here is the effect's OWN assignment:
-// `container.scrollTop = cell.offsetTop`. Both halves were probed against this repo's vitest
+// `container.scrollTop = cell.offsetTop - row0.offsetTop` (the subtraction since
+// quick-261020-tz3, VO-P2-2). Both halves were probed against this repo's vitest
 // (4.1.7, jsdom) on 2026-08-24: `scrollTop` round-trips faithfully, and an `offsetTop` accessor
 // installed on `HTMLElement.prototype` is read by the component.
 //
@@ -1582,6 +1600,89 @@ describe('EventScheduler — day view lands on the DAY peak, not the week peak (
     expect(scroller().scrollTop).not.toBe(WED_ROW * ROW_PX);
   });
 });
+
+// =============================================================================================
+// quick-261020-tz3 — VO-P2-2: the landing offset is taken from the FIRST TIME ROW, so the sticky
+// day header covers none of the landed row.
+//
+// The Req 13 describe above stubs `offsetTop` as `row * ROW_PX`, which models a grid whose row 0
+// sits at offset 0. The real grid does not: `heatmap/WeekGrid.tsx:506-560` (anchor:
+// className="grid gap-px relative") positions the sticky header cells INSIDE the same `relative`
+// grid, ahead of row 0, so every row's authored offset already includes the header's height.
+// Measured in CI on the pre-fix tree (run 39559380129, phone project, 2026-10-21): the landed row
+// started 37px above the header's bottom edge on every strip day — the owner's "sliver". This stub
+// adds one synthetic `HEADER_PX` to every `[data-coord]` offset (no layout is fabricated; the one
+// number models the thing that precedes row 0) and expects the landing to subtract it back out by
+// reading row 0's own offset — not a pixel constant.
+// =============================================================================================
+// Two header heights, deliberately: with a single value a hard-coded `- 37` would pass this pin
+// just as well as reading row 0's offset, and the DECISION marker forbids exactly that constant.
+// 37 is the measured header; 52 is any other header.
+describe.each([37, 52])(
+  'EventScheduler — the landing offset is taken from the first time row, so the sticky day header covers nothing (VO-P2-2, quick-261020-tz3) [HEADER_PX=%i]',
+  (HEADER_PX) => {
+  let originalOffsetTop: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalOffsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        const coord = this.getAttribute?.('data-coord');
+        return coord ? HEADER_PX + Number(coord.split(':')[0]) * ROW_PX : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    // Same restore idiom as the Req 13 describe (T-88.1-51): a stub left installed is a
+    // cross-suite leak.
+    if (originalOffsetTop) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetTop', originalOffsetTop);
+    } else {
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetTop;
+    }
+  });
+
+  it('DAY arm: lands the day peak row where row 0 sits unscrolled, not HEADER_PX past it', () => {
+    render(
+      <EventScheduler
+        initialDate={REQ13_WED}
+        defaultView="day"
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+    expect(scroller().scrollTop).toBe(WED_ROW * ROW_PX);
+    expect(scroller().scrollTop).not.toBe(HEADER_PX + WED_ROW * ROW_PX);
+  });
+
+  it('WEEK arm: the same subtraction on the parent-supplied scrollToTime', () => {
+    render(
+      <EventScheduler
+        initialDate={REQ13_WED}
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+    expect(columnHeaders()).toHaveLength(7);
+    expect(scroller().scrollTop).toBe(WEEK_ROW * ROW_PX);
+    expect(scroller().scrollTop).not.toBe(HEADER_PX + WEEK_ROW * ROW_PX);
+  });
+
+  it('an empty day still stays at the top (confirm-only; Req 13 owner ruling 2026-08-24 untouched)', () => {
+    render(
+      <EventScheduler
+        initialDate={REQ13_MON}
+        defaultView="day"
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+    expect(scroller().scrollTop).toBe(0);
+  });
+  }
+);
 
 describe('EventScheduler — assistive-tech affordances on the grid (88.1-21, 88.1-CODE-REVIEW.md)', () => {
   const SELECTED = {
@@ -1875,6 +1976,9 @@ describe('EventScheduler — the active-change handler does NO state work of its
 // same shape the panel and the header already print, never copied from component output. The
 // "rendered twice" assertions are the proof that the region and the visible surface share one
 // formatter.
+// ONE EXCEPTION, the separator (quick-261020-tz3, VO-P2-3, owner VoiceOver walk 2026-10-20): iOS
+// VoiceOver reads the panel's dash as nothing ("3pm 5pm 2 hours"), so the SPOKEN range joins the
+// two times with the owner-ratified "to"; the visible panel keeps the dash.
 // =========================================================================================
 describe('EventScheduler — W46 live-region half: one polite, always-mounted StatusRegion (88.6-52)', () => {
   let restoreResolver: () => void;
@@ -1887,9 +1991,9 @@ describe('EventScheduler — W46 live-region half: one polite, always-mounted St
 
   const monday = startOfWeek(WEEK_N, { weekStartsOn: 1 });
   const region = () => screen.getByRole('status');
-  /** The commit utterance: exactly the panel's printed label + range + duration. */
+  /** The commit utterance: the panel's label + range + duration, the range spoken with "to" (VO-P2-3). */
   const commitUtterance = (start: Date, end: Date, duration: string) =>
-    `Selected Time: ${format(start, 'EEEE, MMMM d, h:mm a')} - ${format(end, 'h:mm a')} (${duration})`;
+    `Selected Time: ${format(start, 'EEEE, MMMM d, h:mm a')} to ${format(end, 'h:mm a')} (${duration})`;
 
   it('is mounted EMPTY on every render, polite, sr-only, and the root\'s FIRST element child', () => {
     const { container } = render(
@@ -1925,6 +2029,8 @@ describe('EventScheduler — W46 live-region half: one polite, always-mounted St
     expect(onTimeSelected).toHaveBeenCalledTimes(1);
     expect(onTimeSelected).toHaveBeenCalledWith(start, end);
     expect(region().textContent).toBe(commitUtterance(start, end, '30 min'));
+    // VO-P2-3: iOS VoiceOver speaks the dash as nothing — the spoken line carries none.
+    expect(region().textContent).not.toContain(' - ');
   });
 
   it('announces a keyboard Space commit in the DAY arm', () => {

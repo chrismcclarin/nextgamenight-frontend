@@ -242,6 +242,73 @@ describe('WeekGrid — seam 7: dayHeaderLabel (88.6.1-85, close ruling P-94)', (
     expect(screen.getByRole('columnheader', { name: 'Monday 5' })).toContainElement(screen.getByTestId('dh7-0'));
     expect(screen.getByRole('columnheader', { name: 'Tuesday 6' })).toContainElement(screen.getByTestId('dh7-1'));
   });
+
+  // quick-261020-tz3 (VO-P2-5, owner VoiceOver walk 2026-10-20: "zero two mon"): iOS ignored the
+  // label because a non-focusable header with a text child is never an accessibility element, so
+  // VoiceOver landed on the child text. A LABELLED header is therefore a focusable leaf: tabindex -1
+  // (out of the Tab order) with every element child aria-hidden. Its text and name are unchanged.
+  it('SEAM7-4 a labelled day columnheader is a focusable leaf: tabindex -1, every element child aria-hidden, text and name unchanged; unlabelled headers keep no tabindex and no wrapper (VO-P2-5)', () => {
+    const { unmount } = render(
+      <WeekGrid
+        variant="read"
+        days={2}
+        slots={1}
+        dayLabels={['Mon', 'Tue']}
+        getCell={readCell}
+        dayHeaderLabel={(col) => ['Monday 5', 'Tuesday 6'][col]}
+        ariaLabel="seam7"
+      />
+    );
+    const labelled: Array<[string, string]> = [
+      ['Monday 5', 'Mon'],
+      ['Tuesday 6', 'Tue'],
+    ];
+    for (const [name, text] of labelled) {
+      const header = screen.getByRole('columnheader', { name });
+      expect(header).toHaveAttribute('tabindex', '-1');
+      expect(header.textContent).toBe(text);
+      expect(header.children.length).toBeGreaterThan(0);
+      for (const child of Array.from(header.children)) {
+        expect(child).toHaveAttribute('aria-hidden', 'true');
+      }
+    }
+    // The gutter corner is not labelled, so it gains nothing.
+    expect(screen.getAllByRole('columnheader')[0]).not.toHaveAttribute('tabindex');
+    unmount();
+
+    // With renderDayHeader too: the custom node is still inside the named, focusable header.
+    const second = render(
+      <WeekGrid
+        variant="read"
+        days={2}
+        slots={1}
+        dayLabels={['Mon', 'Tue']}
+        getCell={readCell}
+        renderDayHeader={(col) => <span data-testid={`dh7b-${col}`}>day {col}</span>}
+        dayHeaderLabel={(col) => ['Monday 5', 'Tuesday 6'][col]}
+        ariaLabel="seam7"
+      />
+    );
+    const monday = screen.getByRole('columnheader', { name: 'Monday 5' });
+    expect(monday).toHaveAttribute('tabindex', '-1');
+    expect(monday).toContainElement(screen.getByTestId('dh7b-0'));
+    for (const child of Array.from(monday.children)) {
+      expect(child).toHaveAttribute('aria-hidden', 'true');
+    }
+    second.unmount();
+
+    // CONFIRM-ONLY half: without the prop the header markup is what it was (no tabindex, text as
+    // the header's only child, no wrapper element).
+    render(
+      <WeekGrid variant="read" days={2} slots={1} dayLabels={['Mon', 'Tue']} getCell={readCell} ariaLabel="seam7" />
+    );
+    const plain = screen.getAllByRole('columnheader').slice(1);
+    expect(plain).toHaveLength(2);
+    for (const header of plain) {
+      expect(header).not.toHaveAttribute('tabindex');
+      expect(header.children).toHaveLength(0);
+    }
+  });
 });
 
 describe('WeekGrid — seam 3: overlay over a positioned body', () => {

@@ -147,6 +147,19 @@ interface WeekGridBaseProps {
    * instead of the name (research `APPENDIX-AT.md` AT-1); (c) changing the visible text — the
    * owner kept "19 Mon". Changing this is a decision, not a cleanup.
    *
+   * ——— AMENDED quick-261020-tz3 (VO-P2-5, owner VoiceOver walk 2026-10-20: the header spoke
+   * "zero two mon"), the reasoning above KEPT AS HISTORY: rejected option (b), visually hidden text
+   * inside the header, STAYS rejected. ADDED: iOS ignored the label because a non-focusable header
+   * with a text child is never an accessibility element, so VoiceOver landed on the child text
+   * instead. WebKit treats a ColumnHeader as an element only when it is keyboard-focusable, has no
+   * accessible children and has a label; so when this prop is supplied the header is also
+   * `tabIndex={-1}` (focusable, NOT in the Tab order) and its content (SEAM 2's node or the
+   * `dayLabels` text) is wrapped in one inline `aria-hidden` span — the same technique the
+   * gridcells already use (`ReadCell.tsx`, `tabIndex={tabIndex}` + `aria-label={ariaLabel}`). An
+   * inline span adds no box for text, and SEAM 2's block surface lays out in the header's own block
+   * flow, so nothing visible moves. Without the prop the markup stays byte-identical (no tabindex,
+   * no wrapper). Changing either half is a decision, not a cleanup.
+   *
    * MEMO-STABILITY: pass a stable callback (`useCallback`), as for SEAM 2. It is read in the
    * header row only, never by the memoised cells.
    */
@@ -512,16 +525,23 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
               the consumer's contract is "one columnheader per day column" — see the DECISION on
               `gutterHeaderRole`. */}
           <div role={gutterHeaderRole} className="sticky top-0 left-0 z-30 bg-surface-card" />
-          {Array.from({ length: days }, (_, col) => (
-            <div
-              key={`h-${col}`}
-              role="columnheader"
-              aria-label={dayHeaderLabel ? dayHeaderLabel(col) : undefined}
-              className="sticky top-0 z-20 bg-surface-card text-center py-2 text-sm text-content-secondary border-b border-line"
-            >
-              {renderDayHeader ? renderDayHeader(col) : (dayLabels?.[col] ?? '')}
-            </div>
-          ))}
+          {Array.from({ length: days }, (_, col) => {
+            const headerContent = renderDayHeader ? renderDayHeader(col) : (dayLabels?.[col] ?? '');
+            // SEAM 7, quick-261020-tz3 (see the DECISION on `dayHeaderLabel`): a LABELLED header is
+            // a focusable leaf for iOS VoiceOver — tabIndex -1 plus an aria-hidden content wrapper.
+            // Unlabelled headers render exactly as before.
+            return (
+              <div
+                key={`h-${col}`}
+                role="columnheader"
+                aria-label={dayHeaderLabel ? dayHeaderLabel(col) : undefined}
+                tabIndex={dayHeaderLabel ? -1 : undefined}
+                className="sticky top-0 z-20 bg-surface-card text-center py-2 text-sm text-content-secondary border-b border-line"
+              >
+                {dayHeaderLabel ? <span aria-hidden="true">{headerContent}</span> : headerContent}
+              </div>
+            );
+          })}
         </div>
 
         {/* Time-slot rows */}
