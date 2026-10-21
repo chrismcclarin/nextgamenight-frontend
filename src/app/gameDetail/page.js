@@ -2471,6 +2471,8 @@ export default function GameDetailPage() {
                                                 // write from the multi-event view would flatten
                                                 // per-event state into a map with no event
                                                 // dimension (plan-10 review #2).
+                                                // DECISION quick-261021-ffb: opens on the CHANGE to Yes only, CHOSEN over every Yes tap (owner 2026-10-21); a Yes gets
+                                                // back in through the Bringing section's control — see the marker in BringSummary.js. Changing this is a decision, not a cleanup.
                                                 if (status === 'yes' && prevStatus !== 'yes') {
                                                     setBringPickerEventId(event.id);
                                                     setShowBringPicker(true);
@@ -2495,6 +2497,7 @@ export default function GameDetailPage() {
                                             groupId={group_id}
                                             self={self}
                                             refreshKey={bringRefreshKey}
+                                            userRsvpStatus={eventRsvpStatuses[event.id] || null}
                                             onEditClick={() => { setBringPickerEventId(event.id); setShowBringPicker(true); }}
                                         />
                                     </>
@@ -3000,6 +3003,8 @@ export default function GameDetailPage() {
                             if (selfUuid) {
                                 setRsvpByUserId(prev => ({ ...prev, [selfUuid]: status }));
                             }
+                            // DECISION quick-261021-ffb: opens on the CHANGE to Yes only, CHOSEN over every Yes tap (owner 2026-10-21); a Yes gets
+                            // back in through the Bringing section's control — see the marker in BringSummary.js. Changing this is a decision, not a cleanup.
                             if (status === 'yes' && prevStatus !== 'yes') {
                                 setBringPickerEventId(singleEvent.id);
                                 setShowBringPicker(true);
@@ -3028,6 +3033,7 @@ export default function GameDetailPage() {
                         groupId={effectiveGroupId}
                         self={self}
                         refreshKey={bringRefreshKey}
+                        userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
                         onEditClick={() => { setBringPickerEventId(singleEvent.id); setShowBringPicker(true); }}
                     />
                 </div>

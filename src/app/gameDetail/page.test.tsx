@@ -87,6 +87,15 @@ const h = vi.hoisted(() => ({
 const rsvpProps = vi.hoisted(() => ({
   current: null as null | { onRsvpChange?: (status: string) => void },
 }));
+// quick-261021-ffb (Games to Bring re-entry): the BringSummary and BringGamePicker stubs record their
+// latest props, so a test can read the viewer's RSVP the section receives, fire its control, and see
+// whether the one picker is open and for which event.
+const bringSummaryProps = vi.hoisted(() => ({
+  current: null as null | { userRsvpStatus?: string | null; onEditClick?: () => void },
+}));
+const bringPickerProps = vi.hoisted(() => ({
+  current: null as null | { isOpen?: boolean; eventId?: string | null; onClose?: () => void },
+}));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
@@ -132,9 +141,18 @@ vi.mock('@/app/components/BallotSection', () => ({
     <div data-testid="ballot-section" data-rsvp-status={userRsvpStatus ?? ''} />
   ),
 }));
-vi.mock('@/app/components/BringGamePicker', () => ({ default: () => null }));
+vi.mock('@/app/components/BringGamePicker', () => ({
+  default: (props: { isOpen?: boolean; eventId?: string | null; onClose?: () => void }) => {
+    bringPickerProps.current = props;
+    return null;
+  },
+}));
+// quick-261021-ffb: the stub echoes its `userRsvpStatus` prop (the BallotSection stub's idiom above).
 vi.mock('@/app/components/BringSummary', () => ({
-  default: () => <div data-testid="bring-summary" />,
+  default: (props: { userRsvpStatus?: string | null; onEditClick?: () => void }) => {
+    bringSummaryProps.current = props;
+    return <div data-testid="bring-summary" data-rsvp-status={props.userRsvpStatus ?? ''} />;
+  },
 }));
 // 88.6.1-25 task 3: CreateEvent records its props (AC-7 asserts which group the edit modal gets)
 // and still renders nothing; GameSuggestionCard renders one button named for its game, so a test
@@ -471,6 +489,8 @@ beforeEach(() => {
   h.push.mockReset();
   h.selfRefetch.mockReset();
   rsvpProps.current = null;
+  bringSummaryProps.current = null;
+  bringPickerProps.current = null;
   h.createEventProps.length = 0;
   h.createEventMounts = 0;
   window.sessionStorage.clear();
@@ -4641,5 +4661,54 @@ describe("gameDetail hosts leave the dialog's close to CreateEvent (88.6.1-68)",
     });
     await waitFor(() => expect((gamesAPI.getGame as Mock).mock.calls.length).toBe(games + 1));
     expect(h.createEventMounts).toBe(0);
+  });
+});
+
+describe("gameDetail Bringing control — the viewer's RSVP reaches the section, and the picker opens on the first Yes or the control (quick-261021-ffb)", () => {
+  it('GB-P1. game view: the RSVP fan-out resolves the viewer as yes and the Upcoming card\'s Bringing section receives it', async () => {
+    renderGameDetail({ events: [UPCOMING_SESSION, SESSION] });
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [{ User: { id: SELF_UUID }, status: 'yes' }] });
+    await waitFor(() => expect(screen.getByTestId('bring-summary')).toHaveAttribute('data-rsvp-status', 'yes'));
+  });
+
+  it('GB-P2. event view: the RSVP list resolves the viewer as yes and the Bringing section receives it', async () => {
+    renderEventDetail({ role: 'member' });
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [{ User: { id: SELF_UUID }, status: 'yes' }] });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    await waitFor(() => expect(rsvpAPI.getEventRsvps).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('bring-summary')).toHaveAttribute('data-rsvp-status', 'yes'));
+  });
+
+  it('GB-P3. event view, live: the section follows the viewer\'s RSVP changes (yes, then maybe)', async () => {
+    renderEventDetail();
+    expect(await screen.findByText('Someone Else')).toBeInTheDocument();
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalled());
+    await flushMacrotask();
+    await act(async () => rsvpProps.current?.onRsvpChange?.('yes'));
+    expect(screen.getByTestId('bring-summary')).toHaveAttribute('data-rsvp-status', 'yes');
+    await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
+    expect(screen.getByTestId('bring-summary')).toHaveAttribute('data-rsvp-status', 'maybe');
+  });
+
+  it('GB-P4 (confirm-only). event view: the first Yes opens the picker, a repeated Yes does not, the section\'s control does', async () => {
+    renderEventDetail();
+    expect(await screen.findByText('Someone Else')).toBeInTheDocument();
+    await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(bringPickerProps.current?.isOpen).toBe(false);
+
+    await act(async () => rsvpProps.current?.onRsvpChange?.('yes'));
+    expect(bringPickerProps.current?.isOpen).toBe(true);
+    expect(bringPickerProps.current?.eventId).toBe(EVENT_ID);
+
+    await act(async () => bringPickerProps.current?.onClose?.());
+    expect(bringPickerProps.current?.isOpen).toBe(false);
+
+    await act(async () => rsvpProps.current?.onRsvpChange?.('yes'));
+    expect(bringPickerProps.current?.isOpen).toBe(false);
+
+    await act(async () => bringSummaryProps.current?.onEditClick?.());
+    expect(bringPickerProps.current?.isOpen).toBe(true);
+    expect(bringPickerProps.current?.eventId).toBe(EVENT_ID);
   });
 });
