@@ -255,4 +255,27 @@ describe('BringSummary — loading, refetch and failure (quick-261021-ffb)', () 
     });
     expect(screen.getByText(NOBODY_LINE)).toBeInTheDocument();
   });
+
+  it('BS-14: a superseded read that fails LATER does not hide the answer of the read that replaced it (executor deviation, pinned by the orchestrator)', async () => {
+    // Read 1 hangs; read 2 (a refetch) answers [] first; then read 1 rejects. Without the
+    // `if (cancelled) return` in the catch, the stale failure would wipe read 2's answer.
+    const first = deferred<never[]>();
+    api.getEventBrings.mockReturnValueOnce(first.promise);
+    const { container, rerender } = render(<BringSummary {...props()} />);
+    await flushRead();
+    expect(container).toBeEmptyDOMElement();
+
+    api.getEventBrings.mockResolvedValueOnce([]);
+    rerender(<BringSummary {...props({ refreshKey: 1 })} />);
+    expect(await screen.findByText(NOBODY_LINE)).toBeInTheDocument();
+
+    await act(async () => {
+      first.reject(new Error('late boom'));
+      await first.promise.catch(() => undefined);
+    });
+    expect(screen.getByText(NOBODY_LINE)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: ADD_GAMES })).toBeInTheDocument();
+    // The superseded failure still leaves its breadcrumb (logged before the guard).
+    expect(loggerSpies.info).toHaveBeenCalledWith('BringSummary: failed to fetch brings', expect.anything());
+  });
 });

@@ -11,11 +11,11 @@ const ADD_GAMES_LABEL = 'Add games';
 const NOBODY_BRINGING_LINE = "No one has said what they're bringing yet.";
 
 /**
- * BringSummary - Displays who is bringing which games, grouped by person
- * Hidden entirely when nobody has marked any games. AMENDED quick-261021-ffb: renders once a
- * read for THIS event has succeeded, including when nobody brings anything (the heading plus
- * "No one has said what they're bringing yet."); renders nothing before the first read settles
- * and after a failed read.
+ * BringSummary - Displays who is bringing which games, grouped by person.
+ * Renders once a read for THIS event has succeeded, including when nobody brings anything (the
+ * heading plus "No one has said what they're bringing yet."); renders nothing before the first
+ * read settles and after a failed read. (Until quick-261021-ffb it was hidden entirely when
+ * nobody had marked any games — see the DECISION at the render guard.)
  *
  * @param {string} eventId - UUID of the event
  * @param {string} groupId - UUID of the group (for game detail links)
