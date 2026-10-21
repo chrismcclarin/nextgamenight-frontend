@@ -26,6 +26,10 @@ import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
 
 const REQUIRED_SR_LABEL = '(required)';
+// The two required section titles' visible words. One source for the visible text AND the
+// heading's accessible name (WCAG 2.5.3 label-in-name) — quick-261020-tz3, VO-P2-4.
+const DATE_TIME_SECTION_TITLE = 'Date & Time';
+const PARTICIPANTS_SECTION_TITLE = 'Participants';
 const CREATING_EVENT_LABEL = 'Creating...';
 const UPDATING_EVENT_LABEL = 'Updating...';
 // Copy row E4 (ratified, D-30), reused for the Edit dialog's loading line — owner ruling 2026-10-05; see DECISION Phase 88.6.1-68 (edit reads the event fresh).
@@ -1443,9 +1447,36 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   would announce nothing), and leaving the star exposed (VoiceOver reads the glyph
                   as "star", never "required"). The star's colour token and position are untouched,
                   so it looks the same. Removing the sr-only span, or re-exposing the star, is a
-                  decision, not a cleanup. */}
-              <span className="block text-sm font-normal text-content-primary">
-                Date & Time <span aria-hidden="true" className="text-content-status-error">*</span><span className="sr-only">{REQUIRED_SR_LABEL}</span>
+                  decision, not a cleanup.
+
+                  ——— AMENDED quick-261020-tz3 (VO-P2-4, owner VoiceOver walk 2026-10-20), the
+                  reasoning above KEPT AS HISTORY: on the owner's iPhone, VoiceOver spoke only the
+                  title and treated the sr-only node as its own stop, with a phantom 1px box — on
+                  the Participants twin that stop scrolled the dialog to a blank region. WebKit's
+                  iOS rule is that VoiceOver lands only on accessibility elements, and a heading
+                  that has a label and no child elements is one (no focusability needed). So this
+                  title is now a level-3 heading named "Date & Time (required)" — the constants
+                  DATE_TIME_SECTION_TITLE + REQUIRED_SR_LABEL, so the visible words and the name
+                  come from one source — with its visible content aria-hidden, matching the
+                  dialog's existing level-3 section title (BallotOptionsEditor, "Game Ballot
+                  (optional)"). The "(required)" now lives in the heading's NAME; no separate
+                  node renders it. REJECTED: the sr-only node (a separate iOS stop — the trap);
+                  `aria-label` on a role-less span (ARIA 1.2 prohibits naming a generic, and it
+                  fails this dialog's axe `aria-prohibited-attr` audit, measured); `role="group"`
+                  plus a label (an empty group — desktop screen readers may skip it);
+                  `aria-required` (unsupported on that role); the `Heading` primitive (it renders
+                  at 700 weight — a look change that needs the owner and a mockup). The class
+                  string and the star are untouched, so it looks the same. Removing the heading
+                  role, the label or the aria-hidden wrapper is a decision, not a cleanup. */}
+              <span
+                role="heading"
+                aria-level={3}
+                aria-label={`${DATE_TIME_SECTION_TITLE} ${REQUIRED_SR_LABEL}`}
+                className="block text-sm font-normal text-content-primary"
+              >
+                <span aria-hidden="true">
+                  {DATE_TIME_SECTION_TITLE} <span aria-hidden="true" className="text-content-status-error">*</span>
+                </span>
               </span>
               {!hideVisualCalendar && (
                 <button
@@ -1678,6 +1709,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 to "match the other two" is a decision, not a cleanup. */}
             <span
               id="participants-section-label"
+              role="heading"
+              aria-level={3}
+              aria-label={`${PARTICIPANTS_SECTION_TITLE} ${REQUIRED_SR_LABEL}`}
               className="block text-sm font-normal mb-2 text-content-primary"
             >
               {/* DECISION Phase 88.6-25 (R2), the twin of the "Date & Time" marker above: this
@@ -1694,8 +1728,29 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   (2026-10-04) lifted. REJECTED: `aria-required` on the `role="group"` (not a
                   supported attribute for that role, so it would announce nothing) and leaving the
                   star exposed ("star", never "required"). Removing the sr-only span or re-exposing
-                  the star is a decision, not a cleanup. */}
-              Participants <span aria-hidden="true" className="text-content-status-error">*</span><span className="sr-only">{REQUIRED_SR_LABEL}</span>
+                  the star is a decision, not a cleanup.
+
+                  ——— AMENDED quick-261020-tz3 (VO-P2-4, owner VoiceOver walk 2026-10-20), the
+                  reasoning above KEPT AS HISTORY: VoiceOver on the owner's iPhone spoke only
+                  "Participants" and then made the sr-only node its own stop, with a phantom 1px
+                  box, and landing on it scrolled the dialog to a blank region. WebKit lands only
+                  on accessibility elements, and a heading with a label and no child elements is
+                  one. So this title is a level-3 heading named "Participants (required)"
+                  (PARTICIPANTS_SECTION_TITLE + REQUIRED_SR_LABEL) with its visible content
+                  aria-hidden, matching the dialog's existing level-3 section title
+                  (BallotOptionsEditor). The group below still reads its name through
+                  aria-labelledby, which takes this heading's aria-label, so it stays "Participants
+                  (required)". REJECTED: the sr-only node (a separate iOS stop — the trap);
+                  `aria-label` on a role-less span (ARIA 1.2 prohibits naming a generic; fails the
+                  dialog's axe `aria-prohibited-attr`, measured); `role="group"` plus a label (an
+                  empty group — desktop screen readers may skip it); `aria-required` (unsupported on
+                  that role); the `Heading` primitive (700 weight — a look change, owner + mockup).
+                  The id, the class string and the star are untouched, so it looks the same.
+                  Removing the heading role, the label or the aria-hidden wrapper is a decision,
+                  not a cleanup. */}
+              <span aria-hidden="true">
+                {PARTICIPANTS_SECTION_TITLE} <span aria-hidden="true" className="text-content-status-error">*</span>
+              </span>
             </span>
             <div
               role="group"

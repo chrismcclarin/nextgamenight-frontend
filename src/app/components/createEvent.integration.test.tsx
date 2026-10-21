@@ -1004,10 +1004,15 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
 
 // ---------------------------------------------------------------------------
 // Phase 88.6.1-15 (copy row C2, D-30) — the two required SECTION titles (Date & Time,
-// Participants) hide their star glyph and speak the ratified words "(required)" through an
-// sr-only span beside it. VoiceOver reads an exposed star as "star", never "required". The
-// two manual-entry labels already hide their stars and their inputs carry `required`, so they
-// gain no "(required)" — a second one there would double it.
+// Participants) hide their star glyph and speak the ratified words "(required)". VoiceOver reads
+// an exposed star as "star", never "required". The two manual-entry labels already hide their
+// stars and their inputs carry `required`, so they gain no "(required)" — a second one there
+// would double it.
+// quick-261020-tz3 (VO-P2-4, owner VoiceOver walk 2026-10-20): the words now live in each
+// title's HEADING NAME (a level-3 heading named "<title> (required)", its visible content
+// aria-hidden), not in a separate sr-only node — iOS VoiceOver made that node its own stop and
+// scrolled the dialog to a blank region on it. The visible text, star and class strings are
+// unchanged.
 // ---------------------------------------------------------------------------
 describe('createEvent — required section titles are announced as required (88.6.1-15, copy row C2)', () => {
   it('C2-A: the participants group is named exactly "Participants (required)"', async () => {
@@ -1016,23 +1021,45 @@ describe('createEvent — required section titles are announced as required (88.
     expect(within(dialog).getByRole('group', { name: 'Participants (required)' })).toBeInTheDocument();
   });
 
-  it('C2-B: default visual branch — both section stars are hidden, look the same, and each is followed by an sr-only "(required)"', async () => {
+  /** The two required section titles, resolved by role + level + accessible name. */
+  function requiredTitleHeadings(dialog: HTMLElement) {
+    return {
+      dateTime: within(dialog).getByRole('heading', { level: 3, name: 'Date & Time (required)' }),
+      participants: within(dialog).getByRole('heading', { level: 3, name: 'Participants (required)' }),
+    };
+  }
+
+  it('C2-B: default visual branch — each required title is ONE level-3 heading named "<title> (required)"; its visible text, star and classes are unchanged; no separate "(required)" node exists (VO-P2-4)', async () => {
     await renderModal();
     const dialog = screen.getByRole('dialog');
+    const { dateTime, participants } = requiredTitleHeadings(dialog);
+    const expected: Array<[HTMLElement, string, string]> = [
+      [dateTime, 'Date & Time *', 'block text-sm font-normal text-content-primary'],
+      [participants, 'Participants *', 'block text-sm font-normal mb-2 text-content-primary'],
+    ];
+    for (const [heading, text, className] of expected) {
+      // Visible text and class string byte-identical to before the change.
+      expect(heading.textContent).toBe(text);
+      expect(heading.className).toBe(className);
+      // The heading is the one accessibility element: every element child is hidden.
+      expect(heading.children.length).toBeGreaterThan(0);
+      for (const child of Array.from(heading.children)) {
+        expect(child).toHaveAttribute('aria-hidden', 'true');
+      }
+      // WebKit's Heading rule needs no focusability, so none is added.
+      expect(heading).not.toHaveAttribute('tabindex');
+      expect(heading.querySelector('.sr-only')).toBeNull();
+    }
     const stars = within(dialog).getAllByText('*');
     expect(stars).toHaveLength(2);
     for (const star of stars) {
       expect(star).toHaveAttribute('aria-hidden', 'true');
       expect(star).toHaveClass('text-content-status-error');
-      const spoken = star.nextElementSibling;
-      expect(spoken).not.toBeNull();
-      expect(spoken).toHaveClass('sr-only');
-      expect(spoken?.textContent).toBe('(required)');
     }
-    expect(within(dialog).getAllByText('(required)')).toHaveLength(2);
+    expect(within(dialog).queryAllByText('(required)')).toHaveLength(0);
   });
 
-  it('C2-C: manual branch — four stars, all hidden; "(required)" only on the two section titles; the start date is required', async () => {
+  it('C2-C: manual branch — four stars, all hidden; "(required)" only in the two title headings\' names, never as a text node; the start date is required (VO-P2-4)', async () => {
     const user = userEvent.setup();
     await renderModal();
     const dialog = screen.getByRole('dialog');
@@ -1043,7 +1070,8 @@ describe('createEvent — required section titles are announced as required (88.
     for (const star of stars) {
       expect(star).toHaveAttribute('aria-hidden', 'true');
     }
-    expect(within(dialog).getAllByText('(required)')).toHaveLength(2);
+    expect(within(dialog).queryAllByText('(required)')).toHaveLength(0);
+    requiredTitleHeadings(dialog);
     expect(startDate).toBeRequired();
   });
 });

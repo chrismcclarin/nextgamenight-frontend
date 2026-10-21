@@ -30,7 +30,15 @@ export default function MemberSelector({
           `id="participants-section-label"`; re-pointed by anchor in 88.6.1-26, the old `:1290`
           had drifted and plans 15 and 26 moved it again). The stated 400 is chosen OVER simply
           dropping the utility so the weight is pinned rather than inherited; both spellings
-          satisfy the §4.5 scanner, and the phase currently ships both (recorded for plan 46). */}
+          satisfy the §4.5 scanner, and the phase currently ships both (recorded for plan 46).
+
+          ——— AMENDED quick-261020-tz3 (VO-P2-4, owner VoiceOver walk 2026-10-20), the reasoning
+          above KEPT AS HISTORY: the Participants twin in `createEvent.js` took heading semantics
+          (a level-3 heading named "Participants (required)") for an iOS VoiceOver reason — its
+          name has to carry "(required)", and on iOS a heading with a label is the element
+          VoiceOver lands on. So the "not a heading" wording above is now stale FOR THE TWIN only.
+          The class-string twinning and this label's 400 weight stand. This label carries no
+          "(required)" and stays a plain label naming its group. */}
       <span id="member-selector-label" className="block text-sm font-normal text-content-secondary mb-2">
         Send to Members
       </span>

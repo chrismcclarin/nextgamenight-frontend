@@ -667,7 +667,24 @@ describe.each(AXE_VIEWPORTS)('EventScheduler — axe on the $name arm (Req 6)', 
           }}
         />
       );
-      expect(await axe(container)).toHaveNoViolations();
+      // DECISION quick-261020-tz3 (VO-P2-5): the full axe run here keeps every rule EXCEPT the
+      // best-practice `empty-table-header` (impact minor), chosen OVER keeping it and reverting the
+      // day header to an exposed text child. That rule's only check is `has-visible-text`, which
+      // counts AT-visible subtree text and IGNORES the header's aria-label — while iOS VoiceOver
+      // honours the label only when the header has NO accessible children (WebKit's ColumnHeader
+      // rule; owner's iPhone walk 2026-10-20 heard "zero two mon"). The two cannot both hold. In its
+      // place this test pins the property the rule exists for: every day columnheader has a
+      // non-empty name, and it is the focusable leaf iOS lands on. WCAG 4.1.2 stays fully audited
+      // (the rule is not in that set). Re-enabling the rule is a decision, not a cleanup.
+      expect(
+        await axe(container, { rules: { 'empty-table-header': { enabled: false } } })
+      ).toHaveNoViolations();
+      const dayHeaders = within(container).getAllByRole('columnheader');
+      expect(dayHeaders.length).toBeGreaterThan(0);
+      for (const header of dayHeaders) {
+        expect(header.getAttribute('aria-label') ?? '').toMatch(/^[A-Z][a-z]+day \d{1,2}$/);
+        expect(header).toHaveAttribute('tabindex', '-1');
+      }
     } finally {
       restore();
     }

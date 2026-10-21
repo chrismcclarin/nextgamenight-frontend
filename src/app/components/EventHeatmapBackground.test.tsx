@@ -254,4 +254,19 @@ describe('EventHeatmapBackground — the day header is named with the full day (
     expect(all[0].textContent).toBe('M29');
     expect(all[6].textContent).toBe('S5');
   });
+
+  // quick-261020-tz3 (VO-P2-6, owner VoiceOver walk 2026-10-20: "cap F"): iOS spoke the visible
+  // letter, not the name, because a non-focusable header with text children is never an
+  // accessibility element. Each header is a focusable leaf: tabindex -1, every element child hidden.
+  it('HD-3 each of the seven day headers is a focusable leaf: tabindex -1 and every element child aria-hidden (VO-P2-6)', () => {
+    renderChart();
+    for (const name of EXPECTED_DAY_NAMES) {
+      const header = screen.getByRole('columnheader', { name });
+      expect(header).toHaveAttribute('tabindex', '-1');
+      expect(header.children.length).toBeGreaterThan(0);
+      for (const child of Array.from(header.children)) {
+        expect(child).toHaveAttribute('aria-hidden', 'true');
+      }
+    }
+  });
 });

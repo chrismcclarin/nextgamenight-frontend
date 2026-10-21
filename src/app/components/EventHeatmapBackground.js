@@ -302,8 +302,18 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
             // - a second derivation of the week, which plan 88.6.1-24 retired; (c) changing the
             // letters - the owner kept them. DECISION Phase 88.6-26 (the weight, below) is not
             // touched. Changing this is a decision, not a cleanup.
+            // --- AMENDED quick-261020-tz3 (VO-P2-6, owner VoiceOver walk 2026-10-20: the header
+            // spoke "cap F"), the reasoning above KEPT AS HISTORY: rejected option (a), visually
+            // hidden text inside the header, STAYS rejected. ADDED: iOS ignored the label because a
+            // non-focusable header with text children is never an accessibility element, so
+            // VoiceOver landed on the letter instead. WebKit treats a ColumnHeader as an element
+            // only when it is keyboard-focusable, has no accessible children and has a label; so
+            // the header is `tabIndex={-1}` (focusable, NOT in the Tab order) and both visible
+            // spans are `aria-hidden` - the same technique the gridcells already use (ReadCell.tsx,
+            // `tabIndex={tabIndex}` + `aria-label={ariaLabel}`). No wrapper, no class change, the
+            // 88.6-26 weight untouched. Changing either half is a decision, not a cleanup.
             return (
-              <div key={date} role="columnheader" aria-label={dayNames[i]} className="text-center">
+              <div key={date} role="columnheader" aria-label={dayNames[i]} tabIndex={-1} className="text-center">
                 {/* DECISION Phase 88.6-26 (D-03 / W35): weight 700 here, chosen OVER 400 and over
                     keeping today's 500. D-03 would fold this to 400 on the stated ground that the
                     emphasis is "already carried by COLOUR" — that is FALSE at this cell: this weekday
@@ -314,10 +324,10 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
                     no rung on the phase's two-weight scale, so the retained differentiator is 700.
                     Dropping this to 400 flattens a weekday header into its own datum: a decision, not
                     a cleanup. */}
-                <span className="text-xs font-bold text-content-muted block leading-tight">
+                <span aria-hidden="true" className="text-xs font-bold text-content-muted block leading-tight">
                   {dayLabels[i]}
                 </span>
-                <span className="text-xs text-content-muted">{dayNum}</span>
+                <span aria-hidden="true" className="text-xs text-content-muted">{dayNum}</span>
               </div>
             );
           })}
