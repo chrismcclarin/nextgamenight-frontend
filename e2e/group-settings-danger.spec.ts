@@ -306,12 +306,13 @@ test.describe('Phase 87.8 R7 — GroupSettings Danger Zone at phone width (phone
  * an existing surface: same modal, same kebab entry path, same phone-only guard,
  * same `settleGeometry`. A new spec would have duplicated all four.
  *
- * NOT AFFECTED, stated because it looks like it should be: `scripts/
- * gate-c-executed-floor.mjs`'s `FLOOR = 13` is bound to `e2e/contrast.spec.ts`
- * (its `SPEC` const, and the lockstep test at `src/lib/ci-grep-gate.fixture.test.ts
- * :745-749`), NOT to the phone project's total. Adding tests here cannot move it,
+ * NOT AFFECTED, stated because it looks like it should be: the FLOOR constant in
+ * scripts/gate-c-executed-floor.mjs is bound to e2e/contrast.spec.ts (its SPEC const, and the
+ * lockstep test at src/lib/ci-grep-gate.fixture.test.ts ("FLOOR is ${floor} but e2e/contrast.spec.ts declares only")),
+ * NOT to the phone project's total. Adding tests here cannot move it,
  * and removing a contrast.spec.ts test still reds it. Plan 10's own text read that
- * floor as a project-wide count; it is per-file.
+ * floor as a project-wide count; it is per-file. This spec's own executed floor is its
+ * entry in scripts/gate-c-floors.manifest.mjs (Phase 88.6.2-26).
  * ———————————————————————————————————————————————————————————————————————————— */
 
 /** The eight accessible names, in render order. These are `preset.label` values

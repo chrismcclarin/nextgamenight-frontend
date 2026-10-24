@@ -685,6 +685,18 @@ jobs:
       - name: D10 executed-count floor — touch-targets.spec.ts's D10 arm must actually run in the journeys project
         run: node scripts/gate-c-executed-floor.mjs playwright-results.json --spec e2e/touch-targets.spec.ts --project journeys --title-prefix D10 --floor 3
 
+      - name: Executed-count floors — every e2e spec with a conditional skip must actually run in its project
+        # DECISION Phase 88.6.2-26 (gate-c): one step reading scripts/gate-c-floors.manifest.mjs, chosen
+        # OVER one step per spec (the 88.6-55 flags stay for Gate C and D10). Phase 88.6.2-26 (SPEC R8,
+        # register row 64): Gate C and D10 were the only two of the 51 specs that call test.skip,
+        # test.fixme, describe.skip or describe.fixme to have an executed floor; for the other 50 a
+        # flipped isMobile predicate or a dropped --project zeroed them with this job green. Each
+        # entry is a spec + project and its measured executed count (never above its --list count);
+        # the script reds NOT COLLECTED, ABOVE LISTED or DISARMED, collected before one exit. Spec
+        # matching is on a path boundary. The lockstep tests in src/lib/ci-grep-gate.fixture.test.ts
+        # pin this run line, the entry shape and the population. No `if:`, for Gate C's reason above.
+        run: node scripts/gate-c-executed-floor.mjs playwright-results.json --config scripts/gate-c-floors.manifest.mjs
+
       - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()
         uses: actions/upload-artifact@v4

@@ -16,7 +16,8 @@
  * prints UNREGISTERED (DECISION Phase 88.6.2-26 (D-13), in the runner).
  *
  * FLOORS. Every gates min is the file's live count of it( / test( lines by the runner's COUNT_RE
- * (/^[ \t]*(it|test)\(/gm), measured at FE e87c996 on 2026-10-24 (Phase 88.6.2-26, C-10), so every
+ * (/^[ \t]*(it|test)\(/gm), measured at FE e87c996 on 2026-10-24 (Phase 88.6.2-26, C-10; the
+ * fixture test's own row re-measured at 69 after that plan's Task 4 added its tests), so every
  * row is zero-margin: adding a test is never a red build, removing one is. A floor is raised in
  * the same commit that adds tests, and lowered only with a recorded decision beside the row,
  * never to make a red build green. Why the rows live here and not in ci.yml: the marker
@@ -145,7 +146,7 @@ export const gates = [
   { file: 'src/app/citeRatchet.test.ts', min: 5, why: 'Phase 88.6.2-04 D-06 — the line-cite ratchet over src and e2e; imports no scanner' },
   { file: 'src/app/anchorCites.test.ts', min: 2, why: 'Phase 88.6.2-07 A19 (owner ruling V2-a, permanent) — the anchor-cite check on every PR' },
   { file: 'src/test-utils/scrubSessionHeaders.test.ts', min: 5, why: 'Phase 88.6.2-20 R8 — the e2e fetch-error session scrub, with a walk of e2e' },
-  { file: 'src/lib/ci-grep-gate.fixture.test.ts', min: 61, why: 'Phase 88-29 / 88.6.2-26 — the registry lockstep itself (the 88-32 turtle)' },
+  { file: 'src/lib/ci-grep-gate.fixture.test.ts', min: 69, why: 'Phase 88-29 / 88.6.2-26 — the registry lockstep itself (the 88-32 turtle)' },
 ];
 
 export const helperOnly = [

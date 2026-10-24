@@ -45,9 +45,12 @@
 // what keeps the registry honest about its own contents.
 import { describe, test, expect } from 'vitest';
 import { execFileSync } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
 import { gates, helperOnly, helpers, notGates } from '../../scripts/drift-gate-registry.manifest.mjs';
+import { floors } from '../../scripts/gate-c-floors.manifest.mjs';
+import { withoutComments } from '../test-utils/sourceScan';
 
 const CI_YML = readFileSync(
   resolve(__dirname, '../../.github/workflows/ci.yml'),
@@ -826,8 +829,9 @@ describe('Phase 88.3-cr CR-09 — Gate C\'s executed-count floor (parsed from ci
   test('the floor never exceeds the number of tests the spec actually declares', () => {
     // THE LOCKSTEP. A floor above the real count is a permanently red gate, and a
     // permanently red gate gets deleted. Measured, not quoted: `npx playwright test
-    // --list --project=phone` reports 13 on this tree. (The code review that raised
-    // CR-09 said 16 — it was wrong, and this assertion is why that cannot ship.)
+    // --list --project=phone` reported 13 when this was written and 17 on 2026-10-24, when
+    // Phase 88.6.2-26 raised FLOOR to 17. (The code review that raised CR-09 said 16 — it
+    // was wrong, and this assertion is why that cannot ship.)
     const src = readFileSync(scriptPath, 'utf8');
     const floor = Number(src.match(/^const FLOOR = (\d+);$/m)?.[1]);
     expect(Number.isInteger(floor), 'the FLOOR constant was renamed or made dynamic').toBe(true);
@@ -901,6 +905,153 @@ describe('Phase 88.6-55 — the D10 journeys executed-count floor (parsed from c
         "`test('D10` tests — the gate would be permanently red. Lower the floor, or add the tests.",
     ).toBeLessThanOrEqual(declared);
     expect(floor, 'the D10 floor was zeroed, which passes a run that skipped everything').toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.2-26 (SPEC R8, register row 64, the gate-c half): every e2e spec with a conditional
+// skip has an executed floor, read by the shared floor script's --config mode from
+// scripts/gate-c-floors.manifest.mjs. Gate C (contrast.spec.ts) keeps its own step and FLOOR.
+// These four tests pin the step, the entry shape, the population, and the script's RED/GREEN on
+// synthetic reports. The floor-above-listed bound is checked by the script against the run's own
+// report (ABOVE LISTED), because a static test( count is wrong for loop-generated specs.
+// ---------------------------------------------------------------------------
+
+const EXEC_FLOORS_STEP =
+  'Executed-count floors — every e2e spec with a conditional skip must actually run in its project';
+const FE_ROOT = resolve(__dirname, '../..');
+const FLOOR_SCRIPT = resolve(FE_ROOT, 'scripts/gate-c-executed-floor.mjs');
+const CONDITIONAL_SKIP = /\b(?:test|describe)\.(?:skip|fixme)\(/;
+
+/** Run the floor script with stdin ignored; never throws, returns the exit code and output. */
+function runFloorScript(args: string[]): { status: number; stdout: string; stderr: string } {
+  try {
+    const stdout = execFileSync(process.execPath, [FLOOR_SCRIPT, ...args], {
+      cwd: FE_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { status: 0, stdout, stderr: '' };
+  } catch (err) {
+    const e = err as { status?: number; stdout?: string; stderr?: string };
+    return { status: e.status ?? -1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
+  }
+}
+
+type FakeTest = { file: string; project: string; status: string };
+/** A Playwright JSON report holding exactly these tests, one spec object per test. */
+function fakeReport(tests: FakeTest[]): string {
+  return JSON.stringify({
+    suites: [
+      {
+        specs: tests.map((t, i) => ({
+          file: t.file,
+          title: `synthetic ${i}`,
+          tests: [{ projectName: t.project, status: t.status }],
+        })),
+      },
+    ],
+  });
+}
+
+describe('Phase 88.6.2-26 — executed floors for every conditional-skip e2e spec (--config)', () => {
+  test('the step runs the shared floor script in --config mode on the json report, with no if:', () => {
+    const window = stepWindow(EXEC_FLOORS_STEP).join('\n');
+    const runLine = window.match(/^\s*run:\s*(.+?)\s*$/m)?.[1] ?? '';
+    expect(runLine).toBe(
+      'node scripts/gate-c-executed-floor.mjs playwright-results.json --config scripts/gate-c-floors.manifest.mjs',
+    );
+    expect(window, 'the executed-floors step gained an if: condition').not.toMatch(/^\s*if:/m);
+  });
+
+  test('every entry names a real spec, a project on the Playwright run line, a positive floor and a reason', () => {
+    const runLines = stepWindow(PLAYWRIGHT_STEP).filter((l) => l.includes('npx playwright test') && l.includes('--no-deps'));
+    expect(runLines.length, 'the --no-deps Playwright run line is missing').toBe(1);
+    const projects = [...runLines[0].matchAll(/--project=(\S+)/g)].map((m) => m[1]);
+    expect(projects.length).toBeGreaterThan(0);
+    const bad: string[] = [];
+    const seen = new Set<string>();
+    for (const e of floors as Array<Record<string, unknown>>) {
+      const id = `${String(e.spec)} ${String(e.project)}`;
+      const extra = Object.keys(e).filter((k) => !['spec', 'project', 'floor', 'titlePrefix', 'why'].includes(k));
+      if (extra.length) bad.push(`${id}: unknown key(s) ${extra.join(', ')}`);
+      if (typeof e.spec !== 'string' || !/^e2e\/[^/]+\.spec\.ts$/.test(e.spec) || !existsSync(resolve(FE_ROOT, e.spec))) {
+        bad.push(`${id}: spec is not an existing e2e/*.spec.ts`);
+      }
+      if (typeof e.project !== 'string' || !projects.includes(e.project)) bad.push(`${id}: project not on the run line`);
+      if (!Number.isInteger(e.floor) || (e.floor as number) < 1) bad.push(`${id}: floor is not a positive integer`);
+      if (typeof e.why !== 'string' || e.why.trim().length < 20) bad.push(`${id}: why is under 20 characters`);
+      if (seen.has(id)) bad.push(`${id}: duplicate`);
+      seen.add(id);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('every spec with a conditional skip has an entry (contrast.spec.ts keeps Gate C)', () => {
+    // The population is read from the tree, comments stripped by the shared lexer, so a skip
+    // mentioned in a comment does not count and a new conditional spec cannot ship unfloored.
+    const e2eDir = resolve(FE_ROOT, 'e2e');
+    const population = readdirSync(e2eDir)
+      .filter((f) => f.endsWith('.spec.ts'))
+      .filter((f) => CONDITIONAL_SKIP.test(withoutComments(readFileSync(join(e2eDir, f), 'utf8'))))
+      .map((f) => `e2e/${f}`);
+    expect(population.length, 'the population scan found too few specs; the regex or the lexer broke').toBeGreaterThanOrEqual(45);
+    const floored = new Set((floors as Array<{ spec: string }>).map((e) => e.spec));
+    const missing = population.filter((f) => f !== 'e2e/contrast.spec.ts' && !floored.has(f));
+    expect(missing, 'a spec with a conditional skip has no executed floor in scripts/gate-c-floors.manifest.mjs').toEqual([]);
+    expect(floored.has('e2e/contrast.spec.ts'), 'contrast.spec.ts is floored by Gate C, not by the config').toBe(false);
+  });
+
+  test('config mode passes at floor, reds DISARMED below it, and matches specs on a path boundary', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gate-c-floors-'));
+    try {
+      const all = floors as Array<{ spec: string; project: string; floor: number }>;
+      const atFloor: FakeTest[] = all.flatMap((e) =>
+        Array.from({ length: e.floor }, () => ({ file: e.spec.slice('e2e/'.length), project: e.project, status: 'expected' })),
+      );
+      const green = join(dir, 'green.json');
+      writeFileSync(green, fakeReport(atFloor));
+      const ok = runFloorScript([green, '--config', 'scripts/gate-c-floors.manifest.mjs']);
+      expect(ok.status, ok.stderr).toBe(0);
+      expect(ok.stdout).toContain(`Executed-count floors passed — ${all.length} entries`);
+
+      const first = all[0];
+      const red = join(dir, 'red.json');
+      writeFileSync(
+        red,
+        fakeReport(
+          atFloor.map((t) =>
+            t.file === first.spec.slice('e2e/'.length) && t.project === first.project ? { ...t, status: 'skipped' } : t,
+          ),
+        ),
+      );
+      const bad = runFloorScript([red, '--config', 'scripts/gate-c-floors.manifest.mjs']);
+      expect(bad.status).toBe(1);
+      expect(bad.stderr).toContain('DISARMED');
+      expect(bad.stderr).toContain(first.spec);
+
+      // The collision: home-loading-and-create-group.spec.ts ends with create-group.spec.ts.
+      const probe = join(dir, 'collision.mjs');
+      writeFileSync(
+        probe,
+        "export const floors = [{ spec: 'e2e/create-group.spec.ts', project: 'phone', floor: 1, why: 'collision probe: basename suffix must not match' }];\n",
+      );
+      const collision = join(dir, 'collision.json');
+      writeFileSync(collision, fakeReport([{ file: 'home-loading-and-create-group.spec.ts', project: 'phone', status: 'expected' }]));
+      const c1 = runFloorScript([collision, '--config', probe]);
+      expect(c1.status, 'config mode counted the longer spec as create-group.spec.ts').toBe(1);
+      expect(c1.stderr).toContain('NOT COLLECTED');
+      expect(c1.stderr).toContain('e2e/create-group.spec.ts');
+      const twin = join(dir, 'twin.json');
+      writeFileSync(twin, fakeReport([{ file: 'create-group.spec.ts', project: 'phone', status: 'expected' }]));
+      const c2 = runFloorScript([twin, '--config', probe]);
+      expect(c2.status, c2.stderr).toBe(0);
+      const c3 = runFloorScript([collision, '--spec', 'e2e/create-group.spec.ts', '--project', 'phone', '--floor', '1']);
+      expect(c3.status, 'flag mode counted the longer spec as create-group.spec.ts').toBe(1);
+      expect(c3.stderr).toContain('DISARMED');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
