@@ -76,6 +76,7 @@
 // This suite starts RED-SHAPED-AS-EXEMPTIONS and shrinks to an EMPTY roster. Each sweep plan
 // flips its own site from "present as an offender" to "absent" and updates BOTH test 1's count
 // and test 3's by-name list in the SAME commit.
+// AMENDED Phase 88.6.2-18 (W055): test 3 no longer holds a by-name list; it pins OFFENDERS empty, so a newly rostered site also restores a by-name check in test 3 in the same commit (see the DECISION marker there).
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -203,9 +204,6 @@ const FORBIDDEN_ON_MUTED = ROWS.filter((r) => FORBIDDEN.has(r.inkToken) && onMut
 // seeing a resolvable site that still exists, and test 6 goes red if a declared false positive
 // stops being reported or starts being real.
 // ===================================================================================
-
-const D16 = { kind: 'spec', id: 'SPEC-88.6 R4 / D-16' } as const;
-const D15 = { kind: 'spec', id: 'SPEC-88.6 R4 / D-15' } as const;
 
 /**
  * Seeded from the MEASUREMENT, not from CONTEXT's cites, and taken on the post-88.6-02 tree
@@ -550,9 +548,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // with their fix — the two badges now carry `text-content-accent`. The entries are keyed by
     // `file:line` and that file moved several hundred lines in the same plan, which is a second
     // reason a fixed row must LEAVE rather than be re-numbered.
-    // AMENDED AGAIN Phase 88.6-19 (2026-09-16): 2 -> 1. `app/friends/page.js:748` was fixed (the
-    // tab-count pill took `text-content-secondary`) and its row left with the fix, in the same
-    // commit that deleted its class-rule roster entry — a partial update reds, which is what
+    // AMENDED AGAIN Phase 88.6-19 (2026-09-16): 2 -> 1. The friends tab-count pill at
+    // src/app/friends/page.js ("rounded-full text-xs bg-surface-muted text-content-secondary")
+    // was fixed (the pill took `text-content-secondary`) and its row left with the fix, in the
+    // same commit that deleted its class-rule roster entry — a partial update reds, which is what
     // keeps the two halves together.
     // AMENDED AGAIN Phase 88.6-27 task 3 (2026-09-16): 1 -> 0. `CalendarMonthView.js`'s
     // "+N more" row was the LAST open D-16 CENSUS site; it took `text-content-secondary`
@@ -560,20 +559,26 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // shrank its class-rule roster entry. An empty by-name set is a real END STATE here, not a
     // broken scan — see the fan-out assertion below, which was RE-POINTED rather than deleted
     // precisely so this test keeps proving the walk can still SEE a multi-arm ground.
-    const byName: [string, string][] = [];
-    expect(
-      byName.length,
-      'the open D-16 by-name set: 5 at plan 88.6-09, 4 since plan 88.6-17 closed userProfile, ' +
-        '2 since plan 88.6-18 closed both gameDetail badges, ' +
-        '1 since plan 88.6-19 closed the friends tab-count pill, ' +
-        '0 since plan 88.6-27 closed the CalendarMonthView "+N more" row. ' +
-        'Shrink this number in the SAME commit that closes a site, and never grow it without a ' +
-        'roster entry to match',
-    ).toBe(0);
-    const missing = byName.filter(
-      ([site, ink]) => !FORBIDDEN_ON_MUTED.some((r) => siteOf(r) === site && r.inkToken === ink),
-    );
-    expect(missing.map(([s]) => s)).toEqual([]);
+    //
+    // DECISION Phase 88.6.2-18 (W055): the by-name list that stood here was a const bound to an
+    // empty array literal and never written, so its length pin and its filter passed on every
+    // tree (the vacuity is recorded in the 88.6.2-18 SUMMARY). It is REPLACED by an exact pin
+    // that OFFENDERS is empty.
+    //   Chosen OVER deleting both assertions (the 88.6 review's fix, IN-407): the list's own
+    //   contract was that it never grows without a roster entry to match, and only this pin
+    //   keeps a newly rostered open site from going unwatched by name. Test 1 is exact in both
+    //   directions, so a site rostered with an owner goes green there.
+    //   Chosen OVER keeping the empty list, which could not fail.
+    //   The two spec-owner constants deleted with it named the provenance a re-opened site
+    //   takes: SPEC-88.6 R4 / D-16 (or D-15).
+    //   The test-3 title is kept: nothing is renumbered or retitled, and this pin's message keeps
+    //   the by-name contract (a rostered site restores a by-name check).
+    //   Changing this is a decision, not a cleanup.
+    const openSetMessage =
+      'the open D-16 set is no longer empty (5 at plan 88.6-09, 0 since plan 88.6-27). Restore a ' +
+      'by-name visibility check for each rostered site (its file and line plus its ink, asserted ' +
+      'present in FORBIDDEN_ON_MUTED) in the same commit as its roster entry.';
+    expect(Object.keys(OFFENDERS), openSetMessage).toEqual([]);
 
     // The CalendarMonthView day cell is asserted by MEMBERSHIP, never by index. Its ground is
     // one of FIVE arms in the template ternary, and asserting on grounds[0] / first / last is
@@ -587,8 +592,8 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // now-fixed "+N more" row (:788) to the file's SURVIVING rostered site, the empty-day "+"
     // hint (:858), whose ground is the SAME five-arm ternary at the SAME muted arm (:263, was
     // :249). Deleting this block with the fixed site would have quietly retired the only thing
-    // proving the walk still produces candidate fan-out at all — and the by-name set above is
-    // empty now, so nothing else in this test would notice.
+    // proving the walk still produces candidate fan-out at all — and the OFFENDERS-empty pin
+    // above is empty now, so nothing else in this test would notice.
     // Re-derived by CONTENT after this plan's LAST edit to the component (:858 -> :888). A
     // line-keyed pin has to be re-derived after the final edit, not after the first: this plan
     // moved the file twice and the intermediate number was already stale when it was written.
@@ -601,7 +606,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // prove the five-arm ternary still produces candidate FAN-OUT and still offers a muted
     // candidate, which is a property of the WALK, not of whether the site is debt. Deleting the
     // block with the fixed site would quietly retire the only thing proving the walk fans out at
-    // all, and the by-name set above is empty now, so nothing else here would notice.
+    // all, and the OFFENDERS-empty pin above is empty now, so nothing else here would notice.
     const cell = FORBIDDEN_ON_MUTED.find((r) => anchorOf(r) === FP_CMV_ADJACENT_INK);
     expect(cell, 'the day cell\'s reported ink site must still be visible to the walk').toBeDefined();
     expect(
@@ -681,8 +686,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     const debt = new Set([
       ...REAL.map(anchorOf),
       // The two `app/gameDetail/page.js` rows left this set with their fix (plan 88.6-18), and
-      // `app/friends/page.js:748` left it with its fix (plan 88.6-19). A fixed site must LEAVE
-      // this set: it is no longer debt, and the disjointness check below is about what IS.
+      // the friends tab-count pill at
+      // src/app/friends/page.js ("rounded-full text-xs bg-surface-muted text-content-secondary")
+      // left it with its fix (plan 88.6-19). A fixed site must LEAVE this set: it is no longer
+      // debt, and the disjointness check below is about what IS.
       // RE-POINTED by plan 88.6-27 task 3 (2026-09-16): :788 was FIXED and left the debt set
       // with its fix (the rule this list's own comment states); the file's surviving debt is
       // the empty-day "+" hint, now at :858.
