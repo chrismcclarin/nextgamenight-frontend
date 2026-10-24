@@ -122,8 +122,9 @@ const CALL_FORM = /^\s*\(/;
 // debt that survived" (see `test-utils/exemption.ts`, "EXCLUSION IS NOT EXEMPTION").
 //
 // It is deliberately NOT implemented as an exemption keyed on the identifier `result`:
-// that would also un-flag `SuggestionCard.js:53` and BOTH `rsvp/[token]/page.js` sites,
-// silently gutting the gate. And it is deliberately NOT applied to `.errors`, where
+// that would also un-flag all four `result.error ===` reads in `rsvp/[token]/page.js`
+// (this file ("'app/rsvp/[token]/page.js': 4,")), silently gutting the gate. And it is
+// deliberately NOT applied to `.errors`, where
 // `body.errors.length` is a real top-level read that must stay visible.
 const CHAIN_FORM = /^\s*(?:\?\.|\.)\s*[A-Za-z_$]/;
 
@@ -335,16 +336,18 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
         'error branches as the precondition for removing the error alias',
     },
   },
-  // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17). RESEARCH assumption A3 is ANSWERED by opening the
-  // route, and the answer is a THIRD outcome the plan text did not offer: `:53` was a DEAD
-  // read. `suggestionAPI.convert` goes through `apiFetch`, which THROWS on any non-ok
-  // response, and the route`s 201 body is `{ success, event_id, message, event }`
-  // (Sonnet/routes/availabilitySuggestion.js:110-115) — no body that could reach that line
-  // ever carried an `error` field, so the read could never be truthy. The READ is gone; the
-  // ELSE ARM it lived in STAYS, because it is the live guard for an unparseable 2xx that
-  // `apiFetch` returns as raw text, and a `DECISION Phase 88.6-42 (A3)` marker now sits there
-  // saying so. Entry DELETED, not zeroed. FOR THE RECORD: this makes `88.6-RESEARCH.md:1291`
-  // R9 inventory wrong by one — it counted this as a convertible alias read.
+  // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17): the app/components/SuggestionCard.js entry.
+  // RESEARCH assumption A3 was ANSWERED by opening the route, and the answer was a THIRD outcome
+  // the plan text did not offer: the read was DEAD. suggestionAPI.convert went through `apiFetch`,
+  // which THROWS on any non-ok response, and the route's 201 body is
+  // `{ success, event_id, message, event }`
+  // (backend:Sonnet/routes/availabilitySuggestion.js ("res.status(201).json({")) — no body that
+  // could reach that line ever carried an `error` field. Plan 88.6.1-49 later deleted
+  // SuggestionCard.js and suggestionAPI outright, so the read, its else arm and its
+  // DECISION Phase 88.6-42 (A3) marker are all gone. Entry DELETED, not zeroed. FOR THE RECORD:
+  // the 88.6 RESEARCH R9 inventory first counted this as a convertible alias read; its section
+  // planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-RESEARCH.md ("### C.7 R9 is a")
+  // now records the dead read.
   'app/rsvp/[token]/page.js': {
     // 2 → 4 on 2026-09-29 (plan 88.6-58 task 7, review MEDLOW-16, ITEM-16-COPY-RULING
     // ratified): two more `result.error ===` discriminant reads for the 403 bodies
@@ -894,7 +897,7 @@ describe('R9 detector — boundary fixtures', () => {
     expect(props('if (response.error) { throw new Error(response.error); }')).toEqual([
       'response.error',
     ]);
-    // A comparison form — `rsvp/[token]/page.js:87`, the domain discriminant.
+    // A comparison form — src/app/rsvp/[token]/page.js ("result.error === 'event_passed'"), the domain discriminant.
     expect(props("if (result.error === 'event_passed') { pass(); }")).toEqual(['result.error']);
     // …and `validation.error`, the other name that was not on the old list.
     expect(props('if (!validation || validation.error) { bail(); }')).toEqual([

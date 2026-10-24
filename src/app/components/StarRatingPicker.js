@@ -17,35 +17,41 @@ import { useState } from 'react';
  *   ariaLabel?: string
  *
  * A11Y STATE, read and RECORDED by plan 88.6-33 task 3 (2026-09-16) — NOT fixed here; this is
- * outside R5's enumerated known-answer scope for phase 88.6. Routed with lines to
- * `.planning/deferred/phase-88.6.md` so it has an owning phase rather than exiting into thin air.
+ * outside R5's enumerated known-answer scope for phase 88.6. Routed to
+ * planning:.planning/deferred/phase-88.9.md ("ten half-star radios") so it has an owning phase
+ * (Phase 88.9) rather than exiting into thin air.
  *
  * CLAIM CORRECTED, and the correction is the point. An earlier version of plan 88.6-33 and its
  * threat row T-88.6-92 described this as "a rating control with no accessible names or keyboard
  * path". That is FALSE against this file and is WITHDRAWN. Three of the four questions asked came
  * back POSITIVE when read at HEAD:
- *   - are the halves real buttons?   YES — `<button type="button">` at :102-103 and :111-112.
- *   - does each have a name?         YES — a per-half `aria-label` at :107 and :116, inside a
- *                                    `role="radiogroup" aria-label` container at :70-71.
- *   - is the value exposed?          YES — `role="radio"` + `aria-checked` at :108-109 and
- *                                    :117-118, with an `aria-live="polite"` readout at :124.
+ *   - are the halves real buttons?   YES — two `<button type="button">` per star, the left half
+ *                                    this file ("handleHalfClick(starIndex, 'left')") and the right half
+ *                                    this file ("handleHalfClick(starIndex, 'right')").
+ *   - does each have a name?         YES — each half button carries its own `aria-label`, inside a
+ *                                    `role="radiogroup"` container named by this file ("aria-label={ariaLabel}").
+ *   - is the value exposed?          YES — each half button carries `role="radio"` + `aria-checked`,
+ *                                    with an `aria-live="polite"` readout at this file ("displayValue.toFixed(1)").
  *   - is there a keyboard path?      YES, but not the RIGHT one — see residual 1.
- * Each half also carries `focus-visible:ring-2` (:104, :113), which
- * `focusAndMotionTreatment.test.ts` test 3 pins by name; do not remove it.
+ * Each half button also carries `focus-visible:ring-2`, which
+ * src/app/focusAndMotionTreatment.test.ts ("the three pre-88-28 compliant files still carry their") pins by name;
+ * do not remove it.
  *
- * (Every line cite in this block was re-derived by content AFTER this block was written — it
- * shifts the file by ~30 lines, so the numbers a reader would otherwise inherit are all wrong.)
+ * (Every cite in this block is a same-file anchor, re-read at FE e70c9a3 on 2026-10-24; the line
+ * numbers an earlier version carried had drifted ~10 lines, which is why it no longer uses them.)
  *
  * THE REAL RESIDUALS ARE THREE, and they are narrower than the withdrawn claim:
  *   1. TEN INDIVIDUALLY TABBABLE RADIOS. There is no roving tabindex and no Arrow-key traversal,
  *      so reaching the next control costs ten Tab presses and the group departs from the ARIA APG
  *      radiogroup pattern. This is a pattern departure, not an absent keyboard path.
- *   2. SUB-44px HIT ZONES. Each half is `w-1/2 h-full` (:104, :113) of a `w-10 h-10` star box
- *      (:79), i.e. half of 40px wide by 40px tall. That figure is ARITHMETIC FROM THE CLASS
+ *   2. SUB-44px HIT ZONES. Each half is `w-1/2 h-full` of a `w-10 h-10` star box
+ *      (this file ("relative w-10 h-10 cursor-pointer select-none")), i.e. half of 40px wide by
+ *      40px tall. That figure is ARITHMETIC FROM THE CLASS
  *      STRINGS — jsdom performs no layout and no rendered measurement was taken, so it is stated
  *      as derived, not measured. It is below the 44px floor either way.
  *   3. THE READOUT IS HOVER-DRIVEN, NOT FOCUS-DRIVEN. `setHoverValue` is wired to `onMouseEnter`
- *      only (:105, :114), so a keyboard user moving through the radios gets no live readout at
+ *      only (this file ("handleHalfHover(starIndex, 'left')"), this file ("handleHalfHover(starIndex, 'right')")),
+ *      so a keyboard user moving through the radios gets no live readout at
  *      all — the one affordance that would have compensated for residual 1.
  */
 export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rating' }) {
