@@ -122,9 +122,10 @@ export function FormField({
       {/* DECISION Phase 88.6.1-15 (D-42, ST-1 #9): the CONDITIONAL `role="alert"` paragraph
           below STAYS — chosen OVER D-23's always-mounted region. CONSEQUENCE constraint, not
           bookkeeping: an always-mounted region puts one EMPTY assertive region on EVERY field
-          of a form (9 production field mounts today: 7 in ScheduleForm.js, 2 in
-          EmailAddressSection.tsx — ScheduleForm alone would then carry eight assertive regions
-          with its own server-error alert), which breaks the house one-failure-region-per-surface
+          of a form (10 production field mounts, counted 2026-10-24 at FE a06b536:
+          7 in ScheduleForm.js, 2 in EmailAddressSection.tsx, 1 in gameDetail/page.js —
+          ScheduleForm alone would then carry eight assertive regions with its own server-error
+          alert), which breaks the house one-failure-region-per-surface
           rule and the single-alert pins, FormField.test.tsx's two absence pins among them. An
           alert inserted with its text is announced reliably (ARIA 1.2; AT-4 in the 88.6.1
           research/APPENDIX-AT.md), so the premise of the conversion does not hold here.
