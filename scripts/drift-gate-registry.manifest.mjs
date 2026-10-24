@@ -146,7 +146,7 @@ export const gates = [
   { file: 'src/app/citeRatchet.test.ts', min: 5, why: 'Phase 88.6.2-04 D-06 — the line-cite ratchet over src and e2e; imports no scanner' },
   { file: 'src/app/anchorCites.test.ts', min: 2, why: 'Phase 88.6.2-07 A19 (owner ruling V2-a, permanent) — the anchor-cite check on every PR' },
   { file: 'src/test-utils/scrubSessionHeaders.test.ts', min: 5, why: 'Phase 88.6.2-20 R8 — the e2e fetch-error session scrub, with a walk of e2e' },
-  { file: 'src/lib/ci-grep-gate.fixture.test.ts', min: 69, why: 'Phase 88-29 / 88.6.2-26 — the registry lockstep itself (the 88-32 turtle)' },
+  { file: 'src/lib/ci-grep-gate.fixture.test.ts', min: 71, why: 'Phase 88-29 / 88.6.2-26 — the registry lockstep itself (the 88-32 turtle); 88.6.2-27 added the age-ciphertext pairing and P3 tests' },
 ];
 
 export const helperOnly = [

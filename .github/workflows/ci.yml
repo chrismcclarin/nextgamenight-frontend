@@ -33,8 +33,14 @@ on:
 # is `actions/checkout@v4` x4 (quality's "Checkout (full history ...)", drift-gate-registry's
 # "Checkout", and e2e's "Checkout frontend" + "Checkout backend"), `actions/setup-node@v4` x3
 # ("Setup Node 20" in quality, drift-gate-registry and e2e) and two `actions/upload-artifact@v4` ("Upload
-# Playwright failure evidence" and "Upload desktop month-tile screenshots (always — PNG only,
-# never .auth/ — T-82-12)"). AMENDED 2026-09-28 (Phase 88.6 plan 55, gap-lap ML-17): this
+# Playwright failure evidence (age ciphertext only — never .auth/ — T-82-12)" and "Upload desktop
+# month-tile screenshots (always — age ciphertext only, never .auth/ — T-82-12)").
+# AMENDED 2026-10-24 (Phase 88.6.2 plan 27, T-88.6-G34): both uploads now ship only
+# enc/<artifact>/ — age ciphertext written by the run-only steps "Encrypt Playwright failure
+# evidence" and "Encrypt desktop month-tile screenshots" (scripts/encrypt-evidence.sh, recipient
+# .github/evidence-recipient.txt); they use no action and no token; age comes from the Ubuntu
+# archive through the run-only step "Install age (evidence encryption — T-88.6-G34)" — so the
+# scope is unchanged. AMENDED 2026-09-28 (Phase 88.6 plan 55, gap-lap ML-17): this
 # census said "one" until the second upload landed in the same commit; neither reaches
 # `.auth/` (the failure step uploads `playwright-report/` + `test-results/`, the new one only
 # `test-results/**/month-tile-desktop-*.png`), both authenticate with ACTIONS_RUNTIME_TOKEN,
@@ -571,6 +577,21 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      # DECISION Phase 88.6.2-27 (D-19): age installed ONCE, here, before the tests, chosen OVER an
+      # install inside each encrypt step (the always() month-tile step would run apt after a green
+      # run and a failing run would install twice). Fail closed holds: if this step fails the tests
+      # never run and the encrypt steps find no input; scripts/encrypt-evidence.sh exits on 'no
+      # input' before its age check. Two apt lines, not &&: under set -e a failing non-final &&
+      # member does not stop the script. Moving the install back into the encrypt steps is a
+      # decision, not a cleanup. No `if:`, no `||`, no continue-on-error: an install failure reds
+      # the job (T-88.6-G34; lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts).
+      - name: Install age (evidence encryption — T-88.6-G34)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y age
+
       # DECISION Phase 87.7 D-13/D-15: the PR lane is pinned with `--project`, chosen OVER a
       # separate report-only / continue-on-error mobile job. The rejected pattern is the exact
       # one Phase 88.4 structurally BANNED in the backend repo (`verify-gate-armed.js` fails CI
@@ -634,6 +655,7 @@ jobs:
       #   undocumented internal whose only reader is `@playwright/test` 1.60
       #   playwright/lib/index.js:624, so it is NOT the structural arm: the `error-context.md`
       #   exclusion on the upload is.
+      # [AMENDED 2026-10-24 — Phase 88.6.2-27: the error-context.md exclusion now lives in scripts/encrypt-evidence.sh, run by the encrypt step before the upload; the upload ships age ciphertext only.]
       # - `--no-deps` on the journeys+phone invocation is LOAD-BEARING: without it Playwright
       #   re-runs `setup` as a dependency of both projects, WITHOUT the env var, and logs in twice.
       #   The storageState the first invocation wrote under .auth/ carries over on disk.
@@ -697,49 +719,70 @@ jobs:
         # pin this run line, the entry shape and the population. No `if:`, for Gate C's reason above.
         run: node scripts/gate-c-executed-floor.mjs playwright-results.json --config scripts/gate-c-floors.manifest.mjs
 
-      - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
+      # DECISION Phase 88.6.2-27 (D-17): tar piped straight into age with no plaintext copy,
+      # exclusions as find predicates AND tar --exclude, fail closed (any failure leaves nothing to
+      # upload), chosen OVER a plaintext fallback, OVER per-step inline copies (two exclusion lists
+      # drift) and OVER a passphrase in a GitHub secret (P3). Changing this is a decision, not a
+      # cleanup. The FE repo is PUBLIC and the phone project is authenticated, so a failure
+      # screenshot is a logged-in page: the encrypt step below packs the evidence into
+      # enc/playwright-report/playwright-report.tar.age, encrypted to .github/evidence-recipient.txt,
+      # and the upload after it ships only that directory. If tar, age or the script's post-check
+      # fails, the step fails, its EXIT trap removes enc/playwright-report/, and the upload finds
+      # nothing (if-no-files-found: ignore). Decrypt recipe: README.md, section "## CI".
+      # The CI reporter is 'github' (no playwright-report/ dir) — failure
+      # evidence (screenshots, error-context.md) lands in test-results/.
+      # NOT .auth/ — never upload the appSession storageState.
+      # 88.6 CR-01: NO zip archives either. A Playwright trace.zip records
+      # every action's parameters in plain text, and a retried login journey
+      # would carry the typed E2E_AUTH0_PASS. The setup project now records
+      # no trace (playwright.config.ts) — this exclusion is the independent
+      # second arm for the TRACE channel.
+      # 88.6-61 (review round 2 H-5): NO error-context.md either. Its aria
+      # snapshot serialises typed input values (the password included), and
+      # trace settings never reached it — CR-01's "cannot leave a PUBLIC repo"
+      # was false for that channel until this exclusion. With BOTH exclusions,
+      # neither a trace nor a page snapshot can leave a PUBLIC repo. The
+      # journeys/phone error-context.md is excluded too (the error text stays in
+      # the CI log), chosen OVER a setup-directory-only glob: Playwright derives
+      # that directory name from the test title, so a rename silently stops a
+      # per-directory glob matching. The exclusions are tar --exclude arguments
+      # and find predicates inside scripts/encrypt-evidence.sh, applied to every
+      # input. Lockstep-pinned by
+      # src/lib/ci-grep-gate.fixture.test.ts ("88.6 CR-01", "88.6 R2-H5").
+      - name: Encrypt Playwright failure evidence (age, fail closed — T-88.6-G34)
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/encrypt-evidence.sh --name playwright-report --recipients .github/evidence-recipient.txt -- playwright-report/ test-results/
+
+      - name: Upload Playwright failure evidence (age ciphertext only — never .auth/ — T-82-12)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          # The CI reporter is 'github' (no playwright-report/ dir) — failure
-          # evidence (screenshots, error-context.md) lands in test-results/.
-          # NOT .auth/ — never upload the appSession storageState.
-          # 88.6 CR-01: NO zip archives either. A Playwright trace.zip records
-          # every action's parameters in plain text, and a retried login journey
-          # would carry the typed E2E_AUTH0_PASS. The setup project now records
-          # no trace (playwright.config.ts) — this exclusion is the independent
-          # second arm for the TRACE channel.
-          # 88.6-61 (review round 2 H-5): NO error-context.md either. Its aria
-          # snapshot serialises typed input values (the password included), and
-          # trace settings never reached it — CR-01's "cannot leave a PUBLIC repo"
-          # was false for that channel until this exclusion. With BOTH exclusions,
-          # neither a trace nor a page snapshot can leave a PUBLIC repo. The
-          # journeys/phone error-context.md is excluded too (the error text stays in
-          # the CI log), chosen OVER a setup-directory-only glob: Playwright derives
-          # that directory name from the test title, so a rename silently stops a
-          # per-directory glob matching. No comment lines inside the path block —
-          # there a `#` line would be read as a glob. Lockstep-pinned by
-          # src/lib/ci-grep-gate.fixture.test.ts ("88.6 CR-01", "88.6 R2-H5").
-          path: |
-            playwright-report/
-            !playwright-report/**/*.zip
-            !playwright-report/**/error-context.md
-            test-results/
-            !test-results/**/*.zip
-            !test-results/**/error-context.md
+          path: enc/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
 
       # Phase 88.6 plan 55 (NEW OWNER ITEM 4, ledger R140): `always()` because the month-tile
-      # screenshots are review evidence on a GREEN run, which `failure()` above never uploads; the
-      # glob is PNG-only under test-results/, so it cannot reach `.auth/user.json` (repo root) or
-      # playwright-results.json (repo root) — pinned in src/lib/ci-grep-gate.fixture.test.ts.
-      - name: Upload desktop month-tile screenshots (always — PNG only, never .auth/ — T-82-12)
+      # screenshots are review evidence on a GREEN run, which `failure()` above never uploads.
+      # Since Phase 88.6.2-27 the PNG-only filter is the encrypt step's --match (a basename glob
+      # under test-results/), so it cannot reach `.auth/user.json` (repo root) or
+      # playwright-results.json (repo root), and the upload ships only the age ciphertext in
+      # enc/month-tile-desktop-screenshots/ — pinned in src/lib/ci-grep-gate.fixture.test.ts.
+      - name: Encrypt desktop month-tile screenshots (always — age, fail closed — T-88.6-G34)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/encrypt-evidence.sh --name month-tile-desktop-screenshots --recipients .github/evidence-recipient.txt --match 'month-tile-desktop-*.png' -- test-results/
+
+      - name: Upload desktop month-tile screenshots (always — age ciphertext only, never .auth/ — T-82-12)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: month-tile-desktop-screenshots
-          path: test-results/**/month-tile-desktop-*.png
+          path: enc/month-tile-desktop-screenshots/
           retention-days: 7
           if-no-files-found: warn

@@ -44,7 +44,7 @@
 // `npx vitest run` stays green. The registry step closes it, and this file is
 // what keeps the registry honest about its own contents.
 import { describe, test, expect } from 'vitest';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -1071,11 +1071,11 @@ describe('Phase 88.6.2-26 — executed floors for every conditional-skip e2e spe
 
 const MONTH_TILE_UPLOAD_STEP = '- name: Upload desktop month-tile screenshots';
 
-/** Every `actions/upload-artifact` step in ci.yml, with its `path:` entries. */
-function uploadArtifactSteps(): { name: string; paths: string[] }[] {
+/** Every `actions/upload-artifact` step in ci.yml, with its `path:` entries and its `with:` artifact name. */
+function uploadArtifactSteps(): { name: string; artifact: string | undefined; paths: string[] }[] {
   const lines = CI_YML.split('\n');
   const indentOf = (l: string) => (l.match(/^\s*/)?.[0].length ?? 0);
-  const out: { name: string; paths: string[] }[] = [];
+  const out: { name: string; artifact: string | undefined; paths: string[] }[] = [];
   lines.forEach((line, i) => {
     if (!/^\s*uses:\s*actions\/upload-artifact@/.test(line)) return;
     // Walk back to the step's `- ` opener, then forward to the next step at that indent.
@@ -1106,32 +1106,180 @@ function uploadArtifactSteps(): { name: string; paths: string[] }[] {
         }
       }
     }
-    out.push({ name, paths });
+    // The artifact name is the `with:` block's `name:` key (a bare `name:`, never the `- name:` opener).
+    const artifact = step.find((l) => /^\s*name:/.test(l))?.replace(/^\s*name:\s*/, '').trim();
+    out.push({ name, artifact, paths });
+  });
+  return out;
+}
+
+// Phase 88.6.2-27 (R7, T-88.6-G34): both uploads now ship only enc/<artifact>/, written by an
+// encrypt step directly before each upload that runs scripts/encrypt-evidence.sh, so the
+// readers below parse the steps, the script's arguments and the script itself. Line-based on
+// purpose: yaml is not a direct dependency of this repo.
+const FAILURE_UPLOAD_STEP = '- name: Upload Playwright failure evidence';
+const ENCRYPT_FAILURE_STEP = '- name: Encrypt Playwright failure evidence';
+const ENCRYPT_MONTH_TILE_STEP = '- name: Encrypt desktop month-tile screenshots';
+const INSTALL_AGE_STEP = 'Install age (evidence encryption — T-88.6-G34)';
+const ENCRYPT_SCRIPT = resolve(__dirname, '../../scripts/encrypt-evidence.sh');
+const RECIPIENT_FILE = '.github/evidence-recipient.txt';
+// An age identity line, classic or post-quantum, matched case-insensitively by git grep.
+const AGE_IDENTITY_RE = 'AGE-SECRET-KEY-(PQ-)?1[02-9AC-HJ-NP-Z]{58}';
+// The script with its comment lines removed: the exclusion literals are counted in code only.
+const ENCRYPT_SCRIPT_CODE = readFileSync(ENCRYPT_SCRIPT, 'utf8')
+  .split('\n')
+  .filter((l) => !l.trim().startsWith('#'))
+  .join('\n');
+
+const isYamlComment = (l: string) => l.trim().startsWith('#');
+const occurrences = (hay: string, needle: string) => hay.split(needle).length - 1;
+
+interface CiStep {
+  /** Index of the step's `- ` opener in ci.yml. */
+  start: number;
+  /** Index one past the step's last line (the next step's opener, or the end of its steps list). */
+  end: number;
+  name: string;
+  lines: string[];
+}
+
+/** Every step of every job, in file order; comment lines before a step belong to the step above. */
+function ciSteps(): CiStep[] {
+  const lines = CI_YML.split('\n');
+  const indentOf = (l: string) => (l.match(/^\s*/)?.[0].length ?? 0);
+  const steps: CiStep[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)steps:\s*$/);
+    if (!m) continue;
+    const base = m[1].length;
+    let itemIndent = -1;
+    let cur: CiStep | null = null;
+    let j = i + 1;
+    for (; j < lines.length; j++) {
+      const l = lines[j];
+      if (l.trim() !== '' && !isYamlComment(l) && indentOf(l) <= base) break;
+      const isItem = /^\s*- /.test(l) && (itemIndent === -1 ? indentOf(l) > base : indentOf(l) === itemIndent);
+      if (!isItem) continue;
+      if (itemIndent === -1) itemIndent = indentOf(l);
+      if (cur) {
+        cur.end = j;
+        steps.push(cur);
+      }
+      cur = { start: j, end: j, name: l.match(/- name:\s*(.+?)\s*$/)?.[1] ?? '(unnamed step)', lines: [] };
+    }
+    if (cur) {
+      cur.end = j;
+      steps.push(cur);
+    }
+    i = j - 1;
+  }
+  for (const s of steps) s.lines = lines.slice(s.start, s.end);
+  return steps;
+}
+
+/** A step-level key's inline value (`if`, `shell`, `uses`, `run`), or undefined when absent. */
+function stepKey(step: CiStep, key: string): string | undefined {
+  const indentOf = (l: string) => (l.match(/^\s*/)?.[0].length ?? 0);
+  const keyIndent = indentOf(step.lines[0]) + 2;
+  const first = step.lines[0].match(new RegExp(`^\\s*- ${key}:\\s*(.*?)\\s*$`));
+  if (first) return first[1];
+  for (const l of step.lines.slice(1)) {
+    if (isYamlComment(l) || indentOf(l) !== keyIndent) continue;
+    const m = l.match(new RegExp(`^\\s*${key}:\\s*(.*?)\\s*$`));
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+/** The step's non-comment, non-blank `run:` lines, trimmed (a block scalar or one inline line). */
+function runLines(step: CiStep): string[] {
+  const indentOf = (l: string) => (l.match(/^\s*/)?.[0].length ?? 0);
+  const keyIndent = indentOf(step.lines[0]) + 2;
+  const at = step.lines.findIndex((l, k) => k > 0 && indentOf(l) === keyIndent && /^\s*run:/.test(l));
+  if (at === -1) return [];
+  const inline = step.lines[at].replace(/^\s*run:\s*/, '').trim();
+  if (inline !== '' && !/^[|>][-+]?$/.test(inline)) return [inline];
+  const out: string[] = [];
+  for (const l of step.lines.slice(at + 1)) {
+    if (l.trim() === '') continue;
+    if (indentOf(l) <= keyIndent) break;
+    if (isYamlComment(l)) continue;
+    out.push(l.trim());
+  }
+  return out;
+}
+
+interface EncryptInvocation {
+  step: string;
+  ifCond: string | undefined;
+  name: string | undefined;
+  recipients: string | undefined;
+  match: string | undefined;
+  inputs: string[];
+  line: string;
+}
+
+/** Every non-comment ci.yml line that runs the encrypt script, with its step and arguments. */
+function encryptInvocations(): EncryptInvocation[] {
+  const steps = ciSteps();
+  const out: EncryptInvocation[] = [];
+  CI_YML.split('\n').forEach((l, i) => {
+    const t = l.trim();
+    if (isYamlComment(l) || !t.startsWith('bash scripts/encrypt-evidence.sh ')) return;
+    const step = steps.find((s) => i >= s.start && i < s.end);
+    const tokens = (t.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map((tok) => tok.replace(/^(['"])(.*)\1$/, '$2'));
+    const dd = tokens.indexOf('--');
+    const opt = (flag: string) => {
+      const k = tokens.indexOf(flag);
+      return k !== -1 && (dd === -1 || k < dd) ? tokens[k + 1] : undefined;
+    };
+    out.push({
+      step: step?.name ?? '(outside any step)',
+      ifCond: step ? stepKey(step, 'if') : undefined,
+      name: opt('--name'),
+      recipients: opt('--recipients'),
+      match: opt('--match'),
+      inputs: dd === -1 ? [] : tokens.slice(dd + 1),
+      line: t,
+    });
   });
   return out;
 }
 
 describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on every upload step', () => {
-  test('the month-tile upload is PNG-only by glob, runs always(), and warns when it finds nothing', () => {
+  // These pins were re-pointed by Phase 88.6.2-27 from the upload path: block to the encrypt steps and the script's arguments, where the exclusions now live (D-17).
+  test("the month-tile upload is PNG-only by the encrypt step's --match, runs always(), and its upload warns when it finds nothing", () => {
     const window = stepWindow(MONTH_TILE_UPLOAD_STEP).join('\n');
     const path = window.match(/^\s*path:\s*(.+?)\s*$/m)?.[1];
-    expect(path, 'the month-tile upload path widened or moved').toBe(
-      'test-results/**/month-tile-desktop-*.png',
-    );
+    expect(path, 'the month-tile upload must ship only its encrypt step output').toBe('enc/month-tile-desktop-screenshots/');
     expect(window).toMatch(/^\s*if:\s*always\(\)\s*$/m);
     expect(window).toMatch(/^\s*uses:\s*actions\/upload-artifact@v4\s*$/m);
     expect(window).toMatch(/^\s*if-no-files-found:\s*warn\s*$/m);
+    const inv = encryptInvocations().filter((i) => i.name === 'month-tile-desktop-screenshots');
+    expect(inv, 'exactly one encrypt invocation must write the month-tile artifact').toHaveLength(1);
+    expect(inv[0].match, 'the month-tile --match widened or moved').toBe('month-tile-desktop-*.png');
+    expect(inv[0].inputs, 'the month-tile encrypt step reads test-results/ only').toEqual(['test-results/']);
+    expect(inv[0].ifCond, 'the month-tile encrypt step must run always()').toBe('always()');
   });
 
-  test('no upload step, of any name, uploads .auth/ or playwright-results.json', () => {
+  test('no upload step, of any name, uploads .auth/ or playwright-results.json, and every upload ships only enc/ ciphertext', () => {
     const uploads = uploadArtifactSteps();
     // Non-vacuity: the reader must actually find both steps the permissions census names.
     expect(uploads.length, 'uploadArtifactSteps() found fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
-    for (const { name, paths } of uploads) {
-      expect(paths.length, `upload step "${name}" has no parsable path:`).toBeGreaterThan(0);
+    for (const { name, artifact, paths } of uploads) {
+      expect(paths, `upload step "${name}" must upload exactly enc/<its artifact name>/ (T-88.6-G34)`).toEqual([`enc/${artifact}/`]);
       for (const p of paths) {
         expect(p, `upload step "${name}" uploads a path under .auth/ (T-82-12)`).not.toContain('.auth');
         expect(p, `upload step "${name}" uploads the json report`).not.toContain('playwright-results.json');
+      }
+    }
+    const invocations = encryptInvocations();
+    expect(invocations.length, 'encryptInvocations() found fewer encrypt steps than ci.yml has').toBeGreaterThanOrEqual(2);
+    for (const { step, inputs } of invocations) {
+      expect(inputs.length, `encrypt step "${step}" names no input`).toBeGreaterThan(0);
+      for (const input of inputs) {
+        expect(input, `encrypt step "${step}" reads a path under .auth/ (T-82-12)`).not.toContain('.auth');
+        expect(input, `encrypt step "${step}" reads the json report`).not.toContain('playwright-results.json');
       }
     }
   });
@@ -1145,8 +1293,9 @@ describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on eve
     // masking covers logs, not artifacts. Two independent arms, each sufficient alone, both
     // pinned so neither reads as a cleanup:
     //   (1) the `setup` project overrides trace to 'off' — the credential is never recorded;
-    //   (2) every uploaded DIRECTORY carries a `!<dir>**/*.zip` exclusion — no trace archive
-    //       (Playwright's `trace.zip`, or the html reporter's `data/*.zip`) can leave CI.
+    //   (2) the encrypt script drops every `*.zip` from every input before it packs anything —
+    //       no trace archive (Playwright's `trace.zip`, or the html reporter's `data/*.zip`) can
+    //       leave CI, even as ciphertext (an upload-path exclusion until Phase 88.6.2-27).
     const cfg = readFileSync(resolve(__dirname, '../../playwright.config.ts'), 'utf8');
     const setup = cfg.match(/name:\s*'setup'([\s\S]*?)name:\s*'journeys'/)?.[1];
     expect(setup, "playwright.config.ts no longer declares the 'setup' project ahead of 'journeys'").toBeDefined();
@@ -1154,17 +1303,13 @@ describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on eve
       /trace:\s*'off'/,
     );
 
-    const uploads = uploadArtifactSteps();
-    expect(uploads.length, 'uploadArtifactSteps() found fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
-    for (const { name, paths } of uploads) {
-      const dirs = paths.filter((p) => !p.startsWith('!') && p.endsWith('/'));
-      for (const dir of dirs) {
-        expect(
-          paths,
-          `upload step "${name}" uploads the directory ${dir} without excluding ${dir}**/*.zip (CR-01: a retried-setup trace.zip carries the typed password)`,
-        ).toContain(`!${dir}**/*.zip`);
-      }
-    }
+    // Arm (2) since Phase 88.6.2-27: the exclusion is in scripts/encrypt-evidence.sh ("DECISION Phase 88.6.2-27 (D-17)"),
+    // once as a tar --exclude argument and once as a find predicate, applied to every input of every encrypt step.
+    expect(occurrences(ENCRYPT_SCRIPT_CODE, "--exclude='*.zip'"), 'the encrypt script must pass tar the *.zip exclusion exactly once (CR-01)').toBe(1);
+    expect(occurrences(ENCRYPT_SCRIPT_CODE, "! -name '*.zip'"), 'the encrypt script must hold the *.zip find predicate exactly once (CR-01)').toBe(1);
+    let dirsCounted = 0;
+    for (const { inputs } of encryptInvocations()) dirsCounted += inputs.length;
+    expect(dirsCounted, 'non-vacuity: no encrypt input directory was found to check').toBeGreaterThan(0);
   });
 
   test('88.6 R2-H5: the login step takes no page capture, and no upload ships an error-context.md', () => {
@@ -1179,8 +1324,9 @@ describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on eve
     //       report; then journeys + phone with `--no-deps` (without it Playwright re-runs setup as
     //       a dependency, env-free, and the login happens twice);
     //   (c) `PLAYWRIGHT_NO_COPY_PROMPT` is on the setup COMMAND only — never a step `env:` key;
-    //   (d) every uploaded directory excludes `**/error-context.md` (the structural arm: the env
-    //       var is an undocumented internal and survives no rename);
+    //   (d) the encrypt script drops every `error-context.md` from every input (the structural
+    //       arm: the env var is an undocumented internal and survives no rename; an upload-path
+    //       exclusion until Phase 88.6.2-27);
     //   (e) auth.setup.ts has no page-level matcher — a failing `expect(page)` matcher attaches
     //       its OWN whole-body aria snapshot, which the env var never reaches.
     // `expect.soft` on every arm: one run reports EVERY broken arm, not just the first.
@@ -1215,21 +1361,13 @@ describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on eve
     expect.soft(envVarLines, '(c) PLAYWRIGHT_NO_COPY_PROMPT must appear on exactly one non-comment line — the setup command').toEqual([setupCmd]);
     expect.soft(stepLines.some((l) => /^\s*PLAYWRIGHT_NO_COPY_PROMPT\s*:/.test(l)), '(c) the env var must never be a step env: key (process-wide)').toBe(false);
 
-    // (d)
-    const uploads = uploadArtifactSteps();
-    expect(uploads.length, 'uploadArtifactSteps() found fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
+    // (d) since Phase 88.6.2-27: the exclusion is in the encrypt script, as a tar --exclude argument and a find predicate.
+    expect.soft(occurrences(ENCRYPT_SCRIPT_CODE, "--exclude='error-context.md'"), '(d) the encrypt script must pass tar the error-context.md exclusion exactly once (R2-H5)').toBe(1);
+    expect.soft(occurrences(ENCRYPT_SCRIPT_CODE, "! -name 'error-context.md'"), '(d) the encrypt script must hold the error-context.md find predicate exactly once (R2-H5)').toBe(1);
+    expect.soft(occurrences(ENCRYPT_SCRIPT_CODE, 'tar -c'), '(d) the encrypt script must build exactly one tar (the one the exclusions apply to)').toBe(1);
     let dirsChecked = 0;
-    for (const { name, paths } of uploads) {
-      const dirs = paths.filter((p) => !p.startsWith('!') && p.endsWith('/'));
-      for (const dir of dirs) {
-        dirsChecked += 1;
-        expect.soft(
-          paths,
-          `(d) upload step "${name}" uploads the directory ${dir} without excluding ${dir}**/error-context.md (R2-H5: the aria snapshot serialises typed input values)`,
-        ).toContain(`!${dir}**/error-context.md`);
-      }
-    }
-    expect.soft(dirsChecked, '(d) non-vacuity: no uploaded directory was found to check').toBeGreaterThan(0);
+    for (const { inputs } of encryptInvocations()) dirsChecked += inputs.length;
+    expect.soft(dirsChecked, '(d) non-vacuity: no encrypt input directory was found to check').toBeGreaterThan(0);
 
     // (e)
     const authSetup = readFileSync(resolve(__dirname, '../../e2e/auth.setup.ts'), 'utf8')
@@ -1253,5 +1391,111 @@ describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on eve
     expect(cfg, 'playwright.config.ts now sets an outputDir — re-check what test-results/ uploads can reach').not.toMatch(
       /^\s*outputDir:/m,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6.2-27 (SPEC R7, register row T-88.6-G34): failure evidence leaves CI only as age
+// ciphertext. The FE repo is PUBLIC and the phone project is authenticated, so a failure
+// screenshot is a logged-in page. BOTH uploads are encrypted (SPEC edge 159: a second plaintext
+// channel would defeat the first), and an encryption failure fails the step (SPEC edge 160).
+// The choice and the rejected alternatives are in scripts/encrypt-evidence.sh ("DECISION Phase 88.6.2-27 (D-16)")
+// and in its D-17 marker; the install placement is ci.yml's D-19 marker.
+// ---------------------------------------------------------------------------
+
+describe('Phase 88.6.2-27 — failure evidence leaves CI only as age ciphertext (R7, T-88.6-G34)', () => {
+  test('every upload is directly preceded by its encrypt step, under the same if:, failing closed; age is installed once, before the tests', () => {
+    const steps = ciSteps();
+    const uploads = steps.filter((s) => (stepKey(s, 'uses') ?? '').startsWith('actions/upload-artifact@'));
+    // The two readers must agree: uploadArtifactSteps() also finds an upload step with no name.
+    expect(uploads.length, 'ciSteps() and uploadArtifactSteps() disagree on the upload count').toBe(uploadArtifactSteps().length);
+    expect(uploads.length, 'non-vacuity: fewer upload steps than ci.yml has').toBeGreaterThanOrEqual(2);
+    const invocations = encryptInvocations();
+    expect(invocations.length, 'every upload needs exactly one encrypt invocation, and no other exists').toBe(uploads.length);
+
+    for (const up of uploads) {
+      const at = steps.indexOf(up);
+      const enc = steps[at - 1];
+      const artifact = uploadArtifactSteps().find((u) => u.name === up.name)?.artifact;
+      expect(enc, `upload step "${up.name}" has no step before it`).toBeDefined();
+      expect.soft(enc.name.startsWith('Encrypt '), `the step before "${up.name}" is "${enc.name}", not its encrypt step`).toBe(true);
+      expect.soft(enc.end, `"${enc.name}" and "${up.name}" are not adjacent steps of one job`).toBe(up.start);
+      expect.soft(stepKey(up, 'if'), `upload step "${up.name}" has no if:`).toBeDefined();
+      expect.soft(stepKey(enc, 'if'), `"${enc.name}" must run under the same if: as "${up.name}"`).toBe(stepKey(up, 'if'));
+      expect.soft(stepKey(enc, 'shell'), `"${enc.name}" must set shell: bash`).toBe('bash');
+      const run = runLines(enc);
+      expect.soft(run.length, `"${enc.name}" must run exactly two lines`).toBe(2);
+      expect.soft(run[0], `"${enc.name}" must start with set -euo pipefail`).toBe('set -euo pipefail');
+      expect.soft((run[1] ?? '').startsWith('bash scripts/encrypt-evidence.sh '), `"${enc.name}" must run only the encrypt script`).toBe(true);
+      const inv = invocations.find((i) => i.line === run[1]);
+      expect.soft(inv?.name, `"${enc.name}" must encrypt the artifact "${up.name}" uploads`).toBe(artifact);
+      const body = enc.lines.filter((l) => !isYamlComment(l)).join('\n');
+      for (const bad of ['apt-get', '||', 'continue-on-error', '${{']) {
+        expect.soft(body.includes(bad), `"${enc.name}" holds ${bad}: an encrypt step runs only the script and fails closed`).toBe(false);
+      }
+    }
+
+    const byOpener = (opener: string) => steps.filter((s) => s.lines[0].includes(opener));
+    const encFailure = byOpener(ENCRYPT_FAILURE_STEP);
+    const upFailure = byOpener(FAILURE_UPLOAD_STEP);
+    const encMonth = byOpener(ENCRYPT_MONTH_TILE_STEP);
+    const upMonth = byOpener(MONTH_TILE_UPLOAD_STEP);
+    for (const [label, found] of [['failure encrypt', encFailure], ['failure upload', upFailure], ['month-tile encrypt', encMonth], ['month-tile upload', upMonth]] as const) {
+      expect(found, `exactly one ${label} step`).toHaveLength(1);
+    }
+    expect(steps.indexOf(upFailure[0]), 'the failure upload must follow its encrypt step').toBe(steps.indexOf(encFailure[0]) + 1);
+    expect(steps.indexOf(upMonth[0]), 'the month-tile upload must follow its encrypt step').toBe(steps.indexOf(encMonth[0]) + 1);
+    expect(stepKey(encFailure[0], 'if')).toBe('failure()');
+    expect(stepKey(encMonth[0], 'if')).toBe('always()');
+
+    // D-19: age installed ONCE, after the browsers and before the tests, unconditionally.
+    expect(CI_YML.split('\n').filter((l) => l.includes(`- name: ${INSTALL_AGE_STEP}`)), 'exactly one Install age step').toHaveLength(1);
+    const installs = steps.filter((s) => s.name === INSTALL_AGE_STEP);
+    expect(installs, 'the Install age step must exist under its exact name').toHaveLength(1);
+    const install = installs[0];
+    const ia = steps.indexOf(install);
+    expect(steps[ia - 1]?.name.startsWith('Install Playwright browsers'), 'Install age must sit directly after Install Playwright browsers').toBe(true);
+    expect(steps[ia + 1]?.name.startsWith('Run Playwright journeys'), 'Install age must sit directly before Run Playwright journeys').toBe(true);
+    expect(steps[ia - 1].end, 'Install age and Install Playwright browsers are not adjacent steps of one job').toBe(install.start);
+    expect(install.end, 'Install age and Run Playwright journeys are not adjacent steps of one job').toBe(steps[ia + 1].start);
+    expect(stepKey(install, 'if'), 'Install age must carry no if:').toBeUndefined();
+    expect(stepKey(install, 'shell')).toBe('bash');
+    expect(runLines(install)).toEqual(['set -euo pipefail', 'sudo apt-get update', 'sudo apt-get install -y age']);
+    const installBody = install.lines.filter((l) => !isYamlComment(l)).join('\n');
+    expect(installBody.includes('||'), 'Install age must not swallow a failure with ||').toBe(false);
+    expect(installBody.includes('continue-on-error'), 'Install age must not be continue-on-error').toBe(false);
+  });
+
+  test('P3: the committed recipient is one age1 public key and no private key material', () => {
+    const ok = spawnSync('bash', [ENCRYPT_SCRIPT, '--check-recipients', resolve(FE_ROOT, RECIPIENT_FILE)], { encoding: 'utf8' });
+    expect(ok.status, `${RECIPIENT_FILE} failed the recipients check:\n${ok.stdout}${ok.stderr}`).toBe(0);
+    expect(ok.stdout.trim().split('\n').pop()).toBe('recipients: OK');
+
+    // Planted: the real age1 line plus a line carrying the identity prefix. The prefix is built at
+    // runtime so no file in the repo holds it whole.
+    const dir = mkdtempSync(join(tmpdir(), 'p3-'));
+    try {
+      const age1 = readFileSync(resolve(FE_ROOT, RECIPIENT_FILE), 'utf8').split('\n').find((l) => l.startsWith('age1'));
+      const plant = join(dir, 'recipient.txt');
+      writeFileSync(plant, `${age1}\n${'AGE-SECRET-' + 'KEY-1 plant'}\n`);
+      const bad = spawnSync('bash', [ENCRYPT_SCRIPT, '--check-recipients', plant], { encoding: 'utf8' });
+      const out = `${bad.stdout}${bad.stderr}`;
+      expect(bad.status, 'a recipients file holding private key material must be refused').toBe(1);
+      expect(out).toContain('PROBLEM private-key');
+      expect(out, 'the recipients check must never echo the line it refuses').not.toContain('KEY-1 plant');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    const invocations = encryptInvocations();
+    expect(invocations.length, 'non-vacuity: no encrypt invocation found').toBeGreaterThanOrEqual(2);
+    for (const { step, recipients } of invocations) {
+      expect(recipients, `encrypt step "${step}" must encrypt to ${RECIPIENT_FILE}`).toBe(RECIPIENT_FILE);
+    }
+
+    // Every PR's quality job sweeps the tracked FE files: exit 1 (no match) and nothing printed.
+    const sweep = spawnSync('git', ['grep', '-IiEl', AGE_IDENTITY_RE], { cwd: FE_ROOT, encoding: 'utf8' });
+    expect(sweep.status, `git grep exited ${sweep.status} (0 = a tracked file holds an age identity, other = git failed):\n${sweep.stdout}${sweep.stderr}`).toBe(1);
+    expect(sweep.stdout).toBe('');
   });
 });

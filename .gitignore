@@ -68,3 +68,8 @@ logs
 /playwright-results.json
 /playwright-report/
 /playwright/.cache/
+
+# T-88.6-G34, Phase 88.6.2-27: a PNG beside a spec is a rendered page of the authenticated E2E account.
+# A deliberate PNG fixture needs git add -f and a reason. /enc/ is the encrypt script output (CI only).
+e2e/**/*.png
+/enc/
