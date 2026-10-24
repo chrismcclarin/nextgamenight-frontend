@@ -62,9 +62,10 @@ import { test, expect, type Locator } from '@playwright/test';
  *      project runs AUTHENTICATED (playwright.config.ts ("the SAME state journeys reuses"), `storageState:
  *      '.auth/user.json'`), so this is a LOGGED-IN screenshot. `outputPath` lands it under
  *      `test-results/`, which `.gitignore:66` excludes root-anchored. A bare repo-relative
- *      filename beside this spec would NOT be ignored — there is no `*.png` rule — and
- *      would be committable. The structural backstop is a gitignore rule covering PNG files
- *      anywhere under e2e/, named for the owner in `88.6-30-SUMMARY.md`.
+ *      PNG beside this spec is ignored too: Phase 88.6.2-27 added the e2e PNG rule at the end
+ *      of .gitignore (every .png anywhere under e2e/), so it cannot be committed without an
+ *      explicit git add -f. That structural backstop, once only named for the owner in
+ *      88.6-30-SUMMARY.md, now exists.
  *
  * NOT RUN LOCALLY. The `phone` project depends on the `setup` project, which drives Auth0
  * Universal Login with credentials playwright.config.ts ("They are intentionally absent locally") records as deliberately

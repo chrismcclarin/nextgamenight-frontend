@@ -279,6 +279,9 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
       // exclusions and by fixture data. All arms are lockstep-pinned in
       // `src/lib/ci-grep-gate.fixture.test.ts` ("88.6 CR-01", "88.6 R2-H5"). Restoring a fallback
       // is a decision, not a cleanup.
+      // [AMENDED 2026-10-24 — Phase 88.6.2-27: both uploads now ship only age ciphertext
+      // (scripts/encrypt-evidence.sh), so this RESIDUE is closed for the artifact channel; the CI
+      // log channel is plan 20's scrub.]
       const card = heading.locator('xpath=ancestor::div[contains(@class, "card")][1]');
       await expect(
         card,
