@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1-52 (R10 / AC-31, shared rule 12) — typed line breaks at 375px, in a real browser
 // (the `phone` project, iPhone SE 375x667).
@@ -233,7 +234,7 @@ async function openRsvpNotes(page: Page, probe: Probe): Promise<void> {
       await route.fallback();
       return;
     }
-    const response = await route.fetch();
+    const response = await scrubbedFetch(route);
     let body: { rsvps?: Array<Record<string, unknown>> } & Record<string, unknown>;
     try {
       body = await response.json();

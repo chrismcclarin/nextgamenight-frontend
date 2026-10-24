@@ -4,7 +4,9 @@
 // every Playwright route.fetch error (R8). Node environment, because T1 drives the installed
 // Playwright's real request client. Comments here are line comments only (CF-9), and no test
 // title names the session cookie: titles reach the CI log a later log grep reads.
+import { readFileSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:net';
+import { join, relative } from 'node:path';
 import { request } from '@playwright/test';
 import { describe, expect, it } from 'vitest';
 
@@ -12,6 +14,39 @@ import { SCRUBBED, scrubError, scrubSessionHeaders } from './scrubSessionHeaders
 
 const ESC = '\u001b';
 const PLANTS = ['PLANT-COOKIE-ONE', 'PLANT-COOKIE-TWO', 'PLANT-BEARER'];
+
+// The census arm's two call shapes. A Route call under any binding name, and an
+// APIRequestContext verb call: the request fixture, page.request, context.request, or a
+// request.newContext() result named ...Context. Playwright prints the same request headers for
+// the second shape, prefixed apiRequestContext.
+const ROUTE_FETCH_RE = /\.fetch\s*\(/;
+const REQUEST_VERB_RE = /\b(request|page\.request|context\.request|\w+Context)\s*\.\s*(get|post|put|patch|delete|head|fetch)\s*\(/;
+const HELPER = 'e2e/support/scrubbedFetch.ts';
+
+// A comment line: with every closed block-comment span removed, it is empty or starts with a
+// line-comment, block-comment or star leader.
+function isCommentLine(line: string): boolean {
+  const rest = line.replace(/\/\*.*?\*\//g, '').trim();
+  return rest === '' || rest.startsWith('//') || rest.startsWith('*') || rest.startsWith('/*');
+}
+
+function tsFilesUnder(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...tsFilesUnder(full));
+    else if (entry.isFile() && entry.name.endsWith('.ts')) out.push(full);
+  }
+  return out;
+}
+
+function callLines(file: string): number[] {
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .flatMap((line, i) =>
+      !isCommentLine(line) && (ROUTE_FETCH_RE.test(line) || REQUEST_VERB_RE.test(line)) ? [i + 1] : [],
+    );
+}
 
 // A local port that was open a moment ago and is closed now, so a request to it is refused.
 async function closedPort(): Promise<number> {
@@ -111,5 +146,23 @@ describe('scrubSessionHeaders and scrubError', () => {
     const fromText = scrubError('thrown text appSession=abc; tail');
     expect(fromText).toBeInstanceOf(Error);
     expect(fromText.message).toBe(`thrown text ${SCRUBBED}; tail`);
+  });
+
+  it('every Playwright route.fetch in e2e/ goes through e2e/support/scrubbedFetch.ts', () => {
+    const root = process.cwd();
+    const files = tsFilesUnder(join(root, 'e2e')).map((abs) => relative(root, abs).split('\\').join('/'));
+    // Non-vacuous: the walk saw the e2e tree, and the helper still holds its one call.
+    expect(files.length).toBeGreaterThanOrEqual(70);
+    expect(files).toContain(HELPER);
+    expect(callLines(join(root, HELPER))).toHaveLength(1);
+    const offenders = files
+      .filter((rel) => rel !== HELPER)
+      .flatMap((rel) => callLines(join(root, rel)).map((n) => `${rel}:${n}`));
+    expect(
+      offenders,
+      'route a Route call through scrubbedFetch (e2e/support/scrubbedFetch.ts), and an APIRequestContext call ' +
+        'through a scrubbed wrapper added under e2e/support/ (0 such calls at FE 995023d): ' +
+        offenders.join(', '),
+    ).toEqual([]);
   });
 });

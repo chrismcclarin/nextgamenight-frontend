@@ -2,6 +2,7 @@ import { test, expect, type Route } from '@playwright/test';
 
 import { assertTheme } from './support/contrast';
 import { expectGatedPair, expectNoApiWrites, holdWrites } from './support/inFlight';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1-47 (D-35 / AC-12, copy row E6): the event page's Share Game QR button, seen in a
 // real browser at 375px (the phone project, iPhone SE 375x667, dark).
@@ -96,7 +97,7 @@ test('Share Game QR stays focused and single-flight while the QR loads, and the 
       return;
     }
     if (request.method() === 'GET' && EVENT_GET_PATH.test(pathname)) {
-      const response = await route.fetch();
+      const response = await scrubbedFetch(route);
       let body: unknown;
       try {
         body = await response.json();

@@ -29,6 +29,7 @@
 //   - POST /api/rsvp is fulfilled in the browser (500 for the failure arm, 200 for the save);
 //     any other method falls back.
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 const E2E_EVENT_DETAIL_PATH =
@@ -53,7 +54,7 @@ async function openEventWithViewerAnswer(page: Page): Promise<{ group: Locator; 
       await route.fallback();
       return;
     }
-    const response = await route.fetch();
+    const response = await scrubbedFetch(route);
     try {
       const body = (await response.json()) as { id?: unknown };
       if (typeof body?.id === 'string') viewerId = body.id;
@@ -68,7 +69,7 @@ async function openEventWithViewerAnswer(page: Page): Promise<{ group: Locator; 
       await route.fallback();
       return;
     }
-    const response = await route.fetch();
+    const response = await scrubbedFetch(route);
     let body: { rsvps?: Array<{ User?: { id?: string } }> } & Record<string, unknown>;
     try {
       body = await response.json();
