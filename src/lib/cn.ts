@@ -7,8 +7,8 @@ import { twMerge } from 'tailwind-merge';
  * on the manual-install path (Pitfall 3 fallback).
  *
  * The project runs `tailwindcss` v4 (4.3.3) in its CSS-first form — the theme
- * is declared by `@theme` (`globals.css:147`) and `@theme inline`
- * (`globals.css:320`), and there is NO `tailwind.config.*` anywhere under
+ * is declared by `@theme` (src/app/globals.css ("@theme {")) and `@theme inline`
+ * (src/app/globals.css ("@theme inline {")), and there is NO `tailwind.config.*` anywhere under
  * `periodictabletop/`. `tailwind-merge` v3 is therefore the matching major:
  * v2's class map is Tailwind v3's.
  *

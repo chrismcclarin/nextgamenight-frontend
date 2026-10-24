@@ -35,11 +35,11 @@ afterEach(cleanup);
 //     Object.keys(buttonVariants)                -> []
 //     Object.getOwnPropertyNames(buttonVariants) -> ['length', 'name']
 //     'config' in buttonVariants                 -> false
-// `cva()` returns a bare function carrying no config, and `Button.tsx:287`
+// `cva()` returns a bare function carrying no config, and src/components/ui/Button.tsx ("export { Button, buttonVariants };")
 // exports only `{ Button, buttonVariants }` — there is no runtime surface
 // holding the keys. So this is sanctioned mechanism (a) from the plan: the
 // comment-stripped source scan, the same shape Gate A already uses on this file
-// (`tokenContrast.test.ts:1641-1648`). Mechanism (b) — an additive named export
+// (src/app/tokenContrast.test.ts ("53. 88.8 HIGH-A")). Mechanism (b) — an additive named export
 // of the key lists — was the alternative; (a) wins because it leaves
 // `Button.tsx`'s export tail byte-identical, and that tail is cited by
 // `cn.twMergeV3.test.ts`. "Simplifying" this back to `Object.keys` is not a
@@ -206,10 +206,10 @@ describe('Button', () => {
       const btn = screen.getByRole('button', { name: 'Create Event' });
       expect(btn).toHaveClass('btn');
       expect(btn).toHaveClass('btn-accent');
-      // The amber is carried by `.btn-accent` (globals.css:2478-2481) over
+      // The amber is carried by `.btn-accent` (src/app/globals.css (".btn-accent {")) over
       // `--color-btn-accent-bg` / `-text`. Re-emitting it as utilities would be
       // the SECOND expression of one value — exactly what the 88.3-18 marker
-      // (globals.css:2389) exists to prevent.
+      // (src/app/globals.css ("QR button takes the Create-Event amber")) exists to prevent.
       for (const tok of tokensOf(btn.className)) {
         expect(
           tok,
@@ -226,7 +226,7 @@ describe('Button', () => {
       for (const tok of tokensOf(btn.className)) {
         expect(
           tok,
-          `88.6-06 D-09 — \`${tok}\` is DEAD on a \`.btn\` element: \`.btn\` declares \`padding: .5rem 1rem\` (globals.css:2202) and \`font-size: .875rem\` (:2201) UNLAYERED, and an unlayered author rule beats every \`@layer utilities\` rule. The compact padding comes from the unlayered \`.btn-sm\` rule (globals.css:2722-2725), never from a utility`
+          `88.6-06 D-09 — \`${tok}\` is DEAD on a \`.btn\` element: \`.btn\` declares \`padding: .5rem 1rem\` (src/app/globals.css ("padding: 0.5rem 1rem;")) and \`font-size: .875rem\` (src/app/globals.css ("font-size: 0.875rem;")) UNLAYERED, and an unlayered author rule beats every \`@layer utilities\` rule. The compact padding comes from the unlayered \`.btn-sm\` rule (src/app/globals.css (".btn-sm {")), never from a utility`
         ).not.toMatch(/^(p-|px-|py-|text-xs$|text-sm$|text-base$)/);
       }
     });
@@ -242,7 +242,7 @@ describe('Button', () => {
       expect(btn).toHaveClass('min-w-11');
       expect(
         tokensOf(btn.className),
-        '88.6-06 C.1 — `p-0` was DEAD from the day it was written: `.btn` declares `padding: .5rem 1rem` UNLAYERED (globals.css:2202) and `@layer utilities` always loses. Re-adding it changes no rendered pixel and re-introduces a class the AC-3 dead-class rule forbids'
+        '88.6-06 C.1 — `p-0` was DEAD from the day it was written: `.btn` declares `padding: .5rem 1rem` UNLAYERED (src/app/globals.css ("padding: 0.5rem 1rem;")) and `@layer utilities` always loses. Re-adding it changes no rendered pixel and re-introduces a class the AC-3 dead-class rule forbids'
       ).not.toContain('p-0');
     });
 
@@ -257,7 +257,7 @@ describe('Button', () => {
           const cls = (container.firstElementChild as HTMLElement).className;
           expect(
             tokensOf(cls),
-            `88.6-06 D-09 — the 44px floor lives on the cva BASE so it reaches every viewport width (variant=${variant} size=${size}). The phone-only \`.btn\` class rule (globals.css:2677-2681) is deliberately NOT widened — D-36 rejects an all-viewport floor on the CLASS, which square-by-design controls wear`
+            `88.6-06 D-09 — the 44px floor lives on the cva BASE so it reaches every viewport width (variant=${variant} size=${size}). The phone-only \`.btn\` class rule (src/app/globals.css ("min-height: 2.75rem;")) is deliberately NOT widened — D-36 rejects an all-viewport floor on the CLASS, which square-by-design controls wear`
           ).toContain('min-h-11');
           cleanup();
         }
@@ -270,7 +270,7 @@ describe('Button', () => {
           for (const tok of tokensOf(buttonVariants({ variant, size }))) {
             expect(
               tok,
-              `88.6-06 D10 — \`${tok}\` is an UNPREFIXED hover token (variant=${variant} size=${size}). It lifts or washes controls that are \`disabled\` or \`aria-disabled\` — exactly the controls the four legacy \`.btn-*:hover:not(:disabled):not([aria-disabled='true'])\` rules (globals.css:2383, :2483, :2633, :2643) deliberately exclude. Express it through the \`enabled-hover\` variant (globals.css:177-183)`
+              `88.6-06 D10 — \`${tok}\` is an UNPREFIXED hover token (variant=${variant} size=${size}). It lifts or washes controls that are \`disabled\` or \`aria-disabled\` — exactly the controls the four legacy \`.btn-*:hover:not(:disabled):not([aria-disabled='true'])\` rules (src/app/globals.css (".btn-primary:hover:not(:disabled):not([aria-disabled='true']) {"), src/app/globals.css (".btn-accent:hover:not(:disabled):not([aria-disabled='true']) {"), src/app/globals.css (".btn-secondary:hover:not(:disabled):not([aria-disabled='true']) {"), src/app/globals.css (".btn-danger:hover:not(:disabled):not([aria-disabled='true']) {")) deliberately exclude. Express it through the \`enabled-hover\` variant (src/app/globals.css ("@custom-variant enabled-hover {"))`
             ).not.toMatch(/^hover:/);
           }
         }
@@ -294,7 +294,7 @@ describe('Button', () => {
         ghost,
         "88.6-06 D10 — a NATIVELY-disabled ghost washed on hover until this narrowing: the shipped `aria-disabled:hover:bg-transparent` override only ever reached the ARIA half"
       ).toContain('enabled-hover:bg-surface-hover');
-      // Gate A test 53's pin (tokenContrast.test.ts:1647-1648) scans this same
+      // Gate A test 53's pin (src/app/tokenContrast.test.ts ("53. 88.8 HIGH-A")) scans this same
       // string: the gated state is COLOUR, never element opacity.
       expect(ghost).toContain('aria-disabled:text-content-muted');
       expect(ghost.join(' ')).not.toMatch(/aria-disabled:opacity/);
@@ -322,7 +322,7 @@ describe('Button', () => {
         </Button>
       );
       const btn = screen.getByRole('button', { name: 'Menu' });
-      // The MECHANISM is `cn` = `twMerge(clsx(...))` (src/lib/cn.ts:34), NOT
+      // The MECHANISM is `cn` = `twMerge(clsx(...))` (src/lib/cn.ts ("return twMerge(clsx(inputs));")), NOT
       // "the base declares neither". The cva BASE declares no `bg-*` and no text
       // colour, but the GHOST VARIANT STRING declares BOTH `bg-transparent` and
       // `text-content-secondary` — the caller wins because tailwind-merge drops
@@ -373,7 +373,7 @@ describe('Button', () => {
 
     it('SOURCE SCAN: no unprefixed hover token in the cva base or the variant map', () => {
       // The same comment-stripped source-scan shape Gate A uses on this file
-      // (`tokenContrast.test.ts:1641-1648`). It exists because the RENDERED
+      // (src/app/tokenContrast.test.ts ("53. 88.8 HIGH-A")). It exists because the RENDERED
       // check above can only see what cva emits for the combinations it is
       // asked for; this one reads the authored strings directly, so a hover
       // token parked in an unreachable branch is still caught.
@@ -396,7 +396,7 @@ describe('Button', () => {
       }
       expect(
         offenders,
-        `88.6-06 D10 — an UNPREFIXED hover token lifts or washes controls that are \`disabled\` or \`aria-disabled\`, which is exactly what the four legacy \`.btn-*:hover:not(:disabled):not([aria-disabled='true'])\` rules (globals.css:2383, :2483, :2633, :2643) withhold. Route it through the \`enabled-hover\` variant (globals.css:177-183). Offenders: ${offenders.join(' | ')}`
+        `88.6-06 D10 — an UNPREFIXED hover token lifts or washes controls that are \`disabled\` or \`aria-disabled\`, which is exactly what the four legacy \`.btn-*:hover:not(:disabled):not([aria-disabled='true'])\` rules (src/app/globals.css (".btn-primary:hover:not(:disabled):not([aria-disabled='true']) {"), src/app/globals.css (".btn-accent:hover:not(:disabled):not([aria-disabled='true']) {"), src/app/globals.css (".btn-secondary:hover:not(:disabled):not([aria-disabled='true']) {"), src/app/globals.css (".btn-danger:hover:not(:disabled):not([aria-disabled='true']) {")) withhold. Route it through the \`enabled-hover\` variant (src/app/globals.css ("@custom-variant enabled-hover {")). Offenders: ${offenders.join(' | ')}`
       ).toEqual([]);
     });
 
@@ -436,9 +436,9 @@ describe('Button', () => {
       // control by role AND name, and the composed axe audits red on
       // `button-name`. A source scanner cannot serve as the gate either: an
       // opening-tag reader cannot see an `sr-only` CHILD, and the only live
-      // `size="icon"` today (`BottomSheet.tsx:234-238`) names itself exactly
-      // that way, with its `sr-only` "Close" at `:237`; RESEARCH §Q4
-      // (`88.6-RESEARCH.md:1063`) forbids scan-derived icon inventories outright.
+      // `size="icon"` today (src/components/ui/BottomSheet.tsx ("<DialogClose asChild>")) names itself exactly
+      // that way, with its `sr-only` "Close" at src/components/ui/BottomSheet.tsx ("Close</span>"); RESEARCH §Q4
+      // (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-RESEARCH.md ("### Q4. The live")) forbids scan-derived icon inventories outright.
       // Note also that axe (4.12.1, measured) ACCEPTS a bare `title` as a name,
       // which UI-SPEC §7.4 forbids — so axe alone is a floor, not the contract.
       const { container } = render(

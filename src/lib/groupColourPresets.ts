@@ -27,7 +27,7 @@
  * derived from them are "Set B-rev3" — the palette the owner picked across three rounds of
  * rendered 375px mockups. This block records HOW they were derived, so they read as
  * reproducible data rather than as hand-picked hexes, in the same style as the availability
- * wash ramp's recipe at `availabilityColor.ts:135-157`.
+ * wash ramp's recipe at src/lib/availabilityColor.ts ("Derivation (so the five alphas are reproducible, not hand-picked):").
  *
  * WHY THE PALETTE WAS REPLACED AT ALL. The eight near-black presets it supersedes measure
  * ΔE2000 **1.62** apart in light mode — sub-JND. That is why the owner could not tell swatches
@@ -48,7 +48,7 @@
  * and Teal read too close on swatches and tiles. It had to cross Teal (L* 19.4) rather than
  * stop short of it: measured Green/Teal ΔE2000 as Green climbs is 19.88 at L* 15.7, 19.54 at
  * 20.3, 20.48 at 22.7, 21.24 at 24.6 — the halfway house is the worst point on the curve.
- * THE NUMBER THAT CAPS IT: the dark `content-muted` pole `#b8a898` (`globals.css:1547`)
+ * THE NUMBER THAT CAPS IT: the dark `content-muted` pole `#b8a898` (src/app/globals.css ("--color-text-muted: var(--warm-400);"))
  * measures 5.86:1 on green at L* 19, **4.89:1 at 24.6**, and **4.39:1 — a SPEC Req 3 FAIL — at
  * 27.7**. Nobody may brighten green further without re-running UI-SPEC 2.4.
  *
@@ -58,7 +58,7 @@
  * picked the lower one — "the right side has more definition around the background". The
  * winning axis was CHROMA (+21-25% on Red, Blue and Violet), not lightness; page separation
  * measured 1.03-1.04:1 either way, i.e. nil in both. THE MIRROR CAP: the light `content-muted`
- * pole `#6b5a4c` (`globals.css:940`) measures **4.86:1** on `orange`, and the measured floor is
+ * pole `#6b5a4c` (src/app/globals.css ("--color-text-muted: var(--warm-600);")) measures **4.86:1** on `orange`, and the measured floor is
  * about L* 85.5 (88.4 -> 4.86, 87.0 -> 4.69, 86.0 -> 4.56, 85.5 -> 4.49 FAIL).
  * **Do not "restore" the light band to >= 89.6.** The two caps pull in OPPOSITE directions: any
  * future lift of the dark green band eats 4.89, any future lowering of the light band eats
@@ -95,7 +95,7 @@
  * DERIVATION, so these sixteen values are reproducible and not hand-picked:
  *   mutedDark  = blend(inkDark,  0.85, dark)
  *   mutedLight = blend(inkLight, 0.85, light)
- * using `wcag.ts:275`'s exact semantics — per-channel `bg + (fg - bg) * alpha`, rounded, source
+ * using the exact semantics of src/lib/wcag.ts ("export function blend(") — per-channel `bg + (fg - bg) * alpha`, rounded, source
  * -over in sRGB space. `groupColourPresets.test.ts` RE-DERIVES all sixteen with that same
  * `blend` and asserts byte equality, which is what stops the literal and its recipe silently
  * diverging now that nothing calls `blend` at runtime.
@@ -112,7 +112,7 @@
  * worst rung is violet light at **5.5239**, which reproduces UI-SPEC 2.6's published 5.52
  * exactly — that reproduction is the transcription check.
  *
- * THIS DOES NOT RE-OPEN `DECISION Phase 88.3-16` at `CalendarMonthView.js:52-60`. That marker
+ * THIS DOES NOT RE-OPEN `DECISION Phase 88.3-16` at src/app/components/CalendarMonthView.js ("DECISION Phase 88.3-16: this is a MODULE-LEVEL helper"). That marker
  * rejects in-component `useMemo` / `useCallback` as an unmeasured performance claim. A table
  * literal is a different mechanism, adopted for a different reason (bundle boundary, not render
  * cost). The two are not in tension.
