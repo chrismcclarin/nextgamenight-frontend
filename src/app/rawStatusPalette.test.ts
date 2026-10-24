@@ -84,9 +84,9 @@ describe('raw red palette on status ink (UI review 2026-09-30, Top Fix 1)', () =
   const scan = rawStatusRedSites();
 
   it('no non-test source file carries a raw red status class in a string literal', () => {
-    // Was, at FE 3751aeb: app/components/FeedbackButton.js:476, app/components/FeedbackForm.js:576
-    // and :637, app/components/QRCodeModal.js:136, app/components/createGroup.js:282,
-    // app/userProfile/page.js:1945 — six sites, all converged in the same commit as this file.
+    // Was, at FE 3751aeb: src/app/components/FeedbackButton.js, src/app/components/FeedbackForm.js
+    // (two sites), src/app/components/QRCodeModal.js, src/app/components/createGroup.js,
+    // src/app/userProfile/page.js — six sites, all converged in the same commit as this file.
     expect(scan.hits).toEqual([]);
   });
 
