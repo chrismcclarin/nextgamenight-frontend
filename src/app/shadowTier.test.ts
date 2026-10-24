@@ -567,6 +567,17 @@ function carriesPinnedTier(tokens: { base: string }[]): boolean {
   return tokens.some(({ base }) => base === PINNED_TIER);
 }
 
+// Rule 7's whole per-element predicate, extracted (plan 88.6.2-18, W055) so test 7 and test 8's
+// negative control run the SAME rule: a .btn or Button element carrying the pinned tier with no
+// satisfying enabled-hover pin.
+function isUnpinnedLgButton(element: Element): boolean {
+  return (
+    isButtonFamily(element) &&
+    carriesPinnedTier(element.tokens) &&
+    !hasSatisfyingHoverPin(element.tokens)
+  );
+}
+
 describe('D-14b / D49-b: the three-tier shadow rule', () => {
   const offTierSites = sitesMatching(OFF_TIER);
   const aliasSites = sitesMatching(ALIAS);
@@ -748,13 +759,9 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
   });
 
   it('7. flags a `.btn`/`Button` element carrying `shadow-theme-lg` with no `enabled-hover:` pin (UI-SPEC §3.4 rule 2)', () => {
-    const offenders: { rel: string; line: number }[] = [];
-    for (const element of ELEMENTS) {
-      if (!isButtonFamily(element)) continue;
-      if (!carriesPinnedTier(element.tokens)) continue;
-      if (hasSatisfyingHoverPin(element.tokens)) continue;
-      offenders.push({ rel: element.rel, line: element.line });
-    }
+    const offenders: { rel: string; line: number }[] = ELEMENTS.filter(isUnpinnedLgButton).map(
+      (element) => ({ rel: element.rel, line: element.line }),
+    );
     const measured = countByFile(offenders);
     expect(assertRosterShape(HOVER_PIN_ROSTER)).toEqual([]);
     expect(
@@ -791,15 +798,20 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
         'the "Manage Members" control in app/groupHomePage/page.js, a `<Button variant="ghost">` ' +
         'since 88.6-21.',
     ).toHaveLength(1);
-    // And it must be absent from rule 7's roster, in BOTH files it could have been filed under.
-    for (const [file, entry] of Object.entries(HOVER_PIN_ROSTER)) {
-      if (file !== 'app/groupHomePage/page.js') continue;
-      expect(
-        entry.sites,
-        'the groupHomePage hover-pin entry covers 3 sites, which would mean the ' +
-          '`shadow-theme-md` control was filed as debt. It carries no `-lg` pin and is safe.',
-      ).toBe(2);
-    }
+    // DECISION Phase 88.6.2-18 (W055): the hover-pin roster has been empty since plan 88.6-21
+    // closed its last entry, so the loop that stood here (over that roster's entries) never ran
+    // its body; the vacuity is recorded in the 88.6.2-18 SUMMARY. The loop is REPLACED by running
+    // rule 7's own predicate, isUnpinnedLgButton, on the located subject.
+    //   Chosen OVER deleting the loop (the 88.6 review's fix, IN-407), which would leave this
+    //   negative control asserting only that its subject exists, never that rule 7 leaves it alone.
+    //   Chosen OVER pinning the roster key absent, which test 7's exact count already covers.
+    //   Removing this check is a decision, not a cleanup.
+    expect(
+      mdInHeader.filter(isUnpinnedLgButton).map((s) => `${s.rel}:${s.line}`),
+      'rule 7 now flags the shadow-theme-md negative-control subject, so it has been widened past ' +
+        'shadow-theme-lg. A -md control is safe: the cva base hovers it to the same tier. Narrow ' +
+        'rule 7 back, or record why -md needs a pin.',
+    ).toEqual([]);
   });
 
   it('9. the string-chunk pass sees a shadow-family class outside any JSX opening tag (W046)', () => {
