@@ -496,7 +496,7 @@ function runCheck({ root, base }) {
 // in-script strings, following scripts/tw4-hazard-grep.sh ("DECISION Phase 87.7 (R4): the
 // negative control is the built-in").
 
-const SELF_TEST_CASE_COUNT = 66;
+const SELF_TEST_CASE_COUNT = 79; // 66 in-memory (code, comment, css, parse, classify), 4 realfile, 9 git
 
 const C = (group, name, file, before, after, expect) => ({
   group,
@@ -595,8 +595,179 @@ const CLASSIFY_CASES = CLASSIFY_ROWS.map(([p, status, binary, expect, name]) => 
   run: () => disposition({ path: p, status, binary }),
 }));
 
-function selfTest() {
-  const cases = [...IN_MEMORY_CASES, ...CLASSIFY_CASES];
+// realfile/: edits planted in memory on the live working-tree files. A missing or repeated
+// anchor is a FAIL naming the anchor, never a skip.
+
+function anchorOnce(text, anchor, rel) {
+  const i = text.indexOf(anchor);
+  if (i < 0 || text.indexOf(anchor, i + 1) >= 0) {
+    throw new Error(`anchor ${JSON.stringify(anchor)} not found exactly once in ${rel}`);
+  }
+  return i;
+}
+
+function bumpChar(ch) {
+  if (/[0-9]/.test(ch)) return String((Number(ch) + 1) % 10);
+  if (/[a-y]/i.test(ch)) return String.fromCharCode(ch.charCodeAt(0) + 1);
+  if (/[z]/i.test(ch)) return String.fromCharCode(ch.charCodeAt(0) - 25);
+  throw new Error(`cannot bump non-alphanumeric character ${JSON.stringify(ch)}`);
+}
+
+/** The first node of a type in globals.css, read by postcss node offset, never by line. */
+function firstCssNode(text, type) {
+  let found = null;
+  postcss.parse(text, { from: 'src/app/globals.css' }).walk((n) => {
+    if (!found && n.type === type) found = n;
+  });
+  if (!found || !found.source || !found.source.start || typeof found.source.start.offset !== 'number') {
+    throw new Error(`anchor: no ${type} node with a source offset in src/app/globals.css`);
+  }
+  return found;
+}
+
+function realfileCases(root) {
+  const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+  const WCAG = 'src/lib/wcag.ts';
+  const CSS = 'src/app/globals.css';
+  return [
+    {
+      group: 'realfile',
+      name: 'wcag.ts comment edit equal',
+      expect: 'equal',
+      run: () => {
+        const t = read(WCAG);
+        const anchor = '// Both separator conventions:';
+        const i = anchorOnce(t, anchor, WCAG) + anchor.length;
+        return compareTexts(t, t.slice(0, i) + ' (self-test)' + t.slice(i), WCAG).verdict;
+      },
+    },
+    {
+      // A code edit right after a regex literal: the line withoutComments mis-lexes (D-21).
+      group: 'realfile',
+      name: 'wcag.ts regex-literal line code edit differs',
+      expect: 'differ',
+      run: () => {
+        const t = read(WCAG);
+        const anchor = ".replace(/\\//g, ' ')";
+        const i = anchorOnce(t, anchor, WCAG);
+        const edited = t.slice(0, i) + ".replace(/\\//g, '-')" + t.slice(i + anchor.length);
+        return compareTexts(t, edited, WCAG).verdict;
+      },
+    },
+    {
+      group: 'realfile',
+      name: 'globals.css comment node edit equal',
+      expect: 'equal',
+      run: () => {
+        const t = read(CSS);
+        const at = firstCssNode(t, 'comment').source.start.offset;
+        if (t.slice(at, at + 2) !== '/*') throw new Error(`anchor: first comment node of ${CSS} does not open at its offset`);
+        return compareTexts(t, t.slice(0, at + 2) + ' self-test' + t.slice(at + 2), CSS).verdict;
+      },
+    },
+    {
+      group: 'realfile',
+      name: 'globals.css declaration value edit differs',
+      expect: 'differ',
+      run: () => {
+        const t = read(CSS);
+        const decl = firstCssNode(t, 'decl');
+        const v = decl.source.start.offset + decl.prop.length + decl.raws.between.length;
+        if (t.slice(v, v + decl.value.length) !== decl.value) {
+          throw new Error(`anchor: first declaration value of ${CSS} is not at its node offset`);
+        }
+        const last = v + decl.value.length - 1;
+        return compareTexts(t, t.slice(0, last) + bumpChar(t[last]) + t.slice(last + 1), CSS).verdict;
+      },
+    },
+  ];
+}
+
+// git/: throwaway repos under os.tmpdir(), removed in finally. Hooks off, signing off, a
+// fixed identity, and the repo-pointing env vars dropped by git() itself.
+
+function withTempRepo(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cod-selftest-'));
+  try {
+    const g = (...args) => git(dir, args);
+    const commit = (msg) =>
+      g('-c', 'user.name=cod-selftest', '-c', 'user.email=cod-selftest@example.invalid', '-c', 'commit.gpgsign=false',
+        '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '-m', msg);
+    const write = (rel, data) => {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), data);
+    };
+    g('init', '-q', '-b', 'main');
+    write('src/a.js', '// note\nexport const a = 1;\n');
+    write('src/a.test.js', 'export const t = 1;\n');
+    write('src/f.ico', Buffer.from([0, 1, 2, 3, 0, 255]));
+    write('scripts/s.mjs', 'export const s = 1;\n');
+    write('package.json', '{}\n');
+    g('add', '-A');
+    commit('seed');
+    g('branch', 'base');
+    g('switch', '-q', '-c', 'work');
+    return fn({ dir, g, commit, write });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const COMMENT_EDIT = '// note, edited\nexport const a = 1;\n';
+const CODE_EDIT = '// note\nexport const a = 2;\n';
+
+/** expect = { code, counts: { name: n }, line? }; the case result is a comparable string. */
+function G(name, expect, edit) {
+  const describe = (code, counts, hasLine) =>
+    [`exit ${code}`, ...Object.keys(expect.counts).map((k) => `${k} ${counts[k]}`), ...(expect.line ? [`line ${hasLine ? 'present' : 'absent'}`] : [])].join(', ');
+  return {
+    group: 'git',
+    name,
+    expect: describe(expect.code, expect.counts, true),
+    run: () =>
+      withTempRepo((repo) => {
+        edit(repo);
+        const r = runCheck({ root: repo.dir, base: 'base' });
+        return describe(r.code, r.counts, expect.line ? r.lines.includes(expect.line) : true);
+      }),
+  };
+}
+
+const GIT_CASES = [
+  G('comment edit committed exits 0', { code: 0, counts: { commentOnly: 1, offending: 0 } }, ({ g, commit, write }) => {
+    write('src/a.js', COMMENT_EDIT); g('add', '-A'); commit('comment');
+  }),
+  G('code edit committed exits 1', { code: 1, counts: { offending: 1 }, line: 'OFFENDING src/a.js: code change' }, ({ g, commit, write }) => {
+    write('src/a.js', CODE_EDIT); g('add', '-A'); commit('code');
+  }),
+  G('rename without edit exits 1', { code: 1, counts: { offending: 2 }, line: 'OFFENDING src/b.js: added' }, ({ g, commit }) => {
+    g('mv', 'src/a.js', 'src/b.js'); commit('rename');
+  }),
+  G('base advanced after branch point exits 0', { code: 0, counts: { listed: 1, commentOnly: 1 } }, ({ g, commit, write }) => {
+    write('src/a.js', COMMENT_EDIT); g('add', '-A'); commit('comment on work');
+    g('switch', '-q', 'base');
+    write('src/a.js', CODE_EDIT); g('add', '-A'); commit('code on base after the branch point');
+    g('switch', '-q', 'work');
+  }),
+  G('uncommitted code edit exits 1', { code: 1, counts: { offending: 1 }, line: 'OFFENDING src/a.js: code change' }, ({ write }) => {
+    write('src/a.js', CODE_EDIT);
+  }),
+  G('untracked src file exits 1', { code: 1, counts: { offending: 1 }, line: 'OFFENDING src/zz.js: added' }, ({ write }) => {
+    write('src/zz.js', 'export const z = 1;\n');
+  }),
+  G('allowlisted paths exit 0', { code: 0, counts: { allowlisted: 2, offending: 0 } }, ({ g, commit, write }) => {
+    write('scripts/s.mjs', 'export const s = 2;\n'); write('src/a.test.js', 'export const t = 2;\n'); g('add', '-A'); commit('allowlisted');
+  }),
+  G('outside path exits 1', { code: 1, counts: { outside: 1 }, line: 'OUTSIDE package.json: M' }, ({ g, commit, write }) => {
+    write('package.json', '{"a":1}\n'); g('add', '-A'); commit('outside');
+  }),
+  G('binary src file exits 1', { code: 1, counts: { offending: 1 }, line: 'OFFENDING src/f.ico: binary' }, ({ g, commit, write }) => {
+    write('src/f.ico', Buffer.from([0, 1, 2, 4, 0, 255])); g('add', '-A'); commit('binary');
+  }),
+];
+
+function selfTest(root) {
+  const cases = [...IN_MEMORY_CASES, ...CLASSIFY_CASES, ...realfileCases(root), ...GIT_CASES];
   const lines = [];
   let passed = 0;
   for (const c of cases) {
@@ -627,8 +798,9 @@ function selfTest() {
 // CLI wrapper: the only place that prints and exits.
 
 function main(argv) {
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   if (argv.length === 1 && argv[0] === '--self-test') {
-    const { code, lines } = selfTest();
+    const { code, lines } = selfTest(git(scriptDir, ['rev-parse', '--show-toplevel']).trim());
     process.stdout.write(lines.join('\n') + '\n');
     return code;
   }
@@ -636,7 +808,6 @@ function main(argv) {
     process.stderr.write(USAGE + '\n');
     return 1;
   }
-  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const root = git(scriptDir, ['rev-parse', '--show-toplevel']).trim();
   const { code, lines } = runCheck({ root, base: argv[0] });
   process.stdout.write(lines.join('\n') + '\n');
