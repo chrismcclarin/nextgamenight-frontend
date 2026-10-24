@@ -2908,7 +2908,7 @@ export default function GameDetailPage() {
                                        pair and the primitive prop in this file's RAW source, so a
                                        comment naming either one reds the very gate it documents.
                                        Measured 2026-09-16 — the first draft of this line quoted the
-                                       prop and took the count to 2. */
+                                       prop and took the count to 2. [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
                                     className="shrink-0"
                                     title="Share Game QR"
                                 >

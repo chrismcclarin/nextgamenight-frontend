@@ -48,6 +48,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { FORBIDDEN_INK_ON_MUTED, MUTED_GROUND_TOKEN } from '../test-utils/inkRules';
+import { withoutComments } from '../test-utils/sourceScan';
 import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../lib/wcag';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
@@ -1393,7 +1394,13 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       // File-level: exactly one treated copy per file — the SUM of both spellings, Phase 88.6-05 —
       // so a THIRD untreated copy of this control cannot appear alongside the treated one, and the
       // count survives the wave-7 migration unchanged.
-      const legacyCount = (src.match(/btn btn-accent/g) ?? []).length;
+      // DECISION Phase 88.6.2-21 (W059): the file-level count reads comment-stripped code, chosen
+      // OVER the raw count, which let a comment quoting either spelling red a correct tree (IN-411)
+      // and forced markers to describe rather than quote. Chosen OVER making the whole test
+      // comment-blind: the locator and balloon guard still read raw text on purpose, and they fail
+      // loudly with LOCATOR messages.
+      const code = withoutComments(src);
+      const legacyCount = (code.match(/btn btn-accent/g) ?? []).length;
       // Counted on the `variant="accent"` PROP alone, not on `<Button …variant="accent"`, and that
       // is measured rather than stylistic: at both of these sites a multi-line `DECISION` comment
       // sits between the opening tag and the prop, and that comment contains `>` characters, so a
@@ -1401,7 +1408,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       // exactly how it behaved when this rewrite was first run against a simulated wave-7 tree. An
       // unbounded `[\s\S]*?` bridge would instead let one `<Button` reach a LATER sibling's prop.
       // In these two files an accent variant IS this control.
-      const primitiveCount = (src.match(/variant=(?:"accent"|'accent'|\{\s*['"]accent['"]\s*\})/g) ?? []).length;
+      const primitiveCount = (code.match(/variant=(?:"accent"|'accent'|\{\s*['"]accent['"]\s*\})/g) ?? []).length;
       const count = legacyCount + primitiveCount;
       expect(count, `88.3-18 — expected exactly ONE accent-treated Share Game QR control in ${rel} counting BOTH spellings, found ${count} (legacy \`btn btn-accent\` x${legacyCount}, primitive \`<Button variant="accent">\` x${primitiveCount}). A second copy of this control must take the same treatment, not a new one`).toBe(1);
     }
