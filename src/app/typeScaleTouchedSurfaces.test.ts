@@ -2043,8 +2043,10 @@ const WEIGHT_SITES: readonly WeightSite[] = FILES.filter(
  * token, dead-on-a-`.btn` -> delete) and the plans that name the file. The lead is a lead:
  * the owning sweep confirms it per site against UI-SPEC §4.5.
  *
- * Five of these sites are PERMANENT — see `ARMED_STATE_600_ROSTER`. The two files holding
- * them floor at their armed count rather than at zero, and their `why` says so.
+ * Seven of these sites are armed-state sites, also counted in ARMED_STATE_600_ROSTER across
+ * four files (W049, 88.6.2-15). Six are live armed cues; gameDetail's is dead on a .btn and
+ * routed to Phase 92. Each of the four files floors at its armed count rather than at zero,
+ * and userProfile floors at five with its sizer span; each entry's why says so.
  */
 const WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-34 task 2 (wave 7, 2026-09-16): `app/Header.js` carried `sites: 1`
@@ -2659,6 +2661,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     // on the two-tap remove-friend control, which UI-SPEC §4.5 rules STAYS ("Armed-state 600 on
     // two-tap buttons — Button-owned"). It is the same named carve-out plan 88.6-17 kept five of
     // and plan 88.6-18 kept one of, and it is NOT a licence for 600 anywhere else in this file.
+    // CORRECTED by 88.6.2-15 (W049): this survivor is NOT Button-owned. It sits on a raw button
+    // wearing rounded-btn and never .btn, so its 600 is LIVE and is the armed cue itself.
     // Everything else resolved, each call enumerated in `88.6-19-SUMMARY.md`: four row primary
     // strings and the Sent-tab "Pending" pill took 700; the remove control's RESTING weight, the
     // "Request sent" confirmation, the invite-to-group `<label>` and the bulk-invite result box
@@ -2668,7 +2672,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     // the bulk-invite CTA's `font-medium` was dead on a `.btn` and deleted with the migration.
     sites: 1,
     why:
-      '1 off-scale weight site: the armed-state 600 on the two-tap remove-friend control. UI-SPEC §4.5 rules this family Button-owned and it STAYS. Owning plans: 88.6-19 (swept), 88.6-46 (closeout).',
+      '1 off-scale weight site: the LIVE armed-state 600 on the two-tap remove-friend control. It sits on a raw button wearing rounded-btn and never .btn (it is NOT Button-owned), so the utility renders and IS the armed weight cue. Counted in ARMED_STATE_600_ROSTER too since 88.6.2-15 (W049), so this entry floors at 1. Owning plans: 88.6-19 (swept), 88.6-46 (closeout), 88.6.2-15 (W049).',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/gameDetail/page.js': {
@@ -2680,10 +2684,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     // (hierarchy) or 400 (emphasis + a colour token, or dead on a `.btn`) — every call is
     // enumerated in `88.6-18-SUMMARY.md`, including the two breadcrumb current-page spans that
     // KEPT 700 and GAINED `aria-current="page"` under R2 #171 (T-88.6-138).
+    // CORRECTED by 88.6.2-15 (W049): the "UI-SPEC §4.5 rules STAYS" reading above was wrong. The
+    // control is a Button, so .btn already renders 600 at rest and armed alike, and this utility
+    // is DEAD — it carries no armed cue. Counted in ARMED_STATE_600_ROSTER too; its deletion is
+    // routed to Phase 92 (DECISION Phase 88.6.2-15 (PC-2), at that roster's entry).
     sites: 1,
     why:
-      '1 off-scale weight site: the armed-state 600 on the two-tap participant Remove. UI-SPEC §4.5 rules this family Button-owned and it STAYS. Owning plans: 88.6-18 (swept), 88.6-46 (closeout).',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+      '1 off-scale weight site: the font-semibold on the ARMED branch of the two-tap participant Remove. It is DEAD: the control is a Button and .btn sets the weight unlayered, so rest and armed both render 600 and the weight carries no armed cue. Counted in ARMED_STATE_600_ROSTER too (88.6.2-15, W049); deleting it is a className edit routed to Phase 92, and that commit deletes both entries together. Owning plans: 88.6-18 (swept), 88.6-46 (closeout), 88.6.2-15 (W049).',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88.6.2-15 (PC-2)' },
   },
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), all seven sites:
   //   - the three header CTAs' `font-semibold` left with their migration onto `Button`, where
@@ -2813,7 +2821,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
  * A roster entry rather than a scanner EXCLUSION on purpose: an exclusion on
  * `userProfile/page.js` and `KebabMenu.js` would also permit any FUTURE 600 in those two
  * files, which is precisely the fossil permission the exact-count schema exists to stop.
- * Enumerated by file:line, so a sixth armed site is a decision rather than a silent
+ * Enumerated by file:line, so an eighth armed site is a decision rather than a silent
  * widening.
  */
 const ARMED_STATE_600_ROSTER: ExemptionRoster = {
@@ -2843,16 +2851,30 @@ const ARMED_STATE_600_ROSTER: ExemptionRoster = {
   'app/components/KebabMenu.js': {
     sites: 1,
     why:
-      'the armed-state 600 on the destructive kebab item (:158, `isArmed ? bg-status-error-subtle font-semibold`) — the Phase 65-02 two-tap pattern, and since D-40 the SOLE phone path to destructive row actions',
+      'the armed-state 600 on the destructive kebab item (src/app/components/KebabMenu.js ("bg-status-error-subtle font-semibold")) — the Phase 65-02 two-tap pattern, and since D-40 the SOLE phone path to destructive row actions',
     owner: { kind: 'decision', marker: 'DECISION Phase 65-02 EVT-08' },
+  },
+  'app/friends/page.js': {
+    sites: 1,
+    why:
+      'the LIVE armed-state 600 on the two-tap remove-friend control, a raw button wearing rounded-btn and never .btn, so the utility renders and IS the armed weight cue. It was filed only in WEIGHT_ROSTER until 88.6.2-15 widened the predicate (W049), so one rule had two homes.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  // DECISION Phase 88.6.2-15 (PC-2): rostered and routed, over deleting the utility here — the deletion is a className edit in a production file, which R11 forbids this phase; Phase 92 decomposes gameDetail (ROADMAP Phase 92 criterion 1) and owns it.
+  'app/gameDetail/page.js': {
+    sites: 1,
+    why:
+      'the font-semibold on the ARMED branch of the two-tap participant Remove, seen through its isConfirming local. It is DEAD: the control is a Button, and .btn sets the weight unlayered (src/app/globals.css ("font-weight: 600;")), so rest and armed both render 600 and the weight carries no armed cue. The error-subtle ground, the border and the ink carry it. Deleting it is routed to Phase 92, and that commit deletes this entry and the file\'s WEIGHT_ROSTER entry together.',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88.6.2-15 (PC-2)' },
   },
 };
 
-/**
- * The armed-state predicate. A `font-semibold` whose surrounding source names the
- * `useConfirmAction` armed state. Deliberately NOT a file-level allowance.
- */
-const isArmedStateSite = (s: WeightSite) => /isArmed|Armed\b/.test(s.context);
+// The armed-state predicate. A font-semibold whose surrounding source names the
+// useConfirmAction armed state, in any of the spellings the tree uses: the gate call itself
+// (isArmed), a local ending in Armed (removeArmed), a local named armed (friends), or
+// gameDetail's isConfirming. Deliberately NOT a file-level allowance.
+// DECISION Phase 88.6.2-15 (W049): the old alternatives plus a bounded armed local and gameDetail's isConfirming, over the review's /\b(?:is)?[Aa]rmed\b|isConfirming/ (it drops userProfile's removeArmed site, 4 -> 3) and over a file-level allowance — this widening is the "eighth armed site is a decision" the roster docblock asks for.
+const isArmedStateSite = (s: WeightSite) => /isArmed|Armed\b|\barmed\b|\bisConfirming\b/.test(s.context);
 
 /** Negative controls for the weight rule — both polarities, plus the strip. */
 const FIXTURE_WEIGHT_COMPLIANT = `
@@ -2871,6 +2893,48 @@ const FIXTURE_WEIGHT_COMMENTS = `
   // And a font-medium after a line comment likewise.
   export const H = () => <span className="font-semibold">real</span>;
 `;
+
+// W049: every armed spelling the tree uses, plus unarmed look-alikes. Each case is one short
+// component with ONE font-semibold on the armed arm of a className ternary, scanned exactly as
+// the tree is, so the predicate is pinned on the spelling and on nothing else. friends names its
+// gate result armed and gameDetail names it isConfirming; neither says isArmed beside the class.
+const ARMED_SPELLINGS: readonly { name: string; src: string; armed: boolean }[] = [
+  {
+    name: 'armed ? (friends)',
+    src: `export const A = ({ armed }) => <button className={armed ? 'border-status-error font-semibold' : 'border-transparent'}>x</button>;`,
+    armed: true,
+  },
+  {
+    name: 'isConfirming ? (gameDetail)',
+    src: `export const B = ({ isConfirming }) => <Button className={isConfirming ? 'bg-status-error-subtle font-semibold' : 'border-status-error'}>x</Button>;`,
+    armed: true,
+  },
+  {
+    name: 'removeArmed ? (userProfile)',
+    src: `export const C = ({ removeArmed }) => <button className={removeArmed ? 'border-status-error font-semibold' : 'border-transparent'}>x</button>;`,
+    armed: true,
+  },
+  {
+    name: 'deleteGate.isArmed(id) ?',
+    src: `export const D = ({ deleteGate, id }) => <button className={deleteGate.isArmed(id) ? 'border-status-error font-semibold' : 'border-transparent'}>x</button>;`,
+    armed: true,
+  },
+  {
+    name: 'isOpen ? (negative)',
+    src: `export const E = ({ isOpen }) => <button className={isOpen ? 'bg-surface-hover font-semibold' : 'bg-transparent'}>x</button>;`,
+    armed: false,
+  },
+  {
+    name: 'disarmed ? (negative)',
+    src: `export const G = ({ disarmed }) => <button className={disarmed ? 'bg-surface-hover font-semibold' : 'bg-transparent'}>x</button>;`,
+    armed: false,
+  },
+  {
+    name: 'alarmed ? (negative)',
+    src: `export const K = ({ alarmed }) => <button className={alarmed ? 'bg-surface-hover font-semibold' : 'bg-transparent'}>x</button>;`,
+    armed: false,
+  },
+];
 
 describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx', () => {
   it('permits only font-normal and font-bold outside Button.tsx', () => {
@@ -2908,11 +2972,21 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
     }
     expect(
       assertExactCounts(ARMED_STATE_600_ROSTER, armed),
-      'a sixth armed-state 600 is a decision, not a rebase. These sites also stay counted in ' +
-        'WEIGHT_ROSTER, which is why those two files floor at their armed count rather than ' +
+      'an eighth armed-state 600 is a decision, not a rebase. These sites also stay counted in ' +
+        'WEIGHT_ROSTER, which is why those four files floor at their armed count rather than ' +
         'at zero — an exclusion would instead permit ANY future 600 in them. ' +
         `Armed sites: ${JSON.stringify(WEIGHT_SITES.filter(isArmedStateSite).map((s) => `${s.surface}:${s.line}`))}`,
     ).toEqual([]);
+  });
+
+  it('sees every armed spelling the tree uses, and no unarmed one (W049)', () => {
+    // One string per case, so a failure names the spelling the predicate got wrong. A case
+    // that does not scan to exactly one site reports its count instead of a verdict.
+    const got = ARMED_SPELLINGS.map((c, i) => {
+      const sites = scanWeights(`fixture/armed-${i}.tsx`, withoutComments(c.src));
+      return `${c.name}: ${sites.length === 1 ? String(isArmedStateSite(sites[0])) : `${sites.length} sites`}`;
+    });
+    expect(got).toEqual(ARMED_SPELLINGS.map((c) => `${c.name}: ${String(c.armed)}`));
   });
 
   it('does not count a weight class written in a comment (negative control)', () => {
