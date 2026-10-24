@@ -28,10 +28,13 @@
  *
  * DECISION Phase 88.3 (D-02): this is a `stringChunks` SOURCE SCAN, chosen OVER the grep
  * the plan first specified. Grep is measurably wrong for this token family, in both
- * directions. MISSES: the token lives in `closeClassName=` (`createGroup.js:176`), in
- * object-literal config maps (`RsvpSection.js:121`), in `cls:` lookup tables
- * (`gameDetail/page.js:45-46`) and in template-literal ternary branches
- * (`KebabMenu.js:158`, `ScheduleList.js:144-145`, `FriendInvitePanel.js:414-417`) — a
+ * directions. MISSES: the token lives in `closeClassName=` (src/app/components/createGroup.js,
+ * at 88.3; that site no longer carries it), in object-literal config maps
+ * (src/app/components/RsvpSection.js, at 88.3; likewise gone), in `cls:` lookup tables
+ * (src/app/gameDetail/page.js ("cls: 'bg-surface-muted text-content-secondary'")) and in
+ * template-literal ternary branches (src/app/components/KebabMenu.js and
+ * src/app/components/ScheduleList.js, at 88.3; neither carries it now;
+ * src/app/components/FriendInvitePanel.js ("? 'border-accent bg-surface-muted cursor-pointer'")) — a
  * `className`-anchored rewrite reaches none of the first three, and grep is line-based
  * while every className in this repo sits on a different line from its opening tag.
  * FALSE POSITIVES: it also lives in comments that must NOT be swept — measured at
@@ -40,8 +43,10 @@
  * command and its count are left verbatim because they are the measurement taken THEN]
  * `NotificationBell.js:168` is a DECISION-marker COMMENT line, so the grep census was
  * inflated by exactly one; the lexer's count is 41. A naive `sed` would have corrupted a
- * prior phase's evidence. `sourceScan.ts:41-58` records four shipped grep gates killed by
- * these same three properties. Re-writing this as a grep is a decision, not a cleanup.
+ * prior phase's evidence.
+ * src/test-utils/sourceScan.ts ("Three properties matter, each of which killed a shipped grep gate")
+ * records four shipped grep gates killed by these same three properties. Re-writing this as a
+ * grep is a decision, not a cleanup.
  *
  * WHAT THIS DOES NOT CLAIM
  * ------------------------
@@ -66,8 +71,10 @@ const rel = (file: string): string => path.relative(SRC, file);
 
 /**
  * The tokens, built from parts so this file's own prose cannot be scanned into a hit.
- * (`sourceFiles` already excludes `.test.` files — `sourceScan.ts:209` — so this is belt
- * and braces, and it is the idiom `legacyOverlayClass.test.ts:54` established.)
+ * (`sourceFiles` already excludes `.test.` files, at
+ * src/test-utils/sourceScan.ts ("!/\.(test|spec)\./.test(entry.name)"), so this is belt and
+ * braces, and it is the idiom
+ * src/app/legacyOverlayClass.test.ts ("const LEGACY = ['modal', 'overlay'].join('-');") established.)
  */
 const SURFACE = ['bg', 'surface'].join('-');
 /**
@@ -157,21 +164,22 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
   });
 
   it('2. the detector really matches the prefixed token — it is not a dead regex', () => {
-    // Bare string constant, the `availabilityColor.ts:248` shape.
+    // Bare string constant, the src/lib/availabilityColor.ts ("return 'bg-surface-elevated hover:bg-surface-hover';") shape.
     expect(legacyHoverUses(`const c = "${HOVER_PREFIX}${LEGACY}";`)).toHaveLength(1);
     // A className with siblings around it — the shipped JSX shape.
     expect(
       legacyHoverUses(`<div className="${HOVER_PREFIX}${LEGACY} p-4">`),
     ).toHaveLength(1);
-    // A template-literal ternary branch — reachable by grep only by accident, and the
-    // shape `KebabMenu.js:158` and `FriendInvitePanel.js:414-417` actually ship.
+    // A template-literal ternary branch — reachable by grep only by accident, and the shape
+    // src/app/components/KebabMenu.js ("${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}")
+    // and src/app/components/FriendInvitePanel.js ("? 'border-accent bg-surface-muted cursor-pointer'") actually ship.
     expect(
       legacyHoverUses(
         `const c = \`rounded \${on ? "${HOVER_PREFIX}${LEGACY}" : "border-line"}\`;`,
       ),
     ).toHaveLength(1);
     // The open-state variant, which `legacyOverlayClass.test.ts`'s simpler strip cannot
-    // reach — this is `dialog.tsx:75`.
+    // reach — this is src/components/ui/dialog.tsx ("data-[state=open]:bg-surface-hover").
     expect(
       legacyHoverUses(`<X className="opacity-70 ${OPEN_PREFIX}${LEGACY}" />`),
     ).toHaveLength(1);
@@ -209,13 +217,18 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     //
     //  1. the GuestInviteButton idle branch — migrated to `<Button variant="ghost">`, whose
     //     cva variant already supplies the byte-equal `enabled-hover:bg-surface-hover`
-    //     (`Button.tsx:209`). The bare form could NOT be kept: under the D8 amendment that
+    //     (src/components/ui/Button.tsx ("bg-transparent text-content-secondary enabled-hover:bg-surface-hover")).
+    //     The bare form could NOT be kept: under the D8 amendment that
     //     control is `aria-disabled` while sending, and a bare `hover:` re-lights a gated
     //     control — the exact defect `enabled-hover` exists to prevent
     //     (`Button.tsx`'s `DECISION Phase 88.6-06 (D10)`).
     //  2-4. the hand-rolled event-actions kebab's trigger and its two destructive items —
     //     RETIRED onto the shared `KebabMenu`, whose own trigger and items carry the wash and
-    //     are already counted in this set (`KebabMenu.js:429`, `:549`, `:550`).
+    //     are already counted in this set: the trigger,
+    //     src/app/components/KebabMenu.js ("text-2xl text-content-muted hover:text-content-primary"),
+    //     and the two item arms,
+    //     src/app/components/KebabMenu.js ("${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}")
+    //     and src/app/components/KebabMenu.js ("'text-content-primary hover:bg-surface-hover'").
     //
     // 32 -> 31, plan 88.6-21 task 2 (wave 7, 2026-09-16), WITH ITS ONE DEPARTING SITE NAMED:
     // `app/groupHomePage/page.js`'s "Manage Members" header CTA, migrated to
@@ -250,7 +263,8 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
   });
 
   it('4b. the three dark-chrome menu rows are on the HEADER family, not the card one', () => {
-    // UI-SPEC §10.1: these rows sit on `bg-surface-header` (`Header.js:192`). A warm-50
+    // UI-SPEC §10.1: these rows sit on `bg-surface-header`
+    // (src/app/Header.js ("w-full h-16 bg-surface-header border-b border-line-strong")). A warm-50
     // wash under `text-white` measures 1.06:1; warm-700 measures 10.48:1. Pinned BY NAME
     // so a future re-sweep that "converges" them onto the other 38 goes red here.
     const sites = sitesOf(files, `${HOVER_PREFIX}${HEADER_HOVER}`);
@@ -264,7 +278,8 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
         `${required} must hover to \`${HEADER_HOVER}\` — it renders on the dark header panel`,
       ).toBe(true);
     }
-    // Plus the two nav links at `Header.js:204,212`, which were already correct and are
+    // Plus the two nav links under src/app/Header.js ("{navLinks.map(({ href, label, isLink }) => ("),
+    // which were already correct and are
     // the model these three should have followed. Untouched by this phase.
     expect(sites.filter((s) => s.startsWith('app/Header.js:')).length).toBeGreaterThanOrEqual(2);
   });
@@ -280,15 +295,15 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // on a card ground, three are avatar/media DISCS carrying the OI-5 SHAPE at sites the
     // `DECISION Phase 88.3 (OI-5)` marker does not sit on, one matched on a component's props,
     // one was retired by plan 18, and the single genuine nested surface
-    // (`userProfile/page.js:2873`, the BGG result row) sits at depth 2 on a `bg-surface-page`
+    // (src/app/userProfile/page.js ("<div key={result.bgg_id}"), the BGG result row) sits at depth 2 on a `bg-surface-page`
     // ground where `bg-surface-sunken` measures LIGHTER than its parent in both themes
     // (dL* +8.06 light, +3.43 dark) — raised, not recessed.
     //
     // So a reader finding no 88.6 names in 4d's roster is looking at a sweep that RAN and
     // adopted nothing, not at a sweep that was skipped. REJECTED: converting this to an exact
-    // total of 5 — the one-below-measured slack is the documented decision (same idiom as 4a at
-    // `:194-196`) and is what keeps adding a site from being a test edit. Changing it is a
-    // decision, not a cleanup.
+    // total of 5 — the one-below-measured slack is the documented decision (same idiom as 4a,
+    // this file ("Floor set BELOW the measured 38 on purpose")) and is what keeps adding a site from
+    // being a test edit. Changing it is a decision, not a cleanup.
     const sites = sitesOf(files, SUNKEN);
     expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(4);
   });
@@ -373,12 +388,15 @@ describe('Phase 88.6-02 (D-15) — the retired card-hover CLASS token has zero l
     // name — rewriting them would turn true historical statements into false ones. A byte-presence
     // grep over the tree is therefore UNSATISFIABLE BY CONSTRUCTION: it can only be made green by
     // falsifying history. `stringChunks` sees only string-literal content, so comment prose is
-    // excluded by the lexer rather than by a fragile pattern — the same idiom `darkChromeLegibility
-    // .test.ts:43` uses, and the one `sourceScan.ts:41-58` records four shipped grep gates dying
-    // without.
+    // excluded by the lexer rather than by a fragile pattern — the same idiom
+    // src/app/darkChromeLegibility.test.ts ("import { stringChunks, withoutComments, lineAt, sourceFiles }")
+    // uses, and the one
+    // src/test-utils/sourceScan.ts ("Three properties matter, each of which killed a shipped grep gate")
+    // records four shipped grep gates dying without.
     //
     // WHAT IT DOES NOT SEE, stated rather than implied: `sourceFiles()` excludes `.test.`/`.spec.`
-    // files (`sourceScan.ts:209`) and never reaches `.css` or `e2e/`. Leg (b) covers the
+    // files (src/test-utils/sourceScan.ts ("!/\.(test|spec)\./.test(entry.name)")) and never
+    // reaches `.css` or `e2e/`. Leg (b) covers the
     // declaration layer, leg (c) covers `e2e/`, and the test-file layer is covered by the suites
     // themselves running green.
     const offenders: string[] = [];

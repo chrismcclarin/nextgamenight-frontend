@@ -80,23 +80,23 @@ const BREAKPOINT_SIZE = /\b(sm|md|lg|xl|2xl):text-(base|lg|xl)/;
 
    THE DEFECT THE PRIVATE COPY HAD, measured rather than reasoned: it treated a bare `'`
    ANYWHERE — including in JSX TEXT — as opening a string literal, and scanned forward to the
-   next `'` with no newline bound. One apostrophe in prose (`ManageMembers.js:484`,
-   "You're viewing the member list.") therefore swallowed everything up to the next apostrophe
-   fifteen lines later (inside `title="Couldn't load members"`), and every `/*` in that span
-   went unrecognised. The visible symptom was a FALSE POSITIVE: the literal text `<select>`
-   inside the 88-12 a11y marker at `:600` was reported as an unsized control. The far worse
-   symptom is the one nobody would have seen — a REAL unsized control sitting inside such a
-   span is silently skipped, and this suite goes quiet exactly where it matters.
+   next `'` with no newline bound. One apostrophe in prose, at
+   src/app/components/ManageMembers.js ("You're viewing the member list."), therefore swallowed
+   everything up to the next apostrophe fifteen lines later (inside `title="Couldn't load members"`),
+   and every `/*` in that span went unrecognised. The visible symptom was a FALSE POSITIVE: the
+   literal text `<select>` inside the 88-12 a11y marker, at
+   src/app/components/ManageMembers.js ("The role <select> shipped"), was reported as an unsized
+   control. The far worse symptom is the one nobody would have seen — a REAL unsized control
+   sitting inside such a span is silently skipped, and this suite goes quiet exactly where it matters.
 
-   `withoutComments` already carries the bound (`sourceScan.ts:164-166`: "An unterminated
-   single/double quote (an apostrophe in prose) must not swallow the rest of the file: stop at
-   the newline"). Both strippers blank comments in place and preserve every other byte and
-   offset, so reported line numbers are unchanged by this swap.
+   `withoutComments` already carries the bound, in
+   src/test-utils/sourceScan.ts ("An unterminated single/double quote"): an apostrophe in prose must
+   not swallow the rest of the file, so it stops at the newline. Both strippers blank comments in place
+   and preserve every other byte and offset, so reported line numbers are unchanged by this swap.
 
-   MEASURED BEHAVIOUR-EQUIVALENCE, not assumed: the control set was computed with BOTH
-   strippers across all 194 non-test files under `src/`. The two agree on 193 of them; the
-   single difference is the false positive above disappearing. Re-inlining a private copy here
-   is a decision, not a cleanup. */
+   MEASURED BEHAVIOUR-EQUIVALENCE, not assumed: the control set was computed with BOTH strippers across
+   all 194 non-test files under `src/`. The two agree on 193 of them; the single difference is the false
+   positive above disappearing. Re-inlining a private copy here is a decision, not a cleanup. */
 
 // `readOpeningTag` was RELOCATED to `src/test-utils/sourceScan.ts` by Phase 88.6-09 and is
 // imported above. It is the same brace-balanced reader this file has always used, plus a
@@ -424,10 +424,10 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    *
    *  - the compact month event tile: the unique element whose opening tag contains
    *    `aria-label={tileLabel + rsvpLabel}`. Measured 2026-09-15, `grep -rn "tileLabel +
-   *    rsvpLabel" src` returns exactly ONE non-test hit (`CalendarMonthView.js:843`, anchor
-   *    `aria-label={tileLabel + rsvpLabel}`, re-measured 2026-10-15), and it
-   *    distinguishes the COMPACT tile from the full-variant twin below it, whose label is the
-   *    bare `tileLabel`.
+   *    rsvpLabel" src` returns exactly ONE non-test hit
+   *    (src/app/components/CalendarMonthView.js ("aria-label={tileLabel + rsvpLabel}"), re-checked
+   *    2026-10-24), and it distinguishes the COMPACT tile from the full-variant twin below it,
+   *    whose label is the bare `tileLabel`.
    *  - the home-card cog: the unique element whose opening tag contains
    *    `title={customizeGroupLabel(group.name)}`. Re-anchored by 88.6.1-54 for D-19 and D-52,
    *    because the name is now computed per card and the title is its only name source. Exactly
@@ -436,8 +436,8 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    *
    * THE COG SUBJECT WAS RE-DERIVED, NOT TAKEN FROM THE PLAN. `88.6-12-PLAN.md` named
    * `src/app/userHome/UserHomePage.js`; a `Cog|Gear|Settings` grep over that file returns no
-   * such control, because the home card is rendered by `<GroupList>` (`UserHomePage.js:502`,
-   * anchor `<GroupList`, re-measured 2026-10-15)
+   * such control, because the home card is rendered by `<GroupList>`
+   * (src/app/userHome/UserHomePage.js ("<GroupList"), re-checked 2026-10-24)
    * and the cog lives in `app/components/grouplist.js`. Recorded in `88.6-12-SUMMARY.md`.
    */
   //
@@ -619,8 +619,9 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     },
     // quick-261021-ffb (owner 2026-10-21, Games to Bring re-entry): BringSummary's ONE viewer control,
     // labelled `Add games` (no brings) or `Edit` (has brings), sits on the house phone-scoped pair
-    // `min-h-11 md:min-h-0 min-w-11 md:min-w-0` (`GroupGamesList.js:462`). Both axes are pinned
-    // because `Edit` is a short word. The floor is MET, so no D13_FLOOR_ROSTER entry.
+    // `min-h-11 md:min-h-0 min-w-11 md:min-w-0`, as at
+    // src/app/components/GroupGamesList.js ("px-3 py-2 min-h-11 md:min-h-0 min-w-11 md:min-w-0"). Both
+    // axes are pinned because `Edit` is a short word. The floor is MET, so no D13_FLOOR_ROSTER entry.
     bringSummaryControl: {
       anchor: 'onClick={onEditClick}',
       expectedFile: 'app/components/BringSummary.js',
@@ -739,7 +740,8 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
      *
      * THE FIVE RECOVERY CONTROLS (Phase 88.6.1-21, AC-10 / WR-503) take 44 at phone width: the
      * three FetchErrorBanner link-buttons and ErrorFallback's two raw buttons, none a `.btn`, each
-     * declaring the house phone-scoped `min-h-11 md:min-h-0` (`UpcomingEventsCard.js:263`).
+     * declaring the house phone-scoped `min-h-11 md:min-h-0`, as at
+     * src/app/components/UpcomingEventsCard.js ("block w-full text-left min-h-11 md:min-h-0").
      */
     const measured: Record<string, number> = {};
     const unmet: string[] = [];
