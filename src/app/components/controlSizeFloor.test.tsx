@@ -471,6 +471,19 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-h', 'h'],
       label: 'the home-card settings cog',
     },
+    // DECISION Phase 88.6.2-19 (W032): a WIDTH subject for the cog, chosen OVER a D13_FLOOR_ROSTER
+    // entry (the roster comment above forbids re-seeding it to silence a red) and OVER widening
+    // homeCardCog to four prefixes, which would still pass on min-h-11 alone because meetsFloor
+    // accepts any one qualifying token. 88.6-40 found the cog's real deficit was width; this is the
+    // entry that sees it go. Deleting it is a decision, not a cleanup.
+    homeCardCogWidth: {
+      anchor: 'title={customizeGroupLabel(group.name)}',
+      expectedFile: 'app/components/grouplist.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: 'the home-card settings cog, width (W032: the gear glyph plus px-3 is about 40px wide, so min-w-11 is what holds it)',
+    },
     bannerRetries: {
       anchor: 'onClick={handleRetry}',
       expectedFile: 'components/ui/FetchErrorBanner.tsx',
@@ -692,10 +705,16 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     return variants.some((v) => /^(sm|md|lg|xl|2xl)$/.test(v));
   }
 
-  /** Does this tag declare an explicit vertical dimension at or above `floor`, at phone width? */
+  // DECISION Phase 88.6.2-19 (W032-variant): a floor token counts only UNPREFIXED, chosen OVER also
+  // allowing state, theme or ARIA variants. hover:, dark:, focus: or aria-*: alone is not the
+  // control's resting size, and WR-304 named that hole; 88.6.1-21's gatesAboveThePhone closed the
+  // breakpoint half only. A max-* floor would red here too, the safe direction for a floor gate:
+  // decide it as its own subject. Every subject was floored unprefixed when this was written.
+  /** Does this tag declare an explicit, unprefixed dimension at or above `floor`, at phone width? */
   function meetsFloor(tag: string, floor: number, dimensions: string[]): boolean {
     return tagTokens(tag).some(({ raw, base }) => {
       if (gatesAboveThePhone(raw)) return false;
+      if (raw.replace(/^!/, '') !== base) return false;
       const px = utilityPx(base, dimensions);
       return px !== null && px >= floor;
     });
