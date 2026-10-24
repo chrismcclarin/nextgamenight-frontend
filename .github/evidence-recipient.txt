@@ -1,0 +1,3 @@
+# age recipient (PUBLIC key) for CI failure evidence. Public by design; the private key is in no repo and no secret.
+# Used by scripts/encrypt-evidence.sh. Decrypt recipe: README.md, section "## CI".
+age1k4eachfvzvud3yamru0a57jw0lysvu5s8uf9g3n8s695sm48sytqsc93gp
