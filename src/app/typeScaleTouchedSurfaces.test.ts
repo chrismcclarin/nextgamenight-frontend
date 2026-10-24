@@ -747,7 +747,10 @@ const EXPECTED_PROP_SEAMS = 5;
 // disclosed 18 -> 20). `EXPECTED_LEVELS`' `{ 1: 1, 2: 1, 3: 1 }` entry for that file is
 // byte-unchanged (P4). MEASURED, not assumed: the floor was first set to 132 and RED with
 // "expected 131 to be greater than or equal to 132".
-const EXPECTED_MIN_PRIMITIVES = 131;
+// DECISION Phase 88.6.2-15 (EMP): compared EXACTLY (toBe) over the >= floor this constant was, and over deriving it from the other rosters (a number derived from the scan it pins can never disagree with it). Measured at FE 995023d: 136 heading-primitive call sites against a floor of 131 — five migrations landed without a raise and the >= stayed green. A sweep that adds OR removes a primitive now reds until this number moves in the same commit. The RAISED history above, and its ">=" sentences, describe the floor before 88.6.2-15.
+// Re-measured at execution (FE de26524, 88.6.2-15 task 2): 136, by this suite's own failure
+// message — "expected 137 to be 131" with a one-site plant present, then the plant deleted.
+const EXPECTED_PRIMITIVES = 136;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -851,7 +854,7 @@ const RUNG_ROSTER: ExemptionRoster = {
   // `<Heading level={2} size="heading">` (18 -> 20, a disclosed visible delta). It is the ONLY
   // h2@18 in the tree (RESEARCH §B.3), so this closes a ONE-SITE row of D-04's table. The LEVEL
   // is preserved, so `EXPECTED_LEVELS`' `{ 2: 1 }` entry is byte-unchanged, and the migrated
-  // heading LEAVES this raw-only population entirely. `EXPECTED_MIN_PRIMITIVES` rises by one in
+  // heading LEAVES this raw-only population entirely. `EXPECTED_PRIMITIVES` rises by one in
   // this same commit, per this suite's own docblock rule. Entry DELETED rather than zeroed.
   // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/EventCalendar.js`
   // carried `sites: 2` and both cites were EXACT. Both `text-2xl` h2s ("Game Sessions Calendar",
@@ -1262,9 +1265,9 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
 
     expect(
       primitives.length,
-      'each migrating sweep raises EXPECTED_MIN_PRIMITIVES in the same commit as the ' +
-        'migration it lands — an unchanged zero after a sweep wave is a RED, not a pass',
-    ).toBeGreaterThanOrEqual(EXPECTED_MIN_PRIMITIVES);
+      'each migrating sweep moves EXPECTED_PRIMITIVES in the same commit as the migration it ' +
+        'lands; the count is EXACT, so an unmoved number is a RED',
+    ).toBe(EXPECTED_PRIMITIVES);
   });
 
   it('skips non-literal level expressions BY RULE, and enumerates the ones it skipped', () => {
@@ -1295,7 +1298,7 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // the same uncounted element from one uncounted shape to another. The nine `<h3>`s and one
       // `<h1>` `EmptyState` really renders were uncounted before and are uncounted now.
       //
-      // IT IS ALSO WHY `EXPECTED_MIN_PRIMITIVES` RISES BY ONE AND NOT TWO in plan 36: a skipped
+      // IT IS ALSO WHY `EXPECTED_PRIMITIVES` RISES BY ONE AND NOT TWO in plan 36: a skipped
       // `<Heading>` is not in `ALL`, so it is not in the `heading-primitive` bucket the floor counts.
       // `ErrorFallback.tsx`'s `<Heading level={1}>` is literal and IS counted; this one is not.
       // Raising the floor by two would have RED the floor assertion, which is the honest outcome — do
@@ -2520,7 +2523,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     outcome did not apply and the emphasis outcome did.
   // In the SAME commit the file also took its §4.3 size outcome: the non-heading text-2xl residue
   // the SPEC names at SuggestionCard.js:89 became text-xl / 700 as a PSEUDO-HEADING, deliberately
-  // not a <Heading> (it is a number, not a section title, so EXPECTED_MIN_PRIMITIVES does not move).
+  // not a <Heading> (it is a number, not a section title, so EXPECTED_PRIMITIVES does not move).
   // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/ThresholdSlider.js`
   // carried `sites: 2` (2 font-medium), and the two resolved OPPOSITE ways — which is why the
