@@ -1,4 +1,5 @@
 import { test, expect, type Locator } from '@playwright/test';
+import { openCreateEventDialog, switchToManualEntry } from './support/createEvent';
 
 /**
  * Phase 87.8 SPEC R2 — the padding-budget instrument (MOB-02).
@@ -232,13 +233,12 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
   });
 
   test('Create Event modal: padding chain stays within budget', async ({ page }) => {
-    // Same four-step journey tailwind-v4-styles.spec.ts:59-76 runs green in CI:
+    // The shared drive e2e/support/createEvent.ts ("export async function openCreateEventDialog("):
     // group home → "Add New Game Event" → "Create Event" heading → manual entry
     // (the start_date label renders only on the manual-entry branch).
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
-    await page.getByRole('button', { name: /add new game event/i }).click();
-    await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
-    await page.getByRole('button', { name: /switch to manual entry/i }).click();
+    await openCreateEventDialog(page);
+    await switchToManualEntry(page);
 
     // Anchor: the start_date <label> element itself (createEvent.js:851) — a
     // text locator, because getByLabel would resolve to the <input>, whose own

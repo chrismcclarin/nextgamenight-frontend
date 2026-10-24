@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openCreateEventDialog, switchToManualEntry } from './support/createEvent';
 
 /**
  * Phase 87.7 D-10 LAYER 2 — the two render-only hazards no grep can see.
@@ -59,23 +60,22 @@ test.describe('Tailwind v4 migration — computed-style spot checks (D-10 layer 
   test.skip(({ isMobile }) => isMobile, 'SPEC R5 (Phase 87.8, closed): viewport-independent hazards — desktop-only by owner decision');
 
   test.beforeEach(async ({ page }) => {
-    // The same four-step journey e2e/create-event.spec.ts:20-33 already runs green in CI.
+    // The same four-step journey the green create-event journey runs, through its shared drive
+    // e2e/support/createEvent.ts ("export async function openCreateEventDialog(").
 
     // 1. Group home hosts the create-event entry point (param is `id`, not `groupId`).
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     // 2. "Add New Game Event" opens the modal (groupHomePage surface).
-    await page.getByRole('button', { name: /add new game event/i }).click();
-
     // 3. The "Create Event" heading confirms createEvent.js is mounted (its h2 at L666).
-    await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
+    await openCreateEventDialog(page);
 
     // 4. createEvent.js opens in VISUAL-CALENDAR mode (`useVisualCalendar` initialises to
     //    true, L32), and the `start_date` input Test 1 locates renders only on the
     //    manual-entry branch (L854). This toggle (L732-738) is how the green create-event
     //    journey itself reaches that input. Test 2/3's form test id sits on the OUTER
     //    form (L700) and is reachable in either mode, so it does not depend on this step.
-    await page.getByRole('button', { name: /switch to manual entry/i }).click();
+    await switchToManualEntry(page);
 
     // D-11, and this ordering is not negotiable: assert the THEME before asserting any
     // style. playwright.config.ts pins `colorScheme: 'dark'`, but that is only half the

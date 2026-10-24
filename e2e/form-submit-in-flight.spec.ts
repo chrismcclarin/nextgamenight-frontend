@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Route, type Page } from '@playwright/test';
 
+import { fillCreateEventFields, openCreateEventDialog } from './support/createEvent';
 import { settleAnimations } from './support/inFlight';
 
 // Phase 88.6.1 plan 26 — a second press while a form is working changes nothing, proven in a real
@@ -60,24 +61,6 @@ async function expectPhoneBox(page: Page, locator: Locator, what: string) {
   expect(box!.height).toBeGreaterThanOrEqual(44);
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
-}
-
-/**
- * Fill an already-open Create Event dialog with the existing journey's values
- * (e2e/create-event.spec.ts), so no new game is minted. The ONE copy of these steps in this spec
- * (plan 88.6.1-81 factored them out of plan 26's E2E C1; R1 fills with them twice). The dialog keeps
- * its date-entry mode across a close and a reopen of the same instance, so the switch to manual
- * entry is pressed only while the toggle still offers it.
- */
-async function fillCreateEvent(page: Page) {
-  const gameName = process.env.E2E_GAME_NAME ?? 'Catan';
-  await page.getByPlaceholder('Search for a game or type a name').fill(gameName);
-  const modeToggle = page.getByRole('button', { name: /switch to (manual entry|visual calendar)/i });
-  await expect(modeToggle).toBeVisible();
-  if (/manual entry/i.test((await modeToggle.textContent()) ?? '')) await modeToggle.click();
-  const start = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-  await page.getByLabel(/start date & time/i).fill(`${start.toISOString().slice(0, 10)}T19:00`);
-  await page.getByPlaceholder(/enter duration in minutes/i).fill('120');
 }
 
 test.describe('Availability form — a second press while submitting changes nothing (AC-12)', () => {
@@ -196,9 +179,8 @@ test.describe('Create Event — a second press while creating changes nothing (D
     const create = await holdRequests(page, (url) => url.pathname === '/api/events', 'POST');
 
     await page.goto(`/groupHomePage?id=${groupId}`);
-    await page.getByRole('button', { name: /add new game event/i }).click();
-    await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
-    await fillCreateEvent(page);
+    await openCreateEventDialog(page);
+    await fillCreateEventFields(page, { switchMode: 'if-offered' });
 
     // Found by test id: the accessible name changes mid-flight (copy row C7), the test id does not.
     const submit = page.getByTestId('create-event-submit');
@@ -249,9 +231,8 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     await page.goto(`/groupHomePage?id=${groupId}`);
     const openDialog = page.getByRole('button', { name: /add new game event/i });
     const heading = page.getByRole('heading', { name: /create event/i });
-    await openDialog.click();
-    await expect(heading).toBeVisible();
-    await fillCreateEvent(page);
+    await openCreateEventDialog(page);
+    await fillCreateEventFields(page, { switchMode: 'if-offered' });
 
     const submit = page.getByTestId('create-event-submit');
     await submit.click();
@@ -279,7 +260,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     // The join leg: the SAME details pressed again, seconds after the first POST and well inside
     // createEvent.js's 30-second join window, join the held create. The submit shows its own press
     // and no second POST is sent.
-    await fillCreateEvent(page);
+    await fillCreateEventFields(page, { switchMode: 'if-offered' });
     await submit.click();
     await expect(submit).toHaveAccessibleName('Creating...');
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
