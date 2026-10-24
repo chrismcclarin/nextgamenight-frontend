@@ -16,6 +16,43 @@
  * drifted onto the wrong one, and the at-least-one exception was convenience, not
  * correctness. Changing this is a decision, not a cleanup.
  *
+ * DECISION Phase 88.6.2-03 (PC-9): the older cite idioms are NOT matched, chosen OVER a
+ * checker that reds them all on day one. The backtick anchor idiom (a file:line followed by
+ * the word anchor and a backticked token), backtick-wrapped path cites and still-correct
+ * file:line cites each convert to the anchor form when their file is next touched (owner
+ * ruling B); the line-cite ratchet keeps their count falling meanwhile. The one cite already
+ * in the new shape, with a bare filename, was converted in this checker's own commit, so the
+ * tree was red before that commit and green after it.
+ *
+ * DECISION Phase 88.6.2-03 (A7): planning: is skipped exactly like backend: and node_modules:,
+ * chosen OVER resolving parent-repo paths, because CI checks out the FE repo alone and such a
+ * path can never resolve there. Skips are counted on the counts line, so a growth is visible.
+ * A backend: path is the BACKEND REPO-ROOT path, shape-checked to start Sonnet/ or .github/
+ * (nothing is opened), chosen OVER Sonnet-relative paths, which hide a prefix the reader must
+ * re-add before git show can find the file. An unknown prefix is no prefix: its path is checked.
+ *
+ * DECISION Phase 88.6.2-03 (grammar): five choices, each over a named alternative.
+ *   1. A same-file cite is written this file ("snippet") and its snippet occurs exactly twice
+ *      in that file, chosen OVER a bare parenthesised quote, because about 130 prose quotes in
+ *      70 files already have that shape and could not be told apart from a cite; and OVER
+ *      direction words such as above or below, which go stale when code moves, the very rot
+ *      anchors exist to cure.
+ *   2. Every occurrence is counted, overlapping ones included, chosen OVER grep -cF's count of
+ *      matching LINES: a snippet twice on one line is still two places. grep -cF stays the
+ *      quick hand check.
+ *   3. Targets carry one of a CLOSED list of extensions (TARGET_EXTS), chosen OVER any
+ *      extension, because prose such as PAGE_STATES.ERROR or "at 2.17" would read as paths.
+ *   4. Raw text is scanned, comments and strings alike, chosen OVER a comment-only scan: that
+ *      needs a lexer, a lexer copy is what the shared-module rule in src/test-utils/sourceScan.ts
+ *      forbids, and the shared lexer is a ts module plain node cannot import on CI's Node 20.
+ *      A cite inside a string is still read and followed by people.
+ *   5. Forbidden targets are decided before any file-system call and never opened: a segment
+ *      starting .env, an .auth or .git segment, a leading node_modules segment, a path outside
+ *      the root, and (by an lstat walk from the root down, before any read) a symbolic link at
+ *      any segment. Chosen OVER realpath-then-recheck, which still opens a path the link chose.
+ *      Consequence guarded: env and session files are never read by any route, including a
+ *      tool Claude runs.
+ *
  * USAGE (from the FE checkout root, Node 20 or later):
  *   node scripts/anchor-cite-check.mjs              walk src + e2e of this checkout
  *   node scripts/anchor-cite-check.mjs --root DIR   walk src + e2e of DIR instead
@@ -39,11 +76,26 @@ const WALK_DIRS = ['src', 'e2e'];
 const WALK_EXTS = ['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'css'];
 const KINDS = ['malformed', 'backtick', 'line-cite-snippet', 'block-comment-end', 'forbidden-target', 'outside-root', 'unresolved', 'self-path', 'count', 'wrapped'];
 
+const PREFIXES = ['backend:', 'node_modules:', 'planning:'];
+const BACKEND_ROOTS = ['Sonnet/', '.github/'];
+
 const USAGE = 'usage: node scripts/anchor-cite-check.mjs [--root <dir> | --self-test]';
 const PATH_CHAR = 'A-Za-z0-9_@.\\[\\]\\/-';
 // Longest extension first, so ts never shadows tsx inside the alternation.
 const EXT_ALT = [...TARGET_EXTS].sort((a, b) => b.length - a.length).join('|');
+// A path-led cite: a maximal run of path characters ending in a TARGET_EXTS extension,
+// then exactly one space and the opener. Lowercase extensions only, so prose such as
+// PAGE_STATES.ERROR or "at 2.17" never reads as a path.
 const PATH_CITE_RE = new RegExp(`(?<![${PATH_CHAR}])([${PATH_CHAR}]+\\.(?:${EXT_ALT})) \\("`, 'g');
+// A same-file cite: the two-word lead, never glued to a word on its left.
+const SAME_FILE_RE = /(?<![A-Za-z0-9_])[Tt]his file \("/g;
+// The tails the wrapped scan looks for at the end of a line.
+const PATH_TAIL_RE = new RegExp(`(?<![${PATH_CHAR}])[${PATH_CHAR}]+\\.(?:${EXT_ALT})$`);
+const SAME_FILE_TAIL_RE = /(?<![A-Za-z0-9_])[Tt]his file$/;
+// The comment leaders the wrapped scan strips from the next line: JSX, block, line, star.
+const LEADER_RE = /^(?:\{\/\*+|\/\*+|\/\/+|\*+)\s*/;
+// A snippet that is itself a file:line string (D-06).
+const LINE_CITE_RE = new RegExp(`\\.(?:${EXT_ALT}):[0-9]`);
 
 function toPosix(p) {
   return p.split(path.sep).join('/');
@@ -63,6 +115,7 @@ function walk(root) {
     const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const e of entries) {
       const abs = path.join(dir, e.name);
+      // Dirent types come from lstat: a symlinked directory or file is neither, so it is not walked.
       if (e.isDirectory()) {
         if (e.name === 'node_modules' || e.name === '.git') continue;
         visit(abs);
@@ -76,24 +129,95 @@ function walk(root) {
   return out;
 }
 
-function lineAt(text, index) {
-  let line = 1;
-  for (let i = 0; i < index; i += 1) if (text.charCodeAt(i) === 10) line += 1;
-  return line;
+function lineStarts(text) {
+  const starts = [0];
+  for (let i = 0; i < text.length; i += 1) if (text.charCodeAt(i) === 10) starts.push(i + 1);
+  return starts;
+}
+
+function lineOf(starts, index) {
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (starts[mid] <= index) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo + 1;
+}
+
+// Reads the snippet after the opener. One snippet, closed on the same line, never empty,
+// and never holding a double quote: the first double quote after the opener must be the close.
+function readSnippet(text, open) {
+  const nl = text.indexOf('\n', open);
+  const lineEnd = nl === -1 ? text.length : nl;
+  const q = text.indexOf('"', open);
+  if (q === -1 || q >= lineEnd) {
+    return { snippet: null, end: lineEnd, problem: 'no closing quote and parenthesis on the line', raw: text.slice(open, lineEnd) };
+  }
+  if (text[q + 1] !== ')') {
+    return { snippet: null, end: q + 1, problem: 'a double quote before the close (one snippet per cite, and a snippet never holds a double quote)', raw: text.slice(open, lineEnd) };
+  }
+  if (q === open) return { snippet: null, end: q + 2, problem: 'empty snippet', raw: '' };
+  return { snippet: text.slice(open, q), end: q + 2, problem: null, raw: text.slice(open, q) };
 }
 
 function findCites(text, rel) {
+  const starts = lineStarts(text);
   const cites = [];
+  const push = (form, index, openLen, citePath) => {
+    const open = index + openLen;
+    let start = index;
+    let prefix = null;
+    if (form === 'cross') {
+      for (const p of PREFIXES) {
+        const at = index - p.length;
+        if (at >= 0 && text.slice(at, index) === p && (at === 0 || !/[A-Za-z0-9_]/.test(text[at - 1]))) {
+          prefix = p;
+          start = at;
+          break;
+        }
+      }
+    }
+    const s = readSnippet(text, open);
+    const ls = starts[lineOf(starts, index) - 1];
+    const nl = text.indexOf('\n', ls);
+    cites.push({
+      file: rel,
+      line: lineOf(starts, index),
+      form,
+      path: citePath,
+      prefix,
+      snippet: s.snippet,
+      problem: s.problem,
+      raw: s.raw,
+      before: start > 0 ? text[start - 1] : '',
+      after: s.problem === null ? text[s.end] ?? '' : '',
+      lineText: text.slice(ls, nl === -1 ? text.length : nl),
+    });
+  };
   PATH_CITE_RE.lastIndex = 0;
-  let m;
-  while ((m = PATH_CITE_RE.exec(text)) !== null) {
-    const open = m.index + m[0].length;
-    const close = text.indexOf('")', open);
-    const nl = text.indexOf('\n', open);
-    const snippet = close === -1 || (nl !== -1 && close > nl) ? null : text.slice(open, close);
-    cites.push({ file: rel, line: lineAt(text, m.index), kind: 'cross', path: m[1], snippet });
-  }
+  for (let m = PATH_CITE_RE.exec(text); m !== null; m = PATH_CITE_RE.exec(text)) push('cross', m.index, m[0].length, m[1]);
+  SAME_FILE_RE.lastIndex = 0;
+  for (let m = SAME_FILE_RE.exec(text); m !== null; m = SAME_FILE_RE.exec(text)) push('same', m.index, m[0].length, null);
   return cites;
+}
+
+// A cite split across two lines: a line ending in a path token (or the same-file lead) whose
+// next line opens with the opener after its comment leader. It is a violation, not a cite.
+function findWrapped(text, rel) {
+  const out = [];
+  const lines = text.split('\n');
+  for (let i = 0; i + 1 < lines.length; i += 1) {
+    const tail = lines[i].trimEnd();
+    const m = tail.match(PATH_TAIL_RE) || tail.match(SAME_FILE_TAIL_RE);
+    if (!m) continue;
+    const next = lines[i + 1].trimStart().replace(LEADER_RE, '');
+    if (next.startsWith('("')) {
+      out.push({ file: rel, line: i + 1, kind: 'wrapped', detail: `${m[0]} / ${next.slice(0, 60)}: a cite is split across two lines, keep the path and its snippet on one line` });
+    }
+  }
+  return out;
 }
 
 function countOccurrences(text, snippet) {
@@ -103,33 +227,93 @@ function countOccurrences(text, snippet) {
   return n;
 }
 
-function resolveExact(root, rel) {
-  const abs = path.resolve(root, rel);
-  try {
-    return fs.statSync(abs).isFile() ? abs : null;
-  } catch {
-    return null;
+function isForbidden(citePath) {
+  const segs = citePath.split('/');
+  return segs.some((s) => /^\.env/i.test(s) || /^\.(auth|git)$/i.test(s)) || /^node_modules$/i.test(segs[0]);
+}
+
+// Resolves a cite path from the root WITHOUT reading any target: exact-case, canonical, inside
+// the root, and no symbolic link at any segment (lstat walk, before any read). Returns
+// { abs } or { kind, why }.
+function resolveExact(root, citePath) {
+  if (isForbidden(citePath)) return { kind: 'forbidden-target', why: 'names an env, session, git or node_modules path, which is never opened' };
+  const abs = path.resolve(root, citePath);
+  const fromRoot = path.relative(root, abs);
+  if (fromRoot === '' || fromRoot === '..' || fromRoot.startsWith(`..${path.sep}`) || path.isAbsolute(fromRoot)) {
+    return { kind: 'outside-root', why: 'resolves outside the repo root, which is never opened' };
   }
+  if (path.posix.normalize(citePath) !== citePath) return { kind: 'unresolved', why: 'the path is not canonical (no ./, ../ or doubled slash)' };
+  const segs = citePath.split('/');
+  let cur = root;
+  for (let i = 0; i < segs.length; i += 1) {
+    let names;
+    try {
+      names = fs.readdirSync(cur);
+    } catch {
+      return { kind: 'unresolved', why: 'the path does not resolve to a file from the repo root' };
+    }
+    if (!names.includes(segs[i])) {
+      return { kind: 'unresolved', why: `the path does not resolve to a file from the repo root (no exact-case ${segs.slice(0, i + 1).join('/')})` };
+    }
+    cur = path.join(cur, segs[i]);
+    const st = fs.lstatSync(cur);
+    if (st.isSymbolicLink()) return { kind: 'forbidden-target', why: `symlink at ${segs.slice(0, i + 1).join('/')}, which is never followed` };
+    const last = i === segs.length - 1;
+    if (last ? !st.isFile() : !st.isDirectory()) return { kind: 'unresolved', why: 'the path does not resolve to a file from the repo root' };
+  }
+  return { abs };
+}
+
+// The checks every cite gets, in order; the first that fails is the cite's one violation.
+function shapeViolation(c) {
+  if (c.problem !== null) return { kind: 'malformed', why: c.problem };
+  if (c.snippet.includes('`') || c.before === '`' || c.after === '`') return { kind: 'backtick', why: 'a cite carries no backtick, inside or around it (CF-9)' };
+  if (LINE_CITE_RE.test(c.snippet)) return { kind: 'line-cite-snippet', why: 'a snippet is never itself a file:line string (D-06)' };
+  if (c.snippet.includes('*/') && !c.lineText.trim().startsWith('//')) {
+    return { kind: 'block-comment-end', why: 'the block-comment end may appear in a snippet only on a // comment line (CF-9)' };
+  }
+  return null;
 }
 
 function checkTree(root) {
   const files = walk(root);
   const counts = { walked: files.length, cites: 0, checked: 0, crossFile: 0, sameFile: 0, skipped: 0, backend: 0, nodeModules: 0, planning: 0, violations: 0 };
   const violations = [];
+  const PREFIX_KEY = { 'backend:': 'backend', 'node_modules:': 'nodeModules', 'planning:': 'planning' };
   for (const rel of files) {
     const text = fs.readFileSync(path.join(root, rel), 'utf8');
+    violations.push(...findWrapped(text, rel));
     for (const c of findCites(text, rel)) {
       counts.cites += 1;
-      counts.checked += 1;
-      counts.crossFile += 1;
-      const shown = `${c.path} ("${c.snippet ?? ''}")`;
-      const abs = resolveExact(root, c.path);
-      if (!abs) {
-        violations.push({ file: rel, line: c.line, kind: 'unresolved', detail: `${shown}: the path does not resolve to a file from the repo root` });
-        continue;
+      const lead = c.form === 'same' ? 'this file' : `${c.prefix ?? ''}${c.path}`;
+      const shown = c.problem === null ? `${lead} ("${c.snippet}")` : `${lead} ("${c.raw.slice(0, 60)}`;
+      let v = shapeViolation(c);
+      if (!v && c.prefix) {
+        if (c.prefix === 'backend:' && !BACKEND_ROOTS.some((r) => c.path.startsWith(r))) {
+          v = { kind: 'malformed', why: `backend: takes the backend repo-root path (it starts ${BACKEND_ROOTS.join(' or ')})` };
+        } else {
+          // Skipped by prefix: nothing is resolved, nothing is opened (A7).
+          counts.skipped += 1;
+          counts[PREFIX_KEY[c.prefix]] += 1;
+          continue;
+        }
       }
-      const n = countOccurrences(fs.readFileSync(abs, 'utf8'), c.snippet);
-      if (n !== 1) violations.push({ file: rel, line: c.line, kind: 'count', detail: `("${c.snippet ?? ''}") occurs ${n} times in ${c.path}, expected 1` });
+      counts.checked += 1;
+      if (c.form === 'same') counts.sameFile += 1;
+      else counts.crossFile += 1;
+      if (!v && c.form === 'same') {
+        const n = countOccurrences(text, c.snippet);
+        if (n !== 2) v = { kind: 'count', detail: `("${c.snippet}") occurs ${n} times in ${rel}, expected 2` };
+      } else if (!v) {
+        const r = resolveExact(root, c.path);
+        if (r.kind) v = r;
+        else if (toPosix(path.relative(root, r.abs)) === rel) v = { kind: 'self-path', why: 'the target is the citing file, write this file ("snippet") instead' };
+        else {
+          const n = countOccurrences(fs.readFileSync(r.abs, 'utf8'), c.snippet);
+          if (n !== 1) v = { kind: 'count', detail: `("${c.snippet}") occurs ${n} times in ${c.path}, expected 1` };
+        }
+      }
+      if (v) violations.push({ file: rel, line: c.line, kind: v.kind, detail: v.detail ?? `${shown}: ${v.why}` });
     }
   }
   violations.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line));
