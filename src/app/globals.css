@@ -1692,11 +1692,13 @@
      byte-identical dark (the three dark `-border` values in the `.dark` block below are today's
      hues verbatim).
 
-     WHO STILL READS THE SHARED KEY, measured 2026-08-25: after plan 09 sweeps all 134
-     `text-status-{x}` sites onto `text-content-status-{x}`, the remaining consumers are the 51
-     `border-status-*` sites plus four decorative solid `bg-status-*` glyphs
-     (`PromptScheduleReadOnly.js:62`, `SuggestionCard.js:102` and `:108`, `AvailabilityForm.js:345`
-     — 8px dots and one state fill). Every one of them gains contrast on the new page rather than
+     WHO STILL READS THE SHARED KEY — measured 2026-08-25 after plan 09 swept all 134
+     `text-status-{x}` sites onto `text-content-status-{x}`, RE-MEASURED 2026-10-24 (88.6.2-09)
+     after plan 88.6.1-49 deleted SuggestionCard.js and its two glyphs: 45 `border-status-*`
+     sites in non-test source plus two decorative solid `bg-status-*` glyphs, the 8px dot at
+     src/app/components/PromptScheduleReadOnly.js ("s.is_active ? 'bg-status-success'") and the
+     state fill at src/app/components/AvailabilityForm.js ("isUnavailable ? 'bg-status-error border-status-error'").
+     Every one of them gains contrast on the new page rather than
      losing it (`#16a34a` 2.91 -> `#166534` 6.29 on warm-100).
      Collapsing these back onto `--color-success/-error/-warning`, or re-pointing the keys at the
      `-text` tokens "since they're the same in light", is a decision, not a cleanup. */
@@ -2258,7 +2260,7 @@ body {
    the diff was phone-only was WRONG), review against this:
    (i)   `p-4` sites that ALSO author `md:p-6` change at phone only;
    (ii)  the five BARE-`p-4` sites (BringSummary.js:95, UpcomingEventsCard.js:137,
-         GroupGamesList.js:12, GameSuggestionCard.js:20, friends/page.js:563) would
+         GroupGamesList.js:12, GameSuggestionCard.js:20, src/app/friends/page.js ("mb-4 p-3 md:p-6 card")) would
          have silently dropped desktop padding 24px -> 16px — Task 1b of plan 87.8-01
          adds `md:p-6` to each so desktop is preserved;
    (iii) the 13 sites authoring `p-6` are a no-op;
