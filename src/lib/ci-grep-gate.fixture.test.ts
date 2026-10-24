@@ -29,9 +29,11 @@
 // throws loudly at import, which is the intended failure mode.
 //
 // Phase 88 plan 29: this file now covers FOUR ci.yml steps, and the two new ones
-// are NOT grep gates, so `parseGate` cannot read them. They get their own readers
-// (`stepWindow` + `parseRegistryEntries`), each still keyed by STEP NAME for the
-// same reason the 88.2 note above gives.
+// are NOT grep gates, so `parseGate` cannot read them. They get their own reader,
+// `stepWindow`, keyed by STEP NAME for the same reason the 88.2 note above gives.
+// Since Phase 88.6.2-26 the registry's rows are not in ci.yml at all: they are read
+// from scripts/drift-gate-registry.manifest.mjs, the same file the required
+// drift-gate-registry job's runner reads, and ci.yml is read only to pin that job's lines.
 //
 // The two new steps exist because 88-29's gate-hygiene pass concluded that ZERO
 // new grep gates should ship. All seven drift classes the plan proposed to grep
@@ -45,6 +47,7 @@ import { describe, test, expect } from 'vitest';
 import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { gates, helperOnly, helpers, notGates } from '../../scripts/drift-gate-registry.manifest.mjs';
 
 const CI_YML = readFileSync(
   resolve(__dirname, '../../.github/workflows/ci.yml'),
@@ -448,31 +451,19 @@ function stepWindow(stepName: string): string[] {
 const REGISTRY_STEP = "Drift-gate registry — Phase 88's source-scan guards must exist and stay armed";
 const BUNDLE_STEP = 'CSS bundle guard — two-sided emitted-CSS assertion';
 
-/**
- * Parse the registry step's `"<path>:<min>"` rows out of ci.yml.
- *
- * ANCHORED to the quoted-row shape, not to a substring search of the step window: the
- * step's own comment block names several of these paths in prose, and a loose match
- * would read the prose as data. That is the identical trap `parseGate` documents at
- * `:86` and which fired while it was being written.
- */
-function parseRegistryEntries(): { file: string; min: number }[] {
-  const out: { file: string; min: number }[] = [];
-  for (const line of stepWindow(REGISTRY_STEP)) {
-    const m = line.match(/^\s*"([^":]+):(\d+)"\s*\\?\s*$/);
-    if (m) out.push({ file: m[1], min: Number(m[2]) });
-  }
-  if (out.length === 0) {
-    throw new Error(
-      `ci.yml step "${REGISTRY_STEP}" parsed ZERO registry rows — keep the one-per-line "<path>:<min>" shape.`,
-    );
-  }
-  return out;
-}
+// DECISION Phase 88.6.2-26 (D-12): REGISTRY is read from the shared manifest, the one list the
+// required job's runner also reads, so this lockstep and CI cannot disagree about the rows. The gates
+// rows keep their floors; each helper is carried at min 0 so the exists test below still covers it.
+// The named list further down stays a deliberate SECOND must-contain list (PC-5): a count or a
+// generated list is satisfiable by any N rows, a named file is not.
+const REGISTRY: { file: string; min: number }[] = [
+  ...gates.map((g) => ({ file: g.file, min: g.min })),
+  ...helpers.map((h) => ({ file: h, min: 0 })),
+];
+const RUNNER = resolve(__dirname, '../../scripts/drift-gate-registry.mjs');
+const PROOFS_STEP = 'Phase 88.6.2 proofs (phase PR only)';
 
-const REGISTRY = parseRegistryEntries();
-
-describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci.yml by step name)', () => {
+describe('Req 19 / gate-hygiene — the drift-gate registry (rows read from scripts/drift-gate-registry.manifest.mjs)', () => {
   test('the registry parses, and covers the whole Phase 88 guard set', () => {
     // A floor, not an exact count, so a future phase adding a guard is not a red build
     // here. Thirteen suites plus the shared scanner at the time of writing.
@@ -489,8 +480,8 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
   });
 
   test('every registered guard really carries at least its stated assertion count', () => {
-    // Lockstep in the OTHER direction: the CI step reads these numbers out of a shell
-    // loop, and nothing there would notice a number set to 0 to make a red build green.
+    // Lockstep in the OTHER direction: the runner reads these numbers from the manifest,
+    // and a number set to 0 would turn its floor off (the runner's own shape check reds that too).
     // Here a floor written below reality is not caught — a floor written ABOVE it is,
     // and so is a suite that has been gutted since the number was set.
     const short: string[] = [];
@@ -550,9 +541,84 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
       'src/lib/sentryClientReplayGate.test.ts', //       Phase 88.6 R-7 + 88.6-61 H-1 — Sentry init is handed the gates
       'src/lib/sentry.scrub.test.ts', //                 Phase 84 T-84-01 + 88.6-61 H-1 — the scrub functions
       'src/test-utils/sourceScan.ts', //                 the scanner all of them share
+      // Phase 88.6.2-26 (SPEC R6, D-06, A19): named so a dropped row reds here as well as in the
+      // required job. Each guards by a tree scan or a walk, so a deleted file left CI green before.
+      'src/app/rawStatusPalette.test.ts', //             Phase 88.6 Top Fix 1 — no raw red palette on error ink (SPEC R6)
+      'src/app/breadcrumbNavOverflow.test.ts', //        Phase 88.6 UAT3-D1 — breadcrumb pills cap at their container (SPEC R6)
+      'src/app/citeRatchet.test.ts', //                  Phase 88.6.2-04 D-06 — the line-cite ratchet
+      'src/app/anchorCites.test.ts', //                  Phase 88.6.2-07 A19 — the permanent anchor-cite check on every PR
+      'src/test-utils/sourceScan.parity.test.ts', //     Phase 88.6.2-08 — the scanner lexer parity, tree-wide
+      'src/test-utils/scrubSessionHeaders.test.ts', //   Phase 88.6.2-20 R8 — the e2e fetch-error session scrub
     ]) {
       expect(files, `registry lost ${required}`).toContain(required);
     }
+  });
+
+  test('the required drift-gate-registry job runs the runner on Node 20, self-test first, with no install', () => {
+    // The job window, comments dropped first, so a word in a comment can neither satisfy nor
+    // trip a check. The runner uses builtins only, so the job needs no npm ci and no cache.
+    const a = CI_YML.indexOf('\n  drift-gate-registry:\n');
+    const b = CI_YML.indexOf('\n  e2e:\n');
+    expect(a, 'drift-gate-registry job not found').toBeGreaterThan(0);
+    expect(b, 'e2e job not found after drift-gate-registry').toBeGreaterThan(a);
+    const raw = CI_YML.slice(a, b);
+    const code = raw
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n');
+    expect(code).toContain('uses: actions/setup-node@v4');
+    expect(code).toMatch(/node-version: 20\n/);
+    expect(code).toContain('shell: bash');
+    expect(code, 'the registry step was renamed').toContain(REGISTRY_STEP);
+    const selfTest = code.indexOf('node scripts/drift-gate-registry.mjs --self-test\n');
+    const tree = code.indexOf('node scripts/drift-gate-registry.mjs\n');
+    expect(selfTest, 'the --self-test line is missing').toBeGreaterThan(0);
+    expect(tree, 'the tree run must come after --self-test').toBeGreaterThan(selfTest);
+    for (const banned of ['npm ci', 'cache:', 'for entry in', 'continue-on-error', '||']) {
+      expect(code, `the job must not contain ${banned}`).not.toContain(banned);
+    }
+    expect(code, 'no if: key may gate the job or a step').not.toMatch(/^\s+if:/m);
+    expect(raw).toContain('DECISION Phase 88.6.2-26 (D-12)');
+  });
+
+  test('the runner self-test passes all 28 cases', () => {
+    // stdin is ignored so the spawn can never wait on vitest's own stdin.
+    const out = execFileSync(process.execPath, [RUNNER, '--self-test'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    expect(out.trimEnd().split('\n').pop()).toBe('self-test: PASS 28 of 28');
+  });
+
+  test('every manifest row says why, no file is in two lists, and ResponseDashboard is recorded as not a gate', () => {
+    const rows = [...gates, ...helperOnly, ...notGates];
+    const short = rows.filter((r) => typeof r.why !== 'string' || r.why.trim().length < 20).map((r) => r.file);
+    expect(short).toEqual([]);
+    const all = [...rows.map((r) => r.file), ...helpers];
+    const twice = all.filter((f, i) => all.indexOf(f) !== i);
+    expect(twice).toEqual([]);
+    expect(notGates.map((n) => n.file)).toContain('src/app/components/ResponseDashboard.test.tsx');
+  });
+});
+
+describe('Phase 88.6.2-07 — the phase-proofs step (parsed from ci.yml by step name)', () => {
+  test('runs its seven checker lines in order, only on this phase branch', () => {
+    // Plan 07's order: each self-test before its real run, so a broken checker never vouches
+    // for the tree. The if: keeps the comment-only proof off every other PR.
+    const window = stepWindow(PROOFS_STEP);
+    const nodeLines = window.map((l) => l.trim()).filter((l) => l.startsWith('node ') && l.includes('scripts/'));
+    expect(nodeLines).toEqual([
+      'node scripts/comment-only-diff.mjs --self-test',
+      'node scripts/comment-only-diff.mjs "$BASE_SHA"',
+      'node scripts/anchor-cite-check.mjs --self-test',
+      'node scripts/anchor-cite-check.mjs',
+      'node scripts/line-cite-census.mjs --self-test',
+      'node scripts/line-cite-census.mjs',
+      'node --test-reporter=tap scripts/no-retry-bump.test.mjs "$BASE_SHA"',
+    ]);
+    const ifLines = window.filter((l) => /^\s+if:/.test(l));
+    expect(ifLines.length).toBe(1);
+    expect(ifLines[0]).toContain('feat/phase-88.6.2-');
   });
 });
 

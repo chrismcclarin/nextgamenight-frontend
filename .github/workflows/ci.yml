@@ -31,8 +31,8 @@ on:
 # Anchored to STEP NAMES, not line numbers, on purpose — a line cite inside the file it
 # describes is wrong the next time anything above it is edited. The complete set of actions
 # is `actions/checkout@v4` x4 (quality's "Checkout (full history ...)", drift-gate-registry's
-# "Checkout", and e2e's "Checkout frontend" + "Checkout backend"), `actions/setup-node@v4` x2
-# ("Setup Node 20" in quality and in e2e) and two `actions/upload-artifact@v4` ("Upload
+# "Checkout", and e2e's "Checkout frontend" + "Checkout backend"), `actions/setup-node@v4` x3
+# ("Setup Node 20" in quality, drift-gate-registry and e2e) and two `actions/upload-artifact@v4` ("Upload
 # Playwright failure evidence" and "Upload desktop month-tile screenshots (always — PNG only,
 # never .auth/ — T-82-12)"). AMENDED 2026-09-28 (Phase 88.6 plan 55, gap-lap ML-17): this
 # census said "one" until the second upload landed in the same commit; neither reaches
@@ -271,7 +271,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: "Drift-gate registry — Phase 88's source-scan guards must exist and stay armed"
+        # DECISION Phase 88.6.2-26 (D-12): one shared .mjs manifest read by a dependency-free node runner IN THIS REQUIRED JOB, chosen OVER keeping the rows here with a wider fixture parser (the self-check would live in quality, so deleting the fixture test turned it off) and OVER deriving the list from the import graph (a deleted gate drops out of a derived list: no deletion guard). No npm ci: builtins only, so a required check never waits on the registry or installs anything. The vitest lockstep pins these lines but does not re-run the tree check, so a manifest mutation reds this job alone. Moving the rows back into ci.yml is a decision, not a cleanup.
+        #
         # WHY THIS STEP EXISTS AT ALL (Phase 88 plan 29).
         #
         # Phase 88 recorded FOURTEEN defective grep gates across its own plans
@@ -288,11 +295,14 @@ jobs:
         # this pipeline notices a missing test file.
         #
         # WHAT IT CLAIMS, AND WHAT IT DOES NOT.
-        # It claims each guard still EXISTS and has not been gutted to a stub. It does NOT
-        # claim the assertions inside are the right ones — every suite carries its own
-        # anti-vacuity guards for that, and duplicating them here would be a second copy to
-        # drift. Stating the limit is part of the point: a gate that overclaims is how this
-        # phase got fourteen of them.
+        # It claims each guard still EXISTS and has not been gutted to a stub, and (since
+        # Phase 88.6.2-26) that every file under src and e2e which imports the shared scanner
+        # src/test-utils/sourceScan.ts is registered: a gates row with a floor, or a helperOnly
+        # row with a reason. A new scan gate shipped unregistered reds this job, as does a
+        # registered file that was deleted or gutted. It does NOT claim the assertions inside
+        # are the right ones — every suite carries its own anti-vacuity guards for that, and
+        # duplicating them here would be a second copy to drift. Stating the limit is part of
+        # the point: a gate that overclaims is how this phase got fourteen of them.
         #
         # The counts are per-FILE and are FLOORS set at the current count. Per-file rather
         # than a total, deliberately: a single "there are >= 100 guard assertions" number is
@@ -300,129 +310,16 @@ jobs:
         # would pass if another grew. Adding a test to a suite is never a red build; removing
         # one is, and that is the intended asymmetry.
         #
-        # AMENDMENT Z — Phase 88.3.1 plan 01 (M21, owner-ruled 2026-08-29). Two rows added:
-        # `src/lib/colourDistance.test.ts` and `src/lib/groupColourPresets.test.ts`. The first
-        # is the FE half of a CROSS-REPO fixture: the same four ΔE2000 rows are asserted in
-        # backend tests/unit/colourDistance.test.js, and that pair of suites is the only thing
-        # standing between a divergent CIEDE2000 implementation and a permanently wrong
-        # `Groups.background_color` remap (margins of 0.65 and 0.72). Unregistered, the FE half
-        # was deletable with no red build — which would have left the backend asserting a
-        # contract with nobody on the other end. The second owns the eight-preset palette's
-        # ΔE / hue-gap / contrast floors.
-        #
-        # SEQUENCING, so nobody "fixes" this the wrong way: `groupColourPresets.test.ts` is
-        # minted by plan 88.3.1-03, which runs in wave 2 of the SAME phase branch. Between
-        # wave 1 and wave 2 this row is deliberately ahead of the file, and the existence check
-        # below (plus its lockstep twin in ci-grep-gate.fixture.test.ts) is RED on purpose.
-        # That red is the gate working. Do NOT delete the row to make it green — land plan 03.
-        #
-        # AMENDMENT — Phase 88.8 plan 13 (owner-ruled 2026-09-04). Two rows added:
-        # `src/lib/syntheticAddress.test.ts` and
-        # `src/app/components/EmailAddressSection.test.tsx`.
-        #
-        # The helper's suite is the one that MUST be here, and it is registered on the
-        # same argument Amendment Z used for colourDistance.test.ts. It is the ONLY thing
-        # in either repo pinning the BROAD `@auth0` test against a later narrowing to
-        # `@auth0.local`. `DECISION Phase 88.2 NIX-AUTH0` is a WRITTEN decision, not an
-        # enforced one — nothing else reds if someone "tidies" the helper to the narrow
-        # test, and the narrow test silently stops guarding every `@auth0`-shaped
-        # placeholder that is not exactly `.local`. The consequence is not cosmetic: the
-        # provisioning sentinel would be rendered in the profile header, rendered in the
-        # Email section, and transmitted as the admin mail's Reply-To. Unregistered, that
-        # guard was deletable with a fully green build.
-        #
-        # No `grep` gate is added on the helper's IMPLEMENTATION, deliberately:
-        # `'@auth0.local'` contains `'@auth0'`, so a substring grep is satisfied by exactly
-        # the narrow form it would be meant to forbid. The suite's bare-`@auth0` case is
-        # the gate.
-        #
-        # The section's own suite is registered for the ordinary reason: it is the only
-        # coverage of the eight-state machine, of the four outcome literals that must not
-        # collapse into one another, and of the DR-C no-native-`disabled` sweep.
-        #
-        # AMENDMENT — Phase 88.6 plan 55 (owner-ruled 2026-09-28, NEW OWNER ITEM 4). Five rows
-        # added — the source-scan gates Phase 88.6 itself minted, none of which was registered:
-        #   src/app/groundInk.test.ts                  plan 09 — ground-aware ink (D-16)       floor 8
-        #   src/app/errorEnvelopeReads.test.ts         plan 14 — default-deny envelope reads   floor 16
-        #   src/app/components/btnCensus.test.tsx      plan 10 — the .btn element census       floor 21
-        #   src/app/shadowTier.test.ts                 plan 12 — off-tier shadow families       floor 8
-        #   src/app/interpolatedClassCensus.test.ts    plan 47 — interpolated Tailwind classes  floor 4
-        # Each floor is MEASURED, not quoted: `grep -cE '^[[:space:]]*(it|test)\(' <file>` (the
-        # same regex this loop uses) on FE e882822, 2026-09-28. Unregistered, each was deletable
-        # with a green build — the exact hole this step exists to close, reopened by the phase
-        # that was converging on it. Ledger rows R103 / R104 / H08 in 88.6-46-SUMMARY.md.
-        #
-        # AMENDMENT — Phase 88.6 close (2026-09-29, gsd-verifier finding on plans 58/60). Two rows
-        # added — the guards the review fix-now set minted, unregistered exactly as plan 55's five were:
-        #   src/components/ui/Button.e2eReplica.test.ts               plan 58 — E10 replica lockstep (H1)          floor 5
-        #   src/app/components/CalendarListView.emptyStates.test.tsx  plan 60 — desktop 'No events' + loading arms  floor 1
-        # Floors MEASURED with this loop's regex on FE d69e681, 2026-09-29. Button.e2eReplica is H1's ONLY
-        # durable guard: unregistered, deleting it would have re-opened the stale-replica hole with a green build.
-        #
-        # AMENDMENT — Phase 88.6 gap plan 61 (review round 2 #18 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING).
-        # Two rows added — the guards on the magic-link Sentry egress fixes:
-        #   src/lib/sentryClientReplayGate.test.ts   R-7 (cb5c403) + plan 61 H-1 — replay gate + tracing wiring  floor 9
-        #   src/lib/sentry.scrub.test.ts             Phase 84 T-84-01 + plan 61 H-1 — the scrub functions         floor 39
-        # Floors MEASURED with this loop's regex after plan 61's edits (FE branch over 1eb23fd), 2026-09-29.
-        # They are R-7's and H-1's ONLY durable guards: unregistered, either file was deletable with a green
-        # build, exactly as the two rows `85b0263` registered were.
-        #
-        # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
-        # file list out of this workflow, located by the step name above, and asserts every
-        # listed file exists and really carries at least the stated number of assertions.
-        # Renaming this step without updating the name string there throws loudly.
+        # WHERE THE ROWS LIVE. The rows, their floors and every amendment note that once sat
+        # here live in scripts/drift-gate-registry.manifest.mjs, read by the runner
+        # scripts/drift-gate-registry.mjs in this step and by the lockstep self-test
+        # src/lib/ci-grep-gate.fixture.test.ts in quality, which also pins this job's lines.
+        # The self-test runs first, so a broken runner never vouches for the tree.
+        shell: bash
         run: |
-          FAIL=0
-          # <path>:<minimum assertion count>
-          for entry in \
-            "src/app/components/controlSizeFloor.test.tsx:5" \
-            "src/app/cardPaddingIdiom.test.ts:4" \
-            "src/app/typeScaleTouchedSurfaces.test.ts:7" \
-            "src/app/borderExplicitness.test.ts:12" \
-            "src/app/tintTreatment.test.ts:8" \
-            "src/app/fetchErrorTreatment.test.ts:8" \
-            "src/app/focusAndMotionTreatment.test.ts:18" \
-            "src/app/components/keyboardOperability.test.tsx:7" \
-            "src/app/components/availabilityGridColumns.test.ts:6" \
-            "src/app/decisionMarkers.test.ts:11" \
-            "src/app/rawColorValues.test.ts:7" \
-            "src/app/tokenContrast.test.ts:28" \
-            "src/app/surfaceHoverSweep.test.ts:7" \
-            "src/app/darkChromeLegibility.test.ts:7" \
-            "src/app/accentSweep.test.ts:6" \
-            "src/app/statusTextSweep.test.ts:5" \
-            "src/app/legacyOverlayClass.test.ts:5" \
-            "src/app/nativeDialogs.test.ts:7" \
-            "src/app/groupColourRendering.test.ts:10" \
-            "src/lib/colourDistance.test.ts:9" \
-            "src/lib/groupColourPresets.test.ts:12" \
-            "src/lib/syntheticAddress.test.ts:8" \
-            "src/app/components/EmailAddressSection.test.tsx:50" \
-            "src/app/groundInk.test.ts:8" \
-            "src/app/errorEnvelopeReads.test.ts:16" \
-            "src/app/components/btnCensus.test.tsx:21" \
-            "src/app/shadowTier.test.ts:8" \
-            "src/app/interpolatedClassCensus.test.ts:4" \
-            "src/components/ui/Button.e2eReplica.test.ts:5" \
-            "src/app/components/CalendarListView.emptyStates.test.tsx:1" \
-            "src/lib/sentryClientReplayGate.test.ts:9" \
-            "src/lib/sentry.scrub.test.ts:39" \
-            "src/test-utils/sourceScan.ts:0" \
-          ; do
-            f="${entry%:*}"; min="${entry##*:}"
-            if [ ! -f "$f" ]; then
-              echo "::error::Drift gate MISSING: $f — a Phase 88 guard was deleted or renamed. Restore it, or delete its row here and record the decision in the phase's deferred-items ledger. Do not silently drop the row."
-              FAIL=1
-              continue
-            fi
-            n=$(grep -cE '^[[:space:]]*(it|test)\(' "$f" || true)
-            if [ "$n" -lt "$min" ]; then
-              echo "::error::Drift gate GUTTED: $f has $n assertions, expected at least $min. Assertions were removed from a Phase 88 drift guard."
-              FAIL=1
-            fi
-          done
-          [ "$FAIL" -eq 0 ] || exit 1
-          echo "Drift-gate registry passed — every Phase 88 source-scan guard is present and armed."
+          set -euo pipefail
+          node scripts/drift-gate-registry.mjs --self-test
+          node scripts/drift-gate-registry.mjs
 
   e2e:
     name: e2e
