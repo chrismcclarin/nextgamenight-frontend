@@ -18,6 +18,7 @@ import {
   vacuityGround,
   type Measurement,
 } from './support/contrast';
+import { switchToManualEntry } from './support/createEvent';
 // Phase 88.3.1-W. The PALETTE, imported rather than transcribed — the AMENDMENT W tests below
 // pin the preset-only group's rendered ground to the `blue` preset's own stored values, and
 // this import is what stops that from being a hex literal (see the AMENDED block in
@@ -371,7 +372,7 @@ function expectRatio(label: string, m: Measurement, floor: number): void {
   expect(m.ratio, describeRatio(label, floor, m)).toBeGreaterThanOrEqual(floor);
 }
 
-/** The four-step journey to the create-event scheduler (`padding-budget.spec.ts:238-241`). */
+/** The journey to the create-event scheduler: the page, then the same open step as e2e/support/createEvent.ts ("export async function openCreateEventDialog("). */
 async function openCreateEvent(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
   await page.getByRole('button', { name: /add new game event/i }).click();
@@ -817,7 +818,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // `Textarea`. The plan's own escape hatch is taken — the toggle is exercised HERE,
       // after every visual-mode read above, exactly as the plan permits. The ring is a
       // property of the primitive (`Input.tsx:79-80`), not of the mode.
-      await page.getByRole('button', { name: /switch to manual entry/i }).click();
+      await switchToManualEntry(page);
       const input = page.getByLabel(/start date & time/i);
       await expect(input).toBeVisible({ timeout: 15_000 });
       const m = await focusRingMeasurement(page, input, 'Input primitive focus ring (Req 7)');
