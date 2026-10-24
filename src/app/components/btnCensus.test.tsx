@@ -978,12 +978,27 @@ describe('the census scanner can actually fail (fixture harness)', () => {
 // this wave the live measurement on `<Button>` tags is small, and the roster is what the
 // scanner reported rather than what the plan predicted.
 
-/** Text-size utilities, plus the arbitrary `text-[13px]` form. */
-const TEXT_SIZE = /^text-(?:xs|sm|base|lg|xl|2xl|3xl)$|^text-\[[^\]]*px\]$/;
+// Every text-size utility: the named rungs xs to 9xl, and the length-unit arbitraries
+// text-[13px], text-[1.1rem] and text-[0.9em]. Each form also matches with a Tailwind v4
+// line-height suffix (text-lg/7) and a trailing important (text-sm!). A leading variant such as
+// md: is already stripped by STRIP_VARIANTS before the token reaches this pattern.
+// DECISION Phase 88.6.2-14 (W038): length-unit arbitraries only (px, rem, em) over every
+// text-[…] value — a bracket holding var() or a hex is a COLOUR utility, and flagging it would
+// red legitimate colour arbitraries; 4xl to 9xl join the rung list, every rung also matches with
+// a Tailwind v4 /line-height suffix or a trailing ! (review IN-305), and the rem/em arm takes a
+// number only, so a custom-property colour is never read as a size.
+const TEXT_SIZE = /^text-(?:xs|sm|base|lg|[2-9]?xl)(?:\/\S+)?!?$|^text-\[(?:[^\]]*px|[\d.]+r?em)\](?:\/\S+)?!?$/;
 
 const BUTTON_COMPONENTS = TAGS.filter((t) => t.name === 'Button');
 const TYPED_BUTTONS = BUTTON_COMPONENTS.filter((t) => t.classes.some((c) => TEXT_SIZE.test(c)));
 const TYPED_BUTTON_COUNTS = countByFile(TYPED_BUTTONS);
+
+/** Run the `<Button>` text-size rule over a fixture string, exactly as the tree walk does. */
+function typedButtonHits(fixture: string): string[] {
+  return scanSource('fixture.tsx', fixture)
+    .filter((t) => t.name === 'Button' && t.classes.some((c) => TEXT_SIZE.test(c)))
+    .map((t) => `<${t.name}>`);
+}
 
 // Seeded from the live scan, 2026-09-15: TWO sites, both in `gameDetail/page.js` (the desktop
 // Edit/Delete ghost pair, each `className="px-3 py-1 text-sm"`).
@@ -1012,5 +1027,39 @@ describe('AC-3 sibling: no text-size utility on a `<Button>`', () => {
 
   it('has zero text-size utilities on `<Button>` outside the roster', () => {
     expect(assertExactCounts(TYPED_BUTTON_EXEMPT, TYPED_BUTTON_COUNTS)).toEqual([]);
+  });
+
+  // The positive control for the size list (W038, review IN-305): every rung, the large ones,
+  // the length-unit arbitraries, a variant-prefixed rung and the Tailwind v4 line-height and
+  // trailing-important forms. Each row is its own fixture so a failure names the class it missed.
+  it('DETECTS every text-size rung on a <Button>: 4xl to 9xl, a variant prefix, px, rem, em, a /line-height suffix and a trailing !', () => {
+    const rows = [
+      'text-4xl',
+      'text-9xl',
+      'md:text-6xl',
+      'text-[1.1rem]',
+      'text-[0.9em]',
+      'text-[13px]',
+      'text-sm',
+      'text-lg/7',
+      'text-sm!',
+    ];
+    const missed = rows.filter(
+      (cls) => typedButtonHits(`<Button className="${cls}">Go</Button>`).length !== 1,
+    );
+    expect(missed).toEqual([]);
+  });
+
+  it('does NOT flag colour, alignment or non-length text arbitraries, nor a text size on a div', () => {
+    for (const cls of [
+      'text-content-primary',
+      'text-center',
+      'text-[var(--x)]',
+      'text-[#fff]',
+      'text-[--color-problem]',
+    ]) {
+      expect(typedButtonHits(`<Button className="${cls}">Go</Button>`)).toEqual([]);
+    }
+    expect(typedButtonHits('<div className="text-4xl">Go</div>')).toEqual([]);
   });
 });
