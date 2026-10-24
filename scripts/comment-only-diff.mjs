@@ -47,6 +47,49 @@
  * the entry the merge-time run fails on a documentation edit. Recorded as SPEC amendment A9.
  * Prefixes end in a slash and root files match exactly, so a near miss such as
  * src/test-utilsX/ is NOT allowlisted. Widening this list is a decision, not a cleanup.
+ *
+ * DECISION Phase 88.6.2-02 (D-21): the comparison is a TypeScript leaf-token walk with a
+ * line-break-before flag per token (.ts parsed as TS, .tsx as TSX, .js and .jsx as JSX) plus
+ * a postcss node stream with depth for .css, chosen OVER the house withoutComments
+ * (src/test-utils/sourceScan.ts ("export function withoutComments(src: string)")) and OVER a
+ * regex stripper. withoutComments mis-lexes the live line src/lib/wcag.ts
+ * (".replace(/\//g, ' ')"), wrongly passed the ASI and JSX-URL probes, and cannot load in an
+ * ES module (src/test-utils/sourceScan.ts ("const TEST_UTILS_DIR = path.basename(__dirname);"));
+ * the regex stripper passed 4 of 7 code edits. A parser is not a copy of the drift-guard
+ * lexer, which is what DECISION Phase 88-29 forbids (src/test-utils/sourceScan.ts ("five
+ * copies of a scanner is five places")). Refinements over the discuss-time walk, each pinned
+ * by a named self-test case:
+ *   (a) the line-break flag is measured in the gap between RAW leaves; JSX text starts at its
+ *       pos, not getStart; the flag is false for the file's first leaf and for JSX text.
+ *       Pinned by comment/leading docblock removed and comment/jsx comment added after the
+ *       last text line.
+ *   (b) zero-width leaves are dropped, and so are the two braces of a JSX comment container
+ *       (a JSX expression with no expression). Pinned by comment/jsx comment added inline
+ *       before text and comment/jsx comment rewrapped to two lines.
+ *   (c) JSX text emits its rendered value by the JSX child-text rule (cleanJsxText), read
+ *       from node.text, never from a getStart slice, which drops the leading whitespace that
+ *       single-line text renders. Pinned by code/jsx text leading whitespace and code/jsx
+ *       comment between two text lines. JSX texts of one parent separated only by dropped
+ *       containers merge into one entry, as React renders them; pinned by comment/jsx
+ *       comment deleted between adjacent text.
+ *   (d) every gap between raw leaves must scan as trivia only (whitespace, line breaks,
+ *       comments, a shebang); anything else offends as a walker gap. No valid parse reaches
+ *       it today (0 gaps across the 403 src files at planning); it is a fail-closed guard
+ *       against a walker that skips a real token, so it has no reachable self-test case.
+ *   (e) a CSS entry is its depth (non-root ancestors) plus decl, rule or at-rule fields;
+ *       whitespace runs OUTSIDE quoted strings in selectors, values and params collapse to
+ *       one space and the ends are trimmed, because postcss leaves a whitespace hole where it
+ *       removes a comment; quoted strings compare byte-exact; an unknown node type throws.
+ *       Pinned by css/rule moved inside another, css/comment in a selector deleted and
+ *       css/quoted string whitespace edit.
+ *   Parse errors from parseDiagnostics over ts.transpileModule: see (D-22) above; pinned by
+ *   the four parse/ cases.
+ * Not covered: stylesheet generation. Tailwind builds utilities from the raw text of src
+ * comments and test files (src/app/globals.css ("source(none);") plus its @source globs), so a
+ * comment-only or test-file edit can add or remove a generated utility. That changes
+ * rendering only for an element whose class is assembled non-literally; the literal-class
+ * convention and src/app/interpolatedClassCensus.test.ts ("function interpolationSpans")
+ * guard that, not this walk. Changing any of these is a decision, not a cleanup.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -54,14 +97,16 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import ts from 'typescript';
+import postcss from 'postcss';
 
 const ALLOWLIST_PREFIXES = ['e2e/', 'src/test-utils/', '.github/', 'scripts/'];
 const ALLOWLIST_FILES = ['.gitignore', 'playwright.config.ts', 'vitest.config.mts', 'README.md'];
 const TEST_FILE_RE = /\.(test|spec)\.[A-Za-z0-9]+$/;
-const TS_EXTENSIONS = new Set(['js', 'jsx', 'ts', 'tsx']);
+const COMPARE_EXTENSIONS = new Set(['js', 'jsx', 'ts', 'tsx', 'css']);
 const ENTRY_MAX = 120;
 // Built from char codes so the source file holds no raw U+2028/U+2029 (both end a JS line).
 const LINE_TERMINATOR_RE = new RegExp('[\\n\\r' + String.fromCharCode(0x2028, 0x2029) + ']');
+const LINE_BREAK_SPLIT_RE = new RegExp('\\r\\n|[\\n\\r' + String.fromCharCode(0x2028, 0x2029) + ']');
 const USAGE = 'usage: node scripts/comment-only-diff.mjs <base> | --self-test';
 
 // ---------------------------------------------------------------------------------------
@@ -134,18 +179,148 @@ function tsStream(text, p) {
     if (kids.length === 0) leaves.push(node);
     else kids.forEach(walk);
   })(sf);
+  const lineOf = (pos) => sf.getLineAndCharacterOfPosition(pos).line + 1;
   const entries = [];
   let prevEnd = 0;
-  for (const leaf of leaves) {
-    const start = leaf.getStart(sf);
-    const gap = text.slice(prevEnd, start);
-    const nl = LINE_TERMINATOR_RE.test(gap);
+  let first = true;
+  // The last emitted JSX text entry that a following JSX text of the same parent may merge
+  // into: only dropped leaves (comment-container braces, empty JSX text) may sit between.
+  let mergeable = null;
+  for (const node of leaves) {
+    const isText = node.kind === ts.SyntaxKind.JsxText;
+    const start = isText ? node.pos : node.getStart(sf);
+    if (node.end - start <= 0) continue; // (b) zero-width leaf (EndOfFileToken, empty list)
+    if (start < prevEnd) throw new Error(`overlapping leaves at line ${lineOf(start)} of ${p}`);
+    const gapAt = nonTriviaAt(text, prevEnd, start);
+    if (gapAt !== null) {
+      return { walkerGap: { line: lineOf(gapAt), message: 'non-trivia text outside the walked tokens' } };
+    }
+    const nl = !first && !isText && LINE_TERMINATOR_RE.test(text.slice(prevEnd, start));
+    first = false;
+    prevEnd = node.end;
+    if (insideCommentContainer(node)) continue; // (b)
+    if (isText) {
+      const value = cleanJsxText(node.text); // (c) never a getStart slice
+      if (value === '') continue;
+      if (mergeable && mergeable.parent === node.parent) {
+        mergeable.entry.text += value;
+        continue;
+      }
+      const lead = node.text.search(/\S/);
+      const entry = { text: 'JsxText:' + value, line: lineOf(node.pos + Math.max(lead, 0)) };
+      entries.push(entry);
+      mergeable = { entry, parent: node.parent };
+      continue;
+    }
     entries.push({
-      text: (nl ? 'NL ' : '') + KIND_NAME[leaf.kind] + ':' + text.slice(start, leaf.end),
-      line: sf.getLineAndCharacterOfPosition(start).line + 1,
+      text: (nl ? 'NL ' : '') + KIND_NAME[node.kind] + ':' + text.slice(start, node.end),
+      line: lineOf(start),
     });
-    prevEnd = leaf.end;
+    mergeable = null;
   }
+  const tailAt = nonTriviaAt(text, prevEnd, text.length);
+  if (tailAt !== null) {
+    return { walkerGap: { line: lineOf(tailAt), message: 'non-trivia text after the last walked token' } };
+  }
+  return { entries };
+}
+
+/** True for a leaf inside a JSX comment container, a JSX expression with no expression. */
+function insideCommentContainer(node) {
+  for (let a = node.parent; a; a = a.parent) {
+    if (a.kind === ts.SyntaxKind.JsxExpression && !a.expression) return true;
+  }
+  return false;
+}
+
+const TRIVIA_KINDS = new Set([
+  ts.SyntaxKind.WhitespaceTrivia,
+  ts.SyntaxKind.NewLineTrivia,
+  ts.SyntaxKind.SingleLineCommentTrivia,
+  ts.SyntaxKind.MultiLineCommentTrivia,
+  ts.SyntaxKind.ShebangTrivia,
+]);
+const gapScanner = ts.createScanner(ts.ScriptTarget.Latest, false);
+
+/** (d) Position of the first non-trivia token in text[start, end), or null. */
+function nonTriviaAt(text, start, end) {
+  if (end <= start) return null;
+  gapScanner.setText(text, start, end - start);
+  for (;;) {
+    const kind = gapScanner.scan();
+    if (kind === ts.SyntaxKind.EndOfFileToken) return null;
+    if (!TRIVIA_KINDS.has(kind)) return gapScanner.getTokenStart();
+  }
+}
+
+/**
+ * (c) The JSX child-text rule: split on line breaks; trim leading spaces and tabs on every
+ * line but the first and trailing ones on every line but the last; drop empty lines; join
+ * the rest with one space. Applied to each JSX text on its own, never to a joined pair.
+ */
+function cleanJsxText(raw) {
+  const lines = raw.split(LINE_BREAK_SPLIT_RE);
+  const kept = [];
+  lines.forEach((line, i) => {
+    let s = line;
+    if (i > 0) s = s.replace(/^[ \t]+/, '');
+    if (i < lines.length - 1) s = s.replace(/[ \t]+$/, '');
+    if (s !== '') kept.push(s);
+  });
+  return kept.join(' ');
+}
+
+// ---------------------------------------------------------------------------------------
+// Node stream (postcss), (e).
+
+/** Collapse whitespace runs outside quoted strings to one space; trim the ends. */
+function normCss(s) {
+  let out = '';
+  let quote = null;
+  let pendingSpace = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote) {
+      out += ch;
+      if (ch === '\\' && i + 1 < s.length) out += s[++i];
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace && out !== '') out += ' ';
+    pendingSpace = false;
+    if (ch === '"' || ch === "'") quote = ch;
+    out += ch;
+  }
+  return out;
+}
+
+/** Returns { entries } or { parseError }, like tsStream. */
+function cssStream(text, p) {
+  let root;
+  try {
+    root = postcss.parse(text, { from: p });
+  } catch (err) {
+    if (err && err.name === 'CssSyntaxError') {
+      return { parseError: { line: err.line ?? 0, message: err.reason ?? err.message } };
+    }
+    throw err;
+  }
+  const entries = [];
+  root.walk((node) => {
+    if (node.type === 'comment') return;
+    let depth = 0;
+    for (let a = node.parent; a && a.type !== 'root'; a = a.parent) depth++;
+    let body;
+    if (node.type === 'decl') body = `decl:${node.prop}:${normCss(node.value)}:${node.important ? '!' : ''}`;
+    else if (node.type === 'rule') body = `rule:${normCss(node.selector)}`;
+    else if (node.type === 'atrule') body = `at:${node.name}:${normCss(node.params)}:${node.nodes ? '{' : ';'}`;
+    else throw new Error(`unknown CSS node type ${JSON.stringify(node.type)} in ${p}`);
+    entries.push({ text: `${depth} ${body}`, line: node.source && node.source.start ? node.source.start.line : 0 });
+  });
   return { entries };
 }
 
@@ -209,7 +384,7 @@ function disposition(entry) {
     default: throw new Error(`unexpected git status ${JSON.stringify(entry.status)} for ${p}`);
   }
   if (entry.binary) return 'binary';
-  if (TS_EXTENSIONS.has(extOf(p))) return 'compare';
+  if (COMPARE_EXTENSIONS.has(extOf(p))) return 'compare';
   return 'unsupported extension';
 }
 
