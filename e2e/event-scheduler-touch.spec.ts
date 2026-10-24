@@ -10,6 +10,7 @@ import {
   probeSchedulerGeometry,
   probeViewport,
 } from './support/diagnostics';
+import { assertTheme, forceLightMode } from './support/contrast';
 
 /** Arm-trace sample collected in-page by the plan 88.1-12 deviation-3 flash probe. */
 interface ArmSample {
@@ -1266,6 +1267,50 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 // =============================================================================
 
 /**
+ * The day-labels gate, shared by the dark test in the phone describe below and its LIGHT variant
+ * (W47 part 1): call it after openVisualScheduler.
+ */
+async function expectDayLabelsComplete(page: Page): Promise<void> {
+  // The strip cell is `overflow-hidden`, so a label that no longer fits is
+  // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
+  // The stacked single-letter-over-date shape (copied verbatim from
+  // EventHeatmapBackground.js:287-301, `role="columnheader" className="text-center"`) is the
+  // M-03 fix; this is its gate.
+  const clipping = await page.evaluate(() => {
+    const root = document.querySelector('[role="dialog"]');
+    const measure = (el: Element, what: string) => ({
+      what,
+      text: (el.textContent ?? '').trim(),
+      scrollWidth: (el as HTMLElement).scrollWidth,
+      clientWidth: (el as HTMLElement).clientWidth,
+    });
+    const out: Array<ReturnType<typeof measure>> = [];
+    root?.querySelectorAll('[role="tab"]').forEach((tab, i) => {
+      out.push(measure(tab, `strip cell ${i}`));
+      tab.querySelectorAll('span').forEach((span, j) => out.push(measure(span, `strip cell ${i} span ${j}`)));
+    });
+    root?.querySelectorAll('[role="columnheader"]').forEach((h, i) => out.push(measure(h, `day header ${i}`)));
+    return out;
+  });
+  expect(
+    clipping.length,
+    'no strip cells or day headers resolved — the truncation check would be vacuous',
+  ).toBeGreaterThan(0);
+  const clipped = clipping.filter((c) => c.clientWidth > 0 && c.scrollWidth > c.clientWidth + 1);
+  expect(
+    clipped,
+    `these labels are clipped at 375px (scrollWidth > clientWidth) — the M-03 truncation failure the stacked single-letter-over-date format exists to fix has regressed: ${JSON.stringify(clipped)}`,
+  ).toEqual([]);
+
+  // Positive half: the day column's header carries the full `dd EEE` text
+  // (plan 88.1-07's uneditable Layer-3 contract), not an ellipsised fragment.
+  await expect(
+    dialog(page).getByRole('columnheader'),
+    'the day column header is not the complete "dd EEE" string — a clipped header passes a scrollWidth check when the text itself was shortened',
+  ).toHaveText(/^\d{2} (Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
+}
+
+/**
  * MEASURED GEOMETRY AT 375x667 — the C6 coverage gap plan 88.1-02 handed forward
  * IN WRITING, and the second half of plan 88.1-12's deviation 4.
  *
@@ -1328,44 +1373,31 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
 
   test('day labels render complete — nothing is clipped at 375px (the M-03 failure)', async ({ page }) => {
     await openVisualScheduler(page);
+    await expectDayLabelsComplete(page);
+  });
 
-    // The strip cell is `overflow-hidden`, so a label that no longer fits is
-    // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
-    // The stacked single-letter-over-date shape (copied verbatim from
-    // EventHeatmapBackground.js:287-301, `role="columnheader" className="text-center"`) is the
-    // M-03 fix; this is its gate.
-    const clipping = await page.evaluate(() => {
-      const root = document.querySelector('[role="dialog"]');
-      const measure = (el: Element, what: string) => ({
-        what,
-        text: (el.textContent ?? '').trim(),
-        scrollWidth: (el as HTMLElement).scrollWidth,
-        clientWidth: (el as HTMLElement).clientWidth,
-      });
-      const out: Array<ReturnType<typeof measure>> = [];
-      root?.querySelectorAll('[role="tab"]').forEach((tab, i) => {
-        out.push(measure(tab, `strip cell ${i}`));
-        tab.querySelectorAll('span').forEach((span, j) => out.push(measure(span, `strip cell ${i} span ${j}`)));
-      });
-      root?.querySelectorAll('[role="columnheader"]').forEach((h, i) => out.push(measure(h, `day header ${i}`)));
-      return out;
+  // DECISION Phase 88.6.2-22 (W47): the day-labels gate also runs in LIGHT through a
+  // per-describe override (test.use colorScheme light, forceLightMode before navigation,
+  // assertTheme at runtime), chosen over changing a project's colorScheme, because
+  // playwright.config.ts ("colorScheme: 'dark', // DECISION Phase 87.7 D-11: pin dark, chosen OVER leaving")
+  // pins dark on both projects. One shared body (expectDayLabelsComplete), chosen over a copied
+  // test. colorScheme does not set the html class and the stored theme can outrank it, so
+  // without the runtime assertion a light run can silently be dark (the precedent is
+  // e2e/contrast.spec.ts ("test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {")).
+  // W47 part 2 (the paint-gesture loop) is a behaviour change, routed by plan 30 and not built
+  // here. Changing this is a decision, not a cleanup.
+  test.describe('day labels in the LIGHT theme (W47 part 1)', () => {
+    test.use({ colorScheme: 'light' });
+
+    test.beforeEach(async ({ page }) => {
+      await forceLightMode(page);
     });
-    expect(
-      clipping.length,
-      'no strip cells or day headers resolved — the truncation check would be vacuous',
-    ).toBeGreaterThan(0);
-    const clipped = clipping.filter((c) => c.clientWidth > 0 && c.scrollWidth > c.clientWidth + 1);
-    expect(
-      clipped,
-      `these labels are clipped at 375px (scrollWidth > clientWidth) — the M-03 truncation failure the stacked single-letter-over-date format exists to fix has regressed: ${JSON.stringify(clipped)}`,
-    ).toEqual([]);
 
-    // Positive half: the day column's header carries the full `dd EEE` text
-    // (plan 88.1-07's uneditable Layer-3 contract), not an ellipsised fragment.
-    await expect(
-      dialog(page).getByRole('columnheader'),
-      'the day column header is not the complete "dd EEE" string — a clipped header passes a scrollWidth check when the text itself was shortened',
-    ).toHaveText(/^\d{2} (Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
+    test('day labels render complete in LIGHT — nothing is clipped at 375px (W47 part 1)', async ({ page }) => {
+      await openVisualScheduler(page);
+      await assertTheme(page, 'light');
+      await expectDayLabelsComplete(page);
+    });
   });
 
   test('the day column scrolls INTERNALLY rather than growing the modal', async ({ page }) => {
