@@ -39,7 +39,7 @@
  * ------------------------
  * That the app RENDERS these values. It claims the token layer DECLARES them. Gate B
  * (plans 06-11) covers the call sites and Gate C (plan 12) measures the rendered pixels.
- * `88.3-UI-SPEC.md` §5.11 row 50 (`LandingPage.js:31`'s `bg-white/20` over the hero) is
+ * `88.3-UI-SPEC.md` §5.11 row 50 (the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") ground over the hero) is
  * not computable from tokens at all and stays open until plan 12 measures it (OI-7).
  */
 import fs from 'node:fs';
@@ -105,8 +105,8 @@ function uniqueIndex(needle: string, what: string): number {
  *
  * Masked rather than authored, because `@utility card` and `@theme inline` are both named
  * in prose inside this file's own DECISION markers — an anchor searched in the authored
- * text is ambiguous for exactly the reason `parseRegistryEntries` documents at
- * `ci-grep-gate.fixture.test.ts:451-457`: a loose match reads the prose as data.
+ * text is ambiguous for exactly the reason parseGate documents at
+ * src/lib/ci-grep-gate.fixture.test.ts ("that exact trap fired while this was being written"): a loose match reads the prose as data.
  */
 function uniqueMatch(re: RegExp, what: string): number {
   const hits = [...MASKED.matchAll(re)].map((m) => m.index);
@@ -286,7 +286,7 @@ function resolveShadow(theme: Theme, prop: string): string {
  * A translucent token composited over an opaque ground, so a scrim can be measured.
  *
  * These are the ONLY composited rows Gate A can compute, and `88.3-UI-SPEC.md` §5.11 marks
- * them. The `groupHomePage` 15% black dim (§5.10.3) and `LandingPage.js:31`'s `bg-white/20`
+ * them. The `groupHomePage` 15% black dim (§5.10.3) and the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") ground
  * over the hero (row 50, OI-7) are NOT computable here — the first needs a group colour
  * from the database (plan 11), the second needs an in-browser measurement (plan 12).
  */
@@ -329,10 +329,10 @@ function lStarOf(hex: string, what: string): number {
 /**
  * Assert `ink` on `ground` clears `floor`, naming the requirement AND both operands in the
  * message — so a red run IS the diagnosis and nobody has to re-run to find out what failed
- * (the `padding-budget.spec.ts:172-192` rule, applied to the token layer).
+ * (the e2e/padding-budget.spec.ts ("Failure message: surface name, measured total, and the full chain") rule, applied to the token layer).
  *
  * Assertions here compare against FLOORS, never against a hex, so a future re-tint that
- * still clears its floor does not churn this file (`tailwind-v4-styles.spec.ts:37-40`).
+ * still clears its floor does not churn this file (e2e/tailwind-v4-styles.spec.ts ("every assertion pins WHICH PROPERTY is")).
  * The two deliberate exceptions are marked at their sites.
  */
 function expectRatio(theme: Theme, ink: string, ground: string, floor: number, req: string): number {
@@ -401,7 +401,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   });
 
   it('0c. globals.css still holds the hex the components are forbidden', () => {
-    // Mirrors `rawColorValues.test.ts:266-274`. If a future "cleanup" emptied the theme
+    // Mirrors src/app/rawColorValues.test.ts ("the theme is the source"). If a future "cleanup" emptied the theme
     // block, every ratio here would resolve to nothing and this file would throw — but
     // stating it as its own assertion means the diagnosis is one line, not a stack trace.
     expect(RAW).toContain('@theme');
@@ -463,8 +463,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // (L* 84.3726), sitting ΔL* 5.2191 below the warm-200 page (L* 89.5917). It had to move —
     // ruling 1c took warm-200 for the PAGE, so leaving it would make this row's `!= page`
     // assertion AND its L* ordering both false, and would be a real render defect at
-    // `GroupLibrary.js:149-153` (card-hover skeleton bars inside a bg-surface-page parent) and
-    // `CalendarMonthView.js:224-226` (today's cell would be byte-identical to an empty one).
+    // src/app/components/GroupLibrary.js ("bg-surface-page rounded-card animate-pulse") (card-hover skeleton bars inside a bg-surface-page parent) and
+    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :") (today's cell would be byte-identical to an empty one).
     // The rejected alternative warm-300 measures accent-text 4.4440 on it, an AA failure.
     expect(
       lStarOf(cardHover, 'card-hover'),
@@ -699,7 +699,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // sunken 6.6884 (unchanged). ROW 13 IS THE TIGHTEST AND IT IS LOAD-BEARING: 4.7121 against a
     // 4.5 floor is a 0.21 margin, and it is the single row that disqualified warm-300 as the
     // card-hover value (4.4440) and forced `--warm-250` to be minted. Live pairings that depend on
-    // it: GroupGamesList.js:372, ManageMembers.js:342, CalendarMonthView.js:228.
+    // it: src/app/components/GroupGamesList.js ("'border-line-accent bg-surface-muted text-content-accent hover:bg-surface-elevated'"),
+    // src/app/components/ManageMembers.js ("admin: 'bg-surface-muted text-content-accent border-accent'"),
+    // src/app/components/CalendarMonthView.js ("'bg-surface-muted hover:bg-surface-elevated'") (card-hover is the muted
+    // ground since 88.6-02).
     expectRatio('light', '--color-accent-text', '--color-bg-card', 4.5, 'Req 4 / §5.11 row 11');
     expectRatio('light', '--color-accent-text', '--color-bg-page', 4.5, 'Req 4 / §5.11 row 12');
     expectRatio('light', '--color-accent-text', '--color-bg-muted', 4.5, 'Req 4 / §5.11 row 13');
@@ -746,7 +749,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
 
   it('18. Req 5 — the today-tint day number clears 4.5:1 in both themes', () => {
     // The fork is dissolved by the Req 4 value: no tint change, no special-case amber,
-    // and the 88-27 D-32 paired-ternary SHAPE at EventScheduler.tsx:998 does not change.
+    // and the 88-27 D-32 paired-ternary SHAPE at src/app/components/EventScheduler.tsx ("today ? 'bg-surface-accent-subtle' : 'bg-surface-card'") does not change.
     expectRatio('light', '--color-accent-text', '--color-bg-today-tint', 4.5, 'Req 5 / §5.11 row 20');
     expectRatio('dark', '--color-accent-text', '--color-bg-today-tint', 4.5, 'Req 5 / §5.11 row 21');
   });
@@ -862,7 +865,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   it('27. Req 7 / §5.8.2 — the light ring FAILS on the dark chrome, which is WHY plan 07 scopes it', () => {
     // ⚠️ THIS TEST ASSERTS A FAILURE ON PURPOSE. DO NOT "FIX" IT BY CHANGING THE RING.
     // The header is warm-800 and the nav is purple-900 IN LIGHT MODE — dark chrome in a
-    // light app, deliberately (`DESIGN-SYSTEM-REFERENCE-2026.md:59-60`). purple-700 reads
+    // light app, deliberately (planning:.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md ("### Brand palette (target)"), its header and nav rows). purple-700 reads
     // 1.93 on the header and 1.78 on the nav, so Req 7 as written would regress keyboard
     // focus on the header, the mobile hamburger and the three menu rows inside it. The fix
     // is plan 07's subtree override to amber-400 (9.00 / 8.30), applied by overriding the
@@ -1200,7 +1203,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // consumer is `--color-bg-muted`. The L* ordering is asserted rather than the hex, so a
     // future re-tint inside the feasible window (t ∈ [0.60, 0.92]) does not churn this row — but a
     // collapse back onto either neighbour does red it. warm-200 IS the page (byte-equality, a real
-    // render defect at GroupLibrary.js:149-153 and CalendarMonthView.js:224-226); warm-300 drops
+    // render defect at src/app/components/GroupLibrary.js ("bg-surface-page rounded-card animate-pulse") and
+    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :")); warm-300 drops
     // accent-text to 4.4440 and reds test 14's row 13.
     const mint = resolve('light', '--warm-250');
     expect(mint, '88.3-18 ruling 1c — `--warm-250` must be declared in the palette').toMatch(/^#[0-9a-f]{6}$/i);
@@ -1295,7 +1299,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // survived every gate. Both files are read.
     //
     // ⚠️ THE NEGATIVE ASSERTIONS ARE SCOPED TO THE BUTTON'S SLICE ON PURPOSE — a file-level version
-    // reds on day one. `EventDayModal.js:427` already carries
+    // reds on day one. src/app/components/EventDayModal.js ("hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'") already carries
     // `backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'` — the
     // (RE-DERIVED plan 88.6-41: the cite read `:239` and the gate was spelled `groupBgImage`.
     // W49 moved that wash onto the VALIDATED flag and the line drifted. Same wash, same
@@ -1454,7 +1458,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     //
     // REACH: 61 `text-content-link` sites across 21 files. Verified LIVE on the page ground —
     // `GroupLibrary.js:265` and `:338` (inside the `bg-surface-page` containers at `:261`/`:326`)
-    // and `GroupGamesList.js:432` (inside `:428`); live on card-hover at `friends/page.js:748`.
+    // and `GroupGamesList.js:432` (inside `:428`); live on card-hover at src/app/friends/page.js ("rounded-full text-xs bg-surface-muted text-content-secondary").
     //
     // AMENDED Phase 88.6-09 (D-16), 2026-09-15 — the sentence above stays as HISTORY; this is
     // what replaced it. That REACH count was HAND-VERIFIED once and never re-checked, which is
@@ -1464,14 +1468,14 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // ground-on-an-ancestor pairings no line-based read can see are machine-checked on every
     // run. It MEASURED 18 forbidden-ink sites on the muted ground (14 real across 8 files, 4
     // structurally impossible and excluded by name) — not the 6 the D-16 census listed, and
-    // `friends/page.js:748` above is one of them. That suite carries the zero-consumer half of
+    // src/app/friends/page.js ("rounded-full text-xs bg-surface-muted text-content-secondary") above is one of them. That suite carries the zero-consumer half of
     // this row as an exact-count roster that must shrink to empty; this row keeps the RATIO
     // half. Do not delete either: a measurement with no gate goes stale, and a gate with no
     // measurement cannot say why it exists.
     //
     // AMENDED Phase 88.6-19 (D-16), 2026-09-16 — APPENDED, and the two sentences above are left
     // exactly as they stand because they are the record of what was true when they were written.
-    // `friends/page.js:748` — the site BOTH paragraphs above name as this row's hand-verified
+    // src/app/friends/page.js ("rounded-full text-xs bg-surface-muted text-content-secondary") — the site BOTH paragraphs above name as this row's hand-verified
     // live example — IS NOW FIXED. It was the tab-count pill's ACTIVE arm, a `<span>` carrying
     // `text-content-link` on `bg-surface-muted`; it took `text-content-secondary` (6.9620),
     // which its own INACTIVE arm already used. It was never a link, so the example this row
