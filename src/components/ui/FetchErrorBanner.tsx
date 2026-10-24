@@ -221,15 +221,15 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
   /* DECISION Phase 88.6.1-21 (R123 / W064 / Req 5): both retries (the compact `Retry` and the
      full `Try again`) are gated in flight by `aria-disabled` plus a synchronous first-line REF
      latch (`retryInFlightRef`) — D52's idiom, `R123-RULING: extend-d52`, house template
-     `RsvpSection.js:65` (`const statusLatch = useRef(false);`). The gated look is COLOUR
-     (`aria-disabled:text-content-muted`, the ghost variant's gated ink, `Button.tsx:209`). The
+     src/app/components/RsvpSection.js ("const statusLatch = useRef(false);"). The gated look is COLOUR
+     (`aria-disabled:text-content-muted`, the ghost variant's gated ink, src/components/ui/Button.tsx ("enabled-hover:bg-surface-hover aria-disabled:text-content-muted")). The
      shared recovery hook is armed at the press with `from: event.currentTarget` (Safari does not
      focus a clicked button) and NO fallback: this primitive owns no section heading, and
      `focusPageFloor` resolves the open dialog's title, else `main h1`, else `main` (D-05, D-07).
 
      REJECTED, each so it is not re-proposed as a tidy-up:
      (a) the native disabled attribute — it drops focus from the control the user pressed (the
-         rule of POSITION, `DECISION Phase 88.6-22`, `FriendInvitePanel.js:59`);
+         rule of POSITION, src/app/components/FriendInvitePanel.js ("DECISION Phase 88.6-22 (R3 #149, the rule of KIND + the rule of POSITION)"));
      (b) an opacity utility under ANY variant prefix (the 88.8 colour rule; `tokenContrast.test.ts`
          53(b2)'s regex is blind to a prefixed form — a blind spot, not a permission);
      (c) a state-only guard: two activations in one tick both read the stale `retrying`;
@@ -395,10 +395,10 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
       {/* DECISION Phase 88.6.1-21 (WR-503 / AC-10): all three link-buttons in this file
           (this `Retry`, and `Try again` / `Report this` in the full branch) declare the
           house PHONE-SCOPED link-button floor `min-h-11 md:min-h-0`
-          (`UpcomingEventsCard.js:263`, `DECISION Phase 88-01 (D-36)`; the `.btn` floor is
+          (src/app/components/UpcomingEventsCard.js ("DECISION Phase 88-01 (D-36)"); the `.btn` floor is
           phone-only too). VISIBLE DELTA: on a phone each button row grows to 44px.
           REJECTED: (a) the register's negative-vertical-margin compensation
-          (`.planning/deferred/phase-88.6.1.md:85`) — the 44px target would overlap the
+          (planning:.planning/deferred/phase-88.6.1.md ("### WR-503")) — the 44px target would overlap the
           message line above it and unknown caller content around this row, so a tap on text
           would activate a retry; (b) an all-widths floor — AC-10 is a 375px criterion, and
           desktop rhythm is not this phase's look call.
@@ -407,7 +407,7 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
           notices, and the floor suite counts this ONE element (`bannerRetries`, expectedCount 2).
 
           DECISION Phase 88.6.1-21 (Req 7 ring): the same three carry the byte-identical
-          house ring (`Button.tsx:113`; 54 non-test lines in 28 files carried it before this
+          house ring (src/components/ui/Button.tsx ("focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"); 54 non-test lines in 28 files carried it before this
           plan, measured 2026-10-15), keyboard-only by `focus-visible`. It is a box-shadow
           outside the box, clear of the message above (`mt-2`) and the neighbours (`gap-2` /
           `gap-4`). The orchestrator decision of 2026-10-05; it supersedes the earlier plan to
@@ -467,7 +467,7 @@ export function FetchErrorBanner({
      OVER the hand-rolled `<div role="status">` that shipped here.
 
      WHAT WAS WRONG. The old markup put `role="status"` on the visible wrapper, which was mounted
-     in the same commit as the failure text it carried. `StatusRegion.tsx:9-17` (the EMPTY-FIRST
+     in the same commit as the failure text it carried. src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted") (that
      bullet; re-anchored Phase 88.6.1-21 after plan 06's rewrite) records the rule this breaks: screen readers announce CHANGES to a mounted live region, not the conditional
      mount of a new one. On 14 non-test importers that is a real gap, not a cosmetic one. It is
      the same defect class plan 37 fixes in `Combobox` (W38).
@@ -487,7 +487,7 @@ export function FetchErrorBanner({
      Two standards inside one component is worse than either standard applied consistently. A
      future phase reading the 28/30/31 ruling and "converging" this region to visible would print
      the degrade notice twice, ten pixels apart, and re-open nothing this fixed. `StatusRegion`
-     supplies NO default visibility (`StatusRegion.tsx:102-106`, anchor `className={cn(`: `'text-sm'`,
+     supplies NO default visibility (src/components/ui/StatusRegion.tsx ("className={cn("): `'text-sm'`,
      then `className`, then only the opt-in `srOnlyWhenEmpty`, default false), so an
      unstated className here would ship a VISIBLE empty node above the guard on every compact
      consumer. This arm takes NO UI-SPEC §1.2 V-row — an `sr-only` region has no visible delta,
@@ -513,17 +513,17 @@ export function FetchErrorBanner({
      inside it can help; they are named in `.planning/deferred/phase-88.6.md`.
 
      REPORT-ONLY, not taken here: making this region ASSERTIVE (`role="alert"`) would close all 12
-     with one word and zero caller edits. Not taken because `StatusRegion.tsx:9-12` [now `:9-17`,
-     which carries the carve-out the amendment below records] states the mount-does-not-announce
+     with one word and zero caller edits. Not taken because the src/components/ui/StatusRegion.tsx docblock bullet [which
+     now carries the carve-out the amendment below records] states the mount-does-not-announce
      rule with no politeness carve-out and AT behaviour was not verified.
      Disclosed to the owner in `88.6-36-SUMMARY.md`.
 
      AMENDED Phase 88.6.1-21 (D-42): AT behaviour is now verified. An inserted `role="alert"` that
-     arrives with its text IS announced; an inserted POLITE region is not (`StatusRegion.tsx:9-17`
+     arrives with its text IS announced; an inserted POLITE region is not (src/components/ui/StatusRegion.tsx ("that arrives with its text IS announced")
      now carries that carve-out). So ASSERTIVE would close the six caller-gated compact sites. It
      is still NOT taken: a non-blocking degrade notice should not interrupt speech, and the six are
-     owned by Phase 92 (`.planning/deferred/phase-88.6.md:1811`, routed at `:1821`;
-     `.planning/deferred/phase-92.md:84`). The paragraph above is kept as history.
+     owned by Phase 92 (planning:.planning/deferred/phase-88.6.md ("## [a11y] Six caller-gated"), its 88.6 close disposition;
+     planning:.planning/deferred/phase-92.md ("### Six caller-gated")). The paragraph above is kept as history.
 
      AMENDED Phase 88.6.1-21 (B1): this region now carries one of TWO ratified sentences — the
      first-failure notice, or copy row B1 after a retry known to have failed — still through this
@@ -541,14 +541,14 @@ export function FetchErrorBanner({
 
      REJECTED:
      (a) a second polite region (the 88.6-36 marker's "two polite regions in one branch");
-     (b) reading `state.showError` at settle — stale by one macrotask (`@tanstack/query-core`
-         `notifyManager.js:3`), and a never-loaded query reports `pending` through the retry
-         (`query.js:416-419`), so it would call a success a failure;
+     (b) reading `state.showError` at settle — stale by one macrotask (the query-core scheduler,
+         node_modules:@tanstack/query-core/build/modern/notifyManager.js ("var defaultScheduler = systemSetTimeoutZero;")), and a never-loaded query reports `pending` through the retry
+         (node_modules:@tanstack/query-core/build/modern/query.js ("...data === void 0 && {")), so it would call a success a failure;
      (c) a keyed remount — identical text is not announced under WebKit's atomic rule (AT-4);
      (d) a synchronous clear-then-set — dropped by WebKit (AT-4);
      (e) speaking `Retrying…` in this region during the flight: a text-to-text update is a
-         `nodeValue` write in React (`react-dom.development.js:2472-2483`,
-         `var setTextContent = function (node, text) {`), not the node addition AT-4 measured as
+         `nodeValue` write in React (node_modules:react-dom/cjs/react-dom.development.js ("var setTextContent = function (node, text) {")),
+         not the node addition AT-4 measured as
          WebKit's announce path; and in the never-loaded case the visible row is gone, so it would
          speak a word the screen does not show;
      (f) new words for the in-flight state (D-31): the button's `Retrying…` is the cue.
@@ -571,14 +571,14 @@ export function FetchErrorBanner({
      MEASURED LIMIT (round-2 review #306): a BACKGROUND refetch of a never-loaded query also reads
      as healthy at this seam (`pending`, so `showError` is false), so it ends the episode and
      resets B1; the next failure re-speaks the first-failure sentence — never a false `still`.
-     Routed to Phase 92 (`.planning/deferred/phase-92.md:116`).
+     Routed to Phase 92 (planning:.planning/deferred/phase-92.md ("## [correctness] A background refetch of a never-loaded query")).
 
-     HONESTY: the six caller-gated compact sites — `UserHomePage.js:543`, `:647`,
-     `userProfile/page.js:2094`, `:3065`, `friends/page.js:827`, `grouplist.js:160` (re-measured
-     2026-10-15, anchor `<FetchErrorBanner state={…} compact />`; `grouplist.js:160` sits inside the
-     early return at `:141`) — destroy this component at the press for a never-loaded identity query
-     (friends: its retry clears the error first) and re-create it on failure, so they get neither
-     B1 nor an announcement. Owned by Phase 92 (`.planning/deferred/phase-92.md:84`). */
+     HONESTY: the six caller-gated compact sites (measured 2026-10-15) — src/app/userHome/UserHomePage.js ("TERMINAL identity failure it never fires — degrade with the") and src/app/userHome/UserHomePage.js (") : upcomingErrorState.showError && !upcomingRetained ? ("),
+     src/app/userProfile/page.js ("// check never ran; show the degrade notice, not a") and src/app/userProfile/page.js ("// fetch never ran; surface the degrade notice instead of"), src/app/friends/page.js ("<FetchErrorBanner state={groupsErrorState} compact />"),
+     src/app/components/grouplist.js ("<FetchErrorBanner state={selfIdentityErrorState} compact />"), each the compact banner beside its anchor, the grouplist one inside the
+     early return at src/app/components/grouplist.js ("if (selfIdentityErrorState.showError) {") — destroy this component at the press for a never-loaded identity query
+     (friends: its one is the groups query, whose retry clears the error first) and re-create it on failure, so they get neither
+     B1 nor an announcement. Owned by Phase 92 (planning:.planning/deferred/phase-92.md ("### Six caller-gated")). */
   if (compact) {
     // D-08: compact degrade notice — one generic line (no identity value) + the
     // retry affordance. The VISIBLE half still renders only on permanent failure;
@@ -634,7 +634,7 @@ export function FetchErrorBanner({
        dwell (`REGION_EMPTY_DWELL_MS`); short enough to hold the compact region quiet for one
        second at most. REJECTED beside it: expiring on the first commit that contradicts the
        result — a never-loaded query reports `pending` (so `showError` is false) through the
-       retry and for one macrotask after it settles (`@tanstack/query-core` `query.js:416-419`),
+       retry and for one macrotask after it settles (node_modules:@tanstack/query-core/build/modern/query.js ("...data === void 0 && {")),
        so a commit-bound rule would throw away a real failure on the settle render.
      - No double title (#176): when `state.showError` goes false during the flight, the assertive
        region empties and refills with the title and message, which already speaks them, so the
@@ -651,9 +651,9 @@ export function FetchErrorBanner({
      REJECTED: clearing the visible message during a retry (a visible flash, a look change); a
      keyed remount of IDENTICAL text (WebKit's managed path drops it, AT-4); a new "still
      couldn't load" sentence (unratified, D-31); a failure announcement on an UNKNOWN result (two
-     adapters resolve before they fetch, `UserHomePage.js:151-154`, `EventCalendar.js:63-66`, so
-     their state at settle says nothing — SPEC Prohibition 2); reading `state.showError` at
-     settle (stale by one macrotask, `notifyManager.js:3`). */
+     adapters resolved before they fetched at 88.6.1-21; both now settle with their run's outcome, src/app/userHome/UserHomePage.js ("const settled = new Promise((resolve) => {") and src/app/components/EventCalendar.js ("retryWaitersRef.current.push(resolve);"),
+     since 88.6.1-62 and 88.6.1-73, but an unmount can still answer undefined (UserHomePage), so a state at settle can say nothing — SPEC Prohibition 2); reading `state.showError` at
+     settle (stale by one macrotask, node_modules:@tanstack/query-core/build/modern/notifyManager.js ("var defaultScheduler = systemSetTimeoutZero;")). */
   const politeTitle =
     retryOutcome === 'none' && retryFailedAgain && state.showError && !assertiveChangedRef.current;
   const politeText = retrying ? 'Retrying…' : politeTitle ? title : '';
@@ -696,7 +696,7 @@ export function FetchErrorBanner({
           outages). Also rejected: announcing the link's appearance or moving focus to it (plan 21
           already speaks a failed retry; a second message would be new words, D-31). The report
           button's opening tag, plan 70's focus watch, its classes and label are unchanged inside
-          the condition. AMENDS Phase 86 D-02's CTA (`86-CONTEXT.md:35`). Showing it from the
+          the condition. AMENDS Phase 86 D-02's CTA (planning:.planning/phases/86-fe-wave-2-bff-trust-boundary-correctness-resilience/86-CONTEXT.md ("### Error/contract primitives (PRIM-03)")). Showing it from the
           start again is a decision, not a cleanup.
           AMENDED Phase 88.6.1-69 (Task 3): the link opens the app-level report host
           (`FeedbackModalProvider`'s `openReport`, read through its own report context) and is
