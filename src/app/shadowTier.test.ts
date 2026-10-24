@@ -136,7 +136,7 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../test-utils/exemption';
-import { STRIP_VARIANTS, readOpeningTag, sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -169,9 +169,8 @@ interface Element {
 // positive control in test 2 needs to run THIS EXACT tokenizer over synthetic source — and
 // writing the loop a second time for the fixture would mean the fixture could agree with a
 // lexer the real scan no longer uses. One function, two callers.
-function elementsFrom(rel: string, raw: string): Element[] {
+function elementsFrom(rel: string, raw: string, scannable: string = withoutComments(raw)): Element[] {
   const out: Element[] = [];
-  const scannable = withoutComments(raw);
   // Both DOM tags and components: `<Button`, `<Link`, `<Modal.Action` all matter here.
   const opener = /<[A-Za-z][A-Za-z0-9.]*(?=[\s/>])/g;
   let match: RegExpExecArray | null;
@@ -187,9 +186,62 @@ function elementsFrom(rel: string, raw: string): Element[] {
   return out;
 }
 
-const ELEMENTS: Element[] = sourceFiles(SRC).flatMap((file) =>
-  elementsFrom(path.relative(SRC, file), fs.readFileSync(file, 'utf8')),
+// AC-11: this is the ONE enumeration, the ONE read and the ONE comment strip of the tree. Both
+// passes below derive from SOURCES: the opening-tag pass (ELEMENTS, rules 1-8) and the
+// string-chunk pass (CHUNK_SCANS, test 9). Neither may read or strip a file a second time, and
+// no cache may be added to sourceScan.ts to get the same effect (AC-12).
+//
+// DECISION Phase 88.6.2-18 (W046): a SECOND pass over string chunks, using this one read, so a
+// shadow-family class held in a module constant, a variant map or a cn() call OUTSIDE any JSX
+// opening tag is seen. The tag pass alone backed a tree-wide zero it could not see.
+//   Chosen OVER widening the opening-tag tokenizer, because rule 7 needs the element boundaries
+//   a string chunk does not carry.
+//   Chosen OVER declaring the blind spot plus a fixture (the 88.6 review's other option, WR-408),
+//   because that leaves a live off-tier class outside JSX unflagged.
+//   No dedup against tag hits: both passes assert zero. Removing either pass is a decision, not
+//   a cleanup.
+const SOURCES: { rel: string; raw: string; scannable: string }[] = sourceFiles(SRC).map((file) => {
+  const raw = fs.readFileSync(file, 'utf8');
+  return { rel: path.relative(SRC, file), raw, scannable: withoutComments(raw) };
+});
+
+const ELEMENTS: Element[] = SOURCES.flatMap(({ rel, raw, scannable }) =>
+  elementsFrom(rel, raw, scannable),
 );
+
+interface ChunkSite {
+  rel: string;
+  line: number;
+  token: string;
+  base: string;
+}
+
+/** The string-chunk pass over one file: how many chunks it read, and every shadow-family token. */
+function chunkScan(
+  rel: string,
+  raw: string,
+  scannable: string = withoutComments(raw),
+): { chunks: number; sites: ChunkSite[] } {
+  const chunks = stringChunks(scannable);
+  const sites: ChunkSite[] = [];
+  for (const { offset, text } of chunks) {
+    for (const token of text.split(/\s+/).filter(Boolean)) {
+      const base = token.replace(STRIP_VARIANTS, '');
+      if (!base.startsWith('shadow-')) continue;
+      sites.push({ rel, line: raw.slice(0, offset).split('\n').length, token, base });
+    }
+  }
+  return { chunks: chunks.length, sites };
+}
+
+const CHUNK_SCANS = SOURCES.map(({ rel, raw, scannable }) => chunkScan(rel, raw, scannable));
+const CHUNK_COUNT = CHUNK_SCANS.reduce((sum, scan) => sum + scan.chunks, 0);
+const CHUNK_SITES: ChunkSite[] = CHUNK_SCANS.flatMap((scan) => scan.sites);
+
+/** Every string-chunk token whose variant-stripped base matches family. */
+function chunkSitesMatching(family: RegExp, sites: readonly ChunkSite[] = CHUNK_SITES): ChunkSite[] {
+  return sites.filter((site) => family.test(site.base));
+}
 
 const FILE_COUNT = new Set(ELEMENTS.map((e) => e.rel)).size;
 
@@ -235,6 +287,16 @@ const FIXTURE_ALIAS_SOURCE = `
       <button className="shadow-theme-lg">safe</button>
     </div>
   );
+`;
+
+// The string-chunk pass's positive control (W046, plan 88.6.2-18). Every class in it sits
+// OUTSIDE any JSX opening tag: a module constant, a variant-map value and a cn() argument, plus
+// a shadow-theme-lg that must NOT be flagged. The div's className is an expression, not a string.
+const FIXTURE_OUTSIDE_JSX_SOURCE = `
+  const RAISED = 'shadow-md';
+  const VARIANTS = { hover: 'hover:shadow-xl', safe: 'shadow-theme-lg' };
+  const cls = cn(RAISED, on && 'shadow-inner');
+  export const F = () => <div className={cls} />;
 `;
 
 /** Per-file occurrence counts, keyed the way `ExemptionRoster` is keyed. */
@@ -573,6 +635,8 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
        `FIXTURE_ALIAS_SOURCE` below, NOT to deleting this assertion: a scan that walked nothing,
        or a `STRIP_VARIANTS` that stopped stripping, would otherwise leave tests 2 and 4 green
        forever. That is the same handover the off-tier half made one plan earlier. */
+    // This tag pass reads JSX opening tags only. The tree-wide zero above holds because test 9
+    // also finds zero over every string chunk of the same read, outside JSX included (W046).
     expect(
       aliasSites.map((s) => `${s.rel}:${s.line} ${s.token}`),
       'an alias-spelled `shadow-(sm|md|lg)` site appeared in the tree. Every known one was ' +
@@ -736,5 +800,48 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
           '`shadow-theme-md` control was filed as debt. It carries no `-lg` pin and is safe.',
       ).toBe(2);
     }
+  });
+
+  it('9. the string-chunk pass sees a shadow-family class outside any JSX opening tag (W046)', () => {
+    // Anti-vacuity floor: measured 11,272 chunks over 202 files at FE 995023d. The shape it must
+    // catch is a lexer that stopped emitting chunks, not a count that moved.
+    expect(
+      CHUNK_COUNT,
+      `the string-chunk pass read only ${CHUNK_COUNT} chunks — stringChunks stopped emitting, or ` +
+        'SOURCES stopped walking, and the exact zeros below would pass on nothing.',
+    ).toBeGreaterThanOrEqual(5000);
+
+    // Fixture positive control: the live population is zero, so this is the only thing standing
+    // between a broken chunk pass and a permanently green test. Tokens only, never a path:line.
+    const fixture = chunkScan('fixture/outsideJsx.tsx', FIXTURE_OUTSIDE_JSX_SOURCE).sites;
+    expect(
+      chunkSitesMatching(ALIAS, fixture).map((s) => s.token),
+      'the chunk pass no longer locates the alias constant in its own fixture',
+    ).toEqual(['shadow-md']);
+    expect(
+      chunkSitesMatching(OFF_TIER, fixture).map((s) => s.token),
+      'the chunk pass no longer locates the off-tier map value and cn() argument in its fixture, ' +
+        'or STRIP_VARIANTS stopped stripping',
+    ).toEqual(['hover:shadow-xl', 'shadow-inner']);
+
+    // The live tree: exact zero in both families. This test reads NO roster, by design (the
+    // rosters must be empty at phase close), so a roster entry alone cannot green it. toEqual
+    // over the empty list rather than a length check, so a red names the file, line and token.
+    const remedy =
+      'Snap the class to shadow-theme-sm, shadow-theme-md or shadow-theme-lg. A roster entry alone ' +
+      'cannot green this test: a deliberately rostered exception needs this test edited to subtract ' +
+      'the rostered per-file counts, in the same commit as the entry, with a DECISION marker.';
+    expect(
+      chunkSitesMatching(OFF_TIER).map((s) => `${s.rel}:${s.line} ${s.token}`),
+      'an off-tier shadow-(xs|xl|2xl|inner) class appeared in a string outside the opening-tag ' +
+        'pass. ' +
+        remedy,
+    ).toEqual([]);
+    expect(
+      chunkSitesMatching(ALIAS).map((s) => `${s.rel}:${s.line} ${s.token}`),
+      'an alias-spelled shadow-(sm|md|lg) class appeared in a string outside the opening-tag ' +
+        'pass. ' +
+        remedy,
+    ).toEqual([]);
   });
 });
