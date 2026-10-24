@@ -28,10 +28,10 @@ test('user can submit availability', async ({ page }) => {
 
      This assertion used to be a bare text query, and it failed with a Playwright STRICT-MODE
      violation — "resolved to 2 elements" — never with a visibility timeout. The page renders the
-     confirmation sentence twice ON PURPOSE: the visible `<h1>` (`availability-form/[token]/page.js:337`,
-     from the `SUBMITTED_HEADLINE` constant at `:26`) and the always-mounted polite region AC-19 put
-     on the page, which composes the SAME headline into its announcement (`:271`). The page's own
-     marker at `:452` says in as many words that the `data-testid` exists because a bare role query
+     confirmation sentence twice ON PURPOSE: the visible `<h1>` (src/app/availability-form/[token]/page.js ("ref={confirmationHeadingRef}"),
+     from the `SUBMITTED_HEADLINE` constant at src/app/availability-form/[token]/page.js ("const SUBMITTED_HEADLINE")) and the always-mounted polite region AC-19 put
+     on the page, which composes the SAME headline into its announcement (src/app/availability-form/[token]/page.js ("const announcement =")). The page's own
+     marker at src/app/availability-form/[token]/page.js ("DECISION Phase 88.6-23 (AC-19): ONE") says in as many words that the `data-testid` exists because a bare role query
      matches two nodes. So the TEST moves, not the page.
 
      Narrowing to the heading is NOT a weakening, because the second assertion below asserts the
@@ -52,7 +52,7 @@ test('user can submit availability', async ({ page }) => {
   ).toBeVisible();
 
   /* The live region carries the same sentence. `toContainText`, NEVER `toBeVisible`: the region is
-     `className="sr-only"` (`availability-form/[token]/page.js:451`), and `sr-only` leaves a 1x1 box
+     `className="sr-only"` (src/app/availability-form/[token]/page.js ("<StatusRegion")), and `sr-only` leaves a 1x1 box
      that Playwright reports as VISIBLE — a visibility assertion here would pass while proving
      nothing about the announcement. */
   await expect(page.getByTestId('availability-page-status')).toContainText(

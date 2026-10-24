@@ -5,8 +5,8 @@ import { test, expect, type Page } from '@playwright/test';
  * render the DESIGNED surface, not an unstyled text dump, and leak nothing.
  *
  * PROJECT GUARD: every new spec joins BOTH projects automatically — `journeys` and
- * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts:44 and :87). This
- * file is `journeys`-only, matching the guard shape at tailwind-v4-styles.spec.ts:57
+ * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts ("name: 'journeys'") and playwright.config.ts ("name: 'phone'")). This
+ * file is `journeys`-only, matching the guard shape at e2e/tailwind-v4-styles.spec.ts ("SPEC R5 (Phase 87.8, closed): viewport-independent hazards")
  * rather than the inverted one in touch-targets.spec.ts. Nothing asserted here is a
  * phone-tenet claim: these are rendering and information-disclosure assertions, and
  * running them twice per CI job would double a held-request test's wall clock for no
@@ -27,7 +27,7 @@ import { test, expect, type Page } from '@playwright/test';
  *   - Every one of the 11 boundaried routes is a `'use client'` page whose data lands
  *     in `useEffect`, so the server render cannot be made to throw from outside.
  *   - Forcing a client render throw by poisoning an API response does not work on this
- *     codebase: the fetch call sites are defensive (`friends/page.js:136` is
+ *     codebase: the fetch call sites are defensive (src/app/friends/page.js ("setFriends(Array.isArray(data) ? data : [])") is
  *     `Array.isArray(data) ? data : []`, and the pattern repeats), so a malformed
  *     payload produces an empty list, not a throw. A test that depended on finding a
  *     NON-defensive call site would silently stop testing the boundary the moment that
@@ -44,16 +44,16 @@ import { test, expect, type Page } from '@playwright/test';
  * V7 contract across all 11 files. Adding a `?throw=1` hook to a page to close this in
  * e2e would put a denial-of-service switch in production to make a test greener.
  *
- * SELECTOR POLICY (e2e/invite.spec.ts:18): role, label and text only — never Tailwind
+ * SELECTOR POLICY (e2e/invite.spec.ts ("Selectors are role/label/text only")): role, label and text only — never Tailwind
  * classes. The computed-style reads below start FROM a role-located element and walk the
  * DOM; no locator selects by class.
  *
  * Fixtures: none needed. Both surfaces render for any authenticated session, so this file
  * declares no `E2E_*` env consts. It still requires CI's storageState like every other
- * spec — do not run locally (playwright.config.ts:19-21).
+ * spec — do not run locally (playwright.config.ts ("They are intentionally absent locally")).
  */
 
-/** D-11 dark-theme pre-assertion (tailwind-v4-styles.spec.ts:78-86). On these two
+/** D-11 dark-theme pre-assertion (e2e/tailwind-v4-styles.spec.ts ("toHaveClass(/dark/)")). On these two
  *  surfaces it is more than a pre-condition: Next's UNSTYLED default 404 — what this app
  *  shipped before 88-09 — renders outside the app shell entirely, so a resolved theme on
  *  <html> is itself evidence that the designed boundary, not the default, is on screen. */
@@ -88,7 +88,7 @@ async function assertNoDiagnosticLeak(page: Page, surface: string): Promise<void
 }
 
 test.describe('SPEC Req 3 — route boundaries render designed surfaces, not text dumps', () => {
-  // Inverse of touch-targets.spec.ts:130 — see the PROJECT GUARD note above.
+  // Inverse of e2e/touch-targets.spec.ts ("R4/R6 are phone-tenet requirements") — see the PROJECT GUARD note above.
   test.skip(({ isMobile }) => !!isMobile, 'Req 3 rendering + disclosure assertions are viewport-independent; the desktop journeys project owns them so a held-request test runs once per CI job');
 
   test('an unknown URL renders the designed 404 inside the app shell, with its way back', async ({ page }) => {

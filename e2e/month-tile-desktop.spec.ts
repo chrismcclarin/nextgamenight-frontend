@@ -21,10 +21,10 @@ import { scrubbedFetch } from './support/scrubbedFetch';
  * REJECTS paints no image and gets the plain-coloured treatment. That one has a real oracle.
  *
  * DESKTOP ONLY, BY CONSTRUCTION. The FULL variant mounts inside `UserHomePage.js`'s
- * `hidden md:flex` column (`:492`); the phone sheet renders the COMPACT variant, which passes
- * `hasBackgroundImage: false` at the call site (`CalendarMonthView.js:573`) and paints no image.
- * So this spec runs in the `journeys` project (1280 x 720, `playwright.config.ts:64`) and skips
- * in `phone` — the SAME runtime-skip shape as `contrast.spec.ts:96`, inverted. There is NO
+ * `hidden md:flex` column (src/app/userHome/UserHomePage.js ("hidden md:flex md:flex-col")); the phone sheet renders the COMPACT variant, which passes
+ * `hasBackgroundImage: false` at the call site (src/app/components/CalendarMonthView.js ("const tileHasBgImage = variant === 'compact' ? false : hasValidBgImage;")) and paints no image.
+ * So this spec runs in the `journeys` project (1280 x 720, playwright.config.ts ("name: 'journeys'")) and skips
+ * in `phone` — the SAME runtime-skip shape as e2e/contrast.spec.ts ("({ isMobile }) => !isMobile,"), inverted. There is NO
  * project named `desktop` (`88.6-VALIDATION.md` already corrects the plan's `--project=desktop`
  * to `--project=journeys`).
  *
@@ -32,7 +32,7 @@ import { scrubbedFetch } from './support/scrubbedFetch';
  * THIS SPEC CANNOT BE RUN ON A LAPTOP, BY DESIGN.
  * ---------------------------------------------------------------------------------------
  * `.auth/user.json` comes from the `setup` project against real Auth0 and the credentials are
- * deliberately absent locally (`playwright.config.ts:22-24`). Local proofs: `--list` collects
+ * deliberately absent locally (playwright.config.ts ("They are intentionally absent locally")). Local proofs: `--list` collects
  * exactly the two tests below in `journeys` (and two runtime-skipped in `phone`), and
  * `npx tsc --noEmit -p tsconfig.e2e.json` compiles it. CI is the only place it REPORTS.
  *
@@ -42,7 +42,7 @@ import { scrubbedFetch } from './support/scrubbedFetch';
  * DECISION Phase 88.6-45 (task 3 seeding): BOTH scenarios plant `background_image_url` by
  * rewriting the SAME payload the month view fetches — the BFF-proxied
  * `GET /api/events/user/<uuid>` response, whose nested `Group` carries the key
- * (`routes/events.js:331-334`, `attributes: [... 'background_image_url']`) — chosen OVER the
+ * (backend:Sonnet/routes/events.js ("Removing the flag re-arms the ghost-card path."), `attributes: [... 'background_image_url']`) — chosen OVER the
  * plan's two named carriers: the authenticated `PUT /groups/:id/settings` path for the allowed
  * URL and the backend fixture minter for the rejected one.
  *
@@ -52,30 +52,30 @@ import { scrubbedFetch } from './support/scrubbedFetch';
  * across the same worker pool (`fullyParallel: false` is per-FILE, `workers` is unset), so a
  * database write here can land in the middle of a phone-lane measurement and red a sibling
  * gate. (2) The rejected value CANNOT pass `validateGroupUpdate` at all
- * (`middleware/validators.js:161-179`, `^https?:\/\/.+`), so the plan's own carrier for it is
+ * (backend:Sonnet/middleware/validators.js ("body('background_image_url')"), `^https?:\/\/.+`), so the plan's own carrier for it is
  * a BACKEND edit to `scripts/e2e-fixtures.js` — a cross-repo change this plan's dispatch
  * forbade, and one whose merge deploys production. (3) The subject under test is the RENDER
- * PATH: `CalendarMonthView.js:523` reads `event.Group?.background_image_url` off this exact
- * JSON and hands it to `safeBgImageStyle` (`:560`); a value planted in the response is
+ * PATH: src/app/components/CalendarMonthView.js ("const groupBgImage = event.Group?.background_image_url;") reads `event.Group?.background_image_url` off this exact
+ * JSON and hands it to `safeBgImageStyle` (src/app/components/CalendarMonthView.js ("const bgImageStyle = safeBgImageStyle(groupBgImage);")); a value planted in the response is
  * byte-indistinguishable to that path from one read out of Postgres. What this does NOT
  * exercise is the write-side validator — which is the backend's own unit-tested contract, not
  * this spec's subject. Recorded in `88.6-45-SUMMARY.md` as a deviation with both arms.
  * Reverting either scenario to a database seed is a decision, not a cleanup.
  *
- * SELECTOR POLICY (`padding-budget.spec.ts:50-51`): role, label and ARIA state only. The tile is
- * `role="button"` with `aria-label="<game> - <group>"` (`CalendarMonthView.js:719`); the
+ * SELECTOR POLICY (e2e/padding-budget.spec.ts ("SELECTOR POLICY")): role, label and ARIA state only. The tile is
+ * `role="button"` with `aria-label="<game> - <group>"` (src/app/components/CalendarMonthView.js ("const tileLabel =")); the
  * overlay is found by its computed colour, never a class.
  */
 
 test.skip(
   ({ isMobile }) => isMobile,
-  'AC-7 second half: the image-backed FULL month tile renders only at >= 768px (UserHomePage.js:492 `hidden md:flex`), so this spec runs only in the journeys project'
+  'AC-7 second half: the image-backed FULL month tile renders only at >= 768px (src/app/userHome/UserHomePage.js ("hidden md:flex md:flex-col")), so this spec runs only in the journeys project'
 );
 
-/** The FSEC-03 motivating case, verbatim from `safeBgImageStyle.ts:29`. */
+/** The FSEC-03 motivating case, verbatim from src/lib/safeBgImageStyle.ts ("still parses with protocol"). */
 const REJECTED_URL = 'javascript:alert(1)';
 
-/** The overlay `CalendarMonthView.js:1122` paints ONLY when `hasValidBgImage` is true. */
+/** The overlay src/app/components/CalendarMonthView.js ("rgba(255, 255, 255, 0.7)") paints ONLY when `hasValidBgImage` is true. */
 const IMAGE_OVERLAY_RGBA = 'rgba(255, 255, 255, 0.7)';
 
 /**
@@ -113,9 +113,9 @@ interface Seeded {
 /**
  * Rewrite the month view's events payload so ONE uncoloured-group event carries `url` as its
  * group's `background_image_url`. Uncoloured on purpose: with no stored colour the tile's
- * ground is null, so the plain treatment is `{}` (`tileTextTreatment`, `CalendarMonthView.js:136`)
+ * ground is null, so the plain treatment is `{}` (`tileTextTreatment`, src/app/components/CalendarMonthView.js ("if (!tileGround) return {};"))
  * and the two scenarios are separable by the stroke ALONE — a dark stored colour would also
- * resolve to `STROKE_DARK` on the plain path (`:143`) and blur the comparison.
+ * resolve to `STROKE_DARK` on the plain path (src/app/components/CalendarMonthView.js ("WebkitTextStroke: brightness <= 128 ?")) and blur the comparison.
  */
 async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
   let seeded: FixtureEvent | null = null;
@@ -164,8 +164,8 @@ async function tileFor(page: Page, event: FixtureEvent): Promise<Locator> {
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
   const wanted = `${monthNames[start.getMonth()]} ${start.getFullYear()}`;
-  // The FULL month view's own heading (`CalendarMonthView.js:209-211`). Bounded walk: the fixture
-  // events sit +3/+4 days from the run (`e2e-fixtures.js:119`, `:349`), so at most ONE step.
+  // The FULL month view's own heading (src/app/components/CalendarMonthView.js ("{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}")). Bounded walk: the fixture
+  // events sit +3/+4 days from the run (backend:Sonnet/scripts/e2e-fixtures.js ("start_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),"), backend:Sonnet/scripts/e2e-fixtures.js ("const [eventPhone] = await Event.findOrCreate({")), so at most ONE step.
   const heading = page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ });
   await expect(heading).toBeVisible({ timeout: 20_000 });
   for (let step = 0; step < 2 && (await heading.textContent())?.trim() !== wanted; step += 1) {
@@ -179,7 +179,7 @@ async function tileFor(page: Page, event: FixtureEvent): Promise<Locator> {
   return tile;
 }
 
-/** The game-name span — the ONLY element the stroke/shadow utilities are declared on (`:1151`). */
+/** The game-name span — the ONLY element the stroke/shadow utilities are declared on (src/app/components/CalendarMonthView.js ("truncate font-bold [text-shadow:var(--t-shadow-l)]")). */
 function gameName(tile: Locator, event: FixtureEvent): Locator {
   return tile.getByText(event.Game?.name || 'Game Night', { exact: true });
 }
@@ -222,7 +222,7 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
   test('Scenario A — an ALLOWED image URL: the stroke pair is LIVE at STROKE_DARK, the validated flag resolved TRUE, and the tile is photographed', async ({ page, baseURL }) => {
     // An app-origin asset, not a third-party host: the mechanical assertions do not depend on
     // the bytes loading, and a CI run must not fail on someone else's CDN. `http(s):` is what the
-    // allow-list checks (`safeBgImageStyle.ts:12`), and this is it.
+    // allow-list checks (src/lib/safeBgImageStyle.ts ("export const ALLOWED_IMAGE_PROTOCOLS")), and this is it.
     const allowedUrl = new URL('/bgg-logo.png', baseURL ?? 'http://localhost:3000').href;
     const read = await seedGroupImage(page, allowedUrl);
 
@@ -235,7 +235,7 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
     await test.step('the validated derivation resolved TRUE: the image is painted and the 0.7 white overlay is mounted', async () => {
       const vars = await tileVars(tile);
       expect(vars.bgImage, 'the tile paints no background-image — safeBgImageStyle rejected an allow-listed URL').toContain('bgg-logo.png');
-      expect(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'the image overlay (CalendarMonthView.js:1122) is gated on hasValidBgImage and did not mount').toBe(1);
+      expect(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'the image overlay (src/app/components/CalendarMonthView.js ("rgba(255, 255, 255, 0.7)")) is gated on hasValidBgImage and did not mount').toBe(1);
     });
 
     await test.step('the --t-stroke pair carries STROKE_DARK on both theme arms, and the declaration is LIVE on the text', async () => {
@@ -306,7 +306,7 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
 
     await test.step('the PLAIN-coloured treatment, not the image-tuned one', async () => {
       // Uncoloured group (seedGroupImage picks one): the plain path returns `{}` and
-      // themedTextStyleVars fills both arms with `none` (`colorUtils.js:672-677`).
+      // themedTextStyleVars fills both arms with `none` (src/lib/colorUtils.js ("export function themedTextStyleVars(dark, light) {")).
       const vars = await tileVars(tile);
       expect(vars.stroke, 'the image-tuned stroke reached a tile whose URL was rejected').toBe('none');
       expect(vars.shadow, 'the image-tuned shadow reached a tile whose URL was rejected').toBe('none');

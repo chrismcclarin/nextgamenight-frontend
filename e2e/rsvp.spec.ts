@@ -18,9 +18,9 @@ test('user can RSVP to an event', async ({ page }, testInfo) => {
   // chosen OVER narrowing the phone project's testMatch to exclude this spec (which
   // would silently shrink the MOB-03 gate below "all journeys at phone width"), and
   // OVER weakening single-use semantics or adding a re-mint route: the atomic
-  // single-use consume in models/SingleUseToken.js:193-211 is a security control
+  // single-use consume in backend:Sonnet/models/SingleUseToken.js ("SingleUseToken.consumeByNonce = async function consumeByNonce(") is a security control
   // pinned by a backend test, and minting a second token (plan 87.8-02) is the
-  // correct fix. WHY a shared link fails: routes/rsvp.js:248 consumes the link's
+  // correct fix. WHY a shared link fails: backend:Sonnet/routes/rsvp.js ("const consumed = await SingleUseToken.consumeByNonce(token);") consumes the link's
   // nonce in one atomic UPDATE that returns null on the second call, so the second
   // project's run gets a 403 expired-link and the "already been used" copy — the
   // assertion below fails. LATENT TODAY, before any arming: playwright.config.ts
@@ -44,9 +44,9 @@ test('user can RSVP to an event', async ({ page }, testInfo) => {
      STRICT-MODE collision as row 1, on the twin design. The copy is correct and unchanged.
 
      Both nodes are required and both are now asserted: the visible `<h1>` renders
-     `STATUS_CONFIG.yes.heading` (`rsvp/[token]/page.js:50`, rendered at `:293`), and the
-     always-mounted polite region composes the same headline into its announcement (`:242`),
-     addressed through the shipped `data-testid` at `:416`. Narrowing to the heading is not a
+     `STATUS_CONFIG.yes.heading` (src/app/rsvp/[token]/page.js ("const STATUS_CONFIG = {"), rendered at src/app/rsvp/[token]/page.js ("{config.heading}")), and the
+     always-mounted polite region composes the same headline into its announcement (src/app/rsvp/[token]/page.js ("const announcement =")),
+     addressed through the shipped `data-testid` at src/app/rsvp/[token]/page.js ("data-testid={PAGE_STATUS_TESTID}"). Narrowing to the heading is not a
      weakening because the region arm below is new coverage, not a replacement.
      REJECTED — `.first()`: green on a tree with no region at all.
      REJECTED — de-duplicating the page: that duplication is the AC-19 announcement design.
@@ -56,7 +56,7 @@ test('user can RSVP to an event', async ({ page }, testInfo) => {
   ).toBeVisible({ timeout: 15_000 });
 
   /* `toContainText`, NEVER `toBeVisible`: the region is `className="sr-only"`
-     (`rsvp/[token]/page.js:415`) and `sr-only` leaves a 1x1 box Playwright calls visible. */
+     (src/app/rsvp/[token]/page.js ("<StatusRegion")) and `sr-only` leaves a 1x1 box Playwright calls visible. */
   await expect(page.getByTestId('rsvp-page-status')).toContainText(/you're (in|going)/i, {
     timeout: 15_000,
   });
