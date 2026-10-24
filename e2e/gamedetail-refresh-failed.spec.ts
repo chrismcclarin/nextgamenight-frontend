@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
-import { settleAnimations } from './support/inFlight';
+import { holdRequests, settleAnimations } from './support/inFlight';
 
 // Plan 88.6.1-74 — contract C8 (d) of plan 88.6.1-70 for the event / game page at 375px: a failed
 // REFRESH over content already on screen keeps the content and shows the shared RF1 notice
@@ -21,8 +21,9 @@ import { settleAnimations } from './support/inFlight';
 // HOW THE REFRESH IS MADE: the page's fetch effect depends on the resolved self identity, so
 // HOLDING the identity read (every GET under /api/users/) and then releasing it forces exactly
 // one same-key refresh — the most common real refresh on this page. The primary read of that
-// refresh is answered 500 once. Plan 43's holdWrites holds WRITES and answers GETs, the opposite
-// of what is needed here, so the read hold is local.
+// refresh is answered 500 once. The identity read goes through the shared read-capable hold
+// (holdRequests in e2e/support/inFlight.ts, Phase 88.6.2-11) and is released to the network;
+// plan 43's holdWrites holds WRITES and answers GETs, the opposite of what is needed here.
 //
 // PHONE ONLY and CI ONLY, like every signed-in spec here: the phone project needs the setup
 // project's login, whose credentials exist only in CI. Locally the proof is the e2e typecheck and
@@ -55,31 +56,6 @@ test.afterEach(async ({ page }) => {
 
 async function noSidewaysScroll(page: Page): Promise<boolean> {
   return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-}
-
-/** Holds every GET whose pathname starts with /api/users/ until `release()`. */
-async function holdIdentityReads(page: Page) {
-  const held: Route[] = [];
-  let released = false;
-  await page.route('**/api/users/**', async (route) => {
-    const request = route.request();
-    if (request.method() !== 'GET' || !new URL(request.url()).pathname.startsWith('/api/users/')) {
-      await route.fallback();
-      return;
-    }
-    if (released) {
-      await route.fallback();
-      return;
-    }
-    held.push(route);
-  });
-  return {
-    heldCount: () => held.length,
-    release: async () => {
-      released = true;
-      for (const route of held.splice(0)) await route.fallback();
-    },
-  };
 }
 
 async function patchedEventBody(route: Route) {
@@ -222,7 +198,7 @@ test('event page: a failed background refresh keeps the event and shows the noti
   page.on('framenavigated', (frame) => {
     if (frame === page.mainFrame()) mark(`navigated ${new URL(frame.url()).pathname}`);
   });
-  const identity = await holdIdentityReads(page);
+  const identity = await holdRequests(page, { method: 'GET', match: (url) => url.pathname.startsWith('/api/users/') });
   let failNext = false;
   let issued = 0;
   let answered = 0;
@@ -248,7 +224,7 @@ test('event page: a failed background refresh keeps the event and shows the noti
   await page.goto(E2E_EVENT_DETAIL_PATH);
   const heading = page.getByRole('heading', { level: 1, name: 'Game Night' });
   await expect(heading).toBeVisible();
-  await expect.poll(() => identity.heldCount(), { message: 'the identity read is held' }).toBeGreaterThan(0);
+  await expect.poll(() => identity.count(), { message: 'the identity read is held' }).toBeGreaterThan(0);
   await expect.poll(() => issued > 0 && answered === issued, { message: 'every event GET answered' }).toBe(true);
   // The card: the <h1>'s header row, then that row's parent (the card holding title, date, RSVP).
   const card = heading.locator('xpath=../..');
@@ -271,8 +247,8 @@ test('event page: a failed background refresh keeps the event and shows the noti
   }, 'Loading game night...');
 
   failNext = true;
-  mark(`releasing ${identity.heldCount()} held identity read(s)`);
-  await identity.release();
+  mark(`releasing ${identity.count()} held identity read(s)`);
+  await identity.releaseToNetwork();
   const { retry, line } = rf1Line(page);
   try {
     await expect(line).toContainText(RF1, { timeout: 15_000 });
@@ -375,16 +351,16 @@ test('game page: a failed background refresh keeps the game and shows the notice
   await page.unrouteAll({ behavior: 'ignoreErrors' });
 
   // Part B — the refresh failure.
-  const identity = await holdIdentityReads(page);
+  const identity = await holdRequests(page, { method: 'GET', match: (url) => url.pathname.startsWith('/api/users/') });
   const game = await routeFakeGame(page);
   await page.goto(E2E_GAME_PATH);
   const heading = page.getByRole('heading', { level: 1, name: E2E_GAME_NAME });
   await expect(heading).toBeVisible();
-  await expect.poll(() => identity.heldCount(), { message: 'the identity read is held' }).toBeGreaterThan(0);
+  await expect.poll(() => identity.count(), { message: 'the identity read is held' }).toBeGreaterThan(0);
   await expect.poll(() => game.settled(), { message: 'every game GET answered' }).toBe(true);
 
   game.failNext();
-  await identity.release();
+  await identity.releaseToNetwork();
   const { retry, line } = rf1Line(page);
   await expect(line).toContainText(RF1, { timeout: 15_000 });
   // The Game Details card: the element directly after the notice's own wrapper (the notice

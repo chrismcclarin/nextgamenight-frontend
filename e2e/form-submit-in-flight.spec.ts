@@ -1,7 +1,8 @@
-import { test, expect, type Locator, type Route, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 import { fillCreateEventFields, openCreateEventDialog } from './support/createEvent';
-import { settleAnimations } from './support/inFlight';
+import { holdRequests, settleAnimations } from './support/inFlight';
+import { expectTouchTarget } from './support/touchTarget';
 
 // Phase 88.6.1 plan 26 — a second press while a form is working changes nothing, proven in a real
 // browser at the phone project's 375 x 667 (and in journeys).
@@ -26,54 +27,17 @@ const SAVED_PREFILL_LOADING_LABEL = 'Loading your availability…';
 // whose origin differs between environments, so routes match on the PATHNAME only.
 const pathEndsWith = (suffix: string) => (url: URL) => url.pathname.endsWith(suffix);
 
-/** Hold every request of `method` on a matched route; count them; continue everything else. */
-async function holdRequests(page: Page, match: (url: URL) => boolean, method: string) {
-  const held: Route[] = [];
-  let count = 0;
-  let markSeen: () => void = () => {};
-  const firstSeen = new Promise<void>((resolve) => {
-    markSeen = resolve;
-  });
-  await page.route(match, async (route) => {
-    if (route.request().method() !== method) {
-      await route.continue();
-      return;
-    }
-    count += 1;
-    held.push(route);
-    markSeen();
-  });
-  return {
-    firstSeen,
-    count: () => count,
-    abortAll: async () => {
-      for (const r of held) await r.abort();
-    },
-  };
-}
-
-/** Phone floor and width: at least 44px tall, inside the viewport. */
-async function expectPhoneBox(page: Page, locator: Locator, what: string) {
-  const box = await locator.boundingBox();
-  expect(box, `${what} has no layout box`).not.toBeNull();
-  const viewport = page.viewportSize();
-  expect(viewport, 'no viewport size').not.toBeNull();
-  expect(box!.height).toBeGreaterThanOrEqual(44);
-  expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
-}
-
 test.describe('Availability form — a second press while submitting changes nothing (AC-12)', () => {
   test('a second press while submitting changes nothing: one POST, the CTA stays Submitting..., aria-disabled and focused', async ({
     page,
   }) => {
     const token = process.env.E2E_AVAILABILITY_TOKEN ?? 'seed-availability-token';
-    const post = await holdRequests(page, pathEndsWith('/availability-responses'), 'POST');
+    const post = await holdRequests(page, { method: 'POST', match: pathEndsWith('/availability-responses') });
 
     await page.goto(`/availability-form/${token}`);
     await page.getByRole('checkbox', { name: /^all$/i }).first().check();
     await page.getByRole('button', { name: /submit availability|update availability/i }).click();
-    await post.firstSeen;
+    await post.arrived;
 
     const busy = page.getByRole('button', { name: /submitting/i });
     await expect(busy).toHaveAttribute('aria-disabled', 'true');
@@ -134,21 +98,21 @@ test.describe('Availability form — the pressed pre-fill button (D-35, copy row
         await route.fulfill({ response, status: 200, json: null });
       }
     );
-    const saved = await holdRequests(page, pathEndsWith('/availability-prefill/saved'), 'POST');
+    const saved = await holdRequests(page, { method: 'POST', match: pathEndsWith('/availability-prefill/saved') });
 
     await page.goto(`/availability-form/${token}`);
     const savedButton = page.getByRole('button', { name: 'Use my saved availability', exact: true });
     const gcalButton = page.getByRole('button', { name: 'Import from Google Calendar', exact: true });
     await savedButton.click();
-    await saved.firstSeen;
+    await saved.arrived;
 
     const pressed = page.getByRole('button', { name: SAVED_PREFILL_LOADING_LABEL, exact: true });
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
     await expect(pressed).toBeFocused();
     await expect(gcalButton).toBeDisabled();
-    await expectPhoneBox(page, pressed, 'the pressed pre-fill button');
-    await expectPhoneBox(page, gcalButton, 'the sibling pre-fill button');
+    await expectTouchTarget(pressed, 'the pressed pre-fill button', { axes: 'height', withinViewportOf: page });
+    await expectTouchTarget(gcalButton, 'the sibling pre-fill button', { axes: 'height', withinViewportOf: page });
 
     await pressed.click({ force: true });
     await page.waitForTimeout(500);
@@ -176,7 +140,7 @@ test.describe('Create Event — a second press while creating changes nothing (D
     const groupId = process.env.E2E_GROUP_ID ?? '1';
     // The create goes to the same-origin BFF: `POST /api/events` exactly (`BFF_BASE` is `/api` in
     // src/lib/api.ts). Only that pathname and method is held; everything else continues.
-    const create = await holdRequests(page, (url) => url.pathname === '/api/events', 'POST');
+    const create = await holdRequests(page, { method: 'POST', match: (url) => url.pathname === '/api/events' });
 
     await page.goto(`/groupHomePage?id=${groupId}`);
     await openCreateEventDialog(page);
@@ -185,13 +149,13 @@ test.describe('Create Event — a second press while creating changes nothing (D
     // Found by test id: the accessible name changes mid-flight (copy row C7), the test id does not.
     const submit = page.getByTestId('create-event-submit');
     await submit.click();
-    await create.firstSeen;
+    await create.arrived;
 
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(submit).not.toHaveAttribute('disabled');
     await expect(submit).toHaveAccessibleName('Creating...');
     await expect(submit).toBeFocused();
-    await expectPhoneBox(page, submit, 'the busy Create Event submit');
+    await expectTouchTarget(submit, 'the busy Create Event submit', { axes: 'height', withinViewportOf: page });
 
     await submit.click({ force: true });
     await page.waitForTimeout(500);
@@ -226,7 +190,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
   }) => {
     const groupId = process.env.E2E_GROUP_ID ?? '1';
     // `POST /api/events` exactly, as in C1; everything else continues.
-    const create = await holdRequests(page, (url) => url.pathname === '/api/events', 'POST');
+    const create = await holdRequests(page, { method: 'POST', match: (url) => url.pathname === '/api/events' });
 
     await page.goto(`/groupHomePage?id=${groupId}`);
     const openDialog = page.getByRole('button', { name: /add new game event/i });
@@ -236,7 +200,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
 
     const submit = page.getByTestId('create-event-submit');
     await submit.click();
-    await create.firstSeen;
+    await create.arrived;
     await expect(submit).toHaveAccessibleName('Creating...');
 
     // Close mid-create, then reopen. The reopen re-runs the members read (`GET /api/groups/<id>/users`),
@@ -255,7 +219,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     // A fresh session: no press it never had.
     await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
     await expect(submit).toHaveAccessibleName('Create Event');
-    await expectPhoneBox(page, submit, 'the reopened Create Event submit');
+    await expectTouchTarget(submit, 'the reopened Create Event submit', { axes: 'height', withinViewportOf: page });
 
     // The join leg: the SAME details pressed again, seconds after the first POST and well inside
     // createEvent.js's 30-second join window, join the held create. The submit shows its own press

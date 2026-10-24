@@ -2,6 +2,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import type { Route } from '@playwright/test';
 
 import { assertTheme } from './contrast';
+import { assertReadMethod } from './readHoldGuard';
 
 // Shared helpers for specs that press a control which WRITES and then inspect it while the
 // write is in flight. Phase 88.6.1-43 moved them here from plan 88.6.1-22's
@@ -35,6 +36,15 @@ import { assertTheme } from './contrast';
 // through). Changing this is a decision, not a cleanup.
 // AMENDED Phase 88.6.1-44: the release-capable hold for ONE write under test lives here too, chosen
 // over a spec-local copy (duplication tenet).
+//
+// DECISION Phase 88.6.2-11 (helpers): ONE releasable request hold, holdRequests, with three settle
+// modes (release answers in the browser, releaseToNetwork hands the request on, abortAll aborts),
+// chosen OVER per-spec copies of the same hold (form-submit-in-flight kept an abort-only copy and
+// gamedetail-refresh-failed a read-only one before this plan). holdUntilReleased is KEPT as an
+// entry point that delegates to it, so its importers do not change. releaseToNetwork exists only
+// for a GET or HEAD hold: its type offers it only for those methods, and at runtime it throws for
+// any other one (assertReadMethod in readHoldGuard.ts), because a write handed to the network would
+// reach the shared CI fixture. Changing this is a decision, not a cleanup.
 
 export interface HeldRequest {
   method: string;
@@ -109,6 +119,82 @@ export async function settleAnimations(locator: Locator): Promise<void> {
   );
 }
 
+/** Which requests holdRequests holds: one method, on URLs the predicate matches. */
+export interface RequestHoldOptions {
+  method: string;
+  match: (url: URL) => boolean;
+}
+
+/** What holdRequests hands back for any method. */
+export interface RequestHold {
+  /** How many requests with the held method and a matching URL have arrived. */
+  count: () => number;
+  /** Resolves when the first matching request arrives. */
+  arrived: Promise<void>;
+  /** Answers every kept request in the browser, and any later match at once. */
+  release: (json: unknown, status?: number) => Promise<void>;
+  /** Aborts every kept request, and any later match at once. */
+  abortAll: () => Promise<void>;
+}
+
+/** A GET or HEAD hold can also be released to the network. */
+export interface ReadHold extends RequestHold {
+  /** Hands every kept request on (route.fallback), and any later match at once. GET or HEAD only. */
+  releaseToNetwork: () => Promise<void>;
+}
+
+/**
+ * The ONE releasable request hold. It registers one route on `options.match`; inside it, a request
+ * of another method is handed back with route.fallback(). A match is counted, the first one
+ * resolves `arrived`, and every match is kept unanswered until a settle call. Each settle call
+ * answers everything kept and every later match at once: `release(json, status = 200)` fulfils in
+ * the browser, `releaseToNetwork()` hands the request on (GET or HEAD holds only, enforced by its
+ * type and at runtime), and `abortAll()` aborts. Only releaseToNetwork lets anything reach the
+ * network. Register it before the navigation that sends the request.
+ */
+export function holdRequests(
+  page: Page,
+  options: RequestHoldOptions & { method: 'GET' | 'HEAD' },
+): Promise<ReadHold>;
+export function holdRequests(page: Page, options: RequestHoldOptions): Promise<RequestHold>;
+export async function holdRequests(page: Page, options: RequestHoldOptions): Promise<ReadHold> {
+  const kept: Route[] = [];
+  let matched = 0;
+  let settle: ((route: Route) => Promise<void>) | null = null;
+  let markArrived!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    markArrived = resolve;
+  });
+  await page.route(options.match, async (route) => {
+    if (route.request().method() !== options.method) {
+      await route.fallback();
+      return;
+    }
+    matched += 1;
+    if (matched === 1) markArrived();
+    if (settle) {
+      await settle(route);
+      return;
+    }
+    kept.push(route);
+  });
+  const settleAll = async (how: (route: Route) => Promise<void>): Promise<void> => {
+    settle = how;
+    const waiting = kept.splice(0);
+    await Promise.all(waiting.map(how));
+  };
+  return {
+    count: () => matched,
+    arrived,
+    release: (json: unknown, status = 200) => settleAll((route) => route.fulfill({ status, json })),
+    releaseToNetwork: async () => {
+      assertReadMethod(options.method);
+      await settleAll((route) => route.fallback());
+    },
+    abortAll: () => settleAll((route) => route.abort()),
+  };
+}
+
 /** What holdUntilReleased hands back. */
 export interface ReleasableHold {
   /** How many requests with the held method and a matching pathname have arrived. */
@@ -129,42 +215,15 @@ export interface ReleasableHold {
  * Register it AFTER holdWrites: Playwright runs the newest matching handler first, so a write this
  * hold does not match falls back into the net and is held there. Why a second helper beside
  * holdWrites: these tests must RELEASE the write to see what happens after a success, and the net
- * never answers a write, by design.
+ * never answers a write, by design. Since Phase 88.6.2-11 it delegates to holdRequests.
  */
 export async function holdUntilReleased(
   page: Page,
   method: string,
   pathPattern: RegExp,
 ): Promise<ReleasableHold> {
-  const kept: Route[] = [];
-  let matched = 0;
-  let answer: { json: unknown; status: number } | null = null;
-  let markArrived!: () => void;
-  const arrived = new Promise<void>((resolve) => {
-    markArrived = resolve;
-  });
-  await page.route(
-    (url) => pathPattern.test(url.pathname),
-    async (route) => {
-      if (route.request().method() !== method) {
-        await route.fallback();
-        return;
-      }
-      matched += 1;
-      if (matched === 1) markArrived();
-      if (answer) {
-        await route.fulfill({ status: answer.status, json: answer.json });
-        return;
-      }
-      kept.push(route);
-    },
-  );
-  const release = async (json: unknown, status = 200): Promise<void> => {
-    answer = { json, status };
-    const waiting = kept.splice(0);
-    await Promise.all(waiting.map((route) => route.fulfill({ status, json })));
-  };
-  return { count: () => matched, arrived, release };
+  const hold = await holdRequests(page, { method, match: (url) => pathPattern.test(url.pathname) });
+  return { count: hold.count, arrived: hold.arrived, release: hold.release };
 }
 
 export type GatedVariant = 'primary' | 'secondary' | 'danger' | 'accent';
