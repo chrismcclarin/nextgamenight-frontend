@@ -54,7 +54,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 const GLOBALS = path.join(__dirname, 'globals.css');
@@ -110,7 +110,7 @@ export function parseAlphaToken(
   semantic: Set<string>,
 ): { util: string; color: string; alpha: string } | null {
   // strip variant prefixes (`hover:`, `md:`, `data-[state=open]:`) and `!`
-  const bare = token.replace(/^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/, '');
+  const bare = token.replace(STRIP_VARIANTS, '');
   const slash = bare.lastIndexOf('/');
   if (slash < 0) return null;
   const alpha = bare.slice(slash + 1);

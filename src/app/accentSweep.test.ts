@@ -47,7 +47,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { lineAt, stringChunks } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, lineAt, stringChunks } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -86,13 +86,10 @@ const MIGRATE_FILES = [
 /** `app/Header.js` is deliberately ABSENT from `MIGRATE_FILES` — see the marker above. */
 const HEADER = 'app/Header.js';
 
-/** The richer variant strip from `tintTreatment.test.ts:113` — six sites carry `hover:`. */
-const VARIANT_PREFIX = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
-
 const read = (rel: string): string => fs.readFileSync(path.join(SRC, rel), 'utf8');
 
 /** The base token of a class, with every variant prefix and a leading `!` removed. */
-const base = (token: string): string => token.replace(VARIANT_PREFIX, '');
+const base = (token: string): string => token.replace(STRIP_VARIANTS, '');
 
 /**
  * Every use of a class whose BASE is exactly one of `tokens`, anywhere in a string literal or a

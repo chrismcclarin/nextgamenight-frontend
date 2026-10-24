@@ -62,7 +62,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { lineAt, sourceFiles, stringChunks } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, lineAt, sourceFiles, stringChunks } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -81,11 +81,8 @@ const BORDER = HUES.map((h) => `border-status-${h}`);
 const SUBTLE = HUES.map((h) => `bg-status-${h}-subtle`);
 const SOLID = HUES.map((h) => `bg-status-${h}`);
 
-/** The richer variant strip from `tintTreatment.test.ts:113` — four sites carry `hover:`. */
-const VARIANT_PREFIX = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
-
 /** The base token of a class, with every variant prefix, a leading `!` and any `/alpha` removed. */
-const base = (token: string): string => token.replace(VARIANT_PREFIX, '').replace(/\/\d+$/, '');
+const base = (token: string): string => token.replace(STRIP_VARIANTS, '').replace(/\/\d+$/, '');
 
 /**
  * Every use of a class whose BASE is EXACTLY one of `tokens`, anywhere in a string literal or a

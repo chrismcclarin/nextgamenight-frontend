@@ -63,6 +63,7 @@ import {
   type ExemptionRoster,
 } from '../../test-utils/exemption';
 import {
+  STRIP_VARIANTS,
   lineAt,
   readOpeningTag,
   sourceFiles,
@@ -90,10 +91,6 @@ const OPEN_TAG = /<([A-Za-z][\w.-]*)(?=[\s>/])/g;
 // measured that a plain `\bbtn\b` sweeps in `rounded-btn` and drags `Input.tsx` / `SelectField.tsx`
 // into the census. `bg-btn-*` and `text-btn-*` semantic tokens are excluded by the same lookbehind.
 const BTN = /(?<![\w:-])btn(-[a-z]+)?(?![\w-])/;
-
-// `surfaceHoverSweep.test.ts:82`'s richer form — it strips a bracketed variant
-// (`data-[state=open]:`) which the simpler `/^[a-z-]+:/` cannot.
-const VARIANT_PREFIX = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
 /** One JSX opening tag, with everything every rule in this file needs already extracted. */
 interface TagSite {
@@ -125,7 +122,7 @@ export function scanSource(file: string, raw: string): TagSite[] {
     for (const text of chunks) {
       for (const rawToken of text.split(/\s+/)) {
         if (!rawToken) continue;
-        const base = rawToken.replace(VARIANT_PREFIX, '');
+        const base = rawToken.replace(STRIP_VARIANTS, '');
         if (base) classes.push(base);
       }
     }

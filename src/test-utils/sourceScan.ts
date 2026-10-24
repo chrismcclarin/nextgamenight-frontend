@@ -3,7 +3,8 @@
  *
  * WHY THIS FILE EXISTS
  * --------------------
- * `tintTreatment.test.ts:47-50` records the reason verbatim:
+ * src/app/tintTreatment.test.ts ("NOTE ON DUPLICATION: the chunk lexer below is a second copy")
+ * records the reason verbatim:
  *
  *   "NOTE ON DUPLICATION: the chunk lexer below is a second copy of the one in
  *    `borderExplicitness.test.ts`. Importing it would re-register that file's suites in
@@ -11,8 +12,11 @@
  *    88-29's gate-hygiene pass; it is deliberately not done here, mid-sweep."
  *
  * This is that pass. By the time 88-29 ran there were THREE byte-identical copies of
- * `stringChunks` (`borderExplicitness.test.ts:111`, `focusAndMotionTreatment.test.ts:77`,
- * `tintTreatment.test.ts:129`) and 88-29 needed a fourth and fifth. Verified identical
+ * `stringChunks`, one in each of the suites that import it from here in their place:
+ * src/app/borderExplicitness.test.ts ("DECISION Phase 88-29 (gate hygiene)"),
+ * src/app/focusAndMotionTreatment.test.ts ("DECISION Phase 88-29 (gate hygiene)") and
+ * src/app/tintTreatment.test.ts ("DECISION Phase 88-29 (gate hygiene)").
+ * 88-29 needed a fourth and fifth. Verified identical
  * before the move (brace-balanced extraction of all three, pairwise diff: no differences
  * inside the function body).
  *
@@ -204,9 +208,10 @@ export function lineAt(src: string, offset: number): number {
  * DECISION Phase 88.6-44 (T-88.6-124): `test-utils/` is skipped HERE, centrally, chosen OVER
  * naming each helper so the `.test.` filter happens to exclude it (a `.test.helpers.ts`
  * suffix), and OVER each consuming suite filtering the directory out on its own — which two
- * already did independently (`interpolatedClassCensus.test.ts` `productionFiles`,
- * `exemption.test.ts:193`). Helper modules whose whole job is to hold pattern strings and
- * assertions are fixtures, not app source: before this edit `sourceScan.ts`, `exemption.ts`
+ * already did independently (`interpolatedClassCensus.test.ts` `productionFiles`, and
+ * src/test-utils/exemption.test.ts ("!f.startsWith(TEST_UTILS + path.sep)")).
+ * Helper modules whose whole job is to hold pattern strings and assertions are fixtures, not
+ * app source: before this edit `sourceScan.ts`, `exemption.ts`
  * and `inkRules.ts` were three of the 192 files every tree-wide sweep censused (measured
  * 2026-09-15), and `formControlAudit.ts` would have been a fourth. Measured at the edit: every
  * `sourceFiles`-consuming suite is green both before and after, i.e. no roster or floor was
@@ -231,8 +236,10 @@ export function sourceFiles(dir: string): string[] {
 /**
  * Read a full JSX opening tag from `start`, balancing {} () [] and strings.
  *
- * RELOCATED Phase 88.6-09 from `src/app/components/controlSizeFloor.test.tsx:89-110`, where it
- * was a private function with no exports in the file. It is a MOVE, not a copy and not a lift:
+ * RELOCATED Phase 88.6-09 from `controlSizeFloor.test.tsx`, where it was a private function
+ * with no exports in the file; that file records the move at
+ * src/app/components/controlSizeFloor.test.tsx ("was RELOCATED to").
+ * It is a MOVE, not a copy and not a lift:
  * before this plan `grep -rn readOpeningTag src` returned exactly two lines (that file's
  * definition and its one call site), so leaving the original in place would have created the
  * second copy this module exists to prevent. Importing it from the test file was never
@@ -249,7 +256,7 @@ export function sourceFiles(dir: string): string[] {
  *
  * THE DEFAULT IS MEASURED, NOT GUESSED, and the first value chosen was WRONG. Measured
  * 2026-09-15 over all 194 non-test files: the longest REAL opening tag in this tree is 6845
- * bytes — `CalendarMonthView.js:555`, a `<div>` whose `onKeyDown`, long `className` template and
+ * bytes — a `<div>` in `CalendarMonthView.js` whose `onKeyDown`, long `className` template and
  * `style` object with an embedded DECISION block run to 90 source lines. An initial 6000 left
  * exactly that one tag unreadable, and the cost was NOT confined to it: a skipped open means the
  * element is never pushed, so its later `</div>` pops the nearest same-named frame instead — the
@@ -345,7 +352,9 @@ export interface InkGroundRow {
   /**
    * EVERY candidate from the nearest ancestor frames that set any ground — an ARRAY, never a
    * scalar. One `className` template can carry several mutually exclusive ground arms
-   * (`CalendarMonthView.js:245-253` carries five), and picking one of them would make every
+   * (the ground template around
+   * src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :")
+   * carries five), and picking one of them would make every
    * downstream by-name assertion a coin flip. Consumers must not index into this array.
    */
   grounds: GroundCandidate[];
