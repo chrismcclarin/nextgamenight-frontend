@@ -148,10 +148,10 @@
    through ONE custom variant that reproduces, for utilities, exactly the gating the legacy CSS
    already performs — `@media (hover: hover)` plus a negation of BOTH the native `:disabled` state
    and `[aria-disabled="true"]`. The four shipped rules it is reproducing are
-   `.btn-primary:hover:not(:disabled):not([aria-disabled='true'])` (`globals.css:2227`),
-   `.btn-accent...` (`:2298`), `.btn-secondary...` (`:2448`) and `.btn-danger...` (`:2458`) — all four
+   this file (".btn-primary:hover:not(:disabled):not([aria-disabled='true'])"),
+   this file (".btn-accent:hover:not(:disabled):not([aria-disabled='true'])"), this file (".btn-secondary:hover:not(:disabled):not([aria-disabled='true'])") and this file (".btn-danger:hover:not(:disabled):not([aria-disabled='true'])") — all four
    re-derived against THIS file as this plan leaves it, 2026-09-15; the reasoning for using
-   `aria-disabled` rather than the native attribute alone is the DR-C marker block at `:2099-2167`.
+   `aria-disabled` rather than the native attribute alone is the DR-C marker block at this file ("takes a GATED").
 
    Plan 06 (wave 4) writes the `Button.tsx` half — the cva base and every UI-SPEC §3.4 rule-2
    per-variant hover pin express the lift through THIS ONE variant, so `tailwind-merge` dedupes the
@@ -343,7 +343,7 @@
    They are flagged inline. Every other value is the exact `var()` target the JS config used.
 
    NOT PORTED, deliberately (D-05, verified unused): the two `backgroundImage` gradient entries
-   (tailwind.config.js:24-28) and the one literal-hex cream colour (:108). All three produce no
+   (in the retired tailwind.config.js) and the one literal-hex cream colour. All three produce no
    rule in the current build. Adding them back would ship dead CSS.
 
    Placement: after every `@import` line, same constraint as the palette pin above.
@@ -357,7 +357,7 @@
    measured takeover is why Plan 07's deletion of `@config` + tailwind.config.js was a near
    no-op rather than the moment of truth: this block was already what the app rendered from. */
 @theme inline {
-  /* surfaces  (tailwind.config.js:30-40) */
+  /* surfaces */
   --color-surface-page: var(--color-bg-page);
   --color-surface-card: var(--color-bg-card);
   /* DECISION Phase 88.6-02 (D-15): this key is RENAMED IN PLACE from
@@ -372,7 +372,7 @@
        - `static-raised` — inverts the shipped L* ordering recorded at `:736-739` below; this
          surface sits UNDER the card, not above it.
        - `subtle` — already means HUE TINT in this file (`--color-surface-accent-subtle`, the
-         `-subtle` status family, and `tintTreatment.test.ts:156`'s `RESTING_SUBTLE` regex); reusing
+         `-subtle` status family, and the `RESTING_SUBTLE` regex at src/app/tintTreatment.test.ts ("const RESTING_SUBTLE =")); reusing
          it for a neutral step would collapse two distinct ideas onto one word.
      BOTH token VALUES ARE BYTE-EQUAL ACROSS THE RENAME — light `var(--warm-250)` (#dbd1c7), dark
      `var(--purple-800)` — so this is a naming change, not a look change: no rendered pixel moves.
@@ -408,7 +408,7 @@
      token above — the DECISION marker at the runtime declaration says why. */
   --color-surface-accent-subtle-strong: var(--color-bg-accent-subtle-strong);
 
-  /* content   (tailwind.config.js:41-48) */
+  /* content */
   --color-content-primary: var(--color-text-primary);
   --color-content-secondary: var(--color-text-secondary);
   --color-content-muted: var(--color-text-muted);
@@ -433,13 +433,13 @@
   --color-content-status-error: var(--color-status-error-text);
   --color-content-status-warning: var(--color-status-warning-text);
 
-  /* accent    (tailwind.config.js:49-54) -- 3 collision keys, aliased */
+  /* accent    -- 3 collision keys, aliased */
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-on-accent: var(--accent-foreground);
   --color-accent-foreground: var(--accent-foreground);
 
-  /* shadcn bridge (tailwind.config.js:55-85) -- 1 collision key, already aliased in the config */
+  /* shadcn bridge -- 1 collision key, already aliased in the config */
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -458,7 +458,7 @@
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
 
-  /* line      (tailwind.config.js:86-91) */
+  /* line */
   --color-line: var(--color-border);
   --color-line-strong: var(--color-border-strong);
   --color-line-accent: var(--color-border-accent);
@@ -473,7 +473,7 @@
   --color-line-control: var(--color-border-control);
   --color-line-control-hover: var(--color-border-control-hover);
 
-  /* btn       (tailwind.config.js:92-99) -- 4 collision keys, aliased */
+  /* btn       -- 4 collision keys, aliased */
   --color-btn-primary: var(--color-btn-primary-bg);
   --color-btn-primary-hover: var(--primary-hover);
   --color-btn-primary-text: var(--primary-foreground);
@@ -481,7 +481,7 @@
   --color-btn-secondary-hover: var(--secondary-hover);
   --color-btn-secondary-text: var(--secondary-foreground);
 
-  /* status    (tailwind.config.js:100-104) */
+  /* status */
   /* Phase 88.3 (OI-4): these three now read the per-theme `--color-status-{x}-border` runtime
      properties, NOT the raw `--color-success/-error/-warning` hues. One key generates `text-`,
      `bg-` AND `border-` utilities, which is exactly why the split exists — see the OI-4 DECISION
@@ -501,14 +501,14 @@
   --color-status-warning-subtle: var(--status-warning-subtle);
   --color-status-warning-subtle-hover: var(--status-warning-subtle-hover);
 
-  /* focus     (tailwind.config.js:105-107) -- 1 collision key, aliased */
+  /* focus     -- 1 collision key, aliased */
   --color-focus-ring: var(--ring);
 
-  /* radii     (tailwind.config.js:110-113) -- literal values, no collision with v4 built-ins */
+  /* radii     -- literal values, no collision with v4 built-ins */
   --radius-card: 12px;
   --radius-btn: 8px;
 
-  /* shadows   (tailwind.config.js:114-118) -- no collision with v4 built-ins.
+  /* shadows   -- no collision with v4 built-ins.
      NOTE the asymmetry with the three project shadow properties these reference: those STAY in
      plain `:root`. See the guardrail marker at their declaration site below. */
   --shadow-theme-sm: var(--shadow-sm);
@@ -722,7 +722,7 @@
      still-present step was ruled the better trade than a ring that stops reading.
 
      REJECTED — `purple-700 #42536e` (the candidate of record through review round 3, and the value
-     `88.6-UI-SPEC.md:117` and §5.4's table still name): white 7.7948 and the strongest step
+     88.6-UI-SPEC.md and §5.4's table still name): white 7.7948 and the strongest step
      (1.3768), but ring-vs-fill collapses to **1.0000** because it IS `--shadow-md`'s ring, and
      fill-vs-card INVERTS **2.4461 -> 1.7767** — the hover would darken TOWARD the card.
      REJECTED — `purple-800 #2f3b50`: fill-vs-card **1.2281**; the button all but merges with its
@@ -788,13 +788,13 @@
        - warm-200 `#e8e0d8` is now THE PAGE (ruling 1c). Leaving card-hover on it makes a resting
          container surface BYTE-EQUAL to its own ground — verbatim the ruling-2 defect — and it is
          a real render defect at two verified sites, not a token-layer abstraction:
-         `GroupLibrary.js:149-153` paints three `bg-surface-card-hover` skeleton bars whose
-         immediate parent is `bg-surface-page`, and `CalendarMonthView.js:224-226` picks
+         GroupLibrary.js paints three `bg-surface-card-hover` skeleton bars whose
+         immediate parent is `bg-surface-page`, and CalendarMonthView.js picks
          `bg-surface-card-hover` for today and `bg-surface-page` for empty/past cells in the SAME
          className chain — today's cell would be byte-identical to an empty one.
        - warm-300 `#d6cbc0` drops `--color-accent-text` (amber-800) to 4.4440 on it, an AA
-         failure on shipped pairings (`GroupGamesList.js:372`, `ManageMembers.js:342`,
-         `CalendarMonthView.js:228`). warm-250 measures 4.7121.
+         failure on shipped pairings (GroupGamesList.js, ManageMembers.js,
+         CalendarMonthView.js). warm-250 measures 4.7121.
      The feasible window on the warm-200 -> warm-300 line is t ∈ [0.60, 0.92]; 0.70 is mid-window
      so no floor is near. Deleting this step and collapsing card-hover back onto a neighbour is a
      decision, not a cleanup.
@@ -886,12 +886,12 @@
      took warm-100 for the PAGE and a tinted surface that equals the page is no surface at all.
      This token serves THREE roles, and only the third stays on it after 88.3:
        - 42 `hover:` washes                        -> move to `--color-bg-hover` (D-02, plan 06);
-       - 1 `data-[state=open]:` (`dialog.tsx:75`)  -> moves with them;
+       - 1 `data-[state=open]:` (dialog.tsx)  -> moves with them;
        - ~49 BARE STATIC surfaces (pills, badges, chips, skeletons, selected/disabled states)
                                                    -> STAY here, and warm-200 is chosen FOR them.
      Rejected: warm-50 for those static pills — that is the near-white value `DECISION Phase 88-27
-     (D-32/D-33)` at `ClickableMemberName.js:314-322` already measured and rejected as
-     "byte-identical to the card", and `tintTreatment.test.ts:281` pins the rejection.
+     (D-32/D-33)` at src/app/components/ClickableMemberName.js ("MEASURED and rejected: it is") already measured and rejected as
+     "byte-identical to the card", and src/app/tintTreatment.test.ts ("4. the three UI-SPEC §10.3 exemplars carry their designed treatment") pins the rejection.
      Rejected: minting a fresh ~#efe8e0 step — the owner chose the existing ramp step once hover
      had moved off this token.
      LADDER SELF-CHECK (must keep holding): page 95.0 < hover/sunken 97.7 < card/elevated/input
@@ -928,15 +928,15 @@
          `L* 89.59 < L* 89.59` is false) and reds test 30a as a side effect (muted would read
          5.0392, above the ceiling that row asserts it is below). The argument for keeping it was
          that card-hover is "a hover ground on the white card, never on the page" — THAT PREMISE IS
-         FALSE AND WAS CHECKED: `GroupLibrary.js:149-153` paints three `bg-surface-card-hover`
+         FALSE AND WAS CHECKED: GroupLibrary.js paints three `bg-surface-card-hover`
          skeleton bars inside a `bg-surface-page` parent (they would vanish), and
-         `CalendarMonthView.js:224-226` picks `bg-surface-card-hover` for today and
+         CalendarMonthView.js picks `bg-surface-card-hover` for today and
          `bg-surface-page` for empty/past cells in the SAME className chain (today's cell would be
          byte-identical to an empty one, leaving only `border-line-accent` as a cue). This IS the
          ruling-2 defect shape — a resting fill equalling its own ground.
        - warm-300. `--color-accent-text` drops to 4.4440, an AA failure, and not a theoretical one:
          verified live pairings of `bg-surface-card-hover` with an accent ink at
-         `GroupGamesList.js:372`, `ManageMembers.js:342` and `CalendarMonthView.js:228`. Everything
+         GroupGamesList.js, ManageMembers.js and CalendarMonthView.js. Everything
          else about warm-300 passes; this single row disqualifies it.
        - MOVE `--color-accent-text` to amber-900 and keep card-hover at warm-300. amber-900 on
          warm-300 does measure 5.6865, so the row would pass — rejected because amber-900 is
@@ -1032,7 +1032,7 @@
      the class token inside the true arm moves (plan 08).
      STILL REJECTED, both of which the SPEC listed as open forks and neither of which was needed:
      lightening this tint, and minting a special-case amber for this one site.
-     The mirrored paragraph at `EventScheduler.tsx:245-248` is amended in the same terms by the
+     The mirrored paragraph at src/app/components/EventScheduler.tsx ("CONTRAST, recorded so it is chosen with rather than around") is amended in the same terms by the
      same phase. Re-pointing this day number back at `text-accent` because "accent is the accent
      token" restores a 1.72:1 label — a decision, not a cleanup. */
   --color-bg-today-tint: var(--amber-200);
@@ -1128,7 +1128,7 @@
      and RE-MINTED WITH THE OPPOSITE MEANING. Both halves have to be read together or the diff
      looks like a value change when it is a name change plus a new token.
 
-     THE COLLISION, closed. `DESIGN-SYSTEM-REFERENCE-2026.md:68` defines accent text as AMBER WHEN
+     THE COLLISION, closed. planning:.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md ("### Brand palette (target)") defines accent text as AMBER WHEN
      USED AS TEXT. This file used that same name for the INVERSE — the ink you put ON an amber
      ground (`var(--purple-950)`). So the inverse token is renamed `--color-on-accent` (SAME VALUE,
      both themes) and the shadcn bridge's `--accent-foreground` is re-plumbed onto it in the SAME
