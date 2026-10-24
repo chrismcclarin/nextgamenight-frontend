@@ -553,7 +553,7 @@ function classSites(
  *     attempted — whether two arms of a ternary can be live together is not knowable from
  *     source, and pretending otherwise is how a scan starts lying.
  *
- * KNOWN LIMITATIONS — SEVEN, and this list is the gate's honesty
+ * KNOWN LIMITATIONS — EIGHT, and this list is the gate's honesty
  * --------------------------------------------------------------
  *  1. COMPONENT-SET GROUND is invisible. A ground applied by a component (`<Card>`,
  *     `<Modal.Body>`) is not a class in any opening tag this walk reads.
@@ -585,6 +585,12 @@ function classSites(
  *     Measured 2026-09-15: 30 variant-prefixed occurrences of D-16's forbidden set across
  *     non-test `src/`, of 72 variant-prefixed `text-content-*` overall. Whether any of them
  *     resolves onto a muted ground is UNKNOWN and out of this walk's scope.
+ *  8. REGEX LITERALS ARE NOT MODELLED. A regex literal containing two slashes in a row is read
+ *     as a line comment by `withoutComments` and `stringChunks`, which then drop the rest of
+ *     that line. Live instance:
+ *     src/lib/wcag.ts (".replace(/\//g, ' ')"),
+ *     rostered by
+ *     src/test-utils/sourceScan.parity.test.ts ("DECISION Phase 88.6.2-08 (W068): the one live divergence").
  *
  * Because of 1, 2 and 4, a consumer must pair the class rule with a by-name roster so that the
  * two fail INDEPENDENTLY — a class rule alone goes green by seeing nothing.
