@@ -1294,7 +1294,7 @@
      boundary. Said plainly, because it sits against this marker's own claim that >=3:1 belongs to
      input boxes: `--input` currently inherits this 2.31:1 card hairline; the shared
      `Input`/`Textarea`/`Select` primitive draws its box with `border-input`
-     (`src/components/ui/Input.tsx:74` — the one consumer of that utility, mounted by ~20 files) and
+     (src/components/ui/Input.tsx ("const controlClass = cn(") — the one consumer of that utility, mounted by ~20 files) and
      does NOT yet take the >=3:1 `--color-border-strong` this marker says input boxes own. The token
      change is deliberately NOT widened to close it. Owner ruling C DEFERRED that to **Phase 88.6**
      and it is already persisted there — `.planning/deferred/phase-88.6.md`, entry "[a11y] Input
@@ -1395,7 +1395,7 @@
            is a re-theme, which this phase's SPEC forbids at `:212`. Hue-only is the consistency
            fix; geometry is a redesign.
        (b) leave the tokens cold and let Req 3 move inline shadows onto them anyway — REJECTED, and
-           this is the reason the change is here at all: `88-SPEC.md:86` tells the adoption plans to
+           this is the reason the change is here at all: planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-SPEC.md ("Shadows + route fallbacks (DES-05, CD-001/002)") tells the adoption plans to
            move inline shadows onto "the warm-tinted tokens". They were not warm-tinted. Executing
            that literally turns a grep gate green while the reference's rule stays violated.
      THE THREE DARK OVERRIDES BELOW ARE DELIBERATELY UNCHANGED. Dark mode signals elevation with
@@ -1445,7 +1445,7 @@
      default `<Button>` has NO visible focus ring at rest, across the 20 non-test `<Button` sites in
      12 files. `88.6-UI-SPEC.md` §1.2 V-3 is false as shipped. `0 0 #0000` is a valid shadow that
      paints nothing, so archetype A's intent survives byte-for-byte for `@utility card`,
-     `Card.tsx:22` and every other `shadow-theme-sm` consumer, while the composite list stays valid
+     src/components/ui/Card.tsx ("const Card = React.forwardRef") and every other `shadow-theme-sm` consumer, while the composite list stays valid
      and the ring paints. Nothing looks different at rest; only the focus state changes.
 
      PUTTING THE BARE KEYWORD BACK IS A DECISION, NOT A CLEANUP — and a silent one, which is why it
@@ -1475,7 +1475,7 @@
      BUTTON vocabulary, minted so the Create-Event amber has a name instead of only a literal.
      Owner: "The Share game qr button still looks odd. Lets make it amber, like the create event
      button." Declared with IDENTICAL values in light and in `.dark` on purpose — the Create-Event
-     button this matches uses the same amber in both themes (`groupHomePage/page.js:798-804`), so
+     button this matches uses the same amber in both themes (src/app/groupHomePage/page.js ("amber Create-Event CTA converges onto")), so
      the theme-equality IS the design, and declaring it in both blocks lets Gate A pin it as an
      equality (the idiom `--color-bg-accent-subtle-strong` already uses).
      MEASURED 2026-08-28 via `src/lib/wcag.ts`: white on amber-700 **5.0216** (AA ✓); on hover,
@@ -1575,7 +1575,7 @@
      (the gated primary fill reads 1.4188 on the same card). Chosen OVER pair E (the error-box
      tokens `--color-status-error-subtle` / `--color-status-error-text`: light 6.5563, fill on the
      card only 1.2675, and its dark half is the exact pair the owner called "rather pink" in
-     UAT3-J1, `.planning/deferred/phase-88.9.md:268`), OVER an `aria-disabled:opacity-50` call-site
+     UAT3-J1, planning:.planning/deferred/phase-88.9.md ("observation UAT3-J1")), OVER an `aria-disabled:opacity-50` call-site
      utility (this marker's own rule; 88.8 measured 2.0974:1 on a composited label), and OVER
      keeping native `disabled` on danger buttons (R123 / D-39 rule it out — the pressed control
      drops focus).
@@ -1796,9 +1796,9 @@
 
      SECOND FINDING, new here because nothing upstream had it: purple-700 measures **1.93:1 on
      `--color-bg-header` (warm-800) and 1.78:1 on `--color-bg-nav` (purple-900)**. The app's chrome
-     is dark in BOTH themes by design (`DESIGN-SYSTEM-REFERENCE-2026.md:59-60`), so a light-mode
+     is dark in BOTH themes by design (planning:.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md ("### Brand palette (target)")), so a light-mode
      ring value cannot work there. The ring is scoped to `var(--amber-400)` on that subtree by
-     plan 07 (`Header.js:84` and `:192`) — and it does so by overriding **`--ring`**, the property
+     plan 07 (src/app/Header.js ("for this whole header subtree") and src/app/Header.js ("(Req 7 / UI-SPEC §5.8.2): the same")) — and it does so by overriding **`--ring`**, the property
      the emitted ring utility actually reads (`[--ring:var(--amber-400)]`). An override of
      `--color-focus-ring` is INERT there, because `--ring` resolves its `var()` on `:root`. See
      that plan's markers at those two sites before touching either.
@@ -1844,7 +1844,7 @@
      equality. Full rationale at the light declaration. */
   --color-bg-accent-subtle-strong: #3a3320;
   /* DECISION Phase 88.1 (plan 15, Req 8) — ARM B's dark value, MEASURED 2026-08-21
-     (`.planning/deferred/phase-88.1.md:68-73`) and REUSED here, never re-derived: it is twice
+     (planning:.planning/deferred/phase-88.1.md ("## [design/owner-ruled] Today-column tint strength")) and REUSED here, never re-derived: it is twice
      `#3a3320`'s delta from the purple-900 card, the same step `amber-100 -> amber-200` makes in
      light. An OPAQUE literal for the same reason the accent tint above is one (88-04 D-15 /
      88-01 D-32-33): an `rgba()` amber over the card shifts with whatever sits behind it. There is
@@ -2105,7 +2105,7 @@
        dark   purple-500 #6b7fa3 on the purple-950 page 4.1790 (was 2.1694)
      Every ground clears WCAG 1.4.11's 3.0 floor; three of the four were BELOW it before.
 
-     Consumers: exactly one — `controlClass` at `src/components/ui/Input.tsx:74`, shared by `Input`,
+     Consumers: exactly one — `controlClass` at src/components/ui/Input.tsx ("const controlClass = cn("), shared by `Input`,
      `Textarea` and `SelectControl`. `--color-border-control` is deliberately NOT touched: that is a
      different control's hairline ring and Gate A test 35's `ratio < 1.6` upper bound reds on it.
 
@@ -2133,7 +2133,7 @@
      PHASE 88.3 (Req 4) RENAMED ONE OF THE NINE, and the count did not move. The third name in
      the list above used to read `--color-accent-text`; 88.3 renamed that runtime property to
      `--color-on-accent` (same value, both themes) because `--color-accent-text` was re-minted
-     with the OPPOSITE meaning — amber-as-text, per `DESIGN-SYSTEM-REFERENCE-2026.md:68`. The
+     with the OPPOSITE meaning — amber-as-text, per planning:.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md ("### Brand palette (target)"). The
      alias mechanics are untouched: `--accent-foreground` above is the differently-named alias
      this key points at, exactly as before. The NEW `--color-accent-text` is bridged as
      `--color-content-accent` in `@theme inline`, a key whose name differs from every runtime
@@ -2154,7 +2154,7 @@
      140 custom-property declarations that would all need re-checking, and there are JS call
      sites reading these properties through `var()` at runtime, which no CSS-only rename would
      touch and no build step would catch. RE-DERIVED 2026-08-24 by plan 88.1-16, because the
-     enumeration this line used to carry (six sites, three of them `EventScheduler.js:459,517,518`)
+     enumeration this line used to carry (six sites, three of them in EventScheduler.js)
      was already stale before Phase 88.1 and then went dangling entirely — `EventScheduler.js` no
      longer exists, the rebuild replaced it with `EventScheduler.tsx`.
      RE-DERIVED AGAIN 2026-10-16 by plan 88.6.1-22 (R029), because the 2026-08-24 list had drifted
@@ -2259,15 +2259,15 @@ body {
    Intended visual diff (CORRECTED 2026-08-02, round-3 review — the earlier claim that
    the diff was phone-only was WRONG), review against this:
    (i)   `p-4` sites that ALSO author `md:p-6` change at phone only;
-   (ii)  the five BARE-`p-4` sites (BringSummary.js:95, UpcomingEventsCard.js:137,
-         GroupGamesList.js:12, GameSuggestionCard.js:20, src/app/friends/page.js ("mb-4 p-3 md:p-6 card")) would
+   (ii)  the five BARE-`p-4` sites (src/app/components/BringSummary.js ("card p-3 md:p-6"), src/app/components/UpcomingEventsCard.js ("card p-3 md:p-6 mb-4"),
+         src/app/components/GroupGamesList.js ("block card p-3 md:p-6"), src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 flex gap-4"), src/app/friends/page.js ("mb-4 p-3 md:p-6 card")) would
          have silently dropped desktop padding 24px -> 16px — Task 1b of plan 87.8-01
          adds `md:p-6` to each so desktop is preserved;
    (iii) the 13 sites authoring `p-6` are a no-op;
    (iv)  previously-inert `hover:shadow-theme-*` comes alive on DESKTOP ONLY, because
          Tailwind v4 wraps `hover:` in `@media (hover: hover)` which is false on the
-         phone lane — LandingPage.js:52,60,68, GroupGamesList.js:12,
-         GameSuggestionCard.js:20;
+         phone lane — src/app/components/LandingPage.js ("Track Sessions"), src/app/components/LandingPage.js ("Gather Your Crew"), src/app/components/LandingPage.js ("Rate &amp; Remember"), src/app/components/GroupGamesList.js ("block card p-3 md:p-6"),
+         src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 flex gap-4");
    (v)   the `transition-*` utilities at those same sites stop losing to `.card`'s own
          `transition` now that `.card` is layered — a second un-inert flip; do not
          mistake it for a regression.
@@ -2302,7 +2302,7 @@ body {
   border-radius: var(--radius-card);
   /* DECISION Phase 88.3 (OI-2 / UI-SPEC §8.4, owner-ruled 2026-08-25): the RESTING shadow moves
      `-md` -> `-sm`, so both card idioms are flat at rest and both lift to `-md` on hover. Req 3
-     sets light `--shadow-sm` to `none`, and without this line `<Card>` (`Card.tsx:22`, which is on
+     sets light `--shadow-sm` to `none`, and without this line `<Card>` (src/components/ui/Card.tsx ("const Card = React.forwardRef"), which is on
      `shadow-theme-sm`) would go flat while this legacy `.card` kept a 4px/6px warm shadow at 28-29
      call sites across 11 files — two different resting-card treatments side by side, on the app's
      most common surface, at exactly the moment the Req 12 UAT asks the owner "do cards read as
@@ -2357,7 +2357,7 @@ body {
    moves out of the unlayered block above into `@layer components`. The `.btn` CLASS itself stays
    UNLAYERED with every other declaration it has today (D-30).
 
-   WHAT THIS BUYS: `@import 'tailwindcss' source(none)` (`globals.css:10`) pulls in upstream's
+   WHAT THIS BUYS: `@import 'tailwindcss' source(none)` (this file ("on this line clears the auto-detected root")) pulls in upstream's
    `@layer theme, base, components, utilities;` — the first line of `node_modules/tailwindcss/
    index.css` — so `components` PRECEDES `utilities` in the declared layer order. A `border-*`
    utility on a `.btn` element therefore now WINS over this reset and actually paints. Until this
@@ -2385,7 +2385,7 @@ body {
 
    BLAST RADIUS, measured: ZERO of the 120 live `btn btn-*` call sites carries a `border-*` utility
    today, so nothing changes on screen right now. The live consumers are the two gameDetail row
-   actions plan 18 migrates — `gameDetail/page.js:198-206` (`border border-line`) and `:1979-1983`
+   actions plan 18 migrates — gameDetail/page.js (`border border-line`) and
    (`border border-status-error`) — whose visible 1px border would otherwise be DELETED by the
    migration with nothing red. That is why this cannot be traded away as "nothing depends on it".
 
@@ -2412,12 +2412,12 @@ body {
    author rule beats EVERY `@layer utilities` rule regardless of specificity —
    this file states that in its own words at the D-36 marker below. A
    `cursor-not-allowed` utility at the call site would silently do nothing. The
-   house precedent for the call-site pattern is `Modal.tsx:260`
+   house precedent for the call-site pattern is src/app/components/Modal.tsx ("closeDisabled && 'cursor-not-allowed")
    (`cursor-not-allowed opacity-50 hover:text-content-muted`), which works there
    only because that `×` is NOT a `.btn`.
    CORRECTED 88.6.1-22: that precedent no longer carries an opacity — the close glyph
    lost it in 88.8 round 3 #39 and now reads `closeDisabled && 'cursor-not-allowed
-   hover:text-content-muted'` (`Modal.tsx:434`, re-read 2026-10-16). The cascade
+   hover:text-content-muted'` (Modal.tsx, re-read 2026-10-16). The cascade
    argument above is unchanged.
 
    WITHOUT BOTH HALVES an `aria-disabled` button does not read as gated AND still
@@ -2428,10 +2428,10 @@ body {
 
    MEASURED BLAST RADIUS AT THE TIME OF THE EDIT (2026-09-04): ZERO shipped
    `.btn` call sites. Only two non-test source files use `aria-disabled` at all —
-   `Modal.tsx:255` (a `DialogClose` styled with bare utilities; now `Modal.tsx:423`
+   Modal.tsx (a `DialogClose` styled with bare utilities; now Modal.tsx
    `aria-disabled={closeDisabled || undefined}`, re-read 2026-10-16) and
-   `NextGameNightCard.tsx:390` (className `flex-1 min-h-11 px-3 …`; now
-   `NextGameNightCard.tsx:489` `aria-disabled={isFlight || undefined}`) — and
+   NextGameNightCard.tsx (className `flex-1 min-h-11 px-3 …`; now
+   NextGameNightCard.tsx `aria-disabled={isFlight || undefined}`) — and
    NEITHER wears `.btn`. So these edits change the rendered behaviour of exactly
    zero existing controls; they are forward compatibility for
    `EmailAddressSection.tsx`, which is the first `.btn` consumer of
@@ -2516,7 +2516,7 @@ body {
      swallowed by the 250ms transition on an ~80ms tap while an untransitioned opacity change
      fires instantly.
    - Scale/translate loses: contradicts the recorded no-scale rule
-     (DESIGN-SYSTEM-REFERENCE-2026.md:197).
+     (planning:.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md ("### Buttons")).
    - 0.75 chosen inside the owner's 70-85% band: 0.9 is already `.btn-danger:hover` (below)
      and would make press indistinguishable from hover on the one element that has both;
      0.7 reads as disabled against `.btn:disabled` opacity 0.5 (above). 0.75 sits clear of both.
@@ -2528,7 +2528,7 @@ body {
    global min-height (that question is Phase 88's, DEF-1)". DEF-1 IS NOW ANSWERED, and the answer
    is a PARTIAL yes: `.btn` now carries a 44px floor at PHONE WIDTHS ONLY, authored unlayered after
    the `.btn-*` family below, with an unlayered `.btn-compact` opt-out for the two `w-8 h-8`
-   steppers (`BrowseMoreModal.js:206,230`, which take the opt-out in plan 88-17). A global
+   steppers (src/app/components/BrowseMoreModal.js ("these two stay RAW"), which take the opt-out in plan 88-17). A global
    all-viewport floor stays REJECTED for exactly that reason — it deforms square-by-design
    controls — so DESKTOP is still deliberately floorless at ~37px until the Button migration sets
    each height with intent. The full derivation lives at the media block's own marker below; the
@@ -2539,7 +2539,7 @@ body {
    refusing the press. The press behaviour of every LIVE button is unchanged, and
    0.75 is untouched. MEASURED BLAST RADIUS AT THE TIME OF THAT EDIT: zero shipped
    `.btn` call sites carried `aria-disabled` (the only two users of the attribute,
-   `Modal.tsx:255` and `NextGameNightCard.tsx:390`, are not `.btn`s), so nothing
+   Modal.tsx and NextGameNightCard.tsx, are not `.btn`s), so nothing
    rendered differently on the day it landed. The amendment is recorded here rather
    than replacing this marker, so a reader who remembers the original selector can
    see where it went.
@@ -2564,8 +2564,8 @@ body {
    nothing tying them together.
 
    BOTH CALL SITES, NAMED so a future reader restyling one can see there is a second:
-     - `EventDayModal.js:289`  — the instance the owner actually ruled on (HUMAN-UAT test 4).
-     - `gameDetail/page.js:1601` — a byte-identical TWIN, verified 2026-08-28: same
+     - src/app/components/EventDayModal.js ("Share Game QR button - visible for upcoming events")  — the instance the owner actually ruled on (HUMAN-UAT test 4).
+     - src/app/gameDetail/page.js ("participant compact strip + Share Game QR button") — a byte-identical TWIN, verified 2026-08-28: same
        `btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5` recipe (plus `shrink-0`), same
        QR path, same `title="Share Game QR"`, same `Loading...` / `Share Game QR` label.
    BOTH move. REJECTED: leaving the twin on `.btn-secondary` and routing it to 88.6's `Button`
@@ -2575,7 +2575,7 @@ body {
    owner vetoes it, and it is on his re-check list as its own item.
 
    THE CREATE-EVENT BUTTON IS DELIBERATELY **NOT** RE-POINTED AT THIS RULE.
-   `groupHomePage/page.js:798-804` carries a prior in-file decision — "The inline fill STAYS: `.btn`
+   groupHomePage/page.js carries a prior in-file decision — "The inline fill STAYS: `.btn`
    sets no background of its own, and moving this to a class is a separate decision (Phase 88.6's
    `Button`)" — and moving it is not byte-equivalent anyway (inline `style` vs a class changes
    cascade and specificity, and the OI-6 marker's border reasoning hangs off it). Overriding a
@@ -2589,9 +2589,9 @@ body {
    which carry a focus string today. That is 88.6's `Button` migration and is routed to the SAME
    deferral entry as the fill duplication. Both call sites therefore carry the house string
    `focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring
-   focus-visible:ring-offset-2` verbatim — the Create-Event idiom (`groupHomePage/page.js:794`),
-   also at `EventDayModal.js:219`, `CalendarMonthView.js:164`, `KebabMenu.js:125` and
-   `FeedbackButton.js:229`.
+   focus-visible:ring-offset-2` verbatim — the Create-Event idiom (groupHomePage/page.js),
+   also at EventDayModal.js, CalendarMonthView.js, KebabMenu.js and
+   FeedbackButton.js.
 
    ⚠ MEASUREMENT CORRECTION, recorded because the plan's own ledger got this ground wrong. Plan 18
    task 2(b) cited `--color-focus-ring` vs "the accent fill" at **3.6294** as covering this button.
@@ -2599,7 +2599,7 @@ body {
    this rule's fill. Re-measured 2026-08-28: purple-700 on amber-700 is **1.5522**, below Req 7's
    3.0 floor. It does not matter, and here is why, stated so nobody "fixes" it: the ring is drawn
    with `ring-offset-2`, so the visible indicator sits 2px OUTSIDE the button on the SURROUNDING
-   ground — the white card (`EventDayModal.js:219`'s panel and `gameDetail/page.js:1592`'s `.card`)
+   ground — the white card (EventDayModal.js's panel and gameDetail/page.js's `.card`)
    — where purple-700 measures **7.7948**. Req 7 clears on the card ground, not on the fill. The
    Create-Event button this copies has exactly the same geometry and the same numbers.
 
@@ -2609,7 +2609,7 @@ body {
    label, and the Understanding doc for Non-text Contrast says outright that the criterion "does not
    require that controls have a visual boundary indicating the hit area", so a filled button's
    boundary is exempt; 3:1 is the bar for INPUTS, where the box IS the affordance. See
-   `.planning/research/LIGHT-MODE-SECONDARY-BUTTONS-SURVEY-2026-08-27.md:155-161`, which already
+   planning:.planning/research/LIGHT-MODE-SECONDARY-BUTTONS-SURVEY-2026-08-27.md ("## 4. Findings — the five answers"), which already
    made exactly this call for the secondary button. NO BORDER IS ADDED, on purpose. Darkening the
    fill or adding a border to chase 3.0 re-opens the owner's ruling, whose whole content is WHICH
    AMBER this button wears.
@@ -2711,7 +2711,7 @@ body {
    what the survey's own §5 recommends as two variants. A `.btn-secondary` rule that has to know
    what it is sitting on is fragile: there is no reliable selector for "am I on a card or on the
    page", it would need a `data-` attribute contract at 29 call sites, and the `data-ground`
-   selector idea was already rejected once in this phase (`groupHomePage/page.js:610-613`).
+   selector idea was already rejected once in this phase (src/app/groupHomePage/page.js ("CSS attribute selector. It is a new unlayered-")).
    TAKEN INSTEAD: ONE fill, warm-200, that differs from BOTH grounds. The honest trade-off, stated
    rather than buried: 1.31 vs a white card is ~0.02 ABOVE the top of the survey's observed
    fill-vs-ground range (M3 tonal 1.29) — our fill reads very slightly heavier on a card than any
@@ -2738,7 +2738,7 @@ body {
    ——— AMENDED Phase 88.6-05 (W19), the reasoning above KEPT AS HISTORY because it was true of the
    tree it was written against: that premise NO LONGER HOLDS. The `border: none` reset now lives in
    `@layer components` (see the W19 marker at the `.btn` block above), and `components` precedes
-   `utilities` in the order `@import 'tailwindcss' source(none)` declares at `globals.css:10` — so a
+   `utilities` in the order `@import 'tailwindcss' source(none)` declares at this file ("whole-repo source detection ENABLED") — so a
    call-site `border-*` utility on a `.btn` element is ALIVE and paints. The rejection of the
    utility approach FOR THIS RULING still stands on its own merits (the edge belongs on
    `.btn-secondary` itself, not spread across 29 call sites); only the "dead on arrival" mechanism
@@ -2823,7 +2823,7 @@ body {
    the 44x44 floor on the surface this app is actually used on (a phone at game night).
 
    REJECTED — a global, all-viewport `min-height` on `.btn`. It deforms controls that are square by
-   design: `BrowseMoreModal.js:206` and `:230` are `w-8 h-8` (32px) player-count steppers wearing
+   design: src/app/components/BrowseMoreModal.js ("these two stay RAW") are `w-8 h-8` (32px) player-count steppers wearing
    `.btn`, and a 44px floor stretches them into 32x44 lozenges. Desktop is therefore deliberately
    LEFT AT ~37px until the Req 5 Button migration reaches each call site and sets the height there
    with intent — a phone-only floor is the smallest change that fixes the surface that matters,
@@ -2860,8 +2860,8 @@ body {
    `DECISION Phase 88.3-17` marker, whose closing sentence reads "Re-adding horizontal padding here
    re-deforms both steppers and reds `touch-targets.spec.ts:428`" — a regression CI found (dispatch
    run 33137056149), not review. (That quoted `:428` cite has DRIFTED since 88.3-17 wrote it;
-   re-derived 2026-09-15 the squareness assertion is `e2e/touch-targets.spec.ts:871`, inside the
-   test at `:823`. The sentence is quoted verbatim, so the correction is recorded here rather than
+   re-derived 2026-09-15 the squareness assertion is in e2e/touch-targets.spec.ts, inside the
+   test. The sentence is quoted verbatim, so the correction is recorded here rather than
    made silently in someone else's marker.) `.btn-sm` and `.btn-compact` are both (0,1,0), so on any element
    carrying BOTH the later rule wins on source order: an after-positioned `.btn-sm` would put the
    8px horizontal padding straight back. The before-position removes the collision BY CONSTRUCTION
@@ -2885,7 +2885,7 @@ body {
    The `sm` label is 14px, forced by `.btn`'s own unlayered `font-size: .875rem` above. The desktop
    44px floor is `min-h-11` on the cva base. `sm` is a WIDE-TEXT rung — all eight `D-36` markers
    record "No `min-w-11`: wide text button" — and UI-SPEC §3.3 caps it at exactly two adopters
-   (`gameDetail/page.js:198` and `:1979`, plan 18), both of which ship `min-h-11 text-xs px-2` today
+   (gameDetail/page.js, plan 18), both of which ship `min-h-11 text-xs px-2` today
    and get WIDER under the migration, not narrower.
 
    The POSITION is load-bearing and silent when broken — this repo has hit that twice already
@@ -2903,7 +2903,7 @@ body {
      plan 88.3-14's `.btn-secondary` border on compact controls and OVER
      loosening the gate that caught this.
 
-     FOUND BY CI, NOT BY REVIEW — `e2e/touch-targets.spec.ts:428` (D-36),
+     FOUND BY CI, NOT BY REVIEW — e2e/touch-targets.spec.ts (D-36),
      dispatch run 33137056149, 2026-08-28: `.btn.btn-compact probe measured
      34x32 — the steppers are square BY DESIGN`. It is a regression plan
      88.3-14 introduced two waves earlier and nothing local could see, because
@@ -2914,7 +2914,7 @@ body {
      gave `.btn-secondary` `border: 1px solid var(--color-border-control)`
      (owner ruling 2 — secondary controls had no edge at all in light). Both
      shipped call sites are `btn btn-compact btn-secondary w-8 h-8`
-     (`BrowseMoreModal.js:232` and `:270`), and `w-8` is 32px. With
+     (src/app/components/BrowseMoreModal.js ("these two stay RAW")), and `w-8` is 32px. With
      `box-sizing: border-box` the used width cannot go below
      padding + border = 16 + 16 + 1 + 1 = **34px**, so `w-8` was silently
      clamped and the stepper went 32x32 -> 34x32. The VERTICAL padding
@@ -2935,7 +2935,7 @@ body {
 
      This rule stays UNLAYERED and stays authored AFTER the media block above —
      both are load-bearing (see the D-36 marker). Re-adding horizontal padding
-     here re-deforms both steppers and reds `touch-targets.spec.ts:428`. */
+     here re-deforms both steppers and reds e2e/touch-targets.spec.ts ("Math.abs(probes.compact.width - probes.compact.height)"). */
   padding-left: 0;
   padding-right: 0;
 }
@@ -2993,8 +2993,8 @@ body {
        which is a second invisible-action-at-a-distance mechanism in the same file
        this phase is removing one from (D-01); and OVER keying on `.card .card`,
        which is impossible because inner nesting levels never use the card class
-       (verified: ScheduleList.js:67, PromptScheduleManager.js:185,
-       groupPlanning/page.js:241 and AvailabilityForm.js:286 are all ad-hoc
+       (verified: ScheduleList.js, PromptScheduleManager.js,
+       groupPlanning/page.js and AvailabilityForm.js are all ad-hoc
        `bg-* border rounded-* p-*` divs, zero of them cards).
    (2) The DOUBLED-class selector (specificity 0,2,0) chosen OVER a single class —
        within the utilities layer a single class ties with `bg-surface-card`/`p-4`
@@ -3102,7 +3102,7 @@ body {
 
    (4) NO global `transform: none`. §7.1 asks for scale/translate transitions to be disabled
        outright, and this block delivers that as the <=100ms cut instead — deliberately.
-       `transform` is not only used for motion here: `ui/dialog.tsx:64` centres EVERY modal
+       `transform` is not only used for motion here: src/components/ui/dialog.tsx ("const DialogContent = React.forwardRef") centres EVERY modal
        with `translate-x-[-50%] translate-y-[-50%]`, and `AvailabilityGrid`'s sticky axis and
        the tutorial grid also carry static transforms. A `transform: none !important` under
        reduced motion would throw every dialog in the app half a viewport off-centre for
