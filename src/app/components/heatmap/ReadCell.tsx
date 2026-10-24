@@ -84,7 +84,7 @@ interface ReadCellBaseProps {
   /**
    * Opt-in colour-resolution override. THREE states, and the distinction is the point:
    *   - omitted (`undefined`) — today's behavior: `mergedCellColor` resolves the class, exactly
-   *     as it always has. This path must stay BYTE-IDENTICAL; `EventHeatmapBackground.js:262-277`
+   *     as it always has. This path must stay BYTE-IDENTICAL; src/app/components/EventHeatmapBackground.js ("<ReadCell")
    *     is the only live consumer and it is owner-passed at 375px under the locked 72-02 decision.
    *   - `null` — emit NO colour class at all (the cell renders only its structural `className`,
    *     with no trailing whitespace). This is the scheduler's empty slot: `calendarWashColor`
@@ -97,12 +97,12 @@ interface ReadCellBaseProps {
    * (a) a `style`-only passthrough and (b) a second `variant` union arm.
    *
    * WHY NOT style-only: it cannot suppress an opaque class. `calendarWashColor` deliberately
-   * returns `undefined` for the empty case (`availabilityColor.ts:165-170` — an explicit
+   * returns `undefined` for the empty case (src/lib/availabilityColor.ts ("if (totalMembers <= 0 || availableCount <= 0) return undefined;") — an explicit
    * transparent fill "would still stack a paint layer over the gridlines"), and an inline style
    * with no `backgroundColor` leaves `bg-surface-elevated` painting anyway. Style-only also drags
    * `text-green-*` onto cells whose only content is a self-coloured badge, and an appended `bg-*`
    * beats `bg-surface-accent-subtle` in the same class string — a real render bug on the today
-   * cell and a red gate in `tintTreatment.test.ts:143-149,229-237`.
+   * cell and a red gate in src/app/tintTreatment.test.ts ("tint is emitted beside a plain background it would lose to").
    *
    * WHY NOT a new variant: the DECISION Phase 88-31 marker below states in capitals that
    * re-adding a second colour scheme "IS A DESIGN DECISION, NOT A CONVENIENCE." An additive
@@ -121,7 +121,7 @@ interface ReadCellBaseProps {
    * DECISION Phase 88.1-21 (88.1-CODE-REVIEW.md): an ADDITIVE OPTIONAL prop, the shape the
    * 88.1-02 C3 marker above established for exactly this situation. It re-opens neither the
    * 88-31 one-variant decision (no new `variant` arm) nor the 84-05 byte-identical `className`
-   * contract (no class string touched). `EventHeatmapBackground.js:262-277`, the other live
+   * contract (no class string touched). src/app/components/EventHeatmapBackground.js ("<ReadCell"), the other live
    * consumer, passes neither this nor a structural `className`, so its rendered attributes are
    * unchanged.
    */

@@ -3,7 +3,7 @@
 // Headless long-press paint/drag gesture engine (88.1 D-01a, Req 5).
 //
 // This is an EXTRACTION of the shipped Phase 87.8-14 touch machine that lives inline in
-// `AvailabilityGrid.js:341-594`, not a fresh implementation. Every one of the four traps
+// src/app/components/AvailabilityGrid.js ("DECISION Phase 87.8 (TOUCH): touch gets a LONG-PRESS"), not a fresh implementation. Every one of the four traps
 // encoded below (implicit pointer capture, static CSS pan-suppression killing native scroll,
 // the stationary-finger rAF gap, memo stability) cost a walkthrough round to discover, so the
 // mechanism is carried over unchanged in substance and the original DECISION marker is
@@ -21,7 +21,7 @@
 //   2. Both scroll axes (RESEARCH C10 — a correctness fix, not a generalization). The shipped
 //      copy scrolls the WINDOW vertically because the check-in grid is a full-page surface. The
 //      scheduler lives inside a Radix dialog whose content is `overflow-hidden`
-//      (`Modal.tsx:186`) with the body `overflow-y-auto` (`Modal.tsx:289`), where a window
+//      (src/app/components/Modal.tsx ("flex-col gap-0 overflow-hidden")) with the body `overflow-y-auto` (src/app/components/Modal.tsx ("flex-1 overflow-y-auto p-3 md:p-6")), where a window
 //      scroll does nothing or scrolls the page BEHIND the modal (pitfall P4). The vertical
 //      default is the window, so the Phase 92 re-point of AvailabilityGrid is a
 //      no-behavior-change swap.
@@ -81,9 +81,9 @@
 // TWO COMMIT SHAPES, ONE MACHINE (`mode`) — RESEARCH P6 / A4.
 //
 // The shipped scheduler got mouse drag-select for free from react-big-calendar's
-// `selectable` + `onSelectSlot` (`EventScheduler.js:501-502`), which reports a start/end PAIR
+// `selectable` + `onSelectSlot` (src/app/components/EventScheduler.js), which reports a start/end PAIR
 // and feeds the Phase 66-01 contract `onTimeSelected(start, end)` — one canonical `start_date`
-// plus `duration_minutes` (`createEvent.js:64-95`). WeekGrid has only per-cell PAINT
+// plus `duration_minutes` (src/app/components/createEvent.js ("Phase 66-01: write canonical fields only")). WeekGrid has only per-cell PAINT
 // (`WeekGrid.tsx` delegated pointer handlers), which is a different gesture: paint commits per
 // cell, range-select commits a pair. Dropping RBC without building the range machine would
 // silently leave desktop drag broken, so it is front-loaded here:
@@ -104,7 +104,7 @@
 // arm exists to prevent. A missing discriminator must be a type error, not a runtime surprise.
 //
 // AMENDED (C2, a deliberate BEHAVIOR CHANGE, not parity): the shipped scheduler long-press is
-// 250ms (`EventScheduler.js:214`, Phase 68-03 MOB-07); adopting the owner-ruled 87.8-14 model
+// 250ms (src/app/components/EventScheduler.js, Phase 68-03 MOB-07); adopting the owner-ruled 87.8-14 model
 // moves it to the 300ms threshold above. The shipped 250ms machine also has NO slop cancellation
 // and NO edge auto-scroll, so the swap is a strict improvement — but it is still a change, and
 // per pitfall P5 NO characterization pin may assert either timer value. Pins assert behavior
@@ -273,7 +273,7 @@ export function pointResolver(attribute: string): (x: number, y: number) => stri
 /**
  * Default vertical scroll target: the window.
  *
- * DOCUMENTED DEFAULT FALLBACK — this is the shipped 87.8-14 behavior (`AvailabilityGrid.js:432`),
+ * DOCUMENTED DEFAULT FALLBACK — this is the shipped 87.8-14 behavior (src/app/components/AvailabilityGrid.js ("if (dy !== 0) window.scrollBy(0, dy);")),
  * kept as the default so the Phase 92 re-point of the check-in grid is a no-behavior-change swap.
  * Any consumer inside a dialog MUST override it (pitfall P4).
  */
@@ -316,7 +316,7 @@ interface GestureState<T> {
  * 87.8 owner ruling.
  */
 export function usePaintGesture<T>(args: PaintGestureArgs<T>): PaintGestureResult {
-  // Latest-props mirror (the `modelRef` idiom from `AvailabilityGrid.js` / `WeekGrid.tsx:267`):
+  // Latest-props mirror (the `modelRef` idiom from `AvailabilityGrid.js` / src/app/components/heatmap/WeekGrid.tsx ("Keep the latest onChange reachable from stable per-coord callbacks")):
   // everything returned below is built once with no dependencies and reads live values here, so
   // handler identity never churns and memoized cells never re-render mid-drag.
   const argsRef = useRef(args);

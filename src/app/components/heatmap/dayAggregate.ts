@@ -79,7 +79,7 @@ export function maxAvailabilityPerDay(
  *
  * NOT DOWNSTREAM OF THE `DECISION Phase 88.1-12` MAX-vs-mean QUESTION ABOVE. That marker governs
  * the STRIP's per-day aggregate (how green a day looks). This function's max/earliest rule is
- * pinned independently, by parity with `createEvent.js:110-119`, so that the week landing and the
+ * pinned independently, by parity with src/app/components/createEvent.js ("const peakScrollTime = useMemo(() => {"), so that the week landing and the
  * day landing can never disagree about what "peak" means. If the strip's aggregate is ever moved
  * to a mean, DO NOT propagate that here for "consistency" — the two answer different questions.
  */
@@ -94,7 +94,7 @@ export function maxAvailabilityPerDay(
  * Timezone), and it is the same rule the sibling above follows.
  *
  * The max-then-earliest rule is deliberately IDENTICAL to `createEvent.js`'s `peakScrollTime`
- * (`:110-119`), which serves the WEEK arm's landing. One meaning of "peak", two callers.
+ * (src/app/components/createEvent.js ("tie-break by earliest (date asc, then hour asc)")), which serves the WEEK arm's landing. One meaning of "peak", two callers.
  *
  * @param heatmapLookup - the scheduler's `${localDateStr}_${localHour}` -> slot map
  * @param date - the local date string ('YYYY-MM-DD') of the displayed day

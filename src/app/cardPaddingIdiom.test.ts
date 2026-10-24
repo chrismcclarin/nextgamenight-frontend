@@ -31,7 +31,7 @@
  *   1. `\bcard\b` also matches `bg-surface-card`, `rounded-card`, `hover:bg-surface-
  *      card-hover` — 150+ lines of noise that bury the ~28 real sites, so a human
  *      reading its output cannot tell a pass from a miss;
- *   2. it only reads DOUBLE-QUOTED classNames. `GameSuggestionCard.js:20` writes
+ *   2. it only reads DOUBLE-QUOTED classNames. src/app/components/GameSuggestionCard.js writes
  *      ``className={`card p-4 md:p-6 …`}`` and was invisible to it — measured, not
  *      reasoned: the pre-88-24 census run with that grep reported 12 `p-4 md:p-6`
  *      sites when there were 13.

@@ -701,7 +701,7 @@ describe('SPEC Req 1 — the Footer reserves no bottom space on any return path'
    plans 88.5-01 and 88.5-08 own the sibling suite.
 
    The rows are `div role="button" tabIndex=0` with a HAND-ROLLED Enter/Space handler
-   (`CalendarListView.js:854-864`), not native buttons. That is exactly why the keyboard cases
+   (src/app/components/CalendarListView.js ("onKeyDown={(e) => {")), not native buttons. That is exactly why the keyboard cases
    below are not redundant with the click case: a native button gets Enter/Space for free, a
    div gets them only for as long as that handler survives. */
 describe('SPEC Req 1 — calendar-sheet rows stay operable and accessible', () => {

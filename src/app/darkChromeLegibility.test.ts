@@ -5,7 +5,7 @@
  * WHY THIS GATE EXISTS
  * --------------------
  * The header is `warm-800` and the nav is `purple-900` IN LIGHT MODE — dark chrome in a light
- * app, deliberately (`DESIGN-SYSTEM-REFERENCE-2026.md:59-60` records it as "intentional,
+ * app, deliberately (planning:.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md ("## 9. Current Drift — What This Doc Says vs What's Shipped") records it as "intentional,
  * keep"). Nothing upstream of this phase measured a light-mode token against that ground, so
  * two of this phase's own token moves regressed it:
  *
@@ -140,7 +140,7 @@ describe('Phase 88.3 Req 7/8 — dark-chrome ring, muted labels, and the closed 
     // screen — the ring would stay purple-700 at 1.93:1 while the class string looked right.
     //
     // DO NOT "fix" this back to `[--color-focus-ring:...]` on the strength of the
-    // `EventScheduler.tsx:228-236` precedent. That precedent is superficially similar and
+    // src/app/components/EventScheduler.tsx ("THE OVERRIDDEN PROPERTY IS") precedent. That precedent is superficially similar and
     // materially different: it overrides a ONE-hop alias (a `surface-*` theme key resolving
     // straight to one runtime property, which Tailwind v4 resolves at emit time). This chain
     // is TWO hops. Same idiom, different property.

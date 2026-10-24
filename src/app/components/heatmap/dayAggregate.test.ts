@@ -76,7 +76,7 @@ describe('maxAvailabilityPerDay', () => {
 //
 // Same non-vacuity idiom as the block above — every fixture is chosen so a WRONG rule produces a
 // DIFFERENT number, and the wrong answers are asserted against explicitly. Two cases carry the
-// requirement: the TIE (earliest hour wins, matching `createEvent.js:114-119`) and NO DATA (null,
+// requirement: the TIE (earliest hour wins, matching src/app/components/createEvent.js ("tie-break by earliest (date asc, then hour asc)")) and NO DATA (null,
 // which the caller turns into "do not scroll" — the owner's 2026-08-24 ruling, chosen over falling
 // back to the week peak). `0` is a legitimate hour, so `null` is asserted as `null`, never falsy.
 // -------------------------------------------------------------------------------------------
@@ -99,7 +99,7 @@ describe('peakHourForDay', () => {
     expect(peak).not.toBe(21);
   });
 
-  it('breaks a TIE to the EARLIEST hour (parity with createEvent.js:114-119)', () => {
+  it('breaks a TIE to the EARLIEST hour (parity with src/app/components/createEvent.js ("tie-break by earliest (date asc, then hour asc)"))', () => {
     const lookup = lookupOf([
       [MON, 13, 4],
       [MON, 20, 4],

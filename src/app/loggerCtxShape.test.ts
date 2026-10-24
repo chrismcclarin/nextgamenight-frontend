@@ -544,7 +544,7 @@ describe('88.6-15 Arm A / #67 — every reportContext value is a plain string li
     const unowned = offenders.filter((line) => !(line.split(':')[0] in REPORT_CONTEXT_EXEMPT));
     expect(
       unowned,
-      'reportContext is pasted into a user-visible report body (FetchErrorBanner.tsx:162). A plain string literal is code-derived copy; an interpolated value is runtime data of unknown provenance',
+      'reportContext is pasted into a user-visible report body (src/components/ui/FetchErrorBanner.tsx ("(reportContext ?")). A plain string literal is code-derived copy; an interpolated value is runtime data of unknown provenance',
     ).toEqual([]);
 
     expect(assertExactCounts(REPORT_CONTEXT_EXEMPT, measured)).toEqual([]);

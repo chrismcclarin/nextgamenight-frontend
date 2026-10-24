@@ -53,7 +53,7 @@ const rel = (file: string): string => path.relative(SRC, file);
  * keys such as `invite-friend-${…}`, `local-${game.id}`, `member-role-${…}` — which is a roster
  * of noise, and a roster of noise is a roster nobody maintains. Against this list it returns 5.
  * `row`, `h` and `col` MUST stay in it: the tree genuinely wears `row-span-3`
- * (`src/app/userProfile/page.js:2559`), so `row-${x}` is a real candidate shape here and not a
+ * (src/app/userProfile/page.js ("DECISION Phase 88.6-30 (W53 reopen, row alignment, 2026-09-21)")), so `row-${x}` is a real candidate shape here and not a
  * hypothetical one.
  * Adding a prefix can only ADD hits (each needs a roster entry or a fix); removing one blinds the
  * detector. Both directions are decisions.
@@ -245,7 +245,7 @@ function census(): { byFile: Record<string, number>; rows: { file: string; hit: 
  * MEASURED 2026-09-21 at `ef40170` + this plan's commits, by running the four detectors above over
  * the 193 non-test `src/` files: ELEVEN hits across EIGHT files. (An earlier revision of plan 47
  * recorded three, and the 2026-09-21 scoped review re-measured ten; the eleventh is the SECOND
- * interpolation on `userProfile/page.js:119` — that one line builds both `${typeKey}:email` and
+ * interpolation on src/app/userProfile/page.js ("status => statuses[") — that one line builds both `${typeKey}:email` and
  * `${typeKey}:sms`, and a per-LINE reading counts it once while a per-HIT reading counts it twice.
  * This file counts HITS, so the number is eleven. Restated here rather than rounded to match the
  * plan text.)
