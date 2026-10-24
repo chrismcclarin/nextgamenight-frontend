@@ -5,11 +5,11 @@
 // DECISION Phase 88.6-10 (#121+#123): the node environment is taken PER FILE via this pragma,
 // chosen OVER (a) leaving the suite on the global jsdom environment — rejected, the DOM is
 // never used here and every run would pay for a document nothing reads — and OVER (b) changing
-// `environment` in `vitest.config.mts:56` (`environment: 'jsdom'`, re-verified 2026-09-15) —
+// `environment` in vitest.config.mts ("environment: 'jsdom'") (re-verified 2026-09-15) —
 // rejected, that moves EVERY suite, including the many that genuinely render. This plan's text
 // called it the repo's FIRST such pragma; re-measured at execution that is FALSE and the
-// correction is recorded rather than quietly dropped: `src/app/errorEnvelopeReads.test.ts:2`
-// (plan 88.6-14) took it first and `src/app/groundInk.test.ts:1` (plan 88.6-09) second, both
+// correction is recorded rather than quietly dropped: src/app/errorEnvelopeReads.test.ts (" * @vitest-environment node")
+// (plan 88.6-14) took it first and src/app/groundInk.test.ts ("// @vitest-environment node") (plan 88.6-09) second, both
 // after this plan's 2026-09-14 census. This is the THIRD, and it follows their idiom instead of
 // inventing a fourth. The three shipped source-scan suites (`nativeDialogs.test.ts`,
 // `fetchErrorTreatment.test.ts`, `typeScaleTouchedSurfaces.test.ts`) were deliberately NOT
@@ -48,7 +48,7 @@
 // `Button.tsx`'s cva base is a scanner EXCLUSION, never a roster entry (D-19). An exclusion says
 // "this is the DEFINITION of the thing being scanned for"; an exemption says "this is a DEBT".
 // And here the exclusion is FREE rather than a special case: the base's `'btn'` lives inside a
-// `cva([...])` array at `src/components/ui/Button.tsx:74`, which is not inside a JSX opening tag,
+// `cva([...])` array at src/components/ui/Button.tsx ("'btn',"), which is not inside a JSX opening tag,
 // so this scanner never sees it. There is no `if (file === 'Button.tsx') continue` anywhere
 // below, and the assertion at the bottom of the census describe pins that.
 
@@ -72,16 +72,24 @@ import {
 } from '../../test-utils/sourceScan';
 
 // `readOpeningTag` is IMPORTED, not copied. This plan's text said to copy it verbatim from
-// `controlSizeFloor.test.tsx:88-108`; Phase 88.6-09 RELOCATED it into the shared lexer before
-// this plan ran (`sourceScan.ts:246`, and `controlSizeFloor.test.tsx:89-92` records the move),
+// src/app/components/controlSizeFloor.test.tsx, which no longer holds it: Phase 88.6-09
+// RELOCATED it into the shared lexer before this plan ran, to
+// src/test-utils/sourceScan.ts ("export function readOpeningTag("), and
+// src/app/components/controlSizeFloor.test.tsx ("was RELOCATED to") records the move,
 // so copying it now would create the second copy that module exists to prevent — the exact drift
 // `DECISION Phase 88-29` names. The imported function is the same brace-balanced reader plus a
 // measured 16000-byte bound.
 
 const SRC = path.resolve(__dirname, '../..');
 
-// Named-tag anchor with a lookahead, never a bare `<`: a TypeScript generic or an `a < b`
-// comparison must not start a tag scan. This is `sourceScan.ts:344`'s own `OPEN_TAG` shape,
+// Named-tag anchor with a lookahead, never a bare `<`. The lookahead stops a spaced comparison
+// such as `a < b`, but it does NOT stop a TypeScript generic (`useRef<HTMLDivElement>`) or an
+// unspaced comparison that a later `>` closes (`a<b > c`): each of those opens a PHANTOM site,
+// named after the type or the operand, with no string chunk, so no rule in this file can count
+// it. The fixture pins all four shapes:
+// this file ("a TypeScript generic opens a phantom site; a spaced comparison opens none")
+// This is the shared lexer's own OPEN_TAG shape plus a capture group for the name,
+// src/test-utils/sourceScan.ts ("const OPEN_TAG = /<[A-Za-z]")
 // which is slightly stricter than the RESEARCH census script's `/<([A-Za-z][A-Za-z0-9.]*)/g`.
 // Measured 2026-09-15: both forms report the identical 115 sites / 36 files, so the stricter
 // one costs nothing and matches the shipped lexer.
@@ -135,12 +143,17 @@ export function scanSource(file: string, raw: string): TagSite[] {
 // THE TREE IS ENUMERATED, READ AND COMMENT-STRIPPED EXACTLY ONCE, AT MODULE SCOPE.
 //
 // DECISION Phase 88.6-10 (AC-11, owner ruling 2026-09-09): hoisted, chosen OVER the shipped
-// un-hoisted idiom (`surfaceHoverSweep.test.ts:133`, `controlSizeFloor.test.tsx:145`, both of
+// un-hoisted idiom (src/app/surfaceHoverSweep.test.ts ("function sitesOf(files: string[], token: string)"),
+// src/app/components/controlSizeFloor.test.tsx, both of
 // which call `sourceFiles(SRC)` + `readFileSync` inside a per-assertion helper). One full pass
 // over the real tree measures ~250 ms, and this phase stacks roughly a dozen new assertions on
 // top of every plan's `npm test`. The divergence is CONFINED to this new file: the shipped
 // suites stay byte-unchanged and `sourceScan.ts` gains no cache (ruled out separately as AC-12).
 // Re-scanning per assertion here is a decision, not a cleanup.
+// AMENDED Phase 88.6.2-14 (W035, cite verdict false): the controlSizeFloor half of the shipped
+// idiom above is no longer true. A later plan hoisted that file's walk to module scope too,
+// src/app/components/controlSizeFloor.test.tsx ("Phase 88.6-12 HOISTED the read+strip out of")
+// so surfaceHoverSweep is the surviving un-hoisted example. The decision itself is unchanged.
 // ---------------------------------------------------------------------------------------
 const FILES = sourceFiles(SRC);
 const TAGS: TagSite[] = FILES.flatMap((f) =>
@@ -204,8 +217,9 @@ const BTN_EXEMPT: ExemptionRoster = {
   //     and became `variant={active ? 'primary' : 'secondary'}`. The plan's literal instruction
   //     was to keep the `bg-*` utilities on `<Button className>`; that was DECLINED and the
   //     reason is measured — `.btn-secondary` declares `background-color` and `color` UNLAYERED
-  //     (globals.css:2627-2631), so those utilities would be dead and every pressed toggle would
-  //     paint as unpressed. `.btn-primary` (:2378-2381) sets the same two properties off the same
+  //     (src/app/globals.css (".btn-secondary {")), so those utilities would be dead and every
+  //     pressed toggle would paint as unpressed. The .btn-primary rule
+  //     (src/app/globals.css (".btn-primary {")) sets the same two properties off the same
   //     two tokens. Markers at both sites.
   //   - the library-empty CTA is a `<Link href="/userProfile">` and took the `asChild` form, so
   //     it is still a link; `BrowseMoreModal.test.tsx` gained a role+href assertion for it,
@@ -214,9 +228,10 @@ const BTN_EXEMPT: ExemptionRoster = {
   // Dead utilities deleted at all five (`px-*`/`py-*`/`text-sm`/`font-medium`/`rounded*-btn`/
   // `transition-colors`/`inline-block` are all dead under unlayered `.btn`).
   //
-  // The TWO that remain are the 32x32 player-count steppers (`BrowseMoreModal.js:226` and `:266`
-  // pre-edit — the ELEMENT lines; CONTEXT's `:232`/`:270` are the className lines, both reading
-  // `btn btn-compact btn-secondary w-8 h-8 ...`). This entry STAYS at 2 forever; its `owner` has
+  // The TWO that remain are the 32x32 player-count steppers, the decrement and increment
+  // buttons in src/app/components/BrowseMoreModal.js ("Decrease player count") and
+  // src/app/components/BrowseMoreModal.js ("Increase player count"), both reading
+  // `btn btn-compact btn-secondary w-8 h-8 ...`. This entry STAYS at 2 forever; its `owner` has
   // flipped from AC-2 to D-10. Both lines also gained the house focus ring in its
   // `focus-visible:ring-inset` form in that same commit (AC-10, owner ruling 2026-09-09 option
   // 1, under plan 05's ARM A) — a focus string is not a `.btn` site and does not move this count.
@@ -239,11 +254,14 @@ const BTN_EXEMPT: ExemptionRoster = {
   // 'btn-primary'}`), which becomes `variant={recovery ? 'secondary' : 'primary'}`. Every site
   // also carried `flex items-center justify-center` — DEAD under unlayered `.btn`'s own
   // `display: inline-flex; align-items: center; justify-content: center`
-  // (globals.css:2195-2198) — and an explicit `min-h-11`, which GOES because the cva base
+  // (src/app/globals.css ("display: inline-flex;")) — and an explicit `min-h-11`, which GOES because the cva base
   // supplies the 44px floor at every viewport (88.6-06 D-09). `w-full`, `text-center` and `mb-3`
-  // survive onto the `Button` className. The page's four shipped link assertions
-  // (`page.test.tsx:169`, `:302`, `:444`, `:581`) are byte-unchanged and stayed green. Entry
-  // DELETED rather than zeroed.
+  // survive onto the `Button` className. The page's four shipped link assertions, one in each of
+  // src/app/restore/group/[token]/page.test.tsx ("shows the group name and deadline to a logged-out visitor, and accepts nothing"),
+  // src/app/restore/group/[token]/page.test.tsx ("R-4 — an expired session (401) offers sign-in with returnTo, never the generic failure"),
+  // src/app/restore/group/[token]/page.test.tsx ("L-3 — a 409 with NO parseable group_id offers a link, never a promise of a redirect")
+  // and src/app/restore/group/[token]/page.test.tsx ("AF-9 via the preview, LOGGED OUT — stays put and offers sign-in, never redirects"),
+  // are byte-unchanged and stayed green. Entry DELETED rather than zeroed.
   // `app/components/ManageMembers.js` CLOSED by plan 88.6-19 task 2 (wave 7, 2026-09-16): all
   // SIX `.btn` elements are `<Button>` at `size="default"`, with their dead `text-sm px-4 py-2`
   // utilities deleted (unlayered `.btn` already declares font-size and padding, so they were
@@ -256,24 +274,27 @@ const BTN_EXEMPT: ExemptionRoster = {
   // branch's `/api/auth/login` ANCHOR, migrated as `<Button asChild><a …/></Button>` per
   // UI-SPEC §3.2 — the element stays an `<a>`, never a `<Link>`, because Auth0's handler needs
   // a hard navigation. Every utility at all six was DEAD under unlayered `.btn` (`px-*`/`py-*`
-  // vs `globals.css:2202`, `text-sm` vs `:2201`, `font-medium` vs `:2200`, `inline-block` and
-  // `flex items-center gap-2` vs `:2195-2198`, the `disabled:` pair vs `:2250-2253`), so all of
+  // vs its padding, src/app/globals.css ("padding: 0.5rem 1rem;"), `text-sm` vs its font-size,
+  // `font-medium` vs its font-weight, `inline-block` and `flex items-center gap-2` vs its
+  // display, align-items, justify-content and gap, the `disabled:` pair vs the .btn:disabled
+  // rule, src/app/globals.css ("opacity: 0.5;")), so all of
   // them are deleted and NONE moved onto a `Button className`. Entry DELETED rather than zeroed.
   // `app/invite/game/[token]/page.js` CLOSED by plan 88.6-23 task 1 (wave 7, 2026-09-16): all SIX
   // `.btn` elements are `<Button size="default">`. THREE are anchors and took the UI-SPEC §3.2
   // `asChild` form with their `href` byte-identical — the `/api/auth/login?returnTo=…` sign-in
   // `<a>` (which stays an `<a>`, never a `<Link>`: an Auth0 handoff needs a hard navigation) and
   // the two `<Link href="/">` Go-Home CTAs. `block` was DEAD under unlayered `.btn`'s
-  // `display: inline-flex` (globals.css:2195) and is deleted; `w-full`, `text-center` and `mb-2`
+  // `display: inline-flex` (src/app/globals.css ("display: inline-flex;")) and is deleted; `w-full`, `text-center` and `mb-2`
   // are NOT dead (`.btn` declares no width, no `text-align` and no margin) and moved onto the
   // `Button` className, where tailwind-merge keeps them. Entry DELETED rather than zeroed; the
   // roster is exact in both directions, so a zeroed entry would red as a fossil permission.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
   // carried `sites: 5` here (the bulk-invite CTA, the email Send, Add Friend, Copy Invite Link
   // and the admin-only Reset invite link). All five are `<Button size="default">` now. Every
-  // deleted utility was DEAD under unlayered `.btn`: `text-sm`/`text-xs` vs `globals.css:2201`,
-  // `py-2.5`/`py-2`/`px-3`/`py-1.5` vs `:2202`, `flex items-center justify-center gap-2` vs
-  // `:2195-2198`. `w-full`, `mt-2`, `mt-3`, `shrink-0` and the reset button's
+  // deleted utility was DEAD under unlayered `.btn`: `text-sm`/`text-xs` vs its font-size,
+  // src/app/globals.css ("font-size: 0.875rem;"), `py-2.5`/`py-2`/`px-3`/`py-1.5` vs its padding,
+  // `flex items-center justify-center gap-2` vs its display, align-items, justify-content and
+  // gap. `w-full`, `mt-2`, `mt-3`, `shrink-0` and the reset button's
   // `text-content-status-error` are NOT dead (`.btn` declares no width, margin, flex-shrink or
   // colour) and moved onto the `Button` className. Entry DELETED rather than zeroed — the roster
   // is exact in both directions, so a zeroed entry would red as a fossil permission.
@@ -293,7 +314,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // carried `sites: 4` — the desktop Edit (`btn btn-primary`) and Delete (`btn btn-danger`) row
   // actions and the in-row delete confirm's Confirm/Cancel pair. All four are
   // `<Button size="default">`. Dead utilities deleted (`px-3 py-1.5`, `text-sm` — unlayered
-  // `.btn` declares padding at globals.css:2202 and font-size at :2201). The `:142` Pause/Resume
+  // `.btn` declares padding, src/app/globals.css ("padding: 0.5rem 1rem;"), and font-size). The `:142` Pause/Resume
   // toggle is NOT a `.btn` site and was never in this count — it carries raw status-token
   // utilities and is untouched. Entry DELETED rather than zeroed.
   // `app/invite/accept/page.js` CLOSED by plan 88.6-23 task 2 (wave 7, 2026-09-16): all FOUR
@@ -306,7 +327,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // one and was re-measured before the sweep. All three are `<button>` elements inside the
   // modal: "+ Add Participant" (`btn btn-primary text-sm`), "Cancel" (`btn btn-secondary`) and
   // the submit CTA (`btn btn-primary min-h-11`). `text-sm` was DEAD under unlayered `.btn`
-  // (globals.css:2201) and is deleted rather than moved onto the className; `mt-2` survives
+  // (src/app/globals.css ("font-size: 0.875rem;")) and is deleted rather than moved onto the className; `mt-2` survives
   // (`.btn` declares no margin). The submit CTA's per-CTA `min-h-11` dropped in the SAME commit
   // as its migration, per the amended `DECISION Phase 87.8` / `AMENDED Phase 88.6 (D-09)` marker
   // that sits directly above it — the marker itself is byte-unchanged and still reports in
@@ -377,7 +398,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // carried `sites: 2` and the count was EXACT — the "Copy Invite Link" CTA
   // (`w-full btn btn-primary py-2.5 text-center mb-3`) and the full-width "Close"
   // (`w-full btn btn-secondary`). Both are `<Button>`s now. `py-2.5` was DEAD under unlayered
-  // `.btn`'s `padding` (`src/app/globals.css:2298`, `padding: 0.5rem 1rem;` inside the `.btn {`
+  // `.btn`'s `padding` (src/app/globals.css ("padding: 0.5rem 1rem;"), inside the `.btn {`
   // rule) and is deleted rather than moved; `w-full`,
   // `text-center` and `mb-3` all SURVIVE — `.btn` declares no width, no `text-align` and no
   // margin, so none of the three was ever dead and deleting them would have been a look change.
@@ -420,25 +441,25 @@ const BTN_EXEMPT: ExemptionRoster = {
   // carried `sites: 1` — NOT the 2 the plan's task text states; the roster's count was the
   // accurate one. The site is the availability submit CTA
   // (`btn btn-primary w-full py-3 min-h-11`), now `<Button type="submit" className="w-full">`.
-  // `py-3` was DEAD under unlayered `.btn` (globals.css:2201) and the per-CTA `min-h-11` dropped
+  // `py-3` was DEAD under unlayered `.btn`'s padding (src/app/globals.css ("padding: 0.5rem 1rem;")) and the per-CTA `min-h-11` dropped
   // in the SAME commit as the migration per its amended `DECISION Phase 87.8` marker (which is
   // byte-unchanged and still reports 8/6 in `decisionMarkers.test.ts`); `w-full` survives.
   // The call-site `opacity-60 cursor-not-allowed` pair went too: `.btn:disabled` is UNLAYERED and
-  // sets both (globals.css:2250-2253), so the utilities were dead where they disagreed. The
+  // sets both (src/app/globals.css ("opacity: 0.5;")), so the utilities were dead where they disagreed. The
   // control KEEPS its native `disabled`; the plans 17-24 `aria-disabled` conversion was tried,
   // measured against `tokenContrast.test.ts` test 53(b2) and ROUTED rather than forced — see the
   // DECISION marker at the latch in AvailabilityForm.js. Entry DELETED rather than zeroed; the
   // roster is exact in both directions.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/BallotOptionsEditor.js`
   // carried `sites: 1` — the "+ Add game option" CTA, now `<Button size="default">`. Its `text-sm`
-  // was DEAD under unlayered `.btn` (globals.css:2201) and is deleted rather than moved onto the
+  // was DEAD under unlayered `.btn`'s font-size (src/app/globals.css ("font-size: 0.875rem;")) and is deleted rather than moved onto the
   // className; `mt-2` survives (`.btn` declares no margin). The file's OTHER button — the
   // remove-option `×` at :33 — was never a `.btn` and is therefore not in this census at all; it
   // took the D-13 declared-at-the-site 44x44 floor in the same commit. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/BringGamePicker.js`
   // carried `sites: 1` — the footer "Save" CTA (`btn btn-primary text-sm`), now
   // `<Button variant="primary">`. `text-sm` was DEAD under unlayered `.btn`'s `font-size`
-  // (globals.css:2201) and is deleted rather than moved onto the className. The control KEEPS
+  // (src/app/globals.css ("font-size: 0.875rem;")) and is deleted rather than moved onto the className. The control KEEPS
   // its NATIVE `disabled={saving}` — the plans 17-24 `aria-disabled` conversion is not this
   // plan's work. NOTE this entry's own count was ONE, not the TWO the plan's task text predicted:
   // the footer's other control ("Skip for now") is a bare text button that never wore `.btn`, and
@@ -456,13 +477,15 @@ const BTN_EXEMPT: ExemptionRoster = {
   // text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11 disabled:opacity-50` pre-edit. It is a
   // `<Button variant="primary">` now, and the count was EXACT.
   //   DEAD, deleted: `font-bold`, `text-sm`, `px-6 py-3` (`.btn` is unlayered and declares
-  //     font-weight, font-size and padding at `globals.css:2200-2202`) and `disabled:opacity-50`
-  //     (`.btn:disabled { opacity: 0.5 }`, `:2250-2253` — byte-identical, so the utility never
+  //     font-weight, font-size and padding:
+  //     src/app/globals.css ("font-weight: 600;"), src/app/globals.css ("font-size: 0.875rem;"),
+  //     src/app/globals.css ("padding: 0.5rem 1rem;")) and `disabled:opacity-50` (`.btn:disabled { opacity: 0.5 }`,
+  //     src/app/globals.css ("opacity: 0.5;") — byte-identical, so the utility never
   //     changed anything).
   //   ALIVE, kept: `uppercase` — `.btn` declares NO `text-transform`, so this one was never dead
   //     and deleting it with the others would have been a look change.
   //   REDUNDANT, dropped under D-30: the per-CTA `min-h-11`, now supplied by plan 06's cva base
-  //     (`Button.tsx:168`) at every viewport. Same disposition plan 88.6-32 gave
+  //     (src/components/ui/Button.tsx ("'min-h-11',")) at every viewport. Same disposition plan 88.6-32 gave
   //     `GroupGamesList.js` in this wave; no `DECISION` marker cited it, so `decisionMarkers`
   //     is unaffected.
   //   RESPELLED, not deleted: `shadow-sm hover:shadow-lg` -> `shadow-theme-sm
@@ -471,14 +494,15 @@ const BTN_EXEMPT: ExemptionRoster = {
   //     `enabled-hover:shadow-theme-md` is SMALLER than the shipped `lg`. See the `shadowTier`
   //     deletion for the measured values.
   //   CARRIED ACROSS BY HAND: `type="submit"`, `ref={submitButtonRef}` and `disabled={submitting}`.
-  //     `Button` defaults `type` to `'button'` (`Button.tsx:267`), so the first one is a silent
+  //     `Button` defaults `type` to `'button'` (src/components/ui/Button.tsx ("type = 'button'")), so the first one is a silent
   //     behaviour regression if forgotten; createGroup.test.tsx pins the SUBMIT, not the attribute.
   // Entry DELETED rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-30 task 3 (wave 9, 2026-09-17): `app/components/DangerZoneDeleteAccount.tsx`
   // carried `sites: 1` and the count was EXACT — the Danger Zone card's own trigger, the
   // `btn btn-danger px-4 py-2 text-sm` element, now `<Button type="button" variant="danger">`.
-  // `px-4 py-2 text-sm` are ALL dead under unlayered `.btn` (padding `globals.css:1963`,
-  // font-size `:1962`) and are deleted rather than carried; no live utility survived on that
+  // `px-4 py-2 text-sm` are ALL dead under unlayered `.btn` (padding,
+  // src/app/globals.css ("padding: 0.5rem 1rem;"), and font-size,
+  // src/app/globals.css ("font-size: 0.875rem;")) and are deleted rather than carried; no live utility survived on that
   // site. The two `Modal.Action` footer sites are NOT `.btn` element sites and never were —
   // `Modal.Action` composes `Button` internally (plan 08 D-08), so this file's migration does
   // not touch them; Cancel's `aria-disabled` gating landed in task 2 under AC-21/D52 and is a
@@ -491,7 +515,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/EventCalendar.js`
   // carried `sites: 1` — the List/Month view toggle (`btn btn-secondary text-sm` plus the
   // per-site ring string), now `<Button variant="secondary">`. `text-sm` was DEAD under
-  // unlayered `.btn` (`globals.css:2201`) and is deleted rather than moved; the ring retired to
+  // unlayered `.btn`'s font-size (src/app/globals.css ("font-size: 0.875rem;")) and is deleted rather than moved; the ring retired to
   // the primitive's base. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-35 task 1 (wave 7, 2026-09-16): `app/components/LandingPage.js`
   // carried `sites: 1` and the count was EXACT — `grep -n '\bbtn\b'` over the file returned
@@ -540,12 +564,14 @@ const BTN_EXEMPT: ExemptionRoster = {
   // utilities GO, because `text-*`/`px-*`/`py-*` are dead on a `.btn` element (Button.tsx's own
   // "No size utility of any kind on a size rung" rule), and no margin utility was present to
   // keep. The native `disabled` went with them — the control now takes the `aria-disabled` +
-  // handler-latch split (`NextGameNightCard.tsx:466-479`; UI-SPEC D52).
+  // handler-latch split (src/app/components/NextGameNightCard.tsx ("DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5, narrowed)"); UI-SPEC D52).
   //
   // THE SITE THIS DECREMENT IS SIGNED OFF ON IS NAMED ON PURPOSE. The status TRIO in this same
   // file (`yes`/`maybe`/`no`) is NOT a census site and must never be counted as one: it is a
   // bare `<button>` by a recorded DECISION, because `.btn`'s unlayered `border-radius: 8px` /
-  // `font-weight: 600` / `font-size: 0.875rem` (globals.css:1955-1967) would destroy the corner
+  // `font-weight: 600` / `font-size: 0.875rem`
+  // (src/app/globals.css ("border-radius: 8px;"), src/app/globals.css ("font-weight: 600;"),
+  // src/app/globals.css ("font-size: 0.875rem;")) would destroy the corner
   // inheritance an owner UAT fix of 2026-09-01 put there. A criterion signed off on an unnamed
   // site is exactly how that trio would get migrated by accident.
   // Entry DELETED rather than zeroed — the count is exact in both directions.
@@ -563,7 +589,8 @@ const BTN_EXEMPT: ExemptionRoster = {
   // WelcomeSlide.js` carried `sites: 1`, also EXACT — the "Show me how it works" CTA (`:26`
   // pre-edit), now `<Button variant="primary" className="w-full">`. `py-3 px-6 font-semibold
   // text-base` GO as dead under unlayered `.btn`, and `transition-colors` goes with them
-  // (`.btn` declares `transition: var(--theme-transition)` unlayered at globals.css:2203).
+  // (`.btn` declares `transition: var(--theme-transition)` unlayered, in the same rule as its
+  // padding, src/app/globals.css ("padding: 0.5rem 1rem;")).
   // `w-full` STAYS: `.btn` declares no width, so it was never dead. Entry DELETED, not zeroed.
 };
 
@@ -641,7 +668,7 @@ describe('D-07 / AC-2: the `.btn` element census', () => {
 // is a surface, not a control, and the negative control below pins that.
 //
 // WHY THIS RULE EXISTS SEPARATELY FROM `rawColorValues.test.ts`. That suite scans hex literals
-// and inline `boxShadow` properties only (`rawColorValues.test.ts:1-44`), which is precisely why
+// and inline `boxShadow` properties only (src/app/rawColorValues.test.ts ("A raw hex literal or a hand-rolled black")), which is precisely why
 // `bg-indigo-600` survived it — a Tailwind palette step is neither a hex nor a boxShadow.
 //
 // REJECTED ARM: an any-`bg-*` rule. Measured: 28 semantic-token false positives. `bg-surface-*`,
@@ -652,8 +679,8 @@ describe('D-07 / AC-2: the `.btn` element census', () => {
 //
 // THE REPO'S OWN PALETTE NAMES COLLIDE WITH TAILWIND'S, and this is the non-obvious call here.
 // `globals.css` mints `--purple-*`, `--warm-*` and `--amber-*` custom properties, and its
-// `@theme` block exposes only a subset as utilities (`globals.css:256-260` exposes
-// `--color-purple-100/300/700/800/900`). So `bg-purple-900` on a button is ambiguous BY NAME
+// `@theme` block exposes only a subset as utilities: the five keys under
+// src/app/globals.css ("purple (5)") are `--color-purple-100/300/700/800/900`. So `bg-purple-900` on a button is ambiguous BY NAME
 // ALONE — it may resolve to the repo's token or to Tailwind's default step. It is treated as a
 // RAW palette fill either way, the way D-17 resolves the same ambiguity: whichever it resolves
 // to, a button should be wearing a `btn-*` variant or a semantic token, not a palette STEP.
@@ -662,7 +689,7 @@ describe('D-07 / AC-2: the `.btn` element census', () => {
 
 /**
  * Tailwind's default palette hue names, PINNED AS DATA exactly like `HEX_EXEMPT`
- * (`rawColorValues.test.ts:65`) rather than spelled as an inline regex alternation. Adding a hue
+ * (src/app/rawColorValues.test.ts ("const HEX_EXEMPT: Record<string, string> = {")) rather than spelled as an inline regex alternation. Adding a hue
  * is then an explicit, reviewable edit to a list, not a silent widening buried in a pattern.
  */
 const TAILWIND_HUES = [
@@ -717,8 +744,9 @@ const PALETTE_COUNTS = countByFile(PALETTE_BUTTONS);
 //
 // No SECOND roster is introduced for the arbitrary-value or inline-`style` shapes. Measured on
 // real button opening tags there are zero non-hex arbitrary-value fills, and the one inline-
-// `style` fill (`groupHomePage/page.js:914`, the amber Create-Event CTA) is already owned under
-// D-09 by plan 88.6-21, which deletes the inline `style` when it converts the control. A roster
+// `style` fill (the amber Create-Event CTA in src/app/groupHomePage/page.js) was owned under
+// D-09 by plan 88.6-21, which deleted the inline `style` when it converted the control to
+// `<Button variant="accent">`, so it no longer exists. A roster
 // with no population is a gate that cannot red.
 // ---------------------------------------------------------------------------------------
 const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
@@ -773,8 +801,10 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'rgb(220,252,231) with the pin and becomes rgb(250,248,245) without it.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6-25' },
   },
-  // One site, `ThemeToggle.js:49` (this scanner's OPENING-TAG line; the className carrying
-  // `hover:bg-white/10` is at `:56`). SETTLED by plan 88.6-34 task 1 (wave 7, 2026-09-16) — the
+  // One site, the icon variant's bare button in
+  // src/app/components/ThemeToggle.js ("p-2 rounded-lg transition-colors hover:bg-white/10")
+  // (this scanner counts it on its OPENING-TAG line, a few lines above that className).
+  // SETTLED by plan 88.6-34 task 1 (wave 7, 2026-09-16) — the
   // LAST of D-11's seven raw-palette dispositions, and the one that RESOLVES BARE rather than
   // closing. The entry survives at 1 and is REWRITTEN as a reasoned exemption rather than
   // deleted, because the site is not a debt awaiting a fix: it is a decision.
@@ -787,14 +817,16 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'so the `btn-*` family is the wrong vocabulary for it. (2) GEOMETRY — the CONSEQUENCE ' +
       "constraint: shipped it is `p-2` around a `w-5 h-5` icon (`:56`, `:17`/`:21`) = 36x36, " +
       "while a `<Button>` renders against `.btn`'s unlayered `padding: .5rem 1rem` " +
-      "(`globals.css:1963`) plus the cva base's `min-h-11` and `icon: min-h-11 min-w-11` " +
-      '= ~52x44. Its desktop-nav sibling `NotificationBell.js:240` (`p-1` around the `w-6 h-6` ' +
-      'bell at `:137`) is 32x32, wears no `btn`, and is migrated by NO plan — so migrating this ' +
+      '(src/app/globals.css ("padding: 0.5rem 1rem;")) plus the cva base\'s `min-h-11` and ' +
+      '`icon: min-h-11 min-w-11` = ~52x44. Its desktop-nav sibling, the bell button in ' +
+      'src/app/components/NotificationBell.js ("relative text-white hover:text-amber-400 transition-colors p-1") ' +
+      '(`p-1` around the `w-6 h-6` bell) is 32x32, wears no `btn`, and is migrated by NO plan — so migrating this ' +
       'control alone would widen a 4px sibling difference into ~20px and CREATE a header ' +
       'inconsistency rather than close one. All four box numbers are ARITHMETIC, NOT MEASURED: ' +
-      'the icon variant is emitted inside `Header.js:128`\'s `hidden md:flex` list, so it is ' +
+      'the icon variant is emitted inside the `hidden md:flex` list in ' +
+      'src/app/Header.js ("hidden md:flex gap-x-6 items-center text-white text-sm"), so it is ' +
       '`display:none` at 375px and the repo\'s only geometry harness is phone-only by design ' +
-      '(`e2e/touch-targets.spec.ts:10-15`). Same shape and same outcome as the corner close in ' +
+      '(e2e/touch-targets.spec.ts ("and runs only at phone width")). Same shape and same outcome as the corner close in ' +
       '`QRCodeModal.js` under `DECISION Phase 88.6-33 (D48)`. ' +
       'COLOUR FINDING (PATH 2 — no shipped token reproduces it, so none is named): composited ' +
       "with the same arithmetic `tokenContrast.test.ts`'s `resolveOver` applies, `bg-white/10` " +
@@ -812,10 +844,12 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-11' },
   },
   // THE EIGHTH SITE, and the one entry here whose `why` records a SURVIVING fill rather than a
-  // fix. `groupHomePage/page.js:872` (`<button`, the Manage Members header CTA) carries
-  // `bg-white/80` at `:876`, which this rule's `bg-white`-with-opacity clause matches. The
-  // 80% white wash plus 1px ring is an OWNER RULING — `DECISION Phase 88.3-16` at
-  // `groupHomePage/page.js:795`, ruling 2 of 2026-08-27 — re-affirmed 2026-09-14 as surviving
+  // fix. The Manage Members header CTA in
+  // src/app/groupHomePage/page.js ("bg-white/80 ring-1 ring-line-control") carries
+  // `bg-white/80`, which this rule's `bg-white`-with-opacity clause matches. The
+  // 80% white wash plus 1px ring is an OWNER RULING — the marker
+  // src/app/groupHomePage/page.js ("DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27)")
+  // records ruling 2 of 2026-08-27 — re-affirmed 2026-09-14 as surviving
   // this phase. Plan 88.6-21 HOLDS it; it does not close it, and this entry must NOT be
   // rewritten as a pending fill change nor deleted when 21 lands.
   //
@@ -826,17 +860,19 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
   // UPDATED by plan 88.6-21 task 2 (wave 7, 2026-09-16): that `.btn` is gone — the control is a
   // `<Button variant="ghost">` now, and its BTN_EXEMPT entry was deleted in the same commit. The
   // element still matches THIS rule, which scans `<Button>` as well as `<button>`, and the wash
-  // is still the 2026-08-27 owner ruling. The cites above are the PRE-migration line numbers and
-  // are deliberately left as written: they are where the ruling was made, and this phase rewrites
-  // line numbers in every file it sweeps, so re-pointing them each wave is churn. Locate the
-  // control by `bg-white/80 ring-1 ring-line-control`, never by line.
+  // is still the 2026-08-27 owner ruling. AMENDED Phase 88.6.2-14 (W035, owner ruling B): the
+  // cites above were PRE-migration line numbers, deliberately left as written because re-pointing
+  // line numbers each wave is churn. They are now content anchors, which is what this paragraph
+  // asked for: they locate the control by `bg-white/80 ring-1 ring-line-control` and the
+  // ruling by its marker text, never by line, so no wave has to re-point them. The bare `:875`
+  // above stays as the pre-migration line it was.
   //
   // This is also the site that breaks round 2's framing of the census as "7 of the 88 buttons
   // that do NOT wear `btn`" — it wears both, so that framing structurally could not see it, and
   // it is why the palette rule runs over EVERY button control rather than only the non-`btn` ones.
   'app/groupHomePage/page.js': {
     sites: 1,
-    why: 'SURVIVING, not pending: the 80% white wash plus 1px ring is owner ruling 2 of 2026-08-27, recorded as `DECISION Phase 88.3-16` at groupHomePage/page.js:795 and re-affirmed 2026-09-14. Plan 88.6-21 task 2 MIGRATED the control to `<Button variant="ghost">` with the wash, the ring and the dark arm carried across byte-for-byte, and HOLDS this exemption rather than closing it. It no longer appears in the `.btn` element census — that entry closed with the migration — but this rule scans `<Button>` too, so the site is still here and must not be deleted.',
+    why: 'SURVIVING, not pending: the 80% white wash plus 1px ring is owner ruling 2 of 2026-08-27, recorded as `DECISION Phase 88.3-16` at src/app/groupHomePage/page.js ("DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27)") and re-affirmed 2026-09-14. Plan 88.6-21 task 2 MIGRATED the control to `<Button variant="ghost">` with the wash, the ring and the dark arm carried across byte-for-byte, and HOLDS this exemption rather than closing it. It no longer appears in the `.btn` element census — that entry closed with the migration — but this rule scans `<Button>` too, so the site is still here and must not be deleted.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / 88.3-16' },
   },
 };
@@ -873,8 +909,8 @@ describe('D-07 / D-11: no button control on a raw palette fill', () => {
 // =====================================================================================
 //
 // A gate that has never failed is a gate that cannot fail. This project's ledger records
-// TWELVE defective gates (`src/app/decisionMarkers.test.ts:1-40` carries the tally and the
-// taxonomy), and they fall into four SHAPES, every one of which is a way to look green while
+// TWELVE defective gates (src/app/decisionMarkers.test.ts ("That is the twelfth defective gate recorded in Phase 88")
+// and its docblock carry the tally and the taxonomy), and they fall into four SHAPES, every one of which is a way to look green while
 // measuring nothing:
 //
 //   1. FILE-COUNT-WITH-SLACK — assert a threshold on a SUPERSET of the population you care
@@ -913,7 +949,7 @@ function paletteHits(fixture: string): string[] {
 
 describe('the census scanner can actually fail (fixture harness)', () => {
   it('DETECTS `cn(...)` expression usage — the W19 shape a literal-only scan misses', () => {
-    // This is the exact shape `Modal.tsx:346` carried until plan 88.6-08 retired it.
+    // This is the exact shape src/app/components/Modal.tsx carried until plan 88.6-08 retired it.
     expect(btnHits('<button className={cn(\'btn\', \'btn-primary\')}>Go</button>')).toEqual([
       '<button>',
     ]);
@@ -957,6 +993,22 @@ describe('the census scanner can actually fail (fixture harness)', () => {
   it('matches `bg-white/10` — an opacity suffix does not evade the palette rule', () => {
     expect(paletteHits('<button className="bg-white/10">x</button>')).toEqual(['<button>']);
   });
+
+  // What the OPEN_TAG lookahead does and does not stop, measured (the comment above OPEN_TAG
+  // states exactly this). A generic opens a site with no string chunk, so no rule can count it.
+  it('a TypeScript generic opens a phantom site; a spaced comparison opens none (the OPEN_TAG comment, measured)', () => {
+    const generic = 'const r = useRef<HTMLDivElement>(null);';
+    const sites = (s: string) =>
+      scanSource('fixture.tsx', s).map((t) => ({ name: t.name, chunks: t.chunks.length, classes: t.classes.length }));
+    expect(sites(generic)).toEqual([{ name: 'HTMLDivElement', chunks: 0, classes: 0 }]);
+    expect(sites('const x = a < b;')).toEqual([]);
+    // An unspaced comparison opens one only when a later > closes it.
+    expect(sites('const y = a<b && c;')).toEqual([]);
+    expect(sites('const z = a<b > c;')).toEqual([{ name: 'b', chunks: 0, classes: 0 }]);
+    expect(btnHits(generic)).toEqual([]);
+    expect(paletteHits(generic)).toEqual([]);
+    expect(typedButtonHits(generic)).toEqual([]);
+  });
 });
 
 // =====================================================================================
@@ -965,7 +1017,7 @@ describe('the census scanner can actually fail (fixture harness)', () => {
 //
 // `Button`'s cva base owns the control's type rung. A `text-sm` handed in from a call site
 // wins through `cn()` / `twMerge` and silently re-tiers the control, which is the same
-// last-wins hazard `controlSizeFloor.test.tsx:24-32` records for `<Input>`.
+// last-wins hazard src/app/components/controlSizeFloor.test.tsx ("beats the primitive's own") records for `<Input>`.
 //
 // DELIBERATELY NARROW, and it does NOT duplicate plan 88.6-11. That plan WIDENED
 // `src/app/typeScaleTouchedSurfaces.test.ts`, which carries the TREE-WIDE type-rung rule over
