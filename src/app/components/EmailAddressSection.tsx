@@ -42,15 +42,15 @@
  *
  * All fixed user-facing copy lives in module-level constants and is NEVER
  * interpolated from a server string (DECISION Phase 88-25, at
- * `useFetchErrorState.ts:161`, the block opening `user-facing failure copy is DERIVED`).
+ * src/components/ui/useFetchErrorState.ts ("user-facing failure copy is DERIVED")).
  *
  * DESIGN CONTRACTS INHERITED BY CITATION (D-34). No visual contract document was
  * produced for this phase, on the owner's ruling, because this section is 100%
  * shipped primitives and introduces no new visual element. It inherits
- * `88-UI-SPEC.md` 8.1 (button), 8.2 (input), 6.2 `:405-407` (receipt wording as
- * object plus past-tense verb), `:392` (toast lifetime), `:571` (visible
- * labels), and `DESIGN-SYSTEM-REFERENCE-2026.md` `:374` (reflow) / `:378-391`
- * (flatten). If a NEW visual element turns out to be wanted — a status pill, say
+ * planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-UI-SPEC.md ("## 6. Copywriting Contract"): its sections 8.1 (button),
+ * 8.2 (input, with its visible-label row), 6.2 (receipt wording as object plus past-tense verb) and section 6's copywriting
+ * table (toast lifetime); and planning:.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md ("### Breakpoint strategy") (reflow)
+ * and planning:.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md ("### Nested-container composition") (flatten). If a NEW visual element turns out to be wanted — a status pill, say
  * — stop and raise it rather than inventing one.
  *
  * PHONE-FORWARD, which is a project tenet and not a preference: the base classes
@@ -113,7 +113,7 @@ const MALFORMED_EMAIL_ERROR = "That doesn't look like an email address";
 const INCOMPLETE_CODE_ERROR = 'Enter all 8 characters from the email';
 /* The Crockford alphabet omits I, L, O and U. Plan 09's verify handler DECODES
    the first three before validating (`CROCKFORD_CONFUSABLES = { O: '0', I: '1',
-   L: '1' }`, routes/users.js:2091), and this section decodes them identically —
+   L: '1' }`, backend:Sonnet/routes/users.js ("const CROCKFORD_CONFUSABLES = {")), and this section decodes them identically —
    so a hand-transcribed I, L or O is ACCEPTED, not rejected, and naming those
    three here would send a user hunting for characters the server takes happily.
    `U` has no decode on either side, and neither does stray punctuation. */
@@ -149,7 +149,7 @@ const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
    AUDITED Phase 88.6-38 (2026-09-17). Three claims lived here; ONE was right and TWO were
    not, and both wrong ones are corrected to what the code does rather than deleted.
 
-   1. THE PREDICATE CLAIM WAS CORRECT and is unchanged — `provisioningService.js:142-147`
+   1. THE PREDICATE CLAIM WAS CORRECT and is unchanged — backend:Sonnet/services/provisioningService.js ("return value.includes('@auth0.local') || value.includes('@auth0');")
       is `value.includes('@auth0.local') || value.includes('@auth0')`, broad, with the
       NIX-AUTH0 marker above it.
    2. THE CENSUS WAS WRONG IN BOTH HALVES ("seventeen backend sites and four frontend
@@ -157,12 +157,12 @@ const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
       integer in a comment rots silently and this is the second time this one has:
         - frontend: SIX call sites, ENUMERATED rather than counted by a grep, because a
           grep for the helper's own name matches this comment and would count itself:
-            * `EmailAddressSection.tsx:689`  — the idle display (`currentIsSynthetic`)
-            * `EmailAddressSection.tsx:1142` — the Save pre-flight
-            * `EmailAddressSection.tsx:2040` — the BLUR pre-check (round 6 #21)
-            * `FeedbackForm.js:66`           — the prefill gate
-            * `FeedbackForm.js:274`          — the `user_email` write
-            * `userProfile/page.js:1711`     — the profile header address line
+            * this file ("const currentIsSynthetic = isSyntheticAddress(currentAddress);") — the idle display (`currentIsSynthetic`)
+            * this file ("if (isSyntheticAddress(value)) {") — the Save pre-flight
+            * this file ("else if (v && isSyntheticAddress(v)) setEmailError(RESERVED_ADDRESS_ERROR);") — the BLUR pre-check (round 6 #21)
+            * src/app/components/FeedbackForm.js ("!isSyntheticAddress(self.email)") — the prefill gate
+            * src/app/components/FeedbackForm.js ("user_email: appAddress && !isSyntheticAddress(appAddress)") — the `user_email` write
+            * src/app/userProfile/page.js ("return addr && !isSyntheticAddress(addr) ? addr : NO_ADDRESS_ON_FILE;") — the profile header address line
           NOT four. The two the old count missed are this file's blur pre-check and
           `FeedbackForm.js`'s prefill gate — both shipped in the SAME 2026-09-07 fix set
           that wrote "four", which is how a census goes stale inside its own commit.
@@ -173,8 +173,8 @@ const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
           both are recorded there as unreproduced rather than silently re-pointed.
    3. THE WIRE CLAIM WAS STALE — it said the refusal "arrived as a bare `validation`
       envelope, which this section maps to 'reload the page'". It has not since round 6:
-      the backend registered `unsupported_address` @400 (`utils/errors.js:104`) and answers
-      it at `routes/users.js:1442`, and the Save catch below maps that specific code to
+      the backend registered `unsupported_address` @400 (backend:Sonnet/utils/errors.js ("unsupported_address:")) and answers
+      it at backend:Sonnet/routes/users.js ("return sendError(res, 'unsupported_address');"), and the Save catch below maps that specific code to
       this constant. The file already said so 700 lines down and disagreed with itself
       here. The stale sentence is why this constant EXISTS, so the history is kept as
       history rather than dropped: the copy was minted when the refusal was generic, and
@@ -198,7 +198,7 @@ const CANCELLED_MID_SAVE_COPY =
 /* THE SAME CASE, WITH THE MAIL REFUSED (round 6 #12 as re-worded 2026-09-07). The first
    version of this arm reused MAIL_REFUSED_COPY, which ends "use Resend code to try
    again" — and Resend lives in the awaiting-code panel, which this arm does not land in.
-   VERIFIED rather than assumed: hydration is one-shot and ref-guarded (`:743`), so the
+   VERIFIED rather than assumed: hydration is one-shot and ref-guarded (this file ("if (hydratedRef.current) return;")), so the
    `invalidateSelfCache` refetch above brings back a row carrying `pending_email_change`
    and the section STAYS IDLE; only a reload re-runs the hydration that reads it. So the
    copy names a reload, which is the one action that actually reaches the code from here.
@@ -231,8 +231,8 @@ const LABEL_DISCARD = 'Discard change';
 const LABEL_REVERT = 'Use my sign-in address';
 
 /* ── CODE NORMALISATION ─────────────────────────────────────────────────────
-   Mirrors routes/users.js `normaliseEmailChangeCode` (:1037-1039) plus its
-   confusable decode (:2091) and its alphabet (:2092), so this client is never
+   Mirrors backend:Sonnet/routes/users.js ("function normaliseEmailChangeCode(value) {") plus its confusable decode, backend:Sonnet/routes/users.js ("const CROCKFORD_CONFUSABLES = {"),
+   and its alphabet, backend:Sonnet/routes/users.js ("const EMAIL_CHANGE_CODE_PATTERN = "), so this client is never
    STRICTER than the contract. A client-side gate that rejected a code the server
    would accept is a defect, not a safety margin. */
 const CROCKFORD_CONFUSABLES: Record<string, string> = { O: '0', I: '1', L: '1' };
@@ -312,7 +312,7 @@ const STALE_ACTION_ERROR = 'That action is no longer available — reload the pa
  * section-wide default says. The Save route does NOT: every other `validation` it can
  * return is pre-gated client-side by the four checks in `handleSave` — and the shape and
  * length gates are the SAME regex and the SAME cap the backend applies
- * (`routes/users.js:962`, EMAIL_MAX_LENGTH 255), verified rather than assumed — so the
+ * (backend:Sonnet/routes/users.js ("const EMAIL_MAX_LENGTH = 255;")), verified rather than assumed — so the
  * only refusal that can survive them is the synthetic-address gate.
  */
 function messageFor(error: unknown, overrides: FetchErrorMessageOptions['byCode'] = {}): string {
@@ -335,7 +335,7 @@ function isUsableMutationBody(body: EmailChangeResponse | undefined | null): boo
      `lib/schemas/users.ts` says a `switch` here that misses an outcome literal is
      "a TYPE error rather than a runtime fall-through" — but that only holds if the
      value actually IS the declared type, and nothing checked. `apiFetch<T>` is a
-     generic CAST, not a parse (`lib/api.ts:621`), and `EmailChangeResponseSchema`
+     generic CAST, not a parse (src/lib/api.ts ("export async function apiFetch<T = unknown>("), its JSON.parse as T return), and `EmailChangeResponseSchema`
      had zero call sites in the repo. So the stated safety net did not exist: a
      ninth outcome literal, or a body missing `verification_sent`, reached the UI
      unchallenged — exactly the silent fall-through the comment claims is
@@ -353,7 +353,7 @@ function isUsableMutationBody(body: EmailChangeResponse | undefined | null): boo
 
      WHAT GOES TO SENTRY, AND WHY IT IS SAFE: a wrapped Error naming the failure, tags,
      and the zod issues reduced to `{path, code}` — the T-84-05 shape already reviewed and
-     shipped at `queryClient.ts:150-157`, whose comment states the reason: an issue's
+     shipped at src/lib/queryClient.ts ("const zodIssues = error.issues.map("), whose comment states the reason: an issue's
      `received` field can carry the input value, which on THIS route is the user's email
      address. The raw ZodError is never forwarded. `path` is a schema key name and `code`
      is a zod enum; neither can carry a value. */
@@ -383,7 +383,7 @@ function isUsableMutationBody(body: EmailChangeResponse | undefined | null): boo
  * whose body has already been written into the immortal self cache. Exported so the
  * behavioural test can unit-call the ordering rule directly without standing up an
  * interleave the UI cannot produce — the SAME seam shape, and the same reason, as
- * `queryClient.ts:121` (`shouldRetry`, "Exported so the behavioral test can unit-call the
+ * src/lib/queryClient.ts ("export function shouldRetry(") (`shouldRetry`, "Exported so the behavioral test can unit-call the
  * truth table directly").
  *
  * WHY A PURE FUNCTION AND NOT A RICHER SEAM. The interleave this guard defends against (A
@@ -434,8 +434,8 @@ export type SelfRowSnapshot = {
 
 /**
  * Two addresses are the same address under the SERVER's normaliser: trim, then lowercase —
- * `periodictabletopbackend_v2/Sonnet/services/provisioningService.js:134-135` (`function
- * normaliseEmail`), applied to the request at `routes/users.js:1409` and stored on the
+ * backend:Sonnet/services/provisioningService.js ("function normaliseEmail(value) {"),
+ * applied to the request at backend:Sonnet/routes/users.js ("const normalised = provisioningService.normaliseEmail(body.email);") and stored on the
  * pending change, so a pending address and a post-verify `email` are the lowercased form
  * while the address the user typed may not be. A strict `===` would miss every mixed-case
  * address.
@@ -674,7 +674,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
      fires the instant a Save succeeds against a self row the cache patch has not
      reached yet — which is a real code path, because `patchSelfCache` is a
      documented no-op when the cache is empty
-     (selfIdentityCache.ts:29-31) — and the user is told their brand-new code has
+     (src/lib/hooks/selfIdentityCache.ts ("No-op when the cache is empty")) — and the user is told their brand-new code has
      expired. Found by this plan's own colocated suite. */
   const sawPendingRef = React.useRef(false);
   /* THE SAVE LANE'S RUN TOKEN (round 5 #2). Bumped when a Save starts AND when Cancel is
@@ -754,7 +754,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
 
   /* ── HYDRATION, ONE SHOT ──────────────────────────────────────────────────
      The idiom is already shipped in this component's host page at
-     `src/app/userProfile/page.js:875-949`, and the reason is stated there in
+     src/app/userProfile/page.js ("DECISION Phase 88.6.1-61 (Req 11, identity init): initialize"), which keeps the old one-shot rule verbatim, and the reason is stated there in
      the repo's own words: the self cache is `staleTime: Infinity` and mutation
      handlers own their own local-state updates and cache writes, "so a reactive
      re-init on every `self` change would risk clobbering an in-progress edit".
@@ -775,7 +775,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
        (a) deriving the state reactively from `self` on every render — it
            clobbers an in-progress change on the section's OWN cache patch;
        (b) a mount-only `useEffect` with an empty dependency array — at mount
-           `self` is `undefined` (`useSelfIdentity.ts:118` returns `query.data`
+           `self` is `undefined` (src/lib/hooks/useSelfIdentity.ts ("self: query.data,") returns `query.data`
            on an `enabled`-gated, `staleTime: Infinity` query), so a user with a
            pending change would NEVER reach awaiting-code. That is the PRIMARY
            flow: "request the change, leave to read the mail on your phone, come
@@ -809,7 +809,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
        Change, which mints a fresh code. "That code has expired" lives on the
        VERIFY round trip (`outcome: 'expired'`), the only path that knows the
        difference, and plan 09's resend predicate carries NO `expires_at` clause
-       (routes/users.js:1550-1575) so the Resend that outcome promotes can
+       (backend:Sonnet/routes/users.js ("THE ROW PREDICATE IS")) so the Resend that outcome promotes can
        actually serve the row.
 
        NEVER key hydration on `verification_sent`. That is a
@@ -819,7 +819,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
        primary flow dies with no code input on screen.
 
        And do NOT copy the phone block's hydration mapping at
-       `userProfile/page.js:937-944`: it maps a stored-but-unverified value to
+       src/app/userProfile/page.js ("} else if (self.phone) {"): it maps a stored-but-unverified value to
        `'idle'` and never re-enters the pending state from the self row. Its
        STATE MACHINE is worth mirroring; that mapping would make the mailed code
        unusable after any reload inside its 30-minute life (SPEC A9), with
@@ -849,7 +849,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
      THIS ARM IS UNREACHABLE FOR EXPIRY-DRIVEN NULLS and is written anyway, so it
      does not read as dead code someone should delete: the self query is
      `staleTime: Infinity` and its docblock states the row "NEVER self-refreshes"
-     (`useSelfIdentity.ts:34`, `:102`), so an EXPIRY never pushes a null to a
+     (src/lib/hooks/useSelfIdentity.ts ("NEVER self-refreshes"), src/lib/hooks/useSelfIdentity.ts ("staleTime: Infinity,")), so an EXPIRY never pushes a null to a
      mounted client. It costs one branch, and "silently drop to idle" is the
      failure it prevents.
 
@@ -919,7 +919,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
          commit — no longer holds: the Verify drift arm now AWAITS the refetch before it
          moves state, and that arm's own commit already renders the refetched row, because
          `useQuery` computes its result from the query's CURRENT state at render
-         (`node_modules/@tanstack/react-query/build/modern/useBaseQuery.js:55`,
+         (node_modules:@tanstack/react-query/build/modern/useBaseQuery.js ("const result = observer.getOptimisticResult(defaultedOptions);"),
          `observer.getOptimisticResult`). The settle-time disarm the paragraph points at is
          retired with it: the arming decision moved INTO that arm, after the settle, where
          the rows are read once. Both placements still stand, for a smaller reason: the
@@ -997,7 +997,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
    * that a refetch which comes back STILL PENDING brings the ref down deterministically —
    * otherwise one armed suppression outlives its cause and swallows the next genuine
    * expiry. The signal is the invalidation PROMISE settling
-   * (`selfIdentityCache.ts:49-50` returns `queryClient.invalidateQueries`, which resolves
+   * (src/lib/hooks/selfIdentityCache.ts ("return queryClient.invalidateQueries({ queryKey: SELF_IDENTITY_KEY });") returns `queryClient.invalidateQueries`, which resolves
    * after the refetch), read against the CACHE rather than against a rendered value:
    * at settle time React may not have re-rendered yet, so anything derived from `self`
    * would still be the pre-refetch row. Attaching a settle handler is NOT the same as
@@ -1050,7 +1050,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
   /* THE REFETCHED SELF ROW, READ ONCE BY A DRIFT ARM AFTER ITS AWAITED REFETCH (Phase
      88.6.1-13, D-11). From the CACHE, never from `self` — the closure is the pre-refetch row.
      SCOPED TO THE SIGNED-IN USER'S OWN ROW: `SELF_IDENTITY_KEY` is only the PREFIX and the
-     live key is per account (`useSelfIdentity.ts:28-31`, `:86`), so an unscoped prefix read
+     live key is per account (src/lib/hooks/useSelfIdentity.ts ("The live key is"), src/lib/hooks/useSelfIdentity.ts ("const queryKey = [...SELF_IDENTITY_KEY")), so an unscoped prefix read
      would let another account's cached entry decide this user's toast, verified state, code
      panel and suppression. Filtered on the row's `id` against `selfId`, never on the sign-in
      subject; no `selfId`, no rows. A handler-local read, not a reactive re-derivation, so
@@ -1185,7 +1185,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
     /* Round 5 #16/#19/#29: THE SAME PREDICATE THE BACKEND USES, not a re-spelling of it.
        `isSyntheticAddress` is the shared `src/lib/syntheticAddress.ts` helper this file
        already consumes for the idle display, and it pairs with
-       `services/provisioningService.js:142-147`. Do NOT narrow either side to
+       backend:Sonnet/services/provisioningService.js ("return value.includes('@auth0.local') || value.includes('@auth0');"). Do NOT narrow either side to
        `@auth0.local` — `DECISION Phase 88.2 NIX-AUTH0` records the broad substring as
        deliberate. The one documented divergence (this copy answers FALSE for
        null/empty, the backend answers TRUE) cannot bite here: `value` is non-empty by
@@ -1254,12 +1254,12 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
            unknown here. The line is true in the common case (an unreadable body, mail sent);
            it is false only when an unreadable response body AND a provider refusal coincide
            (the BE sets `verification_sent` from the mail send's result,
-           `periodictabletopbackend_v2/Sonnet/routes/users.js:1503`, anchor
+           backend:Sonnet/routes/users.js ("let verificationSent = false;"), set two lines below by
            `verificationSent = await sendEmailChangeCodeMail`), and then Resend is locked for
            30 s and recovers after it. Rejected there: (B) skipping the cooldown and
            promoting Resend — it invites a Resend that revokes the code already in the inbox
            in the common case; (C) no sent line — the common case loses its confirmation.
-           D-11 (`88.6.1-CONTEXT.md:117-118`, anchor "the Save arm moves to the code panel")
+           D-11 (planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/88.6.1-CONTEXT.md ("### Email change that gets out of step"), which says the Save arm moves to the code panel)
            stands. With nothing pending, the generic error goes to the EDITING lane beside
            Save (D-11a) and NO focus moves — see `DECISION Phase 88.6.1-13 (D-11a, Save
            catch)` for why. Changing any of this is a decision, not a cleanup. */
@@ -1377,7 +1377,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
       if (body.outcome === 'unchanged') {
         /* STAY IN awaiting-code IF A CHANGE IS STILL PENDING (code review #5,
            2026-09-05). The server deliberately leaves an existing pending change
-           alone on this outcome (`88.8-09-PLAN.md:202`, and revoking it would
+           alone on this outcome (planning:.planning/phases/88.8-account-provisioning-hardening-inserted-2026-09-02/88.8-09-PLAN.md ("Task 1: Request a change and resend a code"), and revoking it would
            destroy a live verification on an ambiguous signal) — but the section
            used to drop to idle anyway while writing that still-live
            `pending_email_change` into the immortal self cache. The user read
@@ -1432,7 +1432,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
          400 on the route (a body-key drift, a future validator) render as "the domain is
          reserved", which is a confident wrong answer rather than a generic one. The
          backend registered `unsupported_address` @400 in this same fix set
-         (`utils/errors.js:104`), so the specific code now carries the specific copy and
+         (backend:Sonnet/utils/errors.js ("unsupported_address:")), so the specific code now carries the specific copy and
          `validation` falls back to the section-wide stale-action default, exactly as it
          does on the four sibling routes. The pre-check above is unchanged and still means
          this should never fire from our own UI.
@@ -1545,7 +1545,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
            section still reads `verifying`, so the shared lane stays closed until the self
            row is fresh (`DECISION Phase 88.8 (code review HIGH-2)` honoured); the refetched
            row is read ONCE from the cache, and ONLY the signed-in user's own row (`id`
-           equals `selfId` — the key is per account, `useSelfIdentity.ts:28-31`, and the
+           equals `selfId` — the key is per account, src/lib/hooks/useSelfIdentity.ts ("The live key is"), and the
            prefix read would otherwise match every account's entry); success is claimed
            only when that row PROVES it — `email` equals the target under the server's
            normaliser AND no pending change — and then the section shows the verified
@@ -1852,7 +1852,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
             each region's accessible name — the one hazard `Heading.tsx`'s own docblock names
             ("It is NOT a safe `aria-labelledby` idref target unless the caller guarantees
             non-empty content"). That guarantee HOLDS here and is why the idref is safe: the child
-            is the module constant `SECTION_TITLE` (`:96`), never a prop, never interpolated, never
+            is the module constant `SECTION_TITLE` (this file ("const SECTION_TITLE = 'Email';")), never a prop, never interpolated, never
             empty — so `Heading`'s AC-3 empty-children early return is unreachable at these three
             sites. Chosen OVER leaving them raw `<h2>`s (the file would be the phase's only
             un-migrated heading surface) and OVER giving the `<section>` an `aria-label` instead
@@ -1863,7 +1863,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
           {SECTION_TITLE}
         </Heading>
         {/* NO fallback to the Auth0 session address here. The profile page's own
-            terminal arm does exactly that at page.js:883-891 — for the USERNAME,
+            terminal arm does exactly that at src/app/userProfile/page.js ("Identity failed with NO row — fall back to Auth0 user data") — for the USERNAME,
             where a wrong display name is cosmetic. For the ADDRESS it is the
             stale value this whole correction removes, and offering Change
             against an address we cannot read invites a change to the value the
@@ -1880,8 +1880,8 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
             region that mounts WITH its content announces nothing, and this arm can be the
             section's FIRST render when the self query is already settled-errored. */}
         {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): the authored `text-sm` was DEAD and is deleted —
-            `StatusRegion`'s own base already supplies it (`StatusRegion.tsx:103`, `cn('text-sm',
-            className)`), so this was the size utility restating what the primitive gives, the
+            `StatusRegion`'s own base already supplies it (src/components/ui/StatusRegion.tsx ("'text-sm',"), its
+            first cn class), so this was the size utility restating what the primitive gives, the
             §4.3 "dead size utility → delete it" shape. Zero look delta by construction. The ink
             token STAYS: that is a real choice, not a restatement. */}
         <StatusRegion className="text-content-secondary">{announcement}</StatusRegion>
@@ -1916,7 +1916,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
      DR-C's SECOND half only (a fixed error naming what is missing) and not its first, so
      a screen-reader or switch user was told the control was available, pressed it, and
      got an error instead of an action. DR-C's contract is both halves together
-     (`:135-139`), and the five controls already carry the shape for `mutating` and the
+     (this file ("Round 3 #34/#35: the in-flight gate ANSWERS")), and the five controls already carry the shape for `mutating` and the
      cooldown — this is the same shape applied to the one condition that was missing it,
      not a new rule. Still `aria-disabled`, never native `disabled`. */
   const selfRowMissing = !selfId;
@@ -1965,7 +1965,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
               stores `<sub>@auth0.local` in `Users.email` as a SENTINEL, not a
               contact handle, and guards it in 19 places; this frontend guarded
               it in zero until this plan. Cite: DECISION Phase 88.2 NIX-AUTH0
-              (services/groupOwnershipOfferService.js:97-115) — the BROAD
+              (backend:Sonnet/services/groupOwnershipOfferService.js ("DECISION Phase 88.2 NIX-AUTH0 (owner, 2026-07-27, REVERSING MED-AUTH0)")) — the BROAD
               `@auth0` substring is deliberate and re-narrowing it to
               `@auth0.local` is a decision, not a cleanup. A falsy address takes
               the same branch: "no address" and "a sentinel" read identically to
@@ -2072,7 +2072,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
             error={emailError ?? undefined}
             errorKey={emailErrorSeq}
           >
-            {/* The house form-field rule at `Input.tsx:11-19`: id + name + an
+            {/* The house form-field rule at src/components/ui/Input.tsx ("HOUSE RULE (88-33 Task 8, fork 5"): id + name + an
                 associated label on every control, because browser autofill does
                 not read ARIA. `FormField` injects the id and the aria
                 attributes but NOT `name`. */}
@@ -2088,7 +2088,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
                  `FormField`'s error slot is unconditionally `role="alert"`
                  (FormField's error paragraph, rendered when `error` is set), and an alert on every keystroke talks
                  over the person mid-entry. The phone block above records
-                 exactly this reason at page.js:1802-1808. */
+                 exactly this reason at src/app/userProfile/page.js ("on every keystroke would talk over the person mid-entry;"). */
               onChange={(e) => {
                 setEmailInput(e.target.value);
                 // Round 3 #36: resuming entry clears the stale error (and its
@@ -2178,7 +2178,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
           <div className="flex items-center gap-2 mb-1">
             {/* The state lives in a TEXT node (WCAG 1.4.1) — never colour and
                 never an icon alone. `Icon` is `aria-hidden` by default
-                (Icon.tsx:7), so the word is what is announced. */}
+                (src/components/ui/Icon.tsx ("Decorative by default")), so the word is what is announced. */}
             <Icon name="Clock" size={16} className="text-content-status-warning shrink-0" />
             <span className="text-sm text-content-primary">{NOT_VERIFIED_LABEL}</span>
           </div>
@@ -2281,7 +2281,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
                  with the re-press blocked in the handler (DR-C). NO ticking
                  countdown text lives inside any Banner or StatusRegion —
                  `Banner` wraps its children in an assertive `aria-atomic`
-                 region (Banner.tsx:87, :103-106), so a per-second label change
+                 region (src/components/ui/Banner.tsx ("const assertive = resolvedTone === 'error' || resolvedTone === 'warning';"), src/components/ui/Banner.tsx ("sit inside the aria-atomic region, so a label change there re-reads")), so a per-second label change
                  would re-announce the whole banner. */
               variant={resendPromoted ? 'secondary' : 'ghost'}
               onClick={handleResend}
@@ -2335,7 +2335,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
 /* DECISION Phase 88.8 D-30: this section is built from the HOUSE primitives —
    `FormField`, `Input`, `Button`, `Banner`, `StatusRegion`, `Icon` — chosen OVER
    matching the phone-verification block that sits directly above it on the same
-   page (`userProfile/page.js:1740-1994`). Copying the neighbour for local
+   page (src/app/userProfile/page.js ("Phone Input — gated on sms_enabled per the admin-entitlement")). Copying the neighbour for local
    visual consistency is the obvious move and it LOSES here: that block's buttons
    are hand-rolled markup carrying neither the shared `.btn` class nor any height
    floor, so mirroring it would ship a phone-forward regression on a brand-new
@@ -2361,7 +2361,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
    second instance of the class.
 
    THE PRECEDENT IS HONOURED, NOT OVERTURNED. `DECISION Phase 88.5` at
-   `NextGameNightCard.tsx:479-487` splits it as: the control being ACTED ON gets
+   src/app/components/NextGameNightCard.tsx ("DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5, narrowed)") splits it as: the control being ACTED ON gets
    `aria-disabled`; a control nobody is standing on may be natively disabled.
    There, the natively-disabled buttons are the OTHER RSVP options while one is
    submitting. This section simply has no control of that second kind.
