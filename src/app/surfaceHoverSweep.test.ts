@@ -409,6 +409,13 @@ describe('Phase 88.6-02 (D-15) — the retired card-hover CLASS token has zero l
   it('(c) `e2e/` has no live use — no old token in a locator/selector, no old custom-property reference', () => {
     // `e2e/` is outside `sourceFiles()`' reach, so this leg reads it directly.
     //
+    // DECISION Phase 88.6.2-19 (W056): the leg walks e2e/ RECURSIVELY with the built-in readdirSync
+    // recursive option, the shape the tokenContrast src walk already runs on CI's Node 20. It was
+    // chosen OVER the top-level read, which never opened e2e/support/ (the shared helpers, where a
+    // custom-property read is most likely to live, per the 88.6 review), and OVER a hand-written
+    // walker, one more private walker copy. The support/ assert is what keeps the walk from going
+    // shallow again. Narrowing it is a decision, not a cleanup.
+    //
     // IT IS DELIBERATELY NOT A STRING-CHUNK SCAN. Three `card-hover` strings survive in
     // `e2e/contrast.spec.ts` — a `test.step` TITLE, a comment, and an assertion LABEL — and two of
     // the three are string literals, so a non-comment string census would red on descriptive prose.
@@ -416,16 +423,20 @@ describe('Phase 88.6-02 (D-15) — the retired card-hover CLASS token has zero l
     // property; both of those are syntactically distinctive, so they are what is asserted.
     const e2eDir = path.resolve(SRC, '..', 'e2e');
     const e2eFiles = fs
-      .readdirSync(e2eDir, { withFileTypes: true })
+      .readdirSync(e2eDir, { recursive: true, withFileTypes: true })
       .filter((d) => d.isFile() && /\.(ts|js)$/.test(d.name))
-      .map((d) => path.join(e2eDir, d.name));
+      .map((d) => path.join(d.parentPath ?? d.path, d.name));
     expect(e2eFiles.length, 'LOCATOR failure: no e2e spec files found').toBeGreaterThan(0);
+    expect(
+      e2eFiles.some((file) => path.relative(e2eDir, file).split(path.sep)[0] === 'support'),
+      'LOCATOR failure: the walk never reached e2e/support/ — a top-level read skips every shared helper',
+    ).toBe(true);
 
     const offenders: string[] = [];
     for (const file of e2eFiles) {
       const src = fs.readFileSync(file, 'utf8');
       src.split('\n').forEach((line, i) => {
-        const where = `${path.basename(file)}:${i + 1}`;
+        const where = `${path.relative(path.dirname(e2eDir), file)}:${i + 1}`;
         // A selector reach: the token inside locator()/querySelector()/getBy*()/$()/$$().
         if (
           new RegExp(
