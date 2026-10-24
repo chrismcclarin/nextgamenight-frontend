@@ -315,10 +315,19 @@ const fmt = (hits: Hit[]) =>
 // matched code is GONE — `grep -c 'String(err?.message' src/app/gameDetail/page.js` → 0,
 // measured 2026-09-15. It survived because the anti-vacuity array below was a SECOND hand
 // literal that listed 3 of the 4 entries and omitted exactly the dead one.
-const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string }> = [
+// DECISION Phase 88.6.2-21 (W058): each allow-list entry carries an exact sites count and a D-19
+// owner, checked by assertRosterShape and assertExactCounts on a roster derived from this array,
+// chosen OVER the substring permission, which let any copy of an allowed line through uncounted
+// (IN-410), and OVER re-keying the list by file (FriendshipStatusProvider holds two entries that
+// need separate counts). SURFACES is KEPT: this answers DECISION Phase 88.6-60's take-it-with-W058
+// condition. W058's defect is the allow-list's matching, which SURFACES never reads, and retiring
+// it would delete the alert( assertion, its length pin and two anti-vacuity loops for no gain here.
+const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string } & ExemptionRoster[string]> = [
   {
     file: 'app/groupHomePage/page.js',
     contains: "const msg = (error?.message || '').toLowerCase();",
+    sites: 1,
+    owner: { kind: 'spec', id: 'Req 14 (DES-04/DES-05) / T-88-25-01 - a control-flow read is branched on and never displayed (88.6-13 standing rule 1)' },
     why: 'isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed.',
   },
   // DELETED by plan 88.6-42 task 1 (wave 8, 2026-09-17), in the SAME COMMIT as the re-key,
@@ -333,6 +342,8 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   {
     file: 'app/components/FriendshipStatusProvider.js',
     contains: "if (err?.message?.includes('409') || err?.status === 409) {",
+    sites: 1,
+    owner: { kind: 'spec', id: 'Req 14 (DES-04/DES-05) / T-88-25-01 - a control-flow read is branched on and never displayed (88.6-13 standing rule 1)' },
     why:
       'CONTROL FLOW. Status-FIRST duplicate-request branch — the message test is the ' +
       'legacy half of an `||` whose right arm already reads `err.status`. Never displayed. ' +
@@ -342,6 +353,8 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   {
     file: 'app/components/FriendshipStatusProvider.js',
     contains: "const is404 = err?.message?.includes('404') || err?.status === 404;",
+    sites: 2,
+    owner: { kind: 'spec', id: 'Req 14 (DES-04/DES-05) / T-88-25-01 - a control-flow read is branched on and never displayed (88.6-13 standing rule 1)' },
     why:
       'CONTROL FLOW. Two sites (handleAcceptRequest and handleDeclineRequest), same line text: a not-found probe that ' +
       'resolves to a boolean and picks a UI state. Status-first, same shape as the 409 ' +
@@ -372,6 +385,8 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   {
     file: 'lib/logger.ts',
     contains: "const message = typeof e?.message === 'string' ? e.message : String(err);",
+    sites: 1,
+    owner: { kind: 'decision', marker: 'DECISION Phase 88.6-13 (D8/D11/D16): ONE helper, chosen OVER ~100 hand-written ctx' },
     why:
       'SANCTIONED DIAGNOSTIC READ — a third class, and it is the only one. This is ' +
       "`errCtx(err)`'s body: the helper that exists so AC-2's ~100 conversions never spell " +
@@ -384,6 +399,8 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   {
     file: 'app/Header.js',
     contains: 'if (error) return <div>{error.message}</div>;',
+    sites: 1,
+    owner: { kind: 'owner', date: '2026-09-09', ruling: 'AC-22 routing (88.6-46 R102): the measured-empty Auth0 useUser() render stays allow-listed and is routed to Phase 93' },
     why:
       'MEASURED-EMPTY IN THE COMMON CASE, not control flow. This RENDERS the message of ' +
       "Auth0's `useUser()` error. `layout.js:27` mounts `UserProvider` with no fetcher, so " +
@@ -405,6 +422,8 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   {
     file: 'app/page.js',
     contains: '<div className="text-content-status-error">Error: {error.message}</div>',
+    sites: 1,
+    owner: { kind: 'owner', date: '2026-09-09', ruling: 'AC-22 routing (88.6-46 R102): the measured-empty Auth0 useUser() render stays allow-listed and is routed to Phase 93' },
     why:
       'MEASURED-EMPTY IN THE COMMON CASE, not control flow. Same Auth0 `useUser()` error as ' +
       "Header.js:55, with the same two cases: (a) `RequestError` → `.message` is '', so this " +
@@ -423,6 +442,22 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
 
 const isAllowed = (hit: Hit): boolean =>
   CONTROL_FLOW_ALLOWED.some((a) => a.file === hit.file && hit.text.includes(a.contains));
+
+// The allow-list as a D-19 roster, keyed file :: contains (W058). FriendshipStatusProvider holds
+// two entries, so the key carries the matched text as well as the file.
+const CONTROL_FLOW_ROSTER: ExemptionRoster = Object.fromEntries(
+  CONTROL_FLOW_ALLOWED.map((a) => [`${a.file} :: ${a.contains}`, { sites: a.sites, why: a.why, owner: a.owner }]),
+);
+
+/** How many comment-stripped lines of each entry's file include its text, keyed as the roster. */
+function controlFlowCounts(): Record<string, number> {
+  return Object.fromEntries(
+    CONTROL_FLOW_ALLOWED.map((a) => [
+      `${a.file} :: ${a.contains}`,
+      readStripped(a.file).lines.filter((l) => l.trim().includes(a.contains)).length,
+    ]),
+  );
+}
 
 /**
  * The ASSERTION PATH, as one function: predicate, then the allow-list filter.
@@ -915,6 +950,13 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
         `stale allow-list entry: ${a.file} no longer contains "${a.contains}"`
       ).toBe(true);
     }
+  });
+
+  it('the allow-list is EXACT per entry and owned (W058) — a second copy of an allowed read reds', () => {
+    // Each entry permits exactly its counted sites; a copied line anywhere in its file is a new
+    // offender, not a free pass. See the W058 marker above CONTROL_FLOW_ALLOWED.
+    expect(assertRosterShape(CONTROL_FLOW_ROSTER)).toEqual([]);
+    expect(assertExactCounts(CONTROL_FLOW_ROSTER, controlFlowCounts())).toEqual([]);
   });
 
   it('no native alert() survives on these surfaces (DEF-88-16-01)', () => {
