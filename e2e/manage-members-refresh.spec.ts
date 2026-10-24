@@ -8,6 +8,7 @@ import {
   settleAnimations,
   type WriteHold,
 } from './support/inFlight';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 /**
  * Phase 88.6.1-42 (D-09a, Req 9; Req 5 H1, D-05 as amended by D-57) — Manage Members at 375px.
@@ -75,7 +76,7 @@ const isSynthRemove = (url: URL) =>
 
 /** The real roster from the backend, as an array (an empty one if the read was not a roster). */
 async function realRoster(route: Route): Promise<{ response: APIResponse; body: unknown[] }> {
-  const response = await route.fetch();
+  const response = await scrubbedFetch(route);
   const json: unknown = await response.json();
   return { response, body: Array.isArray(json) ? json : [] };
 }
