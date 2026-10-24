@@ -319,27 +319,32 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
     expect(paired).toBeGreaterThanOrEqual(40);
   });
 
+  // DECISION Phase 88.6.2-21 (R-d): tests 3 and 4 read comment-stripped code and count each file's
+  // rings (StarRatingPicker's two halves each carry one, and Tabs' TabsTrigger and TabsContent each
+  // carry one), chosen OVER the raw toContain, which StarRatingPicker's own docblock satisfied with
+  // no ring in its code (found by plan 88.6.2-09, routed here). A ring that lives only in a comment
+  // paints nothing.
   it('3. the three pre-88-28 compliant files still carry their `focus-visible` rings', () => {
-    for (const rel of [
-      'app/components/Modal.tsx',
-      'app/components/StarRatingPicker.js',
-      'components/ui/ErrorFallback.tsx',
-    ]) {
-      expect(fs.readFileSync(path.join(SRC, rel), 'utf8')).toContain('focus-visible:ring-2');
+    for (const [rel, rings] of [
+      ['app/components/Modal.tsx', 1],
+      ['app/components/StarRatingPicker.js', 2],
+      ['components/ui/ErrorFallback.tsx', 2],
+    ] as const) {
+      expect(withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8')).split('focus-visible:ring-2').length - 1, rel).toBeGreaterThanOrEqual(rings);
     }
   });
 
   it('4. the six ui/ primitives ring on keyboard focus only', () => {
-    for (const rel of [
-      'components/ui/Button.tsx',
-      'components/ui/Input.tsx',
-      'components/ui/Switch.tsx',
-      'components/ui/Tabs.tsx',
-      'components/ui/dialog.tsx',
-      'app/components/form/SelectField.tsx',
-    ]) {
-      const src = fs.readFileSync(path.join(SRC, rel), 'utf8');
-      expect(src, rel).toContain('focus-visible:ring-2');
+    for (const [rel, rings] of [
+      ['components/ui/Button.tsx', 1],
+      ['components/ui/Input.tsx', 1],
+      ['components/ui/Switch.tsx', 1],
+      ['components/ui/Tabs.tsx', 2],
+      ['components/ui/dialog.tsx', 1],
+      ['app/components/form/SelectField.tsx', 1],
+    ] as const) {
+      const src = withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
+      expect(src.split('focus-visible:ring-2').length - 1, rel).toBeGreaterThanOrEqual(rings);
     }
   });
 
