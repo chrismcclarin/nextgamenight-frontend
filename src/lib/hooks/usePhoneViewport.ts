@@ -68,8 +68,10 @@
    (1) The value starts false and flips after mount, so a phone arm can paint one desktop frame
        first (DECISION Phase 88.1-12's KNOWN COST, EventScheduler.tsx).
    (2) A consumer that renders its phone sentence inside a live region must not let that flip be
-       announced. `src/app/components/AvailabilityGrid.js:910-919` (anchor
-       `<StatusRegion className="mt-3`) is such a site; plan 88.6.1-39 owns it.
+       announced. AvailabilityGrid was the site this named; plan 88.6.1-39 took its phone hint out
+       of the live region — it is plain text at
+       src/app/components/AvailabilityGrid.js ("<div data-testid={GRID_SUMMARY_LINE_TESTID}"), and
+       the grid's live region is the separate sr-only summary after it.
    (3) Unit tests choose the arm with a media stub installed BEFORE render (EventScheduler.test.tsx
        `stubMatchMedia`); jsdom's global stub answers false (`vitest.setup.ts:23-35`), so a test
        with no stub renders the desktop arm. */
