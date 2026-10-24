@@ -46,6 +46,9 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 // (`staleTime: 30_000`, `refetchOnWindowFocus: false`), so reaching a retained failure there
 // needs a fake clock or a dialog re-open helper that keeps the query cache; its notice is the
 // same shared row E2 measures, and its structure is pinned in PromptScheduleReadOnly.test.tsx.
+// CLOSED 88.6.2-22: e2e/prompt-schedule-readonly-notice-phone.spec.ts ("DECISION Phase 88.6.2-22 (stale-reopen):")
+// now drives that summary at 375px (a page-clock stale reopen through openGroupSettingsFromKebab,
+// then a held and failed refetch). The paragraph above is kept as the record of the gap.
 //
 // CI ONLY: the `phone` project needs `.auth/user.json` and the E2E login secrets, which exist only
 // in CI (FE-TESTING-CONVENTIONS C-14). Locators are role, name and text only.
