@@ -782,7 +782,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // first is gated on `!canManageMembers` and the fixture user OWNS this group, and the
       // second is gated on `userData?.sms_enabled`, a DB-only admin entitlement the fixture
       // does not set. Both would be zero-element locators. This block is the same
-      // requirement (a sunken/recessed block inside a card) at a site that actually renders.
+      // requirement (a sunken/recessed block inside a card) at a site that actually renders. DECISION Phase 88.6.2-31 (ruling-B-e2e): line number kept as quoted text over an anchor — both numbers are the plan's own words, which this DEVIATION note quotes to refuse them.
       const nested = page
         .locator('p')
         .filter({ hasText: /Tap and hold on a day to pick a time\.|Click and drag on the calendar/ });
@@ -817,7 +817,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // visual mode on this form: `GameComboInput` is its own component and Comments is a
       // `Textarea`. The plan's own escape hatch is taken — the toggle is exercised HERE,
       // after every visual-mode read above, exactly as the plan permits. The ring is a
-      // property of the primitive (src/components/ui/Input.tsx ("focus-visible:ring-2 focus-visible:ring-focus-ring")), not of the mode.
+      // property of the primitive (src/components/ui/Input.tsx ("focus-visible:ring-2 focus-visible:ring-focus-ring")), not of the mode. DECISION Phase 88.6.2-31 (ruling-B-e2e): line number kept as quoted text over an anchor — the number is the plan's offered cite, which this DEVIATION note quotes.
       await switchToManualEntry(page);
       const input = page.getByLabel(/start date & time/i);
       await expect(input).toBeVisible({ timeout: 15_000 });
