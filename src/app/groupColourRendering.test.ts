@@ -277,6 +277,27 @@ function openTags(src: string): { line: number; offset: number; tag: string; att
   return out;
 }
 
+// DECISION Phase 88.6.2-21 (W057): the slot host is the nearest preceding Button's OWN open tag
+// (asChild in its attributes, not self-closed, still open at the child), chosen OVER the old test
+// of asChild anywhere in the 1500 chars before the child, which exempted a raw Link placed after a
+// CLOSED asChild Button (IN-409). The 1500-char bound stays as the outer limit. Loosening any
+// condition is a decision, not a cleanup.
+//
+// src is the comment-stripped text, tags is openTags(src), offset is the child's open-tag offset.
+function slottedInAsChild(
+  src: string,
+  tags: { offset: number; tag: string; attrs: string }[],
+  offset: number,
+): boolean {
+  const btnAt = src.slice(0, offset).lastIndexOf('<Button');
+  if (btnAt < 0 || offset - btnAt >= 1500) return false;
+  const host = tags.find((t) => t.offset === btnAt && t.tag === 'Button');
+  if (!host) return false;
+  if (!/\basChild\b/.test(host.attrs)) return false;
+  if (host.attrs.trimEnd().endsWith('/')) return false;
+  return !src.slice(btnAt, offset).includes('</Button>');
+}
+
 /**
  * The group-page RENDER TREE, per owner ruling A (2026-08-27).
  *
@@ -1707,7 +1728,8 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     for (const { file, floor } of RING_SCAN_FILES) {
       const src = code(file);
       let found = 0;
-      for (const { line, offset, tag, attrs } of openTags(src)) {
+      const tags = openTags(src);
+      for (const { line, offset, tag, attrs } of tags) {
         const isAnchor = tag === 'a' && /\bhref\s*=/.test(attrs);
         const isFocusable =
           tag === 'button' ||
@@ -1726,13 +1748,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         // exempted, on the strength of the enclosing `<Button>`, which is looked up rather than
         // assumed: the nearest preceding `<Button` open tag must itself carry `asChild`.
         if (tag === 'Link' || isAnchor) {
-          const before = src.slice(0, offset);
-          const btnAt = before.lastIndexOf('<Button');
-          const slotted =
-            btnAt > -1 &&
-            offset - btnAt < 1500 &&
-            /\basChild\b/.test(src.slice(btnAt, offset));
-          if (slotted) continue;
+          if (slottedInAsChild(src, tags, offset)) continue;
         }
         if (!attrs.includes('focus-visible:ring-')) {
           offenders.push(`${file}:${line} <${tag}> has no focus-visible:ring-* class`);
@@ -1824,6 +1840,43 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(chipTag, 'the hover border treatment was lost in the W76 move').toContain(
       'group-hover:border-content-primary',
     );
+  });
+
+  it('22c. the asChild slot exemption holds only INSIDE an open asChild Button (W057)', () => {
+    // Five synthetic sources pin the rule with no plant in a real file. Each case puts one
+    // Link after a Button shape and asks slottedInAsChild whether the Link is slotted.
+    const cases: { name: string; fx: string; want: boolean }[] = [
+      {
+        name: 'a Link inside an open asChild Button is slotted',
+        fx: '<Button asChild className="x">\n  <Link href="/a">a</Link>\n</Button>',
+        want: true,
+      },
+      {
+        name: 'a Link after the asChild Button closed is not slotted',
+        fx: '<Button asChild className="x">\n  <Link href="/a">a</Link>\n</Button>\n<Link href="/b">b</Link>',
+        want: false,
+      },
+      {
+        name: 'a Link after a self-closed asChild Button is not slotted',
+        fx: '<Button asChild className="x" />\n<Link href="/b">b</Link>',
+        want: false,
+      },
+      {
+        name: 'a Link inside a Button without asChild is not slotted',
+        fx: '<Button className="x">\n  <Link href="/a">a</Link>\n</Button>',
+        want: false,
+      },
+      {
+        name: 'a Link more than 1500 chars after an open asChild Button is not slotted',
+        fx: `<Button asChild className="x">\n${' '.repeat(1600)}<Link href="/a">a</Link>\n</Button>`,
+        want: false,
+      },
+    ];
+    for (const { name, fx, want } of cases) {
+      const fxTags = openTags(fx);
+      const at = fx.lastIndexOf('<Link');
+      expect(slottedInAsChild(fx, fxTags, at), name).toBe(want);
+    }
   });
 
   it('23. the month view\'s clickable divs are focusable, and the day cell\'s keyboard target is INSIDE it', () => {
