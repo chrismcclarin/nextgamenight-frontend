@@ -31,8 +31,8 @@ declare global {
  *
  * WHY THIS FILE EXISTS. SPEC Req 3's stated acceptance is "the Playwright
  * create-event journey is green", but that journey deliberately clicks PAST the
- * scheduler: `e2e/create-event.spec.ts:31-37` switches to manual entry and fills
- * the datetime-local input. It would stay green with the scheduler completely
+ * scheduler: its shared drive, e2e/support/createEvent.ts ("export async function fillCreateEventFields("),
+ * switches to manual entry and fills the datetime-local input. It would stay green with the scheduler completely
  * broken, or absent. Every test below stays in VISUAL-CALENDAR mode; that single
  * difference is the point of the file.
  *
@@ -67,15 +67,15 @@ declare global {
  * correction plan 88.1-07 made to its `rbc-` gate.)
  *
  * PROJECT GUARD: `journeys` and `phone` share `testMatch: /.*\.spec\.ts/`, so the
- * touch describe skips the DESKTOP project the way touch-targets.spec.ts:589
- * does (its R4/R6 phone-only skip). The mouse describe at the bottom inverts that guard — mouse
+ * touch describe skips the DESKTOP project the way
+ * e2e/touch-targets.spec.ts ("R4/R6 are phone-tenet requirements — phone project only") does (its R4/R6 phone-only skip). The mouse describe at the bottom inverts that guard — mouse
  * range-select is the phase's only analog-free mechanism and nothing else drives it end to end.
  *
  * SELECTOR NOTE: every interactive control is located by ROLE / LABEL / TEXT
  * ("Add New Game Event", "Switch to Manual Entry", `role=tab`, `role=columnheader`,
  * the verbatim "Selected Time:" panel). `[data-coord]` appears ONLY in the
  * geometry/painted-state probes — it is WeekGrid's own paint-resolution attribute
- * (`WeekGrid.tsx:507`, the same test-plumbing class as WriteCell's data-slot-id),
+ * (src/app/components/heatmap/WeekGrid.tsx ("data-coord={coordKey(row, col)}"), the same test-plumbing class as WriteCell's data-slot-id),
  * and `usePaintGesture` resolves targets through it, so a probe that used
  * anything else would not be measuring the mechanism under test.
  *
@@ -83,10 +83,10 @@ declare global {
  * directly (pitfall P5: no pin may assert the threshold NUMBERS; behaviour is
  * asserted relative to them, before/after).
  *
- * FIXTURES: `E2E_GROUP_ID` only — the same seeded id create-event.spec.ts:17 and
- * touch-targets.spec.ts:71 read (each a const from process.env.E2E_GROUP_ID). No new secret is
- * minted and no credential is written here. e2e is CI-only by design (playwright.config.ts:22-24,
- * intentionally absent locally): author locally, verify in the `phone` lane.
+ * FIXTURES: `E2E_GROUP_ID` only — the same seeded id e2e/create-event.spec.ts ("const groupId = process.env.E2E_GROUP_ID ?? '1';")
+ * and e2e/touch-targets.spec.ts ("const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';") read (each a const from process.env.E2E_GROUP_ID). No new secret is
+ * minted and no credential is written here. e2e is CI-only by design (the login credentials are absent
+ * locally, playwright.config.ts ("They are intentionally absent locally")): author locally, verify in the `phone` lane.
  */
 
 /* DECISION Phase 88.1-21 (88.1-CODE-REVIEW.md): NO `?? '1'` fallback here, chosen OVER keeping
@@ -99,7 +99,7 @@ declare global {
    deliberately — other specs' `?? '1'` is a separate decision with a separate owner. */
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '';
 
-// Repo idiom (e2e/auth.setup.ts:31-33): assert, name the var and its producer, never echo the
+// Repo idiom (e2e/auth.setup.ts ("Fail loudly (without echoing the values) if the CI secrets are missing.")): assert, name the var and its producer, never echo the
 // value. File-scope so all three test.describe blocks below are covered.
 test.beforeEach(() => {
   expect(
@@ -122,7 +122,7 @@ const SLOT_MINUTES = 30;
 // --- Vacuity guard -----------------------------------------------------------
 
 /** A zero-count locator makes every assertion after it vacuous — fail loudly AT
- *  THE LOCATOR instead. Same contract as touch-targets.spec.ts:79-82 (its guardResolved). */
+ *  THE LOCATOR instead. Same contract as e2e/touch-targets.spec.ts ("async function guardResolved(") (its guardResolved). */
 async function guardResolved(locator: Locator, what: string, atLeast = 1): Promise<void> {
   await expect(
     locator.first(),
@@ -154,7 +154,7 @@ const selectedTimeValue = (page: Page) =>
  * Open the create-event modal and STAY in visual-calendar mode.
  *
  * The "Add New Game Event" button lives on the GROUP HOME page, not on
- * /groupPlanning — create-event.spec.ts:19-24 (Group home hosts the button) records why.
+ * /groupPlanning — e2e/create-event.spec.ts ("whose CreateEvent mount only opens via email-CTA prefill") records why.
  */
 async function openVisualScheduler(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
@@ -236,7 +236,7 @@ interface GridGeometry {
 
 /**
  * Resolve the scroll container STRUCTURALLY, never by class: it is the parent of
- * the `role="grid"` body (`WeekGrid.tsx:449-472`, ref={scrollContainerRef}). Everything is
+ * the `role="grid"` body (src/app/components/heatmap/WeekGrid.tsx ("ref={scrollContainerRef}")). Everything is
  * scoped to the open dialog so nothing outside the modal can be measured. CORRECTED by 88.6.1-24:
  * this used to say EventHeatmapBackground mounts a second WeekGrid on the page BEHIND the
  * modal; it renders ReadCells directly (no WeekGrid), INSIDE the modal, in manual mode only.
@@ -925,7 +925,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
        y=661.352 when the modal's reachable box ended at 632.648 — 28.704px outside it. What was
        actually under the finger there was `div.fixed inset-0 z-50 bg-black/80`, the Radix dialog
        BACKDROP, and `elementFromPoint` resolved to null. With no document-level `pointermove`
-       (`usePaintGesture.ts:511-512`, set only by the element-level onPointerMove; the document
+       (src/app/components/heatmap/usePaintGesture.ts ("st.lastY = event.clientY;"), set only by the element-level onPointerMove; the document
        listeners are pointerup and pointercancel only) `st.lastY` could never reach an edge position, so the rAF
        edge loop never engaged and the column moved 0px. The IMPLEMENTATION was exonerated by the
        same measurement (B2 refuted): the finger simply never landed on the grid.
@@ -1108,7 +1108,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     // and holds no selection state of its own (Phase 66-01). The two mode
     // controls are one button whose copy flips — "Switch to Manual Entry" /
     // "Switch to Visual Calendar" (createEvent.js, anchor 'Switch to Manual Entry') — located
-    // here by case-insensitive accessible name, the idiom create-event.spec.ts:34 uses.
+    // here by case-insensitive accessible name, the idiom e2e/support/createEvent.ts ("export async function switchToManualEntry(") uses.
     await dialog(page).getByRole('button', { name: /switch to manual entry/i }).click();
     const startInput = dialog(page).getByLabel(/start date & time/i);
     await guardResolved(startInput, 'the manual start date/time input');
@@ -1274,7 +1274,7 @@ async function expectDayLabelsComplete(page: Page): Promise<void> {
   // The strip cell is `overflow-hidden`, so a label that no longer fits is
   // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
   // The stacked single-letter-over-date shape (copied verbatim from
-  // EventHeatmapBackground.js:287-301, `role="columnheader" className="text-center"`) is the
+  // src/app/components/EventHeatmapBackground.js ("aria-label={dayNames[i]} tabIndex={-1}"), `role="columnheader" className="text-center"`) is the
   // M-03 fix; this is its gate.
   const clipping = await page.evaluate(() => {
     const root = document.querySelector('[role="dialog"]');
@@ -1403,7 +1403,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
   test('the day column scrolls INTERNALLY rather than growing the modal', async ({ page }) => {
     await openVisualScheduler(page);
 
-    // The modal stays inside its own `max-h-[90dvh]` budget (Modal.tsx:345).
+    // The modal stays inside its own `max-h-[90dvh]` budget, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col").
     const modalBox = await dialog(page).boundingBox();
     expect(modalBox, 'the create-event dialog has no boundingBox').not.toBeNull();
     const viewportHeight = await page.evaluate(() => window.innerHeight);
@@ -1615,7 +1615,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     );
     expect(
       distinctRows.length,
-      `the seeded availability is DAY-INVARIANT — all seven strip days peak on the same grid row (${JSON.stringify(distinctRows)}), which makes the day-vs-week distinction this case exists to prove unobservable. Fix the FIXTURE, never this assertion. Owners: periodictabletopbackend_v2/Sonnet/scripts/seed-sample-data.js:722-749 (Alice evenings all week, Bob weekday afternoons, Charlie weekend daytime, Diana two evenings — the shape that makes weekdays and weekends peak differently) and periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js, whose no-availability fallback block seeds peaks that VARY by weekday (Tue/Thu 19:00, Mon/Wed/Fri 13:00, Sat/Sun 18:00) — so if that block ran, it is not your cause; grep its "DECISION Phase 88.1-20 (WR-04)" marker rather than a line number, which rots. Corrected 88.1-21: this message used to describe that fallback as uniform across the week, which sent fixers at an already-correct file. Per-day readings: ${JSON.stringify(perDay)}`,
+      `the seeded availability is DAY-INVARIANT — all seven strip days peak on the same grid row (${JSON.stringify(distinctRows)}), which makes the day-vs-week distinction this case exists to prove unobservable. Fix the FIXTURE, never this assertion. Owners: backend:Sonnet/scripts/seed-sample-data.js ("Alice — evenings all week (the Task-3 / M6 exerciser)") and the three pattern blocks after it (Bob weekday afternoons, Charlie weekend daytime, Diana two evenings; with Alice's evenings, the shape that makes weekdays and weekends peak differently) and periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js, whose no-availability fallback block seeds peaks that VARY by weekday (Tue/Thu 19:00, Mon/Wed/Fri 13:00, Sat/Sun 18:00) — so if that block ran, it is not your cause; grep its "DECISION Phase 88.1-20 (WR-04)" marker rather than a line number, which rots. Corrected 88.1-21: this message used to describe that fallback as uniform across the week, which sent fixers at an already-correct file. Per-day readings: ${JSON.stringify(perDay)}`,
     ).toBeGreaterThanOrEqual(2);
 
     for (const day of perDay) {
