@@ -193,6 +193,89 @@ export function serializeBaseline(counts) {
 }
 
 /**
+ * The lower-only write plan (CONTEXT D-02, SPEC edge rename row). Returns `ok` (no REFUSED
+ * line), `next` (the counts a write would record) and `lines` (sorted). Rules:
+ *   - a baseline path measured lower → LOWERED (REMOVED at 0); measured equal → kept, no line;
+ *   - a baseline path measured higher → REFUSED raise, unless `allow` names it → RAISE ALLOWED;
+ *   - a new path (no baseline entry, measured > 0) pairs with a rename candidate, a baseline path
+ *     that is no longer a WALKED file (not merely one whose count fell to 0, so moving cites out
+ *     of a file that still exists into a new file is not a rename). Pairing is greedy: new paths
+ *     by count descending then path, candidates by count descending then path, and a candidate
+ *     pairs only when its baseline is >= the new count → RENAMED. Unpaired → REFUSED new path,
+ *     unless allowed → RAISE ALLOWED;
+ *   - a vanished baseline path not consumed by a pair → REMOVED;
+ *   - an `allow` entry that names neither a raise nor an unpaired new path → REFUSED stale allow.
+ * @param {{ walked: string[], counts: Record<string, number> }} measured
+ * @param {Record<string, number>} baselineCounts
+ * @param {string[]} allow
+ * @returns {{ ok: boolean, next: Record<string, number>, lines: string[] }}
+ */
+export function planBaselineWrite({ walked, counts }, baselineCounts, allow) {
+  const walkedSet = new Set(walked);
+  const allowSet = new Set(allow);
+  /** @type {Set<string>} allow entries that were used for a real raise */
+  const allowUsed = new Set();
+  /** @type {Record<string, number>} */
+  const next = {};
+  /** @type {string[]} */
+  const lines = [];
+  /** @param {string} p @param {number} b @param {number} m @param {string} reason */
+  const refuse = (p, b, m, reason) => lines.push(`REFUSED ${p} ${b} -> ${m}: ${reason}`);
+  /** @param {string} p @param {number} b @param {number} m */
+  const allowRaise = (p, b, m) => {
+    allowUsed.add(p);
+    next[p] = m;
+    lines.push(`!!! RAISE ALLOWED (--allow): ${p} ${b} -> ${m} !!!`);
+  };
+
+  /** @type {string[]} */
+  const candidates = [];
+  for (const p of Object.keys(baselineCounts).sort(byCodeUnit)) {
+    const b = baselineCounts[p];
+    if (!walkedSet.has(p)) {
+      candidates.push(p);
+      continue;
+    }
+    const m = countOf(counts, p);
+    if (m === b) next[p] = b;
+    else if (m === 0) lines.push(`REMOVED ${p} ${b} -> 0`);
+    else if (m < b) {
+      next[p] = m;
+      lines.push(`LOWERED ${p} ${b} -> ${m}`);
+    } else if (allowSet.has(p)) allowRaise(p, b, m);
+    else {
+      next[p] = b;
+      refuse(p, b, m, 'raise (only --allow <path> raises a count)');
+    }
+  }
+
+  /** @param {Record<string, number>} src @returns {(x: string, y: string) => number} */
+  const byCountDescThenPath = (src) => (x, y) => src[y] - src[x] || byCodeUnit(x, y);
+  const newPaths = Object.keys(counts)
+    .filter((p) => !Object.prototype.hasOwnProperty.call(baselineCounts, p) && counts[p] > 0)
+    .sort(byCountDescThenPath(counts));
+  const freeCandidates = candidates.slice().sort(byCountDescThenPath(baselineCounts));
+  for (const p of newPaths) {
+    const m = counts[p];
+    const i = freeCandidates.findIndex((c) => baselineCounts[c] >= m);
+    if (i >= 0) {
+      const [old] = freeCandidates.splice(i, 1);
+      next[p] = m;
+      lines.push(`RENAMED ${old} -> ${p} ${baselineCounts[old]} -> ${m}`);
+    } else if (allowSet.has(p)) allowRaise(p, 0, m);
+    else refuse(p, 0, m, 'new path, no rename pair');
+  }
+  for (const old of freeCandidates) lines.push(`REMOVED ${old} ${baselineCounts[old]} -> 0`);
+
+  for (const p of [...allowSet].sort(byCodeUnit)) {
+    if (!allowUsed.has(p)) refuse(p, countOf(baselineCounts, p), countOf(counts, p), '--allow names no raise');
+  }
+
+  lines.sort(byCodeUnit);
+  return { ok: !lines.some((l) => l.startsWith('REFUSED ')), next: sortedCounts(next), lines };
+}
+
+/**
  * Parse and shape-check a baseline. Throws unless schema is 1, digest is a string and counts
  * maps strings to positive integers. Does NOT check the digest (the test does, by name).
  * @param {string} text
@@ -310,10 +393,96 @@ export const SELF_TEST_CASES = [
       return a !== c ? true : 'digest did not change when a count changed';
     },
   },
+  // ---- the lower-only write guard (D-02): planBaselineWrite({ walked, counts }, baseline, allow)
+  {
+    id: 'guard-lower',
+    run: () => expectPlan(planBaselineWrite({ walked: ['a'], counts: { a: 2 } }, { a: 3 }, []), true, { a: 2 }, ['LOWERED a 3 -> 2']),
+  },
+  {
+    id: 'guard-equal',
+    run: () => expectPlan(planBaselineWrite({ walked: ['a'], counts: { a: 3 } }, { a: 3 }, []), true, { a: 3 }, []),
+  },
+  {
+    id: 'guard-zero-removed',
+    run: () => expectPlan(planBaselineWrite({ walked: ['a'], counts: {} }, { a: 3 }, []), true, {}, ['REMOVED a 3 -> 0']),
+  },
+  {
+    id: 'guard-raise-refused',
+    run: () => expectRefused(planBaselineWrite({ walked: ['a'], counts: { a: 4 } }, { a: 3 }, []), 'REFUSED a 3 -> 4: raise'),
+  },
+  {
+    id: 'guard-raise-allowed',
+    run: () =>
+      expectPlan(planBaselineWrite({ walked: ['a'], counts: { a: 4 } }, { a: 3 }, ['a']), true, { a: 4 }, [
+        '!!! RAISE ALLOWED (--allow): a 3 -> 4 !!!',
+      ]),
+  },
+  {
+    id: 'guard-new-refused',
+    run: () =>
+      expectRefused(
+        planBaselineWrite({ walked: ['a', 'b'], counts: { a: 3, b: 1 } }, { a: 3 }, []),
+        'REFUSED b 0 -> 1: new path, no rename pair',
+      ),
+  },
+  {
+    id: 'guard-rename-pair',
+    run: () => expectPlan(planBaselineWrite({ walked: ['b'], counts: { b: 3 } }, { a: 3 }, []), true, { b: 3 }, ['RENAMED a -> b 3 -> 3']),
+  },
+  {
+    id: 'guard-rename-higher-refused',
+    run: () =>
+      expectRefused(planBaselineWrite({ walked: ['b'], counts: { b: 4 } }, { a: 3 }, []), 'REFUSED b 0 -> 4: new path, no rename pair'),
+  },
+  {
+    id: 'guard-two-new-one-gone',
+    run: () => {
+      const plan = planBaselineWrite({ walked: ['b', 'c'], counts: { b: 3, c: 1 } }, { a: 3 }, []);
+      const refused = expectRefused(plan, 'REFUSED c 0 -> 1: new path, no rename pair');
+      if (refused !== true) return refused;
+      return plan.lines.includes('RENAMED a -> b 3 -> 3') ? true : `b did not pair with a: ${JSON.stringify(plan.lines)}`;
+    },
+  },
+  {
+    id: 'guard-allow-stale-refused',
+    run: () =>
+      expectRefused(planBaselineWrite({ walked: ['a'], counts: { a: 2 } }, { a: 3 }, ['a']), 'REFUSED a 3 -> 2: --allow names no raise'),
+  },
+  {
+    id: 'guard-new-allowed',
+    run: () =>
+      expectPlan(planBaselineWrite({ walked: ['a', 'b'], counts: { a: 3, b: 1 } }, { a: 3 }, ['b']), true, { a: 3, b: 1 }, [
+        '!!! RAISE ALLOWED (--allow): b 0 -> 1 !!!',
+      ]),
+  },
 ];
 
+/**
+ * @param {{ ok: boolean, next: Record<string, number>, lines: string[] }} plan
+ * @param {boolean} ok
+ * @param {Record<string, number>} next
+ * @param {string[]} lines
+ * @returns {true | string}
+ */
+function expectPlan(plan, ok, next, lines) {
+  return expectJson({ ok: plan.ok, next: sortedCounts(plan.next), lines: plan.lines }, { ok, next: sortedCounts(next), lines }, 'plan');
+}
+
+/**
+ * Not ok, nothing to write, and the named REFUSED line present.
+ * @param {{ ok: boolean, next: Record<string, number> | null, lines: string[] }} plan
+ * @param {string} refusedPrefix
+ * @returns {true | string}
+ */
+function expectRefused(plan, refusedPrefix) {
+  if (plan.ok) return `ok is true; lines ${JSON.stringify(plan.lines)}`;
+  return plan.lines.some((l) => l.startsWith(refusedPrefix))
+    ? true
+    : `no line starting ${JSON.stringify(refusedPrefix)} in ${JSON.stringify(plan.lines)}`;
+}
+
 /** The declared case count; a run of any other number of cases fails. */
-export const SELF_TEST_CASE_COUNT = 9;
+export const SELF_TEST_CASE_COUNT = 20;
 
 /** @returns {{ ran: number, passed: number, failed: string[], lines: string[] }} */
 export function runSelfTest() {

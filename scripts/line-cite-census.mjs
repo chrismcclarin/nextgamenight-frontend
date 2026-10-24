@@ -36,6 +36,15 @@
  *   node scripts/line-cite-census.mjs                         assert: RISE lines, counts line, RESULT
  *   node scripts/line-cite-census.mjs --self-test             the matcher's case table
  *   node scripts/line-cite-census.mjs --write-baseline --init write the FIRST baseline (refuses if one exists)
+ *   node scripts/line-cite-census.mjs --write-baseline        lower-only refresh: LOWERED / REMOVED / RENAMED
+ *   node scripts/line-cite-census.mjs --write-baseline --allow <path>   a deliberate raise, printed loudly
+ *   node scripts/line-cite-census.mjs --write-baseline --dry-run [--allow <path>]...   the same, never writes
+ *
+ *   A PR that lowers a count may run --write-baseline to close the slack it left. A PR that renames
+ *   a cite-bearing file runs it too: the new path is accepted as a rename pair only when a baseline
+ *   path with an equal or higher count is no longer a walked file. Every write mode refuses a
+ *   counted path git does not track, and a baseline whose digest does not match its counts. Gates
+ *   and verifiers use --dry-run; a gate never calls the real write mode.
  *
  * OUTPUT CONTRACT
  *   counts line: line-cite-census: walked N files | files with cites N | cites N |
@@ -57,6 +66,7 @@ import {
   findRises,
   measureTree,
   parseBaseline,
+  planBaselineWrite,
   runSelfTest,
   serializeBaseline,
 } from './lib/line-cite-matcher.mjs';
@@ -64,7 +74,8 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_REL = 'scripts/baselines/line-cites.json';
 const BASELINE = path.join(ROOT, 'scripts', 'baselines', 'line-cites.json');
-const USAGE = 'usage: node scripts/line-cite-census.mjs [--self-test | --write-baseline [--init]]';
+const USAGE =
+  'usage: node scripts/line-cite-census.mjs [--self-test | --write-baseline [--init | [--dry-run] [--allow <path>...]]]';
 
 class UsageError extends Error {}
 
@@ -151,11 +162,75 @@ function initMode() {
   return 0;
 }
 
+/**
+ * --write-baseline [--dry-run] [--allow <path>]...: all or nothing. Any REFUSED line prints the
+ * lines and RESULT: FAIL and writes nothing; otherwise UNCHANGED, WROTE, or (dry run) WOULD WRITE.
+ */
+function writeMode({ dryRun, allow }) {
+  if (!fs.existsSync(BASELINE)) {
+    throw new Error(`baseline missing: ${BASELINE_REL}; the first baseline is written by --write-baseline --init`);
+  }
+  const currentText = fs.readFileSync(BASELINE, 'utf8');
+  const baseline = parseBaseline(currentText);
+  // A baseline whose digest no longer matches its counts was edited by hand. Writing from it
+  // would launder that edit (a hand-raised count reads as "equal" and is kept with a fresh
+  // digest), so the write refuses until the file is restored from git.
+  const expected = digestCounts(baseline.counts);
+  if (expected !== baseline.digest) {
+    throw new Error(
+      `DIGEST MISMATCH ${expected} != ${baseline.digest}: ${BASELINE_REL} was edited by hand; restore it from git first`,
+    );
+  }
+  const m = measureTree(ROOT);
+  const plan = planBaselineWrite(m, baseline.counts, allow);
+  const lines = [...untrackedRefusals(m.counts, baseline.counts), ...plan.lines].sort();
+  for (const line of lines) {
+    console.log(line);
+    if (line.startsWith('!!! RAISE ALLOWED')) console.error(line);
+  }
+  if (lines.some((l) => l.startsWith('REFUSED '))) {
+    console.log('RESULT: FAIL');
+    return 1;
+  }
+  const nextText = serializeBaseline(plan.next);
+  const files = Object.keys(plan.next).length;
+  const cites = sum(plan.next);
+  if (nextText === currentText) {
+    console.log(`UNCHANGED ${BASELINE_REL}`);
+    return 0;
+  }
+  if (dryRun) {
+    console.log(`WOULD WRITE ${BASELINE_REL} (${files} files, ${cites} cites)`);
+    return 0;
+  }
+  fs.writeFileSync(BASELINE, nextText);
+  console.log(`WROTE ${BASELINE_REL} (${files} files, ${cites} cites)`);
+  return 0;
+}
+
+/** Strict argv: anything not in the usage line is a usage error. */
 function main(argv) {
   if (argv.length === 0) return assertMode();
   if (argv.length === 1 && argv[0] === '--self-test') return selfTestMode();
-  if (argv.length === 2 && argv[0] === '--write-baseline' && argv[1] === '--init') return initMode();
-  throw new UsageError(USAGE);
+  if (argv[0] !== '--write-baseline') throw new UsageError(USAGE);
+  let init = false;
+  let dryRun = false;
+  /** @type {string[]} */
+  const allow = [];
+  for (let i = 1; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === '--init' && !init) init = true;
+    else if (a === '--dry-run' && !dryRun) dryRun = true;
+    else if (a === '--allow' && i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
+      allow.push(argv[i + 1]);
+      i += 1;
+    } else throw new UsageError(USAGE);
+  }
+  if (init) {
+    if (dryRun || allow.length > 0) throw new UsageError(USAGE);
+    return initMode();
+  }
+  return writeMode({ dryRun, allow });
 }
 
 try {
