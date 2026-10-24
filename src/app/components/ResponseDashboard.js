@@ -166,8 +166,8 @@ export default function ResponseDashboard({
       // even when its answer is no longer wanted. The error OBJECT is the only second argument
       // (T-84-01): no respondent list, no member email, no identity field.
       // Re-confirmed 2026-09-29 (plan 88.6-63, review round 2 #6, R2-6-RECONFIRM: keep) — the swap to
-      // guard-first was ruled on a misread of RsvpSection.js's marker and is void; this log-first
-      // order is pinned by ResponseDashboard.test.tsx ("a superseded failure is still REPORTED").
+      // guard-first was ruled on a misread of RsvpSection.js's marker and is void; this log-first order
+      // is pinned by src/app/components/ResponseDashboard.test.tsx ("a superseded failure is still REPORTED").
       //
       // DECISION Phase 88.6.1-11 (W031) [D-26, Req 11]: ONE Sentry event per failure EPISODE,
       // still log-first. The capture is latched on `lastReportedKeyRef`, keyed on this closure's
