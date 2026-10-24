@@ -69,6 +69,9 @@ const TAILWIND_PREFIXES: readonly string[] = [
   'delay', 'animate', 'cursor', 'select', 'resize', 'scroll', 'snap', 'touch', 'will', 'aspect',
   'columns', 'container', 'float', 'clear', 'isolation', 'overflow', 'overscroll', 'position',
   'visible', 'invisible',
+  // W042 (review WR-404): the prefixes the 88.6.1 scout found missing (verify-W038-W074, the
+  // still-lacks list). Each first segment is a real utility family in this tree's Tailwind.
+  'justify', 'items', 'self', 'content', 'place', 'line', 'blur', 'backdrop', 'mix',
 ];
 
 /**
@@ -101,8 +104,17 @@ const VARIANT_BEFORE = /(^|[^A-Za-z0-9_$-])([a-z][a-z0-9-]*(?:\[[^\]]*\])?):$/;
  */
 const ARBITRARY_BEFORE = /\[[^\]\s'"\x60]*$/;
 
-/** A bare utility prefix ending the text, bounded so `invite-friend-` cannot match `friend`. */
-const PREFIX_BEFORE = /(^|[^A-Za-z0-9_$-])([a-z][a-z0-9]*)-$/;
+// A utility STEM ending the text: one optional leading dash (a negative utility such as -mt-),
+// then one or more dash-separated segments, then the trailing dash the interpolation completes.
+// Group 2 is the FIRST segment, and only it is checked against TAILWIND_PREFIXES. The boundary
+// still excludes the dash, so invite-friend- is read whole and can never match from friend.
+// DECISION Phase 88.6.2-14 (W042): a multi-segment stem with only its FIRST segment checked
+// against the prefix list (plus one optional leading dash for a negative utility) over the
+// single-segment stem, which could not see grid-cols, text-content or line-clamp, and over
+// any-dash-segment matching, which this file's own docblock measured as a roster of noise — the
+// boundary still excludes the dash, so a key such as invite-friend is read whole and its first
+// segment is not a prefix.
+const PREFIX_BEFORE = /(^|[^A-Za-z0-9_$-])-?([a-z][a-z0-9]*)(?:-[a-z0-9]+)*-$/;
 
 const DETECTORS: readonly Detector[] = [
   {
@@ -115,8 +127,10 @@ const DETECTORS: readonly Detector[] = [
   {
     id: 2,
     what:
-      'a Tailwind utility PREFIX immediately followed by an interpolation (`bg-${shade}`) — ' +
-      'the prefix list is the allow-list above, never "any dash-segment"',
+      'a Tailwind utility STEM immediately followed by an interpolation (`bg-${shade}`, ' +
+      '`grid-cols-${n}`, `-mt-${n}`) — the stem may have several dash segments and one leading ' +
+      'dash, and only its FIRST segment is checked against the allow-list above, never "any ' +
+      'dash-segment"',
     hit: (before) => {
       const m = PREFIX_BEFORE.exec(before);
       return !!m && TAILWIND_PREFIXES.includes(m[2]);
@@ -329,6 +343,11 @@ const KNOWN_BAD: readonly { text: string; why: string }[] = [
   { text: 'md:${cls}', why: 'detector 4 — a literal variant completed by an interpolation' },
   { text: 'hover:${cls}', why: 'detector 4 — the same shape on a state variant' },
   { text: 'w-[calc(100%-${gap})]', why: 'detector 3 — an interpolation inside an arbitrary value' },
+  { text: 'grid-cols-${n}', why: 'detector 2 (W042) — a multi-segment stem; its first segment grid is a prefix' },
+  { text: 'text-content-${tone}', why: 'detector 2 (W042) — a multi-segment semantic-token stem on the text prefix' },
+  { text: 'line-clamp-${n}', why: 'detector 2 (W042) — line joins the prefix list, and the stem has two segments' },
+  { text: 'items-${align}', why: 'detector 2 (W042) — items joins the prefix list' },
+  { text: '-mt-${n}', why: 'detector 2 (W042) — a negative utility, one leading dash before the stem' },
 ];
 
 const KNOWN_GOOD: readonly { text: string; why: string }[] = [
@@ -336,6 +355,8 @@ const KNOWN_GOOD: readonly { text: string; why: string }[] = [
   { text: 'TONE_CLASS[tone]', why: 'a whole literal class looked up from a map — the literals live in the map' },
   { text: 'id="field-${name}"', why: 'an interpolated DOM id; `field` is not a utility prefix' },
   { text: 'key={"member-${id}"}', why: 'an interpolated React key; `member` is not a utility prefix' },
+  { text: 'key={"member-role-${id}"}', why: 'a multi-segment React key (W042); its first segment member is not a utility prefix' },
+  { text: 'id="invite-friend-${id}"', why: 'the docblock example (W042); read whole, its first segment invite is not a utility prefix' },
   { text: '"bg-" + shade', why: 'plain + concatenation — DELIBERATELY out of scope (measures 0 in src/ today); listed so the omission is recorded, not implied' },
 ];
 
