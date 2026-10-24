@@ -70,22 +70,22 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     friendshipsAPI: {
       ...actual.friendshipsAPI,
-      getFriends: vi.fn().mockResolvedValue([]),
-      searchUserByEmail: vi.fn().mockResolvedValue(null),
-      sendRequest: vi.fn().mockResolvedValue({}),
+      getFriends: vi.fn(() => Promise.resolve([])),
+      searchUserByEmail: vi.fn(() => Promise.resolve(null)),
+      sendRequest: vi.fn(() => Promise.resolve({})),
       // The real FriendshipStatusProvider wraps every render (88.6.1 code review A-17): its load reads these.
-      getSentRequests: vi.fn().mockResolvedValue([]),
-      getReceivedRequests: vi.fn().mockResolvedValue([]),
+      getSentRequests: vi.fn(() => Promise.resolve([])),
+      getReceivedRequests: vi.fn(() => Promise.resolve([])),
     },
     groupsAPI: {
       ...actual.groupsAPI,
-      getGroupMembers: vi.fn().mockResolvedValue([]),
-      getInviteToken: vi.fn().mockResolvedValue({ invite_url: 'https://example.test/join/tok' }),
+      getGroupMembers: vi.fn(() => Promise.resolve([])),
+      getInviteToken: vi.fn(() => Promise.resolve({ invite_url: 'https://example.test/join/tok' })),
     },
     invitesAPI: {
       ...actual.invitesAPI,
-      sendInvite: vi.fn().mockResolvedValue({}),
-      sendFriendInvite: vi.fn().mockResolvedValue({}),
+      sendInvite: vi.fn(() => Promise.resolve({})),
+      sendFriendInvite: vi.fn(() => Promise.resolve({})),
     },
   };
 });
@@ -148,8 +148,9 @@ export function renderPanel(options: RenderPanelOptions = {}) {
   return { onClose, onMemberAdded, ...utils };
 }
 
+// DECISION Phase 88.6.2-17 (reset): reset every mock before each arm, with the api defaults written as vi.fn(impl) so the reset restores them, over clearing call history only — which kept one-shot queues and standing implementations across arms, so one failing arm poisoned the next (88.6.1-27, RT-40) — and over draining queues arm by arm, which every arm would have to remember. Other suites that only clear are not changed here (plan 30 hand-off).
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   h.selfUuid = SELF_UUID;
 });
 
@@ -1292,9 +1293,9 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
 
   it('P1. a terminal 409 reads as already invited — the panel shipped lines (88.6.1-72 GUARD)', async () => {
     // Pins the panel's two shipped 409 lines before plan 88.6.1-72 moves them into
-    // friendBatchInviteOutcome.ts (no test pinned them). This suite's beforeEach clears calls but
-    // not implementations or one-shot queues (B5 leaves a standing implementation), so this arm
-    // resets the invite mock itself and restores the default when it ends.
+    // friendBatchInviteOutcome.ts (no test pinned them). The suite's beforeEach now resets every
+    // mock before each arm (the reset DECISION at the top-level beforeEach), and this arm still
+    // re-arms the invite mock itself because its second half needs a different answer mid-arm.
     const { invitesAPI, ApiError } = await import('@/lib/api');
     const send = invitesAPI.sendFriendInvite as Mock;
     try {
