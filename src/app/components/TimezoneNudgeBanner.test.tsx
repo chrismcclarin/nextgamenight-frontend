@@ -9,6 +9,13 @@
 // The mechanism it pins is the INACTIVE DEFAULT: with no gesture source in the tree the store's
 // flag is `false` forever, so `usePaintGestureHold` is a pass-through and the banner's mount and
 // unmount conditions are byte-for-byte what they were.
+//
+// AMENDED Phase 88.6.2-16 (W034), every word above kept: the mounts PAINT what they did with no
+// gesture running, but each change renders twice,
+// src/app/components/heatmap/usePaintGesture.test.ts ("a no-gesture value change renders exactly twice")
+// and gameDetail is scheduler-free only while its Edit Event form is closed, so its banner can hold
+// during a paint there. The assertions below are about mount and unmount conditions and are
+// unchanged.
 import * as React from 'react';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

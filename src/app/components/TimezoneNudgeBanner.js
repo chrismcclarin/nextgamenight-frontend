@@ -39,6 +39,14 @@
  * (`createEvent.js`; the other two are `EventDayModal.js` and `gameDetail/page.js`). The store is
  * a LEAF MODULE with an INACTIVE default and no imports from the component tree, so those two
  * mounts render exactly as they did and pull no create-event code into their bundles.
+ *
+ * AMENDED Phase 88.6.2-16 (W034), every word above kept: 'render exactly as they did' holds for
+ * what those two mounts PAINT with no gesture running, not for how often they render (each change
+ * renders twice, as the comment at the hold below says). gameDetail/page.js is not scheduler-free:
+ * its event-only view hosts the Edit Event form, so its banner can hold behind that modal during a
+ * paint, and it already bundles create-event code through its own import,
+ * src/app/gameDetail/page.js ("import CreateEvent from '../components/createEvent';")
+ * The import-safety claim holds for EventDayModal.js.
  */
 
 import Link from 'next/link';
@@ -47,8 +55,17 @@ import { useTimezone } from './TimezoneProvider';
 
 export default function TimezoneNudgeBanner() {
   const { isProfileTimezoneSet, browserTimezone } = useTimezone();
-  // Held only while a paint gesture is ACTIVE; inert everywhere else, which is what keeps the two
-  // non-scheduler mounts byte-identical in behaviour.
+  // Held only while a paint gesture is ACTIVE. With no gesture running it returns the current value
+  // from the first PAINTED frame after a change, so the mounts paint exactly what they painted
+  // before the hold existed. A gesture can be running under a non-scheduler mount: gameDetail's
+  // event-only view hosts the Edit Event form,
+  // src/app/gameDetail/page.js ("{editEventModal && editingEvent && (")
+  // so a change that lands while someone paints there is held under the modal until finger-up,
+  // which is harmless. EventDayModal is never open at the same time as a scheduler.
+  // They do not render exactly as before: each change renders twice, the stale render and then
+  // the layout-effect correction chosen at
+  // src/app/components/heatmap/paintGestureActiveStore.ts ("DECISION Phase 88.6-63 (review round 2 #14)")
+  // Pinned by src/app/components/heatmap/usePaintGesture.test.ts ("a no-gesture value change renders exactly twice")
   const heldIsProfileTimezoneSet = usePaintGestureHold(isProfileTimezoneSet);
 
   if (heldIsProfileTimezoneSet) return null;
