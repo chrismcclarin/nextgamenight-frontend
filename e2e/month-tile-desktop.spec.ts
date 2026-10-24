@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 /**
  * Phase 88.6-45 (R7 / AC-7 second half; 88.3 CR-01 inheritance; FSEC-03) — the image-backed
@@ -120,7 +121,7 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
   let seeded: FixtureEvent | null = null;
   let rewrites = 0;
   await page.route('**/api/events/user/**', async (route) => {
-    const response = await route.fetch();
+    const response = await scrubbedFetch(route);
     let body: unknown;
     try {
       body = await response.json();

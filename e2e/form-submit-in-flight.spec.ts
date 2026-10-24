@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 import { fillCreateEventFields, openCreateEventDialog } from './support/createEvent';
 import { holdRequests, settleAnimations } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1 plan 26 — a second press while a form is working changes nothing, proven in a real
 // browser at the phone project's 375 x 667 (and in journeys).
@@ -73,7 +74,7 @@ test.describe('Availability form — the pressed pre-fill button (D-35, copy row
     // Both pre-fill buttons need the validate answer to say they apply; flip the two booleans in
     // the browser only.
     await page.route(pathEndsWith('/magic-auth/validate'), async (route) => {
-      const response = await route.fetch();
+      const response = await scrubbedFetch(route);
       let body: Record<string, unknown>;
       try {
         body = (await response.json()) as Record<string, unknown>;
@@ -94,7 +95,7 @@ test.describe('Availability form — the pressed pre-fill button (D-35, copy row
           await route.continue();
           return;
         }
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({ response, status: 200, json: null });
       }
     );

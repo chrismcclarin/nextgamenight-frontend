@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 import { holdRequests, settleAnimations } from './support/inFlight';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Plan 88.6.1-74 — contract C8 (d) of plan 88.6.1-70 for the event / game page at 375px: a failed
 // REFRESH over content already on screen keeps the content and shows the shared RF1 notice
@@ -59,7 +60,7 @@ async function noSidewaysScroll(page: Page): Promise<boolean> {
 }
 
 async function patchedEventBody(route: Route) {
-  const response = await route.fetch();
+  const response = await scrubbedFetch(route);
   let body: unknown;
   try {
     body = await response.json();

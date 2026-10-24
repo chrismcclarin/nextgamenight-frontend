@@ -21,6 +21,7 @@ import { fillCreateEventManualEntry } from './support/createEvent';
 import { E2E_GROUP_ID } from './support/groupSettings';
 import { holdWrites, holdUntilReleased } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 const E2E_EVENT_DETAIL_PATH =
   process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
@@ -51,7 +52,7 @@ test.describe('Edit Event on the event page — reopening while an update is sav
           await route.fallback();
           return;
         }
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         const json = await response.json();
         await route.fulfill({ response, json: { ...json, comments: MARKER } });
       },

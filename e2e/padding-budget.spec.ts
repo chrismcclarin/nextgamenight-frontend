@@ -1,5 +1,6 @@
 import { test, expect, type Locator } from '@playwright/test';
 import { openCreateEventDialog, switchToManualEntry } from './support/createEvent';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 /**
  * Phase 87.8 SPEC R2 — the padding-budget instrument (MOB-02).
@@ -327,7 +328,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
           await route.continue();
           return;
         }
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         const body = (await response.json()) as Record<string, unknown>;
         await route.fulfill({ response, json: { ...body, name: LONG_NAME } });
       },
