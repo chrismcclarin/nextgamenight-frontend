@@ -994,24 +994,28 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     expect(screen.queryByRole('heading', { name: 'Invite Members' })).not.toBeInTheDocument();
   });
 
-
+  // DECISION Phase 88.6.2-17 (R7-M1): pin min-w-0 beside the wrap class on the column, src/app/components/FriendInvitePanel.js ("min-w-0 wrap-break-word"), over switching the column to wrap-anywhere — that is a production className change this phase does not make (SPEC R11), and it would replace the device-checked UAT3-D2 fix with an unchecked one.
   it("the post-creation header wraps a long unbroken group name instead of running under the close button (UAT3-D2, 2026-09-30)", async () => {
     // Owner device check 2026-09-30: a 40-character name with no spaces overflowed the dialog and
     // painted under the ×. jsdom has no layout, so the pin is the wrap class on the header's shared
     // text column (overflow-wrap inherits into the title AND the lead-in); the geometry half is the
-    // owner's re-check on preview after CI.
+    // owner's re-check on preview after CI. min-w-0 is the load-bearing half: overflow-wrap does not
+    // shrink a flex item's min-content, so without it the column cannot narrow below the unbroken
+    // word and the overflow returns (R7-M1/M4).
     renderPanel({ openedFrom: 'create', group: { ...GROUP, name: 'M'.repeat(40) } });
     const heading = await screen.findByRole('heading', { name: `${'M'.repeat(40)} is live — who's in?` });
-    expect(heading.closest('div')?.className.split(/\s+/)).toContain('wrap-break-word');
+    expect(heading.closest('div')?.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-w-0', 'wrap-break-word']));
   });
 
   it("the default-path header's 'to <group>' lead-in wraps a long unbroken group name too (code review round 6 HIGH, 2026-09-30)", async () => {
     // Round 6 caught the half the device check missed: opened from Manage Members / the home page
     // (no openedFrom), the user-supplied name is in the LEAD-IN, a sibling of the title, which
     // inherits nothing from a class on the title. Pinned on the shared column for the same reason.
+    // min-w-0 is the load-bearing half here too: overflow-wrap does not shrink a flex item's
+    // min-content, so without it the column cannot narrow below the unbroken word (R7-M1/M4).
     renderPanel({ group: { ...GROUP, name: 'M'.repeat(40) } });
     const leadIn = await screen.findByText(`to ${'M'.repeat(40)}`);
-    expect(leadIn.closest('div')?.className.split(/\s+/)).toContain('wrap-break-word');
+    expect(leadIn.closest('div')?.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-w-0', 'wrap-break-word']));
   });
   it('leaves every other entry point on the generic header', async () => {
     renderPanel();
