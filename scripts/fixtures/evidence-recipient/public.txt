@@ -1,0 +1,3 @@
+# Throwaway age PUBLIC key for the P3 node test; its private half was deleted the moment it was made.
+# The clean P3 fixture (scripts/encrypt-evidence.test.mjs): one recipient line, no private key material.
+age1ez3j2xsm83qw276kfqevavpc83569qck9xssaj9sea8zsmeuj9hsm75l0e
