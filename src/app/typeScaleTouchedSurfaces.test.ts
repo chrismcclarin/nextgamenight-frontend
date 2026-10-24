@@ -2051,6 +2051,7 @@ const WEIGHT_SITES: readonly WeightSite[] = FILES.filter(
  * routed to Phase 92. Each of the four files floors at its armed count rather than at zero,
  * and userProfile floors at five with its sizer span; each entry's why says so.
  */
+// DECISION Phase 88.6.2-15 (PC-3): UI-SPEC §4.5's EMPHASIS outcome (400 + a colour token) is accepted in BOTH spellings — an explicit font-normal, or no weight utility at all — over picking one here: converging them is a className edit in production files, which R11 forbids this phase, and the register records it as no rendered change (planning:.planning/deferred/phase-88.6.1.md ("## [reconcile] Non-look items from the 88.6 handoff lists that had NO home")). This rule flags neither spelling, and FIXTURE_WEIGHT_COMPLIANT holds one of each. The convergence is routed to Phase 92 (written into that phase's register by 88.6.2-30); when it lands, this marker and that fixture change in the same commit.
 const WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-34 task 2 (wave 7, 2026-09-16): `app/Header.js` carried `sites: 1`
   // (1 font-medium, 0 font-semibold) — the desktop nav `<ul>`'s label weight, pre-edit at `:128`.
@@ -2261,7 +2262,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // so the utility is DELETED and the distinction is carried by the colour token each site
   // already had. The file ships the DROPPED-UTILITY spelling of that outcome (plans 20 and 32's
   // precedent), not the explicit `font-normal` one (plans 25 and 33) — both are gate-legal and
-  // the phase ships both; the house-shape question is plan 46's. `(optional)`'s existing
+  // the phase ships both; the house-shape convergence is routed to Phase 92 (DECISION Phase
+  // 88.6.2-15 (PC-3), above WEIGHT_ROSTER). `(optional)`'s existing
   // explicit `font-normal` at the Screenshot label is byte-unchanged and was never in this count.
   // Entry DELETED, not zeroed — the roster is exact in both directions.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
@@ -2590,8 +2592,10 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // plans 88.6-17 and 88.6-25 recorded for matrix header cells and axis labels, so the three
   // grids answer one question one way. Neither SIZE moved: the columnheader is a <th>-equivalent
   // and Label 14 is its rung, and the axis column's `text-xs sm:text-sm` pair is load-bearing
-  // geometry inside a 24px gutter rather than a §4.3 breakpoint violation (BREAKPOINT_ROSTER is
-  // heading-scoped). Entry DELETED, not zeroed.
+  // geometry inside the narrow time-axis gutter (24px when plan 88.6-26 wrote this; the default
+  // has widened since, see src/app/components/heatmap/WeekGrid.tsx ("Width of the time-axis gutter column, in px."))
+  // rather than a §4.3 breakpoint violation (BREAKPOINT_ROSTER is heading-scoped). Entry DELETED,
+  // not zeroed.
   // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/
   // TutorialOverlay.js` carried `sites: 9` (4 font-medium, 5 font-semibold) and the split was
   // EXACT. ZERO remain, resolved across all three of §4.5's outcomes and NOT by one rule:
@@ -2885,6 +2889,7 @@ const FIXTURE_WEIGHT_COMPLIANT = `
     <div>
       <span className="font-bold">seven hundred</span>
       <span className="font-normal">four hundred</span>
+      <span className="text-content-secondary">four hundred, no weight utility</span>
     </div>
   );
 `;
