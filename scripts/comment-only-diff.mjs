@@ -151,6 +151,7 @@ function tsStream(text, p) {
 
 /** The stream function for a path, by extension. */
 function streamFor(text, p) {
+  if (extOf(p) === 'css') return cssStream(text, p);
   return tsStream(text, p);
 }
 
@@ -315,9 +316,147 @@ function runCheck({ root, base }) {
 }
 
 // ---------------------------------------------------------------------------------------
+// Self-test: every case runs through the SAME functions the CLI uses (compareTexts, which
+// dispatches to tsStream or cssStream, and disposition). No fixture files: the cases are
+// in-script strings, following scripts/tw4-hazard-grep.sh ("DECISION Phase 87.7 (R4): the
+// negative control is the built-in").
+
+const SELF_TEST_CASE_COUNT = 66;
+
+const C = (group, name, file, before, after, expect) => ({
+  group,
+  name,
+  expect,
+  run: () => compareTexts(before, after, file).verdict,
+});
+
+const IN_MEMORY_CASES = [
+  // code/: every one must differ.
+  C('code', 'let vs const', 'x.ts', 'const a = 1;', 'let a = 1;', 'differ'),
+  C('code', 'x++ vs x--', 'x.ts', 'x++;', 'x--;', 'differ'),
+  C('code', '!a vs -a', 'x.ts', 'f(!a);', 'f(-a);', 'differ'),
+  C('code', 'regex literal tail', 'x.ts', "s.replace(/\\//g, ' ').split(',');", "s.replace(/\\//g, ' ').split(';');", 'differ'),
+  C('code', 'ASI', 'x.ts', 'function f(){ return /*\n*/ 1 }', 'function f(){ return /* */ 1 }', 'differ'),
+  C('code', 'string whitespace', 'x.ts', "const a = 'a b';", "const a = 'a  b';", 'differ'),
+  C('code', 'jsx url text', 'x.tsx', 'const x = <a>see http://a.com/x</a>;', 'const x = <a>see http://a.com/y</a>;', 'differ'),
+  C('code', 'jsx text that looks like a line comment', 'x.tsx', 'const x = <p>\n  // old\n</p>;', 'const x = <p>\n  // new\n</p>;', 'differ'),
+  C('code', 'jsx text leading whitespace', 'x.tsx', 'const x = <p>  real</p>;', 'const x = <p> real</p>;', 'differ'),
+  C('code', 'jsx comment between two text lines', 'x.tsx', 'const x = <p>\n  a\n  b\n</p>;', 'const x = <p>\n  a\n  {/* c */}\n  b\n</p>;', 'differ'),
+  C('code', 'jsx empty container gets an expression', 'x.tsx', 'const x = <p>{/* c */}</p>;', 'const x = <p>{y}</p>;', 'differ'),
+  C('code', 'template expression code edit', 'x.ts', 'const t = `${a}b`;', 'const t = `${c}b`;', 'differ'),
+  C('code', 'jsx attribute value', 'x.tsx', 'const x = <a b={1}/>;', 'const x = <a b={2}/>;', 'differ'),
+  // a postfix ++ (no line break before it) against the same ++ after a line break inside a
+  // comment, which ASI turns into a prefix ++ on the next line.
+  C('code', 'postfix ++ after a newline', 'x.ts', 'a /* */ ++\nb;', 'a /*\n*/ ++\nb;', 'differ'),
+  // the line-break flag's known fail-safe (D-22): a rewrapped inline block comment offends.
+  C('code', 'inline block comment rewrapped across lines', 'x.ts', 'foo(a, /* x y */ b);', 'foo(a, /* x\ny */ b);', 'differ'),
+
+  // comment/: every one must compare equal.
+  C('comment', 'line and block comment edit', 'x.ts', '// a\nconst a = 1; /* x */', '// bb\n// cc\nconst a = 1; /* yyy */', 'equal'),
+  C('comment', 'jsx comment edit', 'x.tsx', 'const x = <p>{/* o */}hi</p>;', 'const x = <p>{/* new */}hi</p>;', 'equal'),
+  C('comment', 'template expression comment edit', 'x.ts', 'const t = `${a /* c */}b`;', 'const t = `${a /* dd */}b`;', 'equal'),
+  C('comment', 'jsdoc rewrite in a .js file', 'x.js', '/** @param a old */\nfunction f(a){}', '/** @param a new words\n * more */\nfunction f(a){}', 'equal'),
+  C('comment', 'jsx comment added between elements', 'x.tsx', 'const x = <div>\n  <span/>\n</div>;', 'const x = <div>\n  <span/>\n  {/* c */}\n</div>;', 'equal'),
+  C('comment', 'jsx comment added inline before text', 'x.tsx', 'const x = <p>hi</p>;', 'const x = <p>{/* c */}hi</p>;', 'equal'),
+  C('comment', 'jsx comment rewrapped to two lines', 'x.tsx', 'const x = <div>\n  {/* aa bb */}\n  <span/>\n</div>;', 'const x = <div>\n  {/* aa\n  bb */}\n  <span/>\n</div>;', 'equal'),
+  C('comment', 'leading docblock removed', 'x.ts', '/** doc */\nimport a from "a";', 'import a from "a";', 'equal'),
+  C('comment', 'jsx comment added in a .js file', 'x.js', 'const x = <div>\n  <span/>\n</div>;', 'const x = <div>\n  <span/>\n  {/* c */}\n</div>;', 'equal'),
+  C('comment', 'jsx comment added after the last text line', 'x.tsx', 'const x = <p>\n  a\n</p>;', 'const x = <p>\n  a\n  {/* c */}\n</p>;', 'equal'),
+  C('comment', 'comment inside a jsx attribute expression', 'x.tsx', 'const x = <a b={1}/>;', 'const x = <a b={/* c */ 1}/>;', 'equal'),
+  C('comment', 'multi-line jsx comment deleted in a .jsx file', 'x.jsx', 'const x = <div>\n  {/*\n    one\n    two\n  */}\n  <span/>\n</div>;', 'const x = <div>\n  <span/>\n</div>;', 'equal'),
+  C('comment', 'jsx comment deleted between adjacent text', 'x.tsx', 'const x = <p>a{/* c */}b</p>;', 'const x = <p>ab</p>;', 'equal'),
+
+  // css/: comment edits equal, real edits differ.
+  C('css', 'comment in a value', 'x.css', 'a{color:red /* x */}', 'a{color:red /* yyy */}', 'equal'),
+  C('css', 'comment in a selector', 'x.css', 'a /* x */ b{c:d}', 'a /* yy */ b{c:d}', 'equal'),
+  C('css', 'comment in at-rule params', 'x.css', '@media /* x */ (width < 48rem){a{b:c}}', '@media /* yy */ (width < 48rem){a{b:c}}', 'equal'),
+  C('css', 'blank line inserted', 'x.css', 'a{\n  b:c;\n  d:e;\n}\nf{g:h}', 'a{\n  b:c;\n\n\n  d:e;\n}\n\n\nf{g:h}', 'equal'),
+  C('css', 'comment in a selector deleted', 'x.css', 'a /* x */ b{c:d}', 'a b{c:d}', 'equal'),
+  C('css', 'comment mid-value deleted', 'x.css', 'a{margin:1px /* x */ 2px}', 'a{margin:1px 2px}', 'equal'),
+  C('css', 'comment before a semicolon deleted', 'x.css', 'a{color:red /* c */;}', 'a{color:red;}', 'equal'),
+  C('css', 'rule moved inside another', 'x.css', 'a{x:1} b{y:2}', 'a{x:1; b{y:2}}', 'differ'),
+  C('css', 'important added', 'x.css', 'a{x:1}', 'a{x:1 !important}', 'differ'),
+  C('css', 'value edit', 'x.css', 'a{x:1}', 'a{x:2}', 'differ'),
+  C('css', 'at-rule gains a block', 'x.css', '@layer base;', '@layer base {}', 'differ'),
+  C('css', 'quoted string whitespace edit', 'x.css', 'a{content:"a b"}', 'a{content:"a  b"}', 'differ'),
+
+  // parse/: a parse error on either side fails the file.
+  C('parse', 'broken .ts', 'x.ts', 'const a = 1;', 'const = 1;', 'parse error'),
+  C('parse', 'broken .tsx', 'x.tsx', 'const x = <p/>;', 'const x = <p>;', 'parse error'),
+  C('parse', 'broken .js', 'x.js', 'function f() {}', 'function( {', 'parse error'),
+  C('parse', 'broken .css', 'x.css', 'a{color:red}', 'a{color:red', 'parse error'),
+];
+
+// classify/: disposition rows on hypothetical paths (none of these files need to exist).
+const CLASSIFY_ROWS = [
+  ['src/app/a.js', 'M', false, 'compare'],
+  ['src/app/a.test.tsx', 'M', false, 'allowlisted'],
+  ['src/test-utils/sourceScan.ts', 'M', false, 'allowlisted'],
+  ['src/test-utilsX/a.ts', 'M', false, 'compare', 'near-miss src/test-utilsX/a.ts'],
+  ['e2e/a.spec.ts', 'A', false, 'allowlisted'],
+  ['e2eX/a.ts', 'M', false, 'outside'],
+  ['scripts/x.mjs', 'A', false, 'allowlisted'],
+  ['.github/workflows/ci.yml', 'M', false, 'allowlisted'],
+  ['.gitignore', 'M', false, 'allowlisted'],
+  ['playwright.config.ts', 'M', false, 'allowlisted'],
+  ['vitest.config.mts', 'M', false, 'allowlisted'],
+  ['README.md', 'M', false, 'allowlisted'],
+  ['package.json', 'M', false, 'outside'],
+  ['next.config.js', 'M', false, 'outside'],
+  ['sentry.client.config.js', 'M', false, 'outside'],
+  ['docs/X.md', 'M', false, 'outside'],
+  ['src/app/new.tsx', 'A', false, 'added'],
+  ['src/app/old.js', 'D', false, 'deleted'],
+  ['src/app/favicon.ico', 'M', true, 'binary'],
+  ['src/lib/__fixtures__/games.captured.json', 'M', false, 'unsupported extension'],
+  ['src/app/a.js', 'T', false, 'type change'],
+  ['src/app/x.test.js.bak', 'M', false, 'unsupported extension', 'near-miss src/app/x.test.js.bak'],
+];
+
+const CLASSIFY_CASES = CLASSIFY_ROWS.map(([p, status, binary, expect, name]) => ({
+  group: 'classify',
+  name: name ?? `${p} ${status}${binary ? ' binary' : ''}`,
+  expect,
+  run: () => disposition({ path: p, status, binary }),
+}));
+
+function selfTest() {
+  const cases = [...IN_MEMORY_CASES, ...CLASSIFY_CASES];
+  const lines = [];
+  let passed = 0;
+  for (const c of cases) {
+    const id = `${c.group}/${c.name}`;
+    try {
+      const got = c.run();
+      if (got === c.expect) {
+        passed++;
+        lines.push(`PASS ${id}`);
+      } else {
+        lines.push(`FAIL ${id}: expected ${c.expect}, got ${got}`);
+      }
+    } catch (err) {
+      lines.push(`FAIL ${id}: threw ${err && err.message ? err.message : String(err)}`);
+    }
+  }
+  const ran = cases.length;
+  const ok = passed === ran && ran === SELF_TEST_CASE_COUNT;
+  lines.push(
+    ok
+      ? `self-test: PASS ${passed} of ${ran}`
+      : `self-test: FAIL ${passed} of ${ran} (declared ${SELF_TEST_CASE_COUNT})`,
+  );
+  return { code: ok ? 0 : 1, lines };
+}
+
+// ---------------------------------------------------------------------------------------
 // CLI wrapper: the only place that prints and exits.
 
 function main(argv) {
+  if (argv.length === 1 && argv[0] === '--self-test') {
+    const { code, lines } = selfTest();
+    process.stdout.write(lines.join('\n') + '\n');
+    return code;
+  }
   if (argv.length !== 1 || argv[0] === '' || argv[0].startsWith('-')) {
     process.stderr.write(USAGE + '\n');
     return 1;
