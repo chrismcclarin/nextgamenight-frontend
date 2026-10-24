@@ -11,6 +11,7 @@ import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './suppo
 import { focusByKeyboard } from './support/contrast';
 // 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
 import { expectNoApiWrites, holdWrites } from './support/inFlight';
+import { expectTouchTarget } from './support/touchTarget';
 
 /**
  * Phase 87.8 Plan 08 — SPEC R4 (44x44 effective hit areas) + SPEC R6 (pressed-state
@@ -101,19 +102,14 @@ async function guardResolved(locator: Locator, what: string, atLeast = 1): Promi
  *  closes — the fix is `min-h-11`, which sets min-height and NOT min-width, so a
  *  narrow census-added CTA would pass a height-only check while failing R4. */
 async function assertMin44(locator: Locator, label: string): Promise<void> {
-  const box = await locator.first().boundingBox();
-  expect(box, `${label}: boundingBox() returned null — element not rendered`).not.toBeNull();
-  if (!box) return;
   const mechanism =
     'grows from the per-CTA min-h-11 utility at its own call site (plan 87.8-01), NOT a global .btn rule — .btn declares no min-height, so a failure here is at the call site className';
-  expect(
-    box.height,
-    `${label} height ${box.height}px < 44px — ${mechanism}`,
-  ).toBeGreaterThanOrEqual(44);
-  expect(
-    box.width,
-    `${label} width ${box.width}px < 44px — min-h-11 sets NO min-width, so a narrow CTA fails R4 even at full height; ${mechanism}`,
-  ).toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(locator.first(), label, {
+    why: {
+      height: mechanism,
+      width: `min-h-11 sets NO min-width, so a narrow CTA fails R4 even at full height; ${mechanism}`,
+    },
+  });
 }
 
 /** R6 pressed-state: drive :active explicitly (pointer down without up), read the
@@ -662,7 +658,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     };
 
     // Census row 7: the Create Event modal's submit. Reached the same way the green
-    // create-event journey reaches it (tailwind-v4-styles.spec.ts:59-76).
+    // create-event journey reaches it: e2e/support/createEvent.ts ("export async function openCreateEventDialog(").
     await page.getByRole('button', { name: /add new game event/i }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
     const submit = page.getByRole('button', { name: /^(create|update) event$/i });

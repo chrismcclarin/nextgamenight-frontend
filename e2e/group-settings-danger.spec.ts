@@ -2,6 +2,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import { assertTheme, forceLightMode } from './support/contrast';
 import { openGroupSettings } from './support/groupSettings';
+import { expectTouchTarget } from './support/touchTarget';
 
 /**
  * Phase 87.8 Plan 10 — SPEC R7: phone-width coverage of the GroupSettings Danger
@@ -114,13 +115,10 @@ async function guardResolved(locator: Locator, what: string): Promise<void> {
  *  message. Width is not asserted: every Danger Zone control is `w-full` on phone,
  *  so the horizontal-containment assertions cover the other axis. */
 async function assertMinHeight44(locator: Locator, label: string): Promise<void> {
-  const box = await locator.boundingBox();
-  expect(box, `${label}: boundingBox() returned null — element not rendered`).not.toBeNull();
-  if (!box) return;
-  expect(
-    box.height,
-    `${label} rendered ${box.height}px tall — below the 44px floor. The mechanism is the per-control min-h-11 utility at the call site in GroupSettings.js (converged by plan 87.8-10), not any global .btn rule`,
-  ).toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(locator, label, {
+    axes: 'height',
+    why: 'The mechanism is the per-control min-h-11 utility at the call site in GroupSettings.js (converged by plan 87.8-10), not any global .btn rule',
+  });
 }
 
 /** Horizontal containment: the control must sit fully inside the viewport width —
@@ -336,17 +334,14 @@ function swatchGrid(page: Page): Locator {
  *  which deliberately asserts one axis because every Danger Zone control is `w-full`. */
 async function assertSwatchFloor(locator: Locator, label: string): Promise<void> {
   await settleGeometry(locator); // mandatory — see the helper, never a bare boundingBox()
-  const box = await locator.boundingBox();
-  expect(box, `swatch "${label}": boundingBox() returned null — element not rendered`).not.toBeNull();
-  if (!box) return;
-  expect(
-    box.width,
-    `swatch "${label}" rendered ${box.width}px wide x ${box.height}px tall — width is below the 44px floor. The mechanism is the per-site 'w-full max-w-16 aspect-square min-w-11 min-h-11' string in GroupSettings.js (DECISION Phase 88.3.1, SPEC Req 7); 64 is the target, 44 is what must never be breached`,
-  ).toBeGreaterThanOrEqual(44);
-  expect(
-    box.height,
-    `swatch "${label}" rendered ${box.width}px wide x ${box.height}px tall — height is below the 44px floor. Same mechanism as the width message above; if height alone fails, suspect 'aspect-square' was dropped (a stretched grid item measures 72 x 44 at 375px: it clears the floor in one axis and stops reading as a colour chip)`,
-  ).toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(locator, `swatch "${label}"`, {
+    why: {
+      width:
+        "The mechanism is the per-site 'w-full max-w-16 aspect-square min-w-11 min-h-11' string in GroupSettings.js (DECISION Phase 88.3.1, SPEC Req 7); 64 is the target, 44 is what must never be breached",
+      height:
+        "Same mechanism as the width message above; if height alone fails, suspect 'aspect-square' was dropped (a stretched grid item measures 72 x 44 at 375px: it clears the floor in one axis and stops reading as a colour chip)",
+    },
+  });
 }
 
 /** Every swatch measured, plus the count and accessible-name vacuity guards. */

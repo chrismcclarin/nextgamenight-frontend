@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { expectTouchTarget } from './support/touchTarget';
 
 // Phase 88.6.1 plan 21: the shared error surfaces' recovery controls, proven on a phone (375 x 667).
 //
@@ -51,15 +52,6 @@ const B1_NOTICE = 'Some personal controls are still unavailable.';
 const IDENTITY_GET = /\/users\/[^/?]*%7C[^/?]*(\?|$)/i;
 // The schedules list on /userProfile (src/lib/api.ts, `/availability/user/<id>/patterns`).
 const PATTERNS_GET = /\/availability\/user\/[^/]+\/patterns/;
-
-/** The control's box is at least 44 x 44 CSS px. */
-async function expectTouchTarget(locator: Locator, label: string) {
-  const box = await locator.boundingBox();
-  expect(box, `${label}: boundingBox() returned null — not rendered`).not.toBeNull();
-  if (!box) return;
-  expect(box.width, `${label}: width ${box.width}px is under the 44px floor`).toBeGreaterThanOrEqual(44);
-  expect(box.height, `${label}: height ${box.height}px is under the 44px floor`).toBeGreaterThanOrEqual(44);
-}
 
 /** The ring paints on keyboard focus (focus-visible) and NOT on a pointer press. */
 async function expectKeyboardRingOnly(page: Page, locator: Locator, label: string) {

@@ -7,6 +7,7 @@ import { attachDiagnostics, probeFooterOcclusion } from './support/diagnostics';
 // style- or layout-dependent claim is made. Imported rather than re-invented: a second theme
 // mechanism in this file could drift from `contrast.spec.ts`'s and neither would be wrong.
 import { assertTheme, forceLightMode } from './support/contrast';
+import { expectTouchTarget } from './support/touchTarget';
 
 /** quick-260928-sfo: the in-page Calendar label trace written by `installCalendarLabelRecorder`
  *  and read back by `assertNoCalendarLabelFlip` (house pattern: `event-scheduler-touch.spec.ts`
@@ -178,17 +179,12 @@ async function guardResolved(locator: Locator, what: string, atLeast = 1): Promi
 /** R4 geometry: BOTH dimensions >= 44. Height-only would pass a narrow control —
  *  `min-h-11` sets no min-width, which is exactly why the button carries `min-w-11` too. */
 async function assertMin44(locator: Locator, label: string): Promise<void> {
-  const box = await locator.first().boundingBox();
-  expect(box, `${label}: boundingBox() returned null — element not rendered`).not.toBeNull();
-  if (!box) return;
-  expect(
-    box.height,
-    `${label} height ${box.height}px < 44px — the floor comes from the per-call-site min-h-11 on the Calendar button, not from any global .btn rule`,
-  ).toBeGreaterThanOrEqual(44);
-  expect(
-    box.width,
-    `${label} width ${box.width}px < 44px — min-h-11 sets NO min-width, so a narrow control fails the floor at full height; the paired min-w-11 is the mechanism`,
-  ).toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(locator.first(), label, {
+    why: {
+      height: 'the floor comes from the per-call-site min-h-11 on the Calendar button, not from any global .btn rule',
+      width: 'min-h-11 sets NO min-width, so a narrow control fails the floor at full height; the paired min-w-11 is the mechanism',
+    },
+  });
 }
 
 /** D-11 dark-theme pre-assertion (touch-targets.spec.ts:133): a computed-style read in

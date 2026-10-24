@@ -36,6 +36,7 @@ import { test, expect, type Locator, type Page, type Route } from '@playwright/t
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 import { E2E_GROUP_ID, openGroupSettings } from './support/groupSettings';
 import { fillCreateEventManualEntry } from './support/createEvent';
+import { expectTouchTarget } from './support/touchTarget';
 
 // Copy rows G7 / G8 (D-47), the page's two load-failure titles.
 const GROUP_TITLE = "Couldn't load this group";
@@ -90,9 +91,7 @@ async function expectBetween(above: Locator, line: Locator, below: Locator) {
 
 async function expectRetryFloor(page: Page, retry: Locator) {
   await expectReachable(page, retry);
-  const box = await retry.boundingBox();
-  expect(box!.width, 'STOP (owner mockup): Retry is narrower than 44px').toBeGreaterThanOrEqual(44);
-  expect(box!.height, 'STOP (owner mockup): Retry is shorter than 44px').toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(retry, 'STOP (owner mockup): Retry');
 }
 
 type Mode = 'fail' | 'pass';
