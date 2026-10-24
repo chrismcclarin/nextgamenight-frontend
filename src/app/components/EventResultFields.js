@@ -5,7 +5,7 @@ import { SelectControl } from '../../components/ui/Input';
 /* DECISION Phase 88.6-33 (§4.5 EMPHASIS): all THREE `<label>`s in this fragment take
    `font-normal` over `font-bold`. 400 is correct because a field label beside its own control is
    not a heading — the same call plan 88.6-32 made on `BrowseMoreModal.js`'s "Sort:" label — and
-   the shipped twins of these exact class strings are `createEvent.js:1202`, `:1217` and `:1253`,
+   the shipped twins of these exact class strings are src/app/components/createEvent.js ("Start Date & Time {!editingEvent"), src/app/components/createEvent.js ("Duration (minutes) {!editingEvent") and the RSVP Deadline label below them,
    which ship `block text-sm font-normal … text-content-primary`. This fragment renders INSIDE
    that same create-event form, so converging on anything else would put two label weights in one
    form. The stated 400 is chosen OVER dropping the utility, matching those twins; both spellings
@@ -13,7 +13,7 @@ import { SelectControl } from '../../components/ui/Input';
 
    THE 16px iOS-ZOOM FLOOR (§4.1), enumerated rather than assumed — this fragment renders three
    form controls and all three are confirmed compliant:
-     1. the `winner_id` `<SelectControl>` — `text-base` via `controlClass` (`ui/Input.tsx:75`)
+     1. the `winner_id` `<SelectControl>` — `text-base` via `controlClass` (src/components/ui/Input.tsx ("const controlClass = cn("))
      2. the `picked_by_id` `<SelectControl>` — same
      3. the `is_group_win` `<input type="checkbox">` — renders NO text, so the floor (which
         exists to stop iOS zooming a focused text field) has nothing to act on. Its label is a

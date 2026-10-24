@@ -44,9 +44,9 @@ export interface UpcomingCountPillProps {
 
    CHOSEN: one component, rendered at both use sites, carrying both arms —
      light  amber-700 fill (`--color-btn-accent-bg`) + white ink (`--color-btn-accent-text`)
-     dark   amber-500 fill (`--amber-500`, globals.css:592) + warm-900 ink (`--warm-900`, :643)
+     dark   amber-500 fill (`--amber-500`, src/app/globals.css ("--amber-500: #f59e0b;")) + warm-900 ink (`--warm-900`, src/app/globals.css ("--warm-900: #1a1614;"))
    expressed as arbitrary-value token references with a `dark:` variant (the shipped idiom at
-   `grouplist.js:612`). Owner ruling 2026-08-31, UI-SPEC §6.1.3 / §13 Flag 1.
+   src/app/components/grouplist.js ("border-t border-line pt-3 [text-shadow")). Owner ruling 2026-08-31, UI-SPEC §6.1.3 / §13 Flag 1.
 
    REJECTED (a) — RELAXING SPEC Req 2's ACCEPTANCE. The UI-SPEC draft proposed re-deriving the
    criterion to "ink-on-fill >= 4.5 only", with the four ground ratios merely recorded, on the
@@ -60,13 +60,13 @@ export interface UpcomingCountPillProps {
    dark sheet card (purple-900). Re-unifying the two arms is a DECISION, not a cleanup.
 
    REJECTED (b) — MINTING A NEW AMBER TOKEN. `--amber-500` already ships and already MEANS amber
-   in dark: it is `--color-accent` (:1552), `--color-status-warning-text`/`-border`
-   (:1629/:1631), and the hero eyebrow's dark value. The dark pill JOINS the dark theme's
+   in dark: it is `--color-accent` (src/app/globals.css ("the dark half of the accent rename + mint")), `--color-status-warning-text`/`-border`
+   (src/app/globals.css ("--color-status-warning-text: #f59e0b;") and src/app/globals.css ("--color-status-warning-border: #f59e0b;")), and the hero eyebrow's dark value. The dark pill JOINS the dark theme's
    existing amber rather than introducing a second one. `new_colour_tokens` for this phase is 0
    and `globals.css` is not edited by this plan.
 
    REJECTED (c) — PUTTING `.btn-accent` ON THE SPAN. It would work for the light arm (the rule
-   only sets background-color + color, globals.css:2036-2039), and it is rejected for two
+   only sets background-color + color, src/app/globals.css (".btn-accent {")), and it is rejected for two
    INDEPENDENT reasons, either of which is sufficient:
      (i)  a `.btn-*` class on a non-button pre-empts Phase 88.6's `.btn`/border-model sweep,
           which 88.5-CONTEXT says this phase must not pre-empt;
@@ -98,7 +98,7 @@ export interface UpcomingCountPillProps {
 
    While the events load is PENDING, or while either the identity or the events error state is
    active, the host makes NO count claim at all — `count={null}` here, and an accessible name
-   with no "{n} upcoming games this week" clause. `UserHomePage.js:99-115` records why:
+   with no "{n} upcoming games this week" clause. src/app/userHome/UserHomePage.js ("THE BUG THIS FIXES") records why:
    `upcomingLoading` starts false and the fetch effect early-returns before it ever flips, so
    for the whole identity-resolution window the page holds `events=[]` that means "not fetched
    yet", NOT "nothing scheduled". Rendering that as a confident zero is the exact lie 88-33

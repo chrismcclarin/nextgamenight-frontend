@@ -64,7 +64,7 @@ export default function LandingPage() {
                 The surviving utilities ride on `<Button className>`, NEVER on the slotted
                 child — Radix `Slot` concatenates the child's className onto the slot's WITHOUT
                 tailwind-merge, so a utility left on the child cannot win a conflict and can
-                silently double up (shipped precedent `GroupLibrary.js:184`).
+                silently double up (shipped precedent src/app/components/GroupLibrary.js ("Add games</Link>")).
 
                 `hover:shadow-xl` is GONE for two independent reasons with one fix. It is
                 OFF-TIER: `--shadow-xl` is declared ZERO times in `globals.css` (re-measured at
@@ -77,11 +77,11 @@ export default function LandingPage() {
                 `shadow-theme-lg`: without it, `Button`'s base `enabled-hover:shadow-theme-md`
                 would SHRINK this control's resting `lg` on hover — an inverted elevation.
 
-                DELETED as dead under unlayered `.btn` (globals.css:2194-2205): `px-8 py-4`
-                (padding `:2202`), `text-lg` (font-size `:2201`), `font-bold` (weight `:2200`),
+                DELETED as dead under unlayered `.btn` (src/app/globals.css ("font-weight: 600;")): `px-8 py-4`
+                (padding src/app/globals.css ("padding: 0.5rem 1rem;")), `text-lg` (font-size src/app/globals.css ("font-size: 0.875rem;")), `font-bold` (weight src/app/globals.css ("font-weight: 600;")),
                 `text-center` (the block is `inline-flex` + `justify-content: center`), and
                 `transition-all` — `.btn` declares `transition: var(--theme-transition)`
-                (`:2203`), whose value already includes `box-shadow 0.25s ease` (`:1684`), so
+                (the same block, src/app/globals.css ("padding: 0.5rem 1rem;")), whose value already includes `box-shadow 0.25s ease` (src/app/globals.css ("--theme-transition: background-color 0.25s ease")), so
                 the utility was both dead and redundant. KEPT as alive: `shadow-theme-lg` and
                 `w-full sm:w-auto`. */}
             <Button
@@ -96,7 +96,7 @@ export default function LandingPage() {
             {/* DECISION Phase 88.6-35 (D-02 CORRECTED / UI-SPEC §4.3, §13): the Google CTA
                 below is NOT swept — not migrated to `<Button>`, not resized, not re-weighted —
                 chosen OVER treating it as this file's second `.btn` element, which is what
-                `88.6-CONTEXT.md` D-02 and `88.6-UI-SPEC.md` §4.3 `:328` used to say.
+                `88.6-CONTEXT.md` D-02 and `88.6-UI-SPEC.md` §4.3 used to say.
 
                 THE RECORD WAS WRONG AND THE FILE IS THE EVIDENCE: its className below carries
                 `rounded-btn` and never `btn`, so it is not a `.btn` element at all. Plan 10's
@@ -137,11 +137,11 @@ export default function LandingPage() {
                 `[--color-focus-ring:var(--amber-400)]`. It COMPILES and does NOTHING —
                 `--color-focus-ring` is declared in `@theme inline`, so Tailwind substitutes
                 its VALUE (`var(--ring)`) into the emitted utility, and `--ring` resolves on
-                `:root`. Plan 07 already proved this on the header (`globals.css:1070-1075`);
+                `:root`. Plan 07 already proved this on the header (src/app/globals.css ("is INERT there, because"));
                 overriding `--ring` is the only form that works.
 
                 ALSO REJECTED: moving the override up to the hero container, the way
-                `Header.js:116` scopes the whole header subtree. The hero's other CTA is
+                src/app/Header.js ("sticky top-0 z-50 [--ring:var(--amber-400)]") scopes the whole header subtree. The hero's other CTA is
                 `btn btn-primary`, whose ring sits on its own offset — it does not need the
                 amber and would inherit it silently. This element is the one with the
                 composited ground, so this element is where the override belongs.

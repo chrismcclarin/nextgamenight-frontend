@@ -34,7 +34,7 @@ import { TUTORIAL_DAYS, TUTORIAL_TIME_SLOTS } from '../mockData';
    The weights go 500 -> 700, not 500 -> 400: the day header is the hierarchy label of its
    column and the cell digit is ink inside its own density FILL, which is §4.5's pill/chip-ink
    reason. The production surface this grid imitates already renders its equivalents at
-   `text-xs font-bold` (`EventHeatmapBackground.js:241`, `:318`), so 700 is also what keeps the
+   `text-xs font-bold` (src/app/components/EventHeatmapBackground.js ("text-xs font-bold text-content-muted block leading-tight"), src/app/components/EventHeatmapBackground.js ("text-xs text-green-900 font-bold")), so 700 is also what keeps the
    simulation recognisable as the real thing — which is this component's whole stated purpose. */
 export default function TutorialGrid({ renderCell }) {
   return (

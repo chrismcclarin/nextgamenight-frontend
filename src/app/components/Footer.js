@@ -5,7 +5,7 @@ import FeedbackForm from './FeedbackForm';
 import BGGLogo from './BGGLogo';
 
 // Public/auth footer split via useUser() discriminator.
-// - Stable isLoading placeholder mirrors Header.js:43 to avoid SSR/hydration mismatch.
+// - Stable isLoading placeholder mirrors src/app/Header.js ("if (isLoading) return <div") to avoid SSR/hydration mismatch.
 // - Privacy href intentionally uses `/Privacy` (capital P) — required for Google auth
 //   integration. Do NOT lowercase. About + Terms can be lowercase.
 // - Report Bug button lives only in the auth footer — anonymous visitors aren't reporting
@@ -20,13 +20,13 @@ export default function Footer() {
        - `sticky bottom-0` on the bar instead of `fixed`. Rejected: that changes scroll
          behaviour — the bar would scroll away with the content instead of staying pinned,
          which is the whole point of a persistent phone surface.
-       - reserving the space globally at `layout.js:86-91` (D-05's originally cited site).
+       - reserving the space globally at src/app/layout.js ("min-h-screen flex flex-col") (D-05's originally cited site).
          Rejected: that pads the bottom of EVERY phone page for a bar that renders on one,
          and `layout.js`'s wrapper must stay untouched so it never becomes a containing
-         block for fixed-position overlays (its own comment at :83-85).
+         block for fixed-position overlays (its own comment, src/app/layout.js ("a plain div with no transform/filter")).
 
      Padding on the PAGE cannot solve this: `<Footer />` is a SIBLING of `<main>`
-     (`layout.js:86-91`), rendered after it, so padding inside a page's own root pushes only
+     (src/app/layout.js ("min-h-screen flex flex-col")), rendered after it, so padding inside a page's own root pushes only
      that page's content and leaves the Footer in the fixed bar's path. On a short page the
      sticky-footer wrapper parks the Footer at the viewport bottom — exactly where the bar
      sits — and the bar's stacking tier beats the Footer, which sets no z-index, occluding
@@ -55,7 +55,7 @@ export default function Footer() {
      for elements combining position-fixed with a zero bottom offset (the phrasing is left
      un-quoted on purpose so this note cannot match its own gate; the exact command is in
      `88.5-07-PLAN.md`'s verification block). It now returns exactly ONE production element —
-     `ui/BottomSheet.tsx:213`, a Radix dialog that
+     src/components/ui/BottomSheet.tsx ("fixed inset-x-0 bottom-0 z-50"), a Radix dialog that
      portals to <body> and only exists while open, so it can never park over the Footer the way a
      persistent bar did. The capital-P Privacy link that CLAUDE.md records as load-bearing for
      Google auth is therefore unoccludable BY CONSTRUCTION now, rather than by a spacer that had
@@ -65,7 +65,7 @@ export default function Footer() {
      phone-bottom-bar presence store's `DECISION Phase 88.1 (plan 08, Task 2)`: that store was a
      module-level external store read through `useSyncExternalStore`, chosen OVER a React context
      provider, because a provider must be an ANCESTOR of both <main> and <Footer /> and the only
-     such ancestor is `layout.js:86-91` — which 88.1 was forbidden to touch (the D-05 deviation:
+     such ancestor is src/app/layout.js ("min-h-screen flex flex-col") — which 88.1 was forbidden to touch (the D-05 deviation:
      that wrapper must stay a plain div with no transform/filter so it never becomes a containing
      block for fixed-position overlays, and no global page may reserve 56px for a bar rendering on
      one page). It counted mounts rather than holding a boolean so a remount-before-unmount

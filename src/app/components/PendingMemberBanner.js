@@ -37,9 +37,9 @@ export default function PendingMemberBanner({ groupId }) {
             </p>
             {/* DECISION Phase 88.6-34 (D48 / UI-SPEC §3.2): the dismiss control is a
                 `<Button variant="ghost" size="icon">` with the mark in a CHILD — the shipped
-                `BottomSheet.tsx:235-236` glyph idiom — chosen OVER leaving it a bare `<button>`
+                src/components/ui/BottomSheet.tsx ("<DialogClose asChild>") glyph idiom — chosen OVER leaving it a bare `<button>`
                 and OVER the alternative bare idiom (`inline-flex items-center justify-center
-                min-h-11 min-w-11`, the `QRCodeModal.js:40` shape), which would have bought the
+                min-h-11 min-w-11`, the src/app/components/QRCodeModal.js ("inline-flex min-h-11 min-w-11 items-center justify-center") shape), which would have bought the
                 same 44px floor with no look change at all. The default is implemented; the bare
                 alternative is named in `88.6-34-SUMMARY.md` as a residual owner call.
 

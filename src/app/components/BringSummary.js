@@ -82,7 +82,7 @@ export default function BringSummary({ eventId, groupId, self, refreshKey, onEdi
            (`Sentry.captureMessage` is also an event). Egress delta versus today: NIL — this was
            already a breadcrumb with no `captureConsoleIntegration` in the Sentry config.
            `errCtx(err)` and never the raw `Error` (`ctx?: Record<string, unknown>`,
-           `src/lib/logger.ts:24`; `checkJs: false` cannot catch that at a `.js` call site).
+           src/lib/logger.ts ("warn(msg: string, ctx?: Record<string, unknown>): void;"); `checkJs: false` cannot catch that at a `.js` call site).
            Converted IN PLACE — a catch inside an async effect, not a render body. */
         logger.info('BringSummary: failed to fetch brings', errCtx(err));
         // A superseded read's failure must not hide the answer of the read that replaced it.
@@ -167,7 +167,7 @@ export default function BringSummary({ eventId, groupId, self, refreshKey, onEdi
                   COLOUR — `text-content-secondary` here against the `text-content-link` game
                   links that follow on the same line. 700 was rejected: it would make every row's
                   name compete with the "Bringing" heading directly above. Stated as `font-normal`
-                  rather than dropped, following the shipped `createEvent.js:1290` idiom this plan
+                  rather than dropped, following the shipped src/app/components/createEvent.js ("block text-sm font-normal text-content-primary mb-1") idiom this plan
                   converges its weight sites on. */}
               <span className="text-sm font-normal text-content-secondary">{username}: </span>
               {games.map((game, idx) => (
