@@ -12,7 +12,7 @@
 
 //
 // ADDED Phase 88.6-37 task 1 (D-22 / T-88.6-102 / T-88.6-105): the avatar branch's two
-// controls. Neither is observable in the app today — `FriendInvitePanel.js:681-684` is
+// controls. Neither is observable in the app today — src/app/components/FriendInvitePanel.js ("<UserChip") is
 // UserChip's only importer and passes `{ name: ... }` with no avatar, which
 // `identity.contract.test.ts` explains (friend search's payload stayed NARROW: no
 // `picture_url`). These assertions are what make the controls real BEFORE a caller
@@ -94,8 +94,8 @@ describe('UserChip avatar — referrerPolicy (D-22 / T-88.6-102)', () => {
 
 describe('UserChip avatar — the house allow-list gate (T-88.6-105)', () => {
   // One case PER POLARITY. The rejected arm is the load-bearing one: without the gate the
-  // <img> renders with a `javascript:` src, which is what `safeBgImageStyle.ts:3-7`'s
-  // one-list invariant says cannot happen at any image sink in this family.
+  // <img> renders with a `javascript:` src, which is what the one-list invariant of
+  // src/lib/safeBgImageStyle.ts ("the list is deliberately spelled ONCE") says cannot happen at any image sink in this family.
   it('ALLOWED absolute https URL renders the <img>', () => {
     const { container } = render(
       <UserChip user={{ name: 'Mary Kay', avatarUrl: 'https://cdn.example.com/a.png' }} />
@@ -112,7 +112,7 @@ describe('UserChip avatar — the house allow-list gate (T-88.6-105)', () => {
       <UserChip user={{ name: 'Mary Kay', avatarUrl: '/uploads/pic.png' }} />
     );
     // Handed to the DOM in its ORIGINAL relative form — the validation base is never emitted
-    // (`safeBgImageStyle.ts:14-21`).
+    // (src/lib/safeBgImageStyle.ts ("const RELATIVE_BASE =")).
     expect(container.querySelector('img')).toHaveAttribute('src', '/uploads/pic.png');
   });
 
@@ -136,7 +136,7 @@ describe('UserChip avatar — the house allow-list gate (T-88.6-105)', () => {
 
 describe('UserChip — §4.5 pill-ink weight (W36 twin)', () => {
   // The sweep half, not a fix: 600 -> 700 on the initials fill, matching
-  // `MemberChipStack.tsx:85`'s shipped treatment. The 12px/14px rungs do NOT move — the
+  // the shipped treatment at src/app/components/MemberChipStack.tsx ("rounded-full text-xs font-bold"). The 12px/14px rungs do NOT move — the
   // chip's `h-6 w-6` / `h-8 w-8` boxes are the fixed geometry D-01 names.
   it('the initials fill carries font-bold (700), never 600 or 500', () => {
     render(<UserChip user={{ name: 'Mary Kay' }} size="sm" />);

@@ -1,6 +1,8 @@
 // src/lib/schemas/groups.ts
 //
-// Phase 82 (TS-02 / D-09). Domain source: api.js groupsAPI (L110) + invitesAPI (L855).
+// Phase 82 (TS-02 / D-09). Domain source:
+// src/lib/api.ts ("export const groupsAPI = {"),
+// src/lib/api.ts ("export const invitesAPI = {").
 // Zod v4. Typing only (z.infer) — no runtime .parse() this phase.
 
 import { z } from 'zod';
@@ -40,7 +42,8 @@ export type GroupList = z.infer<typeof GroupListSchema>;
 // nested `group.Users[]` rows on GET /groups/user/:user_id. Roster include
 // attributes were ['id', 'username']; Phase 88.8 plan 08 widened BOTH includes
 // to the shared chip projection PUBLIC_USER_ATTRS =
-// ['id', 'username', 'picture_url'] (routes/groups.js:240 and :414), plus
+// ['id', 'username', 'picture_url'] (the two roster includes under backend:Sonnet/routes/groups.js ("The durable safe-by-default fix is the User defaultScope (D-03 / 83-06).")
+// and backend:Sonnet/routes/groups.js ("BOTH branches below emit it: the member")), plus
 // through attributes ['role', 'joined_at'], then the PR-C post-query alias map
 // sets user_id = member.id.
 //   `id`        — the member's Users.id UUID. Phase 87.3 PR-B (D-04): this is the
@@ -88,7 +91,7 @@ export const GroupInvitePreviewSchema = z.object({
 });
 export type GroupInvitePreview = z.infer<typeof GroupInvitePreviewSchema>;
 
-// invitesAPI (L855) — pending invites surfaced to a user.
+// invitesAPI — pending invites surfaced to a user.
 export const InviteSchema = z.object({
   id: z.string(),
   group_id: z.string().optional(),

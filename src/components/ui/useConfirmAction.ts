@@ -47,8 +47,9 @@ import { StatusRegion } from '@/components/ui/StatusRegion';
 export type ConfirmTier = 'typed' | 'dialog' | 'two-tap';
 
 /**
- * The arm window, in ms. This is the SHIPPED value from `KebabMenu.js:82` and
- * `gameDetail/page.js:571` (Phase 65-02 EVT-08), absorbed rather than reinvented.
+ * The arm window, in ms. This is the SHIPPED value from
+ * src/app/components/KebabMenu.js ("}, 3000);") and
+ * src/app/gameDetail/page.js (Phase 65-02 EVT-08), absorbed rather than reinvented.
  */
 export const TWO_TAP_WINDOW_MS = 3000;
 
@@ -261,7 +262,8 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     }
   }, []);
 
-  // Unmount cleanup, absorbed verbatim in semantics from `KebabMenu.js:63-71`:
+  // Unmount cleanup, absorbed verbatim in semantics from
+  // src/app/components/KebabMenu.js ("Cleanup on unmount — pending timer must not fire after unmount."):
   // a pending arm timer must never fire into an unmounted tree.
   React.useEffect(() => {
     mountedRef.current = true;
