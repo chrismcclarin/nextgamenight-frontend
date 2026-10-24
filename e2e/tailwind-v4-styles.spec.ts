@@ -46,7 +46,7 @@ import { openCreateEventDialog, switchToManualEntry } from './support/createEven
  */
 
 // Seeded group minted by the backend's scripts/e2e-fixtures.js in CI — same env fallback
-// convention as e2e/create-event.spec.ts:17.
+// convention as e2e/create-event.spec.ts ("const groupId = process.env.E2E_GROUP_ID ??").
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 
 test.describe('Tailwind v4 migration — computed-style spot checks (D-10 layer 2)', () => {
@@ -79,7 +79,7 @@ test.describe('Tailwind v4 migration — computed-style spot checks (D-10 layer 
 
     // D-11, and this ordering is not negotiable: assert the THEME before asserting any
     // style. playwright.config.ts pins `colorScheme: 'dark'`, but that is only half the
-    // mechanism — e2e/auth.setup.ts:65 calls storageState({ path: AUTH_FILE }), which
+    // mechanism — e2e/auth.setup.ts ("await page.context().storageState({ path: AUTH_FILE });") calls storageState({ path: AUTH_FILE }), which
     // bakes localStorage into the reused .auth/user.json, so a stored next-themes `theme`
     // key outranks ThemeProvider's defaultTheme="dark" regardless of what the config
     // emulates. A style assertion that ran in light mode would be meaningless, and its
@@ -93,7 +93,7 @@ test.describe('Tailwind v4 migration — computed-style spot checks (D-10 layer 
     // datetime-local input. Its class string is a bare border-width utility with no
     // companion border-colour token — site 8 on 87.7-STYLE-AUDIT.md's unpaired list.
     // Located via its own <label htmlFor="start_date"> (L851), the identical locator
-    // e2e/create-event.spec.ts:36 already resolves in green CI.
+    // e2e/support/createEvent.ts ("await page.getByLabel(/start date & time/i).fill(startValue);") already resolves in green CI.
     const startDateInput = page.getByLabel(/start date & time/i);
     await expect(startDateInput).toBeVisible();
 

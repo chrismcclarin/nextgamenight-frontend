@@ -7,7 +7,7 @@ import { test, expect, type Locator } from '@playwright/test';
  * iPhone: iOS Safari resolves `width: 100%` on a NATIVE date/time control against the
  * CONTENT box and then adds padding and border on top, so the control overruns its cell by
  * a constant ~18px. The `phone` project is chromium-pinned by DECISION Phase 87.7 D-14
- * (`playwright.config.ts:121`) and `ci.yml` installs chromium only, so this spec is a
+ * (playwright.config.ts ("DECISION Phase 87.7 D-14: the explicit chromium override")) and `ci.yml` installs chromium only, so this spec is a
  * REGRESSION FENCE on the shipped fix, not a reproduction of the bug. The reproduction is
  * the owner's device check (plan 88.6-30 task 4). A green run here does not overrule it.
  *
@@ -23,9 +23,9 @@ import { test, expect, type Locator } from '@playwright/test';
  * The first version of this spec opened `E2E_EVENT_DETAIL_PATH` and looked for the "Show
  * Filters & Sort" toggle. It failed in CI run 35202982040 with "element(s) not found", and
  * the accessible name was never the cause: `E2E_EVENT_DETAIL_PATH` carries `event_id` and
- * `group_id` but NO `game_id`, and `gameDetail/page.js:1588` returns the EVENT-ONLY view
+ * `group_id` but NO `game_id`, and src/app/gameDetail/page.js ("if (!game_id && singleEvent) {") returns the EVENT-ONLY view
  * early when `game_id` is absent. The Game Sessions card — and therefore that toggle and
- * those two date controls — lives in the GAME view's return at `:2640` and is unreachable
+ * those two date controls — lives in the GAME view's return at src/app/gameDetail/page.js ("if (!game) {") and is unreachable
  * on that URL. This is already recorded in the repo: see the `DECISION Phase 88-30
  * (DEF-88-24-05)` marker in `padding-budget.spec.ts`, which hit the identical wall, and
  * which explicitly REJECTED re-pointing `E2E_EVENT_DETAIL_PATH` at a URL carrying a
@@ -35,8 +35,8 @@ import { test, expect, type Locator } from '@playwright/test';
  *
  * So the fence runs on `/userProfile`'s availability forms instead, which is a BETTER
  * surface for it on every axis that matters here:
- *   - it needs no new fixture (the route is already loaded by `padding-budget.spec.ts:409`
- *     and `touch-targets.spec.ts:2070` in this same authenticated project);
+ *   - it needs no new fixture (the route is already loaded by e2e/padding-budget.spec.ts ("page.goto('/userProfile')")
+ *     and e2e/touch-targets.spec.ts ("R4 (SPEC R12): six of the seven Email-section controls") in this same authenticated project);
  *   - it carries SEVEN of the thirteen date/time controls in the app — both a `type="time"`
  *     pair and a `type="date"` pair — against gameDetail's two;
  *   - it is the owner's SECOND reported screen, photographed in the same 2026-09-21 report.
@@ -59,7 +59,7 @@ import { test, expect, type Locator } from '@playwright/test';
  *   2. IT FITS ITS CELL — the control's right edge is inside its cell's right edge and its
  *      box is `>= 44px` wide, so a control that "fits" only by collapsing cannot pass.
  *   3. A SCREENSHOT FOR THE RECORD, written to `test.info().outputPath(...)`. The `phone`
- *      project runs AUTHENTICATED (`playwright.config.ts:128`, `storageState:
+ *      project runs AUTHENTICATED (playwright.config.ts ("the SAME state journeys reuses"), `storageState:
  *      '.auth/user.json'`), so this is a LOGGED-IN screenshot. `outputPath` lands it under
  *      `test-results/`, which `.gitignore:66` excludes root-anchored. A bare repo-relative
  *      filename beside this spec would NOT be ignored — there is no `*.png` rule — and
@@ -67,7 +67,7 @@ import { test, expect, type Locator } from '@playwright/test';
  *      anywhere under e2e/, named for the owner in `88.6-30-SUMMARY.md`.
  *
  * NOT RUN LOCALLY. The `phone` project depends on the `setup` project, which drives Auth0
- * Universal Login with credentials `playwright.config.ts:22-24` records as deliberately
+ * Universal Login with credentials playwright.config.ts ("They are intentionally absent locally") records as deliberately
  * absent locally, and there is no `.auth/user.json` in the tree. Collection and typecheck
  * are the only local proof this file has.
  *
@@ -114,7 +114,7 @@ test.describe('W53 — native date/time controls fit their cells at 375px (Phase
     const startTime = page.locator('#recurring-start-time');
     const startDate = page.locator('#recurring-start-date');
     // THE SCOPING CONTROL. A text `Input` built from the SAME `controlClass`, chosen
-    // because it is rendered unconditionally (`userProfile/page.js:2836`, inside the BGG
+    // because it is rendered unconditionally (src/app/userProfile/page.js ("value={bggUsername}"), inside the BGG
     // import card, which carries no render guard) — a scoping assertion that can vanish
     // with the fixture is a scoping assertion that silently stops running.
     const textControl = page.locator('#bgg-username');

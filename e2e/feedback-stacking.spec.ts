@@ -38,7 +38,7 @@ import { test, expect, type Page } from '@playwright/test';
  */
 
 // Seeded group minted by the backend's scripts/e2e-fixtures.js in CI — same env
-// fallback convention as e2e/create-event.spec.ts:17 and tailwind-v4-styles.spec.ts:49.
+// fallback convention as e2e/create-event.spec.ts ("const groupId = process.env.E2E_GROUP_ID ??") and e2e/tailwind-v4-styles.spec.ts ("const E2E_GROUP_ID = process.env.E2E_GROUP_ID ??").
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 
 // FAB: icon-only button (accessible name from aria-label, no text content).
@@ -117,13 +117,13 @@ async function measureModalSurface(page: Page) {
 
 test.describe('phone: feedback trigger moves into the nav menu (R3, D-09)', () => {
   // Runs ONLY in the `phone` project. Both `journeys` and `phone` glob every
-  // e2e/*.spec.ts (playwright.config.ts:44 and :87), so the guard must be
+  // e2e/*.spec.ts (playwright.config.ts ("name: 'journeys'") and playwright.config.ts ("name: 'phone'")), so the guard must be
   // explicit in both directions.
   test.skip(({ isMobile }) => !isMobile, 'phone-project block — desktop coverage lives in the describe below');
 
   test.beforeEach(async ({ page }) => {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
-    // D-11 dark-theme pre-assertion (tailwind-v4-styles.spec.ts:78-86): the
+    // D-11 dark-theme pre-assertion (e2e/tailwind-v4-styles.spec.ts ("toHaveClass(/dark/)")): the
     // config pins colorScheme, but the reused storageState can carry a stored
     // next-themes key that outranks it — assert the theme before any visual
     // assertion so a style failure cannot be misdiagnosed.
@@ -180,7 +180,7 @@ test.describe('phone: feedback trigger moves into the nav menu (R3, D-09)', () =
     // against the nav dropdown's `translate`.
     //
     // SETTLE FIRST: DialogContent's enter animation (zoom-in-95 +
-    // slide-in-from-left-1/2, dialog.tsx:64, 200ms) translates the surface
+    // slide-in-from-left-1/2, src/components/ui/dialog.tsx ("data-[state=open]:slide-in-from-left-1/2"), 200ms) translates the surface
     // while it runs — PR #22 round 2 measured centre X at 113px on a 375px
     // viewport mid-animation and reported a phantom containing-block offset.
     // A settled rect distinguishes the real bug (a PERSISTENT offset from a
@@ -308,12 +308,12 @@ test.describe('phone: feedback trigger moves into the nav menu (R3, D-09)', () =
 
 test.describe('desktop: FAB present but below every overlay (R3, D-10)', () => {
   // Runs ONLY in the `journeys` project — same both-directions guard as above
-  // (playwright.config.ts:44 and :87 glob every spec into both projects).
+  // (playwright.config.ts ("name: 'journeys'") and playwright.config.ts ("name: 'phone'") glob every spec into both projects).
   test.skip(({ isMobile }) => isMobile, 'desktop-project block — phone coverage lives in the describe above');
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    // D-11 dark-theme pre-assertion (tailwind-v4-styles.spec.ts:78-86).
+    // D-11 dark-theme pre-assertion (e2e/tailwind-v4-styles.spec.ts ("toHaveClass(/dark/)")).
     await expect(page.locator('html')).toHaveClass(/dark/);
   });
 
@@ -369,7 +369,7 @@ test.describe('desktop: FAB present but below every overlay (R3, D-10)', () => {
 
 // Logged-out coverage (runs in BOTH projects): a real render assertion replacing
 // the previous grep-for-auth-guard check. Feedback entry points are
-// deliberately auth-only (Footer.js:11-12, T-87.8-16 / ASVS V2) — a logged-out
+// deliberately auth-only (src/app/components/Footer.js ("Report Bug button lives only in the auth footer"), T-87.8-16 / ASVS V2) — a logged-out
 // visitor must see NEITHER the FAB nor the nav row.
 test('logged-out visitor gets neither feedback entry point (fresh context, no storageState)', async ({ browser, baseURL }) => {
   // DECISION Phase 87.8-12: explicit EMPTY storageState over bare newContext().
@@ -389,7 +389,7 @@ test('logged-out visitor gets neither feedback entry point (fresh context, no st
     // only run after the auth state resolved and the real footer replaced the
     // isLoading placeholder (Footer.js renders <div h-12/> until useUser settles).
     // DECISION Phase 87.8-12: exact:true over default substring matching — the
-    // about-page BODY contains a "Privacy Policy" link (about/page.js:59) that
+    // about-page BODY contains a "Privacy Policy" link (src/app/about/page.js ("Privacy Policy")) that
     // substring-matches 'Privacy' and satisfied this anchor DURING isLoading,
     // letting both zero-counts pass vacuously before the FAB could mount (the
     // pre-arming green was exactly that false pass). exact:true cannot match

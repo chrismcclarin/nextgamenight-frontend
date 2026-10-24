@@ -32,14 +32,14 @@ import { scrubbedFetch } from './support/scrubbedFetch';
  * pre-fix baseline (87.8-BASELINE.md).
  *
  * PHONE-ONLY: the describe-level guard below inverts the shape shipped at
- * tailwind-v4-styles.spec.ts:57. Both `journeys` (playwright.config.ts:44) and
- * `phone` (playwright.config.ts:87) collect every e2e/*.spec.ts, so without
+ * e2e/tailwind-v4-styles.spec.ts ("SPEC R5 (Phase 87.8, closed): viewport-independent hazards"). Both `journeys` (playwright.config.ts ("name: 'journeys'")) and
+ * `phone` (playwright.config.ts ("name: 'phone'")) collect every e2e/*.spec.ts, so without
  * the guard this file would also run at 1280x720 in `journeys`, where a 75px
  * budget is meaningless and would only add red to the desktop lane.
  *
  * DECISION Phase 87.8 (SPEC R2): this file asserts a pixel SUM against a fixed
  * ceiling — a deliberate, narrow exception to the assertion-shape policy
- * recorded at tailwind-v4-styles.spec.ts:37-40 ("pin WHICH PROPERTY is set,
+ * recorded at e2e/tailwind-v4-styles.spec.ts ("DECISION Phase 87.7 Plan 10 (assertion shape)") ("pin WHICH PROPERTY is set,
  * never a pixel value", so Phase 88 can re-space freely). The exception is
  * justified because (a) the R2 budget IS a pixel sum by definition — there is
  * no property-shaped way to state "no more than 20% of the viewport", and
@@ -48,30 +48,30 @@ import { scrubbedFetch } from './support/scrubbedFetch';
  * applies to this file only; every other spec keeps the never-pin-pixels
  * policy. "Fixing" this to a property assertion is a decision, not a cleanup.
  *
- * SELECTOR POLICY (e2e/invite.spec.ts:18): role, label and text only — never
+ * SELECTOR POLICY (e2e/invite.spec.ts ("Selectors are role/label/text only")): role, label and text only — never
  * Tailwind classes. The helper below READS class strings for the diagnostic
  * breakdown, but no locator selects by class.
  *
- * THEME: the D-11 dark-theme pre-assertion (tailwind-v4-styles.spec.ts:78-86)
+ * THEME: the D-11 dark-theme pre-assertion (e2e/tailwind-v4-styles.spec.ts ("toHaveClass(/dark/)"))
  * is deliberately omitted — computed padding is theme-independent (both themes
  * share the same box model; only colours differ), so no surface here needs the
  * theme resolved before layout settles. Re-adding it would be harmless but
  * asserts nothing this file depends on.
  *
  * NOTE ON THE GATE: tsconfig.json excludes `e2e/`, so `tsc --noEmit` does NOT
- * typecheck this file (same caveat as tailwind-v4-styles.spec.ts:42-44).
+ * typecheck this file (same caveat as e2e/tailwind-v4-styles.spec.ts ("NOTE ON THE GATE: tsconfig.json excludes")).
  */
 
 // The UI-SPEC's locked ceiling: 20% of a 375px viewport (SPEC R2 / V1).
 const PADDING_BUDGET_PX = 75;
 
 // Seeded fixtures minted by the backend's scripts/e2e-fixtures.js in CI — same
-// obviously-fake fallback idiom as tailwind-v4-styles.spec.ts:47-49 and
-// rsvp.spec.ts:16 / availability-submit.spec.ts:15 / invite.spec.ts:21.
+// obviously-fake fallback idiom as e2e/tailwind-v4-styles.spec.ts ("Seeded group minted by the backend") and
+// e2e/rsvp.spec.ts ("process.env.E2E_RSVP_PATH ??") / e2e/availability-submit.spec.ts ("process.env.E2E_AVAILABILITY_TOKEN ??") / e2e/invite.spec.ts ("process.env.E2E_INVITE_GROUP_NAME ??").
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 const E2E_AVAILABILITY_TOKEN = process.env.E2E_AVAILABILITY_TOKEN ?? 'seed-availability-token';
 const E2E_INVITE_GROUP_NAME = process.env.E2E_INVITE_GROUP_NAME ?? 'E2E Invite Group';
-// Phase 88-24: same fixture idiom and same URL shape touch-targets.spec.ts:49-50
+// Phase 88-24: same fixture idiom and same URL shape e2e/touch-targets.spec.ts ("const E2E_EVENT_DETAIL_PATH =")
 // already runs green in the phone lane — deliberately NOT a second variable name
 // for the same path, so a fixture rename moves both specs together.
 const E2E_EVENT_DETAIL_PATH =
@@ -127,8 +127,8 @@ async function measurePaddingChain(anchor: Locator): Promise<PaddingChain> {
       // (after counting the fixed element's own padding, which does constrain
       // its children) — chosen OVER summing straight to <body>. A fixed
       // element's containing block is the viewport, so in-flow ancestor
-      // padding underneath it (e.g. the page's p-4 under .modal-overlay,
-      // globals.css:856-858) never constrains the measured text; counting it
+      // padding underneath it (e.g. the page's p-4 under .modal-overlay)
+      // never constrains the measured text; counting it
       // failed the Create Event modal at a phantom 80px when its real chain
       // is 48px (first armed run 30833214370). Same principle as the R2
       // availability re-anchor: measure what the spec claims to measure.
@@ -184,7 +184,7 @@ function describeChain(surface: string, chain: PaddingChain): string {
   );
 }
 
-/** Vacuity-guard message, in the tailwind-v4-styles.spec.ts:139-143 style. */
+/** Vacuity-guard message, in the e2e/tailwind-v4-styles.spec.ts ("const childCount = await directChildren.count();") style. */
 function vacuityMessage(surface: string, chain: PaddingChain): string {
   return (
     `${surface}: the ancestor chain resolved to ${chain.levels.length} element(s) — fewer than 2 means the locator did not ` +
@@ -195,16 +195,16 @@ function vacuityMessage(surface: string, chain: PaddingChain): string {
 
 test.describe('SPEC R2 — horizontal padding budget on the eight walked surfaces', () => {
   // Runs ONLY in the `phone` project. Inverse of the guard at
-  // tailwind-v4-styles.spec.ts:57 — that file opts OUT of phone; this file
+  // e2e/tailwind-v4-styles.spec.ts ("SPEC R5 (Phase 87.8, closed): viewport-independent hazards") — that file opts OUT of phone; this file
   // opts out of everything EXCEPT phone. Both `journeys`
-  // (playwright.config.ts:44) and `phone` (playwright.config.ts:87) collect
+  // (playwright.config.ts ("name: 'journeys'")) and `phone` (playwright.config.ts ("name: 'phone'")) collect
   // every e2e/*.spec.ts, so this is a runtime skip, not a collection filter.
   test.skip(({ isMobile }) => !isMobile, 'SPEC R2: the 75px budget is 20% of a PHONE viewport — meaningless at 1280px, so this spec runs only in the phone project');
 
   test('home / group list: padding chain stays within budget', async ({ page }) => {
     await page.goto('/');
 
-    // Anchor: a group card's group-name heading — grouplist.js:224 renders
+    // Anchor: a group card's group-name heading — src/app/components/grouplist.js ("cardTitleNodesRef.current.set(group.id, node)") renders
     // group.name as an <h3>. The seeded user owns E2E_INVITE_GROUP_NAME
     // (backend scripts/e2e-fixtures.js; same fixture invite.spec.ts relies on),
     // so its card is guaranteed to be in the list.
@@ -217,14 +217,14 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
   });
 
   test('groupHomePage calendar body: padding chain stays within budget', async ({ page }) => {
-    // The param is `id`, not `groupId` — see tailwind-v4-styles.spec.ts:59-69.
+    // The param is `id`, not `groupId` — see e2e/tailwind-v4-styles.spec.ts ("Group home hosts the create-event entry point").
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     // Anchor: the calendar body, NOT the identity header (the header is
     // already compliant and UI-SPEC-exempt — RESEARCH C-3). EventCalendar
-    // renders its title as an <h2> inside the `card p-6` box
-    // (EventCalendar.js:190-192); groupHomePage passes title="Calendar"
-    // (groupHomePage/page.js:436).
+    // renders its title as an <h2> inside the `card p-3 md:p-6` box
+    // (src/app/components/EventCalendar.js ("flex justify-between items-center mb-6")); groupHomePage passes title="Calendar"
+    // (src/app/groupHomePage/page.js ("const CALENDAR_TITLE =")).
     const anchor = page.getByRole('heading', { name: 'Calendar', exact: true });
     await expect(anchor).toBeVisible({ timeout: 15_000 });
 
@@ -241,7 +241,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     await openCreateEventDialog(page);
     await switchToManualEntry(page);
 
-    // Anchor: the start_date <label> element itself (createEvent.js:851) — a
+    // Anchor: the start_date <label> element itself (src/app/components/createEvent.js ("Start Date & Time {!editingEvent")) — a
     // text locator, because getByLabel would resolve to the <input>, whose own
     // control padding would pollute a body-text measurement.
     const anchor = page.getByText(/start date & time/i);
@@ -279,20 +279,20 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
   });
 
   test('groupPlanning availability polls: padding chain stays within budget', async ({ page }) => {
-    // Param name verified against source THIS session: groupPlanning/page.js:26
+    // Param name verified against source THIS session: src/app/groupPlanning/page.js ("searchParams.get('group_id')")
     // reads `searchParams.get('group_id')` — NOT `?id=` like groupHomePage.
     // RESEARCH M-09 records the ?id=/?group_id= inconsistency as Phase 88's to
     // fix; if Phase 88 renames the param, update this goto alongside it.
     await page.goto(`/groupPlanning?group_id=${E2E_GROUP_ID}`);
 
     // Anchor: body text inside the availability-poll card
-    // (groupPlanning/page.js:239-241 → PromptScheduleSection →
-    // PromptScheduleManager.js:185/:191 — the level RESEARCH C-2 found missing
+    // (src/app/groupPlanning/page.js ("<PromptScheduleSection") → PromptScheduleSection →
+    // src/app/components/PromptScheduleManager.js ("bg-surface-card rounded-card border border-line surface-flat-phone") / src/app/components/PromptScheduleManager.js ("DECISION Phase 87.8 (D-02/D-03): this") — the level RESEARCH C-2 found missing
     // from every upstream artifact). The CI fixture seeds no recurring
     // schedules (backend scripts/e2e-fixtures.js creates an AvailabilityPrompt
-    // only), so ScheduleList renders its empty state (ScheduleList.js:41-43).
+    // only), so ScheduleList renders its empty state (src/app/components/ScheduleList.js ("if (!schedules || schedules.length === 0) {")).
     // NOTE: the empty-state chain ends one level ABOVE a populated schedule
-    // card (ScheduleList.js:67, p-4 = +32px total) — the baseline doc must
+    // card (src/app/components/ScheduleList.js ("surface-flat-phone-divided md:p-4"): md:p-4, so +32px total only at md and up) — the baseline doc must
     // state this when comparing against RESEARCH C-3's populated-chain 168px.
     const anchor = page.getByText(/no schedules yet/i);
     await expect(anchor).toBeVisible({ timeout: 15_000 });
@@ -383,11 +383,11 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     await page.goto(`/availability-form/${E2E_AVAILABILITY_TOKEN}`);
 
     // DECISION Phase 87.8 plan 12 (R2 anchor): anchor on GRID body text
-    // ("Times shown in:", AvailabilityGrid.js:605-606 — a plain zero-padding
+    // ("Times shown in:", src/app/components/AvailabilityGrid.js ("Times shown in:") — a plain zero-padding
     // <div> whose ancestors up to the form card all carry zero horizontal
     // padding), chosen OVER the original "Start with:" anchor and OVER
     // shrinking the sibling card or excepting the ceiling. The old anchor
-    // (AvailabilityForm.js:241) sits inside the :240 pre-fill card — a p-4
+    // (src/app/components/AvailabilityForm.js ("Start with:")) sits inside the src/app/components/AvailabilityForm.js ("bg-surface-elevated border border-line rounded-card p-4 space-y-2") pre-fill card — a p-4
     // SIBLING of the grid section, not a grid ancestor — so post-plan-07 it
     // measured 88px (gutter 16 + form card 12 + sibling card 16 per side)
     // while the surface this spec claims to measure, the availability GRID,
@@ -395,7 +395,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     // to a card plan 07 deliberately left boxed) and raising the ceiling for
     // this anchor (breaks the one-budget property). Recorded in the phase's
     // deferred-items.md (plan 07 → plan 12). Still NOT the "I'm unavailable
-    // this week" text inside :286: that lives in a px-4 <button>, whose
+    // this week" text inside src/app/components/AvailabilityForm.js ("w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn"): that lives in a px-4 <button>, whose
     // control padding would inflate a body-text measurement by 32px.
     const anchor = page.getByText('Times shown in:');
     await expect(anchor).toBeVisible({ timeout: 15_000 });
@@ -418,7 +418,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
      any of these anchors out of its card is a regression to that vacuity, not a cleanup.
 
      PREDICTED, not observed: these were written against the source chains (the phone lane
-     needs CI's Auth0 storageState and cannot run locally — playwright.config.ts:19-21).
+     needs CI's Auth0 storageState and cannot run locally — playwright.config.ts ("They are intentionally absent locally")).
 
      UPDATED 2026-08-05 (DEF-88-24-01, owner ruling). gameDetail was the tight one at a
      predicted 72/75, 48 of which was its PAGE wrapper's bare `p-6`. The owner ruled that
@@ -452,7 +452,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
      REJECTED (a): point `E2E_EVENT_DETAIL_PATH` at a URL with a `game_id`. Verified
      against the seed: `scripts/e2e-fixtures.js` creates its Event with no `game_id` and
      emits no game key, so this needs a new backend fixture — and the variable is
-     deliberately SHARED with touch-targets.spec.ts (:62-66 above), so changing it moves a
+     deliberately SHARED with touch-targets.spec.ts (this file ("process.env.E2E_EVENT_DETAIL_PATH ??") above), so changing it moves a
      green spec's surface too.
 
      REJECTED (b): the deferral's own suggestion, the `Participants (N)` <h2>. Verified
@@ -507,8 +507,8 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
   test('friends add-friend card: padding chain stays within budget', async ({ page }) => {
     await page.goto('/friends');
 
-    // Anchor: the "Add Friend" <h2> (friends/page.js:486) inside the `card p-3 md:p-6`
-    // at :485, converged from bare `p-6` by this plan. Chosen OVER any of the friend-row
+    // Anchor: the "Add Friend" <h2> (src/app/friends/page.js ("Add Friend</Heading>")) inside the `card p-3 md:p-6`
+    // at src/app/friends/page.js ("card p-3 md:p-6"), converged from bare `p-6` by this plan. Chosen OVER any of the friend-row
     // cards below it, which render only when the seeded user actually has friends /
     // pending requests — this card renders on the empty state too.
     const anchor = page.getByRole('heading', { name: 'Add Friend', exact: true });
@@ -529,7 +529,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    around the ~37px `.btn` renders today — chosen OVER pinning a measured height, which is
    what "within an expected band" invites. 44 is the number every part of this decision is
    written in; 37 is an emergent consequence of `.btn`'s `0.5rem` padding on `0.875rem`
-   text (globals.css:1001-1013) that a legitimate type or spacing change would move,
+   text (src/app/globals.css ("padding: 0.5rem 1rem;")) that a legitimate type or spacing change would move,
    churning this file for no signal. The lower bound is anti-vacuity only.
 
    The two controls guard each OTHER, which is the point of using a row rather than a
@@ -545,7 +545,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    `userRole !== 'pending'`; the fixture user owns the seeded group, so both must render.
 
    NOT the NotificationBell Accept/Decline pair or RsvpSection's "Save note", which SPEC
-   :110 names as the other dense idioms: verified unreachable with the CI seed —
+   (planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-SPEC.md ("Requirements"), requirement 8) names as the other dense idioms: verified unreachable with the CI seed —
    `scripts/e2e-fixtures.js` hard-deletes every `GroupInvite` for the invite group and
    seeds only accepted friendships, so no notification rows render; and "Save note" is
    gated on the viewer having already selected an RSVP status. */
@@ -556,15 +556,15 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    at EVERY viewport; this test used to pin 88-01 D-36's rejection of exactly that. The two are not
    actually in conflict, and saying why is the whole point of the re-base: D-36 rejected a floor on
    the `.btn` CLASS, which square-by-design controls wear, and its `@media (width < 48rem)` rule
-   (`globals.css:2775`) is still unwidened. D-09's floor is on the PRIMITIVE
-   (`src/components/ui/Button.tsx:168`), which only opted-in elements wear. Both statements are
+   (src/app/globals.css ("min-height: 2.75rem;")) is still unwidened. D-09's floor is on the PRIMITIVE
+   (src/components/ui/Button.tsx ("'min-h-11',")), which only opted-in elements wear. Both statements are
    literally true, and after this re-base this test is the only place in the tree that proves BOTH
    at 1280 — nothing else measures either half above `md`.
 
    WHY ARM ONE IS A PLANTED PROBE. Neither control in this row is a bare `.btn` any more:
-   "Manage Members" is `<Button variant="ghost">` (`groupHomePage/page.js:1040`, label `:1058`) and
-   "Plan Game Session" is `<Button asChild variant="primary">` (`:1090`, label `:1108`). Arm one
-   therefore copies the house PLANTED-PROBE idiom (`e2e/touch-targets.spec.ts:877`), whose own
+   "Manage Members" is `<Button variant="ghost">` (src/app/groupHomePage/page.js ("onClick={() => setMemberModal(true)}"), label src/app/groupHomePage/page.js ("dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20")) and
+   "Plan Game Session" is `<Button asChild variant="primary">` (src/app/groupHomePage/page.js ("whitespace-nowrap text-center"), label src/app/groupHomePage/page.js ("/groupPlanning?group_id=")). Arm one
+   therefore copies the house PLANTED-PROBE idiom (e2e/touch-targets.spec.ts ("DECISION Phase 88-30 (D-36 / DEF-1): the")), whose own
    marker states the rule this follows: an arm whose subject can be migrated away is an arm with an
    expiry date. `.btn` and `.btn-secondary` are AUTHORED CSS, not scanned utilities, so the
    "`e2e/` is outside the `@source` globs" hazard that marker warns about does not apply here — the
@@ -594,7 +594,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
 
    BOOKKEEPING CONSEQUENCE, stated rather than left for a later reader. The describe below opens
    with SPEC Req 8 / DEF-1's acceptance sentence verbatim, whose subject is "one dense `.btn` row".
-   At D-09's target of zero raw `.btn` (`88.6-CONTEXT.md:55`) no such row will exist anywhere at
+   At D-09's target of zero raw `.btn` (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-CONTEXT.md ("AREA 3 — Button primitive and census (R2)")) no such row will exist anywhere at
    phase end, so that acceptance clause is SUPERSEDED by a detached single probe, not satisfied by
    it. Routed with a dated row in `.planning/deferred/phase-88.6.md` naming plan 46's AC-11 pass as
    the owner of its disposition — a sanction with no owning row is the debt this project's
@@ -625,7 +625,7 @@ test.describe('SPEC Req 8 / DEF-1 — a dense `.btn` row stays dense at desktop'
        in this test that catches a broken seed) but they no longer supply the number: both controls
        are `<Button>` now and would measure 44 for D-09's reason, not D-36's.
        The single character of text content is LOAD-BEARING and is copied from the house `make()`
-       (`e2e/touch-targets.spec.ts:882`): an empty `.btn` has no line box and measures `16px at
+       (e2e/touch-targets.spec.ts ("el.textContent = '+';")): an empty `.btn` has no line box and measures `16px at
        1280 against `padding: 0.5rem 1rem` on `0.875rem` text, which would red the `>= 20` guard
        below and read as a cascade defect rather than as a missing character. */
     const probe = await page.evaluate(() => {
@@ -652,15 +652,15 @@ test.describe('SPEC Req 8 / DEF-1 — a dense `.btn` row stays dense at desktop'
     /* ARM TWO — the PRIMITIVE-level floor, on a shipped control, with a NEW reason. This is no
        longer "the per-CTA min-h-11 utility is the only thing holding it": that utility is gone
        from this call site, which is now `<Button asChild variant="primary">`. What holds it at 44
-       above `md` is D-09's `'min-h-11'` on the cva BASE (`src/components/ui/Button.tsx:168`,
-       docblock `:20`), and this is the only assertion in the tree that measures it at 1280. */
+       above `md` is D-09's `'min-h-11'` on the cva BASE (src/components/ui/Button.tsx ("'min-h-11',"),
+       docblock src/components/ui/Button.tsx ("on the cva BASE, at every viewport width")), and this is the only assertion in the tree that measures it at 1280. */
     const floored = await planSession.boundingBox();
     expect(floored, '"Plan Game Session" boundingBox() returned null').not.toBeNull();
     if (!floored) return;
 
     expect(
       floored.height,
-      `"Plan Game Session" measured ${floored.height}px tall at 1280 — it is a <Button asChild variant="primary"> (groupHomePage/page.js:1090), so what floors it above md is D-09's 'min-h-11' on the cva BASE (src/components/ui/Button.tsx:168), not a per-CTA utility and not the D-36 phone rule, which stops at 48rem. If this failed, someone deleted that line from the base as redundant — exactly what all eight D-36 markers warn against, one layer down`,
+      `"Plan Game Session" measured ${floored.height}px tall at 1280 — it is a <Button asChild variant="primary"> (src/app/groupHomePage/page.js ("whitespace-nowrap text-center")), so what floors it above md is D-09's 'min-h-11' on the cva BASE (src/components/ui/Button.tsx ("'min-h-11',")), not a per-CTA utility and not the D-36 phone rule, which stops at 48rem. If this failed, someone deleted that line from the base as redundant — exactly what all eight D-36 markers warn against, one layer down`,
     ).toBeGreaterThanOrEqual(44);
   });
 });

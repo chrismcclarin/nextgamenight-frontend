@@ -42,7 +42,7 @@ declare global {
  *      make: a pill that must be VISIBLE inside a button that must STILL measure 44x44 with
  *      it, and a hero that must sit ABOVE the first list row.
  *   4. RE-POINTED — every "event row heading" locator. Plan 88.5-08 demotes the This-week and
- *      Later rows to `<h6>` titles under `<h5>` day headers (`CalendarListView.js:617-618`),
+ *      Later rows to `<h6>` titles under `<h5>` day headers (src/app/components/CalendarListView.js ("{thisWeekGroups.map((group) => (")),
  *      so the old `level: 5` locator now resolves DAY HEADERS as well as row titles and would
  *      have measured a 14px date string in the readable-game-text case. Rows are located by
  *      STRUCTURE instead — a heading inside a row `role="button"` — which is level-agnostic
@@ -54,7 +54,7 @@ declare global {
  * because jsdom has none. Everything measured here is therefore a thing no unit test can
  * assert: the 44x44 touch floor, the readable game text, the below-`md` / at-`md` split, the
  * hero's position relative to the list, and above all the FOOTER OCCLUSION check — `Footer`
- * is a SIBLING of `<main>` (`layout.js:86-91`), so a `fixed` element can cover the `/Privacy`
+ * is a SIBLING of `<main>` (src/app/layout.js ("<Footer />")), so a `fixed` element can cover the `/Privacy`
  * link with no DOM change at all. Plan 88.1-08 verified that only structurally and handed the
  * real gate here.
  *
@@ -83,17 +83,17 @@ declare global {
  *
  * PROJECT SPLIT — stated explicitly, as the plan requires. Rows 1-7 run in the `phone`
  * project only; row 8 runs in the desktop `journeys` project only, at its real 1280px
- * width. Both projects match every spec (`playwright.config.ts:65`, `:117`), so each
+ * width. Both projects match every spec (playwright.config.ts ("name: 'journeys'"), playwright.config.ts ("name: 'phone'")), so each
  * describe carries the opposite skip rather than resizing a viewport by hand: an
  * emulated resize inside the phone project would keep `isMobile`/`hasTouch` set and
  * measure a viewport the app is never actually served at.
  *
- * SELECTOR POLICY: role/label/text only, never Tailwind classes (invite.spec.ts:18).
+ * SELECTOR POLICY: role/label/text only, never Tailwind classes (e2e/invite.spec.ts ("Selectors are role/label/text only")).
  * Geometry is read from `boundingBox()` / computed style — the layer where it is real.
  *
  * Fixtures follow the env-const idiom. Nothing new is minted here: this spec drives the
  * logged-in home page through the shared `storageState`, so it needs no id at all beyond
- * the existing seeded account. e2e is CI-only by design (`playwright.config.ts:22-24`) —
+ * the existing seeded account. e2e is CI-only by design (playwright.config.ts ("They are intentionally absent locally")) —
  * author locally, verify in CI.
  */
 
@@ -159,7 +159,7 @@ async function scrollToSettledBottom(page: Page): Promise<{ scrollTop: number; m
   return landed;
 }
 
-/** Vacuity guard (touch-targets.spec.ts:66 / availability-grid-touch.spec.ts:64): a
+/** Vacuity guard (e2e/touch-targets.spec.ts ("Vacuity guard: a zero-count locator would make") / e2e/availability-grid-touch.spec.ts ("Vacuity guard (touch-targets.spec.ts pattern)")): a
  *  zero-count locator makes every assertion after it vacuous — that is a failure of the
  *  LOCATOR or the fixture state, not of the work under test. Fail loudly at the locator.
  *  `toBeVisible` FIRST because it auto-waits; `count()` does not, and sampling it against
@@ -187,7 +187,7 @@ async function assertMin44(locator: Locator, label: string): Promise<void> {
   });
 }
 
-/** D-11 dark-theme pre-assertion (touch-targets.spec.ts:133): a computed-style read in
+/** D-11 dark-theme pre-assertion (e2e/touch-targets.spec.ts ("async function assertDarkTheme(page: Page): Promise<void> {")): a computed-style read in
  *  light mode would be meaningless and its failure misdiagnosed. Delegates to the shared
  *  `assertTheme` so this file and `contrast.spec.ts` cannot disagree about what "dark" is. */
 async function assertDarkTheme(page: Page): Promise<void> {
@@ -201,7 +201,7 @@ async function assertDarkTheme(page: Page): Promise<void> {
  *  name stays exactly "Calendar". */
 const calendarButton = (page: Page) => page.getByRole('button', { name: /^calendar\b/i });
 const calendarSheet = (page: Page) => page.getByRole('dialog', { name: 'Calendar' });
-/** The desktop right column's own heading (`UpcomingEventsCard.js:140`). It stays in the
+/** The desktop right column's own heading (src/app/components/UpcomingEventsCard.js ("ref={upcomingHeadingRef}")). It stays in the
  *  DOM below `md` — the column is `hidden md:flex` — so this is a VISIBILITY assertion,
  *  never a presence one. */
 const desktopColumnHeading = (page: Page) =>
@@ -218,7 +218,7 @@ const desktopColumnHeading = (page: Page) =>
  * readable-game-text case below would have measured against its 16px floor.
  *
  * A row is therefore identified by STRUCTURE: `EventRow` renders its title heading INSIDE a
- * `role="button"` row (`CalendarListView.js:1046-1055`), and nothing else in this sheet puts a
+ * `role="button"` row (src/app/components/CalendarListView.js ("onClick && onClick();")), and nothing else in this sheet puts a
  * heading inside a button — not the hero (spans only, deliberately, see its own marker), not
  * the past disclosure, not the sub-section `<h4>`s. Level-agnostic by construction, so the
  * next outline change cannot silently re-break it. Going back to a hard-coded level is a
@@ -253,10 +253,10 @@ const heroRsvpButtons = (page: Page) => [
  *  makes the Req 12 expand case vacuous, and a seeded account with no event inside 7 days
  *  makes the count pill vacuous — both are FIXTURE failures, never a pass.
  *  `seed-sample-data.js` seeds the past rows (7 of them, -1 to -14 days);
- *  `e2e-fixtures.js` seeds events at +3 and +4 days (`:119`, `:349`) and owns the invariant
+ *  `e2e-fixtures.js` seeds events at +3 and +4 days (backend:Sonnet/scripts/e2e-fixtures.js ("start_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),"), backend:Sonnet/scripts/e2e-fixtures.js ("const [eventPhone] = await Event.findOrCreate({")) and owns the invariant
  *  that the e2e account still sees them. */
 const FIXTURE_OWNER =
-  'periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js (past rows come from seed-sample-data.js; the +3d/+4d upcoming rows come from e2e-fixtures.js:119 and :349)';
+  'periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js (past rows come from seed-sample-data.js; the +3d/+4d upcoming rows come from backend:Sonnet/scripts/e2e-fixtures.js ("start_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),") and backend:Sonnet/scripts/e2e-fixtures.js ("const [eventPhone] = await Event.findOrCreate({"))';
 
 /** UI-SPEC 6.1.5, both arms. The capture group is the count the pill must show. */
 const COUNTED_CALENDAR_LABEL = /^Calendar, (\d+) upcoming games? this week$/;
@@ -265,14 +265,14 @@ const COUNTED_CALENDAR_LABEL = /^Calendar, (\d+) upcoming games? this week$/;
  * Read the count out of the Calendar button's accessible name, asserting the SHAPE of that
  * name on the way past.
  *
- * The pill is `aria-hidden` (`UpcomingCountPill.tsx:122`), so this label is the ONLY carrier
+ * The pill is `aria-hidden` (src/app/components/UpcomingCountPill.tsx ("aria-hidden=")), so this label is the ONLY carrier
  * of the number for assistive tech — reading the number FROM it is therefore also the
  * assertion that the number reaches assistive tech at all. A bare "Calendar" means the count
  * is SUPPRESSED (`count === null`: identity or events fetch pending/errored), which on a
  * seeded account is a fixture or backend failure, never a pass.
  *
  * HISTORY — WHAT quick-002 FIXED. The label is the bare "Calendar" for every frame between
- * mount and the upcoming-events fetch settling (`UserHomePage.js:351-354`, `const
+ * mount and the upcoming-events fetch settling (src/app/userHome/UserHomePage.js ("const upcomingCount ="), `const
  * upcomingCount` — `null` while `upcomingPending`), so a one-shot read straight after
  * `page.goto` raced that fetch and lost ~1 CI run in 4 on `main` (2026-09-02, runs
  * 33681277058 / 33681279703, both with the fixture rows present). quick-002 added a retrying
@@ -288,7 +288,7 @@ const COUNTED_CALENDAR_LABEL = /^Calendar, (\d+) upcoming games? this week$/;
  * 36499984107 / 36502533130 / 36510630175 — 5 of 7 green runs passed only on retry.
  *
  * WHAT REPLACED IT. The app no longer commits the false zero (quick-260928-sfo,
- * `UserHomePage.js:214-217`, `const upcomingPending`'s third clause), and the wait and the
+ * src/app/userHome/UserHomePage.js ("(Boolean(selfUuid) && upcomingSettledFor !== selfUuid)"), `const upcomingPending`'s third clause), and the wait and the
  * read are now ONE read: the number is parsed from the exact string that satisfied the
  * matcher, so they cannot diverge. A counted -> bare flip that the poll cannot see is caught by
  * `assertNoCalendarLabelFlip` below.
@@ -300,7 +300,7 @@ const COUNTED_CALENDAR_LABEL = /^Calendar, (\d+) upcoming games? this week$/;
  * through it — so the recorder is the only detector of one (round-3 finding). quick-002's "the
  * one-shot read is kept deliberately" note is SUPERSEDED: the number is still read once, but
  * from the read that matched, because a separate wait-then-read IS the race.
- * REJECTED: (i) retry-until-pass tolerance (CI `retries: 1` at `playwright.config.ts:33`, or
+ * REJECTED: (i) retry-until-pass tolerance (CI `retries: 1` at playwright.config.ts ("retries: process.env.CI ? 1 : 0,"), or
  * any wrapper) — it waits through a user-visible lie and reports green-on-retry as green;
  * (ii) a locator narrowed to the counted name (`getByRole('button', { name:
  * COUNTED_CALENDAR_LABEL })`) — locators re-resolve and auto-wait, so a counted -> bare ->
@@ -321,7 +321,7 @@ async function readCalendarCount(page: Page): Promise<number> {
   let label = '';
   await expect
     .poll(async () => (label = (await button.getAttribute('aria-label')) ?? ''), {
-      message: `the Calendar button never announced a counted name — SPEC Req 2 / UI-SPEC 6.1.5 requires "Calendar, {n} upcoming game(s) this week" once the upcoming-events fetch resolves. A name still bare after the expect timeout means the count is SUPPRESSED (identity or events fetch pending/errored — \`UserHomePage.js:351-354\`, \`const upcomingCount\`), and since the pill is aria-hidden that name is the only place the number exists for assistive tech. On the seeded account this is a FIXTURE or backend failure owned by ${FIXTURE_OWNER}, not a pass.`,
+      message: `the Calendar button never announced a counted name — SPEC Req 2 / UI-SPEC 6.1.5 requires "Calendar, {n} upcoming game(s) this week" once the upcoming-events fetch resolves. A name still bare after the expect timeout means the count is SUPPRESSED (identity or events fetch pending/errored — src/app/userHome/UserHomePage.js ("const upcomingCount ="), \`const upcomingCount\`), and since the pill is aria-hidden that name is the only place the number exists for assistive tech. On the seeded account this is a FIXTURE or backend failure owned by ${FIXTURE_OWNER}, not a pass.`,
     })
     .toMatch(COUNTED_CALENDAR_LABEL);
 
@@ -335,7 +335,7 @@ async function readCalendarCount(page: Page): Promise<number> {
   const count = Number(match?.[1] ?? 0);
   expect(
     count,
-    `the Calendar button announces ${count} upcoming games this week, so the pill renders NOTHING (UpcomingCountPill returns null for 0 as well as for null) and every pill assertion below would be vacuous. The seeded account must have at least one event inside 7 days — FIXTURE failure owned by ${FIXTURE_OWNER}. SECOND possible cause: a pre-fetch FALSE ZERO, i.e. a regression of quick-260928-sfo at \`UserHomePage.js:214-217\` (\`const upcomingPending\` — a resolved identity whose fetch has not settled must read as pending); if the fixture rows are present, check that first — the label recorder read-back would otherwise report it as a flip.`,
+    `the Calendar button announces ${count} upcoming games this week, so the pill renders NOTHING (UpcomingCountPill returns null for 0 as well as for null) and every pill assertion below would be vacuous. The seeded account must have at least one event inside 7 days — FIXTURE failure owned by ${FIXTURE_OWNER}. SECOND possible cause: a pre-fetch FALSE ZERO, i.e. a regression of quick-260928-sfo at src/app/userHome/UserHomePage.js ("(Boolean(selfUuid) && upcomingSettledFor !== selfUuid)") (\`const upcomingPending\` — a resolved identity whose fetch has not settled must read as pending); if the fixture rows are present, check that first — the label recorder read-back would otherwise report it as a flip.`,
   ).toBeGreaterThanOrEqual(1);
   return count;
 }
@@ -466,12 +466,12 @@ async function assertNoCalendarLabelFlip(page: Page): Promise<void> {
   const flipped = later.filter((entry) => !COUNTED_CALENDAR_LABEL.test(entry.label ?? ''));
   expect(
     flipped,
-    `the Calendar button went counted -> not-counted after it first announced a count — a user-visible lie (quick-260928-sfo; cause lives at UserHomePage.js \`const upcomingPending\`, :214-217). Trace: ${shown}`,
+    `the Calendar button went counted -> not-counted after it first announced a count — a user-visible lie (quick-260928-sfo; cause lives at src/app/userHome/UserHomePage.js ("(Boolean(selfUuid) && upcomingSettledFor !== selfUuid)"), \`const upcomingPending\`). Trace: ${shown}`,
   ).toEqual([]);
   const remounted = later.filter((entry) => entry.id !== countedId);
   expect(
     remounted,
-    `the Calendar button REMOUNTED after it first announced a count (a new node id after id ${countedId}) — quick-260928-sfo; check UserHomePage.js \`const upcomingPending\` (:214-217) and whatever unmounted UserHome. Trace: ${shown}`,
+    `the Calendar button REMOUNTED after it first announced a count (a new node id after id ${countedId}) — quick-260928-sfo; check src/app/userHome/UserHomePage.js ("(Boolean(selfUuid) && upcomingSettledFor !== selfUuid)"), \`const upcomingPending\`, and whatever unmounted UserHome. Trace: ${shown}`,
   ).toEqual([]);
 }
 
@@ -480,7 +480,7 @@ async function assertNoCalendarLabelFlip(page: Page): Promise<void> {
  * clears 44x44 WITH it, and the count reaches assistive tech through the button's name.
  *
  * Run in both themes — the pill FORKS by theme (amber-700/white in light, amber-500/warm-900
- * in dark, `UpcomingCountPill.tsx:126-128`), so a single-theme pass would leave one of the two
+ * in dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-500)]")), so a single-theme pass would leave one of the two
  * shipped arms unrendered by any gate.
  */
 async function assertCountedCalendarButton(page: Page): Promise<number> {
@@ -519,7 +519,7 @@ async function assertCountedCalendarButton(page: Page): Promise<number> {
  *
  * Both are read in ONE evaluate. The sheet settles asynchronously (the hero's own RSVP read
  * lands after mount), and a coordinate that crosses an await boundary on this surface has
- * gone stale before — the same lesson `touch-targets.spec.ts:580-590` records for D-13.
+ * gone stale before — the same lesson e2e/touch-targets.spec.ts ("that any coordinate crossing an await boundary on this page goes stale") records for D-13.
  */
 async function assertHeroLeadsTheSheet(page: Page, count: number): Promise<void> {
   await guardResolved(heroEyebrow(page), 'the hero\'s "Next game night" eyebrow (SPEC Req 3)');
@@ -598,8 +598,8 @@ async function assertHeroLeadsTheSheet(page: Page, count: number): Promise<void>
 }
 
 test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discovery, DARK (phone project)', () => {
-  // Inverse of tailwind-v4-styles.spec.ts:57 and the same shape as
-  // touch-targets.spec.ts:214 — these are phone-tenet requirements measured at 375x667.
+  // Inverse of e2e/tailwind-v4-styles.spec.ts ("SPEC R5 (Phase 87.8, closed): viewport-independent hazards") and the same shape as
+  // e2e/touch-targets.spec.ts ("R4/R6 are phone-tenet requirements") — these are phone-tenet requirements measured at 375x667.
   test.skip(({ isMobile }) => !isMobile, 'phone-tenet requirements — phone project only');
 
   test('SPEC Req 2: the Calendar button shows the count pill, still meets 44x44, and opens the sheet', async ({
@@ -901,7 +901,7 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
 
     expect(
       probe.centre.reachesLink,
-      `the point at the CENTRE of the /Privacy link (${probe.centre.x},${probe.centre.y}) hit <${probe.centre.tag}> "${probe.centre.text}" instead of the link — something is covering it. /Privacy (capital P) is load-bearing for Google auth (CLAUDE.md), and the Footer is a SIBLING of <main> (layout.js:86-91), so page padding cannot clear it: whatever is covering it has to stop covering it.${culprits}`,
+      `the point at the CENTRE of the /Privacy link (${probe.centre.x},${probe.centre.y}) hit <${probe.centre.tag}> "${probe.centre.text}" instead of the link — something is covering it. /Privacy (capital P) is load-bearing for Google auth (CLAUDE.md), and the Footer is a SIBLING of <main> (src/app/layout.js ("<Footer />")), so page padding cannot clear it: whatever is covering it has to stop covering it.${culprits}`,
     ).toBe(true);
     expect(
       probe.bottomEdge.reachesLink,
@@ -921,10 +921,10 @@ test.describe('Phase 88.5 Req 2/3 — the counted button and the hero, LIGHT (ph
 
   // UI-SPEC section 12 item 14: the hero and BOTH pills are asserted in both themes. The
   // pill's colour genuinely forks (amber-700 on white in light, amber-500 on warm-900 in
-  // dark, `UpcomingCountPill.tsx:126-128`) and so does the chip/card treatment beneath the
+  // dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-500)]")) and so does the chip/card treatment beneath the
   // hero, so a dark-only pass leaves one shipped arm rendered by nothing.
   //
-  // BOTH halves of the theme mechanism, exactly as `contrast.spec.ts:400-412` records:
+  // BOTH halves of the theme mechanism, exactly as e2e/contrast.spec.ts ("is ORTHOGONAL to the theme class") records:
   // `colorScheme` is emulation and governs UA chrome only; the `<html class>` comes from the
   // next-themes localStorage key that `forceLightMode` writes through an init script. Neither
   // implies the other, and `assertTheme` below proves the class actually landed.
