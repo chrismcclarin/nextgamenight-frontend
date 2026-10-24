@@ -60,11 +60,16 @@
  * moves the count and fixing them one at a time produces an intermediate state where a
  * number is wrong for two reasons at once:
  *
- *  1. COMMENTS WERE COUNTED. `headings()` read raw source. `not-found.tsx:22,25,26` and
- *     `userProfile/page.js:1434,1439` carry heading tags inside prose. Now read through
+ *  1. COMMENTS WERE COUNTED. `headings()` read raw source. The comment prose at
+ *     src/app/not-found.tsx ("leaving this page as the app's only page with no") and the lines
+ *     below it, and the DECISION prose at
+ *     src/app/userProfile/page.js ("sized to MIRROR the") and the lines below it, carry
+ *     heading tags inside prose. Now read through
  *     `withoutComments` (`src/test-utils/sourceScan.ts`).
  *  2. ARBITRARY VALUES WERE INVISIBLE. Neither size regex had a `text-[…]` clause, so
- *     `grouplist.js:455`'s `text-[1.1rem]` and the sub-12px fold's 30 sites read as
+ *     the group-name h3's text-[1.1rem] (that h3 migrated onto the primitive in plan 88.6-21
+ *     and is now src/app/components/grouplist.js ("dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)]"))
+ *     and the sub-12px fold's 30 sites read as
  *     "no size utility at all" or as nothing.
  *  3. PROP-RENDERED LEVELS WERE INVISIBLE. A heading level passed as a prop
  *     (`headingLevel="h5"`) renders a real `<h5>` no source scan for `<hN>` can see —
@@ -72,7 +77,7 @@
  *     are no raw tags left, so P4's before==after level pin would be trivially true and
  *     would pass over a real level change.
  *  4. CLASS-LESS HEADINGS WERE SKIPPED. `HEADING_RE` required `className=`.
- *     `global-error.tsx:66` is a class-less `<h1>` — a PERMANENT roster entry, not a
+ *     src/app/global-error.tsx ("<h1 style={{ fontSize:") is a class-less `<h1>` — a PERMANENT roster entry, not a
  *     blind spot.
  *
  * Defects 1 and 4 are COUPLED: dropping the `className=` guard is what makes a bare
@@ -88,13 +93,15 @@
  * enumeration to a different key space without converting them would silently empty
  * both — the Display filter would match nothing and its assertion would pass over zero
  * subjects. The `src/`-relative form is also the form `ExemptionRoster` documents
- * (`src/test-utils/exemption.ts:83-87`), so rosters and scanner results join directly.
+ * (src/test-utils/exemption.ts ("A roster keyed by the repo-relative source path")), so
+ * rosters and scanner results join directly.
  *
  * BUILD ONCE (AC-11, owner ruling 2026-09-09)
  * -------------------------------------------
  * The tree is enumerated, read and comment-stripped EXACTLY ONCE at module scope, and
  * every assertion consumes that one constant. The shipped idiom in all three reference
- * suites is build-once (`controlSizeFloor.test.tsx:172`, `nativeDialogs.test.ts:115-117`,
+ * suites is build-once (src/app/components/controlSizeFloor.test.tsx ("= sourceFiles(SRC).map("),
+ * src/app/nativeDialogs.test.ts ("files.map((f) => [rel(f), nativeDialogCalls(fs.readFileSync(f, 'utf8'))]),"),
  * and this file's own `const ALL = …` before the widening). Moving the walk inside the
  * assertions would cost ~10 full reads of a 192-file tree per run. Adding a cache to
  * `src/test-utils/sourceScan.ts` to get the same effect is FORBIDDEN this phase (AC-12,
@@ -181,13 +188,17 @@ const NAMED_SURFACES = [
  * §4.1's working set, as Tailwind utilities: 14 / 16 / 20 / 30.
  *
  * DO NOT ADD `xs` HERE. These assertions are HEADING-scoped, and admitting `text-xs`
- * would legalize the two live `text-xs` `<h4>`s at `app/components/CalendarListView.js:609`
- * (both retired by plan 88.6-27 — they are `<Heading level={4} size="label">` at 14 now)
- * and `:646` — the exact sites UI-SPEC §1.2 row V-5 (`88.6-UI-SPEC.md:111`, "h4 12px →
- * 14px") exists to move UP. 12px is the tree-wide FLOOR (task 2's sub-12px arbitrary-value
- * fold enforces it) and the `caption` rung lives on NON-heading elements only — UI-SPEC
- * §4.6 (`88.6-UI-SPEC.md:383`) states "No `caption` size — after §4.4 no heading renders at
- * 12px". Adding a rung here is the "the set is missing a size" edit; it is not.
+ * would re-legalize the two text-xs h4s plan 88.6-27 retired — now
+ * src/app/components/CalendarListView.js ("id={thisWeekId}") and
+ * src/app/components/CalendarListView.js ("id={laterId}"), both Heading level 4 size label at
+ * 14 — the exact sites UI-SPEC §1.2 row V-5
+ * (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 1.2 The sanctioned visible deltas"),
+ * "h4 12px → 14px") exists to move UP. 12px is the tree-wide FLOOR (task 2's sub-12px
+ * arbitrary-value fold enforces it) and the `caption` rung lives on NON-heading elements only —
+ * UI-SPEC §4.6
+ * (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("primitive API (D-05)"))
+ * states "No `caption` size — after §4.4 no heading renders at 12px". Adding a rung here is
+ * the "the set is missing a size" edit; it is not.
  *
  * It also does not match an ARBITRARY value: an arbitrary size is by definition off the
  * rung set, so `text-[10px]` is an offender on both arms. `IN_SET_SIZE.test('text-[10px]')`
@@ -197,7 +208,8 @@ const IN_SET_SIZE = /\btext-(?:sm|base|xl|3xl)\b/;
 
 /**
  * Defect 2 (Phase 88.6-11). Anchored on the LITERAL `text-[`, deliberately: a looser
- * arbitrary-value clause false-positives `app/groupHomePage/page.js:668`'s
+ * arbitrary-value clause false-positives the page title at
+ * src/app/groupHomePage/page.js ("style={headerTitleVars}") and its
  * `[text-shadow:var(--t-shadow-l)]` (and its `dark:` twin, and the two
  * `[-webkit-text-stroke:…]` utilities beside them) into `OUT_OF_SET_SIZE`, reddening a
  * page title that is already on the 30/700 rung.
@@ -242,7 +254,8 @@ interface Heading {
   /**
    * The LITERAL className on the heading's own opening tag, `${…}` interpolations
    * blanked. An interpolated constant is invisible here ON PURPOSE — see the
-   * `app/groupHomePage/page.js:467-478` DECISION quoted at `readClassName` below.
+   * src/app/groupHomePage/page.js ("written out LITERALLY on each of the two elements rather than hoisted into")
+   * decision quoted at `readClassName` below.
    *
    * For a `prop-seam` this is the className of the COMPONENT CALL SITE, not of the
    * heading element the component renders internally. It is included rather than
@@ -279,7 +292,7 @@ const PRIMITIVE_OPEN = /<Heading(?=[\s/>])/g;
  * A LITERAL heading-level prop on a component call site. `=` must follow the prop name
  * with NO whitespace, which is what tells a JSX attribute (`headingLevel="h5"`) apart
  * from a destructured DEFAULT (`headingLevel = 'h4'` at
- * `app/components/CalendarListView.js:1044`). A default is not a call site and counting it
+ * src/app/components/CalendarListView.js ("headingLevel = 'h4',")). A default is not a call site and counting it
  * would double-count every `DateGroup` the file renders.
  */
 const PROP_SEAM_LITERAL =
@@ -292,10 +305,12 @@ const PROP_SEAM_LITERAL =
  * First, `EXPECTED_LEVELS` is a per-file per-LEVEL record, so an expression has no
  * representable value: "count it" has nowhere to be written.
  *
- * Second, resolving it produces a WRONG number. `app/components/CalendarListView.js:1064`
- * is `headingLevel={rowHeadingLevel}`; resolving it from `EventRow`'s own `'h5'` default
- * (`:1087`) would record an h5 while BOTH real call sites pass `rowHeadingLevel="h6"`
- * (`:632`, `:657`) — a level the DOM never renders, double-counted onto a chain whose two
+ * Second, resolving it produces a WRONG number. The expression is
+ * src/app/components/CalendarListView.js ("headingLevel={rowHeadingLevel}"); resolving it from
+ * EventRow's own 'h5' default
+ * (src/app/components/CalendarListView.js ("isSheet = false, headingLevel = 'h5' }")) would record
+ * an h5 while BOTH real call sites (the This week and Later DateGroup calls) pass
+ * rowHeadingLevel h6 — a level the DOM never renders, double-counted onto a chain whose two
  * ends are already counted.
  *
  * Do not "improve" this into a resolver. Skipped sites are enumerated and asserted, so a
@@ -310,7 +325,8 @@ const LEVEL_PRESENT = /\blevel=/;
 /**
  * The className literal. DELIBERATELY literal-only.
  *
- * `app/groupHomePage/page.js:467-478` carries a shipped DECISION that writes eight
+ * src/app/groupHomePage/page.js ("written out LITERALLY on each of the two elements rather than hoisted into")
+ * carries a shipped decision that writes eight
  * arbitrary-property utilities out LITERALLY on each element *because* this suite reads
  * the h1's className literal — "an interpolated constant is invisible to both, so hoisting
  * would silently disarm two gates". A matcher that resolved identifiers would void that
@@ -532,12 +548,15 @@ const REVIEWS_HEADING = (h: Heading) =>
 // wholesale exemption loses. (1) It disarms the OVERRIDE rules once ~135 headings migrate,
 // leaving the tree-wide rung gate covering only residual raw tags — a gate 31 plan files
 // name in a verify block, quietly reduced to nothing. (2) `cn` last-wins
-// (`88.6-03-PLAN.md:79`) makes a caller `text-2xl` on a `<Heading>` a REAL 24px override,
+// (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-03-PLAN.md ("Task 1: Write Heading.test.tsx first"))
+// makes a caller `text-2xl` on a `<Heading>` a REAL 24px override,
 // so a primitive call site is exactly as capable of breaking the scale as a raw tag.
 // Changing this back is a decision, not a cleanup.
 //
 //  - SUPPLY   rules are RAW-ONLY. Plan 03 puts the rung AND the weight inside the
-//             primitive (`88.6-03-PLAN.md:152-153`: the cva base is `font-bold`, the
+//             primitive
+//             (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-03-PLAN.md ("Task 2: Implement Heading.tsx on the Button idiom")
+//             and src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'"): the cva base is `font-bold`, the
 //             `size` variant supplies `text-3xl`/`text-xl`/`text-base`/`text-sm`), so a
 //             migrated call site's own className carries neither and would be a NEW
 //             offender on two rules while absent from a roster seeded from current
@@ -629,14 +648,17 @@ const EXPECTED_PROP_SEAMS = 5;
  * on `size="heading"` with no size change. `EXPECTED_LEVELS`' `{ 1: 3 }` entry for that file is
  * byte-unchanged (P4).
  *
- * RAISED 78 -> 79 by plan 88.6-28 task 3 (2026-09-16): ONE more — `UpcomingEventsCard.js:156`'s
- * card title, the tree's ONLY heading at weight 500. It was SIZE-LESS (no size utility at all),
+ * RAISED 78 -> 79 by plan 88.6-28 task 3 (2026-09-16): ONE more — the UpcomingEventsCard
+ * card title, now src/app/components/UpcomingEventsCard.js ("ref={upcomingHeadingRef}>"),
+ * the tree's ONLY heading at weight 500. It was SIZE-LESS (no size utility at all),
  * so §4.4's size-less-headings row lands it on `size="body"` (16) — which is what it already
  * rendered at, so this migration moves the WEIGHT (500 -> 700, from the cva base) and NOT the
  * size. `EXPECTED_LEVELS`' `{ 3: 1 }` entry for that file is byte-unchanged (P4).
  *
- * RAISED 79 -> 81 by plan 88.6-32 task 2 (2026-09-16): TWO more — `ScheduleList.js:91`'s
- * schedule-row title and `ResponseDashboard.js:154`'s response-count title, both
+ * RAISED 79 -> 81 by plan 88.6-32 task 2 (2026-09-16): TWO more — the ScheduleList
+ * schedule-row title, now src/app/components/ScheduleList.js ("<Heading level={3} size="),
+ * and the ResponseDashboard response-count title, now
+ * src/app/components/ResponseDashboard.js ("<Heading ref={responsesHeadingRef}"), both
  * `h3 text-lg font-semibold` and both landing on `<Heading level={3} size="heading">` (a
  * disclosed 18 -> 20). `size` is passed explicitly at both, though level 3 would derive
  * `heading` anyway — §4.4 requires every migrated call site to state it. Both files'
@@ -651,8 +673,9 @@ const EXPECTED_PROP_SEAMS = 5;
  * directions, which is what a 4-size working set is for. `EXPECTED_LEVELS`' `{ 2: 2, 3: 1 }`
  * entry for that file is byte-unchanged (P4) — the levels did not move, only the sizes.
  *
- * RAISED 84 -> 85 by plan 88.6-29 task 3 (2026-09-16): ONE more — `RsvpSection.js:162`'s RSVP card
- * title, `h3 text-sm font-semibold` -> `<Heading level={3} size="label">`. NO size movement: §4.4's
+ * RAISED 84 -> 85 by plan 88.6-29 task 3 (2026-09-16): ONE more — the RsvpSection RSVP card
+ * title, now src/app/components/RsvpSection.js ("<Heading level={3} size="),
+ * `h3 text-sm font-semibold` -> `<Heading level={3} size="label">`. NO size movement: §4.4's
  * table rules `h3 @ 14` STAYS and names this very site, so `label` (14) is the rung it already
  * rendered at; this migration moves the WEIGHT (600 -> 700, from the cva base) and nothing else.
  * `size` is passed explicitly even though level 3 would derive `heading` — §4.4 requires the call
@@ -682,7 +705,8 @@ const EXPECTED_PROP_SEAMS = 5;
  * outline IS their structure.
  *
  * RAISED 114 -> 115 by plan 88.6-35 task 3 group 1 (2026-09-16): ONE more —
- * `WelcomeSlide.js:17`'s tutorial title, `h1 text-3xl font-bold` ->
+ * the WelcomeSlide tutorial title, now
+ * src/app/components/tutorial/WelcomeSlide.js ("<Heading level={1} size="), `h1 text-3xl font-bold` ->
  * `<Heading level={1} size="display">`. NO size movement: `text-3xl` IS Display 30, so the
  * rung is unchanged and only its SOURCE moves to the primitive. The file's `EXPECTED_LEVELS`
  * entry (`{ 1: 1 }`) is byte-unchanged (P4). The FIVE pseudo-headings this task also touched
@@ -690,14 +714,16 @@ const EXPECTED_PROP_SEAMS = 5;
  * no semantic level to state, and inventing one is what P4 exists to stop.
  *
  * RAISED 115 -> 116 by plan 88.6-35 task 3 group 2 (2026-09-16): ONE more —
- * `AvailabilityPromptDemo.js:63`'s simulated prompt title, `h3 text-sm font-bold` ->
+ * the AvailabilityPromptDemo simulated prompt title, now
+ * src/app/components/tutorial/simulated/AvailabilityPromptDemo.js ("<Heading level={3} size="), `h3 text-sm font-bold` ->
  * `<Heading level={3} size="label">`. NO size movement: §4.4's "h3 @ 14 stays" row is the
  * rule, and `size` is passed explicitly BECAUSE the derived value would have been wrong —
  * level 3 derives `heading` (20), a silent +6px. The file's `EXPECTED_LEVELS` entry
  * (`{ 3: 1 }`) is byte-unchanged (P4).
  *
  * RAISED 116 -> 117 by plan 88.6-35 task 3 group 3 (2026-09-16): ONE more —
- * `ProblemSlide.js:14`'s tutorial opening title, `h2 text-2xl font-semibold` ->
+ * the ProblemSlide tutorial opening title, now
+ * src/app/components/tutorial/simulated/ProblemSlide.js ("<Heading level={2} size="), `h2 text-2xl font-semibold` ->
  * `<Heading level={2} size="heading">`. This one DOES move a rung: a DISCLOSED 24 -> 20,
  * D-04's "h2 @ 24" row. Level preserved; `EXPECTED_LEVELS`' `{ 2: 1 }` is byte-unchanged.
  *
@@ -729,7 +755,8 @@ const EXPECTED_PROP_SEAMS = 5;
  * in `EmailAddressSection.test.tsx` that resolve the reference rather than walking up from the
  * heading.
  */
-// 125 -> 126, plan 88.6-33 task 2 (wave 7, 2026-09-16): `BringSummary.js:97`'s class-less `<h3>`
+// 125 -> 126, plan 88.6-33 task 2 (wave 7, 2026-09-16): the BringSummary class-less `<h3>`, now
+// src/app/components/BringSummary.js (">Bringing</Heading>"),
 // migrated onto `<Heading level={3} size="body">`, so exactly ONE new `<Heading>` call site
 // landed. Raised in the SAME commit as the migration, per this file's own docblock rule — the
 // assertion is `>=`, so leaving the number unchanged after a sweep is silently green and is a RED
@@ -1079,10 +1106,12 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
 const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-23 task 3 (wave 7, 2026-09-16): the same two headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
-  // (Heading.tsx:60) rather than a stated utility. Entry DELETED, not zeroed.
+  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'")) rather than a stated
+  // utility. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): the same seven headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
-  // (Heading.tsx:60) rather than a stated utility. Entries DELETED, not zeroed.
+  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'")) rather than a stated
+  // utility. Entries DELETED, not zeroed.
   // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): the same `<h3>` at `:97` as the
   // heading-semibold roster above. Its 700 now comes from the primitive's `font-bold` base
   // (`Heading.tsx`) rather than a stated utility, and a migrated heading leaves this RAW-only
@@ -1098,7 +1127,8 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): same three headings as the
   // heading-semibold roster above. The 700 now comes from the primitive's `font-bold` base
-  // (Heading.tsx:60) rather than from a stated utility, and a migrated heading leaves this
+  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'")) rather than from a stated
+  // utility, and a migrated heading leaves this
   // RAW-only population. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
   // carried `sites: 1` (h3:39). RAW-ONLY supply rule; no longer a raw `<hN>` tag, so the file
@@ -1150,7 +1180,8 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // `Heading.test.tsx`). Entry DELETED, not zeroed.
   // DELETED by plan 88.6-24 task 2 (wave 7, 2026-09-16): the same two headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
-  // (Heading.tsx:60) rather than a stated utility. Entry DELETED, not zeroed.
+  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'")) rather than a stated
+  // utility. Entry DELETED, not zeroed.
 };
 
 /** Headings whose size changes at a breakpoint. */
@@ -1214,7 +1245,8 @@ const isSectionRung = (h: Heading) =>
     ? !OUT_OF_SET_SIZE.test(h.className) && !/\btext-(?:sm|base|3xl)\b/.test(h.className)
     : /\btext-xl\b/.test(h.className);
 
-/** 700, in raw form or from the primitive's cva base (plan 03, `88.6-03-PLAN.md:152`). */
+// 700, in raw form or from the primitive's cva base (plan 03,
+// planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-03-PLAN.md ("Task 2: Implement Heading.tsx on the Button idiom")).
 const isBoldWeight = (h: Heading) =>
   h.kind === 'heading-primitive' ? !/\bfont-(?:medium|semibold|normal)\b/.test(h.className) : /\bfont-bold\b/.test(h.className);
 
@@ -1314,7 +1346,7 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
     expect(
       scanned.map((h) => `h${h.level} "${h.className}"`),
       'the four heading tags inside comments must count for nothing, and the class-less <h4> ' +
-        'must count for one — `app/global-error.tsx:66` is exactly that shape',
+        'must count for one — src/app/global-error.tsx ("<h1 style={{ fontSize:") is exactly that shape',
     ).toEqual(['h4 ""', 'h2 "text-xl font-bold"']);
   });
 
@@ -1325,7 +1357,7 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
     expect(OUT_OF_SET_SIZE.test('text-[9px]')).toBe(true);
     // An arbitrary value is by definition OFF the rung set.
     expect(IN_SET_SIZE.test('text-[10px]')).toBe(false);
-    // `app/groupHomePage/page.js:668` — a page title already on the 30/700 rung.
+    // src/app/groupHomePage/page.js ("style={headerTitleVars}") — a page title already on the 30/700 rung.
     expect(OUT_OF_SET_SIZE.test('[text-shadow:var(--t-shadow-l)]')).toBe(false);
     expect(OUT_OF_SET_SIZE.test('dark:[text-shadow:var(--t-shadow)]')).toBe(false);
     expect(OUT_OF_SET_SIZE.test('[-webkit-text-stroke:var(--t-stroke-l)]')).toBe(false);
@@ -1335,7 +1367,9 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
   });
 
   it('pairs no heading with font-semibold at any size', () => {
-    // OVERRIDE — ALL THREE kinds. `cn` last-wins (`88.6-03-PLAN.md:79`) makes a caller
+    // OVERRIDE — ALL THREE kinds. `cn` last-wins
+    // (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-03-PLAN.md ("Task 1: Write Heading.test.tsx first"))
+    // makes a caller
     // `font-semibold` on a `<Heading>` a real 600 override of the cva base.
     const offenders = ALL.filter((h) => /\bfont-semibold\b/.test(h.className));
     expect(
@@ -1346,7 +1380,8 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
   });
 
   it('gives every RAW heading the 700 weight explicitly', () => {
-    // SUPPLY — RAW ONLY. Plan 03's cva base is `font-bold` (`88.6-03-PLAN.md:152`), so a
+    // SUPPLY — RAW ONLY. Plan 03's cva base is `font-bold`
+    // (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-03-PLAN.md ("Task 2: Implement Heading.tsx on the Button idiom")), so a
     // migrated call site's own className carries no weight and would be a NEW offender on
     // a rule it satisfies through the primitive. PRIMITIVE-SIDE ARM: the property is not
     // dropped, it moves — plan 03's `Heading.test.tsx` pins the base weight, and the
@@ -1563,12 +1598,14 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
  * 1. COMPONENT-DEFAULT heading levels. The scanner sees only call sites that pass a
  *    LITERAL level prop, so a change to a component's DEFAULT level is a real level change
  *    this map cannot see. Verified cases: `EmptyState`'s `'h3'` default
- *    (`components/ui/EmptyState.tsx:96`, `DECISION Phase 88-18 (DEF-88-09-01)`), relied on
- *    by NINE of its ten call sites — only `app/not-found.tsx:36` passes the prop, so nine
+ *    (src/components/ui/EmptyState.tsx ("headingLevel = 'h3',"), `DECISION Phase 88-18 (DEF-88-09-01)`), relied on
+ *    by NINE of its ten call sites — only the not-found page,
+ *    src/app/not-found.tsx ("This page took a wrong turn"), passes the prop, so nine
  *    real `<h3>`s in the DOM are counted as zero; `CalendarListView`'s `DateGroup` `'h4'`
- *    default (`:1044`) and `EventRow` `'h5'` default (`:1087`).
- *    (All `CalendarListView.js` line cites in this docblock were re-derived by CONTENT and
- *    re-pointed by plan 88.6-27; every seam they name is byte-unchanged.)
+ *    default (src/app/components/CalendarListView.js ("headingLevel = 'h4',")) and `EventRow` `'h5'`
+ *    default (src/app/components/CalendarListView.js ("isSheet = false, headingLevel = 'h5' }")).
+ *    (Plan 88.6-27 re-derived this docblock's CalendarListView line numbers by CONTENT; since
+ *    88.6.2-15 they are anchors. Every seam they name is byte-unchanged.)
  *
  *    REJECTED: teaching the scanner an in-file `{ component -> default level }` map, with
  *    a fixture asserting a bare `<EmptyState>` counts as one h3. It would close the gap,
@@ -1576,11 +1613,12 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
  *    Declaring the gap is the cheaper option and this plan takes it.
  *
  * 2. NON-LITERAL level expressions, which the scanner SKIPS by rule.
- *    `app/components/CalendarListView.js:1064` (`headingLevel={rowHeadingLevel}`) is the one
+ *    src/app/components/CalendarListView.js ("headingLevel={rowHeadingLevel}") is the one
  *    live instance. It is uncounted ON PURPOSE: resolving it from `EventRow`'s `'h5'`
  *    default would record an h5 the DOM never renders, while both real call sites pass
  *    `rowHeadingLevel="h6"`. The number would be wrong in this map's own units. Nothing is
- *    lost by skipping it — BOTH of its ends (`:632`, `:657`) are counted as seams — so the
+ *    lost by skipping it — BOTH of its ends (the This week and Later DateGroup calls) are
+ *    counted as seams — so the
  *    gap is scoped, not open-ended.
  *
  * 3. A MULTISET-PRESERVING LEVEL SWAP. This is a per-file per-level COUNT, so any edit that
@@ -1771,8 +1809,10 @@ const ARBITRARY_SIZES: readonly SizeSite[] = FILES.flatMap((f) =>
 /**
  * Seeded from the live COMMENT-STRIPPED run at this plan's commit: 31 arbitrary px/rem
  * size values across 11 files, of which 30 are below the 12px floor (the population D-01
- * folds up) and one is `app/components/grouplist.js:456`'s `text-[1.1rem]` (17.6px, on the
- * h3 whose tag opens at `:455`). The rule scans EVERY arbitrary px/rem value rather than
+ * folds up) and one was the group-name h3's text-[1.1rem] (17.6px; that h3 migrated onto
+ * the primitive in plan 88.6-21 and is now
+ * src/app/components/grouplist.js ("dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)]")).
+ * The rule scans EVERY arbitrary px/rem value rather than
  * only the sub-12px ones, because an arbitrary value is off the rung set by definition —
  * that is also what makes the 31-site seed exact rather than a 30-site seed with an
  * unowned straggler. Plans 26 and 27 shrink this as the fold lands.
@@ -1978,31 +2018,31 @@ describe('SPEC-88.6 P4 + D-01: heading levels are pinned and arbitrary sizes are
 // ===========================================================================
 
 /**
- * `.btn` sets `font-weight: 600` UNLAYERED (`src/app/globals.css:2200`, inside the `.btn`
- * block opening at `:2194`), and 600 is the Button label's single legitimate home
+ * `.btn` sets `font-weight: 600` UNLAYERED (src/app/globals.css ("font-weight: 600;"),
+ * inside the .btn block), and 600 is the Button label's single legitimate home
  * (UI-SPEC §4.1, D-01). So `components/ui/Button.tsx` is EXCLUDED from the weight scan,
  * not exempted.
  *
- * EXCLUSION IS NOT EXEMPTION (`src/test-utils/exemption.ts:36-43`): an exclusion says
+ * EXCLUSION IS NOT EXEMPTION (src/test-utils/exemption.ts ("EXCLUSION IS NOT EXEMPTION")): an exclusion says
  * "this is the DEFINITION of the thing being scanned for" and never expires; an exemption
  * says "this is DEBT that survived", is counted exactly, and is deleted when its last site
  * closes. Filing the cva base as an exemption would give the definition a fossil
  * permission to grow. `Button.tsx` must therefore never appear in `WEIGHT_ROSTER`, and an
  * assertion below holds that.
  *
- * NOTE ON THE CITE: `88.6-11-PLAN.md` cites `globals.css:1961` for this rule. That line
- * moved when plan 05 landed its cascade work; re-derived 2026-09-15, the unlayered
- * `font-weight: 600` is at `:2200`.
+ * NOTE ON THE CITE: the rule is cited by anchor since 88.6.2-15. 88.6-11-PLAN.md cited it by
+ * a globals.css line number, which moved when plan 05 landed its cascade work; it was
+ * re-derived by hand on 2026-09-15 and moved again after that, which is why it is an anchor now.
  */
 const WEIGHT_SCAN_EXCLUSION = 'components/ui/Button.tsx';
 
 /**
  * A file-level site scan over COMMENT-STRIPPED source. NOT OPTIONAL, and not a copy of
  * task 1's fix: `headings()`'s `withoutComments` is scoped to the scanned heading set, and
- * this rule does not route through it. Without stripping, `src/lib/colorUtils.js:634`
- * ("Callers apply `font-semibold` at the text element.") and `:678` ("driving
- * `font-semibold` at `:481`") — both `font-semibold` inside JSDoc block comments in non-test
- * `src/` — become roster entries NO SWEEP CAN EVER DECREMENT, and any later edit to
+ * this rule does not route through it. Without stripping, src/lib/colorUtils.js ("Callers apply")
+ * (a font-semibold inside a JSDoc block comment in non-test src/; when this was written a second
+ * such comment sat a few dozen lines below it, since moved to font-bold by plan 88.6-21)
+ * becomes a roster entry NO SWEEP CAN EVER DECREMENT, and any later edit to
  * unrelated comment prose moves the count on a gate 31 plan files name in a verify block.
  *
  * MEASURED, both polarities: 340 sites stripped, 346 unstripped. `colorUtils.js` holds
@@ -2080,7 +2120,9 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // carried `sites: 1` (1 font-medium, 0 font-semibold) — the "Got it" dismiss label. The entry's
   // own outcome LEAD was right: EMPHASIS, utility DELETED, the colour token doing the work. It is
   // §4.5's own named precedent shape — a link-styled button already carrying
-  // `text-content-link underline`, exactly like `FetchErrorBanner.tsx:82,108,116` — so the weight
+  // `text-content-link underline`, exactly like the primitive's three link-buttons, the compact
+  // src/components/ui/FetchErrorBanner.tsx ("{retrying ? 'Retrying…' : 'Retry'}") and the full
+  // branch's Try again and Report this beside it — so the weight
   // was a third redundant signal beside the colour and the underline. Its `text-sm` STAYS and is
   // LIVE (a bare `<button>`, not a `.btn`, so the size utility is not dead), and its `min-h-11`
   // per-CTA floor is untouched. Entry DELETED, not zeroed.
@@ -2123,7 +2165,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/BringGamePicker.js`
   // carried `sites: 1` (1 font-medium) — the picker row's game name. It took §4.5's EMPHASIS
   // outcome, spelled as an explicit `font-normal` rather than a dropped utility (the shipped
-  // `createEvent.js:1290` idiom, which this plan converges all five of its emphasis sites on).
+  // createEvent Participants-title idiom, src/app/components/createEvent.js ("block text-sm font-normal mb-2"),
+  // which this plan converges all five of its emphasis sites on).
   // 700 was REJECTED at the site and the marker says why: this is a dense scrolling picker row,
   // the distinction is already carried by colour AND size against the annotation directly below
   // it, and bolding every row in a list makes none of them read as emphasised. Entry DELETED.
@@ -2144,7 +2187,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // of the four and wrong for the fourth:
   //   - THREE were dead on a `.btn` and left with the migration: the complexity-tier toggle and
   //     the two sort-direction toggles, all now `<Button>`. `.btn` declares `font-weight: 600`
-  //     UNLAYERED (globals.css:2200), so those `font-medium` utilities had never painted.
+  //     UNLAYERED (src/app/globals.css ("font-weight: 600;")), so those `font-medium` utilities
+  //     had never painted.
   //   - the FOURTH is the "Sort:" `<label>`, which is not a `.btn` at all and took §4.5's
   //     EMPHASIS outcome instead — 400 plus the `text-content-secondary` token it already
   //     carried. Resolved HERE rather than decremented and left: plan 88.6-32 is the LAST plan
@@ -2195,7 +2239,9 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     at 16px these are already more prominent than they shipped, and compounding a weight
   //     jump on top would be an unsanctioned visible delta with no V-row.
   //   - the group-transfer link's `font-semibold`: the same case as the primitive's own
-  //     link-buttons at `FetchErrorBanner.tsx:82,108,116` — `text-content-link` does the work.
+  //     link-buttons, the compact
+  //     src/components/ui/FetchErrorBanner.tsx ("{retrying ? 'Retrying…' : 'Retry'}") and the
+  //     full branch's Try again and Report this — `text-content-link` does the work.
   //   - the confirm field's `<label>`: stays Label 14, weight only.
   //   - the FIFTH was deleted one commit earlier, by task 2's in-place conversion of the
   //     failure block to an assertive `StatusRegion` with a colour-only className. That is why
@@ -2207,7 +2253,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // leads were right, resolving OPPOSITE ways — which is why the entry could not close on one
   // rule. The row-title `<h4>` took HIERARCHY by migrating onto `Heading`, whose `font-bold`
   // base supplies the 700 (see the three heading rosters above). The Share Game QR button's was
-  // DEAD ON A `.btn` — `globals.css:2200` declares `font-weight: 600` unlayered — so it was
+  // DEAD ON A `.btn` — src/app/globals.css ("font-weight: 600;") declares it unlayered — so it was
   // deleted with the six other dead utilities in the same migration, not moved. Entry DELETED,
   // not zeroed.
   // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/EventHeatmapBackground.js'
@@ -2224,7 +2270,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // All three took §4.5's EMPHASIS outcome as an explicit `font-normal`: a field label beside
   // its own control is not a heading, which is the same call plan 88.6-32 made on
   // `BrowseMoreModal.js`'s "Sort:" label. The shipped twins of these exact class strings are
-  // `createEvent.js:1202`, `:1217` and `:1253` — and this fragment renders INSIDE that same
+  // createEvent's Start Date label, src/app/components/createEvent.js ("Start Date & Time {!editingEvent"),
+  // and its Duration and RSVP Deadline labels below it — and this fragment renders INSIDE that same
   // create-event form, so anything else would put two label weights in one form.
   // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-26 task 2 (wave 7, 2026-09-16): 'app/components/EventScheduler.tsx'
@@ -2291,7 +2338,9 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //   - HIERARCHY -> 700: the `font-semibold` h3 at `:39` (left the population by migrating onto
   //     `<Heading>`), and the date-group EYEBROW at `:446` — `text-sm font-semibold uppercase
   //     tracking-wide` -> `text-xs font-bold`, the ratified Eyebrow role of the Caption rung
-  //     (§4.5 row 1, matching `CalendarListView.js:1009`). BOTH its size and its weight moved;
+  //     (§4.5 row 1, matching
+  //     src/app/components/CalendarListView.js ("rounded-full text-xs font-bold uppercase tracking-wide")).
+  //     BOTH its size and its weight moved;
   //     it stays a `<div>`, because an eyebrow is not a heading.
   //   - EMPHASIS -> 400 + a colour token: the play-count span at `:44` (no colour of its own,
   //     so it takes `text-content-primary`), the rating span at `:51` (already coloured), the
@@ -2374,7 +2423,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // carried `sites: 2` (2 font-medium) and the two took OPPOSITE outcomes, deliberately:
   //   - the "Send to Members" SECTION LABEL took EMPHASIS (`font-normal`). Its own 88-33 Task 8
   //     marker names `createEvent`'s Participants title as its treatment twin, and that site
-  //     ships this exact class string with an explicit `font-normal` (`createEvent.js:1290`).
+  //     ships this exact class string with an explicit `font-normal`
+  //     (src/app/components/createEvent.js ("block text-sm font-normal mb-2")).
   //   - "Select All" took HIERARCHY 700. §4.5's emphasis arm needs a colour token to be doing
   //     the work and there is NONE available here: this row carries the SAME
   //     `text-content-secondary` as every individual member name below it, so 400 would erase
@@ -2510,7 +2560,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/StartPollModal.js`
   // carried `sites: 4` — its four form `<label>`s (:186, :204, :231, :251), all
   // `block text-sm font-medium text-content-primary mb-1`. All four now read `font-normal`,
-  // which is the shipped field primitive's own spelling (`FormField.tsx:98`), so the modal
+  // which is the shipped field primitive's own spelling
+  // (src/app/components/form/FormField.tsx ("labelClassName ?? 'block text-sm font-normal")), so the modal
   // converges onto the label treatment the rest of the app already uses rather than onto a
   // deletion. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17). The entry carried sites: 3 and all three
@@ -2524,7 +2575,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     control, so font-medium deletes with no look delta. Neither is a .btn, so the dead-on-a-btn
   //     outcome did not apply and the emphasis outcome did.
   // In the SAME commit the file also took its §4.3 size outcome: the non-heading text-2xl residue
-  // the SPEC names at SuggestionCard.js:89 became text-xl / 700 as a PSEUDO-HEADING, deliberately
+  // the SPEC names in SuggestionCard.js (a file 88.6.1-49 later deleted, so its line number is
+  // dropped rather than re-pointed) became text-xl / 700 as a PSEUDO-HEADING, deliberately
   // not a <Heading> (it is a number, not a section title, so EXPECTED_PRIMITIVES does not move).
   // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/ThresholdSlider.js`
@@ -2564,8 +2616,9 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //   - SEVEN field-label / section-title sites (the Game, Start Date, Duration, RSVP Deadline and
   //     Comments `<label>`s plus the "Date & Time" and "Participants" section-title `<span>`s)
   //     took `font-normal`, converging byte-for-byte on the shipped field primitive
-  //     (`app/components/form/FormField.tsx:97` — `block text-sm font-normal text-content-primary
-  //     mb-1`), the same call plan 88.6-22 made for StartPollModal's four labels. The two SPANS
+  //     (src/app/components/form/FormField.tsx ("labelClassName ?? 'block text-sm font-normal")
+  //     — block text-sm font-normal text-content-primary mb-1), the same call plan 88.6-22 made
+  //     for StartPollModal's four labels. The two SPANS
   //     are deliberately styled as labels — `DECISION Phase 88-21` and the 88-33 Task 8 note at
   //     each site say so — so giving them 700 "because a section title is hierarchy" would have
   //     broken a recorded parity.
@@ -2617,7 +2670,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/
   // WelcomeSlide.js` carried `sites: 1` (0 font-medium, 1 font-semibold) and the lead was
   // right for once: the `font-semibold` was on the `btn btn-primary` CTA at `:26`, DEAD under
-  // unlayered `.btn` (`font-weight: 600`, globals.css:2200), and it was deleted with the rest
+  // unlayered `.btn` (src/app/globals.css ("font-weight: 600;")), and it was deleted with the rest
   // of that element's dead classes in its migration to `<Button>`. The file's h1 carried
   // `font-bold` (on-scale) and was never in this population. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
@@ -2658,7 +2711,9 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // HIERARCHY -> 700: the day header (`:30`) is the hierarchy label of its column, and the
   // cell content (`:63`) is ink inside its own density FILL. The tie-break is not a preference
   // — the PRODUCTION surface this grid exists to imitate already renders both equivalents at
-  // `text-xs font-bold` (`EventHeatmapBackground.js:241`, `:318`), so 700 is what keeps the
+  // `text-xs font-bold`
+  // (src/app/components/EventHeatmapBackground.js ("text-xs font-bold text-content-muted block leading-tight"),
+  // src/app/components/EventHeatmapBackground.js ("text-xs text-green-900 font-bold")), so 700 is what keeps the
   // simulation recognisable, which is this component's whole documented purpose. Both SIZES
   // stay at `text-xs`: 12 is the Caption rung and dense-grid cells are an enumerated Caption
   // role, so sweeping them to 14 would be a misread AND would widen fixed `w-12` columns.
@@ -2803,11 +2858,13 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // a before/after `getComputedStyle().fontWeight` reads the UA default both times (the D28 rule).
   // The pins are class-level, in `useFetchErrorState.test.tsx`. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-37 task 1 (wave 7, 2026-09-16): `components/ui/UserChip.tsx` carried
-  // `sites: 1` (0 font-medium, 1 font-semibold) — the initials-fallback fill at `UserChip.tsx:87`
-  // pre-edit. Its entry's outcome lead was the generic "set by the owning sweep", and the sweep
+  // `sites: 1` (0 font-medium, 1 font-semibold) — the initials-fallback fill, now
+  // src/components/ui/UserChip.tsx ("rounded-full bg-surface-elevated font-bold text-content-secondary").
+  // Its entry's outcome lead was the generic "set by the owning sweep", and the sweep
   // confirmed it per site as UI-SPEC §4.5's PILL/CHIP-INK row -> 700, NOT the emphasis 400: it is
   // 12px/14px ink on a coloured fill (`bg-surface-elevated`) at FIXED geometry (`h-6 w-6` /
-  // `h-8 w-8`), which is the identical shape `MemberChipStack.tsx:85` took `font-bold` for in plan
+  // `h-8 w-8`), which is the identical shape
+  // src/app/components/MemberChipStack.tsx ("rounded-full text-xs font-bold") took `font-bold` for in plan
   // 88.6-28 (W36) — the twin named in §4.5's own row. 400 loses because the ink is already spoken
   // for by `text-content-secondary`, so there is no colour token left to carry the distinction,
   // and D-01 already rejected folding the 12px rung up to 14 on these fixed boxes. The reasoning
@@ -3002,8 +3059,8 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
       scanWeights('fixture/weight-comments.tsx', withoutComments(FIXTURE_WEIGHT_COMMENTS)).map(
         (s) => s.raw,
       ),
-      'src/lib/colorUtils.js:634 and :678 are font-semibold inside block comments; seeded raw ' +
-        'they become roster entries no sweep can ever decrement',
+      'src/lib/colorUtils.js ("Callers apply") is a font-semibold inside a block comment; seeded ' +
+        'raw it becomes a roster entry no sweep can ever decrement',
     ).toEqual(['font-semibold']);
   });
 
@@ -3022,7 +3079,8 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
     // SUPPLY bucket, and RAW-ONLY, which is the load-bearing part of this assertion.
     //
     // A heading migrated onto the `<Heading>` primitive takes its 700 from the cva base
-    // (`88.6-03-PLAN.md:152`) rather than from its own className, so a cross-check that also
+    // (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-03-PLAN.md ("Task 2: Implement Heading.tsx on the Button idiom"))
+    // rather than from its own className, so a cross-check that also
     // read primitive headings would flag EVERY migrated site. PRIMITIVE-SIDE ARM: the
     // property is pinned rather than dropped — plan 03's `Heading.test.tsx` pins the base
     // weight on the primitive, and the fixture in the "gives every RAW heading the 700
@@ -3035,9 +3093,10 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
     expect(
       assertExactCounts(HEADING_WEIGHT_ROSTER, countByFile(offenders)),
       'measured at plan 88.6-28 (2026-09-16): 38 raw headings need a weight edit — 37 ' +
-        'font-semibold and 1 carrying no weight utility at all (app/global-error.tsx:66, ' +
-        'permanently exempt under DECISION Phase 88-09 D-20). WAS 39, and the sentence WAS ' +
-        '"1 font-medium (app/components/UpcomingEventsCard.js:156)": that heading migrated ' +
+        'font-semibold and 1 carrying no weight utility at all (src/app/global-error.tsx ("<h1 style={{ fontSize:"), ' +
+        'permanently exempt under DECISION Phase 88-09 D-20). WAS 39, and the sentence named ' +
+        'one font-medium heading, the UpcomingEventsCard card title, now ' +
+        'src/app/components/UpcomingEventsCard.js ("ref={upcomingHeadingRef}>"): that heading migrated ' +
         'onto the Heading primitive in plan 88.6-28 task 3, and it was the tree\'s ONLY ' +
         'weight-500 heading, so this population is now uniformly 600 plus the one permanent ' +
         'exemption. The heading sweeps shrink this visibly.',
