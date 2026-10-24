@@ -37,9 +37,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   // shared self row, never the Auth0 SESSION claim. The Auth0 hook that used to
   // live here had exactly ONE consumer (the `user_email` line below) and was
   // removed with it — re-verified by grep before deleting, not taken on trust.
-  // This component is mounted only while the modal is open (`Footer.js:187`, anchor
-  // `{showFeedbackForm && (`; the second mount is
-  // `src/app/components/FeedbackModalProvider.tsx:260`, anchor `key={report.key}` —
+  // This component is mounted only while the modal is open
+  // (src/app/components/Footer.js ("{showFeedbackForm && ("); the second mount is
+  // src/app/components/FeedbackModalProvider.tsx ("key={report.key}") —
   // AMENDED Phase 88.6.1-69: the report form a banner opens is hosted there, one instance
   // for every banner),
   // so the hook costs one already-deduplicated query at most; logged out it does
@@ -130,7 +130,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      stable close, so this rejection holds through the Footer alone) — or leave `onClose` out
      against the hooks dependency rule; and OVER (b) clearing only at unmount, the shape that was
      the only guard until now, which ran while the ref was still null. The house shape is
-     `invite/group/[token]/page.js:69` (`const unmountedRef = useRef(false);`), reset in the
+     src/app/invite/group/[token]/page.js ("const unmountedRef = useRef(false);"), reset in the
      effect body and set in its cleanup: the reset is REQUIRED, because StrictMode runs the
      cleanup and then the body again, and without it a dev-mode send would land into a form that
      looks unmounted. Same bug, different shape, on purpose: plan 88.6.1-33 fixes W017 in
@@ -182,7 +182,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      appearance a CHANGE, exactly as EmailAddressSection does for its unavailable copy. */
   const [statusLine, setStatusLine] = useState('');
   /* Round-7 residual (refuted-HIGH): a SUCCESSFUL attach announced nothing while a REJECTED one
-     did. EMPTY-FIRST, exactly as `StatusRegion.tsx:9-12` (`EMPTY-FIRST`) states and as this
+     did. EMPTY-FIRST, exactly as src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted") states and as this
      file's own round-5 #41 comment on `statusLine` and round-6 #31 comment on the
      screenshot-error region record — a region that mounts WITH its
      content announces nothing, and a conditionally-mounted third region here would be the THIRD
@@ -358,9 +358,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       //
       // WHY A SYNTHETIC ADDRESS SENDS NULL, AND WHAT THAT COSTS. `user_email` is a
       // CONTACT HANDLE: the backend's `routes/feedback.js` puts it in the admin mail's
-      // From lines (`routes/feedback.js:430` and `routes/feedback.js:451`, anchor
-      // `|| 'Anonymous'`) and, when truthy, in `replyTo` (`routes/feedback.js:472`, anchor
-      // `replyTo: safeSubmitterEmail`). Putting the
+      // From lines (backend:Sonnet/routes/feedback.js ("const safeFrom = emailService.escapeHtml(") and
+      // backend:Sonnet/routes/feedback.js ("const text = "), each `|| 'Anonymous'`) and, when truthy, in `replyTo`
+      // (backend:Sonnet/routes/feedback.js ("replyTo: safeSubmitterEmail")). Putting the
       // provisioning sentinel there publishes a non-address as if someone could be
       // reached at it. Sending null instead means the From line falls back to its
       // existing 'Anonymous' literal and the options object carries NO `replyTo`
@@ -428,9 +428,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
          `logger.error` beside it would be a SECOND Sentry event for one failure, and it forwards
          the error OBJECT whose `.message` is the backend's extracted string — precisely what the
          PII posture below rules out on the app's own bug channel. `logger.error` also takes only
-         `(msg, err)` (`logger.ts:27`, `error(msg: string, err?: unknown): void;`) and forwards
-         `extra: { msg }`, plus a string `upstreamMessage` when present (`logger.ts:46`,
-         `extra: upstreamMessage ?`): it has no tags
+         `(msg, err)` (src/lib/logger.ts ("error(msg: string, err?: unknown): void;")) and forwards
+         `extra: { msg }`, plus a string `upstreamMessage` when present
+         (src/lib/logger.ts ("extra: upstreamMessage ?")): it has no tags
          channel, so it could not carry the `channel` discriminator that separates the two feedback
          writers. This file therefore gains NO `logger` import. */
       /* Round 6 #3/#28: REPORTED, not stdout-only. This is the app's own bug channel, so a
@@ -742,8 +742,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 RENDERED HERE ON PURPOSE — a SIBLING of the screenshotError region above, OUTSIDE
                 the `{screenshot ? … : …}` ternary. Inside the ternary is where it would naturally
                 land and is exactly where it would be CONDITIONALLY MOUNTED, and a region created
-                by the event it announces announces NOTHING (`StatusRegion.tsx:9-12`,
-                `EMPTY-FIRST`). This file
+                by the event it announces announces NOTHING (the StatusRegion docblock bullet,
+                src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted")). This file
                 has already been fixed for that same bug TWICE — the round-5 #41 comment on
                 `statusLine` and the round-6 #31 comment on the region above — so a third
                 conditionally-mounted region would be the third recurrence. Always mounted, EMPTY
@@ -755,8 +755,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
 
                 VISIBLE WHEN SET, WITH NO IDLE DELTA (owner ruling 2026-09-14, ACCEPT §5, option
                 2; UI-SPEC §1.2 **V-18**). The house `srOnlyWhenEmpty` prop appends `sr-only` to
-                an EMPTY region only (`StatusRegion.tsx:102`, `className={cn(`, with the
-                append at `StatusRegion.tsx:105`, `isEmptyRegionContent(content) && 'sr-only'`),
+                an EMPTY region only (src/components/ui/StatusRegion.tsx ("className={cn("), with the
+                append at src/components/ui/StatusRegion.tsx ("isEmptyRegionContent(content) && 'sr-only'")),
                 so whenever the region holds text it renders on screen. An always-hidden `sr-only`
                 is the RECORDED REJECTED ARM for this region and the other two new polite regions
                 in this phase; do not "tidy" it back. AMENDED Phase 88.6.1-34 (D-22), 2026-10-16:
@@ -842,14 +842,14 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
           {/* Buttons.
               DECISION Phase 88.6.1-34 (D-35): the PRESSED Submit gets `aria-disabled` plus the
               first-line ref latch in `handleSubmit` (`submitInFlightRef`) while sending, per the
-              rule of POSITION (`DECISION Phase 88.6-22`, `FriendInvitePanel.js:77`). Rejected
+              rule of POSITION (src/app/components/FriendInvitePanel.js ("DECISION Phase 88.6-22 (R3 #149, the rule of KIND + the rule of POSITION)")). Rejected
               (a): native `disabled` in flight — it drops a keyboard or switch user out of the
               focus order mid-send. Rejected (b): gating Cancel too — Cancel is a sibling, so it
               stays natively disabled; Submit keeps the dialog's tab stop, and Escape and the
               header close button still close it. Rejected (c): moving the validity half — the
               88.8 DR3 marker keeps it native, a Button-migration decision. DISCLOSED DELTA: in
-              flight Submit shows the DR-C gated colour pair (`globals.css:2424`,
-              `.btn-primary[aria-disabled='true']`) instead of the disabled wash — the same pair it
+              flight Submit shows the DR-C gated colour pair, src/app/globals.css (".btn-primary[aria-disabled='true'] {"),
+              instead of the disabled wash — the same pair it
               already shows while the self row loads. The latch also refuses an Enter in a field:
               implicit submission is possible now that Submit is not natively disabled in flight.
               Changing this is a decision, not a cleanup. */}
