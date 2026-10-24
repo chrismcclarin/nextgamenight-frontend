@@ -63,8 +63,8 @@ export default function ResponseDashboard({
   const [remindingUserIds, setRemindingUserIds] = useState([]);
   const { timezone } = useTimezone();
 
-  /* The phase's ONE staleness idiom, ported from the shipped
-     `NextGameNightCard.tsx:231`/`:236`/`:241`/`:248-250` cancelled-generation guard (the same
+  /* The phase's ONE staleness idiom, ported from the shipped cancelled-generation guard at
+     src/app/components/NextGameNightCard.tsx ("let cancelled = false;") (its checks src/app/components/NextGameNightCard.tsx ("if (cancelled || submittedRef.current) return;") and src/app/components/NextGameNightCard.tsx ("if (cancelled) return;"), its cleanup src/app/components/NextGameNightCard.tsx ("cancelled = true;"); the same
      one plan 88.6-29's W61 ports). It is COMPONENT-scope, not per-invocation, because
      `fetchRespondents` is called from TWO places that know nothing about each other — the
      `promptId` effect below and `useFetchErrorState`'s refocus recovery — so a per-invocation
@@ -136,7 +136,7 @@ export default function ResponseDashboard({
       setLoadedFor(promptId);
       /* DECISION Phase 88.6-32 (R1): the error clears HERE, on SUCCESS — and in the `promptId`
          effect below — chosen OVER the house clear-at-fetch-start idiom
-         (`grouplist.js:87-88`, `groupPlanning/page.js:157`), which is REJECTED at this call
+         (src/app/groupPlanning/page.js ("setHeatmapError(null);")), which is REJECTED at this call
          site and only at this one.
 
          WHY. This component adopts `useFetchErrorState`, whose refocus recovery re-issues the
@@ -173,11 +173,11 @@ export default function ResponseDashboard({
       // still log-first. The capture is latched on `lastReportedKeyRef`, keyed on this closure's
       // prompt id plus the error's code, and the latch resets exactly where the banner is cleared:
       // a current-generation success and a new `promptId` (the two `setError(null)` sites).
-      // Without it the hook's error-only refocus refetch (`useFetchErrorState.ts:285`) filed one
+      // Without it the hook's error-only refocus refetch (src/components/ui/useFetchErrorState.ts ("Error-only refocus recovery — scoped to THIS query")) filed one
       // event per return to the tab for one outage. Same idiom as `QuickSuggestions.js`'s
       // `lastReportedKeyRef`. REJECTED: (a) once per mount (a later real failure would be
       // invisible); (b) `logger.info` (AC-16 (a) needs an event, and `logger.info` is a
-      // breadcrumb, `logger.ts:52-53`); (c) dedup inside `useFetchErrorState` (the hook-dedup
+      // breadcrumb, src/lib/logger.ts ("level: 'info', data: ctx")); (c) dedup inside `useFetchErrorState` (the hook-dedup
       // note at the adapter below). The latched call stays BEFORE the generation guard; moving
       // either is a decision, not a cleanup.
       const reportKey = `${promptId}:${err?.code ?? 'none'}`;
@@ -187,7 +187,7 @@ export default function ResponseDashboard({
       }
       if (generation !== generationRef.current) return undefined;
       // Store the ERROR OBJECT, never a flattened string: `useFetchErrorState` derives the
-      // user-facing copy from `ApiError.code` (`useFetchErrorState.ts:128`), so a string here
+      // user-facing copy from `ApiError.code` (src/components/ui/useFetchErrorState.ts ("function deriveCode(error: unknown)")), so a string here
       // would make every failure resolve to `unknown` and render one generic line for a 403, a
       // 404 and a 500 alike — WHILE the roster scan reported green, because the `err.message`
       // read would be gone. `getFetchErrorMessage` is deliberately NOT applied here.
@@ -235,7 +235,7 @@ export default function ResponseDashboard({
   }, [promptId, fetchRespondents]);
 
   /* The synthetic adapter onto the shared fetch-error pair, matching the shipped shape at
-     `groupPlanning/page.js:220-247` and `grouplist.js:121-125`. Both of that idiom's recorded
+     src/app/groupPlanning/page.js ("Adapters onto the shared fetch-error pair") and src/app/components/grouplist.js ("Adapter onto the shared fetch-error pair"). Both of that idiom's recorded
      constraints are honoured: the ERROR OBJECT is what is stored (above), and `refetch` is
      STABLE — `fetchRespondents` is already a `useCallback([promptId])`, so no ref hop is
      needed here (an unstable `refetch` would re-subscribe the hook's refocus listener on
@@ -303,12 +303,12 @@ export default function ResponseDashboard({
   };
 
   /* DECISION Phase 88.6.1-11 (D-35) [Req 4, the rule of POSITION, `DECISION Phase 88.6-22` at
-     `FriendInvitePanel.js:59`]: the Remind button the admin pressed takes `aria-disabled` plus a
+     src/app/components/FriendInvitePanel.js ("the rule of KIND + the rule of POSITION")]: the Remind button the admin pressed takes `aria-disabled` plus a
      SYNCHRONOUS per-row ref latch (`remindInFlightRef`, a Set of user ids, refused on the first
      line, released in `finally`), chosen OVER the native attribute it shipped with. A natively
      disabled control leaves the focus order, stranding a keyboard or switch user mid-send. The
      latch is a REF because a state write does not land before a second synchronous press
-     (`FriendInvitePanel.js:74-75`). The in-flight state is PER ROW (`remindingUserIds`): one
+     (src/app/components/FriendInvitePanel.js ("land before a second synchronous press dispatches")). The in-flight state is PER ROW (`remindingUserIds`): one
      shared id flipped the first row back to 'Remind' mid-flight when a second row was pressed.
      REJECTED: (a) one shared latch (it would silently drop a press on a second row, which
      works today); (b) natively gating the other rows (they are independent actions on different
@@ -384,7 +384,7 @@ export default function ResponseDashboard({
 
          REJECTED 2026-09-14: keeping `setReminderError` as the single sink for both branches
          and changing only the raw-read branch's VALUE. That arm would have to be recorded as a
-         NAMED §6.2 mutation-row exception, and `88.6-UI-SPEC.md:1007` (amendment A-30) scopes
+         NAMED §6.2 mutation-row exception, and planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("## 14. Amendments — 88.6 plan adversarial review (2026-09-09)") (amendment A-30) scopes
          the only such exception to `createGroup.js` and says in terms that plan 32 task 2 must
          not inherit it; it would additionally require the deleted block to gain live-region
          semantics, because it announced nothing.
@@ -449,9 +449,9 @@ export default function ResponseDashboard({
      keeps it and shows the RF1 notice under the heading, so the screen says the refresh failed
      and that the roster is from earlier — nothing on it contradicts anything.
 
-     NOT authority-by-`groupPlanning`: `groupPlanning/page.js:451-453` renders LOADING FIRST
+     NOT authority-by-`groupPlanning`: src/app/groupPlanning/page.js ("heatmapLoading ? (") renders LOADING FIRST
      (`heatmapLoading ? … : heatmapErrorState.showError ? … : heatmapPrompt ? …`). What that
-     file's `DECISION Phase 88-25` at `:454-460` establishes is error-before-CONTENT — a failed
+     file's `DECISION Phase 88-25` at src/app/groupPlanning/page.js ("the poll-data failure gets the") establishes is error-before-CONTENT — a failed
      request also leaves `heatmapPrompt` null, so flipping those two would tell someone whose
      request merely failed that their group has no poll running. It is NOT precedent for
      error-before-loading and must not be cited as such.
@@ -468,10 +468,10 @@ export default function ResponseDashboard({
      THE BANNER IS ANNOUNCED. AMENDED Phase 88.6.1-11 (D-42, outline shared rule 8): this
      paragraph used to claim the conditionally mounted banner never announces; that premise was
      wrong and is replaced here. `FetchErrorBanner` is warning-toned, so its `StatusRegion` is
-     `role="alert"` (`Banner.tsx:87`, `:103-104`), and an inserted alert that arrives carrying its
+     `role="alert"` (src/components/ui/Banner.tsx ("resolvedTone === 'error'"), src/components/ui/Banner.tsx ("const politeness = assertive ?")), and an inserted alert that arrives carrying its
      text IS announced (D-42: ARIA 1.2 `alert`; TetraLogical 2024 matrix incl. VoiceOver iOS).
      The non-announcing claim the old text leaned on holds for polite / status regions only
-     (`StatusRegion.tsx:9`, the EMPTY-FIRST contract). The conditional mount STAYS. The Phase 92
+     (src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted"), the EMPTY-FIRST contract). The conditional mount STAYS. The Phase 92
      residual this paragraph routed is void. Today's raw `<span>{error}</span>` has no region at
      all, so the swap is an improvement either way.
 
@@ -674,7 +674,7 @@ export default function ResponseDashboard({
 
 /* DECISION Phase 88.6.1-11 (floor) [SPEC Constraints: 44x44 is the floor on every control this
    phase touches]: the Remind button was about 28px tall (a 20px small-text line plus its
-   vertical padding). It takes the house negative-margin floor (`userProfile/page.js:1530`): a
+   vertical padding). It takes the house negative-margin floor (src/app/userProfile/page.js ("keeps the banner's visual padding unchanged while the TAP TARGET grows")): a
    44px minimum height that centres its label, with a negative vertical margin that cancels the
    row's own vertical padding, so the row stays its height.
    ARITHMETIC (read from the class strings: the row's `py-2 px-2` and bottom border, the list's
@@ -690,7 +690,7 @@ export default function ResponseDashboard({
    test pins (`e2e/response-dashboard-remind.spec.ts`, test 3). Changing the margin, the padding
    or the gap is a decision, not a cleanup.
    The in-flight wash is the aria-disabled opacity variant at the same 0.5 as before (house
-   raw-button precedent at `KebabMenu.js:520`). */
+   raw-button precedent at src/app/components/KebabMenu.js ("the items behind it were not")). */
 
 /** The Remind button's id, derived from its row's status id in ONE place (Req 5 guard). */
 function remindButtonIdFor(statusId) {
