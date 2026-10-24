@@ -1,4 +1,4 @@
-// sourceScan lexer parity with the TypeScript parser (W068).
+// W068: the house lexer in ./sourceScan, checked against the TypeScript parser.
 //
 // The house lexer in ./sourceScan (stringChunks, withoutComments) is what every Phase 88
 // drift guard reads. It is a hand-written scanner, and the 88.6 review found source shapes
@@ -22,7 +22,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import { assertExactCounts, assertRosterShape, type ExemptionRoster } from './exemption';
-import { sourceFiles, stringChunks, withoutComments } from './sourceScan';
+import { inkGroundPairs, sourceFiles, stringChunks, withoutComments } from './sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -96,6 +96,51 @@ function commentDivergenceLines(text: string, fileName: string): number[] {
   return out;
 }
 
+const LITERAL_KINDS = new Set<ts.SyntaxKind>([
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+  ts.SyntaxKind.TemplateHead,
+  ts.SyntaxKind.TemplateMiddle,
+  ts.SyntaxKind.TemplateTail,
+]);
+
+// Every whitespace-split token of the RAW source between the delimiters of each string or
+// template literal the parser reads. A template head or middle ends in the two characters that
+// open an interpolation; every other literal ends in one closing delimiter.
+function tsLiteralTokens(text: string, fileName: string): string[] {
+  const { sf, leaves } = parsed(text, fileName);
+  const out: string[] = [];
+  for (const leaf of leaves) {
+    if (!LITERAL_KINDS.has(leaf.kind)) continue;
+    const opensInterpolation =
+      leaf.kind === ts.SyntaxKind.TemplateHead || leaf.kind === ts.SyntaxKind.TemplateMiddle;
+    const raw = text.slice(leaf.getStart(sf) + 1, leaf.end - (opensInterpolation ? 2 : 1));
+    for (const token of raw.split(/\s+/)) if (token) out.push(token);
+  }
+  return out;
+}
+
+// The parser tokens with no backslash that stringChunks does not also emit, as a multiset:
+// a token the parser reads twice must be emitted twice.
+function tokenMisses(text: string, fileName: string): string[] {
+  const have = new Map<string, number>();
+  for (const chunk of stringChunks(text)) {
+    for (const token of chunk.text.split(/\s+/)) {
+      if (token) have.set(token, (have.get(token) ?? 0) + 1);
+    }
+  }
+  const misses: string[] = [];
+  for (const token of tsLiteralTokens(text, fileName)) {
+    if (token.includes('\\')) continue;
+    const left = have.get(token) ?? 0;
+    if (left > 0) have.set(token, left - 1);
+    else misses.push(token);
+  }
+  return misses;
+}
+
+const INK_ON_MUTED = { ink: /text-content-muted/, ground: /bg-surface-muted/ };
+
 function relKey(file: string): string {
   return path.relative(SRC, file).split(path.sep).join('/');
 }
@@ -135,5 +180,78 @@ describe('sourceScan lexer parity with the TypeScript parser', () => {
     expect(files.length).toBeGreaterThanOrEqual(150);
     expect(assertRosterShape(KNOWN_LEXER_DIVERGENCES)).toEqual([]);
     expect(assertExactCounts(KNOWN_LEXER_DIVERGENCES, measured), JSON.stringify(measured)).toEqual([]);
+  });
+
+  it('tree-wide token parity: stringChunks misses no backslash-free literal token the TypeScript parser reads', () => {
+    const files = sourceFiles(SRC);
+    const misses: Record<string, string[]> = {};
+    let checked = 0;
+    for (const file of files) {
+      const text = fs.readFileSync(file, 'utf8');
+      checked += tsLiteralTokens(text, file).filter((token) => !token.includes('\\')).length;
+      const missed = tokenMisses(text, file);
+      if (missed.length > 0) misses[relKey(file)] = missed;
+    }
+    expect(misses, JSON.stringify(misses)).toEqual({});
+    expect(files.length).toBeGreaterThanOrEqual(150);
+    expect(checked, `only ${checked} literal tokens checked`).toBeGreaterThanOrEqual(10000);
+  });
+
+  it('W068 limitation 9, URL in JSX text: fixture pins the known mis-lex', () => {
+    // JSX text is not code, but the lexer reads the two slashes of the URL as a line comment.
+    // The rest of the line vanishes, the muted ink with it, so the walk sees no pairing at all:
+    // a D-16 violation hidden from every gate built on inkGroundPairs.
+    const url = '<div className="bg-surface-muted">see https://x.test <span className="text-content-muted">x</span></div>;';
+    const control = '<div className="bg-surface-muted">see x.test <span className="text-content-muted">x</span></div>;';
+    expect(commentDivergenceLines(url, 'fixture-l9-url.tsx')).toEqual([1]);
+    expect(tokenMisses(url, 'fixture-l9-url.tsx')).toEqual(['text-content-muted']);
+    expect(inkGroundPairs(url, INK_ON_MUTED)).toHaveLength(0);
+    expect(commentDivergenceLines(control, 'fixture-l9-url-control.tsx')).toEqual([]);
+    expect(tokenMisses(control, 'fixture-l9-url-control.tsx')).toEqual([]);
+    expect(inkGroundPairs(control, INK_ON_MUTED)).toHaveLength(1);
+  });
+
+  it('W068 limitation 9, apostrophe in JSX text: fixture pins the known mis-lex', () => {
+    // The apostrophe opens a single-quoted string that runs to the end of the line, so the
+    // className after it is read as one prose chunk and its class is never a token. No comment
+    // is involved, so the comment arm agrees with the parser.
+    const apos = '<p>Don\'t <b className="text-content-muted">x</b></p>;';
+    expect(commentDivergenceLines(apos, 'fixture-l9-apos.tsx')).toEqual([]);
+    expect(tokenMisses(apos, 'fixture-l9-apos.tsx')).toEqual(['text-content-muted']);
+    expect(stringChunks(apos).map((chunk) => chunk.text)).toEqual(['t <b className="text-content-muted">x</b></p>;']);
+  });
+
+  it('W068 limitation 10, a quote inside a comment inside an interpolation: fixture pins the known mis-lex', () => {
+    // The interpolation scanner does not skip comments, so the apostrophe in the comment opens
+    // a string. String parity is flipped for the rest of the line: the template tail and the
+    // class in the next statement are both lost. withoutComments copies the template verbatim,
+    // comment included, where the parser blanks it.
+    const quoted = "const t = `a${b /* it's */}c`; const k = 'text-content-muted';";
+    expect(commentDivergenceLines(quoted, 'fixture-l10.ts')).toEqual([1]);
+    expect(tokenMisses(quoted, 'fixture-l10.ts')).toEqual(['c', 'text-content-muted']);
+  });
+
+  it('W068 limitation 11, template-literal escapes: fixture pins the known mis-lex', () => {
+    // The template branch of stringChunks skips an escape and appends nothing, so the
+    // characters either side of it merge into one token. The parser's token holds a backslash,
+    // so the token arm (backslash-free tokens only) does not count it.
+    const escaped = 'const t = `a\\nb px-2`;';
+    expect(stringChunks(escaped).map((chunk) => chunk.text)).toEqual(['ab px-2']);
+    expect(tokenMisses(escaped, 'fixture-l11.ts')).toEqual([]);
+    expect(commentDivergenceLines(escaped, 'fixture-l11.ts')).toEqual([]);
+  });
+
+  it('W069: a TypeScript generic opens a phantom frame that sets no ground and does not stop resolution', () => {
+    const jsx = '<div className="bg-surface-muted"><span className="text-content-muted">x</span></div>;';
+    const withGeneric = 'const r = useRef<HTMLDivElement>(null);\n' + jsx;
+    const rows = inkGroundPairs(withGeneric, INK_ON_MUTED);
+    const control = inkGroundPairs(jsx, INK_ON_MUTED);
+    expect(rows).toHaveLength(1);
+    expect(control).toHaveLength(1);
+    expect(rows[0].grounds.map((g) => g.token)).toEqual(control[0].grounds.map((g) => g.token));
+    expect(rows[0].grounds.map((g) => g.token)).toEqual(['bg-surface-muted']);
+    // Both texts are valid TSX with no comment, so neither is a lexer divergence.
+    expect(commentDivergenceLines(withGeneric, 'fixture-w069.tsx')).toEqual([]);
+    expect(commentDivergenceLines(jsx, 'fixture-w069-control.tsx')).toEqual([]);
   });
 });

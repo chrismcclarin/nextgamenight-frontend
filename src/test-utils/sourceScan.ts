@@ -536,11 +536,15 @@ function classSites(
  * ---------
  *  1. `withoutComments` first. Marker prose in this tree quotes both ink and ground class
  *     names by necessity, and an unfiltered walk reports phantom pairings from comments.
- *  2. Opening tags are anchored on a NAMED-tag regex with a lookahead, never a bare `<`, so a
- *     TypeScript generic or a `a < b` comparison cannot start a tag scan; each is read with
- *     the length-bounded `readOpeningTag` above, never a `[^>]*` regex (measured in 88-21:
+ *  2. Opening tags are anchored on a NAMED-tag regex with a lookahead, never a bare `<`; each is
+ *     read with the length-bounded `readOpeningTag` above, never a `[^>]*` regex (measured in 88-21:
  *     that form matched 0 of 14 real controls here, because every className in this repo sits
- *     on a different line from its opening tag).
+ *     on a different line from its opening tag). The anchor keeps a spaced `a < b` comparison
+ *     from ever opening a frame. A TypeScript generic (`useRef<HTMLDivElement>(null)`) or an
+ *     unspaced comparison CAN open one, because `OPEN_TAG` needs only a letter after the angle
+ *     bracket: that is a phantom frame, never popped, which sets no ground and is not terminal,
+ *     so it contributes nothing to any row. Pinned by
+ *     src/test-utils/sourceScan.parity.test.ts ("W069: a TypeScript generic opens a phantom frame").
  *  3. Each non-self-closing tag pushes a stack frame recording EVERY ground candidate it sets
  *     — token, chunk identity and line — not just the first.
  *  4. Each RESTING ink class emits a row carrying the candidates from the nearest ancestor
@@ -553,14 +557,16 @@ function classSites(
  *     attempted — whether two arms of a ternary can be live together is not knowable from
  *     source, and pretending otherwise is how a scan starts lying.
  *
- * KNOWN LIMITATIONS — EIGHT, and this list is the gate's honesty
- * --------------------------------------------------------------
+ * KNOWN LIMITATIONS — ELEVEN, and this list is the gate's honesty
+ * ---------------------------------------------------------------
  *  1. COMPONENT-SET GROUND is invisible. A ground applied by a component (`<Card>`,
  *     `<Modal.Body>`) is not a class in any opening tag this walk reads.
- *  2. FUNCTION-RETURNED / CLASS-CONSTANT GROUND is invisible. The live instance is
- *     `SuggestionCard.js`'s `getScoreColor()` — declared `:66`, returning
- *     `'bg-surface-muted border-line'` at `:67`, applied at `:75` — whose three forbidden-ink
- *     descendants the walk therefore cannot see.
+ *  2. FUNCTION-RETURNED / CLASS-CONSTANT GROUND is invisible. The live instance is a class
+ *     constant,
+ *     src/app/components/MemberChipStack.tsx ("const NEUTRAL_FILL = 'bg-surface-muted';"),
+ *     and so is the ink beside it: both are referenced through `cn(...)`, never spelled inside
+ *     one opening tag, so the walk sees neither. The file records this itself, at
+ *     src/app/components/MemberChipStack.tsx ("which is limitation 2 of that gate").
  *  3. RAW-PALETTE INK is invisible. Only ink expressed as a semantic token is resolved; ink
  *     written `text-<hue>-<n>` is not (87 occurrences in non-test `src/`, concentrated in
  *     `gameDetail/page.js`, `userProfile/page.js` and `ManageMembers.js`). That population is
@@ -571,14 +577,19 @@ function classSites(
  *     arm and the ground arm are mutually exclusive) must be excluded BY NAME by the consumer,
  *     never reasoned away here.
  *  5. A CONDITIONALLY-PRESENT GROUND DOES NOT TERMINATE the walk. It contributes candidates
- *     and the walk continues to the parent. The live shapes are `EventScheduler.tsx:1091` and
- *     `Combobox.tsx:281`, where one arm sets a ground and the other sets none.
+ *     and the walk continues to the parent. The live shapes are
+ *     src/app/components/EventScheduler.tsx ("currentView === value ? 'bg-surface-muted text-content-primary' : ''")
+ *     and
+ *     src/components/ui/Combobox.tsx ("activeIndex === index && 'bg-surface-muted'"),
+ *     where one arm sets a ground and the other sets none.
  *  6. ALPHA IS INVISIBLE. This resolves TOKENS. An `opacity-*` utility, or a `text-*` / `bg-*`
  *     alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites
  *     the rendered colour — so a pairing that PASSES here can still fail WCAG 1.4.3 at render.
- *     Live specimen: `CalendarMonthView.js:246` (`isAdjacent ? 'opacity-60 ' : ''`) over the
- *     ink at `:259` (`isAdjacent ? 'text-content-muted' :`) — the SAME condition, so the two
- *     are genuinely co-live.
+ *     Live specimen:
+ *     src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''")
+ *     over the ink at
+ *     src/app/components/CalendarMonthView.js ("isAdjacent ? 'text-content-muted' :")
+ *     — the SAME condition, so the two are genuinely co-live.
  *  7. VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.
  *     `hover:` / `focus:` / `disabled:` / `aria-disabled:` ink emits NO row, exactly as a
  *     variant-prefixed ground is not a resting ground: D-16 is a rule about the RESTING state.
@@ -591,6 +602,22 @@ function classSites(
  *     src/lib/wcag.ts (".replace(/\//g, ' ')"),
  *     rostered by
  *     src/test-utils/sourceScan.parity.test.ts ("DECISION Phase 88.6.2-08 (W068): the one live divergence").
+ *  9. JSX TEXT IS READ AS CODE. Text between JSX tags is prose, but the lexers scan it as
+ *     source: a URL's two slashes start a line comment that drops the rest of the line, and an
+ *     apostrophe opens a string that swallows a className later on the same line. Either one
+ *     hides that line's ink from this walk.
+ *  10. A QUOTE INSIDE A COMMENT INSIDE AN INTERPOLATION flips string parity for the code after
+ *     it. The `${...}` scan in `stringChunks` does not skip comments, so an apostrophe in a
+ *     comment there opens a string, and the rest of the line is read inside-out.
+ *  11. TEMPLATE-LITERAL ESCAPES ARE DROPPED by `stringChunks`. Its template branch skips an
+ *     escape and appends nothing, so the characters either side of it merge into one token
+ *     (`a\nb` is read as `ab`). Measured case: `src/components/ui/FetchErrorBanner.tsx`,
+ *     3 prose tokens, no class token.
+ *
+ * 8-11 are the LEXER's, inherited by every consumer of `stringChunks` / `withoutComments`; each
+ * is pinned by a fixture in
+ * src/test-utils/sourceScan.parity.test.ts ("sourceScan lexer parity with the TypeScript parser"),
+ * and the suite's tree-wide arms red the first file that trips one.
  *
  * Because of 1, 2 and 4, a consumer must pair the class rule with a by-name roster so that the
  * two fail INDEPENDENTLY — a class rule alone goes green by seeing nothing.
