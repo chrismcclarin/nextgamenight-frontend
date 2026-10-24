@@ -19,24 +19,24 @@
  * - **No widening of the phone-only `.btn` CLASS rule.** The 44px floor this
  *   primitive carries is `min-h-11` on the cva BASE, at every viewport width
  *   (88.6 D-09). The `@media (width < 48rem)` rule on the `.btn` class
- *   (`globals.css:2677-2681`) is left exactly as it is, and an all-viewport
+ *   (src/app/globals.css ("min-height: 2.75rem;")) is left exactly as it is, and an all-viewport
  *   floor on that class stays REJECTED (88-01 D-36, reasoning at
- *   `globals.css:2647-2676`): square-by-design controls wear `.btn`, so a
+ *   src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")): square-by-design controls wear `.btn`, so a
  *   class-level floor deforms them, while a floor on the PRIMITIVE reaches only
  *   elements that opted in by being a `Button`. See the `DECISION Phase
  *   88.6-06 (D-09)` marker on the base entry below.
  * - **No `compact` rung** (88.6 D-10). It would convert a closed two-site
- *   exemption (`BrowseMoreModal.js:232`, `:270`) into an open sub-44 API
+ *   exemption (src/app/components/BrowseMoreModal.js ("Decrease player"), src/app/components/BrowseMoreModal.js ("Increase player")) into an open sub-44 API
  *   affordance, and would silently add the base's elevation pair to two 32px
  *   squares.
  * - **No size utility of any kind on a size rung.** `text-*`, `px-*`, `py-*`
  *   and `p-*` are DEAD on a `.btn` element: `.btn` declares `font-size`
- *   (`globals.css:2201`) and `padding` (`:2202`) UNLAYERED, and an unlayered
+ *   (src/app/globals.css ("font-size: 0.875rem;")) and `padding` (src/app/globals.css ("padding: 0.5rem 1rem;")) UNLAYERED, and an unlayered
  *   author rule beats every `@layer utilities` rule. The compact horizontal
- *   padding comes from the unlayered `.btn-sm` rule (`globals.css:2722-2725`).
+ *   padding comes from the unlayered `.btn-sm` rule (src/app/globals.css (".btn-sm {")).
  * - **No bare `hover:` token** in the base or the variant map. A gated control
  *   must not lift or wash, so every hover here goes through the `enabled-hover`
- *   custom variant (`globals.css:177-183`), which is hover-capability-scoped
+ *   custom variant (src/app/globals.css ("@custom-variant enabled-hover {")), which is hover-capability-scoped
  *   and excludes both `:disabled` and `[aria-disabled="true"]`.
  * - **No raw palette classes** — semantic tokens only inside `src/components/ui/`.
  * - **No barrel export.** There is no `src/components/ui/index.ts` and this
@@ -55,7 +55,7 @@ import { cn } from '@/lib/cn';
    most likely to "clean up" this into.
 
    WHY THE PURE-UTILITY VERSION LOSES, measured: `.btn` is authored UNLAYERED in globals.css
-   (`:950`), and an unlayered rule beats anything Tailwind emits inside `@layer utilities`. A
+   (src/app/globals.css ("padding: 0.5rem 1rem;")), and an unlayered rule beats anything Tailwind emits inside `@layer utilities`. A
    utility base would therefore be OVERRIDDEN by `.btn` wherever the two disagree — and the
    repo already has 8 shipped markers recording exactly this failure, compact `.btn` rows whose
    `text-xs px-3 py-1` utilities are dead on arrival. Dropping `.btn` entirely instead is not
@@ -63,7 +63,7 @@ import { cn } from '@/lib/cn';
    press (87.8 D-12) and the disabled rule, all of which would silently vanish.
 
    WHY THE ADDITIONS BELOW ARE STILL SAFE AS UTILITIES: `.btn` declares NO background, NO
-   box-shadow, NO min-height and NO outline (verified against globals.css:950-962), so the
+   box-shadow, NO min-height and NO outline (verified against the `.btn` rule at src/app/globals.css ("padding: 0.5rem 1rem;")), so the
    elevation, the focus ring, the ghost background and the icon-size floor have nothing
    unlayered to lose to. That is the whole reason the split falls where it does.
 
@@ -74,7 +74,7 @@ const buttonVariants = cva(
     'btn',
     // D-01's only real drift from the shipped resting look: rest -> hover elevation.
     // In dark this renders as a hairline ring appearing on hover (the dark
-    // `--shadow-*` values are rings, globals.css:601) — intended, not a bug.
+    // `--shadow-*` values are rings, src/app/globals.css ("1px var(--purple-700);")) — intended, not a bug.
     // The hover half is `enabled-hover:`-gated (88.6 D10) — reasoning is in the
     // `DECISION Phase 88.6-06 (D10)` note below the ring line, kept there so it
     // does not widen the anchor-to-ring distance `cascadeOrder.test.ts` bounds.
@@ -100,8 +100,8 @@ const buttonVariants = cva(
        here also keeps it inside the primitive, where `cn()`'s last-wins lets a call site
        override it; an unlayered global rule cannot be overridden per call site at all.
 
-       ROUTED, not ignored: the two `BrowseMoreModal` steppers (`BrowseMoreModal.js:232`,
-       `:270`) carry no focus string of their own, so under ARM A they stay on the browser
+       ROUTED, not ignored: the two `BrowseMoreModal` steppers (src/app/components/BrowseMoreModal.js ("Decrease player"),
+       src/app/components/BrowseMoreModal.js ("Increase player")) carry no focus string of their own, so under ARM A they stay on the browser
        default outline (no AA violation — the UA outline satisfies WCAG 2.4.7; the gap is
        consistency) until plan 32 gives them the house string in its `ring-inset` form, per
        the owner's AC-10 ruling of 2026-09-09.
@@ -113,13 +113,16 @@ const buttonVariants = cva(
     'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
     /* DECISION Phase 88.6-06 (D10): the hover elevation above, and the ghost
        variant's hover wash below, are expressed through the `enabled-hover`
-       custom variant (`globals.css:177-183`) — chosen OVER the bare `hover:`
+       custom variant (src/app/globals.css ("@custom-variant enabled-hover {")) — chosen OVER the bare `hover:`
        they used to carry.
 
        WHY. The four legacy rules
        `.btn-*:hover:not(:disabled):not([aria-disabled='true'])`
-       (`globals.css:2383`, `:2483`, `:2633`, `:2643`) deliberately withhold the
-       hover fill from a gated control. A bare `hover:` in this base re-lifted
+       (src/app/globals.css (".btn-primary:hover:not(:disabled):not([aria-disabled='true']) {"),
+       src/app/globals.css (".btn-accent:hover:not(:disabled):not([aria-disabled='true']) {"),
+       src/app/globals.css (".btn-secondary:hover:not(:disabled):not([aria-disabled='true']) {"),
+       src/app/globals.css (".btn-danger:hover:not(:disabled):not([aria-disabled='true']) {"))
+       deliberately withhold the hover fill from a gated control. A bare `hover:` in this base re-lifted
        exactly those controls, so a disabled button still rose under the pointer
        and read as pressable. `enabled-hover` is hover-capability-scoped and
        excludes BOTH `:disabled` and `[aria-disabled="true"]`, so the resting
@@ -142,12 +145,12 @@ const buttonVariants = cva(
     /* DECISION Phase 88.6-06 (D-09): the 44px touch floor lives HERE, on the cva
        BASE, at every viewport width — chosen OVER widening the phone-only
        `@media (width < 48rem)` rule on the `.btn` CLASS
-       (`globals.css:2677-2681`), which is left untouched.
+       (src/app/globals.css ("min-height: 2.75rem;")), which is left untouched.
 
-       WHY THIS KEEPS D-36 LITERALLY TRUE. D-36 (`globals.css:2647-2676`)
+       WHY THIS KEEPS D-36 LITERALLY TRUE. D-36 (src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC"))
        rejects an all-viewport `min-height` on the `.btn` CLASS, because
        square-by-design controls wear `.btn` — the two `w-8 h-8` player-count
-       steppers at `BrowseMoreModal.js:232` and `:270` would be stretched into
+       steppers at src/app/components/BrowseMoreModal.js ("Decrease player") and src/app/components/BrowseMoreModal.js ("Increase player") would be stretched into
        32x44 lozenges. A floor on the PRIMITIVE reaches only elements that opted
        in by being a `Button`, so that rejection stays literally true and the
        eight per-CTA floor markers stay valid.
@@ -155,12 +158,12 @@ const buttonVariants = cva(
        THERE IS NO CALL-SITE OPT-OUT BELOW 48rem, and that is a fact rather than
        an oversight: `.btn` is unlayered, so the phone floor beats ANY
        `@layer utilities` `min-h-*` a caller passes. The sentences recording
-       this are `globals.css:2666-2674` (re-derived 2026-09-15; plan 06's text
+       this are src/app/globals.css ("BOTH RULES ARE UNLAYERED, AND THE AUTHORING ORDER IS LOAD-BEARING") (re-derived 2026-09-15; plan 06's text
        cites `:2350-2363`, a range that predates plan 05's edits). A call-site
        `min-h-0` is therefore DESKTOP-ONLY — and plan 12's AC-2 desktop arm
        flags it as a violation, so it is not a quiet escape hatch either.
        `.btn-compact` is not a path: it is unlayered at ALL widths, it also
-       zeroes horizontal padding (`globals.css:2766-2767`), and it is scoped by
+       zeroes horizontal padding (src/app/globals.css (".btn-compact {")), and it is scoped by
        construction to those same two shipped sites.
 
        ANY SUB-44 `Button` IS A PHASE 88.9 DECISION, not a cleanup — see the
@@ -174,13 +177,15 @@ const buttonVariants = cva(
         secondary: 'btn-secondary',
         danger: 'btn-danger',
         // 88.6 D-09: the amber CTA family. Emits the CLASS, never the amber as
-        // utilities — `.btn-accent` (globals.css:2478-2481) already paints it
+        // utilities — `.btn-accent` (src/app/globals.css (".btn-accent {")) already paints it
         // over `--color-btn-accent-bg` / `--color-btn-accent-text`, and a second
         // inline expression of that value is what the 88.3-18 marker
-        // (globals.css:2389) exists to prevent. Byte-equal to the inline style
+        // (src/app/globals.css ("QR button takes the Create-Event amber")) exists to prevent. Byte-equal to the inline style
         // plan 21 retires: `--color-btn-accent-bg` is `var(--amber-700)` in both
-        // themes (globals.css:1390, :1827) and `--color-btn-accent-text` is
-        // `#ffffff` in both (:1392, :1829) — white on amber-700 = 5.0216:1.
+        // themes (light under src/app/globals.css ("BUTTON vocabulary, minted so the Create-Event amber has a name"),
+        // dark under src/app/globals.css ("BYTE-IDENTICAL to the light arm, deliberately.")) and
+        // `--color-btn-accent-text` is `#ffffff` in both (under the same two markers) — white on
+        // amber-700 = 5.0216:1.
         accent: 'btn-accent',
         // No legacy class exists for ghost, and `.btn` sets no background,
         // so utilities are the correct tool here.
@@ -193,7 +198,7 @@ const buttonVariants = cva(
         // pressable. The comment was true of the legacy `.btn-*` classes and
         // false of this one. The old override only ever reached the ARIA half,
         // so a NATIVELY-disabled ghost still washed; `enabled-hover`
-        // (globals.css:177-183) excludes both states at once and makes the
+        // (src/app/globals.css ("@custom-variant enabled-hover {")) excludes both states at once and makes the
         // override redundant. See the `DECISION Phase 88.6-06 (D10)` marker in
         // the cva base.
         // `aria-disabled:text-content-muted` added 2026-09-05 (code review round 2
@@ -214,29 +219,30 @@ const buttonVariants = cva(
          (1) THE DEAD ZERO-PADDING UTILITY ON `icon` IS DELETED — chosen OVER
          authoring an unlayered `.btn-icon { padding: 0 }` beside `.btn-sm`. The
          same mechanism would work, but it narrows every icon button by 32px
-         (`.btn` is `padding: .5rem 1rem`, i.e. 16px a side, `globals.css:2202`),
+         (`.btn` is `padding: .5rem 1rem`, i.e. 16px a side, src/app/globals.css ("padding: 0.5rem 1rem;")),
          which is a LOOK CHANGE and therefore Phase 88.9's, not this phase's
          (P6). What ships today, and what is being PRESERVED rather than
          overlooked: `size="icon"` renders at least 44x44 but wears `.btn`'s
          8px/16px padding, i.e. a LOZENGE, not a square. It was never zeroed —
          the utility had been dead since the day it was written, because `.btn`
-         is unlayered and `@layer utilities` always loses (`globals.css:2205`,
-         restated at `:2668-2671`). Deleting it changes no rendered pixel.
+         is unlayered and `@layer utilities` always loses (src/app/globals.css ("WHY THE CALL-SITE VERSION LOSES"),
+         restated at src/app/globals.css ("BOTH RULES ARE UNLAYERED, AND THE AUTHORING ORDER IS LOAD-BEARING")). Deleting it changes no rendered pixel.
          (The retired class is described rather than quoted: plan 06's
          acceptance gate greps this whole FILE for that literal, comments
          included, so writing it here would red a correct tree.)
 
          (2) `min-h-11` LIVES ON THE cva BASE — chosen OVER widening the
          `@media (width < 48rem)` rule on the `.btn` class. D-36's reasoning is
-         at `globals.css:2647-2676`; the full argument is on the base entry
+         at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC"); the full argument is on the base entry
          above.
 
          (3) THE `sm` RUNG IS HEIGHT-FLOORED AT 44px (from the base) AND
          DELIBERATELY NOT FLOORED IN WIDTH. It is a wide-text row-action rung —
          the rule all eight 87.8 floor markers record as "No `min-w-11`: wide
          text button". Its adopters are CAPPED AT TWO by UI-SPEC §3.3
-         (`88.6-UI-SPEC.md:239` — `gameDetail/page.js:198` GuestInviteButton and
-         `:1979` the two-tap Remove, "the only two"), so a third `sm` consumer
+         (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 3.3 Size mapping")
+         — src/app/gameDetail/page.js ("onClick={handleInvite}") GuestInviteButton and
+         src/app/gameDetail/page.js ("{...removeParticipantGate.triggerProps(") the two-tap Remove, "the only two"), so a third `sm` consumer
          is a decision rather than a cleanup, and a `sm` rung on a PRIMARY CTA
          is a Phase 88.9 decision, not this phase's. */
       size: {
@@ -246,8 +252,8 @@ const buttonVariants = cva(
         icon: 'min-h-11 min-w-11',
         // 88.6 D-09, the compact row-action rung. `btn-sm` ONLY: the compact
         // horizontal padding comes from the unlayered `.btn-sm` rule
-        // (globals.css:2722-2725), and every padding or font-size utility that
-        // could be written here is dead under `.btn` (globals.css:2201-2202).
+        // (src/app/globals.css (".btn-sm {")), and every padding or font-size utility that
+        // could be written here is dead under `.btn` (src/app/globals.css ("font-size: 0.875rem;") and src/app/globals.css ("padding: 0.5rem 1rem;")).
         // The `sm` label is 14px FORCED, not chosen.
         sm: 'btn-sm',
       },
