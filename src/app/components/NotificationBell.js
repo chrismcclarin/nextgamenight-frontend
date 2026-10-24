@@ -15,7 +15,7 @@ import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 // Copy row N1 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:100) — heard, not seen.
 const LOADING_NOTIFICATIONS = 'Loading notifications';
 
-// Copy row N7 (D-47, owner-ratified 2026-10-05; planning-briefs/revision-lap-3-manifest.md:17), the
+// Copy row N7 (D-47, owner-ratified 2026-10-05; planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/planning-briefs/revision-lap-3-manifest.md ("## Ratified strings")), the
 // full banner's title when the notifications could not be loaded and there is nothing to show;
 // straight apostrophe (D-32 R8).
 const NOTIFICATIONS_LOAD_FAILED_COPY = "Couldn't load your notifications";
@@ -29,7 +29,7 @@ const ACCEPTING_COPY = 'Accepting...';
 // (D-33 row 22). The friend pair is exported because the Friends page's Requests tab shows the same
 // N5 / N6 lines (plan 88.6.1-72): one source per row, never retyped. Chosen over a separate copy
 // module, because this module is already loaded on every page through the header
-// (src/app/Header.js:6) and both files are client modules (the use-client directive on line 1 of
+// (src/app/Header.js ("import NotificationBell from")) and both files are client modules (the use-client directive on line 1 of
 // this file and of src/app/friends/page.js), so the import is an ordinary one, not a
 // server-to-client reference.
 const ACCEPT_INVITE_FAILED_COPY = "We couldn't accept that invite. Please try again.";
@@ -116,7 +116,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      exactly THREE `aria-` attributes in 409 lines (`grep -n 'aria-'`, measured 2026-09-16), and
      both triggers were `onClick={() => setIsOpen(!isOpen)}` with an `aria-label` and nothing
      else. BOTH, not one: the ROW variant is rendered inside the phone hamburger
-     (`src/app/Header.js:302`, `variant="row" label="Invites"`), the phone-primary surface, which is why it was taken in scope at
+     (src/app/Header.js ("<NotificationBell user={user} variant="), `variant="row" label="Invites"`), the phone-primary surface, which is why it was taken in scope at
      all. The change is ATTRIBUTE-ONLY — no handler change, no markup restructuring, no role added
      to the panel, no visible behaviour — and that smallness is the argument that won the
      exception. The boundary it is an exception TO is a real CONSEQUENCE constraint, stated here
@@ -141,7 +141,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      AMENDED 2026-10-15 — DECISION Phase 88.6.1-28 (D-18): the three items the REJECTED ARM above
      routed onward (the missing Escape handler, the panel's missing role, the outside click that
      was mousedown-only) are owned and closed by Phase 88.6.1 — register R128
-     (`.planning/deferred/phase-88.6.1.md:63`). The panel is a section named by its heading and
+     (planning:.planning/deferred/phase-88.6.1.md ("### R128")). The panel is a section named by its heading and
      the bell dismisses through the shared `useDismissal` hook; see the two DECISION Phase
      88.6.1-28 markers below. This exception's boundary did not widen: `aria-expanded` and the
      conditional `aria-controls` are untouched, and the region and dismissal come from D-18, a
@@ -177,9 +177,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // outcome the person never saw (logged, user told nothing). Such a failure is HELD (heldFailure) and written into the
   // assertive region by the effect below, after the reopened panel has mounted the region empty, so it is announced
   // (the house empty-first idiom). CHOSEN OVER a toast while closed (a second announcement channel for one bell) and
-  // over showing it in the render-phase clear (the region would mount already filled and stay silent). A confirmation
-  // that settles while closed still never shows (it reports what the person asked for). The render-phase clear itself
-  // is unchanged.
+  // over showing it in the render-phase clear (an alert that arrives with its text IS announced, so silence is not the reason;
+  // corrected Phase 88.6.2-25 per D-42: the line lands as a text change in the one node that starts empty, Req 8's target and AC-24's same node, src/components/ui/StatusRegion.tsx ("node identity is assertable, and a clear-then-set makes an")).
+  // A confirmation that settles while closed still never shows (it reports what the person asked for). The render-phase clear itself is unchanged.
   const [shownOpen, setShownOpen] = useState(isOpen);
   if (shownOpen !== isOpen) {
     setShownOpen(isOpen);
@@ -241,10 +241,10 @@ function NotificationBell({ user, variant = 'icon', label }) {
      REJECTED (c): Escape as a document keydown listener — document listeners run in registration
      order and cannot be claimed (research P-10).
      WHY `preventDefault` IS LOAD-BEARING: the row variant renders inside the phone hamburger
-     (`src/app/Header.js:302`, `variant="row" label="Invites"`), whose Escape listener is on the
-     document (`src/app/Header.js:31-42`, `if (!mobileMenuOpen) return;`). The App Router hydrates
-     the document itself (`node_modules/next/dist/client/app-index.js:42`,
-     `const appElement = document;`), so React's root listener and Header's share one node and
+     (src/app/Header.js ("<NotificationBell user={user} variant="), `variant="row" label="Invites"`), whose Escape listener is on the
+     document (src/app/Header.js ("if (!mobileMenuOpen) return;")). The App Router hydrates
+     the document itself (node_modules:next/dist/client/app-index.js ("const appElement = document;"),
+     the line that hands React the document), so React's root listener and Header's share one node and
      `stopPropagation` cannot stop Header's — only Header's bail on a default-prevented Escape
      (plan 88.6.1-45, D-08a) makes one Escape close the bell alone. Pinned by NB-6
      (`NotificationBell.test.tsx`).
@@ -378,7 +378,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      no inline message and NO Sentry capture — a failed Accept left the row in place and the user
      reasonably concluded it worked. They are now `logger.error('<msg>', err)`, the message string
      kept VERBATIM, and THAT CALL IS THE ESCALATION the ruling asked for: `logger.error` routes to
-     `Sentry.captureException` (`src/lib/logger.ts:45`, `Sentry.captureException(err ?? new Error(msg)`), so a failed accept/decline now files a real
+     `Sentry.captureException` (src/lib/logger.ts ("Sentry.captureException(err ?? new Error(msg)")), so a failed accept/decline now files a real
      Sentry EVENT where before it was at most a console breadcrumb (there is no
      `captureConsoleIntegration` in `sentry.client.config.js`, and `QueryCache.onError` covers only
      query-cache errors). A console-only diagnostic is no longer an acceptable end state here.
@@ -593,7 +593,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // text-left so the label aligns with surrounding rows.
         // DECISION Phase 87.8 (D-12): pressed state is now an instant opacity dim.
         // DECISION Phase 87.8 — this supersedes the CONTEXT D-02 token-swap idiom (active:bg-surface-card-hover)
-        // previously recorded here: --theme-transition (src/app/globals.css:1780, `--theme-transition: background-color 0.25s ease`) transitions
+        // previously recorded here: --theme-transition (src/app/globals.css ("--theme-transition: background-color 0.25s ease")) transitions
         // background-color at 0.25s and does not list opacity, so a background swap
         // is swallowed on an ~80ms tap while an untransitioned opacity change fires
         // instantly. hover:bg-surface-card-hover stays — correct on desktop, inert
@@ -614,11 +614,11 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // DECISION Phase 88.3 (§10.1): this row hovers to `bg-surface-header-hover`
         // (warm-700), chosen OVER `bg-surface-hover` (warm-50) which the other 38 swept
         // sites took. Ground reason: this row renders inside the mobile menu panel on
-        // `bg-surface-header` (src/app/Header.js:264, `md:hidden absolute top-16`) under `text-white` — a warm-50 wash there
+        // `bg-surface-header` (src/app/Header.js ("md:hidden absolute top-16")) under `text-white` — a warm-50 wash there
         // measures 1.06:1, while warm-700 measures 10.48:1. The nav links beside it
-        // (src/app/Header.js:277, :285, each `bg-surface-header-hover`) were already on the header family and are the model this
+        // (src/app/Header.js ("navLinks.map(({ href, label, isLink }) => ("), its Link and a arms, each `bg-surface-header-hover`) were already on the header family and are the model this
         // row should have followed; it had drifted onto the card family.
-        // src/app/components/ThemeToggle.js:37 and src/app/components/FeedbackButton.js:143 (each `bg-surface-header-hover`) are the same row idiom on the same
+        // src/app/components/ThemeToggle.js ("text-sm hover:bg-surface-header-hover") and src/app/components/FeedbackButton.js ("text-sm hover:bg-surface-header-hover") (each `bg-surface-header-hover`) are the same row idiom on the same
         // panel and moved with it — all three are cross-referenced back to this marker.
         // Converging these three onto `bg-surface-hover` "for consistency" with the other
         // 38 re-introduces a 1.06:1 hover state; `surfaceHoverSweep.test.ts` test 4b pins
@@ -728,7 +728,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
           `src/app/components/KebabMenu.js`); a div carrying an explicit region role (the native
           element already carries that role).
           The idref is safe because the heading's children are a fixed literal
-          (`src/components/ui/Heading.tsx:30-37`, anchor "It is NOT a safe").
+          (src/components/ui/Heading.tsx ("It is NOT a safe")).
           Adding a role, or naming the panel with its own label, is a decision, not a cleanup. */}
       {isOpen && (
         <section
@@ -813,7 +813,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                     assistive tech.
                     REJECTED: a status role on this wrapper — it mounts together with the panel,
                     and a conditionally mounted polite region is not reliably announced (D-42;
-                    `src/components/ui/StatusRegion.tsx:9-12`, anchor "EMPTY-FIRST"); and the
+                    src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted")); and the
                     provider's loading flag is first-load only
                     (`src/app/components/UnreadNotificationProvider.js`, anchors "useState(true)"
                     and "setLoading(false);"), so there is no later change to announce.
