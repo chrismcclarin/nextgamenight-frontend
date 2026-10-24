@@ -22,7 +22,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import { assertExactCounts, assertRosterShape, type ExemptionRoster } from './exemption';
-import { inkGroundPairs, sourceFiles, stringChunks, withoutComments } from './sourceScan';
+import { STRIP_VARIANTS, inkGroundPairs, sourceFiles, stringChunks, withoutComments } from './sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -253,5 +253,18 @@ describe('sourceScan lexer parity with the TypeScript parser', () => {
     // Both texts are valid TSX with no comment, so neither is a lexer divergence.
     expect(commentDivergenceLines(withGeneric, 'fixture-w069.tsx')).toEqual([]);
     expect(commentDivergenceLines(jsx, 'fixture-w069-control.tsx')).toEqual([]);
+  });
+
+  it('STRIP_VARIANTS: the one exported copy keeps the old literal and strips every variant form', () => {
+    // The seven test-local copies converged onto this export (PC-4). Pinned by value so a
+    // drift in the shared copy reds here, not silently in every suite that imports it.
+    expect(STRIP_VARIANTS.source).toBe(String.raw`^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?`);
+    expect(STRIP_VARIANTS.flags).toBe('');
+    const strip = (token: string): string => token.replace(STRIP_VARIANTS, '');
+    expect(strip('hover:bg-surface-muted')).toBe('bg-surface-muted');
+    expect(strip('data-[state=open]:bg-surface-muted')).toBe('bg-surface-muted');
+    expect(strip('md:hover:!bg-surface-muted')).toBe('bg-surface-muted');
+    expect(strip('!bg-surface-muted')).toBe('bg-surface-muted');
+    expect(strip('bg-surface-muted')).toBe('bg-surface-muted');
   });
 });

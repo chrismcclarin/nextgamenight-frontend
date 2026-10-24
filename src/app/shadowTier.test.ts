@@ -136,21 +136,9 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../test-utils/exemption';
-import { readOpeningTag, sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, readOpeningTag, sourceFiles, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
-
-/**
- * Strip Tailwind variant prefixes and the `!` important marker.
- *
- * A LOCAL copy of `src/app/surfaceHoverSweep.test.ts:101`, and a constraint rather than a choice:
- * `DECISION Phase 88-29` (quoted in `sourceScan.ts`'s docblock) rejects exporting a lexer from a
- * test file, because a test module's body registers its `describe` blocks on import, and AC-12
- * forbids adding to the shared module this phase. `.planning/WINDOWS.md` entry 12 owns the
- * convergence. It is what makes `hover:shadow-xl` and `hover:shadow-md` both visible to the rules
- * below — a scan that only saw the bare spelling would miss the two live `hover:shadow-xl` sites.
- */
-const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
 /** The genuine fourth tier: four base spellings whose custom properties are undeclared. */
 const OFF_TIER = /^shadow-(xs|xl|2xl|inner)$/;

@@ -55,7 +55,7 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../../test-utils/exemption';
-import { readOpeningTag, sourceFiles, withoutComments } from '../../test-utils/sourceScan';
+import { STRIP_VARIANTS, readOpeningTag, sourceFiles, withoutComments } from '../../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '../..');
 
@@ -250,22 +250,6 @@ describe('Req 1 (DES-01): the 16px iOS focus-zoom floor, repo-wide', () => {
 // ---------------------------------------------------------------------------------------
 // Phase 88.6-12 — the GEOMETRY floors (AC-2 desktop arm + the two D-13-pattern controls)
 // ---------------------------------------------------------------------------------------
-
-/**
- * Strip Tailwind variant prefixes and the `!` important marker.
- *
- * A LOCAL copy of `surfaceHoverSweep.test.ts:101`, and that is a constraint rather than a
- * choice: `DECISION Phase 88-29` (quoted in `src/test-utils/sourceScan.ts`'s docblock)
- * rejects "exporting the lexer from one of the test files" because a test module's body
- * registers its `describe` blocks on import, and AC-12 forbids adding anything to the
- * shared module this phase. `.planning/WINDOWS.md` entry 12 already owns the convergence.
- *
- * CORRECTION, recorded rather than propagated: `88.6-09-SUMMARY.md` decision 6 states this
- * constant "is defined in `sourceScan.ts`". Re-measured 2026-09-15 —
- * `grep -rn STRIP_VARIANTS src` returns hits only in `surfaceHoverSweep.test.ts`, never in
- * `sourceScan.ts`. It is a test-file-local const in every copy.
- */
-const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
 /** The WCAG 2.2 2.5.8 minimum, and the project's own phone floor, as pixels. */
 const MIN_TARGET_24 = 24;

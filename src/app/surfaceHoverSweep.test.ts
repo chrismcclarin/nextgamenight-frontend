@@ -58,7 +58,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { lineAt, sourceFiles, stringChunks } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, lineAt, sourceFiles, stringChunks } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -90,15 +90,6 @@ const SUNKEN = `${SURFACE}-sunken`;
 
 const HOVER_PREFIX = `${'hover'}:`;
 const OPEN_PREFIX = `data-[state=${'open'}]:`;
-
-/**
- * Strip Tailwind variant prefixes and the `!` important marker.
- *
- * This is `tintTreatment.test.ts:113`'s richer form, NOT `legacyOverlayClass.test.ts:69`'s
- * `/^[a-z-]+:/` — the simpler one cannot strip `data-[state=open]:`, and this sweep touches
- * exactly such a site (`dialog.tsx:75`).
- */
-const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
 /**
  * Every PREFIXED reach for the legacy hover token — `hover:` or `data-[state=open]:`.

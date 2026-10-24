@@ -282,18 +282,25 @@ export function readOpeningTag(text: string, start: number, maxLength = 16000): 
 }
 
 /**
- * Strip Tailwind variant prefixes and the `!` important marker.
+ * Strip Tailwind variant prefixes and the `!` important marker. Used as
+ * `token.replace(STRIP_VARIANTS, '')`.
  *
- * This is `surfaceHoverSweep.test.ts:82`'s richer form, NOT the simpler `/^[a-z-]+:/` some
- * suites carry: the simple one cannot strip a bracketed variant such as `data-[state=open]:`.
+ * This is the richer form, NOT the simpler `/^[a-z-]+:/` some suites carry: the simple one
+ * cannot strip a bracketed variant such as `data-[state=open]:`.
  *
- * DELIBERATELY NOT EXPORTED, and the shipped copy in `surfaceHoverSweep.test.ts` is
- * DELIBERATELY left byte-unchanged: 88.6-09 edits this shared module under an addition-only
- * rule with one declared deletion (`readOpeningTag`), and converging a second helper out of a
- * suite this plan does not declare would break that constraint. The convergence is recorded as
- * a carry-forward in `88.6-09-SUMMARY.md` rather than taken here.
+ * DECISION Phase 88.6.2-08 (PC-4): ONE exported copy here, every test-local copy converged onto
+ * it, chosen OVER the Phase 92 route the SPEC first gave it (SPEC A8 retired that route: its
+ * premise, a source change, was false; every copy is in a test file and this module is on R11's
+ * allowlist) and OVER keeping copies under two names. It supersedes the 88.6-09 note that kept
+ * this constant private: that note rested on 88.6-09's addition-only rule for this module, which
+ * ended with that plan. Plan 88.6.2-08 converges all seven test-local copies onto it: the three
+ * under this name, which closes `.planning/WINDOWS.md` entries 12 and 18, and four under a
+ * second name or written inline. Exporting it from this non-test module is the arm
+ * `DECISION Phase 88-29` chose; exporting it
+ * from a test file is the arm it rejected. Re-copying it into a suite is a decision, not a
+ * cleanup.
  */
-const VARIANT_PREFIX = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
+export const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
 /** Options for {@link inkGroundPairs}. Both patterns are supplied by the CALLER. */
 export interface InkGroundOptions {
@@ -496,7 +503,7 @@ function classSites(
       const line = lineAt(stripped, abs);
       for (const raw of text.split(/\s+/)) {
         if (!raw) continue;
-        const base = raw.replace(VARIANT_PREFIX, '');
+        const base = raw.replace(STRIP_VARIANTS, '');
         if (!base) continue;
         // A variant-prefixed class is NOT resting — neither as ground (mechanism step 3) nor
         // as ink (step 4). Both sides are dropped here, symmetrically and by the same rule.
