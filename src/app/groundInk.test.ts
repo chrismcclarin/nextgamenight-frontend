@@ -8,12 +8,12 @@
 // `environment` in `vitest.config.mts:56` — rejected, that would move EVERY suite, including
 // the ones that genuinely render. This plan's text called it the repo's FIRST such pragma;
 // re-measured at execution that is FALSE and the correction is recorded rather than quietly
-// dropped — `src/app/errorEnvelopeReads.test.ts:2` took the same pragma first, in plan 88.6-14
-// (wave 3), after this plan's 2026-09-14 census was taken. This is the SECOND, and it follows
-// that file's idiom deliberately instead of inventing a second one. The three shipped
-// source-scan suites were NOT converted, because converting a shipped, negative-checked suite
-// is a behaviour change this plan does not declare. Moving this back onto jsdom is a decision,
-// not a cleanup.
+// dropped — src/app/errorEnvelopeReads.test.ts ("* @vitest-environment node") took the same
+// pragma first, in plan 88.6-14 (wave 3), after this plan's 2026-09-14 census was taken. This is
+// the SECOND, and it follows that file's idiom deliberately instead of inventing a second one.
+// The three shipped source-scan suites were NOT converted, because converting a shipped,
+// negative-checked suite is a behaviour change this plan does not declare. Moving this back onto
+// jsdom is a decision, not a cleanup.
 //
 // ===================================================================================
 // D-16 / SPEC-88.6 R4 — no `text-content-muted` and no `text-content-link` may resolve
@@ -54,8 +54,9 @@
 //  * ALPHA IS INVISIBLE. The walk resolves TOKENS. An `opacity-*` utility, or a `text-*`/`bg-*`
 //    alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites the
 //    rendered colour — so a PASS here is NOT a WCAG 1.4.3 pass. Live specimen:
-//    `CalendarMonthView.js:324` (`isAdjacent ? 'opacity-60 ' : ''`) over the ink at `:444`
-//    (`isAdjacent ? 'text-content-muted' :`), the SAME condition, so genuinely co-live.
+//    src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''") over the ink at
+//    src/app/components/CalendarMonthView.js ("isAdjacent ? 'text-content-muted' :"), the SAME
+//    condition, so genuinely co-live.
 //    (Cites corrected in place by plan 88.6.1-02; they predated plan 88.6-27's moves.)
 //  * RAW-PALETTE INK IS INVISIBLE. Ink written `text-<hue>-<n>` (87 non-test occurrences) is
 //    not a semantic token and is `rawColorValues.test.ts`'s and plan 10's territory.
@@ -113,16 +114,18 @@ const FORBIDDEN = FORBIDDEN_INK_CLASSES;
 
 // DECISION Phase 88.6-09 (AC-11, owner ruling 2026-09-09): the tree is enumerated, read and
 // comment-stripped exactly ONCE, here at module scope, and EVERY assertion below consumes this
-// constant. This deliberately diverges from the shipped un-hoisted idiom
-// (`surfaceHoverSweep.test.ts:137`, `function sitesOf`, which re-reads the tree at `:140`
-// inside a per-assertion helper). REJECTED arm, recorded on the same date: match the shipped
+// constant. This deliberately diverges from the shipped un-hoisted idiom, the function at
+// src/app/surfaceHoverSweep.test.ts ("function sitesOf("), which re-reads the tree at
+// src/app/surfaceHoverSweep.test.ts ("exactTokenLines(fs.readFileSync(file, 'utf8'), token)")
+// inside a per-assertion helper. REJECTED arm, recorded on the same date: match the shipped
 // idiom for consistency — rejected because one full pass measures ~353 ms over the real tree
 // (194 non-test files, 2.46 MB; the read+strip component of that is 204 ms) and this file
 // carries several assertions, each of which would pay that pass again on every `npm test`.
 // (amended 88.6.1-02: the suite goes 8 -> 9 here and back to 8 in plan 88.6.1-49, so no
 // count is written here. Cites amended too: the old surfaceHoverSweep cite had drifted, and
 // `controlSizeFloor.test.tsx` is no longer an example of the un-hoisted idiom — it has since
-// hoisted its own module-scope pass, `const SOURCES` at `controlSizeFloor.test.tsx:148`.)
+// hoisted its own module-scope pass, its const SOURCES at
+// src/app/components/controlSizeFloor.test.tsx ("const SOURCES: { rel: string").)
 // The divergence is confined to this NEW file; no shipped suite was touched.
 //
 // THE HOIST IS INTRA-FILE ONLY. `vitest.config.mts` sets `environment: 'jsdom'` at `:56` and
@@ -393,9 +396,11 @@ const FP_FIP_SELECTED_GROUND = anchorKey(
 // lookup. REJECTED, each with its reason:
 //   - Re-pointing line keys by hand: five re-points in 88.6 (plans 22, 27, 40, 41, 58), and a
 //     stale key reds a correct tree (a declared false positive silently becomes a REAL offender).
-//   - Keying COUNTS on content: identical lines exist in one file (FriendInvitePanel.js:589 and
-//     :773 carry the same "or" label span), so content-keyed counting would merge two real
-//     sites. siteOf stays file plus line number for every count.
+//   - Keying COUNTS on content: identical lines exist in one file (the invite panel carries the
+//     same "or" label span twice, the pair its marker at
+//     src/app/components/FriendInvitePanel.js ("DECISION Phase 88.6-22 (D-03, UI-SPEC") names),
+//     so content-keyed counting would merge two real sites. siteOf stays file plus line number
+//     for every count.
 //   - Substring or RegExp anchors: they can match two lines silently.
 //   - A marker comment planted in the product file: that puts test plumbing in shipped code,
 //     in files this plan does not own.
@@ -650,9 +655,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   //   plans 88.6-27 and 88.6-40. None exists. Test 5 measured a FUNCTION-RETURNED muted ground,
   //   and a census of functions returning the muted ground class (plan 88.6.1-49's census C1,
   //   run 2026-10-16) found only the deleted file. The other function-returned className in the
-  //   tree, WriteCell.tsx's preferenceColor() (src/app/components/heatmap/WriteCell.tsx:156,
-  //   anchor `${preferenceColor(preference, disabled)}`), never returns the muted ground
-  //   (src/lib/availabilityColor.ts:245-248, its four returns).
+  //   tree, WriteCell.tsx's preferenceColor() (at
+  //   src/app/components/heatmap/WriteCell.tsx ("${preferenceColor(preference, disabled)}")),
+  //   never returns the muted ground (its four returns, in
+  //   src/lib/availabilityColor.ts ("export function preferenceColor(")).
   //   REJECTED (b): a fixture-only stand-in like test 8. It would pin a LIMITATION of the walk,
   //   so the day the walk learns to read function bodies it would red on an improvement.
   // STILL GUARDING: test 4's EMPTY pin, test 2's resolved-ground floor (a walk going blind) and
