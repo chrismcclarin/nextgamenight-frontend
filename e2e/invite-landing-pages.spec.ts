@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1 plan 19 — the two invite landing pages, proven in a real browser at phone width
 // (outline shared rule 9: the phone is the primary surface; the `phone` project is the iPhone SE
@@ -70,7 +71,7 @@ test.describe('invite landing pages at phone width (88.6.1-19)', () => {
           return;
         }
         await hold.released;
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({
           response,
           status: 200,
@@ -111,7 +112,7 @@ test.describe('invite landing pages at phone width (88.6.1-19)', () => {
           return;
         }
         await hold.released;
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({ response, status: 500, json: { error: 'boom' } });
       },
     );

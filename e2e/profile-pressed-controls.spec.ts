@@ -11,6 +11,7 @@ import {
   type WriteHold,
 } from './support/inFlight';
 import { expectFocusRingClearOfText } from './support/ringGeometry';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1 plan 18 (Requirement 4 / D-35, Requirement 5): the Profile page's two pressed
 // controls, the phone Verify button and Replay Tutorial, seen in a real browser.
@@ -151,7 +152,7 @@ async function patchSelfRow(
         await route.fulfill({ status: 500, json: { error: 'boom' } });
         return;
       }
-      const response = await route.fetch();
+      const response = await scrubbedFetch(route);
       let body: unknown;
       try {
         body = await response.json();

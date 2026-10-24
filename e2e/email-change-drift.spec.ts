@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 /**
  * Phase 88.6.1-13 — the Email section when a Save's answer cannot be read (D-11, D-11a).
@@ -88,7 +89,7 @@ async function routeDriftedSave(page: Page, withPending: boolean): Promise<void>
         await route.continue();
         return;
       }
-      const response = await route.fetch();
+      const response = await scrubbedFetch(route);
       if (!posted || !withPending) {
         await route.fulfill({ response });
         return;

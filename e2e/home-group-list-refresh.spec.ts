@@ -12,10 +12,13 @@ import { expectNoApiWrites, holdWrites, settleAnimations } from './support/inFli
  *   replace the list and the edited card stays on screen (before this plan every refresh
  *   blanked the whole list for the loader and redrew it);
  * - H8 save: the settings dialog's own close restore (plan 88.6.1-20) lands on the gear that
- *   opened it, because the list no longer unmounts that gear in the same batch as the close. A
- *   real browser blurs the Save button when it becomes natively disabled while saving, which
- *   jsdom never does, so this is the proof jsdom cannot give (grouplist.focus.test.tsx F6 is
- *   the unit half). The gear still has focus after the refresh lands.
+ *   opened it, because the list no longer unmounts that gear in the same batch as the close.
+ *   Save is aria-disabled while saving, never disabled natively, so it keeps focus until the
+ *   dialog closes:
+ *   src/app/components/GroupSettings.js ("onClick={handleSave} aria-disabled={saving || undefined}")
+ *   and DECISION Phase 88.6.1-43. This spec shows, in a real browser at 375px with the list
+ *   refresh held in flight, that the close restore lands on the gear (grouplist.focus.test.tsx
+ *   F6 is the unit half). The gear still has focus after the refresh lands.
  *
  * IT NEVER WRITES THE FIXTURE. The settings PUT is fulfilled IN THE BROWSER with a minimal body
  * and never leaves it; the groups GETs are only delayed, then continued unchanged. It never

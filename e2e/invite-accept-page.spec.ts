@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1 plan 35 — the invite/accept page, proven in a real browser at phone width (outline
 // shared rule 9: the phone is the primary surface; the `phone` project is the iPhone SE preset,
@@ -74,7 +75,7 @@ test.describe('invite/accept at phone width (88.6.1-35)', () => {
       async (route) => {
         authRequested.release();
         await authHold.released;
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({ response });
       },
     );
@@ -86,7 +87,7 @@ test.describe('invite/accept at phone width (88.6.1-35)', () => {
           await route.abort();
           return;
         }
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({ response, status: 200, json: INVITE_INFO });
       },
     );
