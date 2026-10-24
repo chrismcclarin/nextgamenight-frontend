@@ -1429,6 +1429,10 @@ describe('Phase 88.6.2-27 — failure evidence leaves CI only as age ciphertext 
       expect.soft((run[1] ?? '').startsWith('bash scripts/encrypt-evidence.sh '), `"${enc.name}" must run only the encrypt script`).toBe(true);
       const inv = invocations.find((i) => i.line === run[1]);
       expect.soft(inv?.name, `"${enc.name}" must encrypt the artifact "${up.name}" uploads`).toBe(artifact);
+      // The pair is only closed if the upload ships exactly what its encrypt step wrote.
+      const upPaths = uploadArtifactSteps().find((u) => u.name === up.name)?.paths;
+      expect.soft(upPaths, `"${up.name}" must ship only enc/${inv?.name}/, the output of "${enc.name}"`).toEqual([`enc/${inv?.name}/`]);
+      expect.soft(up.lines.some((l) => /^\s*retention-days:\s*7\s*$/.test(l)), `"${up.name}" must keep retention-days: 7`).toBe(true);
       const body = enc.lines.filter((l) => !isYamlComment(l)).join('\n');
       for (const bad of ['apt-get', '||', 'continue-on-error', '${{']) {
         expect.soft(body.includes(bad), `"${enc.name}" holds ${bad}: an encrypt step runs only the script and fails closed`).toBe(false);
