@@ -1674,11 +1674,38 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // A selector that only EXCLUDES the state — `:not([aria-disabled='true'])`, the narrowed
     // hover/press rules — is not a gated rule; the `:not(...)` clauses are stripped before the
     // test so those five rules stay out of the offender list.
+    // DECISION Phase 88.6.2-21 (arm-53): the aria-disabled opacity scan is one linear pass that
+    // visits every opening brace and takes its selector as the text since the last brace, chosen
+    // OVER the old capture regex, which backtracked quadratically over the long comment-masked
+    // brace-free runs of globals.css (about 8 s of the 20 s ceiling on green CI; it timed out in
+    // full local runs), and OVER a naive linear rule regex, whose outer body swallows a nested rule
+    // (10 of 11 selectors). Also chosen OVER raising this test's timeout (DECISION Phase 88.1 in
+    // vitest.config.mts) and OVER a retry (never a retry bump). A walk that skips nested rules is a
+    // decision, not a cleanup.
     const offenders: string[] = [];
-    for (const m of MASKED.matchAll(/([^{}]*\[aria-disabled[^{}]*)\{([^}]*)\}/g)) {
-      const positive = m[1].replace(/:not\([^)]*\)/g, '');
-      if (/\[aria-disabled/.test(positive) && /\bopacity\s*:/.test(m[2])) offenders.push(m[1].trim());
+    const gatedSelectors: string[] = [];
+    let last = -1;
+    for (let i = 0; i < MASKED.length; i += 1) {
+      const ch = MASKED[i];
+      if (ch === '}') {
+        last = i;
+        continue;
+      }
+      if (ch !== '{') continue;
+      const sel = MASKED.slice(last + 1, i);
+      if (sel.includes('[aria-disabled')) {
+        gatedSelectors.push(sel);
+        const close = MASKED.indexOf('}', i + 1);
+        const body = MASKED.slice(i + 1, close < 0 ? MASKED.length : close);
+        const positive = sel.replace(/:not\([^)]*\)/g, '');
+        if (positive.includes('[aria-disabled') && /\bopacity\s*:/.test(body)) offenders.push(sel.trim());
+      }
+      last = i;
     }
+    expect(
+      gatedSelectors.length,
+      '88.8 HIGH-A — anti-vacuity: the aria-disabled scan saw fewer selectors than the 11 measured at 88.6.2-21; a nested rule is being skipped',
+    ).toBeGreaterThanOrEqual(11);
     expect(
       offenders,
       `88.8 HIGH-A — an aria-disabled rule sets opacity again: ${offenders.join(' | ')}. Element opacity composites the label with the fill; the gated state is COLOUR (see the .btn[aria-disabled] marker)`,
