@@ -75,8 +75,10 @@ describe('D-19 exemption schema — assertRosterShape', () => {
   });
 
   it('3. a PROSE-ONLY owner is reported — the shipped pre-D-19 string is the input', () => {
-    // The literal from `nativeDialogs.test.ts:83`, byte-for-byte. Using the real shipped
-    // value makes this a genuine before/after of the D-19 upgrade rather than a strawman:
+    // The literal is the owner string nativeDialogs carried before D-19 re-typed its roster,
+    // byte-for-byte, recorded at src/app/nativeDialogs.test.ts ("it was a prose STRING, in which")
+    // Using the real shipped value makes this a genuine before/after of the D-19 upgrade rather
+    // than a strawman:
     // under `owner: string` this entry passed, and under the union it cannot be written.
     const violations = assertRosterShape(
       roster({
@@ -166,12 +168,18 @@ describe('D-19 exemption schema — assertExactCounts', () => {
   });
 });
 
-describe('T-88.6-08 containment — exemption.ts never reaches a shipped bundle', () => {
+describe('T-88.6-08 containment — no test-utils module reaches a shipped bundle', () => {
   const SRC = path.resolve(__dirname, '..');
   const TEST_UTILS = path.join(SRC, 'test-utils');
-  const IMPORTS_EXEMPTION = /test-utils\/exemption/;
+  // DECISION Phase 88.6.2-16 (W071): one detector for every test-utils module, over the
+  // exemption-only detector it widens and over a per-module list. inkRules.ts and
+  // stackedDialogPress.ts import nothing from node: and would bundle as silently as exemption.ts
+  // (review IN-504). A list would leave the next helper uncovered, while a directory match covers
+  // it by construction. It is a strict superset: every import the old pattern caught is still
+  // caught (test 11).
+  const IMPORTS_TEST_UTILS = /test-utils\//;
 
-  it('10. no shipped file under `src/` outside `src/test-utils/` imports test-utils/exemption', () => {
+  it('10. no shipped file under `src/` outside `src/test-utils/` imports ANY test-utils module', () => {
     // The WHOLE tree, minus this module's own home — not the two named directories
     // `src/app` + `src/components`, so a future top-level directory under `src/` is
     // covered BY CONSTRUCTION rather than by someone remembering to add it.
@@ -186,10 +194,11 @@ describe('T-88.6-08 containment — exemption.ts never reaches a shipped bundle'
     // reaches. The 32 unwalked `src/lib` files include `cn.ts` and `api.ts` — the two most
     // bundle-central modules in the app, i.e. exactly where the silent case lands.
     //
-    // Why this module needs the gate at all when `sourceScan.ts` does not: `sourceScan.ts`
-    // imports `node:fs`/`node:path` (`sourceScan.ts:39-40`) and would fail LOUD if it ever
-    // reached a client bundle. `exemption.ts` has no `node:` import and would ship
-    // silently.
+    // Why the gate covers the whole directory: sourceScan.ts imports node:fs and node:path,
+    // src/test-utils/sourceScan.ts ("import fs from 'node:fs';")
+    // and would fail LOUD if it ever reached a client bundle. exemption.ts, inkRules.ts and
+    // stackedDialogPress.ts import nothing from node: and would ship silently, which is why the
+    // detector matches the directory rather than one module.
     const shipped = sourceFiles(SRC).filter((f) => !f.startsWith(TEST_UTILS + path.sep));
     expect(shipped.length).toBeGreaterThan(150);
     // The walk must actually reach `src/lib` — the directory the narrower two-directory
@@ -197,16 +206,21 @@ describe('T-88.6-08 containment — exemption.ts never reaches a shipped bundle'
     expect(shipped.some((f) => f.startsWith(path.join(SRC, 'lib') + path.sep))).toBe(true);
 
     const importers = shipped.filter((f) =>
-      IMPORTS_EXEMPTION.test(withoutComments(fs.readFileSync(f, 'utf8'))),
+      IMPORTS_TEST_UTILS.test(withoutComments(fs.readFileSync(f, 'utf8'))),
     );
     expect(importers.map((f) => path.relative(SRC, f))).toEqual([]);
   });
 
   it('11. POSITIVE CONTROL — the importer detector is not dead', () => {
     // Without this, "zero importers" and "the matcher went blind" look identical. Both
-    // spellings a shipped file could reach this module by are checked.
-    expect(IMPORTS_EXEMPTION.test("import { assertRosterShape } from '../test-utils/exemption';")).toBe(true);
-    expect(IMPORTS_EXEMPTION.test("import type { Exemption } from '@/test-utils/exemption';")).toBe(true);
+    // spellings a shipped file could reach exemption.ts by are checked, and so are the two
+    // modules the widening (W071) added: the detector is a strict superset of the old one.
+    expect(IMPORTS_TEST_UTILS.test("import { assertRosterShape } from '../test-utils/exemption';")).toBe(true);
+    expect(IMPORTS_TEST_UTILS.test("import type { Exemption } from '@/test-utils/exemption';")).toBe(true);
+    expect(IMPORTS_TEST_UTILS.test("import { FORBIDDEN_INK_ON_MUTED } from '../test-utils/inkRules';")).toBe(true);
+    expect(IMPORTS_TEST_UTILS.test("import { pressInStackedDialog } from '@/test-utils/stackedDialogPress';")).toBe(true);
+    // ...and it is not a match-everything pattern: an ordinary shipped import is not flagged.
+    expect(IMPORTS_TEST_UTILS.test("import { cn } from '@/lib/cn';")).toBe(false);
     // ...and a comment mentioning the module is NOT an import, which is why the scan runs
     // over `withoutComments` — this file's own docblocks name the module repeatedly.
     expect(withoutComments('// see test-utils/exemption for the schema').trim()).toBe('');
