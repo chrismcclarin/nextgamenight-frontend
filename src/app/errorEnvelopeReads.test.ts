@@ -113,7 +113,7 @@ const CALL_FORM = /^\s*\(/;
 
 // EXCLUSION (b) — CHAINED FORMS, `X.error.<prop>`, and ONLY for `.error`.
 // A Zod `safeParse` result's `.error` is a ZodError OBJECT that then gets dereferenced —
-// `EmailAddressSection.tsx:321` (`parsed.error.issues`) and `lib/schemas/prompts.ts:206`
+// src/app/components/EmailAddressSection.tsx ("parsed.error.issues") and src/lib/schemas/prompts.ts ("result.error.issues")
 // (`result.error.issues`). An envelope `error` is a STRING and is never dereferenced, so
 // the chain is a structural tell rather than a name.
 //
@@ -130,9 +130,9 @@ const CHAIN_FORM = /^\s*(?:\?\.|\.)\s*[A-Za-z_$]/;
 
 // EXCLUSION for the `errors` half — `details.errors` is the SANCTIONED Phase 85/86 envelope
 // shape and MUST be permitted. Getting this one distinction wrong breaks the gate in either
-// direction: too broad and it demands deleting the CORRECT read at `lib/api.ts:316`'s first
-// arm; too narrow and it misses that same line's second arm (`?? body?.errors`), which is
-// exactly the legacy mirror Phase 93 removes.
+// direction: too broad and it demands deleting the CORRECT read src/lib/api.ts ("const fieldErrors = body?.details?.errors;");
+// too narrow and it misses a second, top-level arm (`?? body?.errors`), which is exactly the
+// legacy mirror (plan 88.6-42 dropped the one lib/api.ts carried).
 const SANCTIONED_ERRORS_RECEIVER = 'details';
 
 // EXCLUSION (c) — PROVEN-LOCAL RECEIVERS, as an ENUMERATED list.
@@ -210,7 +210,7 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
   {
     // ADDED at the Phase 88.6.1 wave 3 gate (orchestrator, 2026-10-15): plan 88.6.1-16's role
     // read stamps the caller's role with the group it was read for, so `roleError` can be
-    // DERIVED at render (`roleRecord.error` at page.js:69). The full `npm test` run at the wave
+    // DERIVED at render (`roleRecord.error` at src/app/groupPlanning/page.js ("const roleError = roleRecord.groupId === groupId ? roleRecord.error : null;")). The full `npm test` run at the wave
     // gate is what surfaced it — plan 16's task-level verify lists did not name this suite.
     file: 'app/groupPlanning/page.js',
     receiver: 'roleRecord',
@@ -232,11 +232,11 @@ const isProvenLocal = (file: string, receiver: string): boolean =>
  * Every envelope-shaped `.error` / top-level `.errors` read in one file's source text.
  *
  * COUNTING UNIT — one occurrence per distinct read EXPRESSION, which is implemented as a
- * dedupe on `file:line:receiver.prop`. `lib/api.ts:300`'s
+ * dedupe on `file:line:receiver.prop`. lib/api.ts's former
  * `body?.errors && Array.isArray(body.errors)` is ONE read of one field on one line, not
  * two. Two reads of the SAME field on the same line are the same logical read; two reads on
- * DIFFERENT lines (`AvailabilityForm.js:130` and `:131`) or off DIFFERENT receivers on the
- * same line (`lib/api.ts:316`'s `details.errors` and `body.errors`) stay distinct.
+ * DIFFERENT lines (the former AvailabilityForm.js guard and throw) or off DIFFERENT receivers on the
+ * same line (lib/api.ts's former `details.errors` and `body.errors` arms) stay distinct.
  */
 export function envelopeReads(file: string, src: string): Hit[] {
   const code = withoutComments(src);
@@ -314,7 +314,7 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
     why:
       'The envelope seam itself, down to THREE, then FOUR. (1) extractUpstreamMessage is AC-4 arm A: ' +
       "the ONE by-name exemption, populating a NON-RENDERED ApiError field forwarded to " +
-      "Sentry extra by queryClient.ts:162 and read by nothing else (owner ruling " +
+      "Sentry extra by " + 'src/lib/queryClient.ts ("Sentry.captureException(error, upstreamMessage ?")' + " and read by nothing else (owner ruling " +
       "2026-09-09 a; assertion 6 pins the site and the no-render property). (2) and (3) are " +
       'the raw-fetch prefill helpers, whose availabilityPrefill bodies carry no code and no ' +
       'message at any of their eight emit sites (re-opened at source 2026-09-17) — RETAINED ' +
@@ -382,7 +382,7 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       ruling:
         'D62 branch B — FE-only; Phase 93 owns adding code to the two GET /respond 410 bodies in ' +
         'Sonnet/routes/rsvp.js (anchors error: [event_cancelled] and error: [event_passed]) ' +
-        'and Sonnet/routes/availabilityResponse.js:77-80,:119-122 as the precondition for ' +
+        'and backend:Sonnet/routes/availabilityResponse.js ("Generic error message for all token failures (security)") and backend:Sonnet/routes/availabilityResponse.js ("Unknown sub — treat as an invalid link") as the precondition for ' +
         'removing the error alias',
     },
   },
@@ -402,7 +402,7 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
     sites: 1,
     why:
       'THE ONE LIVE PHASE-93 BLOCKER this seed adds. :130 guards on `response.error` and ' +
-      ':131 throws it. `availabilityFormAPI.submitResponse` (lib/api.ts:1086-1091) does ' +
+      ':131 throws it. `availabilityFormAPI.submitResponse` (src/lib/api.ts ("submitResponse: async (data: Record<string, unknown>) =>")) does ' +
       '`.then(res => res.json())` with NO `res.ok` check, so a REJECTED submit is ' +
       'distinguished from a successful one SOLELY by this read. The backend returns HTTP ' +
       '400 `{ error: "This link is no longer valid.", action: "request_new" }` ' +
@@ -420,24 +420,24 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       'SPLIT BY MECHANISM — the POST handler fails in TWO ways and they break at DIFFERENT ' +
       'times, so recording only the two `action: request_new` bodies understates it. ' +
       '(a) ALIAS-DEPENDENT: three `sendError` envelopes — ' +
-      'Sonnet/routes/availabilityResponse.js:99 and :103 (`prompt_closed`) and :109 ' +
+      'Sonnet/routes/availabilityResponse.js (`prompt_closed`) and ' +
       '(`prompt_deadline_expired`) — carry `error` ONLY via the legacy alias `formatEnvelope` ' +
-      'writes (Sonnet/utils/errors.js:161, `body.error = message`), so they break the INSTANT ' +
+      'writes (Sonnet/utils/errors.js, `body.error = message`), so they break the INSTANT ' +
       'Phase 93 removes it. (b) NOT alias-dependent: seven raw `res.status(400).json({ error ' +
       '… })` sites (:38, :44, :51, :60, :65, :77, :119) plus a raw 500 (:197) never pass ' +
       'through `formatEnvelope` and SURVIVE alias removal — until something converts one onto ' +
       '`sendError`, which MOVES it into set (a). All counts re-measured at source 2026-09-16. ' +
       'THE FE HALF OF THE PRECONDITION, AND ITS ORDER (a CONSEQUENCE constraint, not a ' +
-      'suggestion): `submitResponse` performs no `res.ok` check and AvailabilityForm.js:130 ' +
+      'suggestion): `submitResponse` performs no `res.ok` check and AvailabilityForm.js ' +
       'branches on the mere PRESENCE of `body.error`, so removing the alias — or converting ' +
       'any raw 400 onto `sendError` — flips that guard false and renders "Availability ' +
-      'Submitted!" (availability-form/[token]/page.js:207) for a submit that recorded ' +
+      'Submitted!" (availability-form/[token]/page.js) for a submit that recorded ' +
       'nothing. The submit path must first adopt the `res.ok` + envelope contract ' +
-      '`publicFetch` already implements (api.ts:355-367) and branch on `!res.ok` / `code`. ' +
+      '`publicFetch` already implements (api.ts) and branch on `!res.ok` / `code`. ' +
       'That FE change lands BEFORE or WITH the alias removal, NEVER after. The code to adopt ' +
       'for the two token-rejection 400s is the shipped `token_invalid` registry entry, already ' +
-      'emitted for exactly this failure class at Sonnet/routes/magicAuth.js:115. NO TEST is ' +
-      'added in 88.6 for this path: plan 25 pins AvailabilityForm.js:130-132 byte-unchanged, ' +
+      'emitted for exactly this failure class at Sonnet/routes/magicAuth.js. NO TEST is ' +
+      'added in 88.6 for this path: plan 25 pins the AvailabilityForm.js guard and throw byte-unchanged, ' +
       'and a test pinning the presence-of-`error` behaviour would have to be deleted by Phase ' +
       '93 anyway. ' +
       // APPENDED by plan 88.6-25 task 2 (2026-09-16), per this file's append-don't-rewrite
@@ -457,7 +457,7 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       'as a bare `Error` — it constructs a CODED `ApiError` from the body\'s own `code` and ' +
       'reads `response.error` ONLY as the `upstreamMessage` argument (Sentry, off the display ' +
       'path), so the three lifecycle/limiter arms that already carry an envelope `code` ' +
-      '(`prompt_closed` availabilityResponse.js:99,:103; `prompt_deadline_expired` :109; the ' +
+      '(`prompt_closed` availabilityResponse.js; `prompt_deadline_expired`; the ' +
       'limiter\'s `rate_limited`) render their ratified register lines. "NO TEST is added in ' +
       '88.6 for this path" is superseded: plan 88.6-58 adds five cases to ' +
       'AvailabilityForm.test.tsx, including a confirm-only pin of the code-less token arm on ' +
@@ -471,7 +471,7 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       // rsvp 4, total 8 — exactly the plan's prediction).
       'SUPERSEDED IN PART 2026-09-29 by plan 88.6-62: the guard no longer branches on the ' +
       'presence of `body.error` — it reads the backend\'s POSITIVE `success: true` ' +
-      '(Sonnet/routes/availabilityResponse.js:190, the POST\'s only 2xx body), so an infra ' +
+      '(Sonnet/routes/availabilityResponse.js, the POST\'s only 2xx body), so an infra ' +
       'JSON body without `error` no longer reads as saved and the Phase 93 ordering hazard ' +
       'above (alias removal flipping every failed submit to "Availability Submitted!") is ' +
       'CLOSED BY CONSTRUCTION: removing the alias can no longer make a failure look like a ' +
@@ -485,7 +485,7 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       ruling:
         'D62 branch B — FE-only; Phase 93 owns adding code to the two GET /respond 410 bodies in ' +
         'Sonnet/routes/rsvp.js (anchors error: [event_cancelled] and error: [event_passed]) ' +
-        'and Sonnet/routes/availabilityResponse.js:77-80,:119-122 as the precondition for ' +
+        'and backend:Sonnet/routes/availabilityResponse.js ("Generic error message for all token failures (security)") and backend:Sonnet/routes/availabilityResponse.js ("Unknown sub — treat as an invalid link") as the precondition for ' +
         'removing the error alias',
     },
   },
@@ -505,13 +505,13 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
 // references are `controlSizeFloor.test.tsx:173` (`const controls = textEntryControls();`
 // at describe scope, the walk itself inside `textEntryControls()`), `nativeDialogs.test.ts`
 // (`const files = sourceFiles(SRC);` plus its `byFile` map at describe scope) and
-// `typeScaleTouchedSurfaces.test.ts:458` (`const ALL = FILES.flatMap(...)` at module scope
+// src/app/typeScaleTouchedSurfaces.test.ts ("const ALL: readonly Heading[] = FILES.flatMap(") (`const ALL = FILES.flatMap(...)` at module scope
 // — plan 11 renamed that file's `SURFACES` to `NAMED_SURFACES`, so the plan's cite to a
 // `SURFACES.flatMap(headings)` at :142 is stale; the idiom is intact, the identifier and
 // the line moved).
 //
 // Adding a cache to `src/test-utils/sourceScan.ts` to get the same effect is FORBIDDEN by
-// AC-12 (`RULINGS.md:16`, "no shared-module cache this phase"), so the module-scope hoist
+// AC-12 (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-PLAN-REVIEW-work/RULINGS.md ("## 22 accept candidates"), "no shared-module cache this phase"), so the module-scope hoist
 // below is the only sanctioned mechanism. Every assertion in this file consumes FILES /
 // BY_FILE / MEASURED — none of them re-walks.
 const FILES = sourceFiles(SRC);
@@ -887,13 +887,13 @@ describe('R9 detector — boundary fixtures', () => {
     // deleting the CORRECT read; too narrow and it misses the legacy mirror Phase 93 drops.
     expect(props('const a = body?.details?.errors;')).toEqual([]);
     expect(props('const b = body?.errors;')).toEqual(['body.errors']);
-    // Both arms of the real `lib/api.ts:316` expression, on one line: the sanctioned arm is
+    // Both arms of the former lib/api.ts expression (dropped by plan 88.6-42), on one line: the sanctioned arm is
     // excluded and the legacy arm is still seen.
     expect(props('const c = body?.details?.errors ?? body?.errors;')).toEqual(['body.errors']);
   });
 
   it('flags the two shapes the old closed receiver list missed', () => {
-    // `response.error` — `AvailabilityForm.js:130`, the live Phase-93 blocker.
+    // `response.error` — the former AvailabilityForm.js guard, then the live Phase-93 blocker.
     expect(props('if (response.error) { throw new Error(response.error); }')).toEqual([
       'response.error',
     ]);
@@ -922,11 +922,11 @@ describe('R9 detector — boundary fixtures', () => {
   });
 
   it('counts one occurrence per distinct read expression, not per token', () => {
-    // The counting unit, pinned. `lib/api.ts:300`'s real expression: two tokens, one read.
+    // The counting unit, pinned. lib/api.ts's former expression: two tokens, one read.
     expect(props("if (body?.errors && Array.isArray(body.errors)) return 'validation';")).toEqual([
       'body.errors',
     ]);
-    // Different LINES are still distinct — `AvailabilityForm.js:130` and `:131`.
+    // Different LINES are still distinct — the former AvailabilityForm.js guard and throw.
     expect(props('if (response.error) {\n  throw new Error(response.error);\n}')).toEqual([
       'response.error',
       'response.error',
