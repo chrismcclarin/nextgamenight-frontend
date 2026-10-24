@@ -26,13 +26,7 @@
  * `DECISION Phase 88.6-47` for these entries is this file's own header — right here. A reader who
  * greps `src/` for the marker and finds only test files has found the truth, not a missing marker.
  *
- * REGISTRY GAP, recorded rather than implied: this becomes the FIFTH 88.6-minted source-scan gate
- * absent from `ci.yml`'s `drift-gate-registry` list, joining `groundInk.test.ts`,
- * `errorEnvelopeReads.test.ts`, `btnCensus.test.tsx` and `shadowTier.test.ts`. A gate you can
- * disarm with `rm` is not a gate. That ruling is OPEN and stays open PAST this phase — plan 88.6-46
- * carries no registry-ruling task, only AC-11's dated disposition — so both ledger entries
- * (`.planning/deferred/phase-88.6.md`) were corrected to FIVE by this plan rather than a row being
- * added to `ci.yml` here, which is not an executor's call.
+ * REGISTERED: this suite is a gates row in scripts/drift-gate-registry.manifest.mjs ("file: 'src/app/interpolatedClassCensus.test.ts'"), so deleting or gutting it reds the required drift-gate-registry job.
  */
 import path from 'node:path';
 import fs from 'node:fs';

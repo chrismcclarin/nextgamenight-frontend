@@ -664,7 +664,8 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   // STILL GUARDING: test 4's EMPTY pin, test 2's resolved-ground floor (a walk going blind) and
   // the header's declared limitation. Numbering: tests 6-9 keep their numbers so
   // cross-references in this file and in plan records stay true. The suite is back at 8, its
-  // drift-gate floor (periodictabletop/.github/workflows/ci.yml:363). Re-adding a blind-spot
+  // drift-gate floor, a gates row in
+  // scripts/drift-gate-registry.manifest.mjs ("file: 'src/app/groundInk.test.ts'"). Re-adding a blind-spot
   // measurement needs a live instance; that is a decision, not a cleanup.
 
   it('6. the false-positive list is exact, live, and disjoint from the offender roster', () => {
@@ -762,7 +763,8 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     //
     // D-29 floor note: this it takes the suite 8 -> 9. Plan 88.6.1-49 deletes test 5 (the
     // SuggestionCard blind spot, one of D-29's four reddening suites) and returns it to 8, the
-    // drift-gate floor at periodictabletop/.github/workflows/ci.yml:363. Never merge this it
+    // drift-gate floor, a gates row in
+    // scripts/drift-gate-registry.manifest.mjs ("file: 'src/app/groundInk.test.ts'"). Never merge this it
     // into test 6: that would leave plan 49 at 7, below the floor (P-8).
     for (const [key, entry] of Object.entries(FALSE_POSITIVES)) {
       const inkLines = anchorLines(key);

@@ -31,12 +31,12 @@
  * form is deliberate — it matches the sibling dispatcher skips and the legacy
  * placeholder shapes — and that re-narrowing it to the `.local` suffix is a
  * DECISION, NOT A CLEANUP. The governing marker is at
- * `periodictabletopbackend_v2/Sonnet/services/groupOwnershipOfferService.js:97-114`;
+ * backend:Sonnet/services/groupOwnershipOfferService.js ("REVERSING MED-AUTH0");
  * the backend predicate it pairs with is
- * `services/provisioningService.js:138-143`. `syntheticAddress.test.ts` pins the
+ * backend:Sonnet/services/provisioningService.js ("function isSyntheticAddress(value)"). `syntheticAddress.test.ts` pins the
  * bare-`@auth0`-with-no-`.local` row, which is the ONE case a narrowed
- * implementation fails, and that suite is registered in the ci.yml drift-gate
- * registry so it cannot be deleted with a green build.
+ * implementation fails, and that suite is a gates row in
+ * scripts/drift-gate-registry.manifest.mjs ("file: 'src/lib/syntheticAddress.test.ts'") so it cannot be deleted with a green build.
  *
  * ONE DELIBERATE DIVERGENCE FROM THE BACKEND PREDICATE. The backend returns
  * TRUE for null / undefined / empty, because its callers are asking "may I mail
@@ -67,7 +67,7 @@
  *   4. `EmailAddressSection.tsx`'s Save PRE-FLIGHT — the one call site that asks the
  *      question about an address the USER TYPED rather than one we stored. The backend
  *      refuses such an address with a bare `validation` 400
- *      (`routes/users.js:1393`), which that section maps to "reload the page" — false
+ *      (backend:Sonnet/routes/users.js ("router.post('/:user_id/email', writeOperationLimiter")), which that section maps to "reload the page" — false
  *      and unactionable for a typed address, and reloading changes nothing. Mirroring
  *      the predicate here gives the refusal an immediate, field-attached sentence. The
  *      DIVERGENCE NOTED ABOVE (this copy answers FALSE for null/empty) is irrelevant at

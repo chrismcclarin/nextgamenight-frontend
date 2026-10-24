@@ -23,10 +23,9 @@
  * already outside `rawColorValues.test.ts`'s scanned population (`src/test-utils/sourceScan.ts`
  * `sourceFiles`), and these values are measurement inputs, not palette data.
  *
- * This file is registered in `.github/workflows/ci.yml`'s `drift-gate-registry` step with a
- * floor of 12 `it(` blocks (AMENDMENT Z, plan 88.3.1-01). That loop counts `^\s*(it|test)\(`
- * only — an `it.each(` block does NOT count toward the floor, which is why every block below is
- * a plain `it(`.
+ * This file is a gates row in scripts/drift-gate-registry.manifest.mjs ("file: 'src/lib/groupColourPresets.test.ts'"), registered by Amendment Z, and its floor is its live it( count.
+ * The runner counts only lines that start with it( or test( — an it.each( block does NOT count
+ * toward the floor, which is why every block below is a plain it(.
  */
 import fs from 'node:fs';
 import path from 'node:path';

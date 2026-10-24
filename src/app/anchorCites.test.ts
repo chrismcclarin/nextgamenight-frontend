@@ -16,8 +16,8 @@
 // DECISION Phase 88.6.2-07 (V2-a): a vitest wrapper that SPAWNS the checker CLI, chosen OVER importing
 // its functions (plan 03's checker is a CLI, never imported as a library) and OVER a second
 // unconditional quality step (a deleted step leaves quality green, per ruling 5 of the 88-32 decision
-// recorded in ci.yml, while this file is a drift-gate-registry row with a floor, so deleting it reds a
-// REQUIRED check). Owner ruling 2026-10-23, plan review round 1, owner-items V2-a: permanent. The
+// on the drift-gate-registry job, while this file is a gates row with a floor in
+// scripts/drift-gate-registry.manifest.mjs, so deleting it reds a REQUIRED check). Owner ruling 2026-10-23, plan review round 1, owner-items V2-a: permanent. The
 // phase-branch proofs step still runs the same two commands; the duplication is deliberate: the step
 // is phase-only, this file is not. no-retry-bump stays phase-only on purpose: it has no escape hatch
 // and would red a legitimate retries change, including a lowering.
