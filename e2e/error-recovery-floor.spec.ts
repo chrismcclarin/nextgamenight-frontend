@@ -22,7 +22,7 @@ import { expectTouchTarget } from './support/touchTarget';
 // WHAT IT DOES NOT MEASURE, and why:
 //   - ErrorFallback's `Try again` is source-pinned only (controlSizeFloor.test.tsx). No production
 //     route can render it on demand: a render-throw hook would be a denial-of-service switch in
-//     production (e2e/route-fallbacks.spec.ts:44-45). Its sibling `Reload page` is measured
+//     production (e2e/route-fallbacks.spec.ts ("e2e would put a denial-of-service switch in production")). Its sibling `Reload page` is measured
 //     (test 3). That is AC-10 as amended by SPEC amendment row 48: four measured, one source-pinned.
 //   - The in-flight state on /userProfile: that page's caller swaps the schedules banner for its
 //     loading line at the press (a never-loaded TanStack query reports `pending`), so test 1 proves
