@@ -277,7 +277,7 @@ describe('FriendInvitePanel — Req 9 migration proof', () => {
 // These are BEHAVIORAL, not markup checks, and the shape is deliberate. Every
 // announcement arm captures the live region BEFORE the outcome fires and asserts
 // on THAT SAME NODE afterwards (`expect(after).toBe(before)`) — the idiom
-// StatusRegion.test.tsx:25-34 already uses (`expect(after).toBe(before)` at :32). Presence alone is satisfied by a
+// src/components/ui/StatusRegion.test.tsx ("injects text on change without remounting the region (same node)") already uses (`expect(after).toBe(before)` at src/components/ui/StatusRegion.test.tsx ("expect(after).toBe(before); // same live node")). Presence alone is satisfied by a
 // CONDITIONALLY-mounted region, which is precisely the bug: a screen reader
 // announces a CHANGE to a live region, never the conditional mount of a new one.
 // CORRECTED by 88.6.1-27 (D-42): that rule holds for polite / status regions; an
@@ -469,8 +469,8 @@ describe('FriendInvitePanel — error and success are announced (88.6-22)', () =
 
   // ADDED by plan 88.6-58 task 2 (2026-09-28, /code-adversarial-review 88.6 H3, owner rulings
   // `H3-RULING` + `H3-COPY-RULING`). `noValidate` (88.6-22) sends a malformed address to the
-  // server, whose `isEmail` verdict is a raw `{ errors }` 400 (Sonnet/routes/invites.js:206,
-  // :216) — `apiFetch` maps it to `validation`, whose register line says "Refresh the page",
+  // server, whose `isEmail` verdict is a raw `{ errors }` 400 (backend:Sonnet/routes/invites.js ("body('email').optional().isEmail()"),
+  // backend:Sonnet/routes/invites.js ("return res.status(400).json({ errors: errors.array() });")) — `apiFetch` maps it to `validation`, whose register line says "Refresh the page",
   // which cannot fix a typo. RED on FE d03f728, GREEN after the local byCode override.
   it('a malformed address (the server isEmail 400 → `validation`) renders the ratified field message on the SAME node', async () => {
     const { invitesAPI, ApiError } = await import('@/lib/api');
@@ -1074,7 +1074,7 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
 // WCAG 4.1.2 is a TAG; `heading-order` is a RULE carrying no wcag412 tag, so both
 // are needed. `as const` is applied to `type` ONLY — axe-core's `RunOnly.values`
 // is a mutable `string[]` and a fully-readonly literal fails `tsc --noEmit`.
-// (Same two constants as `PromptScheduleManager.test.tsx:129-130`, the phase's
+// (Same two constants as src/app/components/PromptScheduleManager.test.tsx ("const WCAG_412"), the phase's
 // first composed audit; deliberately not extracted into a shared helper, which
 // would be a third file for two object literals.)
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
