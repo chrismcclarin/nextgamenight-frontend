@@ -1,0 +1,102 @@
+// Quick task 261025-dzo, 88.6.2 ledger C-50: the 1500 ms auto-close timer that a successful
+// friend-request send schedules must not outlive the component. Before the fix the timer was
+// fire-and-forget, so after unmount it still called setIsOpen; in CI that ran after jsdom
+// teardown and threw "window is not defined" (quality run 40148582905).
+//
+// Fake-timer rules for this file:
+// - vi.useFakeTimers() at the start of each test; afterEach restores the spies BEFORE real
+//   timers come back, so no spy is left wrapping the fake setTimeout over the real one.
+// - Sends are flushed with an empty async act. No waitFor and no findBy queries: Testing
+//   Library only advances jest's fake timers, so those polls never resolve under vitest's.
+// - Timer handles are objects under fake timers, so they are compared by identity.
+import * as React from 'react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+
+import ClickableMemberName from './ClickableMemberName';
+import { FriendshipContext } from './FriendshipStatusProvider';
+
+const AUTO_CLOSE_MS = 1500;
+
+function renderName(sendRequest: (id: string) => Promise<unknown>) {
+  return render(
+    <FriendshipContext.Provider value={{ getStatus: () => 'none', sendRequest } as never}>
+      <ClickableMemberName userId="u1" username="ada" />
+    </FriendshipContext.Provider>,
+  );
+}
+
+// Every handle the setTimeout spy returned for a call scheduled with the auto-close delay.
+function autoCloseHandles(setSpy: { mock: { calls: unknown[][]; results: { value: unknown }[] } }) {
+  return setSpy.mock.calls
+    .map((args, i) => (args[1] === AUTO_CLOSE_MS ? setSpy.mock.results[i].value : undefined))
+    .filter((h) => h !== undefined);
+}
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+describe('ClickableMemberName auto-close timer (quick-261025-dzo, 88.6.2 ledger C-50)', () => {
+  it('TM1. phone + path: after a successful send, unmount leaves no pending timer', async () => {
+    vi.useFakeTimers();
+    const sendRequest = vi.fn(async () => ({ ok: true }));
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const { unmount } = renderName(sendRequest);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add ada as a friend' }));
+    await act(async () => {});
+
+    expect(sendRequest).toHaveBeenCalledWith('u1');
+    // Anti-vacuity: the success branch ran and scheduled the auto-close.
+    expect(autoCloseHandles(setSpy)).toHaveLength(1);
+
+    unmount();
+    // Baseline with no send is 0 after unmount, so 0 is the clean target.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('TM2. popover Add friend path: unmount clears the auto-close timer by its handle', async () => {
+    vi.useFakeTimers();
+    const sendRequest = vi.fn(async () => ({ ok: true }));
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const { unmount } = renderName(sendRequest);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'ada' }), { key: 'Enter' });
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Add friend' }));
+    await act(async () => {});
+
+    expect(sendRequest).toHaveBeenCalledWith('u1');
+    const handles = autoCloseHandles(setSpy);
+    expect(handles).toHaveLength(1);
+
+    // No timer-count assertion on this path: the popover's focus manager queues its own
+    // animation-frame focus call at keyboard open, which is not this component's timer.
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    unmount();
+    expect(clearSpy).toHaveBeenCalledWith(handles[0]);
+  });
+
+  it('TM3. a second send clears the first send pending auto-close before scheduling its own', async () => {
+    vi.useFakeTimers();
+    const sendRequest = vi.fn(async () => ({ ok: true }));
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    renderName(sendRequest);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add ada as a friend' }));
+    await act(async () => {});
+    const [first] = autoCloseHandles(setSpy);
+    expect(first).toBeDefined();
+
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    fireEvent.click(screen.getByRole('button', { name: 'Add ada as a friend' }));
+    await act(async () => {});
+
+    expect(sendRequest).toHaveBeenCalledTimes(2);
+    expect(autoCloseHandles(setSpy)).toHaveLength(2);
+    expect(clearSpy).toHaveBeenCalledWith(first);
+  });
+});

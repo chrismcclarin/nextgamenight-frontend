@@ -120,6 +120,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
   const portalRootRef = useRef(null);
   // Review r2 #197: armed by ONE inline success, consumed by the 87.8 D-13 handoff below.
   const d13OnceRef = useRef(false);
+  const closeTimerRef = useRef(null);
   const { arm } = useFocusRecovery();
 
   const status = getStatus(userId);
@@ -225,6 +226,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+  useEffect(() => () => clearTimeout(closeTimerRef.current), []);
 
   const handleSendRequest = async (e, { inline = false } = {}) => {
     // Stop propagation so a tap on the inline "+" doesn't bubble up to the
@@ -255,7 +257,19 @@ export default function ClickableMemberName({ userId, username, children, showIn
       setSent(true);
       if (inline) d13OnceRef.current = true;
       // No-op on mobile (popover never opened); preserved for desktop parity.
-      setTimeout(() => setIsOpen(false), 1500);
+      // DECISION quick-261025-dzo (88.6.2 ledger C-50): the 1500 ms auto-close timer lives in
+      // closeTimerRef, cleared before each new one and cleared on unmount, OVER the
+      // fire-and-forget timer it replaces. That timer outlived the component, and after a
+      // torn-down test environment its setIsOpen call threw (window is not defined, CI quality
+      // run 40148582905). REJECTED: (a) an isMounted flag checked inside the callback, because
+      // the timer would still run after unmount; the leak is the timer, not the update.
+      // (b) an effect keyed on sent, because it changes when the close is scheduled and ties the
+      // close to a flag the 300 ms close reset above also clears; the ref keeps the shipped
+      // timing exactly. Same shape as
+      // src/app/components/AvailabilityForm.js ("useEffect(() => () => clearTimeout(prefillStatusTimerRef.current), []);").
+      // Dropping the unmount clear, or the clear before rescheduling, is a decision, not a cleanup.
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = setTimeout(() => setIsOpen(false), 1500);
     } catch (err) {
       // DECISION Phase 88.6-34 (AC-2 WIDENED 2026-09-09, level AMENDED 2026-09-13):
       // `logger.info`, chosen OVER `logger.error` and OVER `logger.warn`. `logger.error` is
