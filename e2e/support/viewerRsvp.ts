@@ -10,8 +10,10 @@ import { scrubbedFetch } from './scrubbedFetch';
 //     never logs or attaches the body. Any other request under /api/users/, and any non-GET,
 //     falls back.
 //   - GET /api/rsvp/event/<id> passes through scrubbedFetch; once the viewer's id is known, any
-//     row of theirs is dropped and one row is appended (status yes, note null). Every other field
-//     of the body is left unchanged. A non-JSON body is fulfilled unchanged; a non-GET falls back.
+//     row of theirs is dropped and one row is appended (status yes, note null, the viewer's id in
+//     both user_id and User.id), and summary is recounted from the rows, as the backend does.
+//     Every other field of the body is left unchanged. A non-JSON body is fulfilled unchanged; a
+//     non-GET falls back.
 // Call it before the navigation that sends those reads. It never navigates.
 //
 // DECISION Phase 88.6.2-22 (viewer-rsvp): one shared viewer-Yes read injection, chosen over a
@@ -24,6 +26,36 @@ import { scrubbedFetch } from './scrubbedFetch';
 export interface ViewerRsvpInjection {
   /** The viewer's id once the self read has passed through, else null. */
   viewerId: () => string | null;
+}
+
+/** One row of the GET /api/rsvp/event/<id> body, as far as this helper reads it. */
+type RsvpRow = { status?: unknown; user_id?: unknown; User?: { id?: unknown } & Record<string, unknown> } & Record<string, unknown>;
+
+/** The GET /api/rsvp/event/<id> body, as far as this helper reads it. */
+export type RsvpBody = { rsvps?: RsvpRow[]; summary?: unknown } & Record<string, unknown>;
+
+/**
+ * The body with the viewer answered yes, in the backend's own shape: every row carries the flat
+ * user_id beside the nested User.id, and summary counts the rows returned
+ * (backend:Sonnet/routes/rsvp.js ("json.user_id = json.User?.id;")). Any row of the viewer's is
+ * dropped, one yes row is appended, summary is recounted from the rows the way the route counts
+ * it, and every other field is left unchanged. Pinned by the unit test
+ * src/test-utils/viewerRsvp.test.ts ("the injected row carries the flat user_id beside User.id, and summary counts it").
+ */
+export function withViewerYesRsvp(body: RsvpBody, viewerId: string): RsvpBody {
+  const rows = (body.rsvps ?? []).filter((row) => row?.User?.id !== viewerId && row?.user_id !== viewerId);
+  rows.push({
+    id: 'e2e-viewer-rsvp',
+    status: 'yes',
+    note: null,
+    user_id: viewerId,
+    User: { id: viewerId, username: 'E2E viewer' },
+  });
+  const summary = { yes: 0, maybe: 0, no: 0 };
+  for (const row of rows) {
+    if (row.status === 'yes' || row.status === 'maybe' || row.status === 'no') summary[row.status] += 1;
+  }
+  return { ...body, rsvps: rows, summary };
 }
 
 /** Registers the two read routes that make the viewer's RSVP read as yes. */
@@ -54,23 +86,14 @@ export async function injectViewerYesRsvp(page: Page): Promise<ViewerRsvpInjecti
       return;
     }
     const response = await scrubbedFetch(route);
-    let body: { rsvps?: Array<{ User?: { id?: string } }> } & Record<string, unknown>;
+    let body: RsvpBody;
     try {
       body = await response.json();
     } catch {
       await route.fulfill({ response });
       return;
     }
-    if (viewerId) {
-      const rows = (body.rsvps ?? []).filter((row) => row?.User?.id !== viewerId);
-      rows.push({
-        id: 'e2e-viewer-rsvp',
-        status: 'yes',
-        note: null,
-        User: { id: viewerId, username: 'E2E viewer' },
-      } as { User: { id: string } });
-      body = { ...body, rsvps: rows };
-    }
+    if (viewerId) body = withViewerYesRsvp(body, viewerId);
     await route.fulfill({ response, json: body });
   });
 
