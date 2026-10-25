@@ -16,7 +16,7 @@ import { scrubbedFetch } from './support/scrubbedFetch';
 // Phase 88.6.1 plan 18 (Requirement 4 / D-35, Requirement 5): the Profile page's two pressed
 // controls, the phone Verify button and Replay Tutorial, seen in a real browser.
 //
-// WHAT THIS CHECKS THAT JSDOM CANNOT. The jsdom suite (`src/app/userProfile/page.test.tsx`, the
+// WHAT THIS CHECKS THAT JSDOM CANNOT. The jsdom suite (src/app/userProfile/page.test.tsx, the
 // two 88.6.1-18 describes) pins the attributes, the request counts and the focus hook, but jsdom
 // never blurs a disabled control (C-11 in .planning/codebase/FE-TESTING-CONVENTIONS.md), so it
 // cannot prove the focus claims. Here: each pressed control KEEPS focus while its request is in
@@ -983,7 +983,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
 //
 // Trigger A (a refetch that fails over a kept row) is NOT scripted here: reaching it in a browser
 // runs through EmailAddressSection's internal failure arms, which another plan restructures; its
-// library half is pinned by `src/lib/hooks/useSelfIdentity.retainedOnError.test.tsx`.
+// library half is pinned by src/lib/hooks/useSelfIdentity.retainedOnError.test.tsx.
 //
 // Fixture-account protection (T-88.6.1-1225): `holdWrites` is registered FIRST, so the
 // notification PATCH is held in the browser and never sent; the test asserts it is the only

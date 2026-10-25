@@ -1,6 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 // Plan 88.1-19 MEASUREMENT instruments — read-only attachments, no assertions, and NOT a
-// spec file so Playwright cannot collect it as a suite. See `e2e/support/diagnostics.ts`.
+// spec file so Playwright cannot collect it as a suite. See e2e/support/diagnostics.ts.
 import { attachDiagnostics, probeFooterOcclusion } from './support/diagnostics';
 // The SHIPPED theme mechanism, both halves. `forceLightMode` writes the next-themes
 // localStorage key through an init script; `assertTheme` proves the class landed before any

@@ -450,7 +450,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
      two responses this file's other markers explicitly rule out.
 
      REJECTED (a): point `E2E_EVENT_DETAIL_PATH` at a URL with a `game_id`. Verified
-     against the seed: `scripts/e2e-fixtures.js` creates its Event with no `game_id` and
+     against the seed: backend:Sonnet/scripts/e2e-fixtures.js creates its Event with no `game_id` and
      emits no game key, so this needs a new backend fixture — and the variable is
      deliberately SHARED with touch-targets.spec.ts (this file ("process.env.E2E_EVENT_DETAIL_PATH ??") above), so changing it moves a
      green spec's surface too.
@@ -546,7 +546,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
 
    NOT the NotificationBell Accept/Decline pair or RsvpSection's "Save note", which SPEC
    (planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-SPEC.md ("Requirements"), requirement 8) names as the other dense idioms: verified unreachable with the CI seed —
-   `scripts/e2e-fixtures.js` hard-deletes every `GroupInvite` for the invite group and
+   backend:Sonnet/scripts/e2e-fixtures.js hard-deletes every `GroupInvite` for the invite group and
    seeds only accepted friendships, so no notification rows render; and "Save note" is
    gated on the viewer having already selected an RSVP status. */
 /* DECISION Phase 88.6-47 (row 2 of the 2026-09-17 CI e2e red, run 35581508198) — BOTH arms of

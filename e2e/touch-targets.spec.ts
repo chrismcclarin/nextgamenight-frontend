@@ -1,11 +1,11 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 // Plan 88.1-19 MEASUREMENT instruments — read-only attachments, no assertions, and NOT a
-// spec file so Playwright cannot collect it as a suite. See `e2e/support/diagnostics.ts`.
+// spec file so Playwright cannot collect it as a suite. See e2e/support/diagnostics.ts.
 import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './support/diagnostics';
 // Phase 88.6-12 task 4: the keyboard-modality focus idiom, IMPORTED rather than re-implemented.
 // `focusByKeyboard` presses Tab (to set Chromium's focus-visible heuristic to KEYBOARD) and then
 // focuses the target; without the Tab a script-focused <button> never matches `:focus-visible` and
-// the ring rules never apply. Its own docblock in `e2e/support/contrast.ts` carries the reasoning.
+// the ring rules never apply. Its own docblock in e2e/support/contrast.ts carries the reasoning.
 // A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
 // a spec file, so importing it adds no collected suite.
 import { focusByKeyboard } from './support/contrast';
@@ -282,7 +282,7 @@ const showLessControl = (page: Page) =>
  * 43.913 / 43.9636 / 43.9915 across three successive reads in a single attempt, climbing toward
  * 44 while its x/y drifted — a uniform ancestor scale, not a CSS height. Computed `min-height`
  * on the button was exactly `44px` the whole time and `offsetHeight` was 44. The source is
- * `src/components/ui/dialog.tsx` — `duration-200 data-[state=open]:animate-in
+ * src/components/ui/dialog.tsx — `duration-200 data-[state=open]:animate-in
  * data-[state=open]:zoom-in-95` — and `expect(heading).toBeVisible()` resolves at animation
  * START, not end. The recorded page-scale/overflow hypothesis was REFUTED by the same run
  * (`scrollWidth 375 === clientWidth 375`, `visualViewport.scale 1`, zero overflow culprits).
@@ -826,7 +826,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      renders only when `suggestions.length > 0` (src/app/components/QuickSuggestions.js ("if (suggestions.length > 0) kind = 'chips';")). `suggestionService.getSuggestions`
      builds its entire candidate set from `UserGame` rows (backend:Sonnet/services/suggestionService.js ("const userGames = await UserGame.findAll({"))
      and returns `{ suggestions: [] }` when that set is empty (backend:Sonnet/services/suggestionService.js ("if (gameMap.size === 0) {")), and
-     `scripts/seed-sample-data.js` creates ZERO `UserGame` rows (grep: no matches). So the
+     backend:Sonnet/scripts/seed-sample-data.js creates ZERO `UserGame` rows (grep: no matches). So the
      seeded group has no suggestions, no "Browse more" button, and no steppers. Driving them
      would need a new backend fixture — a cross-repo change that also alters the Create Event
      surface four other green specs walk.
@@ -967,7 +967,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
           H1: after plan 88.6-18 the widest states are the settled invite `<span>` ("Already a
           member") and the ARMED two-tap Remove ("Tap again to confirm") — a `Remove {name}`
           label never renders. The replica is now derived from the shipped `<Button>` classes
-          and pinned in lockstep by `src/components/ui/Button.e2eReplica.test.ts`; current
+          and pinned in lockstep by src/components/ui/Button.e2eReplica.test.ts; current
           cites: the row, the settled span and the Remove className, each anchored in item 1 above.]*
 
        2. The SHIPPED row, WHEN THE FIXTURE RENDERS IT. This half is CONDITIONAL, deliberately,
@@ -975,7 +975,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
           steppers: both controls sit behind `canInviteGuest(p, userRole)` / `(owner|admin) &&
           p.user_id && !isCurrentUser` (src/app/gameDetail/page.js ("function canInviteGuest(participant, viewerRole) {"), src/app/gameDetail/page.js ("const canRemove = (userRole")), i.e. they need a
           GUEST participation row on the fixture event with the viewer as owner. The backend's
-          `scripts/e2e-fixtures.js` seeds `EventRsvp` rows for the RsvpSection surface and nothing
+          backend:Sonnet/scripts/e2e-fixtures.js seeds `EventRsvp` rows for the RsvpSection surface and nothing
           that is known to satisfy that gate. A hard `guardResolved` here would red the phase's
           whole phone lane on a fixture fact rather than on a layout fact.
           This is NOT a silent skip: the planted half above is unconditional and carries the
@@ -1030,7 +1030,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       //     passes no `armedLabel`, src/app/gameDetail/page.js ("const removeParticipantGate = useConfirmAction({")). The old comment here said `labelFor`
       //     renders `Remove {username}` — it never did: the resting label is 'Remove' (src/app/gameDetail/page.js ("removeParticipantGate.labelFor(p.user_id, 'Remove')")),
       //     and the target's name lives only in the accessible name.
-      // LOCKSTEP: `src/components/ui/Button.e2eReplica.test.ts` reads these two literals and
+      // LOCKSTEP: src/components/ui/Button.e2eReplica.test.ts reads these two literals and
       // reds when either control's classes (or the cva output) change — edit both together.
       // DECISION Phase 88.6-58 (review H1, `H1-RULING`): the replica is DERIVED from the shipped
       // `cn(buttonVariants(...))` output and pinned by that source test, NOT hand-composed —
@@ -1309,7 +1309,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      WHY THEY ARE HERE AND NOT IN `KebabMenu.test.tsx`. jsdom performs no layout: every box it
      reports is zero, so a `scrollWidth <= clientWidth` assertion there is `0 <= 0` — green forever,
      for a menu that clips every item. That is asserted rather than assumed, by the
-     `jsdom measures NOTHING` guard in `src/app/components/KebabMenu.test.tsx`, which reds if jsdom
+     `jsdom measures NOTHING` guard in src/app/components/KebabMenu.test.tsx, which reds if jsdom
      ever grows layout. The SOURCE halves stay in that file and are the companions a red here
      should be read against:
        - E6 overflow: the popover is `absolute right-0 min-w-[160px]` and carries no fixed width;
@@ -1799,7 +1799,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      TWO HALVES, the shape this file already ships for gameDetail surfaces (see the E10 arm
      above and its reasoning): the PLANTED replica is unconditional and carries the anti-vacuity
      floor, because the trio renders only for a NON-PAST event with the viewer's RSVP resolvable
-     and the backend's `scripts/e2e-fixtures.js` is not known to guarantee that shape on the
+     and backend:Sonnet/scripts/e2e-fixtures.js is not known to guarantee that shape on the
      seeded detail event. The SHIPPED half runs when the fixture renders it and its count is
      REPORTED either way, so a reader always knows which halves ran — a fixture gap is surfaced
      here, never silently skipped, and never allowed to red the whole phone lane on a fixture
@@ -2177,7 +2177,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    * own jsdom the media rule never applies, the window is 1024px rather than 375px,
    * `getBoundingClientRect()` returns all zeros and `parseFloat` yields `NaN` — at
    * which point an executor lands on the meaningless-but-green class-string assertion
-   * that eleven shipped tests already use. `src/app/components/controlSizeFloor.test.tsx`
+   * that eleven shipped tests already use. src/app/components/controlSizeFloor.test.tsx
    * carries an explicit shipped REFUSAL to do this: "Deliberately NOT asserted here:
    * the 44px touch-target floor ... Adding a height assertion to this file would smuggle
    * that decision in." The SPEC names the browser project three times as the proof
@@ -2455,22 +2455,22 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    CI ONLY: playwright.config.ts ("They are intentionally absent locally") (credentials absent locally by design) and CI runs the setup
    project first, then journeys and phone with no deps (.github/workflows/ci.yml ("npx playwright test --project=journeys --project=phone --no-deps")). A local skip is not a pass.
 
-   EXECUTED-COUNT FLOOR — DISCLOSED GAP. `scripts/gate-c-executed-floor.mjs` is this repo's idiom
+   EXECUTED-COUNT FLOOR — DISCLOSED GAP. scripts/gate-c-executed-floor.mjs is this repo's idiom
    for "assert the gate actually EXECUTED", but it is scoped to `contrast.spec.ts` in the `phone`
    project. No equivalent floor covers this arm in `journeys`. The in-body `isMobile` assertions
    are the local substitute; the durable floor is registered in `.planning/WINDOWS.md`.
    CLOSED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4): the same script now takes
    `--spec/--project/--title-prefix/--floor`, and ci.yml's "D10 executed-count floor" step runs it
    against this arm in `journeys` with floor 3 (the `--list` count); its lockstep in
-   `src/lib/ci-grep-gate.fixture.test.ts` keeps that floor at or below the `test('D10` count here.
+   src/lib/ci-grep-gate.fixture.test.ts keeps that floor at or below the `test('D10` count here.
    The gap described above is historical — kept, not deleted, so the reasoning stays findable. */
 
 /** The `Button` cva base, variant `primary`, as it ships after plan 06.
  *
- *  TRANSCRIBED from `src/components/ui/Button.tsx` (the cva base array plus
+ *  TRANSCRIBED from src/components/ui/Button.tsx (the cva base array plus
  *  `variant.primary`), and transcription is the only option here: importing `buttonVariants`
  *  into a Playwright spec would pull React, Radix Slot and `cva` through the Playwright
- *  transpiler. THE DRIFT GUARD IS NOT THIS COMMENT: `src/lib/cn.twMergeV3.test.ts` freezes the
+ *  transpiler. THE DRIFT GUARD IS NOT THIS COMMENT: src/lib/cn.twMergeV3.test.ts freezes the
  *  same literal and plan 06 made itself its re-seed owner, so a base change that forgets this
  *  file reds there. And if the base drifts in a way that matters HERE, proof 2's focused-vs-
  *  unfocused differential and proof 3's lg-vs-md comparison red rather than pass — neither is a
@@ -2486,7 +2486,7 @@ const BASE_ELEVATION = 'shadow-theme-sm enabled-hover:shadow-theme-md';
  *
  *  `rgba(0, 0, 0, 0)` contains commas, so a naive `value.split(',')` shatters one layer into
  *  four fragments and the per-layer loop then either throws on them or passes vacuously. The
- *  same reasoning and the same implementation are in `e2e/support/contrast.ts`
+ *  same reasoning and the same implementation are in e2e/support/contrast.ts
  *  (`shadowLayers`); it is private there, so this is a second copy rather than an import —
  *  registered in `.planning/WINDOWS.md` with the convergence owner. */
 function shadowLayersOf(value: string): string[] {
@@ -2662,7 +2662,7 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
       // below proves nothing. `--shadow-sm` holds a valid transparent zero-length shadow after
       // 88.6-05's N1, so a real composite is expected here — the bare keyword `none` is the
       // signature of that revert, and its dedicated detector is plan 05's two Gate C pins in
-      // `e2e/contrast.spec.ts`, not this arm.
+      // e2e/contrast.spec.ts, not this arm.
       expect(
         resting.boxShadow.trim(),
         `D10 item 6: the ${probe.label} probe's RESTING computed box-shadow is empty — the hover comparison below would be vacuous. Check that the probe's classes are ones \`src/\` still emits (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit"))`,
@@ -2730,7 +2730,7 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
       // Blur everything first so the "unfocused" read really is unfocused.
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       const unfocused = await readShadow(locator);
-      // The shipped keyboard-modality idiom (`e2e/support/contrast.ts` `focusByKeyboard`): a Tab
+      // The shipped keyboard-modality idiom (e2e/support/contrast.ts ("function focusByKeyboard")): a Tab
       // press sets the heuristic to KEYBOARD, then `.focus()` lands on the target. Without the
       // Tab, `:focus-visible` never matches a script-focused button in Chromium and the ring
       // rules never apply — which would make this whole proof read as "the ring is gone".

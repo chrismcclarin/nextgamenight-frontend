@@ -41,7 +41,7 @@ import { test, expect, type Locator } from '@playwright/test';
  *     pair and a `type="date"` pair — against gameDetail's two;
  *   - it is the owner's SECOND reported screen, photographed in the same 2026-09-21 report.
  * The originally-reported gameDetail filter card is covered by the owner's device check and
- * by the compile-time pin in `src/components/ui/Input.test.tsx`. Restoring a CI assertion on
+ * by the compile-time pin in src/components/ui/Input.test.tsx. Restoring a CI assertion on
  * it needs a backend fixture that emits a `game_id` — routed to the owner, not taken here.
  *
  * ── WHAT THIS ASSERTS THAT NOTHING ELSE CAN ────────────────────────────────────────────

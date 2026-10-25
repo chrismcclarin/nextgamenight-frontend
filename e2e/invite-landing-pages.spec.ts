@@ -11,7 +11,7 @@ import { scrubbedFetch } from './support/scrubbedFetch';
 // The only network the spec touches is the PUBLIC preview GET of each page (a direct, cross-origin
 // `publicFetch` to the backend, not the same-origin proxy). Each route is registered BEFORE
 // `page.goto`, matched by pathname, and every fulfilled response is built from `route.fetch()` so
-// it keeps the backend's own CORS headers (the `e2e/padding-budget.spec.ts` rewrite idiom). The
+// it keeps the backend's own CORS headers (the e2e/padding-budget.spec.ts rewrite idiom). The
 // real preview is fetched only to copy those headers — the token is made up, so its body is a 404
 // that is replaced. A transport failure is `route.abort('failed')`. Nothing is passed through to
 // the network unmodified. Assertion messages carry fixed strings only.

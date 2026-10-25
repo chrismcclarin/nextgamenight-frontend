@@ -4,7 +4,7 @@ import { settleAnimations } from './support/inFlight';
 /**
  * Phase 88.6.1-32 — the Browse Games dialog at 375px (AC-27's Browse Games half, D-41, AC-13).
  *
- * WHAT THIS ASSERTS THAT jsdom CANNOT. `src/app/components/BrowseMoreModal.test.tsx` pins the
+ * WHAT THIS ASSERTS THAT jsdom CANNOT. src/app/components/BrowseMoreModal.test.tsx pins the
  * refresh-in-place state machine (same card nodes, aria-busy on the list, copy row E8 in the
  * polite slot region, latest wins, the failure line in the assertive one) and the decrement's
  * attributes. jsdom performs no layout and never blurs a disabled element, so it cannot see the

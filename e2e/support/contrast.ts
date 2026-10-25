@@ -35,7 +35,7 @@ import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../../src/lib
  * that the only place it could be disproved is CI. That is the failure shape this repo keeps
  * paying for: a thing that compiles under `tsc` and fails to resolve in the browser runner,
  * discovered by a red CI run rather than locally. A relative path removes the dependency
- * entirely rather than betting on it, and `src/lib/wcag.ts` is deliberately import-free so
+ * entirely rather than betting on it, and src/lib/wcag.ts is deliberately import-free so
  * Playwright's transpiler never pulls a transitive module behind it.
  *
  * Switching this to the alias is a decision, not a cleanup — and it is one that cannot be
@@ -207,7 +207,7 @@ export function vacuityGround(label: string, ground: GroundResolution): string {
 /* =========================================================================================
  * Phase 88.3 plan 12 — the rendered half (Gate C).
  *
- * Everything below this line is what `e2e/contrast.spec.ts` needs in order to force a
+ * Everything below this line is what e2e/contrast.spec.ts needs in order to force a
  * theme, prove it landed, resolve a REAL ground and turn a computed-style string into a
  * number. It lives here rather than in the spec so the spec stays a list of surfaces and
  * floors.
@@ -252,14 +252,14 @@ export function vacuityGround(label: string, ground: GroundResolution): string {
  * WHY IT IS TAKEN ANYWAY, on the block's OWN logic rather than against it. Its test is "is
  * this the value the requirement is written in?" — that is why a ratio was allowed as the
  * narrow exception. SPEC Req 4's requirement here is not legibility; it is that the frontend
- * resolves `color_preset` THROUGH `src/lib/groupColourPresets.ts` rather than reading
+ * resolves `color_preset` THROUGH src/lib/groupColourPresets.ts rather than reading
  * `background_color`. A floor cannot see that difference: a wrong resolver, a stale table
  * or a legacy-hex fallback can all clear any lightness floor while the requirement fails.
  * The value IS the requirement in this one case, so an equality on it can only fail when the
  * requirement fails — which is precisely the block's own standard.
  *
  * AND THE CHURN OBJECTION IS DISSOLVED, NOT ACCEPTED. The expected value is IMPORTED from
- * `src/lib/groupColourPresets.ts` (relative path, same D-OQ-2 reasoning as this file's
+ * src/lib/groupColourPresets.ts (relative path, same D-OQ-2 reasoning as this file's
  * `wcag` import) and converted with `parseHex`. There is NO hex literal in the spec. A
  * future palette re-tune moves the assertion with the palette and churns nothing — the
  * failure mode the block above was written to prevent cannot occur here.
@@ -277,7 +277,7 @@ export interface NormalisedColor {
   /** Exactly what `getComputedStyle` returned, kept for failure messages. */
   raw: string;
   /**
-   * The opaque channels as `rgb(r, g, b)` — a form `src/lib/wcag.ts`'s `parseHex` accepts.
+   * The opaque channels as `rgb(r, g, b)` — a form the parser src/lib/wcag.ts ("function parseHex") accepts.
    * `null` when the raw value is not a colour at all (e.g. a `box-shadow` string).
    */
   css: string | null;
@@ -554,7 +554,7 @@ export async function lStarOfGround(anchor: Locator, label: string): Promise<{ v
  *     `attribute="class"`, `defaultTheme="dark"`, `storageKey="theme"`; `globals.css`
  *     declares ZERO `prefers-color-scheme` rules and the dark variant is a
  *     `@custom-variant dark` class selector. The media query is not wired to anything.
- *   - a post-load `evaluate` is too late. `e2e/auth.setup.ts` calls
+ *   - a post-load `evaluate` is too late. e2e/auth.setup.ts calls
  *     `storageState({ path: AUTH_FILE })`, which BAKES localStorage into `.auth/user.json`;
  *     next-themes reads that stored key on mount, so by the time a post-load script ran the
  *     page would already have applied the stored value and painted. An init script runs

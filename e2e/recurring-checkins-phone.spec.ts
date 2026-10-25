@@ -19,9 +19,9 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 //
 // IT NEVER WRITES TO THE BACKEND. The settings GET, the schedule DELETE and the check-in POST are
 // fulfilled with `page.route` on their BROWSER paths (`apiFetch` prefixes every endpoint with
-// `/api`: `src/lib/api.ts`, anchors `const BFF_BASE = '/api';` and `${BFF_BASE}${endpoint}`), so
+// `/api`: src/lib/api.ts ("const BFF_BASE = '/api';") and src/lib/api.ts ("${BFF_BASE}${endpoint}")), so
 // CI never deletes the fixture's data or opens a check-in on the shared group. Behind them sits
-// the shared write hold (`e2e/support/inFlight.ts`, `holdWrites`), registered FIRST so it runs
+// the shared write hold (e2e/support/inFlight.ts ("function holdWrites")), registered FIRST so it runs
 // LAST (Playwright runs the newest matching handler first; `route.fallback()` hands on to older
 // ones): any other write is held in the browser, never sent, and the afterEach fails the test
 // naming every `/api` write it caught. A mock that declines a request uses `route.fallback()`,

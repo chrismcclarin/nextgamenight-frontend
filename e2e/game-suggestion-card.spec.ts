@@ -5,7 +5,7 @@ import { focusRingMeasurement } from './support/contrast';
 /**
  * Phase 88.6.1-03 — Req 2 / AC-8: the suggestion card is a native button, at 375px.
  *
- * WHAT THIS ASSERTS THAT jsdom CANNOT. `src/app/components/GameSuggestionCard.test.tsx` pins the
+ * WHAT THIS ASSERTS THAT jsdom CANNOT. src/app/components/GameSuggestionCard.test.tsx pins the
  * role, the one accessible name, Enter and Space, and the class list. jsdom performs no layout and
  * applies no stylesheet, so none of that observes the RENDERED card. Turning a div into a native
  * button carries three visual risks a unit test is blind to: a button shrinks to its content

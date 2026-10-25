@@ -14,7 +14,7 @@ import { scrubbedFetch } from './support/scrubbedFetch';
 //   the real response through `route.fetch()` (signed out, that is a 204).
 // - the PUBLIC invite-info GET (a direct, cross-origin `publicFetch` to the backend, not the
 //   same-origin proxy): the real response is fetched only to keep the backend's own CORS headers
-//   (the `e2e/padding-budget.spec.ts` rewrite idiom) and its body is replaced, because the token
+//   (the e2e/padding-budget.spec.ts rewrite idiom) and its body is replaced, because the token
 //   is made up and the real body is a 404.
 // Nothing is passed through to the network unmodified. Assertion messages carry fixed strings only.
 //

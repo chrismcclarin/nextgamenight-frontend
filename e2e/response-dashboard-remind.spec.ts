@@ -4,7 +4,7 @@ import { expectNoApiWrites, holdWrites, settleAnimations } from './support/inFli
 // Phase 88.6.1 plan 11 (Req 4 / D-35, Req 5, the SPEC's 44x44 floor): the Plan Game Session
 // page's Remind button, seen in a real browser.
 //
-// WHAT THIS CHECKS THAT JSDOM CANNOT. The jsdom suite (`src/app/components/ResponseDashboard.test.tsx`,
+// WHAT THIS CHECKS THAT JSDOM CANNOT. The jsdom suite (src/app/components/ResponseDashboard.test.tsx,
 // the D-35 / Req 5 describe) proves the attributes, the per-row latch and the focus hook with
 // classes only, and jsdom has no layout and never blurs a disabled control (C-11). This spec
 // measures the 44px floor and the row height at 375px, proves the pressed button KEEPS focus

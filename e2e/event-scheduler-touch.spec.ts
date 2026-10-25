@@ -1,7 +1,7 @@
 import { test, expect, type CDPSession, type Locator, type Page } from '@playwright/test';
 // Plan 88.1-19 MEASUREMENT instruments — read-only, and deliberately NOT a spec file, so
 // Playwright's default testMatch cannot collect it as a suite. Every call below is an
-// attachment; none of them asserts anything. See `e2e/support/diagnostics.ts`.
+// attachment; none of them asserts anything. See e2e/support/diagnostics.ts.
 import {
   attachDiagnostics,
   formChildDeltas,
@@ -61,7 +61,7 @@ declare global {
  * only taps; the drag paths need real touch streams (`Input.dispatchTouchEvent`:
  * touchStart, ~400ms hold, stepped touchMoves, touchEnd). CDP requires chromium —
  * the phone project's explicit chromium override (playwright.config.ts D-14) is
- * what makes this possible. Proven idiom: `e2e/availability-grid-touch.spec.ts`,
+ * what makes this possible. Proven idiom: e2e/availability-grid-touch.spec.ts,
  * green since 87.8-14. (The helper's name is deliberately not spelled here so the
  * plan's absence grep measures the code, not its own description — the same
  * correction plan 88.1-07 made to its `rbc-` gate.)
@@ -361,7 +361,7 @@ async function resetColumnScroll(page: Page): Promise<void> {
  *
  * Two gates, because either alone can lie:
  *   1. the Web Animations API — the Radix `zoom-in-95 / duration-200` open animation moves the
- *      whole dialog (`src/components/ui/dialog.tsx`), and `toBeVisible()` resolves at its START.
+ *      whole dialog (src/components/ui/dialog.tsx), and `toBeVisible()` resolves at its START.
  *      Infinite animations (spinners) are excluded or this would never resolve.
  *   2. a stability poll on the grid scroller's own top edge and the form's height. The window is
  *      deliberately LONGER than the 500ms debounce the known grower fires on: four identical
@@ -1441,7 +1441,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
        A NULL PEAK IS A FIXTURE FAILURE, NOT A PASS: `peakScrollTime` is null
        whenever the group has no availability (createEvent.js, anchor: const peakScrollTime,
        its first two return-null guards), so a silent skip here would mean the fixture stopped seeding and nobody found
-       out. `scripts/e2e-fixtures.js` owns that invariant — see the block it
+       out. backend:Sonnet/scripts/e2e-fixtures.js owns that invariant — see the block it
        added for this case.
 
        RE-POINTED BY PLAN 88.1-18 (SPEC Req 13), and the OLD SHAPE IS THE LESSON:

@@ -57,8 +57,8 @@ import { presetByName } from '../src/lib/groupColourPresets';
  * ---------------------------------------------------------------------------------------
  * ASSERTION SHAPE: ratios and delta-L* only. No hex is ever asserted.
  * ---------------------------------------------------------------------------------------
- * The reasoning lives with the helper (`e2e/support/contrast.ts`, DECISION Phase 88.3
- * (Req 11)) so it sits next to the code that computes the numbers. In short: a floor can
+ * The reasoning lives with the helper (e2e/support/contrast.ts ("DECISION Phase 88.3 (Req 11)"),
+ * so it sits next to the code that computes the numbers. In short: a floor can
  * only fail when the requirement fails; a pinned colour fails whenever anyone changes a
  * colour, including improvements. 87.7 D-12 ruled out screenshot baselines for the same
  * reason, and Req 12's owner phone UAT owns "does it look right".
@@ -184,7 +184,7 @@ const CARD_LSTAR_FLOOR = 97; // distinguishes the white card (100) from the warm
  * is re-pointed by the next restructure, which is the failure being fixed, not a variation of it.
  * A `data-testid` is neither a class nor an id, and it is the one shape whose whole purpose is to
  * be stable across restructures. The production side is pinned by
- * `src/app/groupColourRendering.test.ts` test 32 (exactly once, on the tag carrying
+ * src/app/groupColourRendering.test.ts ("32. the home card carries the") (exactly once, on the tag carrying
  * `shadow-theme-sm`), so the two cannot drift apart again in silence.
  * The `filter({ has: … })` is not decoration: plan 02 mints a SECOND, tinted fixture group that
  * also renders a `group-card`, so the heading filter is what still proves this is the FIXTURE
@@ -437,7 +437,7 @@ function todayStripCell(page: Page): Locator {
  * ======================================================================================= */
 
 /**
- * The `blue` preset row — the one `scripts/e2e-fixtures.js` seeds on both coloured groups.
+ * The `blue` preset row — the one backend:Sonnet/scripts/e2e-fixtures.js seeds on both coloured groups.
  *
  * Resolved at module load and asserted present at module load. If the id ever leaves the
  * palette, this throws while Playwright is COLLECTING, which reds the run loudly; a lazy
@@ -1141,7 +1141,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
 
       // NOT PROBED HERE, and said plainly rather than implied: §5.10.3's OTHER half — the
       // 0.4-alpha dim over a BACKGROUND IMAGE, which applies in both themes — has no
-      // fixture. `scripts/e2e-fixtures.js` mints a colour-only coloured group and no group
+      // fixture. backend:Sonnet/scripts/e2e-fixtures.js mints a colour-only coloured group and no group
       // with `background_image_url`, so there is no rendered site to measure. That half's
       // acceptance is the source scan plus the Req 12 owner phone UAT.
     });
@@ -1489,7 +1489,7 @@ async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Prom
  *
  * PHONE PROJECT ONLY, and that is not a gap: this whole spec is file-level skipped to phone at
  * this file ("SPEC Req 11: the rendered contrast pins are a phone-forward gate") under D-07, so a "then at desktop" half would be satisfied by an empty run. Plan
- * 88.6-12's desktop coverage is its `journeys` arm in `e2e/touch-targets.spec.ts`.
+ * 88.6-12's desktop coverage is its `journeys` arm in e2e/touch-targets.spec.ts.
  */
 const ACCENT_PROBE_NAME = 'E2E accent contrast probe';
 

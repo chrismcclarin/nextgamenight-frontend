@@ -316,7 +316,7 @@ test.describe('Phase 87.8 R7 — GroupSettings Danger Zone at phone width (phone
  * ———————————————————————————————————————————————————————————————————————————— */
 
 /** The eight accessible names, in render order. These are `preset.label` values
- *  (`src/lib/groupColourPresets.ts`), carried onto each button as `aria-label`; the
+ *  (src/lib/groupColourPresets.ts), carried onto each button as `aria-label`; the
  *  visible caption beside them is `aria-hidden` (AMENDMENT G2) so the name is
  *  announced exactly once. Asserting them by NAME is what proves the aria wiring
  *  survived plan 07's rebuild — a grid of eight nameless boxes would still pass

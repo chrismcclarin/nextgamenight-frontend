@@ -3,7 +3,7 @@ import { expect, type Page } from '@playwright/test';
 /**
  * The ONE Create Event drive: open the group home page's Create Event dialog and fill it by
  * manual entry, WITHOUT submitting. Moved here by Phase 88.6.1-71 from the create-event journey
- * (`e2e/create-event.spec.ts`), so the journey, `e2e/group-home-load-failures.spec.ts` and plan
+ * (e2e/create-event.spec.ts), so the journey, e2e/group-home-load-failures.spec.ts and plan
  * 88.6.1-56's phone spec share one drive instead of three copies. The caller has already
  * navigated to `/groupHomePage?id=…` (the "Add New Game Event" button lives there) and presses
  * `create-event-submit` itself, so it can arm its own routes first.

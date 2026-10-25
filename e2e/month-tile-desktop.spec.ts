@@ -53,7 +53,7 @@ import { scrubbedFetch } from './support/scrubbedFetch';
  * database write here can land in the middle of a phone-lane measurement and red a sibling
  * gate. (2) The rejected value CANNOT pass `validateGroupUpdate` at all
  * (backend:Sonnet/middleware/validators.js ("body('background_image_url')"), `^https?:\/\/.+`), so the plan's own carrier for it is
- * a BACKEND edit to `scripts/e2e-fixtures.js` — a cross-repo change this plan's dispatch
+ * a BACKEND edit to backend:Sonnet/scripts/e2e-fixtures.js — a cross-repo change this plan's dispatch
  * forbade, and one whose merge deploys production. (3) The subject under test is the RENDER
  * PATH: src/app/components/CalendarMonthView.js ("const groupBgImage = event.Group?.background_image_url;") reads `event.Group?.background_image_url` off this exact
  * JSON and hands it to `safeBgImageStyle` (src/app/components/CalendarMonthView.js ("const bgImageStyle = safeBgImageStyle(groupBgImage);")); a value planted in the response is
@@ -277,7 +277,7 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
       // project take no screenshot either (playwright.config.ts). STILL UPLOADED, pre-existing:
       // journeys/phone failure screenshots, bounded by the `.auth/`, zip and error-context
       // exclusions and by fixture data. All arms are lockstep-pinned in
-      // `src/lib/ci-grep-gate.fixture.test.ts` ("88.6 CR-01", "88.6 R2-H5"). Restoring a fallback
+      // src/lib/ci-grep-gate.fixture.test.ts ("88.6 CR-01"), src/lib/ci-grep-gate.fixture.test.ts ("88.6 R2-H5"). Restoring a fallback
       // is a decision, not a cleanup.
       // [AMENDED 2026-10-24 — Phase 88.6.2-27: both uploads now ship only age ciphertext
       // (scripts/encrypt-evidence.sh), so this RESIDUE is closed for the artifact channel; the CI
