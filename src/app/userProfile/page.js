@@ -2144,7 +2144,7 @@ function Profile(){
        sets `maxBreadcrumbs` in `sentry.client.config.js`). So an in-place swap would evict
        every other breadcrumb in the session and destroy the diagnostic value of whatever event
        that session later files. That is the same unbounded per-paint flood
-       `src/lib/colorUtils.js:596-618` already litigated and rejected — including the tempting
+       src/lib/colorUtils.js ("this warn fires on THIS arm only") already litigated and rejected — including the tempting
        escape hatch, since `dedupeIntegration` compares only against the immediately preceding
        event. That precedent is worded in EVENTS and these calls emit none; it is cited anyway
        because it is the shipped LATCH idiom, and a latch is what an unbounded per-paint report

@@ -18,7 +18,7 @@
  * DECISION Phase 88.3-05 (D-06): this gate reads the DECLARED token layer, not rendered
  * pixels — chosen OVER relying only on the Playwright contrast probe (Gate C).
  * ---------------------------------------------------------------------------------------
- * CHOSEN: a vitest suite in the fast `quality` lane (`ci.yml:65`, `npx vitest run`). It
+ * CHOSEN: a vitest suite in the fast `quality` lane (.github/workflows/ci.yml ("run: npx vitest run")). It
  * reds on a laptop in seconds, which is what gives the ~211 call-site edits in plans 06-11
  * a signal that needs no browser, no build, no database and no CI round trip.
  *

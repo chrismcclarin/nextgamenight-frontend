@@ -502,7 +502,7 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
 // ---------------------------------------------------------------------------------------
 // Owner ruling 2026-09-09. This is the phase's FOURTH new full-tree scan suite and the only
 // one with no inherited idiom, so the rule is stated here rather than copied. The shipped
-// references are `controlSizeFloor.test.tsx:173` (`const controls = textEntryControls();`
+// references are src/app/components/controlSizeFloor.test.tsx ("const controls = textEntryControls();")
 // at describe scope, the walk itself inside `textEntryControls()`), `nativeDialogs.test.ts`
 // (`const files = sourceFiles(SRC);` plus its `byFile` map at describe scope) and
 // src/app/typeScaleTouchedSurfaces.test.ts ("const ALL: readonly Heading[] = FILES.flatMap(") (`const ALL = FILES.flatMap(...)` at module scope

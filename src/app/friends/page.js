@@ -882,8 +882,8 @@ function FriendsPage() {
                         because Radix `Slot` concatenates the child's className WITHOUT
                         tailwind-merge, so a utility left there cannot win a conflict. Here
                         nothing survives: `px-6 py-2` and `inline-block` are all dead under
-                        unlayered `.btn` (padding at `globals.css:2349`, `padding: 0.5rem 1rem;`;
-                        `display: inline-flex` at `:2342`; re-pointed 88.6.1-40). */}
+                        unlayered `.btn` (padding at src/app/globals.css ("padding: 0.5rem 1rem;");
+                        `display: inline-flex` at src/app/globals.css ("display: inline-flex;"); re-pointed 88.6.1-40). */}
                     <Button asChild variant="primary" size="default">
                         <a href="/api/auth/login">Log In</a>
                     </Button>
@@ -1306,8 +1306,8 @@ function FriendsPage() {
                                                     </SelectControl>
                                                     {/* Every utility this control used to carry was DEAD under
                                                         unlayered `.btn` and is deleted rather than moved: `px-4 py-2`
-                                                        (padding, `globals.css:2349`), `text-sm` (font-size, `:2348`),
-                                                        `font-medium` (font-weight 600, `:2347`), `flex items-center
+                                                        (padding, src/app/globals.css ("padding: 0.5rem 1rem;")), `text-sm` (font-size, src/app/globals.css ("font-size: 0.875rem;")),
+                                                        `font-medium` (font-weight 600, src/app/globals.css ("font-weight: 600;")), `flex items-center
                                                         gap-2` (`display: inline-flex` / `align-items` / `gap`,
                                                         `:2342-2345`) and the `disabled:` pair (`.btn:disabled`,
                                                         `:2397-2400`). Re-adding any of them changes no pixel.

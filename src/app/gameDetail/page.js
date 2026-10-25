@@ -3124,7 +3124,7 @@ export default function GameDetailPage() {
                     single scrolling region, so a second inner cap would leave this list
                     shorter than every other migrated modal for no reason. `space-y-2` moves
                     onto the Body; the `-mx-1 px-1` bleed went with the hand-padded shell it
-                    was compensating for.
+                    was compensating for. (AMENDED 2026-10-24, 88.6.2-33: the cap is 90dvh now, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"))
 
                     THE PHASE 65-02 EVT-08 TWO-TAP REMOVE RENDERS INSIDE THIS LIST AND IS
                     UNCHANGED — see its handler marker further up. It is now inside a focus

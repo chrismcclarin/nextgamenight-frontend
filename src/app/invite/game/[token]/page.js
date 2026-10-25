@@ -454,7 +454,7 @@ function GameInvitePage() {
             </div>
             {/* h1 @ 20 STAYS at 20 (D-04's second row): this is a mutually-exclusive STATUS
                 branch, not the page title. The `ErrorFallback` precedent
-                (`typeScaleTouchedSurfaces.test.ts:1659`, anchor `'components/ui/ErrorFallback.tsx': { 1: 1 }`) is why level and size are
+                (src/app/typeScaleTouchedSurfaces.test.ts ("'components/ui/ErrorFallback.tsx': { 1: 1 }")) is why level and size are
                 separate facts. Promoting it to Display would be the demotion-in-reverse the
                 88-29 amendment describes. */}
             <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>

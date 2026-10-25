@@ -27,7 +27,7 @@
    VERIFIED before removal, not assumed: `layer(base)` appeared on that import line ONLY (plus
    its own comment); this file's own `@layer base` block and Tailwind's layer order are declared
    by `@import 'tailwindcss'` above, so nothing else depended on that import's layer.
-   (Written without a trailing brace on purpose: `focusAndMotionTreatment.test.ts:451-461`
+   (Written without a trailing brace on purpose: src/app/focusAndMotionTreatment.test.ts ("6. the block is UNLAYERED")
    decides whether the reduced-motion block is layered by counting RAW `{`/`}` bytes with no
    comment stripping, so an unbalanced brace in ANY comment above it reds that gate. Measured
    here during 88.1-16 — the first draft of this marker wrote the brace and did exactly that.)
