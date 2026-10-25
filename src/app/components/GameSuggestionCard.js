@@ -33,7 +33,7 @@ export default function GameSuggestionCard({ game, onClick }) {
 
   // DECISION Phase 88.6.1-03 (D-26, Req 2, copy row E7): the whole card is a native button,
   // chosen OVER role="button" + tabIndex + an Enter/Space handler on the old div (88.1-20's
-  // reasoning at `UpcomingEventsCard.js:139-146`: a native button is Enter AND Space by
+  // reasoning at src/app/components/UpcomingEventsCard.js ("DECISION Phase 88.1-20 (WR-02/WR-03)"): a native button is Enter AND Space by
   // construction, nothing to hand-roll). It is a button ALWAYS, OVER keeping a static
   // no-handler mode: that mode is dead in production (both consumers pass a handler), and a
   // switch would either hide the control from the repo's source-scan suites behind a variable
@@ -59,7 +59,7 @@ export default function GameSuggestionCard({ game, onClick }) {
           DECISION Phase 88.6.1-03 (D-38): the thumbnail is hidden from assistive tech by this
           aria-hidden wrapper ALONE, and SafeImage keeps alt set to the game name and its default
           dice fallback. Chosen OVER the recorded three-part fix (an empty alt plus an empty
-          fallback icon plus a wrapper, `.planning/deferred/phase-88.6.1.md:30`), which would turn
+          fallback icon plus a wrapper, planning:.planning/deferred/phase-88.6.1.md ("### R126 findings 3-4")), which would turn
           every missing or failed thumbnail into a blank muted tile: the alt is what SafeImage
           derives the fallback colour from, so that is a look change in a non-look phase. Chosen
           OVER changing SafeImage itself, which has 15 mounts. The card's name comes from the
