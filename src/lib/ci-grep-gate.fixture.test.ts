@@ -552,6 +552,7 @@ describe('Req 19 / gate-hygiene — the drift-gate registry (rows read from scri
       'src/app/anchorCites.test.ts', //                  Phase 88.6.2-07 A19 — the permanent anchor-cite check on every PR
       'src/test-utils/sourceScan.parity.test.ts', //     Phase 88.6.2-08 — the scanner lexer parity, tree-wide
       'src/test-utils/scrubSessionHeaders.test.ts', //   Phase 88.6.2-20 R8 — the e2e fetch-error session scrub
+      'src/test-utils/readHoldGuard.test.ts', //         Phase 88.6.2-11 / code review C-ML3 — the read-only network release guard
     ]) {
       expect(files, `registry lost ${required}`).toContain(required);
     }

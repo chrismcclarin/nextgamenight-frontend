@@ -4,7 +4,9 @@
 //
 // It lives apart from inFlight.ts, with NO imports, so plain node can load it alone and prove the
 // throw (inFlight.ts imports @playwright/test and './contrast' extensionless, which node cannot
-// resolve). Keep it import-free: the Phase 88.6.2-11 node probe depends on it.
+// resolve). Keep it import-free. The throw is proved on every PR by the unit test
+// src/test-utils/readHoldGuard.test.ts ("assertReadMethod throws the releaseToNetwork refusal for every write method"),
+// which replaced the one-off Phase 88.6.2-11 node probe.
 export function assertReadMethod(method: string): asserts method is 'GET' | 'HEAD' {
   if (method !== 'GET' && method !== 'HEAD') {
     throw new Error(
