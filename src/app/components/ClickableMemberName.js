@@ -300,7 +300,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // Same shape as
       // src/app/components/AvailabilityForm.js ("useEffect(() => () => clearTimeout(prefillStatusTimerRef.current), []);").
       // Dropping the unmount clear, the clear before rescheduling, the mounted check before
-      // scheduling, or the clear in the close reset, is a decision, not a cleanup.
+      // scheduling, or the clear on every open/close transition, is a decision, not a cleanup.
       clearTimeout(closeTimerRef.current);
       closeTimerRef.current = setTimeout(() => setIsOpen(false), 1500);
     } catch (err) {

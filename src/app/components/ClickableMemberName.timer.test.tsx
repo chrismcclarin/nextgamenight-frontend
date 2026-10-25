@@ -177,8 +177,8 @@ describe('ClickableMemberName auto-close timer (quick-261025-dzo, 88.6.2 ledger 
     expect(autoCloseHandles(setSpy)).toHaveLength(1);
     expect(name.getAttribute('aria-expanded')).toBe('false');
 
-    // Open inside the window, as a tap on the name does on a phone.
-    fireEvent.keyDown(name, { key: 'Enter' });
+    // Open inside the window by a tap on the name (the click handler is the phone's tap path).
+    fireEvent.click(name);
     await act(async () => {});
     expect(name.getAttribute('aria-expanded')).toBe('true');
 
@@ -187,5 +187,30 @@ describe('ClickableMemberName auto-close timer (quick-261025-dzo, 88.6.2 ledger 
     });
     expect(name.getAttribute('aria-expanded')).toBe('true');
     expect(document.querySelector('[data-member-popover]')).not.toBeNull();
+  });
+
+  it('TM7. survive: a popover send with the popover open still auto-closes at exactly 1500 ms', async () => {
+    // Scoped check 2 WR-03 (quick-261025-dzo): the clears above must not erase the auto-close
+    // itself. Without this test, replacing the timer body with a no-op leaves CI green.
+    vi.useFakeTimers();
+    const sendRequest = vi.fn(async () => ({ ok: true }));
+    renderName(sendRequest);
+    const name = screen.getByRole('button', { name: 'ada' });
+
+    fireEvent.keyDown(name, { key: 'Enter' });
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Add friend' }));
+    await act(async () => {});
+    expect(name.getAttribute('aria-expanded')).toBe('true');
+
+    await act(async () => {
+      vi.advanceTimersByTime(AUTO_CLOSE_MS - 1);
+    });
+    expect(name.getAttribute('aria-expanded')).toBe('true');
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(name.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('[data-member-popover]')).toBeNull();
   });
 });
