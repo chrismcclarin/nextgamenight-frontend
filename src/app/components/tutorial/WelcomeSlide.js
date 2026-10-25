@@ -25,10 +25,10 @@ export default function WelcomeSlide({ onStart }) {
       </p>
 
       {/* DECISION Phase 88.6-35 (UI-SPEC §3.2, §3.4 rule 3): the file's ONE `.btn` element.
-          `py-3 px-6` (padding, src/app/globals.css ("padding: 0.5rem 1rem;")), `font-semibold` (weight src/app/globals.css ("font-weight: 600;")) and
-          `text-base` (font-size src/app/globals.css ("font-size: 0.875rem;")) are all DEAD under unlayered `.btn` and go;
+          `py-3 px-6` (padding), `font-semibold` (weight) and `text-base` (font-size) are all DEAD under
+          unlayered `.btn` (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and go;
           `transition-colors` goes with them, because `.btn` declares
-          `transition: var(--theme-transition)` unlayered in the same block, src/app/globals.css ("padding: 0.5rem 1rem;"). `w-full` STAYS — `.btn`
+          `transition: var(--theme-transition)` unlayered in the same block, src/app/globals.css ("UNLAYERED with every other declaration it has today"). `w-full` STAYS — `.btn`
           declares no width, so it was never dead. */}
       <Button variant="primary" onClick={onStart} className="w-full">
         Show me how it works

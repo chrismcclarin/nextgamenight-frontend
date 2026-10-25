@@ -704,7 +704,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     // Req 4's acceptance names ">= 3 named migrated sites on light card AND light page".
     // These three are the page half; the card half is asserted on groupHomePage below.
     // `/about`'s container declares no background, so the chain terminates on
-    // `body { background-color: var(--color-bg-page) }` (src/app/globals.css ("background-color: var(--color-bg-page);")).
+    // `body { background-color: var(--color-bg-page) }` (src/app/globals.css ("body {")).
     const sites: { label: string; locator: Locator }[] = [
       // Located by "the link whose accessible name is an address" rather than by spelling
       // the address into a test file. src/app/about/page.js ("mailto:").

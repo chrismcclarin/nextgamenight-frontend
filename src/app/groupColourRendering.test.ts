@@ -1268,7 +1268,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // weakening. These three used to carry `text-sm md:text-base`, and this line pinned them
     // because `typeScaleTouchedSurfaces.test.ts`'s population is `<h1..h6>` only and nothing else
     // watched them. On a `<Button>` a text-size utility is DEAD — `.btn` declares `font-size`
-    // unlayered (src/app/globals.css ("font-size: 0.875rem;")) and an `@layer utilities` class cannot beat it — so keeping
+    // unlayered (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and an `@layer utilities` class cannot beat it — so keeping
     // the old assertion would have required three dead classes to stay. They are deleted, and
     // `btnCensus.test.tsx`'s "no text-size utility on a `<Button>`" rule is the guard that
     // replaces this one tree-wide. What is asserted here is that this file honours it.

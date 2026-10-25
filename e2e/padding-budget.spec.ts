@@ -529,7 +529,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    around the ~37px `.btn` renders today — chosen OVER pinning a measured height, which is
    what "within an expected band" invites. 44 is the number every part of this decision is
    written in; 37 is an emergent consequence of `.btn`'s `0.5rem` padding on `0.875rem`
-   text (src/app/globals.css ("padding: 0.5rem 1rem;")) that a legitimate type or spacing change would move,
+   text (src/app/globals.css ("UNLAYERED with every other declaration it has today")) that a legitimate type or spacing change would move,
    churning this file for no signal. The lower bound is anti-vacuity only.
 
    The two controls guard each OTHER, which is the point of using a row rather than a
@@ -556,7 +556,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    at EVERY viewport; this test used to pin 88-01 D-36's rejection of exactly that. The two are not
    actually in conflict, and saying why is the whole point of the re-base: D-36 rejected a floor on
    the `.btn` CLASS, which square-by-design controls wear, and its `@media (width < 48rem)` rule
-   (src/app/globals.css ("min-height: 2.75rem;")) is still unwidened. D-09's floor is on the PRIMITIVE
+   (src/app/globals.css ("or promoting the floor to all")) is still unwidened. D-09's floor is on the PRIMITIVE
    (src/components/ui/Button.tsx ("'min-h-11',")), which only opted-in elements wear. Both statements are
    literally true, and after this re-base this test is the only place in the tree that proves BOTH
    at 1280 — nothing else measures either half above `md`.

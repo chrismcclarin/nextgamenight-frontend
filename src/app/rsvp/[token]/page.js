@@ -514,7 +514,7 @@ export default function RsvpPage() {
                link 404ed — and OVER adding a `/groups/[id]` route for one link. `encodeURIComponent`
                keeps a body value from injecting query parameters (T-88.6-G47). §3.2's `asChild`
                row: this stays an `<a>` — the element kind is not a cleanup target. `inline-block`
-               is DELETED as dead: unlayered `.btn` sets `display: inline-flex` (src/app/globals.css ("display: inline-flex;")),
+               is DELETED as dead: unlayered `.btn` sets `display: inline-flex` (src/app/globals.css ("UNLAYERED with every other declaration it has today")),
                so the utility never applied. `min-h-11` is not added at the site — the cva base
                supplies it at every viewport. */
             <Button asChild variant="primary" size="default">

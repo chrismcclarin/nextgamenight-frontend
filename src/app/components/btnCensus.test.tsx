@@ -254,7 +254,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // 'btn-primary'}`), which becomes `variant={recovery ? 'secondary' : 'primary'}`. Every site
   // also carried `flex items-center justify-center` — DEAD under unlayered `.btn`'s own
   // `display: inline-flex; align-items: center; justify-content: center`
-  // (src/app/globals.css ("display: inline-flex;")) — and an explicit `min-h-11`, which GOES because the cva base
+  // (src/app/globals.css ("UNLAYERED with every other declaration it has today")) — and an explicit `min-h-11`, which GOES because the cva base
   // supplies the 44px floor at every viewport (88.6-06 D-09). `w-full`, `text-center` and `mb-3`
   // survive onto the `Button` className. The page's four shipped link assertions, one in each of
   // src/app/restore/group/[token]/page.test.tsx ("shows the group name and deadline to a logged-out visitor, and accepts nothing"),
@@ -274,17 +274,17 @@ const BTN_EXEMPT: ExemptionRoster = {
   // branch's `/api/auth/login` ANCHOR, migrated as `<Button asChild><a …/></Button>` per
   // UI-SPEC §3.2 — the element stays an `<a>`, never a `<Link>`, because Auth0's handler needs
   // a hard navigation. Every utility at all six was DEAD under unlayered `.btn` (`px-*`/`py-*`
-  // vs its padding, src/app/globals.css ("padding: 0.5rem 1rem;"), `text-sm` vs its font-size,
+  // vs its padding, src/app/globals.css ("UNLAYERED with every other declaration it has today"), `text-sm` vs its font-size,
   // `font-medium` vs its font-weight, `inline-block` and `flex items-center gap-2` vs its
   // display, align-items, justify-content and gap, the `disabled:` pair vs the .btn:disabled
-  // rule, src/app/globals.css ("opacity: 0.5;")), so all of
+  // rule, src/app/globals.css (".btn:disabled { opacity: .5 }")), so all of
   // them are deleted and NONE moved onto a `Button className`. Entry DELETED rather than zeroed.
   // `app/invite/game/[token]/page.js` CLOSED by plan 88.6-23 task 1 (wave 7, 2026-09-16): all SIX
   // `.btn` elements are `<Button size="default">`. THREE are anchors and took the UI-SPEC §3.2
   // `asChild` form with their `href` byte-identical — the `/api/auth/login?returnTo=…` sign-in
   // `<a>` (which stays an `<a>`, never a `<Link>`: an Auth0 handoff needs a hard navigation) and
   // the two `<Link href="/">` Go-Home CTAs. `block` was DEAD under unlayered `.btn`'s
-  // `display: inline-flex` (src/app/globals.css ("display: inline-flex;")) and is deleted; `w-full`, `text-center` and `mb-2`
+  // `display: inline-flex` (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and is deleted; `w-full`, `text-center` and `mb-2`
   // are NOT dead (`.btn` declares no width, no `text-align` and no margin) and moved onto the
   // `Button` className, where tailwind-merge keeps them. Entry DELETED rather than zeroed; the
   // roster is exact in both directions, so a zeroed entry would red as a fossil permission.
@@ -292,7 +292,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // carried `sites: 5` here (the bulk-invite CTA, the email Send, Add Friend, Copy Invite Link
   // and the admin-only Reset invite link). All five are `<Button size="default">` now. Every
   // deleted utility was DEAD under unlayered `.btn`: `text-sm`/`text-xs` vs its font-size,
-  // src/app/globals.css ("font-size: 0.875rem;"), `py-2.5`/`py-2`/`px-3`/`py-1.5` vs its padding,
+  // src/app/globals.css ("UNLAYERED with every other declaration it has today"), `py-2.5`/`py-2`/`px-3`/`py-1.5` vs its padding,
   // `flex items-center justify-center gap-2` vs its display, align-items, justify-content and
   // gap. `w-full`, `mt-2`, `mt-3`, `shrink-0` and the reset button's
   // `text-content-status-error` are NOT dead (`.btn` declares no width, margin, flex-shrink or
@@ -314,7 +314,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // carried `sites: 4` — the desktop Edit (`btn btn-primary`) and Delete (`btn btn-danger`) row
   // actions and the in-row delete confirm's Confirm/Cancel pair. All four are
   // `<Button size="default">`. Dead utilities deleted (`px-3 py-1.5`, `text-sm` — unlayered
-  // `.btn` declares padding, src/app/globals.css ("padding: 0.5rem 1rem;"), and font-size). The `:142` Pause/Resume
+  // `.btn` declares padding, src/app/globals.css ("UNLAYERED with every other declaration it has today"), and font-size). The `:142` Pause/Resume
   // toggle is NOT a `.btn` site and was never in this count — it carries raw status-token
   // utilities and is untouched. Entry DELETED rather than zeroed.
   // `app/invite/accept/page.js` CLOSED by plan 88.6-23 task 2 (wave 7, 2026-09-16): all FOUR
@@ -327,7 +327,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // one and was re-measured before the sweep. All three are `<button>` elements inside the
   // modal: "+ Add Participant" (`btn btn-primary text-sm`), "Cancel" (`btn btn-secondary`) and
   // the submit CTA (`btn btn-primary min-h-11`). `text-sm` was DEAD under unlayered `.btn`
-  // (src/app/globals.css ("font-size: 0.875rem;")) and is deleted rather than moved onto the className; `mt-2` survives
+  // (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and is deleted rather than moved onto the className; `mt-2` survives
   // (`.btn` declares no margin). The submit CTA's per-CTA `min-h-11` dropped in the SAME commit
   // as its migration, per the amended `DECISION Phase 87.8` / `AMENDED Phase 88.6 (D-09)` marker
   // that sits directly above it — the marker itself is byte-unchanged and still reports in
@@ -398,7 +398,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // carried `sites: 2` and the count was EXACT — the "Copy Invite Link" CTA
   // (`w-full btn btn-primary py-2.5 text-center mb-3`) and the full-width "Close"
   // (`w-full btn btn-secondary`). Both are `<Button>`s now. `py-2.5` was DEAD under unlayered
-  // `.btn`'s `padding` (src/app/globals.css ("padding: 0.5rem 1rem;"), inside the `.btn {`
+  // `.btn`'s `padding` (src/app/globals.css ("UNLAYERED with every other declaration it has today"), inside the `.btn {`
   // rule) and is deleted rather than moved; `w-full`,
   // `text-center` and `mb-3` all SURVIVE — `.btn` declares no width, no `text-align` and no
   // margin, so none of the three was ever dead and deleting them would have been a look change.
@@ -441,25 +441,25 @@ const BTN_EXEMPT: ExemptionRoster = {
   // carried `sites: 1` — NOT the 2 the plan's task text states; the roster's count was the
   // accurate one. The site is the availability submit CTA
   // (`btn btn-primary w-full py-3 min-h-11`), now `<Button type="submit" className="w-full">`.
-  // `py-3` was DEAD under unlayered `.btn`'s padding (src/app/globals.css ("padding: 0.5rem 1rem;")) and the per-CTA `min-h-11` dropped
+  // `py-3` was DEAD under unlayered `.btn`'s padding (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and the per-CTA `min-h-11` dropped
   // in the SAME commit as the migration per its amended `DECISION Phase 87.8` marker (which is
   // byte-unchanged and still reports 8/6 in `decisionMarkers.test.ts`); `w-full` survives.
   // The call-site `opacity-60 cursor-not-allowed` pair went too: `.btn:disabled` is UNLAYERED and
-  // sets both (src/app/globals.css ("opacity: 0.5;")), so the utilities were dead where they disagreed. The
+  // sets both (src/app/globals.css (".btn:disabled { opacity: .5 }")), so the utilities were dead where they disagreed. The
   // control KEEPS its native `disabled`; the plans 17-24 `aria-disabled` conversion was tried,
   // measured against `tokenContrast.test.ts` test 53(b2) and ROUTED rather than forced — see the
   // DECISION marker at the latch in AvailabilityForm.js. Entry DELETED rather than zeroed; the
   // roster is exact in both directions.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/BallotOptionsEditor.js`
   // carried `sites: 1` — the "+ Add game option" CTA, now `<Button size="default">`. Its `text-sm`
-  // was DEAD under unlayered `.btn`'s font-size (src/app/globals.css ("font-size: 0.875rem;")) and is deleted rather than moved onto the
+  // was DEAD under unlayered `.btn`'s font-size (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and is deleted rather than moved onto the
   // className; `mt-2` survives (`.btn` declares no margin). The file's OTHER button — the
   // remove-option `×` at :33 — was never a `.btn` and is therefore not in this census at all; it
   // took the D-13 declared-at-the-site 44x44 floor in the same commit. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/BringGamePicker.js`
   // carried `sites: 1` — the footer "Save" CTA (`btn btn-primary text-sm`), now
   // `<Button variant="primary">`. `text-sm` was DEAD under unlayered `.btn`'s `font-size`
-  // (src/app/globals.css ("font-size: 0.875rem;")) and is deleted rather than moved onto the className. The control KEEPS
+  // (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and is deleted rather than moved onto the className. The control KEEPS
   // its NATIVE `disabled={saving}` — the plans 17-24 `aria-disabled` conversion is not this
   // plan's work. NOTE this entry's own count was ONE, not the TWO the plan's task text predicted:
   // the footer's other control ("Skip for now") is a bare text button that never wore `.btn`, and
@@ -478,9 +478,9 @@ const BTN_EXEMPT: ExemptionRoster = {
   // `<Button variant="primary">` now, and the count was EXACT.
   //   DEAD, deleted: `font-bold`, `text-sm`, `px-6 py-3` (`.btn` is unlayered and declares
   //     font-weight, font-size and padding:
-  //     src/app/globals.css ("font-weight: 600;"), src/app/globals.css ("font-size: 0.875rem;"),
-  //     src/app/globals.css ("padding: 0.5rem 1rem;")) and `disabled:opacity-50` (`.btn:disabled { opacity: 0.5 }`,
-  //     src/app/globals.css ("opacity: 0.5;") — byte-identical, so the utility never
+  //     all three in the one block marked at src/app/globals.css ("UNLAYERED with every other declaration it has today"),
+  //     the marker under it) and `disabled:opacity-50` (`.btn:disabled { opacity: 0.5 }`,
+  //     src/app/globals.css (".btn:disabled { opacity: .5 }") — byte-identical, so the utility never
   //     changed anything).
   //   ALIVE, kept: `uppercase` — `.btn` declares NO `text-transform`, so this one was never dead
   //     and deleting it with the others would have been a look change.
@@ -500,9 +500,9 @@ const BTN_EXEMPT: ExemptionRoster = {
   // DELETED by plan 88.6-30 task 3 (wave 9, 2026-09-17): `app/components/DangerZoneDeleteAccount.tsx`
   // carried `sites: 1` and the count was EXACT — the Danger Zone card's own trigger, the
   // `btn btn-danger px-4 py-2 text-sm` element, now `<Button type="button" variant="danger">`.
-  // `px-4 py-2 text-sm` are ALL dead under unlayered `.btn` (padding,
-  // src/app/globals.css ("padding: 0.5rem 1rem;"), and font-size,
-  // src/app/globals.css ("font-size: 0.875rem;")) and are deleted rather than carried; no live utility survived on that
+  // `px-4 py-2 text-sm` are ALL dead under unlayered `.btn` (padding
+  // and font-size, both in the one block marked at src/app/globals.css ("UNLAYERED with every other declaration it has today"))
+  // and are deleted rather than carried; no live utility survived on that
   // site. The two `Modal.Action` footer sites are NOT `.btn` element sites and never were —
   // `Modal.Action` composes `Button` internally (plan 08 D-08), so this file's migration does
   // not touch them; Cancel's `aria-disabled` gating landed in task 2 under AC-21/D52 and is a
@@ -515,7 +515,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/EventCalendar.js`
   // carried `sites: 1` — the List/Month view toggle (`btn btn-secondary text-sm` plus the
   // per-site ring string), now `<Button variant="secondary">`. `text-sm` was DEAD under
-  // unlayered `.btn`'s font-size (src/app/globals.css ("font-size: 0.875rem;")) and is deleted rather than moved; the ring retired to
+  // unlayered `.btn`'s font-size (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and is deleted rather than moved; the ring retired to
   // the primitive's base. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-35 task 1 (wave 7, 2026-09-16): `app/components/LandingPage.js`
   // carried `sites: 1` and the count was EXACT — `grep -n '\bbtn\b'` over the file returned
@@ -570,8 +570,8 @@ const BTN_EXEMPT: ExemptionRoster = {
   // file (`yes`/`maybe`/`no`) is NOT a census site and must never be counted as one: it is a
   // bare `<button>` by a recorded DECISION, because `.btn`'s unlayered `border-radius: 8px` /
   // `font-weight: 600` / `font-size: 0.875rem`
-  // (src/app/globals.css ("border-radius: 8px;"), src/app/globals.css ("font-weight: 600;"),
-  // src/app/globals.css ("font-size: 0.875rem;")) would destroy the corner
+  // (all three in the one block marked at src/app/globals.css ("UNLAYERED with every other declaration it has today"))
+  // would destroy the corner
   // inheritance an owner UAT fix of 2026-09-01 put there. A criterion signed off on an unnamed
   // site is exactly how that trio would get migrated by accident.
   // Entry DELETED rather than zeroed — the count is exact in both directions.
@@ -590,7 +590,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // pre-edit), now `<Button variant="primary" className="w-full">`. `py-3 px-6 font-semibold
   // text-base` GO as dead under unlayered `.btn`, and `transition-colors` goes with them
   // (`.btn` declares `transition: var(--theme-transition)` unlayered, in the same rule as its
-  // padding, src/app/globals.css ("padding: 0.5rem 1rem;")).
+  // padding, src/app/globals.css ("UNLAYERED with every other declaration it has today")).
   // `w-full` STAYS: `.btn` declares no width, so it was never dead. Entry DELETED, not zeroed.
 };
 
@@ -817,7 +817,7 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'so the `btn-*` family is the wrong vocabulary for it. (2) GEOMETRY — the CONSEQUENCE ' +
       'constraint: shipped it is `p-2` around a `w-5 h-5` icon (src/app/components/ThemeToggle.js ("p-2 rounded-lg transition-colors hover:bg-white/10"), src/app/components/ThemeToggle.js ("w-5 h-5 text-amber-400") / src/app/components/ThemeToggle.js ("w-5 h-5 text-white")) = 36x36, ' +
       "while a `<Button>` renders against `.btn`'s unlayered `padding: .5rem 1rem` " +
-      '(src/app/globals.css ("padding: 0.5rem 1rem;")) plus the cva base\'s `min-h-11` and ' +
+      '(src/app/globals.css ("UNLAYERED with every other declaration it has today")) plus the cva base\'s `min-h-11` and ' +
       '`icon: min-h-11 min-w-11` = ~52x44. Its desktop-nav sibling, the bell button in ' +
       'src/app/components/NotificationBell.js ("relative text-white hover:text-amber-400 transition-colors p-1") ' +
       '(`p-1` around the `w-6 h-6` bell) is 32x32, wears no `btn`, and is migrated by NO plan — so migrating this ' +

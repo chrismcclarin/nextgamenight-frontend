@@ -226,7 +226,7 @@ describe('Button', () => {
       for (const tok of tokensOf(btn.className)) {
         expect(
           tok,
-          `88.6-06 D-09 — \`${tok}\` is DEAD on a \`.btn\` element: \`.btn\` declares \`padding: .5rem 1rem\` (src/app/globals.css ("padding: 0.5rem 1rem;")) and \`font-size: .875rem\` (src/app/globals.css ("font-size: 0.875rem;")) UNLAYERED, and an unlayered author rule beats every \`@layer utilities\` rule. The compact padding comes from the unlayered \`.btn-sm\` rule (src/app/globals.css (".btn-sm {")), never from a utility`
+          `88.6-06 D-09 — \`${tok}\` is DEAD on a \`.btn\` element: \`.btn\` declares \`padding: .5rem 1rem\` and \`font-size: .875rem\` UNLAYERED (src/app/globals.css ("UNLAYERED with every other declaration it has today")), and an unlayered author rule beats every \`@layer utilities\` rule. The compact padding comes from the unlayered \`.btn-sm\` rule (src/app/globals.css (".btn-sm {")), never from a utility`
         ).not.toMatch(/^(p-|px-|py-|text-xs$|text-sm$|text-base$)/);
       }
     });
@@ -242,7 +242,7 @@ describe('Button', () => {
       expect(btn).toHaveClass('min-w-11');
       expect(
         tokensOf(btn.className),
-        '88.6-06 C.1 — `p-0` was DEAD from the day it was written: `.btn` declares `padding: .5rem 1rem` UNLAYERED (src/app/globals.css ("padding: 0.5rem 1rem;")) and `@layer utilities` always loses. Re-adding it changes no rendered pixel and re-introduces a class the AC-3 dead-class rule forbids'
+        '88.6-06 C.1 — `p-0` was DEAD from the day it was written: `.btn` declares `padding: .5rem 1rem` UNLAYERED (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and `@layer utilities` always loses. Re-adding it changes no rendered pixel and re-introduces a class the AC-3 dead-class rule forbids'
       ).not.toContain('p-0');
     });
 
@@ -257,7 +257,7 @@ describe('Button', () => {
           const cls = (container.firstElementChild as HTMLElement).className;
           expect(
             tokensOf(cls),
-            `88.6-06 D-09 — the 44px floor lives on the cva BASE so it reaches every viewport width (variant=${variant} size=${size}). The phone-only \`.btn\` class rule (src/app/globals.css ("min-height: 2.75rem;")) is deliberately NOT widened — D-36 rejects an all-viewport floor on the CLASS, which square-by-design controls wear`
+            `88.6-06 D-09 — the 44px floor lives on the cva BASE so it reaches every viewport width (variant=${variant} size=${size}). The phone-only \`.btn\` class rule (src/app/globals.css ("or promoting the floor to all")) is deliberately NOT widened — D-36 rejects an all-viewport floor on the CLASS, which square-by-design controls wear`
           ).toContain('min-h-11');
           cleanup();
         }

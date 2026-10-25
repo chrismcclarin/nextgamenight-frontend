@@ -52,7 +52,7 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   //
   // WHY THE MIGRATION LOSES — geometry, not taste. Shipped this is `p-2` around a `w-5 h-5` icon
   // = 36x36. A `<Button>` renders against `.btn`'s UNLAYERED `padding: .5rem 1rem`
-  // (src/app/globals.css ("padding: 0.5rem 1rem;")) plus the cva base's `min-h-11` and `icon`'s `min-h-11 min-w-11` = ~52x44.
+  // (src/app/globals.css ("UNLAYERED with every other declaration it has today")) plus the cva base's `min-h-11` and `icon`'s `min-h-11 min-w-11` = ~52x44.
   // Its nav sibling src/app/components/NotificationBell.js ("hover:text-amber-400 transition-colors p-1") (`p-1` around the `w-6 h-6` bell, src/app/components/NotificationBell.js ("w-6 h-6")) is
   // 32x32, wears no `btn`, and NO plan migrates it — so migrating this one alone would widen a
   // 4px sibling difference into ~20px and CREATE a header inconsistency rather than close one.

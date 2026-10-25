@@ -882,8 +882,8 @@ function FriendsPage() {
                         because Radix `Slot` concatenates the child's className WITHOUT
                         tailwind-merge, so a utility left there cannot win a conflict. Here
                         nothing survives: `px-6 py-2` and `inline-block` are all dead under
-                        unlayered `.btn` (padding at src/app/globals.css ("padding: 0.5rem 1rem;");
-                        `display: inline-flex` at src/app/globals.css ("display: inline-flex;"); re-pointed 88.6.1-40). */}
+                        unlayered `.btn` (its padding and `display: inline-flex`, both in the block marked at
+                        src/app/globals.css ("UNLAYERED with every other declaration it has today"); re-pointed 88.6.1-40). */}
                     <Button asChild variant="primary" size="default">
                         <a href="/api/auth/login">Log In</a>
                     </Button>
@@ -1306,11 +1306,11 @@ function FriendsPage() {
                                                     </SelectControl>
                                                     {/* Every utility this control used to carry was DEAD under
                                                         unlayered `.btn` and is deleted rather than moved: `px-4 py-2`
-                                                        (padding, src/app/globals.css ("padding: 0.5rem 1rem;")), `text-sm` (font-size, src/app/globals.css ("font-size: 0.875rem;")),
-                                                        `font-medium` (font-weight 600, src/app/globals.css ("font-weight: 600;")), `flex items-center
+                                                        (padding), `text-sm` (font-size),
+                                                        `font-medium` (font-weight 600), `flex items-center
                                                         gap-2` (`display: inline-flex` / `align-items` / `gap`,
-                                                        src/app/globals.css ("display: inline-flex;")) and the `disabled:` pair (`.btn:disabled`,
-                                                        src/app/globals.css ("opacity: 0.5;")). Re-adding any of them changes no pixel.
+                                                        all of them in the one block marked at src/app/globals.css ("UNLAYERED with every other declaration it has today")) and the `disabled:` pair (`.btn:disabled`,
+                                                        src/app/globals.css (".btn:disabled { opacity: .5 }")). Re-adding any of them changes no pixel.
                                                         (Cites re-pointed 88.6.1-40 to the `.btn {` block
                                                         and its `.btn:disabled {` block.) */}
                                                     <Button

@@ -846,7 +846,7 @@ export default function CalendarListView({
                       This label is phrasing content, so the real button is available.
 
                       LAYOUT LIVES ON THE INNER SPAN, deliberately: `.btn` is UNLAYERED
-                      (src/app/globals.css ("justify-content: center;")) and sets `justify-content: center`, so a
+                      (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and sets `justify-content: center`, so a
                       `justify-between` utility on the button itself would be dead on arrival —
                       the failure mode the Button primitive's own marker records eight times over.
 

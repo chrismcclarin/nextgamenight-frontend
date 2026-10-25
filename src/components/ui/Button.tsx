@@ -19,7 +19,7 @@
  * - **No widening of the phone-only `.btn` CLASS rule.** The 44px floor this
  *   primitive carries is `min-h-11` on the cva BASE, at every viewport width
  *   (88.6 D-09). The `@media (width < 48rem)` rule on the `.btn` class
- *   (src/app/globals.css ("min-height: 2.75rem;")) is left exactly as it is, and an all-viewport
+ *   (src/app/globals.css ("or promoting the floor to all")) is left exactly as it is, and an all-viewport
  *   floor on that class stays REJECTED (88-01 D-36, reasoning at
  *   src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")): square-by-design controls wear `.btn`, so a
  *   class-level floor deforms them, while a floor on the PRIMITIVE reaches only
@@ -31,7 +31,7 @@
  *   squares.
  * - **No size utility of any kind on a size rung.** `text-*`, `px-*`, `py-*`
  *   and `p-*` are DEAD on a `.btn` element: `.btn` declares `font-size`
- *   (src/app/globals.css ("font-size: 0.875rem;")) and `padding` (src/app/globals.css ("padding: 0.5rem 1rem;")) UNLAYERED, and an unlayered
+ *   and `padding` UNLAYERED (src/app/globals.css ("UNLAYERED with every other declaration it has today")), and an unlayered
  *   author rule beats every `@layer utilities` rule. The compact horizontal
  *   padding comes from the unlayered `.btn-sm` rule (src/app/globals.css (".btn-sm {")).
  * - **No bare `hover:` token** in the base or the variant map. A gated control
@@ -55,7 +55,7 @@ import { cn } from '@/lib/cn';
    most likely to "clean up" this into.
 
    WHY THE PURE-UTILITY VERSION LOSES, measured: `.btn` is authored UNLAYERED in globals.css
-   (src/app/globals.css ("padding: 0.5rem 1rem;")), and an unlayered rule beats anything Tailwind emits inside `@layer utilities`. A
+   (src/app/globals.css ("UNLAYERED with every other declaration it has today")), and an unlayered rule beats anything Tailwind emits inside `@layer utilities`. A
    utility base would therefore be OVERRIDDEN by `.btn` wherever the two disagree — and the
    repo already has 8 shipped markers recording exactly this failure, compact `.btn` rows whose
    `text-xs px-3 py-1` utilities are dead on arrival. Dropping `.btn` entirely instead is not
@@ -63,7 +63,7 @@ import { cn } from '@/lib/cn';
    press (87.8 D-12) and the disabled rule, all of which would silently vanish.
 
    WHY THE ADDITIONS BELOW ARE STILL SAFE AS UTILITIES: `.btn` declares NO background, NO
-   box-shadow, NO min-height and NO outline (verified against the `.btn` rule at src/app/globals.css ("padding: 0.5rem 1rem;")), so the
+   box-shadow, NO min-height and NO outline (verified against the `.btn` rule at src/app/globals.css ("UNLAYERED with every other declaration it has today")), so the
    elevation, the focus ring, the ghost background and the icon-size floor have nothing
    unlayered to lose to. That is the whole reason the split falls where it does.
 
@@ -145,7 +145,7 @@ const buttonVariants = cva(
     /* DECISION Phase 88.6-06 (D-09): the 44px touch floor lives HERE, on the cva
        BASE, at every viewport width — chosen OVER widening the phone-only
        `@media (width < 48rem)` rule on the `.btn` CLASS
-       (src/app/globals.css ("min-height: 2.75rem;")), which is left untouched.
+       (src/app/globals.css ("or promoting the floor to all")), which is left untouched.
 
        WHY THIS KEEPS D-36 LITERALLY TRUE. D-36 (src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC"))
        rejects an all-viewport `min-height` on the `.btn` CLASS, because
@@ -219,7 +219,7 @@ const buttonVariants = cva(
          (1) THE DEAD ZERO-PADDING UTILITY ON `icon` IS DELETED — chosen OVER
          authoring an unlayered `.btn-icon { padding: 0 }` beside `.btn-sm`. The
          same mechanism would work, but it narrows every icon button by 32px
-         (`.btn` is `padding: .5rem 1rem`, i.e. 16px a side, src/app/globals.css ("padding: 0.5rem 1rem;")),
+         (`.btn` is `padding: .5rem 1rem`, i.e. 16px a side, src/app/globals.css ("UNLAYERED with every other declaration it has today")),
          which is a LOOK CHANGE and therefore Phase 88.9's, not this phase's
          (P6). What ships today, and what is being PRESERVED rather than
          overlooked: `size="icon"` renders at least 44x44 but wears `.btn`'s
@@ -253,7 +253,7 @@ const buttonVariants = cva(
         // 88.6 D-09, the compact row-action rung. `btn-sm` ONLY: the compact
         // horizontal padding comes from the unlayered `.btn-sm` rule
         // (src/app/globals.css (".btn-sm {")), and every padding or font-size utility that
-        // could be written here is dead under `.btn` (src/app/globals.css ("font-size: 0.875rem;") and src/app/globals.css ("padding: 0.5rem 1rem;")).
+        // could be written here is dead under `.btn` (src/app/globals.css ("UNLAYERED with every other declaration it has today")).
         // The `sm` label is 14px FORCED, not chosen.
         sm: 'btn-sm',
       },

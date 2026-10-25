@@ -849,7 +849,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
      What the probe DOES claim, and it is the half nothing else can see: that in the EMITTED
      stylesheet at 375px, `.btn-compact` still beats the unlayered `.btn { min-height: 2.75rem }`
-     phone floor. That is a pure cascade fact about authoring order (src/app/globals.css ("min-height: 2.75rem;") authored before src/app/globals.css (".btn-compact {")),
+     phone floor. That is a pure cascade fact about authoring order (src/app/globals.css ("or promoting the floor to all") authored before src/app/globals.css (".btn-compact {")),
      which jsdom cannot evaluate and which src/app/decisionMarkers.test.ts ("5. the phone floor and its opt-out really are shipped, so the markers are not lying") can only pin at
      SOURCE level. The two are complementary: that suite proves the call sites wear the class
      and the rule exists; this proves the browser resolves them the way the marker claims.
@@ -943,7 +943,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // (c) The RE-POINTED real-call-site arm (AMENDED Phase 88.6-12, see the block above): the
     // same shape "Manage Members" ships with — `.btn` plus a pile of utilities, no `min-h-*` —
     // still clears 44px from the media rule ALONE. Its `px-4 py-2` / `md:px-6 md:py-3` padding
-    // utilities are dead under unlayered `.btn` (src/app/globals.css ("padding: 0.5rem 1rem;")), which is part of the
+    // utilities are dead under unlayered `.btn` (src/app/globals.css ("UNLAYERED with every other declaration it has today")), which is part of the
     // fact being measured, not an accident of the probe.
     expect(
       probes.shipped.height,
@@ -2173,7 +2173,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    * section's colocated suite. The rejected option is not merely weaker — it cannot
    * measure anything. `vitest.config.mts:56` is `environment: 'jsdom'` with no `css`
    * key; `vitest.setup.ts` loads jest-dom, axe and a `matchMedia` stub only; and the
-   * 44px floor lives in a MEDIA-QUERY rule (src/app/globals.css ("min-height: 2.75rem;")). In this repo's
+   * 44px floor lives in a MEDIA-QUERY rule (src/app/globals.css ("or promoting the floor to all")). In this repo's
    * own jsdom the media rule never applies, the window is 1024px rather than 375px,
    * `getBoundingClientRect()` returns all zeros and `parseFloat` yields `NaN` — at
    * which point an executor lands on the meaningless-but-green class-string assertion
@@ -2561,7 +2561,7 @@ interface ShadowRead {
  *
  * THE SETTLE IS NOT DEFENSIVE — IT IS THE WHOLE CORRECTNESS OF THIS ARM, and it was found by
  * running the probes in a real Chromium rather than by reasoning. `.btn` carries
- * `transition: var(--theme-transition)` (the line after src/app/globals.css ("padding: 0.5rem 1rem;")), and `--theme-transition`
+ * `transition: var(--theme-transition)` (declared in the .btn block, marker at src/app/globals.css ("UNLAYERED with every other declaration it has today")), and `--theme-transition`
  * (src/app/globals.css ("--theme-transition: background-color")) includes `box-shadow 0.25s ease`. Reading `getComputedStyle` immediately
  * after a `hover()` or a `focus()` therefore returns an INTERPOLATED value. Measured
  * 2026-09-15 in Chromium at 1280x720, reading with no settle:
@@ -2607,7 +2607,7 @@ async function readShadow(locator: Locator): Promise<ShadowRead> {
       },
       {
         message:
-          'D10 item 6: the computed `box-shadow` never stopped changing. `.btn` transitions box-shadow over 0.25s (src/app/globals.css ("--theme-transition: background-color"), and the line after src/app/globals.css ("padding: 0.5rem 1rem;")); if it is still moving after 5s something is animating it continuously. Do NOT remove the settle and read the interpolated value instead.',
+          'D10 item 6: the computed `box-shadow` never stopped changing. `.btn` transitions box-shadow over 0.25s (src/app/globals.css ("--theme-transition: background-color"), and the .btn block, marker at src/app/globals.css ("UNLAYERED with every other declaration it has today")); if it is still moving after 5s something is animating it continuously. Do NOT remove the settle and read the interpolated value instead.',
         timeout: 5_000,
         intervals: [50, 50, 100, 100, 250],
       },

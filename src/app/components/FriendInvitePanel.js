@@ -118,7 +118,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        silently.
 
        VISIBLE DELTA, disclosed rather than discovered: a gated `.btn` used to take
-       `.btn:disabled { opacity: .5 }` (src/app/globals.css ("opacity: 0.5;")) and now takes the
+       `.btn:disabled { opacity: .5 }` (src/app/globals.css (".btn:disabled { opacity: .5 }")) and now takes the
        DR-C gated COLOUR pair (src/app/globals.css (".btn-primary[aria-disabled='true'] {"),
        src/app/globals.css (".btn-secondary[aria-disabled='true'] {")). Fill and ink swap instead of the whole control washing out.
 

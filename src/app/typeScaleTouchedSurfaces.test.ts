@@ -2018,7 +2018,7 @@ describe('SPEC-88.6 P4 + D-01: heading levels are pinned and arbitrary sizes are
 // ===========================================================================
 
 /**
- * `.btn` sets `font-weight: 600` UNLAYERED (src/app/globals.css ("font-weight: 600;"),
+ * `.btn` sets `font-weight: 600` UNLAYERED (src/app/globals.css ("UNLAYERED with every other declaration it has today"),
  * inside the .btn block), and 600 is the Button label's single legitimate home
  * (UI-SPEC §4.1, D-01). So `components/ui/Button.tsx` is EXCLUDED from the weight scan,
  * not exempted.
@@ -2187,7 +2187,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // of the four and wrong for the fourth:
   //   - THREE were dead on a `.btn` and left with the migration: the complexity-tier toggle and
   //     the two sort-direction toggles, all now `<Button>`. `.btn` declares `font-weight: 600`
-  //     UNLAYERED (src/app/globals.css ("font-weight: 600;")), so those `font-medium` utilities
+  //     UNLAYERED (src/app/globals.css ("UNLAYERED with every other declaration it has today")), so those `font-medium` utilities
   //     had never painted.
   //   - the FOURTH is the "Sort:" `<label>`, which is not a `.btn` at all and took §4.5's
   //     EMPHASIS outcome instead — 400 plus the `text-content-secondary` token it already
@@ -2253,7 +2253,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // leads were right, resolving OPPOSITE ways — which is why the entry could not close on one
   // rule. The row-title `<h4>` took HIERARCHY by migrating onto `Heading`, whose `font-bold`
   // base supplies the 700 (see the three heading rosters above). The Share Game QR button's was
-  // DEAD ON A `.btn` — src/app/globals.css ("font-weight: 600;") declares it unlayered — so it was
+  // DEAD ON A `.btn` — src/app/globals.css ("UNLAYERED with every other declaration it has today") declares it unlayered — so it was
   // deleted with the six other dead utilities in the same migration, not moved. Entry DELETED,
   // not zeroed.
   // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/EventHeatmapBackground.js'
@@ -2670,7 +2670,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/
   // WelcomeSlide.js` carried `sites: 1` (0 font-medium, 1 font-semibold) and the lead was
   // right for once: the `font-semibold` was on the `btn btn-primary` CTA at `:26`, DEAD under
-  // unlayered `.btn` (src/app/globals.css ("font-weight: 600;")), and it was deleted with the rest
+  // unlayered `.btn` (src/app/globals.css ("UNLAYERED with every other declaration it has today")), and it was deleted with the rest
   // of that element's dead classes in its migration to `<Button>`. The file's h1 carried
   // `font-bold` (on-scale) and was never in this population. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
@@ -2928,7 +2928,7 @@ const ARMED_STATE_600_ROSTER: ExemptionRoster = {
   'app/gameDetail/page.js': {
     sites: 1,
     why:
-      'the font-semibold on the ARMED branch of the two-tap participant Remove, seen through its isConfirming local. It is DEAD: the control is a Button, and .btn sets the weight unlayered (src/app/globals.css ("font-weight: 600;")), so rest and armed both render 600 and the weight carries no armed cue. The error-subtle ground, the border and the ink carry it. Deleting it is routed to Phase 92, and that commit deletes this entry and the file\'s WEIGHT_ROSTER entry together.',
+      'the font-semibold on the ARMED branch of the two-tap participant Remove, seen through its isConfirming local. It is DEAD: the control is a Button, and .btn sets the weight unlayered (src/app/globals.css ("UNLAYERED with every other declaration it has today")), so rest and armed both render 600 and the weight carries no armed cue. The error-subtle ground, the border and the ink carry it. Deleting it is routed to Phase 92, and that commit deletes this entry and the file\'s WEIGHT_ROSTER entry together.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6.2-15 (PC-2)' },
   },
 };

@@ -77,11 +77,11 @@ export default function LandingPage() {
                 `shadow-theme-lg`: without it, `Button`'s base `enabled-hover:shadow-theme-md`
                 would SHRINK this control's resting `lg` on hover — an inverted elevation.
 
-                DELETED as dead under unlayered `.btn` (src/app/globals.css ("font-weight: 600;")): `px-8 py-4`
-                (padding src/app/globals.css ("padding: 0.5rem 1rem;")), `text-lg` (font-size src/app/globals.css ("font-size: 0.875rem;")), `font-bold` (weight src/app/globals.css ("font-weight: 600;")),
+                DELETED as dead under unlayered `.btn` (src/app/globals.css ("UNLAYERED with every other declaration it has today")): `px-8 py-4`
+                (padding), `text-lg` (font-size), `font-bold` (weight) — all three declared in that one block,
                 `text-center` (the block is `inline-flex` + `justify-content: center`), and
                 `transition-all` — `.btn` declares `transition: var(--theme-transition)`
-                (the same block, src/app/globals.css ("padding: 0.5rem 1rem;")), whose value already includes `box-shadow 0.25s ease` (src/app/globals.css ("--theme-transition: background-color 0.25s ease")), so
+                (the same block, src/app/globals.css ("UNLAYERED with every other declaration it has today")), whose value already includes `box-shadow 0.25s ease` (src/app/globals.css ("--theme-transition: background-color 0.25s ease")), so
                 the utility was both dead and redundant. KEPT as alive: `shadow-theme-lg` and
                 `w-full sm:w-auto`. */}
             <Button

@@ -485,7 +485,7 @@ export default function BrowseMoreModal({
               {/* DECISION Phase 88.6-32 (R2): the pair's `rounded-l-btn` / `rounded-r-btn`
                   segmented shape is DELETED with the migration rather than carried onto
                   `<Button className>`. Those utilities are DEAD on any `.btn` element —
-                  unlayered `.btn` sets the `border-radius` SHORTHAND (src/app/globals.css ("border-radius: 8px;"), in `.btn {`) and
+                  unlayered `.btn` sets the `border-radius` SHORTHAND (src/app/globals.css ("UNLAYERED with every other declaration it has today"), in `.btn {`) and
                   beats the `@layer utilities` longhands — so today they paint only in the
                   ACTIVE state, which is the one state that carries no `.btn`. The pair has
                   therefore been rendering half-segmented and half-pill all along; the
