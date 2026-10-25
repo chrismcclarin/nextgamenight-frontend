@@ -145,7 +145,7 @@ test.describe('Create Event — a second press while creating changes nothing (D
 
     await page.goto(`/groupHomePage?id=${groupId}`);
     await openCreateEventDialog(page);
-    await fillCreateEventFields(page, { switchMode: 'if-offered' });
+    await fillCreateEventFields(page);
 
     // Found by test id: the accessible name changes mid-flight (copy row C7), the test id does not.
     const submit = page.getByTestId('create-event-submit');
@@ -197,7 +197,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     const openDialog = page.getByRole('button', { name: /add new game event/i });
     const heading = page.getByRole('heading', { name: /create event/i });
     await openCreateEventDialog(page);
-    await fillCreateEventFields(page, { switchMode: 'if-offered' });
+    await fillCreateEventFields(page);
 
     const submit = page.getByTestId('create-event-submit');
     await submit.click();
