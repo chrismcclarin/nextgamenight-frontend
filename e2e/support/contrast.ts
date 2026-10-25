@@ -82,7 +82,7 @@ export interface GroundResolution {
  * (e2e/padding-budget.spec.ts ("async function measurePaddingChain(anchor: Locator)")), and deliberately so — its three properties are
  * copied in intent, not just in style:
  *   - the `document.body` STOP, so the walk terminates;
- *   - the `position: fixed` BREAK (e2e/padding-budget.spec.ts ("DECISION Phase 87.8-12: the chain STOPS at a position:fixed boundary")). A fixed element's
+ *   - the `position: fixed` BREAK (`DECISION Phase 87.8-12` at e2e/padding-budget.spec.ts ("the chain STOPS at a position:fixed boundary")). A fixed element's
  *     containing block is the viewport, so an in-flow ancestor underneath a modal overlay is
  *     not what the user sees behind the modal. A modal's ground is the fixed box, not
  *     `<body>`. Walking past it measures a surface that is not on screen at that point;
