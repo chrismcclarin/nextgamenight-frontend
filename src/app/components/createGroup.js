@@ -109,9 +109,9 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                Sentry capture. `logger.error(msg, err)` IS the capture AC-16 (a)
                (owner 2026-09-09, wording amended 2026-09-13 D7 arm A) asked for: it routes
                through Sentry's captureException with the error object and the verbatim message
-               in `extra.msg` — see `src/lib/logger.ts:45-47`
+               in `extra.msg` — see src/lib/logger.ts ("Sentry.captureException(err ?? new Error(msg)")
                (`Sentry.captureException(err ?? new Error(msg), {`) for the exact call, which since
-               `DECISION Phase 88.6-58` (`logger.ts:36`) also carries `extra.upstreamMessage`
+               `DECISION Phase 88.6-58` (src/lib/logger.ts ("DECISION Phase 88.6-58 (review MEDLOW-13, AC-4 arm A)")) also carries `extra.upstreamMessage`
                beside `extra.msg` when the error has one, which is
                deliberately NOT reproduced here so a call-shaped grep over this file cannot read
                prose as a second capture. Adding a real second capture beside it is a decision,
@@ -122,11 +122,11 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                escalation requirement, and it is the ONLY new Sentry EVENT plan 33 creates.
                Do not generalise it: the plan's other four conversions are breadcrumbs.
 
-               T-84-01 (`src/lib/logger.ts:8-13`) bounds what the CALLER adds — no group name,
+               T-84-01 (src/lib/logger.ts ("Info-Disclosure threat T-84-01")) bounds what the CALLER adds — no group name,
                no request-body field, no member list, no invite URL or token. It does NOT bound
                the error's own `name`/`message`/stack, which `exceptionFromError` serialises
                into `exception.values[0]`; on this path the backend echoes its own text
-               (`Sonnet/routes/groups.js:332`, `res.status(500).json({ error: error.message });`,
+               (`Sonnet/routes/groups.js`, `res.status(500).json({ error: error.message });`,
                BE `cc497d1`). That residual is owner-accepted
                (2026-09-13). */
             logger.error('Error creating group:', error);
@@ -137,9 +137,9 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                register's own `unknown` line answers and no copy is authored (P1).
 
                A VALUE change ONLY — this is UI-SPEC §14 A-30's NAMED §6.2 EXCEPTION, scoped to
-               this file alone. The modal-submit toast arm (§6.2, `88.6-UI-SPEC.md:594`, the mutation / modal-submit row)
+               this file alone. The modal-submit toast arm (§6.2, planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("**Mutation / action** failure where the user's context must not move"), the mutation / modal-submit row)
                is declined here because §6.2's own announcement clause
-               (`88.6-UI-SPEC.md:596-598`, "Announcement: exactly one live region per failure") forbids a second live region, and this
+               (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("Announcement: exactly one live region per failure.")) forbids a second live region, and this
                surface already owns one WITH field association (`aria-invalid` / `aria-describedby`
                on the name input, over the `role="alert"` node below under the
                `DECISION Phase 88-29` marker). A toast would cost that association. Plans 31 and 32
@@ -262,7 +262,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                     PAIRS, and this is a container/input with no hover half.
                                     Going back to the built-in family is a decision, not a
                                     cleanup. */}
-                                {/* DECISION Phase 88.6-44 (T-88.6-124, house rule `Input.tsx:11-19`):
+                                {/* DECISION Phase 88.6-44 (T-88.6-124, house rule src/components/ui/Input.tsx ("HOUSE RULE (88-33 Task 8, fork 5")):
                                     an ARIA-supplied name mirroring the placeholder, chosen OVER a
                                     visible <label> row. Measured by the composed audit before this
                                     edit: the control had id + name and NO label source at all —

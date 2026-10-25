@@ -167,7 +167,7 @@ export default function CalendarListView({
      started earlier today used to sit under "Later" (W58). The boundary is still decided
      entirely in `upcomingEvents.ts` and still travels here as membership only — there is no new
      time or status comparison in this file. SHEET ARM ONLY: the desktop arms pass none of these
-     props (`EventCalendar.js:233-239`) and are pixel-unchanged. */
+     props (src/app/components/EventCalendar.js ("<CalendarListView")) and are pixel-unchanged. */
   happeningNowIds = EMPTY_ID_SET,
   startedNotLiveIds = EMPTY_ID_SET,
   thisWeekIds = EMPTY_ID_SET,
@@ -353,7 +353,7 @@ export default function CalendarListView({
      CORRECTED: "two passes over a handful of rows" no longer describes what this block does.
      The happening-now source is `pastEvents` ∪ `todayAndFutureEvents` and the past COUNT is a
      full-history pass, and `pastEvents` derives from the RAW, unfiltered `getUserEvents` payload
-     (`UserHomePage.js:88`/`:91`) — the user's whole history, with no backend date filter. The
+     (src/app/userHome/UserHomePage.js ("eventsAPI.getUserEvents(selfUuid).then(evts => {") / src/app/userHome/UserHomePage.js ("UpcomingEventsCard does its own filter+sort; pass the raw list.")) — the user's whole history, with no backend date filter. The
      decision stands; the premise behind it is restated here rather than left pointing at a cost
      profile this block no longer has. */
   const {
@@ -667,7 +667,7 @@ export default function CalendarListView({
               window: the event's `duration_minutes` when it carries one, else the ruled default
               of EIGHT HOURS. It is decided ONCE in `upcomingEvents.ts` and arrives here as set
               membership — this file still performs no time comparison of its own. SHEET ARM
-              ONLY: the desktop arms pass no id sets (`EventCalendar.js:233-239`) and are
+              ONLY: the desktop arms pass no id sets (src/app/components/EventCalendar.js ("<CalendarListView")) and are
               pixel-unchanged.
 
               AMENDED Phase 88.5 (D-04, OWNER RULING 2a) — section 1 now SUBDIVIDES; everything
@@ -816,14 +816,14 @@ export default function CalendarListView({
                           `text-content-muted text-sm` — and the string is byte-unchanged (P1).
 
                           REJECTED: `<EmptyState>`. Its own `DECISION Phase 88-18 (D2)` marker
-                          (EmptyState.tsx:18-28, owner ruling 2026-08-15, `88-UAT.md:222-236`)
+                          (src/components/ui/EmptyState.tsx ("DECISION Phase 88-33 Task 7 (D2, owner-ruled 2026-08-15)"), owner ruling 2026-08-15, planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-UAT.md ("D2 RULED 2026-08-15 (owner, packet review)")) (AMENDED 2026-10-24, 88.6.2-34: the D2 marker is the Phase 88-33 Task 7 one anchored here; 88-18 is that file's heading-level marker)
                           makes the full icon+heading+body formula PAGE-LEVEL ONLY and says in
                           terms not to upgrade section empties as a cleanup. It is also
                           unsatisfiable here: the component REQUIRES `icon`, `heading` and `body`
                           while this site is a single `<p>`, and it would introduce an `h3` that
                           this file's `EXPECTED_LEVELS` entry does not carry.
 
-                          GROUND: the sheet is `bg-surface-card` (`BottomSheet.tsx:213`), and
+                          GROUND: the sheet is `bg-surface-card` (src/components/ui/BottomSheet.tsx ("rounded-t-[12px] border-t border-line bg-surface-card")), and
                           `tokenContrast.test.ts` pins `--color-text-muted` on `--color-bg-card`
                           at >= 4.5 in BOTH themes. Upgrading this to the full formula is a
                           decision, not a cleanup. */}
@@ -846,7 +846,7 @@ export default function CalendarListView({
                       This label is phrasing content, so the real button is available.
 
                       LAYOUT LIVES ON THE INNER SPAN, deliberately: `.btn` is UNLAYERED
-                      (`globals.css:1040-1052`) and sets `justify-content: center`, so a
+                      (src/app/globals.css ("justify-content: center;")) and sets `justify-content: center`, so a
                       `justify-between` utility on the button itself would be dead on arrival —
                       the failure mode the Button primitive's own marker records eight times over.
 
@@ -965,7 +965,7 @@ export default function CalendarListView({
                       marker there rather than a second copy of it here.
 
                       GROUND, VERIFIED rather than assumed: both desktop hosts wrap this
-                      component in `.card` (`EventCalendar.js:190`), whose `@utility card` rule
+                      component in `.card` (src/app/components/EventCalendar.js ("<CalendarListView")), whose `@utility card` rule
                       is `background-color: var(--color-bg-card)` — the same ground
                       `bg-surface-card` paints. `tokenContrast.test.ts` pins
                       `--color-text-muted` on `--color-bg-card` at >= 4.5 in BOTH themes, so the

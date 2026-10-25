@@ -156,7 +156,7 @@ export default function BrowseMoreModal({
              theirs from the AC-2 `logger.error` conversion, whose `exception.values[0]` also
              carries the error's message and stack.
 
-             CLASS-ONLY, matching `FeedbackForm.js:345` (`feedback submit failed`): a wrapped
+             CLASS-ONLY, matching src/app/components/FeedbackForm.js ("feedback submit failed"): a wrapped
              Error naming the class and, when present, the envelope code — never `err.message`,
              never the response body. Widening it is a decision, not a cleanup.
 
@@ -165,20 +165,20 @@ export default function BrowseMoreModal({
              src/app/components/QuickSuggestions.js ("if (lastReportedKeyRef.current !== reportKey)")), re-armed
              when the dialog opens and on a successful response — because this effect re-runs on
              every filter tap, and during an outage it filed one event per tap (WR-106,
-             `88.6-REVIEW-2026-09-24-triaged.md:395`, `WR-106`). A different failure code is a
+             planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-REVIEW-2026-09-24-triaged.md ("### WR-106: BrowseMoreModal adds an unthrottled")). A different failure code is a
              new episode. REJECTED: demoting it to a `logger.info` breadcrumb (the review's
              first fix option and the research pick, DF-4) — this capture is an AC-16 (a)
-             escalation (owner, 2026-09-09; `88.6-32-PLAN.md:829`, `T-88.6-140`), and 88.6's D2
-             ruling keeps escalations a plan ADDED at event level (`88.6-CONTEXT.md:336`,
-             `where a plan ADDS an escalation`); a breadcrumb files nothing on its own, so an
+             escalation (owner, 2026-09-09; planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-32-PLAN.md ("T-88.6-140")), and 88.6's D2
+             ruling keeps escalations a plan ADDED at event level (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-CONTEXT.md ("where a plan ADDS an escalation"));
+             a breadcrumb files nothing on its own, so an
              outage of this endpoint would reach no operator. REJECTED: `logger.error` — it
              forwards the error's message and stack, and this site is class-only.
-             CORRECTION of WR-106's first objection (`88.6-REVIEW-2026-09-24-triaged.md:402`):
+             CORRECTION of WR-106's first objection (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-REVIEW-2026-09-24-triaged.md ("hand-rolled rather than a")):
              the allowlist sentence above gave the wrong reason — `logger` is not `console`, so
              the allowlist never mattered; the true reason this capture is hand-rolled is the
-             class-only payload. WR-106's second objection (`:403`) does not hold: the three
-             siblings did stay at `logger.error` as D2's AC-16 carve-out (`88.6-CONTEXT.md:328`,
-             `survives ONLY where an owner ruling requires a Sentry EVENT`). The sentences above
+             class-only payload. WR-106's second objection (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-REVIEW-2026-09-24-triaged.md ("its three siblings get theirs from the AC-2")) does not hold: the three
+             siblings did stay at `logger.error` as D2's AC-16 carve-out (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-CONTEXT.md ("survives ONLY where an owner ruling requires a Sentry EVENT")).
+             The sentences above
              are kept as history. */
           const cls = (err && err.name) || 'Error';
           const code = err && typeof err.code === 'string' ? ` ${err.code}` : '';
@@ -192,7 +192,7 @@ export default function BrowseMoreModal({
           /* NO `fallback:` OPTION, deliberately. UI-SPEC §6.3's register holds no ratified
              string for this site, and an executor never mints user-visible copy — so the
              code-less arm takes the register's own `unknown` copy
-             (`useFetchErrorState.ts:123`, `unknown: 'Something went wrong`) rather than a newly-authored sentence. Adding a
+             (src/components/ui/useFetchErrorState.ts ("unknown: 'Something went wrong. Refresh the page to try again.',")) rather than a newly-authored sentence. Adding a
              fallback here means ratifying one first. */
           setError(getFetchErrorMessage(err));
         }
@@ -337,7 +337,7 @@ export default function BrowseMoreModal({
                 rung is a decision, not a cleanup, and it is a decision that loses.
 
                 DECISION Phase 88.6-32 (AC-10, owner ruling 2026-09-09 option 1):
-                under plan 05's ARM A (`A-2-ARM: A`, 88.6-05-SUMMARY.md:186) the
+                under plan 05's ARM A (`A-2-ARM: A`, planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-05-SUMMARY.md ("## A-2 ruling — the greppable token")) the
                 focus ring has exactly one home — `Button.tsx`'s cva base — and no
                 global `.btn:focus-visible` rule exists. These two wear no `Button`,
                 so without the string below they would be the only controls in the
@@ -400,7 +400,7 @@ export default function BrowseMoreModal({
                    `max-md:min-h-11`, and THESE ARE THE EXACT CONTROLS 87.8 CITED when it rejected
                    a blanket height floor: this box sits between two `w-8 h-8` (32px) stepper
                    buttons, so growing it to 44px at phone leaves a square-button/tall-box row
-                   that reads as broken. 88-SPEC.md:111 requires the height floor be decided
+                   that reads as broken. planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-SPEC.md ("never a blanket rule with no census") requires the height floor be decided
                    against a call-site census, "never a blanket rule with no census", and that
                    census is DEF-88-20-01's, not this plan's. Req 1 is the 16px TEXT floor, which
                    is what changes here; the touch-target question stays with its owner.
@@ -624,7 +624,7 @@ function EmptyState({ variant, onAddGames, onResetFilters }) {
             text-sm` are dead under unlayered `.btn` and are deleted; `Slot` concatenates the
             child's className WITHOUT tailwind-merge, so any surviving utility goes on
             `<Button className>`, never on the `<Link>`. Shipped precedent:
-            `GroupLibrary.js:194` (`Button asChild`). */}
+            src/app/components/GroupLibrary.js ("<Button asChild"). */}
         <Button asChild variant="primary">
           <Link href="/userProfile" onClick={onAddGames}>
             Add games to your collection
