@@ -86,7 +86,6 @@ test.describe('Games to Bring at 375px (88.6.2-22)', () => {
       'the owned game row never rendered — the owned-games read is answered with one game in the browser (answerGet)',
     ).toBeVisible({ timeout: 10_000 });
 
-    await page.addStyleTag({ content: '[role="dialog"] [role="checkbox"] { padding: 0 !important; }' }); // zz-plant-88.6.2-29 M-22a
     await settleAnimations(dialog);
     await expectTouchTarget(row, 'the Games to Bring row', {
       withinViewportOf: page,

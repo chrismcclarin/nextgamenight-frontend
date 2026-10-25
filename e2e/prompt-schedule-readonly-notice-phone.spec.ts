@@ -120,7 +120,7 @@ test.describe('Customize Group check-ins summary at 375px (88.6.2-22)', () => {
       'a Retry showed before the refresh failed',
     ).toHaveCount(0);
 
-    await refetch.release(SETTINGS_BODY, 200); // zz-plant-88.6.2-29 M-22b
+    await refetch.release(FAILURE_BODY, 500);
 
     const retry = summary.getByRole('button', { name: 'Retry', exact: true });
     await expect(retry, 'the failed refresh never showed the notice Retry').toBeVisible({ timeout: 10_000 });

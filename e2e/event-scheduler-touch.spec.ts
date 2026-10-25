@@ -1390,7 +1390,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     test.use({ colorScheme: 'light' });
 
     test.beforeEach(async ({ page }) => {
-      await page.addInitScript(() => window.localStorage.setItem('theme', 'dark')); // zz-plant-88.6.2-29 M-22c
+      await forceLightMode(page);
     });
 
     test('day labels render complete in LIGHT — nothing is clipped at 375px (W47 part 1)', async ({ page }) => {

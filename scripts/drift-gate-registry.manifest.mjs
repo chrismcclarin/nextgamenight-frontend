@@ -134,6 +134,7 @@ export const gates = [
   { file: 'src/lib/sentryClientReplayGate.test.ts', min: 13, why: 'Phase 88.6 R-7 + 88.6-61 H-1 — Sentry init is handed the replay and tracing gates' },
   { file: 'src/lib/sentry.scrub.test.ts', min: 61, why: 'Phase 84 T-84-01 + 88.6-61 H-1 — the Sentry scrub functions' },
   { file: 'src/app/breadcrumbNavOverflow.test.ts', min: 12, why: 'Phase 88.6 UAT3-D1 — breadcrumb pills cap at their container; a tree walk over src' },
+  { file: 'src/app/cascadeOrder.test.ts', min: 11, why: 'Phase 88.6-05/06 — cascade order and the focus-ring home; a ring census over src' },
   { file: 'src/app/copyTable886_1.test.ts', min: 8, why: 'Phase 88.6.1-64 AC-33 — the owner-ratified copy table; a roster and sweep over src' },
   { file: 'src/app/loggerCtxShape.test.ts', min: 10, why: 'Phase 88.6.1 ACCEPT 14 — the one logger-context scanner (T-84-01); every file under src' },
   { file: 'src/app/rawStatusPalette.test.ts', min: 3, why: 'Phase 88.6 Top Fix 1 — no raw red palette on error ink; a scan over src (SPEC R6)' },
