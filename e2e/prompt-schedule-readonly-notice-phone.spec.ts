@@ -48,7 +48,8 @@ const SETTINGS_BODY = {
   schedules: [
     {
       id: '00000000-0000-4000-8000-0000000000d1',
-      name: SCHEDULE_NAME,
+      // quick-261025-dzo (88.6.2 code review HIGH): the backend writes template_name only, and
+      // the component reads it first since FE 78724a9; a stubbed name here would hide a regression.
       template_name: SCHEDULE_NAME,
       is_active: true,
     },
