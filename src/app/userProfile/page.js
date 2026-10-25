@@ -52,7 +52,7 @@ import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { focusElement, focusPageFloor } from '../../components/ui/focusPageFloor';
 // AC-2 convert-on-touch (owner ruling 2026-09-09; LEVEL AMENDED 2026-09-13). This file's
 // 20 raw console calls route through the house logger at `info`, which is
-// Sentry.addBreadcrumb (logger.ts:52-53) — a BREADCRUMB, not an event. `errCtx` is the
+// Sentry.addBreadcrumb (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg")) — a BREADCRUMB, not an event. `errCtx` is the
 // shared name+message builder (88.6-13); the raw Error is never passed as `ctx`.
 import { logger, errCtx } from '../../lib/logger';
 
@@ -810,7 +810,7 @@ function Profile(){
         try {
             setPhoneError(null);
             // 88-CODE-REVIEW H1: the wrong-code outcome is a 200 { verified: false }
-            // (routes/users.js:823-828 — the Twilio check not approving is a response,
+            // (backend:Sonnet/routes/users.js ("res.json({ verified: false, error: 'Invalid or expired code' });") — the Twilio check not approving is a response,
             // not a throw; only MALFORMED input 400s). apiFetch throws solely on
             // !response.ok, so discarding this body took the success path on a wrong
             // code: phone_verified true in local state + the immortal self cache while
@@ -869,8 +869,8 @@ function Profile(){
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't check that code. Please try again.",
-                    // The 400 arm covers MALFORMED/missing input only (routes/users.js:796-799,
-                    // a code that is not 6 digits, and :807-809, no phone on file) — the actual
+                    // The 400 arm covers MALFORMED/missing input only (backend:Sonnet/routes/users.js ("Code must be a string of exactly 6 digits"),
+                    // a code that is not 6 digits, and backend:Sonnet/routes/users.js ("No phone number on file to verify"), no phone on file) — the actual
                     // wrong-code outcome is the 200 { verified: false } branch above, which
                     // reuses the same ratified copy.
                     byCode: { validation: "That code didn't match. Check it and try again." },
@@ -963,7 +963,7 @@ function Profile(){
         }
     };
 
-    // Cleanup the two-tap revert timer on unmount (mirrors KebabMenu lines 64-71).
+    // Cleanup the two-tap revert timer on unmount (mirrors src/app/components/KebabMenu.js ("pending timer must not fire after unmount")).
     // R2 #29: the resend cooldown ticker is cleared HERE too — an ADDITION to this effect's
     // body, deliberately not a second unmount effect. 88.6.1-60: so is the BGG import outcome's
     // hold observer, and the BGG import's result timer is cleared HERE too.
@@ -1783,7 +1783,7 @@ function Profile(){
             toast.error('Please select at least one day.');
             return;
         }
-        // 88-CODE-REVIEW MED#7: client-side mirror of availability.js:130 — the code-less
+        // 88-CODE-REVIEW MED#7: client-side mirror of backend:Sonnet/routes/availability.js ("router.post('/user/:user_id/recurring',") — the code-less
         // 400 this triggers maps to generic "refresh the page" copy that both hides the
         // fix and discards the form. HH:MM strings compare correctly as strings.
         if (recurringForm.startTime >= recurringForm.endTime) {
@@ -1880,7 +1880,7 @@ function Profile(){
             return;
         }
         // 88-CODE-REVIEW MED#7: same client-side start<end mirror as the recurring form
-        // (availability.js:208 on this path).
+        // (backend:Sonnet/routes/availability.js ("router.post('/user/:user_id/override',") on this path).
         if (specificForm.startTime >= specificForm.endTime) {
             toast.error('Start time must be before end time.');
             return;
@@ -2069,7 +2069,7 @@ function Profile(){
                CHOSEN, the owner's own design (2026-10-05), which replaced this plan's options K and C:
                the box still empties after five seconds and the result line still goes, because a
                second press re-imports and every import makes two BoardGameGeek calls
-               (periodictabletopbackend_v2/Sonnet/routes/userGames.js:173-174) the owner does not want
+               (backend:Sonnet/routes/userGames.js ("bggService.getUserCollection(bgg_username.trim(), 'boardgameexpansion')")) the owner does not want
                made by accident; but if focus is still on Import Collection at that moment it first
                moves to + Add from BGG beside it (the same button reads Hide Search while the search is
                open), else the My Game Collection heading, else the page floor: D-05's order through
@@ -2140,7 +2140,7 @@ function Profile(){
        WHY NOT THE IN-PLACE SWAP. The report it replaces executed in the component's RENDER
        BODY, inside the `if (error)` branch below — not in a handler, not in an effect. An
        unlatched render-body report re-enters on EVERY paint, and the Sentry breadcrumb buffer
-       is finite (`@sentry/core/build/cjs/breadcrumbs.js:11`, DEFAULT_BREADCRUMBS = 100; nothing
+       is finite (node_modules:@sentry/core/build/cjs/breadcrumbs.js ("const DEFAULT_BREADCRUMBS = 100;"), DEFAULT_BREADCRUMBS = 100; nothing
        sets `maxBreadcrumbs` in `sentry.client.config.js`). So an in-place swap would evict
        every other breadcrumb in the session and destroy the diagnostic value of whatever event
        that session later files. That is the same unbounded per-paint flood
@@ -2492,7 +2492,7 @@ function Profile(){
                                     population this phase exists to repair, whose header would
                                     REGRESS from a working address to a sentinel. The test is
                                     the BROAD `@auth0` substring per DECISION Phase 88.2
-                                    NIX-AUTH0 (services/groupOwnershipOfferService.js:97-114),
+                                    NIX-AUTH0 (backend:Sonnet/services/groupOwnershipOfferService.js ("DECISION Phase 88.2 NIX-AUTH0 (owner, 2026-07-27")),
                                     never `@auth0.local` alone. And a synthetic value does NOT
                                     fall through to `user.email`: substituting a real session
                                     address for the app address is the stale-value defect this
@@ -2691,7 +2691,7 @@ function Profile(){
                                                     (2) The IN-FLIGHT state is `aria-disabled` plus the
                                                     `verifyInFlightRef` refusal in `handleVerifyCode` — the
                                                     rule of POSITION (`DECISION Phase 88.6-22`,
-                                                    FriendInvitePanel.js:59): this is the control the user
+                                                    src/app/components/FriendInvitePanel.js ("the rule of KIND + the rule of POSITION")): this is the control the user
                                                     just pressed, so it keeps focus and a second press is
                                                     refused. Its label while checking is copy row P1.
                                                     REJECTED: (a) native `disabled` while checking — it
@@ -3490,19 +3490,19 @@ function Profile(){
                                             nothing on a field the user is entitled to leave blank.
                                             Native attributes, so the phone pickers this was reported
                                             from grey out the unreachable days; `Input` spreads them
-                                            straight onto the element (`src/components/ui/Input.tsx:143`).
+                                            straight onto the element (src/components/ui/Input.tsx ("type={type}")).
 
                                             THE TIME PAIRS ABOVE ARE DELIBERATELY NOT TOUCHED. Both
                                             already refuse an end before the start with a ratified toast,
                                             added by 88-CODE-REVIEW MED#7 —
-                                            `userProfile/page.js:1760` (recurring) and `:1855`
+                                            this file ("if (recurringForm.startTime >= recurringForm.endTime) {") (recurring) and this file ("if (specificForm.startTime >= specificForm.endTime) {")
                                             (specific-date). Adding a second mechanism on top of a shipped
                                             guard is how two answers to one question get created. The
                                             owner's report named four surfaces; two were already closed.
 
                                             NARROWING, NOT A COMPLETE GUARD, and the gap is named rather
                                             than left to be found: `min`/`max` ADMIT EQUALITY, while the
-                                            server's rule is STRICT — `routes/availability.js:137` rejects
+                                            server's rule is STRICT — backend:Sonnet/routes/availability.js ("if (endDateObj && startDate >= endDateObj) {") rejects
                                             `startDate >= endDateObj` — so a same-day start and end still
                                             reaches the code-less 400 that renders the generic register
                                             copy and discards the form. Closing that would need either a
@@ -3823,7 +3823,7 @@ function Profile(){
                     {/* DECISION Phase 88.6.1-18 (Replay, W016 / D-35): while the reset runs, Replay is
                         `aria-disabled` and `handleReplayTutorial` refuses a second press through
                         `replayInFlightRef` — the rule of POSITION (`DECISION Phase 88.6-22`,
-                        FriendInvitePanel.js:59): this is the control the user just pressed
+                        src/app/components/FriendInvitePanel.js ("the rule of KIND + the rule of POSITION")): this is the control the user just pressed
                         (Requirement 4, SPEC amendment row 11).
                         WHY: a natively disabled button drops focus to <body> in a real browser the
                         moment it is pressed, and the native attribute was the only thing refusing a
@@ -3842,7 +3842,7 @@ function Profile(){
                         Disclosed visible delta: while resetting, Replay shows the DR-C gated primary
                         colour pair instead of the 50% native-disabled wash, and keeps that pair
                         while the tour is open (under the tour's scrim) — the same disclosure
-                        FriendInvitePanel.js:87-90 makes. The in-flight label is existing text, not
+                        src/app/components/FriendInvitePanel.js ("VISIBLE DELTA, disclosed rather than discovered") makes. The in-flight label is existing text, not
                         new copy (D-31 not triggered). Restoring the native attribute or dropping
                         the latch is a decision, not a cleanup. */}
                     <Button
@@ -4111,7 +4111,7 @@ function Profile(){
                         and collection list behind a false notice); (b) the compact notice beside the
                         content (its sentence is false there; plan 30's ruling on the compact text);
                         (c) removing the ternaries (their announcement gap is Phase 92's,
-                        `.planning/deferred/phase-92.md:84`, which says keep them); (d) leaving the
+                        planning:.planning/deferred/phase-92.md ("Do not delete the ternaries."), which says keep them); (d) leaving the
                         availability lists' empty sentences in the no-row state (a false statement of
                         fact); (e) no `focusTarget` on the collection and availability notices (focus
                         would jump to the top of the page, far from the card on a phone).

@@ -254,7 +254,7 @@ export default function RsvpPage() {
 
            [AMENDED 2026-09-29 — plan 88.6-58 task 7, review MEDLOW-16: the discriminant set is
            FOUR bodies, not two. The two 410s above carry no `code` and no `message`; the two 403s
-           below (`rsvp.js` `account_not_found` :235-238, `expired_link` :260-263) carry a
+           below (`rsvp.js` `account_not_found`, `expired_link`) carry a
            `message` that the FE deliberately does NOT render (R1). The roster count is now 4
            sites; Phase 93's retighten precondition lists all four literals.] */
         if (result.success) {
@@ -280,7 +280,7 @@ export default function RsvpPage() {
         if (unmountedRef.current) return;
         /* AC-2 WIDENED (owner ruling 2026-09-09), level AMENDED 2026-09-13: the file's one raw
            `console.error` retired onto the house logger at `logger.info` — a Sentry BREADCRUMB
-           (`logger.ts:52-53`, anchor `Sentry.addBreadcrumb`), NOT an event. `logger.error` is `Sentry.captureException` and was
+           (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg"), anchor `Sentry.addBreadcrumb`), NOT an event. `logger.error` is `Sentry.captureException` and was
            the level first ruled on 2026-09-09; it is the RECORDED REJECTED ARM, because a
            captured event flushes the Session Replay buffer for the rest of that session
            (`sentry.client.config.js` `replaysOnErrorSampleRate` against `replaysSessionSampleRate`),
@@ -509,7 +509,7 @@ export default function RsvpPage() {
           {errorInfo?.group_id && (
             /* DECISION Phase 88.6-63 (review round 2 #10): the href is the canonical group page
                `/groupHomePage?id=<encoded group_id>` (the page reads `searchParams.get('id')`,
-               groupHomePage/page.js:80; the backend builds the same URL, Sonnet/routes/events.js:1698),
+               src/app/groupHomePage/page.js ("const Router = searchParams.get("); the backend builds the same URL, backend:Sonnet/routes/events.js ("const groupUrl = ")),
                chosen OVER keeping `/groups/<id>` — no `src/app/groups/` route is tracked, so that
                link 404ed — and OVER adding a `/groups/[id]` route for one link. `encodeURIComponent`
                keeps a body value from injecting query parameters (T-88.6-G47). §3.2's `asChild`

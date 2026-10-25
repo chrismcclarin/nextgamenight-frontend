@@ -365,7 +365,7 @@ function FriendsPage() {
        divergence Req 14 exists to remove; the identity gate a few lines up already uses the banner.
 
        The adapter is contract-backed, not a shim around a private API: `useFetchErrorState`
-       documents that it reads ONLY `isError`/`error`/`refetch` (useFetchErrorState.ts:261, the
+       documents that it reads ONLY `isError`/`error`/`refetch` (src/components/ui/useFetchErrorState.ts ("@param query a"), the
        @param line ending "are read"; re-pointed 88.6.1-40). */
     const fetchFriendsRef = useRef(null);
     useEffect(() => {
@@ -482,7 +482,7 @@ function FriendsPage() {
                    match is RETIRED, and it was retired BECAUSE Phase 88.6 dropped the
                    `body.error` legacy alias from `extractErrorMessage` (api.ts), not tidied
                    away as cleanup. The string the second arm matched came from
-                   Sonnet/routes/friendships.js:251, a RAW 404 with no `code` and no
+                   backend:Sonnet/routes/friendships.js ("No user found with that email"), a RAW 404 with no `code` and no
                    `message`, so after the drop `ApiError.message` is the bare
                    "HTTP error! status: 404" template and that arm could never match again.
                    The user-visible outcome survived only INCIDENTALLY, because the sibling
@@ -922,7 +922,7 @@ function FriendsPage() {
        true — but the bare `!selfUuid` spinner rendered above them, so nothing that already knew
        the backend was down could reach the screen. The window is not milliseconds: every attempt
        goes through the BFF proxy, whose own PROXY_TIMEOUT_MS is 30_000
-       (app/api/[...path]/route.ts:22), and `shouldRetry` grants one retry — which is the walk's
+       (src/app/api/[...path]/route.ts ("const PROXY_TIMEOUT_MS = 30_000;")), and `shouldRetry` grants one retry — which is the walk's
        "observed 30-60s" / "60+s" of blank page, not a missing terminal state.
 
        D-09 IS PRESERVED, not weakened: this branch renders NO friend↔friend classification — no
@@ -1000,7 +1000,7 @@ function FriendsPage() {
                 {/* The remove-friend gate's live region. Mounted HERE — once, outside the
                     tab conditional and outside the row map — because a live region that
                     mounts with the armed row announces nothing (empty-first contract,
-                    StatusRegion.tsx:9-17, its EMPTY-FIRST bullet). Moving it inside the
+                    src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted"), its EMPTY-FIRST bullet). Moving it inside the
                     Friends tab or into the row is a silent a11y regression, not a tidy-up. That
                     premise holds because this gate's region is POLITE; an inserted alert would
                     be announced (D-42). */}
@@ -1309,8 +1309,8 @@ function FriendsPage() {
                                                         (padding, src/app/globals.css ("padding: 0.5rem 1rem;")), `text-sm` (font-size, src/app/globals.css ("font-size: 0.875rem;")),
                                                         `font-medium` (font-weight 600, src/app/globals.css ("font-weight: 600;")), `flex items-center
                                                         gap-2` (`display: inline-flex` / `align-items` / `gap`,
-                                                        `:2342-2345`) and the `disabled:` pair (`.btn:disabled`,
-                                                        `:2397-2400`). Re-adding any of them changes no pixel.
+                                                        src/app/globals.css ("display: inline-flex;")) and the `disabled:` pair (`.btn:disabled`,
+                                                        src/app/globals.css ("opacity: 0.5;")). Re-adding any of them changes no pixel.
                                                         (Cites re-pointed 88.6.1-40 to the `.btn {` block
                                                         and its `.btn:disabled {` block.) */}
                                                     <Button
