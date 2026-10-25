@@ -592,6 +592,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y age
 
+      # DECISION Phase 88.6.2 code review (B-ML1, B-ML3): the encrypt script's 11-case --self-test
+      # and its P3 node test run here, once, directly after age is installed and before the tests,
+      # chosen OVER leaving them to a local run. The real encrypt steps pass whether or not the
+      # zip and error-context.md exclusions, the --match filter or the fail-closed trap still
+      # work, so without this step a broken exclusion keeps every required check green. Placed
+      # before the tests so a broken checker reds the job before it vouches for any evidence.
+      # The env prefix keeps this line out of the encrypt-invocation reader in
+      # src/lib/ci-grep-gate.fixture.test.ts, which pairs every real invocation with an upload.
+      # No `if:`, no `||`, no continue-on-error (lockstep-pinned by that same file).
+      - name: Self-test the evidence encryption (encrypt-evidence.sh --self-test and its P3 test)
+        shell: bash
+        run: |
+          set -euo pipefail
+          AGE_BIN=age AGE_KEYGEN_BIN=age-keygen bash scripts/encrypt-evidence.sh --self-test
+          node --test --test-reporter=tap scripts/encrypt-evidence.test.mjs
+
       # DECISION Phase 87.7 D-13/D-15: the PR lane is pinned with `--project`, chosen OVER a
       # separate report-only / continue-on-error mobile job. The rejected pattern is the exact
       # one Phase 88.4 structurally BANNED in the backend repo (`verify-gate-armed.js` fails CI

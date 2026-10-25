@@ -1121,6 +1121,7 @@ const FAILURE_UPLOAD_STEP = '- name: Upload Playwright failure evidence';
 const ENCRYPT_FAILURE_STEP = '- name: Encrypt Playwright failure evidence';
 const ENCRYPT_MONTH_TILE_STEP = '- name: Encrypt desktop month-tile screenshots';
 const INSTALL_AGE_STEP = 'Install age (evidence encryption — T-88.6-G34)';
+const SELF_TEST_AGE_STEP = 'Self-test the evidence encryption (encrypt-evidence.sh --self-test and its P3 test)';
 const ENCRYPT_SCRIPT = resolve(__dirname, '../../scripts/encrypt-evidence.sh');
 const RECIPIENT_FILE = '.github/evidence-recipient.txt';
 // An age identity line, classic or post-quantum, matched case-insensitively by git grep.
@@ -1459,15 +1460,43 @@ describe('Phase 88.6.2-27 — failure evidence leaves CI only as age ciphertext 
     const install = installs[0];
     const ia = steps.indexOf(install);
     expect(steps[ia - 1]?.name.startsWith('Install Playwright browsers'), 'Install age must sit directly after Install Playwright browsers').toBe(true);
-    expect(steps[ia + 1]?.name.startsWith('Run Playwright journeys'), 'Install age must sit directly before Run Playwright journeys').toBe(true);
+    // Code review B-ML1/B-ML3: the encrypt self-test step sits between Install age and the tests.
+    expect(steps[ia + 1]?.name, 'Install age must sit directly before the encrypt self-test step').toBe(SELF_TEST_AGE_STEP);
     expect(steps[ia - 1].end, 'Install age and Install Playwright browsers are not adjacent steps of one job').toBe(install.start);
-    expect(install.end, 'Install age and Run Playwright journeys are not adjacent steps of one job').toBe(steps[ia + 1].start);
+    expect(install.end, 'Install age and the encrypt self-test step are not adjacent steps of one job').toBe(steps[ia + 1].start);
     expect(stepKey(install, 'if'), 'Install age must carry no if:').toBeUndefined();
     expect(stepKey(install, 'shell')).toBe('bash');
     expect(runLines(install)).toEqual(['set -euo pipefail', 'sudo apt-get update', 'sudo apt-get install -y age']);
     const installBody = install.lines.filter((l) => !isYamlComment(l)).join('\n');
     expect(installBody.includes('||'), 'Install age must not swallow a failure with ||').toBe(false);
     expect(installBody.includes('continue-on-error'), 'Install age must not be continue-on-error').toBe(false);
+  });
+
+  test('code review B-ML1/B-ML3: the encrypt self-test and its P3 test run in CI, after Install age and directly before the tests', () => {
+    const steps = ciSteps();
+    const found = steps.filter((s) => s.name === SELF_TEST_AGE_STEP);
+    expect(found, 'exactly one encrypt self-test step, under its exact name').toHaveLength(1);
+    const st = found[0];
+    const at = steps.indexOf(st);
+    expect(steps[at - 1]?.name, 'the encrypt self-test step must sit directly after Install age').toBe(INSTALL_AGE_STEP);
+    expect(steps[at - 1].end, 'Install age and the encrypt self-test step are not adjacent steps of one job').toBe(st.start);
+    expect(steps[at + 1]?.name.startsWith('Run Playwright journeys'), 'the encrypt self-test step must sit directly before Run Playwright journeys').toBe(true);
+    expect(st.end, 'the encrypt self-test step and Run Playwright journeys are not adjacent steps of one job').toBe(steps[at + 1].start);
+    expect(stepKey(st, 'if'), 'the encrypt self-test step must carry no if:').toBeUndefined();
+    expect(stepKey(st, 'shell')).toBe('bash');
+    expect(runLines(st)).toEqual([
+      'set -euo pipefail',
+      'AGE_BIN=age AGE_KEYGEN_BIN=age-keygen bash scripts/encrypt-evidence.sh --self-test',
+      'node --test --test-reporter=tap scripts/encrypt-evidence.test.mjs',
+    ]);
+    const body = st.lines.filter((l) => !isYamlComment(l)).join('\n');
+    expect(body.includes('||'), 'the encrypt self-test step must not swallow a failure with ||').toBe(false);
+    expect(body.includes('continue-on-error'), 'the encrypt self-test step must not be continue-on-error').toBe(false);
+    // The self-test line is not a real encrypt run, so the upload pairing above never counts it.
+    expect(encryptInvocations().some((i) => i.step === SELF_TEST_AGE_STEP), 'the self-test line was read as an encrypt invocation').toBe(false);
+    // What the step runs still exists, and the script still declares its eleven cases.
+    expect(ENCRYPT_SCRIPT_CODE).toContain('self-test: PASS $ST_PASS of 11');
+    expect(existsSync(resolve(FE_ROOT, 'scripts/encrypt-evidence.test.mjs')), 'scripts/encrypt-evidence.test.mjs is gone').toBe(true);
   });
 
   test('P3: the committed recipient is one age1 public key and no private key material', () => {
