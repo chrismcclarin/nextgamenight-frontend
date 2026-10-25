@@ -47,8 +47,8 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // The full banner's title at this site (the component's own shipped title, unchanged).
 const FULL_TITLE = "We couldn't load your schedules";
 
-const THURSDAY = { id: 's1', name: 'Thursday check-in', is_active: true };
-const SUNDAY = { id: 's2', name: 'Sunday check-in', is_active: false };
+const THURSDAY = { id: 's1', template_name: 'Thursday check-in', is_active: true };
+const SUNDAY = { id: 's2', template_name: 'Sunday check-in', is_active: false };
 const SETTINGS = { id: 'set1', schedules: [THURSDAY, SUNDAY], games: [], members: [] };
 const KEY = promptKeys.settings('g1');
 
@@ -71,7 +71,7 @@ function renderReadOnly(client: QueryClient = newClient()) {
 }
 
 // The house idiom for a refresh nobody pressed: the hook's tab-return re-attempt
-// (useFetchErrorState.test.tsx, anchor `function fireVisibility`).
+// (src/components/ui/useFetchErrorState.test.tsx ("function fireVisibility")).
 function fireVisibility() {
   Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
   document.dispatchEvent(new Event('visibilitychange'));

@@ -24,8 +24,9 @@ import {
  *
  * Phase 84 (PRIM-07 / D-12): migrated to useQuery on the shared promptKeys
  * factory so the settings fetch dedups across the trio. This is MEMBER-visible
- * (mounted inside the Customize Group dialog, `GroupSettings.js`, anchor
- * `<PromptScheduleReadOnly`) — the backend GET prompt-settings requires
+ * (mounted inside the Customize Group dialog,
+ * src/app/components/GroupSettings.js ("<PromptScheduleReadOnly")) — the backend GET
+ * prompt-settings requires
  * ACTIVE MEMBERSHIP, NOT admin — so the query gates only on `Boolean(groupId)`.
  * An isAdmin gate here would blank the summary for every non-admin member.
  *
@@ -57,18 +58,19 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
   // failed refetch, so a list that loaded empty is retained content too (owner ruling Y).
   const hasSettingsData = data !== undefined;
 
-  /* DECISION Phase 88.6-15 (D-31 / UI-SPEC §6.2, `88.6-UI-SPEC.md` "6.2 Error-surface routing"):
+  /* DECISION Phase 88.6-15 (D-31 / UI-SPEC §6.2,
+     planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 6.2 Error-surface routing")):
      the ERROR branch is checked BEFORE
      the empty branch, chosen OVER the shipped order in which a rejected fetch fell straight
      through to "No schedules configured." — telling a member their group had no check-ins when
-     the request had merely failed (threat T-88.6-36). Same ruling `OpenPollsList.js` (anchor
-     `DECISION Phase 88-18 (Req 6 / T-88-18-01, UI-SPEC 9.2)`) and `PromptScheduleManager.js`
-     (anchor `DECISION Phase 88-18 (Req 6 / T-88-18-01)`) already carry for their own keys; do
-     not re-merge the two branches.
+     the request had merely failed (threat T-88.6-36). Same ruling
+     src/app/components/OpenPollsList.js ("DECISION Phase 88-18 (Req 6 / T-88-18-01, UI-SPEC 9.2)") and
+     src/app/components/PromptScheduleManager.js ("DECISION Phase 88-18 (Req 6 / T-88-18-01)")
+     already carry for their own keys; do not re-merge the two branches.
 
      THE COMMENT THIS REPLACES WAS WRONG, and that was the whole defect: it read "Soft-fail
-     queryFn never throws". MEASURED against `src/lib/schemas/prompts.ts:222-241` (anchor
-     `export function softFailPromptQueryFn`) — the returned
+     queryFn never throws". MEASURED against
+     src/lib/schemas/prompts.ts ("export function softFailPromptQueryFn") — the returned
      async body is `const raw = await fetcher(); return parsePromptsSoftFail(...)` with NO
      try/catch around the fetch — so `softFailPromptQueryFn` soft-fails ONLY a ZodError
      (safeParse -> `EMPTY_PROMPT_SETTINGS`) and RE-THROWS every real network / 4xx / 5xx
@@ -81,8 +83,8 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
      never the empty sentence). A failed REFRESH is a different state: TanStack keeps `data`
      across a refetch error, so the rows that loaded earlier stay, under plan 70's RF1 notice
      (copy row RF1), which says the refresh failed and that this is what loaded earlier — see
-     `DECISION Phase 88.6.1-30 (AC-29 / RF1)` in PromptScheduleManager.js. That is not a
-     re-merge: the empty sentence still shows only when a successful fetch said empty (a list
+     src/app/components/PromptScheduleManager.js ("DECISION Phase 88.6.1-30 (AC-29 / RF1): when a refresh fails").
+     That is not a re-merge: the empty sentence still shows only when a successful fetch said empty (a list
      that loaded empty keeps it under the notice, owner ruling Y). An access or gone answer
      never keeps the rows (C10, through `useRetainedContent`). */
   const settingsErrorState = useFetchErrorState(settingsQuery);
@@ -132,7 +134,8 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
       )}
 
       {/* The retained block: copy row RF1's notice above what loaded earlier, an empty list
-          included — see `DECISION Phase 88.6.1-30 (AC-29 / RF1)` in PromptScheduleManager.js. */}
+          included — see
+          src/app/components/PromptScheduleManager.js ("DECISION Phase 88.6.1-30 (AC-29 / RF1): when a refresh fails"). */}
       {hasRetainedSettings && (
         <>
           <RefreshFailedNotice
@@ -148,7 +151,19 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
               {schedules.map(s => (
                 <li key={s.id} className="flex items-center gap-2 text-sm text-content-secondary">
                   <span className={`w-2 h-2 rounded-full ${s.is_active ? 'bg-status-success' : 'bg-surface-muted'}`} />
-                  <span>{s.name || 'Unnamed schedule'}</span>
+                  {/* DECISION quick-261025-dzo (88.6.2 CODE-REVIEW HIGH, owner ruling A): the
+                      schedule name reads template_name first, OVER reading name alone. The
+                      backend builds every schedule with template_name only,
+                      backend:Sonnet/routes/groupPromptSettings.js ("template_name: finalTemplateName,"),
+                      and its update allow-list has no name key, so name was always empty and
+                      every row painted the fallback label in production. name stays as the
+                      second read, OVER dropping it: the schema accepts both keys, so an older
+                      payload that carries name still shows its name. It is the same key the
+                      admin list reads,
+                      src/app/components/ScheduleList.js ("schedule.template_name ||").
+                      Dropping the template_name read, or reading name first, is a decision,
+                      not a cleanup. */}
+                  <span>{s.template_name || s.name || 'Unnamed schedule'}</span>
                   {!s.is_active && <span className="text-content-muted text-xs">(paused)</span>}
                 </li>
               ))}
