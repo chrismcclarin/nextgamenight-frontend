@@ -137,7 +137,7 @@ describe('GAP6 — retry predicate truth table (D-13, T-84-08)', () => {
     expect(shouldRetry(0, new ApiError('x', 'invite_pending', 409))).toBe(false);
   });
 
-  /* Phase 88.6-38 (88.8 code review round 7 #5): `queryClient.ts:111`'s
+  /* Phase 88.6-38 (88.8 code review round 7 #5): the src/lib/queryClient.ts ("'unsupported_address',")
      `unsupported_address` row shipped in the 88.8 post-merge fix set with NO test — the
      registry's own comment there calls itself out as changing nothing today, which is
      exactly the shape a later reader deletes. On the `:122-133` convention above: a

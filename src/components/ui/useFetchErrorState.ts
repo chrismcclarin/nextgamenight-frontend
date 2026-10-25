@@ -273,8 +273,8 @@ export interface FetchErrorMessageOptions {
    register's permission line states something the app does not know.
 
    REJECTED (a1): `mapErrorToCode` returning `'unknown'` for the flagged body. It labels a real
-   HTTP response "we don't know", flips `shouldRetry` (`src/lib/queryClient.ts:121`, anchor
-   `export function shouldRetry`) to retryable-once for that error, and never reaches the restore
+   HTTP response "we don't know", flips `shouldRetry` (src/lib/queryClient.ts ("export function shouldRetry("), the
+   function itself) to retryable-once for that error, and never reaches the restore
    page's status-keyed 403 arm.
    REJECTED (b): per-site guards. Six would be guarded while dozens of generic sites still print
    the permission line, and the predicate would be copied per site (duplication tenet).

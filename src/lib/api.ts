@@ -392,7 +392,7 @@ function extractErrorMessage(body: any, status: number): string {
 // delete (arm B), which would have dropped that string from the event ENTIRELY
 // for the ~455 unconverted raw-`{ error }` routes until Phase 93, leaving only
 // "HTTP error! status: N" to read. GROUPING is unchanged either way: that capture
-// (src/lib/queryClient.ts:179, `Sentry.captureException(error, upstreamMessage`) carries tags and no Sentry fingerprint (measured 2026-09-17: the
+// (src/lib/queryClient.ts ("Sentry.captureException(error, upstreamMessage")) carries tags and no Sentry fingerprint (measured 2026-09-17: the
 // three grep hits for that word under src/ are all prose), and Sentry's default
 // grouping does not key on extra — so the field buys per-event READABILITY, not
 // issue separation. `ApiError.message` is the display contract and does NOT read
@@ -690,7 +690,7 @@ export async function apiFetch<T = unknown>(
     // Sentry.captureException -- chosen OVER an event here, and OVER deleting the log
     // entirely. An event at this catch fires for every expected 401/404/410 (it sees
     // every ApiError this module throws) and duplicates QueryCache.onError
-    // (`queryCacheOnError`, src/lib/queryClient.ts:141; its capture at :179). AC-2's convert-on-touch level is logger.info phase-wide as
+    // (`queryCacheOnError`, src/lib/queryClient.ts ("export function queryCacheOnError("); its capture at src/lib/queryClient.ts ("Sentry.captureException(error, upstreamMessage")). AC-2's convert-on-touch level is logger.info phase-wide as
     // of the owner ruling of 2026-09-13, so this is the RULE rather than an exception to
     // it -- but it was independently the right call here and the reasoning is kept for
     // whoever revisits the fetch boundary. If an event is ever wanted here it must be

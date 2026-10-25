@@ -414,7 +414,7 @@ describe('Combobox — W38: exactly one always-mounted sr-only status region', (
   it('keeps the SAME NODE across empty -> loading -> results -> closed', () => {
     // Node IDENTITY, not presence at each state. A region torn down and rebuilt between
     // states is the same defect wearing a passing presence check — this is the shape
-    // `useConfirmAction.ts:162-180` records as REJECTED ALTERNATIVE 1.
+    // src/components/ui/useConfirmAction.ts ("REJECTED ALTERNATIVE 1") records as REJECTED ALTERNATIVE 1.
     const { rerender } = render(<Controlled open={false} />);
     const node = region();
     expect(node).toBeEmptyDOMElement();

@@ -46,7 +46,7 @@
  * ---------------------------------
  * This module adds no runtime dependency and must never be imported from `src/app`,
  * `src/components`, `src/lib` or any other shipped directory. Unlike `sourceScan.ts`
- * — which imports `node:fs`/`node:path` (`sourceScan.ts:39-40`) and would fail LOUD in a
+ * — which imports `node:fs`/`node:path` (src/test-utils/sourceScan.ts ("import fs from 'node:fs';")) and would fail LOUD in a
  * client bundle — this file has no `node:` import and would bundle SILENTLY. That
  * asymmetry (T-88.6-08) is why `exemption.test.ts` walks every shipped file under `src/`
  * outside `src/test-utils/` and asserts zero importers, rather than trusting a promise.

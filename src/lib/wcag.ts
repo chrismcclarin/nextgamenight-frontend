@@ -12,7 +12,7 @@
 //
 // REJECTED: duplicating the ~30 lines of transfer function + coefficients inside
 // `e2e/support/contrast.ts` so each side owns its own copy. That was rejected because
-// `src/test-utils/sourceScan.ts:25-37` is this repo's own written record of what a
+// src/test-utils/sourceScan.ts ("five copies of a scanner is five places a") is this repo's own written record of what a
 // duplicated helper costs — six divergent copies of one source scanner, six places a fix
 // had to land, and the divergence is invisible until the two disagree. Two gates that
 // disagree about a ratio is strictly worse than either gate alone: the phase would be

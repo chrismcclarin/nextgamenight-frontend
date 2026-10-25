@@ -3,7 +3,7 @@
 /**
  * StatusRegion — shared aria-live region (PRIM-04 / D-05).
  *
- * Codifies the ad-hoc `aria-live` scattered across the codebase (StarRatingPicker.js:134; ThresholdSlider.js,
+ * Codifies the ad-hoc `aria-live` scattered across the codebase (src/app/components/StarRatingPicker.js ("text-content-muted tabular-nums"); ThresholdSlider.js,
  * deleted as dead code in Phase 88.6.1-82 — AMENDED Phase 88.6.1-82) into ONE contract:
  *
  *   - EMPTY-FIRST: the live container is always mounted; text is injected on

@@ -201,7 +201,7 @@ describe('W007 — OAuth-shaped key=value pairs and the logger breadcrumb (88.6.
     // The crumb is built LITERALLY (no logger import here, which keeps `@sentry/nextjs` out of
     // this suite). Its shape is `logger.info` at `src/lib/logger.ts:53`
     // (`Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx })`) with `ctx` from
-    // `errCtx` at `src/lib/logger.ts:89-98` (name and message only). The WIRING proof, the real
+    // `errCtx` at src/lib/logger.ts ("export function errCtx(err: unknown)") (name and message only). The WIRING proof, the real
     // logger through the `beforeSend` that `sentry.client.config.js` hands to `Sentry.init`, is
     // the 88.6.1-08 tracer in `src/lib/sentryClientReplayGate.test.ts`.
     const crumb = {
