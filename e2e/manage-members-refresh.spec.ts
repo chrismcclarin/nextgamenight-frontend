@@ -76,7 +76,7 @@ const isSynthRemove = (url: URL) =>
 
 /** The real roster from the backend, as an array (an empty one if the read was not a roster). */
 async function realRoster(route: Route): Promise<{ response: APIResponse; body: unknown[] }> {
-  const response = await scrubbedFetch(route);
+  const response = await scrubbedFetch(route, { url: 'http://localhost:1/zz-plant-88.6.2-29' }); // zz-plant-88.6.2-29 P-scrub
   const json: unknown = await response.json();
   return { response, body: Array.isArray(json) ? json : [] };
 }

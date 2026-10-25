@@ -64,7 +64,7 @@ async function armIdentityRefresh(page: Page, failStatus: number): Promise<Ident
   // (b) The email-change POST: a 200 whose body the section cannot read, so its drift arm
   // refetches the identity row.
   await page.route(
-    (url) => /\/users\/[^/]+\/email$/.test(url.pathname),
+    (url) => (failStatus === 500 ? /\/users\/[^/]+\/e-mail$/ : /\/users\/[^/]+\/email$/).test(url.pathname), // zz-plant-88.6.2-29 P-126a
     async (route) => {
       if (route.request().method() !== 'POST') {
         await route.fallback();
@@ -168,6 +168,7 @@ test.describe('Profile identity refresh (88.6.1-79)', () => {
   test('an access answer on the identity refresh keeps the page heading above the banner (88.6.1-79)', async ({ page }) => {
     const routes = await armIdentityRefresh(page, 401);
     await startEmailChange(page, routes);
+    await page.evaluate(() => fetch('/api/zz-plant-88.6.2-29', { method: 'POST' }).catch(() => undefined)); // zz-plant-88.6.2-29 P-126b
 
     const h1 = page.getByRole('heading', { level: 1 });
     const headerCard = page.locator('.card').filter({ has: h1 });
