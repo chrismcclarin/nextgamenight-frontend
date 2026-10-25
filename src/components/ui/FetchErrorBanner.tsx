@@ -398,7 +398,7 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
           (src/app/components/UpcomingEventsCard.js ("DECISION Phase 88-01 (D-36)"); the `.btn` floor is
           phone-only too). VISIBLE DELTA: on a phone each button row grows to 44px.
           REJECTED: (a) the register's negative-vertical-margin compensation
-          (planning:.planning/deferred/phase-88.6.1.md ("### WR-503")) — the 44px target would overlap the
+          (planning:.planning/deferred/phase-88.6.1.md ("### WR-503 — the recovery controls")) — the 44px target would overlap the
           message line above it and unknown caller content around this row, so a tap on text
           would activate a retry; (b) an all-widths floor — AC-10 is a 375px criterion, and
           desktop rhythm is not this phase's look call.
