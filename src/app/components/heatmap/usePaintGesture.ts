@@ -81,7 +81,7 @@
 // TWO COMMIT SHAPES, ONE MACHINE (`mode`) — RESEARCH P6 / A4.
 //
 // The shipped scheduler got mouse drag-select for free from react-big-calendar's
-// `selectable` + `onSelectSlot` (src/app/components/EventScheduler.js), which reports a start/end PAIR
+// `selectable` + `onSelectSlot` (the former EventScheduler.js, react-big-calendar; replaced by EventScheduler.tsx in 88.1), which reports a start/end PAIR
 // and feeds the Phase 66-01 contract `onTimeSelected(start, end)` — one canonical `start_date`
 // plus `duration_minutes` (src/app/components/createEvent.js ("Phase 66-01: write canonical fields only")). WeekGrid has only per-cell PAINT
 // (`WeekGrid.tsx` delegated pointer handlers), which is a different gesture: paint commits per
@@ -104,7 +104,7 @@
 // arm exists to prevent. A missing discriminator must be a type error, not a runtime surprise.
 //
 // AMENDED (C2, a deliberate BEHAVIOR CHANGE, not parity): the shipped scheduler long-press is
-// 250ms (src/app/components/EventScheduler.js, Phase 68-03 MOB-07); adopting the owner-ruled 87.8-14 model
+// 250ms (the former EventScheduler.js, replaced by EventScheduler.tsx in 88.1; Phase 68-03 MOB-07); adopting the owner-ruled 87.8-14 model
 // moves it to the 300ms threshold above. The shipped 250ms machine also has NO slop cancellation
 // and NO edge auto-scroll, so the swap is a strict improvement — but it is still a change, and
 // per pitfall P5 NO characterization pin may assert either timer value. Pins assert behavior
