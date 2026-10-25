@@ -187,7 +187,7 @@ export default function EventCalendar({
      false.
 
      THE SHAPE IS CITED, NOT RE-DERIVED: the shipped source plan 29 names is
-     `NextGameNightCard.tsx:231/236/241/249` — an effect-scoped `let cancelled`, invalidated
+     src/app/components/NextGameNightCard.tsx ("let cancelled = false;") — an effect-scoped `let cancelled`, invalidated
      in the effect's cleanup and checked before every post-await write. `AbortController` is
      REJECTED for this class BY NAME in that same record; do not re-open it.
 
@@ -208,8 +208,8 @@ export default function EventCalendar({
          in-flight fetch is not cancelled, so its `finally` releases `loading`);
      (c) an accept-forever record: the 88.6 round-1 review chose this hardening as "cheaper than
          an accept record that a future consumer could silently invalidate".
-     REACHABILITY: unreachable with today's two mounts (`userHome/UserHomePage.js:538` passes no
-     `events`; `groupHomePage/page.js:1233` passes a `useState([])` array from its first render).
+     REACHABILITY: unreachable with today's two mounts (src/app/userHome/UserHomePage.js ("<EventCalendar refreshKey={refreshKey} />") passes no
+     `events`; src/app/groupHomePage/page.js ("events={groupEvents}") passes a `useState([])` array from its first render).
      It is a decision, not a cleanup. */
   useEffect(() => {
     // Mount-fire gate: only fetch once the caller's own UUID resolves. selfUuid
@@ -256,8 +256,8 @@ export default function EventCalendar({
        replaced here. `user?.sub` RATHER THAN `user` — [Rule 1 fix, plan 88.6-27 task 3]. The
        retired sentence claimed the SDK hook hands back a new object on each render. It does not:
        `@auth0/nextjs-auth0` 3.8.0 memoises the value its hook returns
-       (`node_modules/@auth0/nextjs-auth0/dist/client/use-user.js:109`, a `useMemo` over user,
-       error, isLoading and checkSession; `user` itself is provider state at `:90`), so a bare
+       (node_modules:@auth0/nextjs-auth0/dist/client/use-user.js ("(0, react_1.useMemo)(() => ({ user, error, isLoading, checkSession })"), a `useMemo` over user,
+       error, isLoading and checkSession; `user` itself is provider state at node_modules:@auth0/nextjs-auth0/dist/client/use-user.js ("(0, react_1.useState)({ user: initialUser, isLoading: !initialUser })")), so a bare
        `user` dependency does NOT re-fire per render in production. The refetch loop plan 88.6-27
        saw (a surface oscillating between "Loading calendar..." and the error banner once the
        §6.2 fix gave the failure a visible branch) came from `EventCalendar.identity.test.tsx`'s
@@ -272,7 +272,7 @@ export default function EventCalendar({
        to the sub on this premise; the premise was false.
        This one keeps `user?.sub` to converge with `UserHomePage.js`'s upcoming-events effect,
        whose deps are `[user?.sub, refreshKey, selfUuid, upcomingRetryKey]`
-       (`userHome/UserHomePage.js:142`). Switching this dependency to the object is
+       (src/app/userHome/UserHomePage.js ("}, [user?.sub, refreshKey, selfUuid, upcomingRetryKey]);")). Switching this dependency to the object is
        behaviour-neutral in production but diverges from that sibling; changing it is a decision,
        not a cleanup. */
   }, [user?.sub, refreshKey, selfUuid, fetchRetryKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -303,7 +303,7 @@ export default function EventCalendar({
     } catch (error) {
       /* AC-2, at the level the owner amended it to on 2026-09-13: `logger.info`, REPLACING the
          raw `console.error` rather than sitting beside it. STATE THE COST: `logger.info` is
-         `Sentry.addBreadcrumb` (`logger.ts:52-53`), so this failure reaches Sentry only attached
+         `Sentry.addBreadcrumb` (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx });")), so this failure reaches Sentry only attached
          to a later event in the same session — it does not file an issue of its own. Lint does
          NOT govern this choice: this file is on `.eslintrc.json`'s `no-console: off` allowlist,
          so a raw call would have passed; UI-SPEC §6.4 and `logger.ts`'s own module contract are
@@ -429,9 +429,9 @@ export default function EventCalendar({
   // DECISION Phase 88.6.1-11 (AC-29) [Req 9]: the branch now ALSO requires an UNRESOLVED identity
   // (`!selfUuid`), so the code matches the purpose stated above: the TERMINAL failure. The
   // identity hook's error flag is true even when TanStack KEPT the cached self row after a failed
-  // background refetch (`useFetchErrorState.ts:269` reads only `isError`; the one invalidation
-  // caller is `EmailAddressSection.tsx:973` through `selfIdentityCache.ts:50`). That row is this
-  // user's own, because the query key is per account (`useSelfIdentity.ts:86`), and with it the
+  // background refetch (src/components/ui/useFetchErrorState.ts ("const showError = Boolean(isError);") reads only `isError`; the one invalidation
+  // caller is src/app/components/EmailAddressSection.tsx ("return invalidateSelfCache(queryClient).then(") through src/lib/hooks/selfIdentityCache.ts ("return queryClient.invalidateQueries({ queryKey: SELF_IDENTITY_KEY });")). That row is this
+  // user's own, because the query key is per account (src/lib/hooks/useSelfIdentity.ts ("const queryKey = [...SELF_IDENTITY_KEY, user?.sub ?? null];")), and with it the
   // fetch effect runs. Hiding the calendar then told someone it could not load when it could,
   // and did. REJECTED: (a) gating on the error flag alone (that lie); (b) a compact identity
   // notice beside the calendar (a visible addition, and identity is not the calendar's data).
@@ -545,7 +545,7 @@ export default function EventCalendar({
                 classes go and neither is a loss. `text-sm` was DEAD — `.btn` declares
                 `font-size` unlayered (src/app/globals.css ("font-size: 0.875rem;")) — and the per-site focus-ring string
                 is retired because the ring now lives ONCE in the primitive's cva base
-                (`Button.tsx:113`, A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
+                (src/components/ui/Button.tsx ("focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"), A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
                 is byte-unchanged and still true: this control has a project focus ring, it just
                 no longer states it itself. `cascadeOrder.test.ts` asserts exactly one of the two
                 mechanisms exists, so keeping both would red. */}

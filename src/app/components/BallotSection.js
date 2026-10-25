@@ -49,17 +49,17 @@ function toggleOptionVote(ballot, optionId, voted) {
    nothing.
    AMENDED Phase 88.6.1-31 (D-42): that reason holds HERE because all three regions are polite
    (`role="status"`). An inserted `role="alert"` that arrives with its text IS announced (ARIA
-   1.2; corrected in StatusRegion.tsx's EMPTY-FIRST bullet, `StatusRegion.tsx:9`, by Phase
+   1.2; corrected in StatusRegion.tsx's EMPTY-FIRST bullet, src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted"), by Phase
    88.6.1-06), so the reason does not carry over to an assertive alert. The always-mounted shape
    still earns its place there for two other reasons: node identity stays assertable, and a
    clear-then-set re-announces a repeat.
 
-   WHY THE PRIMITIVE and not a div: `88.6-UI-SPEC.md:189` (§2's StatusRegion row) and §14 A-29
+   WHY THE PRIMITIVE and not a div: planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("Always-mounted is the house idiom.") (§2's StatusRegion row) and §14 A-29
    ratify "No new hand-rolled `role=\"status\"` / `aria-live` markup in 88.6" — the ad-hoc
    sites that survive (src/app/components/StarRatingPicker.js ("text-content-muted tabular-nums"),
-   `ErrorFallback.tsx:109-110`) are a CLOSED residual (the UI-SPEC row itself still carries its
+   `ErrorFallback.tsx`) are a CLOSED residual (the UI-SPEC row itself still carries its
    2026-09-13 line numbers; these are re-read 2026-10-16). A hand-rolled div also silently drops
-   `aria-atomic="true"` (StatusRegion.tsx:101).
+   `aria-atomic="true"` (src/components/ui/StatusRegion.tsx ("aria-atomic=")).
    AMENDED Phase 88.6.1-82: the third site this paragraph named was dead code and was deleted; the
    full live-region count is the R3-A29 census (plan 88.6.1-64, CENSUS.md §4).
 
@@ -421,10 +421,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
      code here.
      PER INSTANCE (review #38): a failed load files one class-only Sentry event per failure episode
      PER INSTANCE, so N failing cards on one page (the Upcoming list mounts one per event,
-     `gameDetail/page.js:3093`, anchor `upcomingEvents.map`) file N events.
+     src/app/gameDetail/page.js ("upcomingEvents.map")) file N events.
      MULTI-MOUNT (owner ruling #192, OPTION A, owner 2026-10-13): the Upcoming list mounts one
-     instance per upcoming session card (`gameDetail/page.js:1922`, anchor `Ballot Section - game
-     voting`), so a route-wide failure shows N banners and a screen reader hears N assertive
+     instance per upcoming session card (src/app/gameDetail/page.js ("Ballot Section - game voting")),
+     so a route-wide failure shows N banners and a screen reader hears N assertive
      announcements (the warning-tone region is assertive, `Banner.tsx`, anchor `const assertive`).
      CHOSEN: one banner per card, N announcements accepted — the banner's position says which
      session's vote failed, each Try again retries that vote, and N is small. REJECTED: (B) one
@@ -701,7 +701,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
           </div>
         ) : (
           // POLL-06 (D-BALLOT-07): defense-in-depth gated state.
-          // The backend gate at routes/ballot.js:385-394 also rejects
+          // The backend gate at backend:Sonnet/routes/ballot.js ("Yes/Maybe RSVP-eligibility gate") also rejects
           // votes from non-yes/maybe-RSVPed users; this UI prevents the
           // user from bouncing off a 403 by hiding vote buttons entirely.
           <div role="region" aria-label="Vote gated until RSVP">
