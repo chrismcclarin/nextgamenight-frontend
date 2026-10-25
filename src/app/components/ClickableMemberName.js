@@ -530,9 +530,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // this same commit folds UP to Caption 12 as their ratified §4.2 rung. Promoting these to 14
   // would print ONE status vocabulary at TWO rungs depending on which surface you are on — the
   // same split-family defect plan 88.6-26 refused for the Banner family and plan 88.6-29 refused
-  // for its mutually-exclusive `:179`/`:183` pair. They are also subordinate annotations riding
+  // for its mutually-exclusive pair (src/app/components/RsvpSection.js ("{statusConfig[selectedStatus].label}") / src/app/components/RsvpSection.js ("RSVP to this event")). They are also subordinate annotations riding
   // INSIDE an inline run beside the member name (`ml-1`, same baseline), which is the case
-  // `UpcomingEventsCard.js:265-283` records an explicit counter-argument against promoting; at 14
+  // src/app/components/UpcomingEventsCard.js ("DECISION Phase 88.6-28 (R2 / UI-SPEC §4.3)") records an explicit counter-argument against promoting; at 14
   // an annotation could render as large as the name it annotates, at nine different call sites
   // with nine different container sizes. 12 is the app's FLOOR, not below it, so nothing here is
   // illegible. Promoting them is a decision, not a cleanup.
@@ -629,7 +629,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // readers that see this phone-only span, and the focus move below speaks it regardless.
       // DECISION Phase 88.6.1-37 (R3-M18): this span is KEPT hand-rolled, chosen OVER the house
       // `StatusRegion`, which renders a div: five of the nine mounts put this component inside a
-      // p (`ManageMembers.js:522`, `:564-565`; `gameDetail/page.js:1641`, `:3334`, `:3382`),
+      // p (src/app/components/ManageMembers.js ("member.email} /></p>"), src/app/components/ManageMembers.js ("role !== 'pending').map((member)"); src/app/gameDetail/page.js ("userId={event.Winner.id}"), src/app/gameDetail/page.js ("userId={userReview.User.id}"), src/app/gameDetail/page.js ("userId={review.User.id}")),
       // where a div is invalid and React reports it through validateDOMNesting (T2d pins that).
       // Converting it is a decision, not a cleanup.
       // tabIndex={-1} makes it programmatically focusable — the focus effect
@@ -659,7 +659,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // DECISION Phase 87.8 R4: the invisible hit extension is asymmetric ON
     // PURPOSE — 44x32 (after:-inset-x-2.5 by after:-inset-y-1), chosen OVER a
     // symmetric 44x44 (a symmetric 10px inset on all sides). The member rows
-    // these render in stack via space-y-1 — a 4px gap (RsvpSection.js:288) —
+    // these render in stack via space-y-1 — a 4px gap (src/app/components/RsvpSection.js ("{group.map((rsvp) =>")) —
     // so a symmetric 10px vertical reach would cross 6px into the row above
     // AND the row below and steal their taps (an unintended friend request).
     // 4px is the largest vertical extension that terminates exactly at the
@@ -688,17 +688,17 @@ export default function ClickableMemberName({ userId, username, children, showIn
     //       RE-VERIFIED 2026-08-05 by reading the container above each of the
     //       nine, not by trusting the plan text. The 4px extension needs 8px
     //       of vertical room BETWEEN two adjacent instances:
-    //         CONSTRAINED (1) — `RsvpSection.js:289` `space-y-1` = 4px. This
+    //         CONSTRAINED (1) — `RsvpSection.js` `space-y-1` = 4px. This
     //           is the ONLY container tighter than 8px, and it is what set the
     //           `after:-inset-y-1` ceiling: at 4px the two extensions meet
     //           exactly at the gap midpoint, which is the "terminates exactly
     //           at the gap" sentence above.
     //         EXACTLY AT THE BOUNDARY (2) — `grouplist.js` `flex flex-wrap
-    //           gap-2 mb-3` and `gameDetail/page.js:2182` `space-y-2`, both 8px.
+    //           gap-2 mb-3` and `gameDetail/page.js` `space-y-2`, both 8px.
     //           Not constrained, but they are the next things to check if the
     //           extension is ever grown.
-    //         ROOMY (6) — `ManageMembers.js:440,472` (`space-y-3` + `p-4`
-    //           rows) and `gameDetail/page.js:1467, 2088, 2352, 2399` (`py-2`
+    //         ROOMY (6) — `ManageMembers.js` (`space-y-3` + `p-4`
+    //           rows) and `gameDetail/page.js` (`py-2`
     //           rows). All have >=8px and would take a bigger extension today.
     //       So a future phase revisiting this has ONE lever, not nine.
     //       Line numbers are the 88-28 re-derivation: CONTEXT D-37 cites this
@@ -707,7 +707,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
     //       RSVP row gap is a density change to a list the owner just chose to
     //       keep dense, and doing it as a side effect of an a11y sweep would
     //       be the silent override this project's Evidence Rule forbids.
-    //       `RsvpSection.js:289`'s `space-y-1` is unchanged, on purpose.
+    //       The `space-y-1` of src/app/components/RsvpSection.js ("{group.map((rsvp) =>") is unchanged, on purpose.
     //
     // AMENDED Phase 88.5 (SPEC Req 5) — the grouplist cite above was CORRECTED
     // and one of the enumerated sites has changed shape. Nothing above is
@@ -734,11 +734,11 @@ export default function ClickableMemberName({ userId, username, children, showIn
     //   `touch-targets.spec.ts` assertion still must NOT be tightened to 44x44.
     //
     // AMENDED Phase 88.6.1-37 (cite drift): today's containers, by class token, re-derived
-    //   2026-10-16. Constrained (1): `RsvpSection.js:647` `space-y-1`. Exactly at 8px:
-    //   `gameDetail/page.js:1723` `space-y-2` (Participants). Roomy: `ManageMembers.js:516` and
-    //   `:550` `space-y-3` over `p-4` rows (two lists), and the event page's three `py-2` rows
-    //   (`gameDetail/page.js:2421` in the Participants dialog, `:3331` and `:3378`, the reviews).
-    //   One single-instance Winner line (`gameDetail/page.js:1641`). None on the home group card
+    //   2026-10-16. Constrained (1): `RsvpSection.js` `space-y-1`. Exactly at 8px:
+    //   `gameDetail/page.js` `space-y-2` (Participants). Roomy: `ManageMembers.js`
+    //   `space-y-3` over `p-4` rows (two lists), and the event page's three `py-2` rows
+    //   (`gameDetail/page.js` in the Participants dialog and the reviews).
+    //   One single-instance Winner line (`gameDetail/page.js`). None on the home group card
     //   (`MemberChipStack.tsx` passes the opt-out). Still ONE lever.
     //
     // DECISION Phase 87.8 (D-13): invisible pseudo-element hit extension
@@ -798,7 +798,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
 
           Three specifics, each a choice:
           - `role="button"` + `tabIndex` chosen OVER a real `<button>`: this span is rendered
-            inside a `<p>` at `ManageMembers.js:522` and `:564-565` (the event page wraps it in a
+            inside a `<p>` at src/app/components/ManageMembers.js ("member.email} /></p>") and src/app/components/ManageMembers.js ("role !== 'pending').map((member)") (the event page wraps it in a
             paragraph at three more mounts) and inside table-ish rows elsewhere (9 render sites), and it must stay inline phrasing content that wraps with the
             surrounding text.
           - `stopPropagation` on the key handler is LOAD-BEARING, not defensive: at

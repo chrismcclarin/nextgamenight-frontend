@@ -158,7 +158,7 @@ function ringCue(status: MemberStatus): string {
 
 /**
  * One 32px circle. Purely presentational and ALWAYS `aria-hidden` — identity reaches assistive
- * tech through a separate text carrier at the call site, exactly as `UserChip.tsx:84-94` pairs
+ * tech through a separate text carrier at the call site, exactly as src/components/ui/UserChip.tsx ("{label}</span>") pairs
  * its aria-hidden initials glyph with a visible name span. Both fill arms and all three ring
  * states live here and only here, so the collapsed stack and the expanded row cannot drift.
  */
@@ -250,7 +250,7 @@ const COLLAPSED_LIMIT = 4;
  * (no layout) and invisible in review (the class string looks fine on its own line), which is
  * why it is one constant and why `MemberChipStack.test.tsx` test 38 reads the source.
  *
- * Shipped precedent: `ClickableMemberName.js:333` pairs `relative` with its own hit-extension
+ * Shipped precedent: src/app/components/ClickableMemberName.js ("ref={addButtonRef}") pairs `relative` with its own hit-extension
  * pseudo on the same element. Splitting them apart again is a decision, not a cleanup.
  */
 const HIT_EXTENSION = "relative after:absolute after:-inset-1.5 after:content-['']";
@@ -438,7 +438,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
    * a decision, not a cleanup.
    *
    * Space is `preventDefault`ed because its default on a non-button is PAGE SCROLL. Enter is
-   * too, for symmetry with the shipped handler at `ClickableMemberName.js:457-465`.
+   * too, for symmetry with the shipped handler at src/app/components/ClickableMemberName.js ("onKeyDown: (e) => {").
    *
    * And the keys are handled EXPLICITLY because these are spans: a native `<button>`
    * synthesises a click for Enter and Space, a `role="button"` element synthesises NEITHER. A
@@ -487,7 +487,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
            * — under the 44px floor this project treats as a floor and not a target, on a
            * group shape (the viewer plus one other person) that is ordinary rather than rare.
            * This is the same `min-h-11 min-w-11` pairing the Calendar button carries at
-           * `UserHomePage.js:357` and for exactly the same reason.
+           * src/app/userHome/UserHomePage.js ("aria-label={calendarButtonLabel}") and for exactly the same reason.
            *
            * It costs nothing in the common case: at two members the stack is already 60px
            * wide, so the utility is inert. At one member it adds 8px of INVISIBLE tappable
@@ -521,7 +521,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
       {/*
         The panel is ALWAYS rendered so `aria-controls` always resolves to a real element; only
         its CHILDREN are conditional, so a collapsed stack mounts no triggers. Pattern copied
-        from `CalendarListView.js:522-543`; `rowId` is `useId`-derived so two group cards on the
+        from src/app/components/CalendarListView.js ("The region is ALWAYS rendered so"); `rowId` is `useId`-derived so two group cards on the
         same page cannot collide on the same target.
 
         DECISION Phase 88.5 (UI-SPEC 6.5.2): the row's 12px wrap is load-bearing, not styling.
@@ -551,7 +551,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                * (its early return, anchor `if (status === 'unknown') {`) — no role, no tabIndex, no handler. Routing
                * through it produces the right outcome BY ACCIDENT, and a future reader would
                * reasonably "fix" that into something focusable. REJECTED explicitly:
-               * focusable-but-inert, which `keyboardOperability.test.tsx:172` test 5 exists to
+               * focusable-but-inert, which src/app/components/keyboardOperability.test.tsx ("5. ANTI-VACUITY: the pin fails for a control that is focusable but inert") test 5 exists to
                * fail — a dead stop in the tab order is worse than being skipped.
                *
                * A-8 does not apply to this chip (it is not interactive, so it has no
@@ -592,7 +592,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                *
                * The identity+status carrier sits INSIDE the trigger's children, which is where
                * `ClickableMemberName` renders them, so it becomes the trigger's accessible
-               * name. Same composition `UserChip.tsx:84-94` uses: an aria-hidden glyph paired
+               * name. Same composition src/components/ui/UserChip.tsx ("{label}</span>") uses: an aria-hidden glyph paired
                * with a separate text carrier, rather than an `aria-label` that would have to be
                * kept in sync with the visible content.
                */

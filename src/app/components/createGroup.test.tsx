@@ -541,7 +541,7 @@ describe('createGroup — R7 composed axe audit + house rule + focus contract (8
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 
-  it('2. the group-name control carries id + name + a label source (house rule Input.tsx:11-19)', async () => {
+  it('2. the group-name control carries id + name + a label source (house rule src/components/ui/Input.tsx ("HOUSE RULE (88-33 Task 8, fork 5"))', async () => {
     renderCreateGroup();
     await screen.findByRole('button', { name: /create group/i });
     auditFormControls(screen.getByRole('dialog'));
