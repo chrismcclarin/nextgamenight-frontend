@@ -277,3 +277,30 @@ describe('PromptScheduleReadOnly — a failed refresh keeps what loaded earlier 
     expect(await screen.findByText('Thursday check-in')).toBeInTheDocument();
   });
 });
+
+// Quick task 261025-dzo review round 1 IN-02: the precedence the DECISION marker protects.
+// template_name is the key the backend writes; name is a defensive second read of a key the
+// schema accepts. Only the both-keys row tells template_name-first from name-first.
+describe('PromptScheduleReadOnly — schedule name precedence (quick-261025-dzo, IN-02)', () => {
+  it('N1. a schedule carrying both keys shows template_name, never name', async () => {
+    getSettings().mockResolvedValueOnce({
+      ...SETTINGS,
+      schedules: [{ id: 's3', template_name: 'Thursday check-in', name: 'Old name', is_active: true }],
+    });
+    renderReadOnly();
+
+    expect(await screen.findByText('Thursday check-in')).toBeInTheDocument();
+    expect(screen.queryByText('Old name')).toBeNull();
+  });
+
+  it('N2. a schedule carrying name only still shows it (the defensive read)', async () => {
+    getSettings().mockResolvedValueOnce({
+      ...SETTINGS,
+      schedules: [{ id: 's4', name: 'Old name', is_active: true }],
+    });
+    renderReadOnly();
+
+    expect(await screen.findByText('Old name')).toBeInTheDocument();
+    expect(screen.queryByText('Unnamed schedule')).toBeNull();
+  });
+});

@@ -157,9 +157,10 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
                       backend:Sonnet/routes/groupPromptSettings.js ("template_name: finalTemplateName,"),
                       and its update allow-list has no name key, so name was always empty and
                       every row painted the fallback label in production. name stays as the
-                      second read, OVER dropping it: the schema accepts both keys, so an older
-                      payload that carries name still shows its name. It is the same key the
-                      admin list reads,
+                      second read, OVER dropping it: a defensive read of a key the schema
+                      accepts, not a claim that real data carries it (no backend version has
+                      written name on a schedule; review round 1 IN-01). template_name is the
+                      same key the admin list reads,
                       src/app/components/ScheduleList.js ("schedule.template_name ||").
                       Dropping the template_name read, or reading name first, is a decision,
                       not a cleanup. */}
