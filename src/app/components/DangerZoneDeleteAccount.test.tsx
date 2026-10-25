@@ -1170,15 +1170,15 @@ describe('Phase 88.6-30 — source-level invariants', () => {
     expect(raw).toMatch(/btn-danger/);
     // Both cited markers, so this reads as a considered divergence, not drift. Matched
     // on file name plus anchor token (88.6.1-22), so a line drift cannot red a correct marker.
-    expect(raw).toMatch(/NextGameNightCard\.tsx:\d+(?:-\d+)?[\s\S]{0,80}aria-disabled=\{isFlight \|\| undefined\}/);
-    expect(raw).toMatch(/ConfirmDialog\.tsx:\d+(?:-\d+)?[\s\S]{0,80}prevPendingRef/);
+    expect(raw).toMatch(/NextGameNightCard\.tsx \("[^"]*"\)[\s\S]{0,80}aria-disabled=\{isFlight \|\| undefined\}/);
+    expect(raw).toMatch(/ConfirmDialog\.tsx \("[^"]*"\)[\s\S]{0,80}prevPendingRef/);
     // The Escape reason.
     expect(raw).toMatch(/onEscapeKeyDown/);
   });
 
   it('carries the DECISION marker distinguishing BOUNDING A WAIT from discarding a stale response', () => {
     expect(raw).toMatch(/bounds a wait[\s\S]{0,400}discard/i);
-    expect(raw).toContain('88.6-29-PLAN.md:394');
+    expect(raw).toMatch(/88\.6-29-PLAN\.md \("AbortController is rejected here, not deferred"\)/);
   });
 
   it('does not edit src/lib/api.ts from here — the widened signature is plan 42 to write', () => {
