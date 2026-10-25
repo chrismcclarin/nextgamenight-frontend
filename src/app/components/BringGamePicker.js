@@ -178,11 +178,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
            2026-09-13): `logger.info` — a Sentry BREADCRUMB — over `logger.error`, AC-2's
            original uniform arm, which was rejected because it buys Session Replay volume the
            `no-console` milestone gate never asked for. `logger.warn` is not a cheaper arm
-           (`Sentry.captureMessage`, `src/lib/logger.ts:50`, is also an event). Egress delta
+           (`Sentry.captureMessage`, src/lib/logger.ts ("Sentry.captureMessage(msg"), is also an event). Egress delta
            versus today: NIL — with no `captureConsoleIntegration` in `sentry.client.config.js`
            this was already a breadcrumb and stays one.
            `errCtx(err)` and never the raw `Error`: `info`'s second parameter is
-           `ctx?: Record<string, unknown>` (`src/lib/logger.ts:31`, `info(msg: string, ctx?: ...)`) and `checkJs: false` hides
+           `ctx?: Record<string, unknown>` (src/lib/logger.ts ("info(msg: string, ctx?: Record<string, unknown>)")) and `checkJs: false` hides
            that mistake at a `.js` call site. Converted IN PLACE — a catch inside an async
            effect, not a render body, so no latch is required.
            RECORDED, NOT FIXED (this commit's scope is the channel and the sweep): this path
@@ -348,7 +348,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
         />
         {/* Search */}
         <div className="shrink-0 p-4 pb-2">
-          {/* DECISION Phase 88.6-44 (T-88.6-124, house rule `Input.tsx:11-19`): `id` + `name` +
+          {/* DECISION Phase 88.6-44 (T-88.6-124, house rule src/components/ui/Input.tsx ("HOUSE RULE (88-33 Task 8, fork 5")): `id` + `name` +
               an ARIA-supplied name, chosen OVER a visible <label> row above the field. The
               house rule allows `aria-label` alone only where a visible label genuinely cannot
               exist, and here it cannot in THIS phase: a visible "Search" line is NEW VISIBLE
