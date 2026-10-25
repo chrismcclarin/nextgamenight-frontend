@@ -13,7 +13,7 @@
 // page's fix moot or wrong.
 //
 // `retry: false` only shortens the run. The app's predicate retries a transient failure once
-// (`src/lib/queryClient.ts:121`, `export function shouldRetry`), which changes how many failures
+// (src/lib/queryClient.ts ("export function shouldRetry("), which changes how many failures
 // it takes to reach the error state, not the end state.
 //
 // The mock block and `makeWrapper` are copied from `useSelfIdentity.test.tsx` (ApiError stays
