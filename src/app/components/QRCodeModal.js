@@ -82,17 +82,17 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
          (denied permission, insecure context); an event here would flush the Session Replay
          buffer under `replaysOnErrorSampleRate` and buy replay volume the `no-console` milestone
          gate never asked for. `logger.warn` is NOT a cheaper arm — it is `Sentry.captureMessage`
-         (`src/lib/logger.ts:50`, `Sentry.captureMessage`), also an event.
+         (src/lib/logger.ts ("Sentry.captureMessage(msg")), also an event.
 
          THIS RETIRES the clipboard-noise question rather than answering it: there is no
          `captureConsoleIntegration` in `sentry.client.config.js`, so this call is a breadcrumb
          today and stays one. NO new event, NO new replay egress — the egress delta versus today
-         is NIL. What the conversion buys is retiring the raw `console.*` for the ROADMAP `:28`
-         gate. `FriendInvitePanel.js:376` (`'Failed to copy link:'`) is the shipped twin of
+         is NIL. What the conversion buys is retiring the raw `console.*` for the planning:.planning/ROADMAP.md ("Milestone completion gate (added 2026-06-26)")
+         gate. src/app/components/FriendInvitePanel.js ("logger.info('Failed to copy link:'") is the shipped twin of
          this exact shape.
 
          `errCtx(err)` and never the raw `Error`: `logger.info(msg, ctx)`'s second parameter is
-         `ctx?: Record<string, unknown>` (`src/lib/logger.ts:31`, `info(msg: string`), which
+         `ctx?: Record<string, unknown>` (src/lib/logger.ts ("info(msg: string, ctx?: Record<string, unknown>)")), which
          `checkJs: false` cannot catch at a `.js` call site. `errCtx` is the house helper (its
          own `DECISION Phase 88.6-13` marker records that a hand-written `{ name, message }`
          literal at the call site reds `fetchErrorTreatment`'s R1 gate it never touched).
