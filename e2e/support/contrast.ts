@@ -79,7 +79,7 @@ export interface GroundResolution {
  * element would measure text against black and report a confidently wrong ratio.
  *
  * Structurally the same shape as the shipped `measurePaddingChain`
- * (`e2e/padding-budget.spec.ts:108-140`), and deliberately so — its three properties are
+ * (e2e/padding-budget.spec.ts ("async function measurePaddingChain(anchor: Locator)")), and deliberately so — its three properties are
  * copied in intent, not just in style:
  *   - the `document.body` STOP, so the walk terminates;
  *   - the `position: fixed` BREAK (`DECISION Phase 87.8-12` at `:129`). A fixed element's
@@ -90,7 +90,7 @@ export interface GroundResolution {
  *     `className` as an `SVGAnimatedString` and `String(...)` of one is useless in a report.
  *
  * The chain is returned alongside the answer because the breakdown is what makes a red run
- * self-diagnosing without a re-run (`padding-budget.spec.ts:172-192`). It is NOT optional
+ * self-diagnosing without a re-run (e2e/padding-budget.spec.ts ("function describeChain(surface: string")). It is NOT optional
  * output — do not trim it to just the colour.
  *
  * READ-ONLY: no scroll, no click, no style write. A probe that changed the page would
@@ -160,7 +160,7 @@ export async function resolveGroundColor(anchor: Locator): Promise<GroundResolut
   });
 }
 
-/** Render one rung the way `padding-budget.spec.ts:172-192` renders a padding level. */
+/** Render one rung the way e2e/padding-budget.spec.ts ("function describeChain(surface: string") renders a padding level. */
 function renderLevel(level: GroundLevel, index: number, resolvedAt: number): string {
   const marker = index === resolvedAt ? ' <== resolved ground' : '';
   return `  <${level.tagName}${level.className ? ` class="${level.className}"` : ''}> background-color=${level.backgroundColor}${level.transparent ? ' (transparent)' : ''}${marker}`;
@@ -169,7 +169,7 @@ function renderLevel(level: GroundLevel, index: number, resolvedAt: number): str
 /**
  * Failure message: which surface, what ground was resolved, and the full walked chain.
  *
- * Same contract as `describeChain` (`padding-budget.spec.ts:172-192`) — a contrast failure
+ * Same contract as `describeChain` (e2e/padding-budget.spec.ts ("function describeChain(surface: string")) — a contrast failure
  * that says only "expected 4.2 to be at least 4.5" cannot be acted on, because the argument
  * is always about WHICH ground was measured.
  */
@@ -184,7 +184,7 @@ export function describeGround(label: string, ground: GroundResolution): string 
 
 /**
  * Vacuity-guard message, in the `vacuityMessage` style
- * (`padding-budget.spec.ts:186-192` / `tailwind-v4-styles.spec.ts:139-143`).
+ * (e2e/padding-budget.spec.ts ("function vacuityMessage(surface: string") / `tailwind-v4-styles.spec.ts:139-143`).
  *
  * Two ways a contrast assertion goes vacuous, and neither is a CSS failure:
  *   1. NOTHING RESOLVED — every rung was transparent, so there is no ground to measure
@@ -227,7 +227,7 @@ export function vacuityGround(label: string, ground: GroundResolution): string {
  *
  * REJECTED: pinning the computed colour strings themselves, and screenshot baselines.
  *
- * WHY. It is the same goal `tailwind-v4-styles.spec.ts:37-40` had when it banned pinned
+ * WHY. It is the same goal e2e/tailwind-v4-styles.spec.ts ("DECISION Phase 87.7 Plan 10 (assertion shape)") had when it banned pinned
  * pixel values: a future re-tint that still clears its floor must not churn this file. A
  * ratio IS a value — that is the narrow exception being taken here, and it is taken
  * deliberately rather than by omission — but it is the value the requirement is written
@@ -389,7 +389,7 @@ export async function probeElement(anchor: Locator, props: string[] = ['color'])
         break;
       }
       // Same `position: fixed` BREAK as `resolveGroundColor` above and
-      // `measurePaddingChain` (`padding-budget.spec.ts:129`): a fixed element's containing
+      // `measurePaddingChain` (e2e/padding-budget.spec.ts ("if (style.position === 'fixed') break;")): a fixed element's containing
       // block is the viewport, so an in-flow ancestor underneath a modal is not what the
       // user sees behind the modal.
       if (nodeStyle.position === 'fixed') {

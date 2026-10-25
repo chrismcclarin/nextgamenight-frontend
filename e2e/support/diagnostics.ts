@@ -23,8 +23,8 @@ import type { Page, TestInfo } from '@playwright/test';
  * page would measure a state the failing gesture never saw.
  *
  * OUTPUT IS DELIBERATELY DUPLICATED, and both halves are load-bearing:
- *   - `testInfo.attach` produces the readable pretty-JSON artifact, but `ci.yml:522-533`
- *     uploads `test-results/` only `if: failure()`.
+ *   - `testInfo.attach` produces the readable pretty-JSON artifact, but it reaches CI only as age ciphertext: .github/workflows/ci.yml ("name: Encrypt Playwright failure evidence (age, fail closed") packs playwright-report/ and test-results/
+ *     and .github/workflows/ci.yml ("name: Upload Playwright failure evidence (age ciphertext only") uploads only that ciphertext, if: failure(). The one-line form below goes to the PUBLIC job log in plain text, so a DIAG value carries geometry and fixture copy only (no user text, cookies, storage or headers).
  *   - the ONE-LINE `console.log` lands in the raw job log, readable via
  *     `gh run view <id> --log | grep '\[DIAG '` with no download at all.
  * A multi-line console dump is unreadable in that log — the single line is a requirement,
@@ -61,7 +61,7 @@ export async function attachDiagnostics(
   });
   // `no-console` is disabled HERE and nowhere else, deliberately: this single line is the
   // only diagnostic path that survives a run whose artifact upload does not happen. The
-  // attachment above is gated behind `ci.yml:522`'s `if: failure()`, so on any run that
+  // attachment above is gated behind the if: failure() on .github/workflows/ci.yml ("name: Upload Playwright failure evidence (age ciphertext only"), so on any run that
   // does not fail there is no artifact at all — `gh run view <id> --log | grep '[DIAG '`
   // is then the ONLY way to read a measurement. Removing this is not a lint cleanup.
   // eslint-disable-next-line no-console

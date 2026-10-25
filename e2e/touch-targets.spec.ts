@@ -968,7 +968,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
           member") and the ARMED two-tap Remove ("Tap again to confirm") — a `Remove {name}`
           label never renders. The replica is now derived from the shipped `<Button>` classes
           and pinned in lockstep by `src/components/ui/Button.e2eReplica.test.ts`; current
-          cites: row :2165, settled span :299, Remove className :2216.]*
+          cites: the row, the settled span and the Remove className, each anchored in item 1 above.]*
 
        2. The SHIPPED row, WHEN THE FIXTURE RENDERS IT. This half is CONDITIONAL, deliberately,
           and the reasoning is the one already recorded a few tests above for the `.btn-compact`
@@ -1024,7 +1024,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       //     `member` branch ink resolved (`branchInk`, src/app/gameDetail/page.js ("const branchInk =")) and its label 'Already a member'
       //     (src/app/gameDetail/page.js ("{status === 'member' && 'Already a member'}")) — the widest invite state, and a span, not a button, since 88.6-18 D8.
       //   - REMOVE: the two-tap Remove in its ARMED state — `cn(buttonVariants({ variant:
-      //     'ghost', size: 'sm' }), 'border shrink-0 ' + <the isConfirming classes at :2216-2218>)`
+      //     'ghost', size: 'sm' }), 'border shrink-0 ' + <the isConfirming classes>)`, those classes being src/app/gameDetail/page.js ("bg-status-error-subtle border-status-error text-content-status-error font-semibold")
       //     TRANSCRIBED as a literal (e2e cannot import `src/`), with `useConfirmAction`'s
       //     `DEFAULT_ARMED_LABEL` 'Tap again to confirm' (src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL"); gameDetail
       //     passes no `armedLabel`, src/app/gameDetail/page.js ("const removeParticipantGate = useConfirmAction({")). The old comment here said `labelFor`
@@ -2432,8 +2432,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
    NAMING THE PROJECT IS NOT ENOUGH — THE FILE'S STRUCTURE IS WHAT SELECTS IT, and as the file
    stands it selects the WRONG one in both directions:
-     - written INSIDE the file-wide describe (which opens at `:578` and carries
-       `test.skip(({ isMobile }) => !isMobile, …)` at `:582`), this arm would inherit that skip,
+     - written INSIDE the file-wide describe (which opens at this file ("test.describe('Phase 87.8 R4/R6 — touch-target geometry") and carries
+       `test.skip(({ isMobile }) => !isMobile, …)` at this file ("test.skip(({ isMobile }) => !isMobile, 'R4/R6")), this arm would inherit that skip,
        collect ZERO tests under `--project=journeys`, and its `<automated>` command would pass on
        an empty run;
      - hoisted out to fix that but left UNGUARDED, it would ALSO run under `--project=phone`,

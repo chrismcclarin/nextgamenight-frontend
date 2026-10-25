@@ -45,7 +45,7 @@ import { expectNoApiWrites, holdWrites, settleAnimations } from './support/inFli
 // owner, never a restyle.
 
 // Seeded fixture group (the fixture user OWNS it, so the admin-only Remind renders) — same
-// fallback idiom as padding-budget.spec.ts:69.
+// fallback idiom as e2e/padding-budget.spec.ts ("const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? ").
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 
 const PROMPT_ID = '8861a011-0000-4000-8000-000000000011';

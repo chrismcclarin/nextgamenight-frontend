@@ -6,7 +6,7 @@ import { test, expect, type Locator } from '@playwright/test';
  *
  * PROJECT GUARD: every new spec joins BOTH projects automatically — `journeys` and
  * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts:44 and :87). This
- * file inverts the guard tailwind-v4-styles.spec.ts:59 uses: it SKIPS the desktop
+ * file inverts the guard e2e/tailwind-v4-styles.spec.ts ("test.skip(({ isMobile }) => isMobile, 'SPEC R5") uses: it SKIPS the desktop
  * `journeys` project, because R7 is a phone-tenet requirement measured at the phone
  * viewport (iPhone SE (3rd gen), 375x667 — D-06).
  *
@@ -54,7 +54,7 @@ async function guardResolved(locator: Locator, what: string): Promise<void> {
 }
 
 test.describe('Phase 87.8 R7 — group-restore preview at phone width (phone project)', () => {
-  // Inverse of the tailwind-v4-styles.spec.ts:59 guard: this file is phone-only.
+  // Inverse of the e2e/tailwind-v4-styles.spec.ts ("test.skip(({ isMobile }) => isMobile, 'SPEC R5") guard: this file is phone-only.
   // Both projects match every spec (playwright.config.ts:44, :87), so without this
   // skip the desktop journeys project would run phone-tenet assertions at 1280px.
   test.skip(({ isMobile }) => !isMobile, 'R7 is a phone-tenet requirement — phone project only');

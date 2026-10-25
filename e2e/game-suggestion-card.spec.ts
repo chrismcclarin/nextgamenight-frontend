@@ -186,7 +186,7 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
 
     // Reached by KEYBOARD (a Tab press, then focus), so :focus-visible applies. The helper throws
     // if the ring variables are empty, i.e. if the card never matched :focus-visible. jsdom applies
-    // no stylesheet, so this ring is provable only here (`e2e/contrast.spec.ts:1004-1006`).
+    // no stylesheet, so this ring is provable only here (e2e/contrast.spec.ts ("WHY THIS CANNOT BE A jsdom ARM")).
     const ring = await focusRingMeasurement(page, card, 'GameSuggestionCard focus ring (88.6.1-03)');
     await expect(card).toBeFocused();
     expect(ring.boxShadow, `focused box-shadow ${ring.boxShadow}`).not.toBe('none');

@@ -229,7 +229,7 @@ interface GridGeometry {
    * clamp gave `368.352 .. 667` — so the old filter admitted FIVE cells where only FOUR were
    * reachable, and a drag to the fifth landed on the Radix backdrop
    * (`div.fixed inset-0 z-50 bg-black/80`, `elementFromPoint` -> null). The modal is
-   * `max-h-[90vh] overflow-hidden`; the viewport is not the clip.
+   * max-h-[90dvh] overflow-hidden, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"); the viewport is not the clip.
    */
   visibleBand: { top: number; bottom: number; height: number };
 }
@@ -1409,7 +1409,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     const viewportHeight = await page.evaluate(() => window.innerHeight);
     expect(
       modalBox!.height,
-      `the create-event modal measures ${modalBox!.height}px tall against its max-h-[90vh] budget (${viewportHeight * 0.9}px) — the day column grew the modal instead of scrolling inside it, which re-opens DEF-88-17-01 / 88-32 ruling 6`,
+      `the create-event modal measures ${modalBox!.height}px tall against its max-h-[90dvh] budget, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]") (${viewportHeight * 0.9}px) — the day column grew the modal instead of scrolling inside it, which re-opens DEF-88-17-01 / 88-32 ruling 6`,
     ).toBeLessThanOrEqual(viewportHeight * 0.9 + 1);
 
     // ...and there is GENUINELY something to scroll. This is the half jsdom
@@ -1941,7 +1941,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop
     // MEASUREMENT ONLY (plan 88.1-19). The desktop `endRow` failure (4 where 5 was
     // expected) is the SAME mechanism as case 3's at a different viewport — and the
     // 1280x720 numbers are what PROVE that rather than assert it. At 720px the
-    // `max-h-[90vh]` modal is 648px tall and centred, so the clipped band and
+    // max-h-[90dvh] modal, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"), is 648px tall and centred, so the clipped band and
     // `gridGeometry`'s viewport-clamped band diverge by a different amount than they do
     // at 667px; that difference is the point of measuring both arms.
     await attachDiagnostics(testInfo, 'desktop-pre-drag', {

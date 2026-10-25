@@ -27,7 +27,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 // browser (every other method falls through), then unroutes; the seeded account's RSVP
 // never changes. Test B never submits the Create Event form and closes it with Escape.
 
-/** Same names as `phone-home-event-discovery.spec.ts:206-207`, re-declared, never imported. */
+/** Same names as e2e/phone-home-event-discovery.spec.ts ("const calendarButton = (page: Page)") and the calendarSheet after it, re-declared, never imported. */
 const calendarButton = (page: Page) => page.getByRole('button', { name: /^calendar\b/i });
 const calendarSheet = (page: Page) => page.getByRole('dialog', { name: 'Calendar' });
 
