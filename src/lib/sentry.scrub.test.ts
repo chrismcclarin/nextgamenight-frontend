@@ -57,7 +57,7 @@ const JWT =
  */
 const ALPHA = 'abcdefghijklmnopqrstuvwxyz';
 
-/** The REAL rsvp token shape: 43-char base64url HMAC-SHA256 (`routes/rsvp.js:95-100`). */
+/** The REAL rsvp token shape: 43-char base64url HMAC-SHA256 (backend:Sonnet/routes/rsvp.js ("function generateRsvpToken(eventId, userId, status) {")). */
 const RSVP_TOKEN = 'Ab3-Cd5_Ef7Gh9Ij1Kl3Mn5Op7Qr9St1Uv3Wx5Yz7Aq';
 
 /** 64 lowercase hex — the `restore/group` / invite-token shape. */
@@ -199,7 +199,7 @@ describe('W007 — OAuth-shaped key=value pairs and the logger breadcrumb (88.6.
 
   it('Prohibition 5: the exact object logger.info(msg, errCtx(err)) hands to addBreadcrumb comes back redacted from scrubEvent', () => {
     // The crumb is built LITERALLY (no logger import here, which keeps `@sentry/nextjs` out of
-    // this suite). Its shape is `logger.info` at `src/lib/logger.ts:53`
+    // this suite). Its shape is `logger.info` at src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg")
     // (`Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx })`) with `ctx` from
     // `errCtx` at src/lib/logger.ts ("export function errCtx(err: unknown)") (name and message only). The WIRING proof, the real
     // logger through the `beforeSend` that `sentry.client.config.js` hands to `Sentry.init`, is
@@ -303,11 +303,11 @@ describe('AC-1 — the `rsvp` greedy family is held narrow from BOTH sides', () 
   });
 
   it('NEGATIVE: the tokenless `/rsvp/` siblings come through with route identity intact', () => {
-    // `api.ts:1087` (`/rsvp/event/${event_id}`) — an authenticated event lookup by UUID.
+    // src/lib/api.ts ("apiFetch<RsvpEventResponse>(") (`/rsvp/event/${event_id}`) — an authenticated event lookup by UUID.
     expect(scrubString('/rsvp/event/f47ac10b-58cc-4372-a567-0e02b2c3d479')).toBe(
       '/rsvp/event/f47ac10b-58cc-4372-a567-0e02b2c3d479'
     );
-    // `api.ts:1109` (`/rsvp/respond?token=`) — the public respond endpoint. Its QUERY carries the token and `scrubUrl`
+    // src/lib/api.ts ("/rsvp/respond?token=") (`/rsvp/respond?token=`) — the public respond endpoint. Its QUERY carries the token and `scrubUrl`
     // strips the whole query string, but the PATH must survive readable.
     expect(scrubUrl('https://x/rsvp/respond?token=abc&e=1')).toBe(`https://x/rsvp/respond?${R}`);
   });
@@ -378,7 +378,7 @@ describe('AC-1 — the over-redaction negatives', () => {
 
   it('`/invite/accept` is UNCHANGED — the negative control the deleted flat `invite/` entry reds', () => {
     // There is no flat `/invite/<token>` route. The only flat child of `/invite/` is
-    // `invite/accept` (`src/app/invite/accept/page.js:9-10`), which is TOKENLESS — it reads
+    // `invite/accept` (src/app/invite/accept/page.js ("const token = searchParams.get(")), which is TOKENLESS — it reads
     // its token from `searchParams`, which `scrubUrl` already strips and `SECRET_KV` already
     // matches. The shipped flat `invite/` pattern over-redacted it to `/invite/[REDACTED]`
     // while LEAVING the real `/invite/group/<token>` token in place. Keeping that entry

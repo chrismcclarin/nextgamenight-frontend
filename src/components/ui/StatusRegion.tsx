@@ -120,9 +120,9 @@ export { StatusRegion };
  * How long a polite region stays EMPTY before it may take text — moved here from
  * `FetchErrorBanner.tsx` (plan 88.6.1-21's constant) by plan 88.6.1-82, so the live-region
  * primitive owns the one declaration and every consumer imports it. AT-4
- * (`research/APPENDIX-AT.md:316-326`, failure condition 4, "The same message twice"): WebKit's
+ * (planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/research/APPENDIX-AT.md ("**The same message twice.**"), failure condition 4, "The same message twice"): WebKit's
  * live-region manager re-announces text identical to the last announcement only after the region
- * has stayed empty for `emptyRegionSettleDelay { 100_ms }` (`research/APPENDIX-AT.md:320-324`),
+ * has stayed empty for `emptyRegionSettleDelay { 100_ms }` (planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/research/APPENDIX-AT.md ("the clear must also stay empty for at least 100ms")),
  * and a synchronous clear-then-set is dropped. The value is the engine's constant, not a guess.
  * It is also the house's minimum empty time before a region mounted on page arrival takes its
  * first text (plan 88.6.1-82, the removed-from-group notice). It sits LAST in this file so the

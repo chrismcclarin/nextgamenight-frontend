@@ -28,11 +28,11 @@
 //      0.2126 R + 0.7152 G + 0.0722 B) plus CIE L-star. Used ONLY to measure design-token
 //      contrast against WCAG floors. It has no runtime render path.
 //
-//   2. `src/lib/colorUtils.js:142-159` (`getBrightness`) — the W3C 299/587/114 PERCEIVED
+//   2. src/lib/colorUtils.js ("export function getBrightness(hexColor) {") (`getBrightness`) — the W3C 299/587/114 PERCEIVED
 //      BRIGHTNESS formula. Its 128 and 180 tier thresholds are calibrated to THAT formula's
 //      output scale, which is a different scale from this one. It is the live tier predicate
 //      that picks title/subtitle text colour over a USER-CHOSEN group colour, and the
-//      D-27/D-29 marker at `colorUtils.js:33-38` already says "do NOT collapse the algorithm
+//      D-27/D-29 marker at src/lib/colorUtils.js ("ALSO (D-29): do NOT collapse the algorithm") already says "do NOT collapse the algorithm
 //      or delete the two lighter tiers". Phase 88.3 makes those tiers load-bearing for the
 //      first time: every light-mode rendered group tint lands at W3C brightness 188-191 —
 //      the previously-unreachable `brightness > 180` branch, cleared by only ~8-11 points.
@@ -46,7 +46,7 @@
 //      `relativeLuminance` here would silently re-tier every group in the database — a
 //      user's header text would flip pole with no code review noticing.
 //
-//   3. `src/lib/availabilityColor.ts:169-172` (`luma`) — Rec. 709 luma on raw 0-255
+//   3. src/lib/availabilityColor.ts ("function luma([r, g, b]: readonly [number, number, number]): number {") (`luma`) — Rec. 709 luma on raw 0-255
 //      channels, with NO transfer function at all. It exists to derive the five availability
 //      wash alphas from the canonical green ramp's own perceptual spacing. Replacing it with
 //      WCAG luminance would re-derive all five shipped alphas.
@@ -84,7 +84,7 @@
 // ---------------------------------------------------------------------------------------
 // Every exported function is TOTAL: null, undefined, a non-string, an empty string or any
 // malformed colour returns a defined value (`null`) and NEVER throws. This mirrors
-// `getBrightness`'s shipped contract at `colorUtils.js:142-159` (invalid input returns 255,
+// `getBrightness`'s shipped contract at src/lib/colorUtils.js ("export function getBrightness(hexColor) {") (invalid input returns 255,
 // never throws). `parseHex` is handed arbitrary `Groups.background_color` values from the
 // database in plan 10, where a throw would take down a render.
 //

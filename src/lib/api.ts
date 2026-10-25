@@ -138,7 +138,7 @@ export type ApiErrorCode =
   // queryClient.ts, and its own arm in classifyDeleteError.
   | 'not_provisioned'
   // Phase 88.8 post-merge (round 6 #11/#14/#15/#16/#17): registered BE-side in
-  // ERROR_REGISTRY as `unsupported_address` @400 (utils/errors.js:104, `unsupported_address:`), returned by
+  // ERROR_REGISTRY as `unsupported_address` @400 (backend:Sonnet/utils/errors.js ("unsupported_address:")), returned by
   // POST /users/:user_id/email when the requested address matches the app's OWN
   // synthetic-account sentinel (the broad NIX-AUTH0 predicate). DELIBERATELY DISTINCT
   // from `validation`: that code is the shape/length/body-key verdict, and the Email
@@ -362,8 +362,8 @@ export function mapErrorToCode(body: any, status: number): ApiErrorCode {
   // Validation hint, CANONICAL SHAPE ONLY. Phase 88.6 plan 42 moved this arm off
   // the TOP-LEVEL `errors[]` legacy mirror onto the sanctioned Phase 85/86
   // `details.errors`. BEHAVIOUR-NEUTRAL for the unconverted producers measured
-  // 2026-09-17 — routes/invites.js:216 and routes/friendships.js:278 (both
-  // `res.status(400).json({ errors: errors.array() })`) and routes/availability.js:55-64
+  // 2026-09-17 — routes/invites.js and routes/friendships.js (both
+  // `res.status(400).json({ errors: errors.array() })`) and routes/availability.js
   // (`errors: errors.array().map`) all emit their top-level `errors[]` on a 400,
   // and statusToCode(400) already returns 'validation'. The Array.isArray guard
   // stays: a malformed `details.errors` must not produce 'validation' and must
@@ -702,7 +702,7 @@ export async function apiFetch<T = unknown>(
     // throws that message is extractErrorMessage output -- which, after this same commit
     // reshaped the non-JSON bodies onto the message key, is the ENTIRE RAW RESPONSE TEXT
     // on a non-JSON error response. Forwarding it would put a whole response body into a
-    // Sentry BREADCRUMB: a T-84-01 violation (logger.ts:8-13, `Info-Disclosure threat T-84-01`). So this call carries the
+    // Sentry BREADCRUMB: a T-84-01 violation (src/lib/logger.ts ("Info-Disclosure threat T-84-01")). So this call carries the
     // endpoint, the error NAME and -- when it is an ApiError -- its status and code, and
     // NOTHING derived from the response body. The full url is not carried either
     // (T-88.6-124, defence in depth complementing AC-1 beforeSend scrub, never a
@@ -933,7 +933,7 @@ async function timedPublicFetch(
     // throws, so the timer is the only thing that can have aborted it). The message is built
     // from constants only: the helper's failure constant and PUBLIC_TRANSPORT_TIMEOUT_MS.
     // REJECTED (a): a distinct `name`. `name` is fixed at 'ApiError', consumers branch on
-    // instanceof, and the 'ApiError — shape' test pins it (APPENDIX-DF :164).
+    // instanceof, and the 'ApiError — shape' test pins it (planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/research/APPENDIX-DF.md ("**W062 riders** MEDLOW-17 / MEDLOW-18")).
     // REJECTED (b): a new ApiErrorCode such as a timeout code. Every consumer renders the same
     // `network` copy for both, `shouldRetry` and the Sentry tags key on `network`, and plan
     // 88.6.1-36 keys the RSVP timeout state on `network`.
@@ -1245,8 +1245,8 @@ export const rsvpAPI = {
   // ARRAY — which was simply wrong. The route returns an OBJECT,
   // `{ rsvps, summary }` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js, anchor
   // `return res.json({ rsvps: shapedRsvps, summary });`).
-  // The wrong type survived because every consumer was `.js` (src/app/components/RsvpSection.js:166-167,
-  // `setRsvps(data.rsvps || [])`; src/app/gameDetail/page.js:723 and :977, `rsvpAPI.getEventRsvps(`;
+  // The wrong type survived because every consumer was `.js` (src/app/components/RsvpSection.js,
+  // `setRsvps(data.rsvps || [])`; src/app/gameDetail/page.js at two sites, `rsvpAPI.getEventRsvps(`;
   // lines read at 88.6.1-07) so TS never checked it; all three already read
   // `data.rsvps` / `data.summary`, i.e. they always treated it as the object. Do not
   // revert to RsvpList.
@@ -1732,7 +1732,7 @@ export const magicAuthAPI = {
     //
     // DECISION Phase 88.6.1-23 (R3-M7/M9): CHOSEN — the backend's own code decides. A non-OK
     // answer resolves only when its code is `token_invalid` (the fix text of
-    // `.planning/deferred/phase-88.6.1.md:225`).
+    // planning:.planning/deferred/phase-88.6.1.md ("R3-M7/M9 [contracts LOW")).
     // REJECTED (a): the HTTP status alone (the old rule). A future second 400 on the route would
     // render as a dead link.
     // REJECTED (b): status 400 AND the code. It keeps the other drift the register names: a
@@ -1740,7 +1740,7 @@ export const magicAuthAPI = {
     // REJECTED (c): reading the code off the body directly. `mapErrorToCode` is the module's one
     // code seam, and its value is the code the throw carries.
     // No production behaviour changes today: the route's only 400s are `token_invalid` (BE
-    // `routes/magicAuth.js:98`, `:115`). Pair with Phase 93's consumer sweep when it touches
+    // backend:Sonnet/routes/magicAuth.js ("'Token is required');"), backend:Sonnet/routes/magicAuth.js ("return sendError(res, 'token_invalid', { action: 'request_new' });")). Pair with Phase 93's consumer sweep when it touches
     // `utils/errors.js`.
     // Keying this on the status again is a decision, not a cleanup.
     if (!res.ok) {
