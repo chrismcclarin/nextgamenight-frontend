@@ -34,6 +34,13 @@
  * of scope by construction" is about walked FILES (WALK_EXTS has no md, and no .md file is
  * tracked under src or e2e), not about cite TARGETS (SPEC A7, RESEARCH PC-10).
  *
+ * DECISION Phase 88.6.2 code review (B-ML6): mts, cts, json, html, yml and yaml are in CITE_EXTS
+ * too, chosen OVER the eight A7 listed. The reason is A7's own: living source already cites
+ * these targets by line (14 cites in 12 files when this was added, 2026-10-25: 7 mts, 5 html,
+ * 2 json), and a list without them let a new config or workflow line cite grow unseen. Adding
+ * them RAISES the measured count, so the change ships with a baseline rewrite, never alone.
+ * Narrowing the list again is a decision, not a cleanup.
+ *
  * DECISION Phase 88.6.2-04 (digest): the baseline carries a sha256 of its counts, which the
  * ratchet test checks, chosen OVER a do-not-edit note alone. A hand edit, raise or lower, reds
  * until the census rewrites the file. Tamper-evident, not tamper-proof: like every house gate
@@ -51,8 +58,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-/** Cite-target extensions (A7 adds md). */
-export const CITE_EXTS = Object.freeze(['js', 'jsx', 'ts', 'tsx', 'css', 'mjs', 'cjs', 'md']);
+/** Cite-target extensions (A7 adds md; code review B-ML6 adds the config and markup ones). */
+export const CITE_EXTS = Object.freeze(['js', 'jsx', 'ts', 'tsx', 'css', 'mjs', 'cjs', 'md', 'mts', 'cts', 'json', 'html', 'yml', 'yaml']);
 
 /** The census regex. GLOBAL: use text.match / text.matchAll only (see the module docblock). */
 export const CITE_RE = new RegExp(`[A-Za-z0-9_.-]+\\.(?:${CITE_EXTS.join('|')}):[0-9]+`, 'g');
@@ -332,7 +339,12 @@ export const SELF_TEST_CASES = [
   { id: 'match-range-once', run: () => expectCount(`// ${cite('Foo', 'ts', '12')}-18`, 1) },
   { id: 'match-bare-followon', run: () => expectCount('// and the follow-on at :131 here', 0) },
   { id: 'match-md', run: () => expectCount(`// ${cite('Foo', 'md', '4')}`, 1) },
-  { id: 'match-unlisted-ext', run: () => expectCount(`// ${cite('Foo', 'mts', '3')}`, 0) },
+  { id: 'match-unlisted-ext', run: () => expectCount(`// ${cite('Foo', 'txt', '3')}`, 0) },
+  {
+    id: 'match-config-exts',
+    run: () =>
+      expectCount(['mts', 'cts', 'json', 'html', 'yml', 'yaml'].map((ext) => `// ${cite('Foo', ext, '3')}`).join('\n'), 6),
+  },
   { id: 'match-no-path', run: () => expectCount('// at 10:30, on localhost:3000', 0) },
   {
     id: 'match-two-on-a-line',
@@ -482,7 +494,7 @@ function expectRefused(plan, refusedPrefix) {
 }
 
 /** The declared case count; a run of any other number of cases fails. */
-export const SELF_TEST_CASE_COUNT = 20;
+export const SELF_TEST_CASE_COUNT = 21;
 
 /** @returns {{ ran: number, passed: number, failed: string[], lines: string[] }} */
 export function runSelfTest() {

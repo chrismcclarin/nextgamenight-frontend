@@ -74,6 +74,16 @@ describe('line-cite ratchet (Phase 88.6.2-04, SPEC R3 Target b)', () => {
     expect(findRises(masked, base).map((r) => r.path)).toEqual([first]);
   });
 
+  it('counts a line cite into a config or markup target too: mts, cts, json, html, yml, yaml (code review B-ML6)', () => {
+    // Built by concatenation (D-06), so this file still holds no counted string of its own.
+    for (const ext of ['mts', 'cts', 'json', 'html', 'yml', 'yaml']) {
+      expect(countCites('// see vitest.config' + '.' + ext + ':' + '67'), `a .${ext} line cite was not counted`).toBe(1);
+    }
+    // Still not a cite: an extension outside the list, and a bare follow-on (D-05).
+    expect(countCites('// see notes' + '.' + 'txt' + ':' + '4')).toBe(0);
+    expect(countCites('// and the follow-on at :131 here')).toBe(0);
+  });
+
   it('the shared matcher passes its own self-test case table', () => {
     const result = runSelfTest();
     expect(result.failed).toEqual([]);

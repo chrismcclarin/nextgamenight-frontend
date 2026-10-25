@@ -143,7 +143,7 @@ export const gates = [
   { file: 'src/lib/hooks/usePhoneViewport.test.ts', min: 9, why: 'Phase 88.6.1-09 D-16 — the one phone-viewport hook stays the only one; a census over src' },
   { file: 'src/test-utils/exemption.test.ts', min: 12, why: 'Phase 88.6.2 D-19 — the exemption schema, and test-utils never shipped from src' },
   { file: 'src/test-utils/sourceScan.parity.test.ts', min: 9, why: 'Phase 88.6.2-08 — the scanner lexer parity, tree-wide over src' },
-  { file: 'src/app/citeRatchet.test.ts', min: 5, why: 'Phase 88.6.2-04 D-06 — the line-cite ratchet over src and e2e; imports no scanner' },
+  { file: 'src/app/citeRatchet.test.ts', min: 6, why: 'Phase 88.6.2-04 D-06 — the line-cite ratchet over src and e2e; imports no scanner; code review B-ML6 added the config-extension case' },
   { file: 'src/app/anchorCites.test.ts', min: 2, why: 'Phase 88.6.2-07 A19 (owner ruling V2-a, permanent) — the anchor-cite check on every PR' },
   { file: 'src/test-utils/scrubSessionHeaders.test.ts', min: 5, why: 'Phase 88.6.2-20 R8 — the e2e fetch-error session scrub, with a walk of e2e' },
   { file: 'src/test-utils/readHoldGuard.test.ts', min: 3, why: 'Phase 88.6.2-11 / code review C-ML3 — releaseToNetwork never hands a write hold to the network' },
