@@ -10,8 +10,9 @@ import { scrubbedFetch } from './scrubbedFetch';
 //     never logs or attaches the body. Any other request under /api/users/, and any non-GET,
 //     falls back.
 //   - GET /api/rsvp/event/<id> passes through scrubbedFetch; once the viewer's id is known, any
-//     row of theirs is dropped and one row is appended (status yes, note null, the viewer's id in
-//     both user_id and User.id), and summary is recounted from the rows, as the backend does.
+//     row of theirs is dropped and one row is inserted after the last yes row (status yes, note
+//     null, the viewer's id in both user_id and User.id), and summary is recounted from the rows,
+//     as the backend does.
 //     Every other field of the body is left unchanged. A non-JSON body is fulfilled unchanged; a
 //     non-GET falls back.
 // Call it before the navigation that sends those reads. It never navigates.
@@ -38,13 +39,16 @@ export type RsvpBody = { rsvps?: RsvpRow[]; summary?: unknown } & Record<string,
  * The body with the viewer answered yes, in the backend's own shape: every row carries the flat
  * user_id beside the nested User.id, and summary counts the rows returned
  * (backend:Sonnet/routes/rsvp.js ("json.user_id = json.User?.id;")). Any row of the viewer's is
- * dropped, one yes row is appended, summary is recounted from the rows the way the route counts
- * it, and every other field is left unchanged. Pinned by the unit test
+ * dropped, one yes row is inserted after the last yes row, summary is recounted from the rows
+ * the way the route counts it, and every other field is left unchanged. Pinned by the unit test
  * src/test-utils/viewerRsvp.test.ts ("the injected row carries the flat user_id beside User.id, and summary counts it").
  */
 export function withViewerYesRsvp(body: RsvpBody, viewerId: string): RsvpBody {
   const rows = (body.rsvps ?? []).filter((row) => row?.User?.id !== viewerId && row?.user_id !== viewerId);
-  rows.push({
+  // Backend order: yes, maybe, no, then createdAt ascending (backend:Sonnet/routes/rsvp.js ("yes first, maybe second, no third")).
+  // The injected yes is the newest yes, so it goes after the last yes row and before the first maybe or no row.
+  const firstNonYes = rows.findIndex((row) => row.status !== 'yes');
+  rows.splice(firstNonYes === -1 ? rows.length : firstNonYes, 0, {
     id: 'e2e-viewer-rsvp',
     status: 'yes',
     note: null,

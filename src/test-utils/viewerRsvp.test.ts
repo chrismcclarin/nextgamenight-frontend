@@ -49,6 +49,18 @@ describe('viewerRsvp — the injected viewer Yes keeps the backend row and summa
     expect(out.summary).toEqual(counted);
   });
 
+  it('the injected yes sits after the last yes row and before the first maybe or no row, as the backend orders them', () => {
+    const third = '00000000-0000-4000-8000-00000000000c';
+    const fourth = '00000000-0000-4000-8000-00000000000d';
+    const out = withViewerYesRsvp(backendBody([row(OTHER, 'yes'), row(third, 'maybe'), row(fourth, 'no')]), VIEWER);
+    expect((out.rsvps ?? []).map((r) => [r.user_id, r.status])).toEqual([
+      [OTHER, 'yes'],
+      [VIEWER, 'yes'],
+      [third, 'maybe'],
+      [fourth, 'no'],
+    ]);
+  });
+
   it('every other field of the body is left unchanged', () => {
     const body = { ...backendBody([row(OTHER, 'yes')]), extra: { kept: true } };
     const out = withViewerYesRsvp(body, VIEWER);

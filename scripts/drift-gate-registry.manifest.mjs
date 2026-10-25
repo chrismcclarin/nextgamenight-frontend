@@ -147,6 +147,7 @@ export const gates = [
   { file: 'src/app/anchorCites.test.ts', min: 2, why: 'Phase 88.6.2-07 A19 (owner ruling V2-a, permanent) — the anchor-cite check on every PR' },
   { file: 'src/test-utils/scrubSessionHeaders.test.ts', min: 5, why: 'Phase 88.6.2-20 R8 — the e2e fetch-error session scrub, with a walk of e2e' },
   { file: 'src/test-utils/readHoldGuard.test.ts', min: 3, why: 'Phase 88.6.2-11 / code review C-ML3 — releaseToNetwork never hands a write hold to the network' },
+  { file: 'src/test-utils/viewerRsvp.test.ts', min: 4, why: 'Phase 88.6.2-22 / code review C-ML2 — the injected viewer Yes keeps the backend row shape, summary and yes-maybe-no order' },
   { file: 'src/lib/ci-grep-gate.fixture.test.ts', min: 72, why: 'Phase 88-29 / 88.6.2-26 — the registry lockstep itself (the 88-32 turtle); 88.6.2-27 added the age-ciphertext pairing and P3 tests; the 88.6.2 code review (B-ML1/B-ML3) added the encrypt self-test step pin' },
 ];
 
