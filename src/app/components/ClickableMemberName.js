@@ -120,6 +120,8 @@ export default function ClickableMemberName({ userId, username, children, showIn
   const portalRootRef = useRef(null);
   // Review r2 #197: armed by ONE inline success, consumed by the 87.8 D-13 handoff below.
   const d13OnceRef = useRef(false);
+  const closeTimerRef = useRef(null);
+  const mountedRef = useRef(true);
   const { arm } = useFocusRecovery();
 
   const status = getStatus(userId);
@@ -217,6 +219,11 @@ export default function ClickableMemberName({ userId, username, children, showIn
 
   // Reset sent/error state when tooltip closes so stale messages don't persist
   useEffect(() => {
+    // Review round 1 IN-03 + scoped check (quick-261025-dzo): ANY open/close transition cancels a
+    // pending auto-close. On close, a closed popover has nothing left to auto-close; on open, a
+    // timer scheduled while the popover was closed (the inline "+" path, or a send that resolved
+    // after a close) must not snap the popover the person just opened (marker in handleSendRequest).
+    clearTimeout(closeTimerRef.current);
     if (!isOpen) {
       const timer = setTimeout(() => {
         setSent(false);
@@ -225,6 +232,15 @@ export default function ClickableMemberName({ userId, username, children, showIn
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+  // Set true in the body, not only at the ref's creation: StrictMode's simulated unmount runs the
+  // cleanup once and then re-runs this body, which must mark the component mounted again.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   const handleSendRequest = async (e, { inline = false } = {}) => {
     // Stop propagation so a tap on the inline "+" doesn't bubble up to the
@@ -252,10 +268,41 @@ export default function ClickableMemberName({ userId, username, children, showIn
     setInlineSendError(false);
     try {
       await sendRequest(userId);
+      // A send still in flight at unmount resolves here after the unmount clear has run: stop
+      // before anything is scheduled (the DECISION marker below; the latch release in finally stays).
+      if (!mountedRef.current) return;
       setSent(true);
       if (inline) d13OnceRef.current = true;
       // No-op on mobile (popover never opened); preserved for desktop parity.
-      setTimeout(() => setIsOpen(false), 1500);
+      // DECISION quick-261025-dzo (88.6.2 ledger C-50): the 1500 ms auto-close timer lives in
+      // closeTimerRef, cleared before each new one and cleared on unmount, OVER the
+      // fire-and-forget timer it replaces. That timer outlived the component, and after a
+      // torn-down test environment its setIsOpen call threw (window is not defined, CI quality
+      // run 40148582905).
+      // AMENDED review round 1 (WR-01): the unmount clear runs once, so a send that resolves AFTER
+      // unmount used to reach this branch and schedule a fresh timer nothing cleared. Chosen: a
+      // mounted flag (mountedRef, set true in the unmount effect's body so StrictMode's simulated
+      // remount resets it) checked in the await continuation, BEFORE anything is scheduled, plus
+      // the ref and unmount clear for a timer scheduled while mounted. The flag guards the
+      // SCHEDULING, not the timer.
+      // AMENDED review round 1 (IN-03) + scoped check: the isOpen effect above clears this timer on
+      // EVERY open/close transition, so a popover opened or reopened inside the 1500 ms window is
+      // not snapped shut by a stale close — including a timer scheduled while the popover was
+      // closed (the inline "+" path; a send that resolved after a close). A clear on close alone
+      // left those two paths snapping (scoped check probes P1/P2, pinned by TM6).
+      // REJECTED: (a) an isMounted flag checked inside the timer callback alone, because the timer
+      // would still be scheduled and run after unmount; the leak is the timer, not the update.
+      // (b) an effect keyed on sent, because it changes when the close is scheduled and ties the
+      // close to a flag the 300 ms close reset above also clears; the ref keeps the shipped
+      // timing exactly. (c) an AbortController on the send, because the provider's sendRequest
+      // takes only the user id and no signal,
+      // src/app/components/FriendshipStatusProvider.js ("await handleSendRequest(targetUserId);").
+      // Same shape as
+      // src/app/components/AvailabilityForm.js ("useEffect(() => () => clearTimeout(prefillStatusTimerRef.current), []);").
+      // Dropping the unmount clear, the clear before rescheduling, the mounted check before
+      // scheduling, or the clear on every open/close transition, is a decision, not a cleanup.
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = setTimeout(() => setIsOpen(false), 1500);
     } catch (err) {
       // DECISION Phase 88.6-34 (AC-2 WIDENED 2026-09-09, level AMENDED 2026-09-13):
       // `logger.info`, chosen OVER `logger.error` and OVER `logger.warn`. `logger.error` is

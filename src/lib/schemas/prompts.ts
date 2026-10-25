@@ -38,7 +38,7 @@ import * as Sentry from '@sentry/nextjs';
 export const promptScheduleSchema = z
   .object({
     id: z.string().nullable().optional(),
-    // ReadOnly renders `s.name`; the model column is `template_name`. Accept both.
+    // ReadOnly and ScheduleList render template_name, the only name key the backend writes. ReadOnly's second read of name is defensive, for a key this schema accepts; no backend version has written it. Accept both.
     name: z.string().nullable().optional(),
     template_name: z.string().nullable().optional(),
     schedule_day_of_week: z.number().nullable().optional().catch(null),
