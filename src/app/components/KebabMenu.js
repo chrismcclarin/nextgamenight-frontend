@@ -73,8 +73,8 @@ export default function KebabMenu({
 
   // PROP-TIME gate, never an on-arm mount: a live region created at the moment
   // of the announcement announces nothing, which is the whole reason for the
-  // StatusRegion idiom (useConfirmAction.ts:162-180, `DECISION Phase 88-05`;
-  // `:169` "A remounted live region announces NOTHING").
+  // StatusRegion idiom (src/components/ui/useConfirmAction.ts ("the hook RETURNS A PRE-BUILT ELEMENT"), `DECISION Phase 88-05`;
+  // src/components/ui/useConfirmAction.ts ("A remounted live region announces NOTHING")).
   const canAnnounce = items.some((item) => item.twoTap);
 
   /* DECISION Phase 88.6-16 (D-12): the announcement region is PORTALED to
@@ -235,8 +235,8 @@ export default function KebabMenu({
         if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
         setArmedIndex(index);
         /* DECISION Phase 88.6-16 (D-12): the armed announcement names THE ITEM,
-           a deliberate DIVERGENCE from `useConfirmAction.ts:77-79` (`It MUST name the
-           target`) and from its `defaultAnnouncement` at `:153-160`
+           a deliberate DIVERGENCE from src/components/ui/useConfirmAction.ts ("It MUST name the target") (`It MUST name the
+           target`) and from its `defaultAnnouncement` at src/components/ui/useConfirmAction.ts ("function defaultAnnouncement(")
            (`function defaultAnnouncement(`), which builds a TWO-part string
            (`Press again to confirm: ${confirmLabel} ${targetLabel}`). The item
            label is not the target.
@@ -341,7 +341,7 @@ export default function KebabMenu({
           whose single item has no twoTap (anchor `label: 'Transfer ownership to this member'`).
 
           The "one region per SURFACE" reading is WRONG and is not restated here:
-          `useConfirmAction.ts:124` says "Render it ONCE, unconditionally,
+          src/components/ui/useConfirmAction.ts ("Render it ONCE, unconditionally,") says "Render it ONCE, unconditionally,
           anywhere inside the surface" — one region per GATE, always mounted — and
           `ManageMembers.js` mounts FOUR of them on ONE surface (`:949`, `:951`,
           `:953`, `:957`, each `.statusNode}`).
@@ -403,7 +403,7 @@ export default function KebabMenu({
            for the removed popup relationship — it says only what is true (this
            trigger controls that list) — and it is rendered ONLY while the menu is
            open, using the conditional-spread form the house idiom uses at
-           `useConfirmAction.ts:386` (`...(armed ? { 'aria-pressed': true as const } : {})`). The
+           src/components/ui/useConfirmAction.ts ("'aria-pressed': true as const") (`...(armed ? { 'aria-pressed': true as const } : {})`). The
            dropdown is conditionally rendered, so a
            permanently-present attribute would name an element that is NOT in the
            document for most of the component's life: a dangling reference, not a
@@ -475,7 +475,7 @@ export default function KebabMenu({
                   disabled={item.disabled}
                   /* DECISION Phase 88.6-16 (D-12): `aria-pressed` is present ONLY
                      while armed and ABSENT (never "false") at rest — the
-                     conditional-spread form of `useConfirmAction.ts:386` (`'aria-pressed': true`), never an
+                     conditional-spread form of src/components/ui/useConfirmAction.ts ("'aria-pressed': true as const") (`'aria-pressed': true`), never an
                      `aria-pressed={isArmed}` binding. React stringifies booleans on
                      `aria-*`, so the binding form would stamp `aria-pressed="false"`
                      on every resting item and on non-toggle `twoTap: false` items

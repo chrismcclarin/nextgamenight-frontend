@@ -815,7 +815,7 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'second is the one that decided it. (1) CHROME, NOT A PRIMARY ACTION: `hover:bg-white/10` ' +
       'is a 10%-white HOVER overlay on an icon-only header toggle, not a resting fill on a CTA, ' +
       'so the `btn-*` family is the wrong vocabulary for it. (2) GEOMETRY — the CONSEQUENCE ' +
-      "constraint: shipped it is `p-2` around a `w-5 h-5` icon (`:56`, `:17`/`:21`) = 36x36, " +
+      'constraint: shipped it is `p-2` around a `w-5 h-5` icon (src/app/components/ThemeToggle.js ("p-2 rounded-lg transition-colors hover:bg-white/10"), src/app/components/ThemeToggle.js ("w-5 h-5 text-amber-400") / src/app/components/ThemeToggle.js ("w-5 h-5 text-white")) = 36x36, ' +
       "while a `<Button>` renders against `.btn`'s unlayered `padding: .5rem 1rem` " +
       '(src/app/globals.css ("padding: 0.5rem 1rem;")) plus the cva base\'s `min-h-11` and ' +
       '`icon: min-h-11 min-w-11` = ~52x44. Its desktop-nav sibling, the bell button in ' +

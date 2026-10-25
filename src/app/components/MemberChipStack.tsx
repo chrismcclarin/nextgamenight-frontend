@@ -3,7 +3,7 @@
 /**
  * MemberChipStack — the overlapping member-initials stack on home group cards (SPEC Req 5).
  *
- * Replaces the member NAME-PILL row at `grouplist.js:477-489`. Collapsed it is one tap target
+ * Replaces the member NAME-PILL row, mounted now at src/app/components/grouplist.js ("<MemberChipStack"). Collapsed it is one tap target
  * showing up to four 32px initial circles plus a `+N`; expanded it is a wrapped row of
  * `ClickableMemberName` triggers that open the shipped friend popover.
  *
@@ -98,7 +98,7 @@ const CHIP_BASE =
  * this one's 1.83:1 — statistically the same edge — and needs a derived colour plus a new CSS
  * variable for no visible gain.
  *
- * The ink rides the SHIPPED fallback chain (`grouplist.js:612`), not a fresh one: on photo
+ * The ink rides the SHIPPED fallback chain (src/app/components/grouplist.js ("...groupInkVars(cardGround, {")), not a fresh one: on photo
  * cards `groupInkVars` returns `{}`, so the group-ink property is absent and the card's own
  * computed text colour behind it takes over. Both halves fork in the CSS cascade rather than
  * through `useTheme` — same reason as the shipped marker at `EventScheduler.tsx`.
@@ -361,7 +361,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
 
   /*
    * DECISION Phase 88.5 (D-13, UI-SPEC 6.5.7): `+N` is derived from the SELF-FILTERED array,
-   * chosen OVER carrying the shipped raw-length arithmetic at `grouplist.js:486` verbatim.
+   * chosen OVER carrying the shipped raw-length arithmetic at `grouplist.js` (pre-88.5) verbatim.
    *
    * The shipped form is correct only ON THE PREMISE that the viewer is a member of the list —
    * 4 shown out of `length - 1` non-self members leaves `length - 5`. That premise holds on the
@@ -415,7 +415,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
   /*
    * DECISION Phase 88.5 (RESEARCH Pitfall 6): `stopPropagation` on BOTH the click and the key
    * handler of BOTH span controls is LOAD-BEARING, not defensive. The enclosing card at
-   * `grouplist.js:359-370` is itself a `role="button"` with its own Enter/Space handler, so
+   * src/app/components/grouplist.js ("if (node) cardTitleNodesRef.current.set(group.id, node);") is itself a `role="button"` with its own Enter/Space handler, so
    * without this a tap on the `+N` chip navigates to the group page instead of expanding, and
    * Enter does the same — the keyboard twin of the tap-stealing bug 87.8 D-13 fixed.
    *
@@ -465,7 +465,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
          * SPAN, chosen OVER a real `<button>`. It renders inside `grouplist.js`'s own
          * `role="button"` card, so a native button here is the axe `nested-interactive` rule —
          * and there is no axe pin on the home group list today that would catch it. This is the
-         * shipped precedent at `ClickableMemberName.js:438-445`, whose marker states the same
+         * shipped precedent at src/app/components/ClickableMemberName.js ("chosen OVER a real"), whose marker states the same
          * reason. Converting it to a `<button>` is a decision, not a cleanup.
          */
         <span

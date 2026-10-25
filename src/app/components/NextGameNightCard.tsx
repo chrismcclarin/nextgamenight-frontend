@@ -355,7 +355,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           invalid tree and would make an RSVP tap navigate (UI-SPEC A-4).
 
           No `prefers-reduced-motion` override here on purpose — the global contract at
-          `globals.css:2448-2470` already caps every transition, and
+          src/app/globals.css ("@media (prefers-reduced-motion: reduce) {") already caps every transition, and
           `DECISION Phase 88-28 Req 4` says not to duplicate it per component.
         */}
         <button

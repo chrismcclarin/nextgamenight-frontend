@@ -138,7 +138,7 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
                  the 88-33 Task 3 correction above deliberately set. A layered utility cannot
                  win that back.
               2. A variant-less `<Button>` inherits `defaultVariants: { variant: 'primary' }`
-                 (Button.tsx:255) and would paint the purple fill UI-SPEC §3.2 forbids on a bare
+                 (src/components/ui/Button.tsx ("defaultVariants: { variant: 'primary'")) and would paint the purple fill UI-SPEC §3.2 forbids on a bare
                  control; UI-SPEC §3.2's bare-`<button>` row names THIS site as the
                  left-bare arm. AMENDED Phase 88.6.1-12 (W037): this reason bears only on a
                  variant-less primitive, and the alternative rejected above names the ghost
