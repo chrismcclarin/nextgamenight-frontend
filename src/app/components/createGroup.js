@@ -126,7 +126,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                no request-body field, no member list, no invite URL or token. It does NOT bound
                the error's own `name`/`message`/stack, which `exceptionFromError` serialises
                into `exception.values[0]`; on this path the backend echoes its own text
-               (`Sonnet/routes/groups.js`, `res.status(500).json({ error: error.message });`,
+               (backend:Sonnet/routes/groups.js ("router.post('/', validateGroupCreate"), its catch arm's raw error.message 500,
                BE `cc497d1`). That residual is owner-accepted
                (2026-09-13). */
             logger.error('Error creating group:', error);
