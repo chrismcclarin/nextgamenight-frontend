@@ -26,10 +26,10 @@
 // Changing either of those is a decision, not a cleanup.
 
 // ---------------------------------------------------------------------------------------
-// WHAT THIS GATE IS FOR (R9 / SPEC-88.6 AC-9, ROADMAP :1338, REQUIREMENTS BAPI-03 / X-008)
+// WHAT THIS GATE IS FOR (R9 / SPEC-88.6 AC-9, planning:.planning/ROADMAP.md ("Hard constraint: completes BEFORE Phase 93's retighten."), REQUIREMENTS BAPI-03 / X-008)
 // ---------------------------------------------------------------------------------------
 // Phase 93 DELETES the `body.error` alias and the top-level `errors[]` mirror from every
-// backend response. ROADMAP :1338 makes this phase's completion the hard precondition for
+// backend response. planning:.planning/ROADMAP.md ("Hard constraint: completes BEFORE Phase 93's retighten.") makes this phase's completion the hard precondition for
 // that deletion. The precondition is the claim "the frontend reads `body.code`,
 // `body.message` and `body.details` and nothing else" — and a claim is not a fact until a
 // machine re-checks it on every run. This project has deleted an alias against an unswept

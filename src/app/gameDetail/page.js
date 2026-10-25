@@ -1759,7 +1759,7 @@ export default function GameDetailPage() {
                         stampRead('gameRoster');
                     }
 
-                    // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
+                    // Phase 87.3-04 (this file ("const isUserReview = !!selfUuid && review.User?.id === selfUuid;") sibling / Req 4): own-review detection
                     // keys on nested User.id vs selfUuid. Gated on resolution so an
                     // unresolved identity reads as "no own review yet" (loading),
                     // never mislabels someone else's review as mine.

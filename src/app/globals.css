@@ -369,7 +369,7 @@
      CHOSEN `muted`. REJECTED:
        - `chip` — wrong at ~20 of the 46 sites. The skeletons at `GroupLibrary.js`, `Switch.tsx`,
          `Combobox.tsx`, `StartPollModal.js` and `CalendarMonthView.js` are not chips.
-       - `static-raised` — inverts the shipped L* ordering recorded at `:736-739` below; this
+       - `static-raised` — inverts the shipped L* ordering recorded at this file ("so a white card now sits ABOVE its page") below; this
          surface sits UNDER the card, not above it.
        - `subtle` — already means HUE TINT in this file (`--color-surface-accent-subtle`, the
          `-subtle` status family, and the `RESTING_SUBTLE` regex at src/app/tintTreatment.test.ts ("const RESTING_SUBTLE =")); reusing
@@ -1392,7 +1392,7 @@
      cold black to the design reference's WARM hue (rgb 120/80/40), keeping the SHIPPED GEOMETRY
      byte-for-byte (1px/2px, 4px/6px, 10px/15px). Chosen OVER two alternatives:
        (a) adopt the reference's geometry too (4px/8px, 12px/24px) — REJECTED: a blur/offset change
-           is a re-theme, which this phase's SPEC forbids at `:212`. Hue-only is the consistency
+           is a re-theme, which this phase's SPEC forbids at planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-SPEC.md ("consistency pass, not a re-theme"). Hue-only is the consistency
            fix; geometry is a redesign.
        (b) leave the tokens cold and let Req 3 move inline shadows onto them anyway — REJECTED, and
            this is the reason the change is here at all: planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-SPEC.md ("Shadows + route fallbacks (DES-05, CD-001/002)") tells the adoption plans to
