@@ -160,4 +160,32 @@ describe('ClickableMemberName auto-close timer (quick-261025-dzo, 88.6.2 ledger 
     expect(name.getAttribute('aria-expanded')).toBe('true');
     expect(document.querySelector('[data-member-popover]')).not.toBeNull();
   });
+
+  it('TM6. phone + path: a popover opened inside the window after an inline send stays open', async () => {
+    // Scoped check round 1 (quick-261025-dzo): the auto-close is scheduled while the popover is
+    // CLOSED (the inline "+" never opens it), so a clear that runs only on close never cancels
+    // it, and a tap on the name inside the 1500 ms window opened a popover that snapped shut.
+    vi.useFakeTimers();
+    const sendRequest = vi.fn(async () => ({ ok: true }));
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    renderName(sendRequest);
+    const name = screen.getByRole('button', { name: 'ada' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add ada as a friend' }));
+    await act(async () => {});
+    // Anti-vacuity: the inline send scheduled the auto-close while the popover was closed.
+    expect(autoCloseHandles(setSpy)).toHaveLength(1);
+    expect(name.getAttribute('aria-expanded')).toBe('false');
+
+    // Open inside the window, as a tap on the name does on a phone.
+    fireEvent.keyDown(name, { key: 'Enter' });
+    await act(async () => {});
+    expect(name.getAttribute('aria-expanded')).toBe('true');
+
+    await act(async () => {
+      vi.advanceTimersByTime(AUTO_CLOSE_MS);
+    });
+    expect(name.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector('[data-member-popover]')).not.toBeNull();
+  });
 });

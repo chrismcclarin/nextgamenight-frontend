@@ -219,10 +219,12 @@ export default function ClickableMemberName({ userId, username, children, showIn
 
   // Reset sent/error state when tooltip closes so stale messages don't persist
   useEffect(() => {
+    // Review round 1 IN-03 + scoped check (quick-261025-dzo): ANY open/close transition cancels a
+    // pending auto-close. On close, a closed popover has nothing left to auto-close; on open, a
+    // timer scheduled while the popover was closed (the inline "+" path, or a send that resolved
+    // after a close) must not snap the popover the person just opened (marker in handleSendRequest).
+    clearTimeout(closeTimerRef.current);
     if (!isOpen) {
-      // Review round 1 IN-03 (quick-261025-dzo): a closed popover has nothing left to auto-close,
-      // so a reopen inside the 1500 ms window is not snapped shut (marker in handleSendRequest).
-      clearTimeout(closeTimerRef.current);
       const timer = setTimeout(() => {
         setSent(false);
         setSendError(false);
@@ -283,14 +285,19 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // remount resets it) checked in the await continuation, BEFORE anything is scheduled, plus
       // the ref and unmount clear for a timer scheduled while mounted. The flag guards the
       // SCHEDULING, not the timer.
-      // AMENDED review round 1 (IN-03): the popover's close reset above also clears this timer, so
-      // a popover reopened inside the 1500 ms window is not snapped shut by a stale close.
+      // AMENDED review round 1 (IN-03) + scoped check: the isOpen effect above clears this timer on
+      // EVERY open/close transition, so a popover opened or reopened inside the 1500 ms window is
+      // not snapped shut by a stale close — including a timer scheduled while the popover was
+      // closed (the inline "+" path; a send that resolved after a close). A clear on close alone
+      // left those two paths snapping (scoped check probes P1/P2, pinned by TM6).
       // REJECTED: (a) an isMounted flag checked inside the timer callback alone, because the timer
       // would still be scheduled and run after unmount; the leak is the timer, not the update.
       // (b) an effect keyed on sent, because it changes when the close is scheduled and ties the
       // close to a flag the 300 ms close reset above also clears; the ref keeps the shipped
       // timing exactly. (c) an AbortController on the send, because the provider's sendRequest
-      // takes only the user id and no signal. Same shape as
+      // takes only the user id and no signal,
+      // src/app/components/FriendshipStatusProvider.js ("await handleSendRequest(targetUserId);").
+      // Same shape as
       // src/app/components/AvailabilityForm.js ("useEffect(() => () => clearTimeout(prefillStatusTimerRef.current), []);").
       // Dropping the unmount clear, the clear before rescheduling, the mounted check before
       // scheduling, or the clear in the close reset, is a decision, not a cleanup.
