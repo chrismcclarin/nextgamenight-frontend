@@ -99,4 +99,65 @@ describe('ClickableMemberName auto-close timer (quick-261025-dzo, 88.6.2 ledger 
     expect(autoCloseHandles(setSpy)).toHaveLength(2);
     expect(clearSpy).toHaveBeenCalledWith(first);
   });
+
+  // Review round 1 WR-01: the unmount clear runs once, so a send still in flight at unmount
+  // resolved into a success branch that scheduled a fresh 1500 ms timer nothing cleared.
+  it('TM4. a send that resolves after unmount schedules no auto-close', async () => {
+    vi.useFakeTimers();
+    let resolveSend: (v: unknown) => void = () => {};
+    const sendRequest = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    const errorSpy = vi.spyOn(console, 'error');
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const { unmount } = renderName(sendRequest);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add ada as a friend' }));
+    await act(async () => {});
+    expect(sendRequest).toHaveBeenCalledWith('u1');
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    resolveSend({ ok: true });
+    await act(async () => {});
+
+    expect(autoCloseHandles(setSpy)).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  // Review round 1 IN-03: closing the popover left the pending auto-close armed, so a popover
+  // reopened inside the 1500 ms window snapped shut on its own.
+  it('TM5. closing the popover cancels the pending auto-close, so a reopened popover stays open', async () => {
+    vi.useFakeTimers();
+    const sendRequest = vi.fn(async () => ({ ok: true }));
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    renderName(sendRequest);
+    const name = screen.getByRole('button', { name: 'ada' });
+
+    fireEvent.keyDown(name, { key: 'Enter' });
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Add friend' }));
+    await act(async () => {});
+    // Anti-vacuity: the send scheduled the auto-close this test expects the close to cancel.
+    expect(autoCloseHandles(setSpy)).toHaveLength(1);
+
+    // Close through the trigger toggle, then reopen well inside the 1500 ms window.
+    fireEvent.keyDown(name, { key: 'Enter' });
+    await act(async () => {});
+    expect(name.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.keyDown(name, { key: 'Enter' });
+    await act(async () => {});
+    expect(name.getAttribute('aria-expanded')).toBe('true');
+
+    await act(async () => {
+      vi.advanceTimersByTime(AUTO_CLOSE_MS);
+    });
+    expect(name.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector('[data-member-popover]')).not.toBeNull();
+  });
 });
