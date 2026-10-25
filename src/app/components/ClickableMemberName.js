@@ -693,7 +693,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
     //           `after:-inset-y-1` ceiling: at 4px the two extensions meet
     //           exactly at the gap midpoint, which is the "terminates exactly
     //           at the gap" sentence above.
-    //         EXACTLY AT THE BOUNDARY (2) — `grouplist.js:477` `flex flex-wrap
+    //         EXACTLY AT THE BOUNDARY (2) — `grouplist.js` `flex flex-wrap
     //           gap-2 mb-3` and `gameDetail/page.js:2182` `space-y-2`, both 8px.
     //           Not constrained, but they are the next things to check if the
     //           extension is ever grown.
@@ -714,7 +714,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // deleted; this paragraph is the delta.
     //
     //   CITE DRIFT: the 88-28 re-derivation wrote `grouplist.js:336`. Verified
-    //   2026-08-31 by reading the file: the container is `grouplist.js:477`,
+    //   2026-08-31 by reading the file: the container is in `grouplist.js`,
     //   `flex flex-wrap gap-2 mb-3`. Same container, same 8px, moved line. The
     //   cite above is corrected in place.
     //

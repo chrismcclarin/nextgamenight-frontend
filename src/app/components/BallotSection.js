@@ -56,7 +56,7 @@ function toggleOptionVote(ballot, optionId, voted) {
 
    WHY THE PRIMITIVE and not a div: `88.6-UI-SPEC.md:189` (§2's StatusRegion row) and §14 A-29
    ratify "No new hand-rolled `role=\"status\"` / `aria-live` markup in 88.6" — the ad-hoc
-   sites that survive (`StarRatingPicker.js:134`,
+   sites that survive (src/app/components/StarRatingPicker.js ("text-content-muted tabular-nums"),
    `ErrorFallback.tsx:109-110`) are a CLOSED residual (the UI-SPEC row itself still carries its
    2026-09-13 line numbers; these are re-read 2026-10-16). A hand-rolled div also silently drops
    `aria-atomic="true"` (StatusRegion.tsx:101).

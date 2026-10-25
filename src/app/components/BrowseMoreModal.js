@@ -162,7 +162,7 @@ export default function BrowseMoreModal({
 
              AMENDED Phase 88.6.1-32 (W006, D-26): the capture is now LATCHED to one event per
              failure episode — keyed on class plus code (the `lastReportedKeyRef` idiom of
-             `QuickSuggestions.js:313`, `lastReportedKeyRef.current !== reportKey`), re-armed
+             src/app/components/QuickSuggestions.js ("if (lastReportedKeyRef.current !== reportKey)")), re-armed
              when the dialog opens and on a successful response — because this effect re-runs on
              every filter tap, and during an outage it filed one event per tap (WR-106,
              `88.6-REVIEW-2026-09-24-triaged.md:395`, `WR-106`). A different failure code is a
@@ -435,10 +435,10 @@ export default function BrowseMoreModal({
                      VARIANT, chosen OVER the plan's literal "keep the `bg-*` utilities on
                      `<Button className>`". Those utilities CANNOT paint on a `Button`:
                      `.btn-secondary` declares `background-color` and `color` UNLAYERED
-                     (`globals.css:2723`, `.btn-secondary {`) and an unlayered author rule beats every
+                     (src/app/globals.css (".btn-secondary {")) and an unlayered author rule beats every
                      `@layer utilities` rule, so `bg-btn-primary text-btn-primary-text` would be
                      dead and every pressed tier would render as an unpressed one.
-                     `.btn-primary` (`globals.css:2474`, `.btn-primary {`) sets exactly those two properties
+                     `.btn-primary` (src/app/globals.css (".btn-primary {")) sets exactly those two properties
                      off exactly those two tokens, so the variant is the same paint with the
                      cascade the right way round — the same substitution plan 88.6-23 made for a
                      computed `btn ${…}` template. */
@@ -485,7 +485,7 @@ export default function BrowseMoreModal({
               {/* DECISION Phase 88.6-32 (R2): the pair's `rounded-l-btn` / `rounded-r-btn`
                   segmented shape is DELETED with the migration rather than carried onto
                   `<Button className>`. Those utilities are DEAD on any `.btn` element —
-                  unlayered `.btn` sets the `border-radius` SHORTHAND (`globals.css:2295`, `border-radius: 8px` in `.btn {`) and
+                  unlayered `.btn` sets the `border-radius` SHORTHAND (src/app/globals.css ("border-radius: 8px;"), in `.btn {`) and
                   beats the `@layer utilities` longhands — so today they paint only in the
                   ACTIVE state, which is the one state that carries no `.btn`. The pair has
                   therefore been rendering half-segmented and half-pill all along; the

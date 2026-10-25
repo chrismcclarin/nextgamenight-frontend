@@ -552,7 +552,7 @@ export default function CalendarListView({
      `dvh` over `vh` is deliberate and is the primitive's own recorded choice: a bottom-anchored
      surface sits exactly where iOS Safari's dynamic toolbar lives, and `vh` resolves against the
      LARGEST viewport, so the bottom rows would sit under the toolbar. The resulting divergence
-     from `Modal.tsx`'s `max-h-[90vh]` is recorded by plan 88.1-04 and routed to Phase 88.6 by
+     from `Modal.tsx`'s max-h-[90dvh] (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]")) is recorded by plan 88.1-04 and routed to Phase 88.6 by
      plan 88.1-06 — "simplifying" this to `vh` for consistency re-opens D-06.
 
      `min-h-0` is load-bearing: without it a flex child refuses to shrink below its content and
@@ -1274,7 +1274,7 @@ const EventRow = forwardRef(function EventRow(
       /* DECISION Phase 88.6-27 (D49-b, owner ruling 2026-09-09 option i): `hover:shadow-md` ->
          `hover:shadow-theme-md`. The alias spelling resolved to Tailwind v4's INLINED BLACK
          default rather than this app's warm theme tier (`DECISION Phase 87.7`,
-         `globals.css:1141-1155`), so the hover hue changes visibly and deliberately.
+         src/app/globals.css ("--shadow-theme-md: var(--shadow-md);")), so the hover hue changes visibly and deliberately.
          PLAIN `hover:`, NOT `enabled-hover:`: this is a card `div`, not a `.btn` — the
          enabled-hover variant exists to withhold the lift from a GATED CONTROL, and there is no
          control here to gate. REJECTED: leaving the alias in place for visual continuity.

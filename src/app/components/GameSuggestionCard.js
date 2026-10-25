@@ -43,7 +43,7 @@ export default function GameSuggestionCard({ game, onClick }) {
   // OVER the content-derived name (the whole card text, which copy row E7 does not ratify).
   // The children are spans OVER paragraphs and divs, because a button holds phrasing content
   // only, so 88-28's content-model concern (a paragraph breaking out of a button,
-  // `PromptScheduleSection.js:200-209`, plan 88.6.1-29's site) never arises here. The class
+  // src/app/components/PromptScheduleSection.js ("bg-surface-muted text-content-secondary rounded-full px-2 py-0.5 text-xs font-bold"), plan 88.6.1-29's site) never arises here. The class
   // list stays ONE inline template literal because `cardPaddingIdiom.test.ts` needs at least
   // one template-literal card site and this is the only one.
   // Changing any of this is a decision, not a cleanup.

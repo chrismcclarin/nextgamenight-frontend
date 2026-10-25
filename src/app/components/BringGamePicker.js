@@ -455,7 +455,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                         name is the visible label alone. Do NOT copy `alt=""` to a `SafeImage`
                         site without this guard. (`getColorFromText('')` resolves to the muted
                         well colour — the same ground as the `?` glyph branch below — so the
-                        broken-URL fallback loses nothing visible; `QuickSuggestions.js:154` (`getColorFromText`)
+                        broken-URL fallback loses nothing visible; src/app/components/QuickSuggestions.js ("also routes") (`getColorFromText`)
                         records the same routing.) */}
                     <div aria-hidden="true" className="w-8 h-8 rounded-sm shrink-0 overflow-hidden bg-surface-muted">
                       {thumbnail ? (

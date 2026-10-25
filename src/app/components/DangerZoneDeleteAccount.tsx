@@ -315,8 +315,8 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
         // CORRECTED Phase 88.6-30: this comment used to close with "and the query
         // layer already reports errors." That clause was FALSE for this path and is
         // deleted. The pre-flight is a BARE promise, not a TanStack query, so
-        // `QueryCache.onError` -> `Sentry.captureException` (`queryClient.ts:179`,
-        // `Sentry.captureException(error, …)`; wired at `:184-185`, `new QueryCache({ onError`)
+        // `QueryCache.onError` -> `Sentry.captureException` (src/lib/queryClient.ts ("Sentry.captureException(error, upstreamMessage");
+        // wired at src/lib/queryClient.ts ("queryCache: new QueryCache({"))
         // never fires for it — which is why, on the app's most
         // destructive flow, a pre-flight failure previously produced no console line,
         // no Sentry event and no user signal at all. The `logger.info` above is the
@@ -728,7 +728,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               `ModalActionProps` extends the native button props (`Modal.tsx:560-561`,
               `extends React.ButtonHTMLAttributes<HTMLButtonElement>`), so `aria-disabled`
               passes through exactly as `disabled` would, and
-              `.btn-secondary[aria-disabled='true']` (`globals.css:2494-2498`) already
+              `.btn-secondary[aria-disabled='true']` (src/app/globals.css (".btn-secondary[aria-disabled='true'] {")) already
               supplies the gated look with all three tokens declared.
 
               The `handleClose` guard exists because `dismissable={false}` does NOT disable

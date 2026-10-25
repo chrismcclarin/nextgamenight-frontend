@@ -368,12 +368,12 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 the `disabled:opacity-50` that rode here. `uppercase` SURVIVES:
                                 `.btn` declares no `text-transform`, so it was never dead.
                                 `min-h-11` is dropped as REDUNDANT against plan 06's cva base
-                                (Button.tsx:168), the same disposition plan 32 gave
+                                (src/components/ui/Button.tsx ("'min-h-11',")), the same disposition plan 32 gave
                                 `GroupGamesList.js` under D-30 in this wave.
 
                                 THE THREE CARRIED-ACROSS PROPS ARE NOT DECORATION. `Button`
                                 destructures `type` with a default of `'button'`
-                                (Button.tsx:268, `type = 'button'`), so dropping `type="submit"` would silently turn
+                                (src/components/ui/Button.tsx ("type = 'button'")), so dropping `type="submit"` would silently turn
                                 the form's submit control inert and the modal would stop creating
                                 groups — a regression no type checker and no class census can see.
                                 `ref` feeds the failed-settle focus return (the wave-12 MED #20

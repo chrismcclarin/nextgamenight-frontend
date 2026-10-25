@@ -81,7 +81,7 @@ const GRID_MAX_HEIGHT = '600px'; // parity with the outgoing h-[600px] container
  * seam is mandatory here rather than optional, and why `scrollToTime` must land on peak
  * availability — the user opens onto six rows and they had better be the right six.
  *
- * The three inputs above are fixed by prior decisions (`Modal`'s `max-h-[90vh]`, its phone gutter
+ * The three inputs above are fixed by prior decisions (`Modal`'s max-h-[90dvh], src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"), its phone gutter
  * `w-[calc(100%-1.5rem)]`, and `Modal.Body`'s `p-3`). They are inputs to this number, NOT
  * variables — overriding any of them to buy height here re-opens DEF-88-17-01 / 88-32 ruling 6.
  */
