@@ -41,7 +41,7 @@
  * execution time, `grep -rEn 'hover:bg-surface-card-hover' src` returned 42 lines of which
  * [the class in that recorded command is spelled `bg-surface-muted` since 88.6-02 (D-15); the
  * command and its count are left verbatim because they are the measurement taken THEN]
- * `NotificationBell.js:168` is a DECISION-marker COMMENT line, so the grep census was
+ * src/app/components/NotificationBell.js ("hover:bg-surface-card-hover stays — correct on desktop") is a DECISION-marker COMMENT line, so the grep census was
  * inflated by exactly one; the lexer's count is 41. A naive `sed` would have corrupted a
  * prior phase's evidence.
  * src/test-utils/sourceScan.ts ("Three properties matter, each of which killed a shipped grep gate")

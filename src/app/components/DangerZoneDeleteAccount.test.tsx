@@ -828,9 +828,9 @@ describe('D52 — the announcements: a polite progress region and the converted 
 describe('D52 / D24 — focus lands on a NAMED element on both `deleting` edges', () => {
   it('false->true: focus moves to the tabIndex={-1} wrapper of the polite region, a node this component owns', async () => {
     // NOT `document.activeElement !== document.body`, which is vacuous in this
-    // harness (keyboardOperability.test.tsx:208-213, activeElement lands on <body>), and NOT
-    // the Radix Content node, for which `Modal` forwards no ref (Modal.tsx:266-351, the
-    // `<DialogContent` element).
+    // harness (src/app/components/keyboardOperability.test.tsx ("activeElement lands on <body> in jsdom no")), and NOT
+    // the Radix Content node, for which `Modal` forwards no ref (src/app/components/Modal.tsx ("<DialogContent"),
+    // the Content element itself).
     const user = userEvent.setup();
     await enterDeletingState(user);
     const target = progressFocusTarget();
