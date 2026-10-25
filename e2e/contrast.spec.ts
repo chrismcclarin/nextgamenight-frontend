@@ -681,7 +681,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // still measures the Button primitive plus the card ground. Nothing here needs to
       // change; deleting this note would lose the re-verification.
       //
-      // AMENDED Phase 88.6-47 (row 4): the cite `grouplist.js:303` above is stale, and so is the
+      // AMENDED Phase 88.6-47 (row 4): the cite above once read `grouplist.js:303` (88.6.2-23 dropped the number); it was stale, and so is the
       // element it names. `f696732` moved `role="button"` / `tabIndex` / `onKeyDown` OFF the card
       // onto the title block (src/app/components/grouplist.js), so the CARD is no longer a control and can never
       // match `:focus-visible` — it wears no `ring-*` utility and no `tabIndex`, and
