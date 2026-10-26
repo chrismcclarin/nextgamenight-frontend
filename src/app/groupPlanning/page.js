@@ -286,7 +286,7 @@ export default function GroupPlanningPage() {
         window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
     };
 
-    const fetchHeatmapData = async ({ keepShown = false } = {}) => {
+    const fetchHeatmapData = async ({ keepShown = false, skipCache = false } = {}) => {
         if (!groupId) return;
         const run = ++heatmapRunRef.current;
         const forGroup = groupId;
@@ -300,7 +300,20 @@ export default function GroupPlanningPage() {
             let prompt = null;
             if (selectedPollParam) {
                 let selected = null;
-                if (requestedPollId) {
+                /* DECISION quick-261026-pi6-fix (F9): a selection the open-polls cache already
+                   holds is shown from that cache with no request, OVER a by-id fetch per swap
+                   (a round trip before the respondents fetch could even start). The cache is
+                   this group's by construction (the shared key) and carries every field this
+                   page reads. The by-id read stays for everything else: a cold load or a shared
+                   link before the open list lands, a closed poll, and a reload after the shown
+                   poll was ended (skipCache, F8), when the cached row may still say active.
+                   Changing this is a decision, not a cleanup. */
+                const cached = requestedPollId && !skipCache
+                    ? openPolls.find((p) => sameId(p.id, requestedPollId))
+                    : null;
+                if (cached) {
+                    selected = cached;
+                } else if (requestedPollId) {
                     try {
                         const data = await promptAPI.getPromptById(requestedPollId);
                         // Only this group's poll: a member of two groups could otherwise open another
@@ -499,7 +512,7 @@ export default function GroupPlanningPage() {
     // poll in the URL the by-id read returns it closed (the dashboard then reads it as closed);
     // with none, the active-poll read picks the next open poll or none.
     const handlePollClosed = (id) => {
-        if (sameId(id, heatmapPrompt?.id)) fetchHeatmapRef.current?.({ keepShown: true });
+        if (sameId(id, heatmapPrompt?.id)) fetchHeatmapRef.current?.({ keepShown: true, skipCache: true });
     };
 
     // A chip press swaps in place: no scroll, no focus move; armed from the pressed chip in case

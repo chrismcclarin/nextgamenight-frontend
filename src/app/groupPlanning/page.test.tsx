@@ -925,7 +925,11 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Showing Sunday Wingspan')).toBeInTheDocument();
   });
 
-  it('PI-14. a chip swap that fails both loads shows the banner and focus lands on the Availability Polls heading', async () => {
+  // AMENDED quick-261026-pi6-fix F9: a chip names a poll the open-polls cache holds, so its swap
+  // is served from that cache and can no longer fail on the network; this test first pinned the
+  // banner and the focus fallback after a failed chip swap, and now pins that the swap holds while
+  // both poll reads would fail.
+  it('PI-14. a chip swap is served from the open-polls cache while both poll reads fail: no banner, focus stays on the chip', async () => {
     const user = userEvent.setup();
     (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(P1, 'Ana'), manual(P2, 'Ben')] });
     const { rerender } = render(<GroupPlanningPage />);
@@ -934,12 +938,13 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     (promptAPI.getPromptById as Mock).mockRejectedValue(new ApiError('failed', 'unknown', 500));
     (promptAPI.getActivePrompt as Mock).mockRejectedValue(new ApiError('failed', 'unknown', 500));
 
-    await user.click(within(chips).getByRole('button', { name: "Ben's check-in" }));
+    const ben = within(chips).getByRole('button', { name: "Ben's check-in" });
+    await user.click(ben);
     reRender(rerender);
-    expect(await screen.findByText("We couldn't load the poll responses")).toBeInTheDocument();
-    const availability = screen.getByRole('heading', { level: 2, name: 'Availability Polls' });
-    await waitFor(() => expect(document.activeElement).toBe(availability));
-    expect(document.activeElement).not.toBe(document.body);
+    await settledOn(P2);
+    expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
+    expect(promptAPI.getPromptById).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(ben);
   });
 
   it('PI-15. with no poll parameter the section receives the shown poll as selected and a select handler', async () => {
@@ -1064,8 +1069,12 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
   it('FX-8a. ending the poll the URL selects reloads it, and the dashboard reads it as closed', async () => {
     h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
     (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2) });
+    // The open-polls cache still lists the poll as active when the close lands (F9's cache-first
+    // read must not serve the reload).
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(P1, 'Ana'), manual(P2, 'Ben')] });
     render(<GroupPlanningPage />);
     await settledOn(P2);
+    await screen.findByRole('group', { name: 'Switch poll' });
     // No deadline, so the page's derive reads falsy here (undefined), not false.
     expect(h.rd!.pollClosed).toBeFalsy();
 
@@ -1089,6 +1098,27 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     act(() => onPollClosed()(P1));
     await settledOn(P2);
     expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(2);
+  });
+
+  // quick-261026-pi6-fix F9: a swap to a poll the open-polls cache holds sends no request.
+  it('FX-9. a chip press for a cached poll never calls getPromptById; an id the cache lacks still does', async () => {
+    const user = userEvent.setup();
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(P1, 'Ana'), manual(P2, 'Ben')] });
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P3) });
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const chips = await screen.findByRole('group', { name: 'Switch poll' });
+
+    await user.click(within(chips).getByRole('button', { name: "Ben's check-in" }));
+    reRender(rerender);
+    await settledOn(P2);
+    expect(promptAPI.getPromptById).not.toHaveBeenCalled();
+
+    act(() => onSelectPoll()(P3));
+    reRender(rerender);
+    await settledOn(P3);
+    expect(promptAPI.getPromptById).toHaveBeenCalledTimes(1);
+    expect(promptAPI.getPromptById).toHaveBeenCalledWith(P3);
   });
 });
 
