@@ -321,9 +321,12 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
  *       the poll, derived per request by the backend from the poll's own link.
  *       Falls back to the settings include's template_name (a backend that
  *       predates the link, or a settings row that still holds a name), then to
- *       "From recurring schedule" (no link, no name, or the parent settings row
- *       has been deleted: ON DELETE SET NULL on created_by_settings_id leaves
- *       the include null).
+ *       "From recurring schedule" (no link and no name on the settings row).
+ *       A DELETED settings row never reaches this arm: ON DELETE SET NULL clears
+ *       created_by_settings_id itself, so the poll renders through the manual
+ *       arm as "Started by a group member" (review 261025-rl3 FE-L1; no route
+ *       deletes a settings row today, only a group deletion, which removes the
+ *       group's polls with it).
  *   - Manual poll: "Started by {Creator.username}"
  *       Falls back to "a group member" if the Creator association is null.
  *
