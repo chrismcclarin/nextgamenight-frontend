@@ -1495,8 +1495,8 @@ describe('Phase 88.6.2-27 — failure evidence leaves CI only as age ciphertext 
     expect(body.includes('continue-on-error'), 'the encrypt self-test step must not be continue-on-error').toBe(false);
     // The self-test line is not a real encrypt run, so the upload pairing above never counts it.
     expect(encryptInvocations().some((i) => i.step === SELF_TEST_AGE_STEP), 'the self-test line was read as an encrypt invocation').toBe(false);
-    // What the step runs still exists, and the script still declares its eleven cases.
-    expect(ENCRYPT_SCRIPT_CODE).toContain('self-test: PASS $ST_PASS of 11');
+    // What the step runs still exists, and the script still declares its thirteen cases.
+    expect(ENCRYPT_SCRIPT_CODE).toContain('self-test: PASS $ST_PASS of 13');
     expect(existsSync(resolve(FE_ROOT, 'scripts/encrypt-evidence.test.mjs')), 'scripts/encrypt-evidence.test.mjs is gone').toBe(true);
   });
 

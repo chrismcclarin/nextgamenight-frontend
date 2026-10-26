@@ -18,14 +18,16 @@
 #       nothing. Otherwise it writes enc/<id>/<id>.tar.age and prints the file count, the size and
 #       "post-check PASS". It never prints a member name or any file content.
 #   bash scripts/encrypt-evidence.sh --check-recipients <file>
-#       The file must hold exactly one non-comment, non-blank line, an age1 X25519 recipient.
+#       The file must hold exactly one non-comment, non-blank line, an age1 X25519 recipient. As in
+#       age, a comment starts with # in column 1 and a blank line is empty: nothing is trimmed, so an
+#       indented comment or a whitespace-only line is a malformed recipient.
 #       Prints one PROBLEM line per fault (missing-file, no-recipient, malformed-recipient line <n>,
 #       extra-line line <n>, private-key line <n>; never the line's content), then "recipients: OK"
 #       (exit 0) or "recipients: FAIL" (exit 1).
 #   AGE_BIN=... AGE_KEYGEN_BIN=... bash scripts/encrypt-evidence.sh --self-test
-#       Eleven cases in a fresh temp dir with a throwaway key pair made and deleted there; nothing is
-#       written into the checkout. Last line "self-test: PASS 11 of 11" (exit 0) or
-#       "self-test: FAIL <f> of 11" (exit 1).
+#       Thirteen cases in a fresh temp dir with a throwaway key pair made and deleted there; nothing
+#       is written into the checkout. Last line "self-test: PASS 13 of 13" (exit 0) or
+#       "self-test: FAIL <f> of 13" (exit 1).
 #
 # EXIT CODES: 0 success (or no input); 1 a failed check, tar, age or post-check; 2 a usage error or
 # a refused input. On any non-zero exit an EXIT trap removes enc/<id>/, so the upload after the step
@@ -64,7 +66,7 @@ usage_error() {
 
 # One PROBLEM line per fault, then the verdict. Line content is never printed.
 check_recipients() {
-  local file="$1" n=0 recipients=0 problems=0 line trimmed
+  local file="$1" n=0 recipients=0 problems=0 line
   local recipient_re='^age1[02-9ac-hj-np-z]{58}$'
   if [ ! -f "$file" ]; then
     echo "PROBLEM missing-file"
@@ -79,8 +81,10 @@ check_recipients() {
       problems=$((problems + 1))
       continue
     fi
-    trimmed="${line#"${line%%[![:space:]]*}"}"
-    case "$trimmed" in
+    # age's own rule, with no trimming: it skips only an empty line or a line with # in column 1.
+    # An indented comment or a whitespace-only line is a malformed recipient to age, so it is one
+    # here too (code review A-WR-01; self-test cases 12 and 13).
+    case "$line" in
       '' | '#'*) continue ;;
     esac
     recipients=$((recipients + 1))
@@ -249,7 +253,7 @@ encrypt_main() {
 }
 
 # ---------------------------------------------------------------------------------------------
-# Self-test: eleven cases, each running this script as a subprocess inside a temp dir.
+# Self-test: thirteen cases, each running this script as a subprocess inside a temp dir.
 
 ST_PASS=0
 ST_FAIL=0
@@ -458,11 +462,38 @@ STUB
   st_report "11 a .auth/ or playwright-results.json input is refused before anything is written" "$ok"
   cd "$ST_DIR"
 
-  if [ "$ST_FAIL" -eq 0 ] && [ "$ST_PASS" -eq 11 ]; then
-    echo "self-test: PASS $ST_PASS of 11"
+  # Cases 12 and 13 (code review A-WR-01): age skips only an empty line or a line with # in column 1,
+  # so an indented comment and a whitespace-only line are malformed recipients to age. The check
+  # must refuse both, and each case also runs age itself on the file, so the two rules stay in step.
+  printf '  # indented comment\n%s\n' "$pub" > indented-comment.txt
+  printf '   \n%s\n' "$pub" > whitespace-line.txt
+  mkdir -p c12/test-results && cd c12
+  printf '%s\n' "$marker" > test-results/a.png
+  ok=0
+  st_run --check-recipients ../indented-comment.txt
+  case "$OUTPUT" in *"PROBLEM malformed-recipient line 1"*) [ "$RC" = 1 ] && ok=1 ;; esac
+  if "$age_bin" -R ../indented-comment.txt -o /dev/null < /dev/null 2> /dev/null; then ok=0; fi
+  st_run --name playwright-report --recipients ../indented-comment.txt -- test-results/
+  if [ "$RC" = 0 ] || [ -e enc ]; then ok=0; fi
+  st_report "12 an indented comment line is refused by the recipients check, as age refuses it" "$ok"
+  cd "$ST_DIR"
+
+  mkdir -p c13/test-results && cd c13
+  printf '%s\n' "$marker" > test-results/a.png
+  ok=0
+  st_run --check-recipients ../whitespace-line.txt
+  case "$OUTPUT" in *"PROBLEM malformed-recipient line 1"*) [ "$RC" = 1 ] && ok=1 ;; esac
+  if "$age_bin" -R ../whitespace-line.txt -o /dev/null < /dev/null 2> /dev/null; then ok=0; fi
+  st_run --name playwright-report --recipients ../whitespace-line.txt -- test-results/
+  if [ "$RC" = 0 ] || [ -e enc ]; then ok=0; fi
+  st_report "13 a whitespace-only line is refused by the recipients check, as age refuses it" "$ok"
+  cd "$ST_DIR"
+
+  if [ "$ST_FAIL" -eq 0 ] && [ "$ST_PASS" -eq 13 ]; then
+    echo "self-test: PASS $ST_PASS of 13"
     exit 0
   fi
-  echo "self-test: FAIL $((11 - ST_PASS)) of 11"
+  echo "self-test: FAIL $((13 - ST_PASS)) of 13"
   exit 1
 }
 

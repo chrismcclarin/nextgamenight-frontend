@@ -592,7 +592,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y age
 
-      # DECISION Phase 88.6.2 code review (B-ML1, B-ML3): the encrypt script's 11-case --self-test
+      # DECISION Phase 88.6.2 code review (B-ML1, B-ML3): the encrypt script's 13-case --self-test
       # and its P3 node test run here, once, directly after age is installed and before the tests,
       # chosen OVER leaving them to a local run. The real encrypt steps pass whether or not the
       # zip and error-context.md exclusions, the --match filter or the fail-closed trap still
