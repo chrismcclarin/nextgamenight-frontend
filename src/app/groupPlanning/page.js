@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { groupsAPI, promptAPI } from '../../lib/api';
@@ -8,12 +9,21 @@ import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
 import ResponseDashboard from '../components/ResponseDashboard';
 import PromptScheduleSection from '../components/PromptScheduleSection';
+import { pollChipLabels, pollTitle } from '../components/OpenPollsList';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '../../lib/logger';
+import { isUuid } from '../../lib/isUuid';
+import { promptKeys } from '../../lib/queryKeys/promptKeys';
+import {
+    openPromptsSchema,
+    softFailPromptQueryFn,
+    EMPTY_OPEN_PROMPTS,
+} from '../../lib/schemas/prompts';
 
 // The role read's resolved outcome: the shape plan 88.6.1-21's banner reads from a retry's own
 // result to tell a failed Retry (copy row B1). `undefined` means unknown (skipped or superseded).
@@ -23,6 +33,11 @@ const LOAD_FAILED = Object.freeze({ isError: true });
 // Copy row G5 (D-30): byte-equal to the route fallback label (groupPlanning/loading.tsx), so the
 // wording does not change when the route boundary hands over to the page.
 const AUTH_LOADING_MESSAGE = "Getting your group's plans...";
+
+// quick-261026-pi6 (owner R3): the lead word of the line that names the poll the dashboard shows,
+// and the chip row's group name (read by screen readers; the row has no visible label).
+const SHOWING_LABEL = 'Showing';
+const SWITCH_POLL_LABEL = 'Switch poll';
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -37,7 +52,31 @@ export default function GroupPlanningPage() {
     const router = useRouter();
     const pathname = usePathname();
     const groupId = searchParams.get('group_id');
-    const promptId = searchParams.get('prompt_id');
+    /* DECISION quick-261026-pi6 (coordinator ruling 1, 2026-10-26): a prompt_id that is not a UUID
+       is treated as ABSENT (no request, the active poll shows, the Create Event dialog does not
+       auto-open), chosen OVER passing it through to the backend's 400 or 404 and OVER a visible
+       error, because a malformed email link should not read as "the poll request failed", and
+       because the id is interpolated into request paths here and in CreateEvent (the CSPT rule of
+       src/lib/isUuid.ts ("DECISION Phase 88.6.1-07 (D-03 / AC-6 / CSPT)")); a real email link
+       carries the poll's UUID and behaves exactly as before. Changing this is a decision, not a
+       cleanup. */
+    const promptIdParam = searchParams.get('prompt_id');
+    const promptId = isUuid(promptIdParam) ? promptIdParam : null;
+    /* DECISION quick-261026-pi6 (owner R4/R5, 2026-10-26): the dashboard selection lives in its
+       own URL parameter, poll, OVER reusing prompt_id, which is the email link's contract and
+       auto-opens the Create Event dialog on mount,
+       this file ("Auto-open the createEvent modal when the URL carries prefill params");
+       resolution is poll, then prompt_id, then the active poll. A selection writes the URL
+       through the native history pushState, OVER router push or replace, because Next 14.2.35
+       turns it into a router restore that reuses the cache and fetches nothing,
+       node_modules:next/dist/client/components/app-router.js ("Patch pushState to ensure external changes"),
+       so back steps through selections and a reload or a shared link opens the same poll. The id
+       passes the CSPT check of src/lib/isUuid.ts ("DECISION Phase 88.6.1-07 (D-03 / AC-6 / CSPT)")
+       before any request, and a malformed, failed or other-group id falls back to the active poll
+       and the parameter is dropped with replaceState, never an error banner for a stale link.
+       Changing any of this is a decision, not a cleanup. */
+    const selectedPollParam = searchParams.get('poll');
+    const requestedPollId = isUuid(selectedPollParam) ? selectedPollParam : null;
 
     // Phase 71.2 — "Schedule it?" email CTA pre-fills the createEvent modal
     // via these query params. createEvent.js already accepts the props
@@ -60,6 +99,16 @@ export default function GroupPlanningPage() {
     const [heatmapPrompt, setHeatmapPrompt] = useState(null);
     const [heatmapLoading, setHeatmapLoading] = useState(true);
     const [heatmapError, setHeatmapError] = useState(null);
+    // The poll the dashboard shows, or is about to show: the URL's selection, then the loaded poll
+    // (quick-261026-pi6). The cards and the chips mark it.
+    const selectedPollId = requestedPollId ?? heatmapPrompt?.id ?? null;
+    // Newest wins for the poll load (the role read's shape below); the last poll parameter the
+    // selection effect acted on, stamped with its group.
+    const heatmapRunRef = useRef(0);
+    const lastSelectionRef = useRef({ groupId, poll: selectedPollParam });
+    const availabilityPollsHeadingRef = useRef(null);
+    const pollResponsesHeadingRef = useRef(null);
+    const dashboardRef = useRef(null);
     // The caller's role, stamped with the group it was read for. `userRole` / `roleError` are
     // DERIVED at render and read null for any other group, so the render in which `groupId`
     // changes already passes null to the gated controls (DECISION Phase 88.6.1-16 at the compact
@@ -71,6 +120,23 @@ export default function GroupPlanningPage() {
     const roleRunRef = useRef(0);
     // The open role read's promise, or null (see `retryRole`).
     const roleInFlightRef = useRef(null);
+    // If a failed swap removes the chip or heading a person stood on, focus goes to the
+    // Availability Polls heading, never to the page body (quick-261026-pi6).
+    const focusRecovery = useFocusRecovery({ fallback: availabilityPollsHeadingRef });
+    // The open polls for the chips and the Showing line, on the shared key, so this reads the
+    // same cache entry as the Check-ins section and its list (one request, Phase 84 PRIM-07). It
+    // renders no failure surface of its own: OpenPollsList owns the one banner for this key.
+    const { data: openPollsData } = useQuery({
+        queryKey: promptKeys.openPolls(groupId),
+        queryFn: softFailPromptQueryFn(
+            openPromptsSchema,
+            () => promptAPI.getOpenPrompts(groupId),
+            promptKeys.openPolls(groupId),
+            EMPTY_OPEN_PROMPTS,
+        ),
+        enabled: Boolean(groupId) && Boolean(userRole) && userRole !== 'pending',
+    });
+    const openPolls = Array.isArray(openPollsData?.prompts) ? openPollsData.prompts : [];
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -97,6 +163,32 @@ export default function GroupPlanningPage() {
         // The fetches are re-declared per render; the deps above are the reload triggers on purpose.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.sub, groupId]);
+
+    /* DECISION quick-261026-pi6 (owner R4): a swap runs from its OWN effect keyed on the poll
+       parameter, OVER a new dependency on the load effect, whose deps are a recorded decision,
+       this file ("DECISION Phase 88.6.1-16 (W060 double fetch)"); a swap keeps the dashboard that
+       is showing mounted until the next poll lands, OVER the loading line, for the reason that
+       marker gives; the newest load wins, so a late answer for an earlier tap writes nothing.
+       Changing this is a decision, not a cleanup. */
+    useEffect(() => {
+        const last = lastSelectionRef.current;
+        if (last.groupId !== groupId) {
+            // A group change: the load effect owns it.
+            lastSelectionRef.current = { groupId, poll: selectedPollParam };
+            return;
+        }
+        if (last.poll === selectedPollParam) return;
+        // A render that still carries the value this page just dropped as stale: the drop's own
+        // re-render follows with the parameter gone, so loading here would fetch the fallback
+        // twice. A malformed id drops with no await, inside the same commit as this effect.
+        if (last.dropped === selectedPollParam) return;
+        lastSelectionRef.current = { groupId, poll: selectedPollParam };
+        if (user?.sub && groupId) {
+            fetchHeatmapData({ keepShown: true });
+        }
+        // The fetch is re-declared per render; the poll parameter is the swap trigger on purpose.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedPollParam, groupId, user?.sub]);
 
     useEffect(() => {
         if (user?.sub && groupId) {
@@ -155,28 +247,68 @@ export default function GroupPlanningPage() {
         }
     };
 
-    const fetchHeatmapData = async () => {
+    // A stale selection (malformed, failed to load, or another group's poll): drop the poll
+    // parameter in place, every other parameter kept, and record the drop so the selection
+    // effect does not load again for it (quick-261026-pi6, owner R5).
+    const dropStaleSelection = (forGroup, stalePoll) => {
+        lastSelectionRef.current = { groupId: forGroup, poll: null, dropped: stalePoll };
+        const next = new URLSearchParams(searchParams.toString());
+        next.delete('poll');
+        const qs = next.toString();
+        window.history.replaceState(null, '', qs ? `${pathname}?${qs}` : pathname);
+    };
+
+    const fetchHeatmapData = async ({ keepShown = false } = {}) => {
         if (!groupId) return;
-        setHeatmapLoading(true);
+        const run = ++heatmapRunRef.current;
+        const forGroup = groupId;
+        // Superseded: a newer poll load started, or the page moved to another group.
+        const superseded = () => run !== heatmapRunRef.current || groupIdRef.current !== forGroup;
+        // A swap keeps the dashboard that is showing until the next poll lands (the swap marker
+        // above); with nothing shown yet, the loading line is the honest state.
+        if (!keepShown || !heatmapPrompt) setHeatmapLoading(true);
         setHeatmapError(null);
         try {
-            let prompt;
-            if (promptId) {
-                // Navigating from a no-consensus email -- load specific prompt by ID
-                const data = await promptAPI.getPromptById(promptId);
-                prompt = data.prompt;
-            } else {
-                const data = await promptAPI.getActivePrompt(groupId);
-                prompt = data.prompt;
+            let prompt = null;
+            if (selectedPollParam) {
+                let selected = null;
+                if (requestedPollId) {
+                    try {
+                        const data = await promptAPI.getPromptById(requestedPollId);
+                        // Only this group's poll: a member of two groups could otherwise open another
+                        // group's poll here through a crafted link.
+                        if (data?.prompt && data.prompt.group_id === forGroup) selected = data.prompt;
+                    } catch (err) {
+                        logger.info('Selected poll did not load; showing the active poll:', errCtx(err));
+                    }
+                }
+                if (superseded()) return;
+                if (selected) {
+                    prompt = selected;
+                } else {
+                    dropStaleSelection(forGroup, selectedPollParam);
+                }
             }
+            if (!prompt) {
+                if (promptId) {
+                    // Navigating from a no-consensus email -- load specific prompt by ID
+                    const data = await promptAPI.getPromptById(promptId);
+                    prompt = data.prompt;
+                } else {
+                    const data = await promptAPI.getActivePrompt(groupId);
+                    prompt = data.prompt;
+                }
+            }
+            if (superseded()) return;
             setHeatmapPrompt(prompt);
         } catch (err) {
+            if (superseded()) return;
             // Keep the ERROR object, not `err.message`: the raw upstream string used to be
             // painted straight into the page below (T-88-25-01 / ASVS V7). The hook derives
             // designed copy from `ApiError.code` instead.
             setHeatmapError(err instanceof Error ? err : new Error("The poll request didn't complete."));
         } finally {
-            setHeatmapLoading(false);
+            if (run === heatmapRunRef.current) setHeatmapLoading(false);
         }
     };
 
@@ -289,6 +421,46 @@ export default function GroupPlanningPage() {
         if (willClose) clearEventModalParams();
     };
 
+    // quick-261026-pi6 (owner R4/R5): a selection is one history entry, pushed only when it
+    // changes the poll; the selection effect then loads it in place.
+    const selectPoll = (id) => {
+        if (!id || id === selectedPollId) return;
+        const next = new URLSearchParams(searchParams.toString());
+        next.set('poll', id);
+        window.history.pushState(null, '', `${pathname}?${next.toString()}`);
+    };
+
+    // A card tap (owner R3): select, bring the Poll Responses heading to the top below the sticky
+    // header, and move focus there, so a screen reader lands on what changed.
+    const handleSelectPoll = (id) => {
+        selectPoll(id);
+        const target = pollResponsesHeadingRef.current ?? dashboardRef.current;
+        // jsdom has no scrollIntoView (ParticipantRow's guard).
+        if (target && typeof target.scrollIntoView === 'function') {
+            const reduceMotion = typeof window.matchMedia === 'function'
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            target.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+        }
+        const heading = pollResponsesHeadingRef.current;
+        if (heading) {
+            heading.focus({ preventScroll: true });
+            // Armed from the focused heading, then settled (the hook's contract (8)).
+            const settle = focusRecovery.arm();
+            settle();
+        }
+    };
+
+    // A chip press swaps in place: no scroll, no focus move; armed from the pressed chip in case
+    // a failed swap removes it (the hook's contract (1) and (2)).
+    const handleChipSelect = (event, id) => {
+        const settle = focusRecovery.arm({ from: event.currentTarget });
+        try {
+            selectPoll(id);
+        } finally {
+            settle();
+        }
+    };
+
 
     if (!user) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
@@ -306,6 +478,10 @@ export default function GroupPlanningPage() {
     }
 
     const isAdmin = ['owner', 'admin'].includes(userRole);
+    const chipLabels = pollChipLabels(openPolls, group);
+    const shownPollName = heatmapPrompt
+        ? chipLabels.get(heatmapPrompt.id) ?? pollTitle(heatmapPrompt, group)
+        : null;
     const pollClosed = !heatmapPrompt ||
         heatmapPrompt.status === 'closed' ||
         heatmapPrompt.status === 'converted' ||
@@ -381,7 +557,9 @@ export default function GroupPlanningPage() {
                             at EVERY width, chosen OVER keeping the breakpoint-grown 24 -> 30 pair (a
                             heading that changes size at a breakpoint is a second type scale), and it
                             WRAPS, chosen OVER keeping the old ellipsis clip — A1, the tracer's ruling
-                            (88.6-15-PLAN.md:122-131, applied at GroupGamesList.js): clipping is kept
+                            (applied at GroupGamesList.js; recorded at
+                            planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-15-PLAN.md ("-on-a-heading ruling (A1) — decided here")
+                            ): clipping is kept
                             only where it is load-bearing, and here it would hide the group NAME, the
                             one thing this title exists to show. Nothing needs the clip: the parent is
                             min-w-0 and the card has no fixed height. Disclosed phone delta (V-5): at
@@ -453,7 +631,15 @@ export default function GroupPlanningPage() {
 
             {/* Availability Polls + Response Dashboard in one card */}
             <div className="card p-3 md:p-6 mb-6">
-                <Heading level={2} size="heading" className="text-content-primary mb-4">Availability Polls</Heading>
+                <Heading
+                    ref={availabilityPollsHeadingRef}
+                    tabIndex={-1}
+                    level={2}
+                    size="heading"
+                    className="text-content-primary mb-4"
+                >
+                    Availability Polls
+                </Heading>
                 <div className="bg-surface-page rounded-lg surface-flat-phone md:p-4">
                     <PromptScheduleSection
                         groupId={groupId}
@@ -461,10 +647,12 @@ export default function GroupPlanningPage() {
                         userRole={userRole}
                         currentUserDbId={selfUuid}
                         defaultExpanded={true}
+                        selectedPollId={selectedPollId}
+                        onSelectPoll={handleSelectPoll}
                     />
 
                     {/* Response Dashboard */}
-                    <div className="mt-4 pt-4 border-t border-line">
+                    <div ref={dashboardRef} className="mt-4 pt-4 border-t border-line scroll-mt-20">
                         {heatmapLoading ? (
                             <p className="text-center text-content-secondary py-4">Loading poll data...</p>
                         ) : heatmapErrorState.showError ? (
@@ -484,7 +672,55 @@ export default function GroupPlanningPage() {
                             </div>
                         ) : heatmapPrompt ? (
                             <>
-                                <Heading level={3} size="heading" className="text-content-primary mb-3">Poll Responses</Heading>
+                                <Heading
+                                    ref={pollResponsesHeadingRef}
+                                    tabIndex={-1}
+                                    level={3}
+                                    size="heading"
+                                    className="text-content-primary mb-1 scroll-mt-20"
+                                >
+                                    Poll Responses
+                                </Heading>
+                                <p className="text-sm text-content-secondary mb-3">
+                                    {SHOWING_LABEL} <span className="text-content-primary">{shownPollName}</span>
+                                </p>
+                                {/* DECISION quick-261026-pi6 (owner R3, 2026-10-26): the chips render only at
+                                    two or more open polls, OVER always (with one poll a chip changes
+                                    nothing); they read the open-polls cache through the shared key, OVER a
+                                    fetch or a prop chain of their own (one request, Phase 84 PRIM-07); they
+                                    wear the pressed-chip idiom of
+                                    src/app/components/GroupLibrary.js ("DECISION Phase 88.6.1-48 (D-21 / D-44)")
+                                    and wrap instead of scrolling sideways, OVER the brief's link-colour fill
+                                    (white text on the dark theme's amber link colour fails contrast); a chip
+                                    swaps in place without scrolling, and a card tap scrolls to and focuses
+                                    the Poll Responses heading (instantly under reduced motion, read once at
+                                    the tap OVER a subscription that would re-render the page for a value read
+                                    only then; an explicit smooth scroll overrides the global CSS rule), which
+                                    clears the sticky header,
+                                    src/app/Header.js ("h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50");
+                                    if a failed swap removes the control a person stood on, focus goes to the
+                                    Availability Polls heading. Changing any of this is a decision, not a
+                                    cleanup. */}
+                                {openPolls.length >= 2 && (
+                                    <div role="group" aria-label={SWITCH_POLL_LABEL} className="mb-3 flex flex-wrap gap-2">
+                                        {openPolls.map((p) => {
+                                            const pressed = p.id === selectedPollId;
+                                            return (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    aria-pressed={pressed}
+                                                    onClick={(event) => handleChipSelect(event, p.id)}
+                                                    className={pressed
+                                                        ? 'max-w-full px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 bg-btn-primary text-btn-primary-text'
+                                                        : 'max-w-full px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 bg-surface-muted text-content-secondary hover:text-content-primary'}
+                                                >
+                                                    <span className="block truncate">{chipLabels.get(p.id)}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                                 <ResponseDashboard
                                     promptId={heatmapPrompt.id}
                                     isAdmin={isAdmin}

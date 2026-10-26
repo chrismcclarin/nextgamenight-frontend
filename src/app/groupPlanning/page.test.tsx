@@ -17,10 +17,16 @@
 // mount, so a test can read what a retry RESOLVES (the contract plan 88.6.1-21's banner reads).
 //
 // Synthetic identity only (T-88.1-02).
+//
+// quick-261026-pi6: the page now reads the shared open-polls query, so the file's render wraps a
+// fresh QueryClient once (every existing render and its rerender run unchanged). The PI tests
+// change h.PARAMS on purpose to model Next's patched history, which re-renders without a remount
+// (planning read: node_modules:next/dist/client/components/app-router.js ("Patch pushState to ensure external changes")).
 import * as React from 'react';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const h = vi.hoisted(() => {
   const USER = { sub: 'auth0|self' };
@@ -40,6 +46,8 @@ const h = vi.hoisted(() => {
     // so a one-render flash of another group's role cannot pass).
     pss: null as null | Record<string, unknown>,
     ce: null as null | Record<string, unknown>,
+    // The last props the ResponseDashboard stub received (quick-261026-pi6).
+    rd: null as null | Record<string, unknown>,
     pssRoles: [] as unknown[],
     logInfo: vi.fn(),
     // The `state` prop most recently given to a FetchErrorBanner rendered with `compact`.
@@ -77,7 +85,12 @@ vi.mock('@/app/components/createEvent', () => ({
     return null;
   },
 }));
-vi.mock('@/app/components/ResponseDashboard', () => ({ default: () => null }));
+vi.mock('@/app/components/ResponseDashboard', () => ({
+  default: (props: Record<string, unknown>) => {
+    h.rd = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/PromptScheduleSection', () => ({
   default: (props: Record<string, unknown>) => {
     h.pss = props;
@@ -111,7 +124,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     groupsAPI: { getGroup: vi.fn(), getGroupMembers: vi.fn() },
     eventsAPI: { getGroupEvents: vi.fn() },
-    promptAPI: { getActivePrompt: vi.fn(), getPromptById: vi.fn() },
+    promptAPI: { getActivePrompt: vi.fn(), getPromptById: vi.fn(), getOpenPrompts: vi.fn() },
   };
 });
 
@@ -119,6 +132,19 @@ import GroupPlanningPage from './page';
 import { ApiError, eventsAPI, groupsAPI, promptAPI } from '@/lib/api';
 
 type Mock = ReturnType<typeof vi.fn>;
+
+// The page's open-polls query needs a provider (quick-261026-pi6). One fresh client per render,
+// retry off, so a rejected query settles at once; rerender keeps the wrapper.
+function render(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  return rtlRender(ui, { wrapper });
+}
+
+// A real email link carries the poll's UUID (P-1's fixture since quick-261026-pi6 ruling 1).
+const EMAIL_PROMPT_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
 const OWNER_ROW = { id: SELF_UUID, user_id: 'auth0|self', username: 'Me', UserGroup: { role: 'owner' } };
 const NOTICE = 'Some personal controls are unavailable.';
@@ -131,6 +157,7 @@ beforeEach(() => {
   h.PARAMS = new URLSearchParams('group_id=G1');
   h.pss = null;
   h.ce = null;
+  h.rd = null;
   h.pssRoles = [];
   h.compactState = null;
   // NO `Users` on the group: production's GET /groups/:group_id returns a bare Group.findByPk
@@ -142,6 +169,7 @@ beforeEach(() => {
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
   // 'active' is a real AvailabilityPrompt.status value ('pending' | 'active' | 'closed' | 'converted').
   (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: { id: 'P1', status: 'active' } });
+  (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [] });
 });
 
 afterEach(cleanup);
@@ -557,7 +585,7 @@ describe('groupPlanning page — loading line and breadcrumb (88.6.1-16, G5 / R7
 describe("groupPlanning leaves the dialog's close to CreateEvent (88.6.1-68)", () => {
   it('P-1: no created-callback; a create closes the email-link dialog once and clears its parameters once', async () => {
     const previousParams = h.PARAMS;
-    h.PARAMS = new URLSearchParams('group_id=G1&prompt_id=P1');
+    h.PARAMS = new URLSearchParams(`group_id=G1&prompt_id=${EMAIL_PROMPT_ID}`);
     (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: null });
     const replace = vi.spyOn(h.ROUTER, 'replace');
     try {
@@ -584,5 +612,326 @@ describe("groupPlanning leaves the dialog's close to CreateEvent (88.6.1-68)", (
       replace.mockRestore();
       h.PARAMS = previousParams;
     }
+  });
+});
+
+// quick-261026-pi6 (owner R3-R5, 2026-10-26): a selected poll loads in place through its own URL
+// parameter. Next 14.2.35 patches the native history so a pushState or replaceState dispatches a
+// router restore: useSearchParams returns the new value and the page RE-RENDERS, never remounts.
+// The spies below model exactly that: they set h.PARAMS from the URL and record it, and each test
+// re-renders by hand (rerender, never a fresh render). Poll ids are real-shaped UUIDs (the page
+// checks them with isUuid before any request). Every comment here is a // line (CF-9).
+describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', () => {
+  const P1 = '11111111-1111-4111-8111-111111111111';
+  const P2 = '22222222-2222-4222-8222-222222222222';
+  const P3 = '33333333-3333-4333-8333-333333333333';
+  const PX = '99999999-9999-4999-8999-999999999999';
+  const poll = (id: string, extra: Record<string, unknown> = {}) => ({ id, status: 'active', group_id: 'G1', ...extra });
+  const manual = (id: string, username: string) => poll(id, { can_close: true, Creator: { id: `u-${id}`, username } });
+  const REDUCED = '(prefers-reduced-motion: reduce)';
+
+  type Select = (id: string) => void;
+  const onSelectPoll = () => (h.pss as { onSelectPoll?: Select } | null)?.onSelectPoll as Select;
+  const pollResponses = () => screen.getByRole('heading', { level: 3, name: 'Poll Responses' });
+  const queryOf = (url: string) => new URLSearchParams(url.includes('?') ? url.slice(url.indexOf('?') + 1) : '');
+
+  let pushed: string[];
+  let replaced: string[];
+  let spies: Array<{ mockRestore: () => void }>;
+  let originalMatchMedia: typeof window.matchMedia;
+
+  beforeEach(() => {
+    pushed = [];
+    replaced = [];
+    originalMatchMedia = window.matchMedia;
+    spies = [
+      vi.spyOn(window.history, 'pushState').mockImplementation((_d, _t, url) => {
+        pushed.push(String(url));
+        h.PARAMS = queryOf(String(url));
+      }),
+      vi.spyOn(window.history, 'replaceState').mockImplementation((_d, _t, url) => {
+        replaced.push(String(url));
+        h.PARAMS = queryOf(String(url));
+      }),
+    ];
+    (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: poll(P1) });
+  });
+
+  afterEach(() => {
+    spies.forEach((s) => s.mockRestore());
+    window.matchMedia = originalMatchMedia;
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  // The modelled restore: a re-render with whatever h.PARAMS now holds.
+  function reRender(rerender: (ui: React.ReactElement) => void) {
+    act(() => {
+      rerender(<GroupPlanningPage />);
+    });
+  }
+
+  function stubScroll() {
+    const scroll = vi.fn();
+    (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = scroll;
+    return scroll;
+  }
+
+  function stubReducedMotion() {
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query === REDUCED,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList) as typeof window.matchMedia;
+  }
+
+  async function settledOn(id: string) {
+    await waitFor(() => expect(h.rd?.promptId).toBe(id));
+  }
+
+  it('PI-1. ?poll= loads that poll by id, never the active one, and opens no dialog', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=G1&poll=${P2}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2) });
+    render(<GroupPlanningPage />);
+    await settledOn(P2);
+    expect(promptAPI.getPromptById).toHaveBeenCalledTimes(1);
+    expect(promptAPI.getPromptById).toHaveBeenCalledWith(P2);
+    expect(promptAPI.getActivePrompt).not.toHaveBeenCalled();
+    expect(h.ce!.modal).toBe(false);
+  });
+
+  it('PI-2. with prompt_id and poll, the dashboard loads poll and the dialog still auto-opens', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=G1&prompt_id=${P1}&poll=${P2}`);
+    (promptAPI.getPromptById as Mock).mockImplementation(async (id: string) => ({ prompt: poll(id) }));
+    render(<GroupPlanningPage />);
+    await settledOn(P2);
+    expect(h.ce!.modal).toBe(true);
+  });
+
+  it('PI-3. a card select pushes poll=, keeps the dashboard mounted while the next poll loads, and re-fetches nothing else', async () => {
+    const d2 = deferred<unknown>();
+    (promptAPI.getPromptById as Mock).mockImplementation((id: string) => (id === P2 ? d2.promise : Promise.resolve({ prompt: poll(id) })));
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const heading = pollResponses();
+
+    act(() => onSelectPoll()(P2));
+    expect(pushed).toHaveLength(1);
+    expect(queryOf(pushed[0]).get('group_id')).toBe('G1');
+    expect(queryOf(pushed[0]).get('poll')).toBe(P2);
+
+    reRender(rerender);
+    await waitFor(() => expect(promptAPI.getPromptById).toHaveBeenCalledWith(P2));
+    expect(pollResponses()).toBe(heading);
+    expect(screen.queryByText('Loading poll data...')).toBeNull();
+    expect(h.rd!.promptId).toBe(P1);
+
+    await act(async () => {
+      d2.resolve({ prompt: poll(P2) });
+    });
+    await settledOn(P2);
+    expect(pollResponses()).toBe(heading);
+    expect(h.pss!.selectedPollId).toBe(P2);
+    expect(groupsAPI.getGroup).toHaveBeenCalledTimes(1);
+    expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('PI-4. a card select scrolls the Poll Responses heading to the top and focuses it; instant under reduced motion', async () => {
+    (promptAPI.getPromptById as Mock).mockImplementation(async (id: string) => ({ prompt: poll(id) }));
+    const scroll = stubScroll();
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const heading = pollResponses();
+
+    act(() => onSelectPoll()(P2));
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toBe(heading);
+    expect(scroll).toHaveBeenLastCalledWith({ block: 'start', behavior: 'smooth' });
+    expect(document.activeElement).toBe(heading);
+    expect(heading).toHaveAttribute('tabindex', '-1');
+
+    reRender(rerender);
+    await settledOn(P2);
+    stubReducedMotion();
+    act(() => onSelectPoll()(P1));
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll).toHaveBeenLastCalledWith({ block: 'start', behavior: 'auto' });
+  });
+
+  it('PI-5. selecting the poll already shown pushes nothing and still scrolls and focuses', async () => {
+    const scroll = stubScroll();
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    act(() => onSelectPoll()(P1));
+    expect(pushed).toHaveLength(0);
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(pollResponses());
+  });
+
+  it('PI-6. with two open polls a Switch poll chip row swaps in place, without scrolling, and focus stays on the chip', async () => {
+    const user = userEvent.setup();
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(P1, 'Ana'), manual(P2, 'Ben')] });
+    (promptAPI.getPromptById as Mock).mockImplementation(async (id: string) => ({ prompt: poll(id) }));
+    const scroll = stubScroll();
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const chips = await screen.findByRole('group', { name: 'Switch poll' });
+    expect(within(chips).getAllByRole('button')).toHaveLength(2);
+    expect(within(chips).getByRole('button', { name: "Ana's check-in" })).toHaveAttribute('aria-pressed', 'true');
+    const ben = within(chips).getByRole('button', { name: "Ben's check-in" });
+    expect(ben).toHaveAttribute('aria-pressed', 'false');
+
+    await user.click(ben);
+    expect(pushed).toHaveLength(1);
+    expect(queryOf(pushed[0]).get('poll')).toBe(P2);
+    reRender(rerender);
+    await settledOn(P2);
+    expect(scroll).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(ben);
+    expect(ben).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('PI-7. with one open poll there is no chip row, and the Showing line names a generic manual poll for its starter', async () => {
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(P1, 'Ana')] });
+    (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: manual(P1, 'Ana') });
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    await waitFor(() =>
+      expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === "Showing Ana's check-in")).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('group', { name: 'Switch poll' })).toBeNull();
+  });
+
+  it('PI-8. a poll id that fails to load falls back to the active poll and drops the parameter, with no error banner', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=G1&poll=${PX}`);
+    (promptAPI.getPromptById as Mock).mockRejectedValue(new ApiError('not found', 'not_found', 404));
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1);
+    expect(replaced).toHaveLength(1);
+    expect(queryOf(replaced[0]).get('group_id')).toBe('G1');
+    expect(queryOf(replaced[0]).has('poll')).toBe(false);
+    expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
+    expect(h.logInfo).toHaveBeenCalledWith('Selected poll did not load; showing the active poll:', expect.anything());
+
+    reRender(rerender);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('PI-9. a malformed poll id sends no request, the active poll loads and the parameter is dropped', async () => {
+    h.PARAMS = new URLSearchParams('group_id=G1&poll=not-a-uuid');
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    expect(promptAPI.getPromptById).not.toHaveBeenCalled();
+    expect(replaced).toHaveLength(1);
+    expect(queryOf(replaced[0]).has('poll')).toBe(false);
+    expect(queryOf(replaced[0]).get('group_id')).toBe('G1');
+    // One fallback load: the drop runs with no await, inside the mount commit.
+    expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('PI-10. a poll that belongs to another group is treated as stale', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=G1&poll=${P2}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2, { group_id: 'G9' }) });
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    expect(promptAPI.getPromptById).toHaveBeenCalledWith(P2);
+    expect(replaced).toHaveLength(1);
+    expect(queryOf(replaced[0]).has('poll')).toBe(false);
+  });
+
+  it('PI-11. newest wins: a late answer for an earlier selection writes nothing', async () => {
+    const d2 = deferred<unknown>();
+    const d3 = deferred<unknown>();
+    (promptAPI.getPromptById as Mock).mockImplementation((id: string) => (id === P2 ? d2.promise : d3.promise));
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+
+    act(() => onSelectPoll()(P2));
+    reRender(rerender);
+    await waitFor(() => expect(promptAPI.getPromptById).toHaveBeenCalledWith(P2));
+    act(() => onSelectPoll()(P3));
+    reRender(rerender);
+    await waitFor(() => expect(promptAPI.getPromptById).toHaveBeenCalledWith(P3));
+
+    await act(async () => {
+      d3.resolve({ prompt: poll(P3) });
+    });
+    await settledOn(P3);
+    await act(async () => {
+      d2.resolve({ prompt: poll(P2) });
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(h.rd!.promptId).toBe(P3);
+  });
+
+  it('PI-12. back steps to the previous poll in place', async () => {
+    (promptAPI.getPromptById as Mock).mockImplementation(async (id: string) => ({ prompt: poll(id) }));
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    act(() => onSelectPoll()(P2));
+    reRender(rerender);
+    await settledOn(P2);
+
+    // The modelled popstate: the earlier entry's query, then a re-render.
+    h.PARAMS = new URLSearchParams('group_id=G1');
+    reRender(rerender);
+    await settledOn(P1);
+    expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(2);
+    expect(h.pss!.selectedPollId).toBe(P1);
+  });
+
+  it('PI-13. a generic automatic poll is named for its schedule on its chip and in the Showing line', async () => {
+    const auto = poll(P1, { created_by_settings_id: 'set-1', Creator: null, schedule_name: 'Sunday Wingspan' });
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [auto, manual(P2, 'Ben')] });
+    (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: auto });
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const chips = await screen.findByRole('group', { name: 'Switch poll' });
+    expect(within(chips).getByRole('button', { name: 'Sunday Wingspan' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Showing Sunday Wingspan')).toBeInTheDocument();
+  });
+
+  it('PI-14. a chip swap that fails both loads shows the banner and focus lands on the Availability Polls heading', async () => {
+    const user = userEvent.setup();
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(P1, 'Ana'), manual(P2, 'Ben')] });
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const chips = await screen.findByRole('group', { name: 'Switch poll' });
+    (promptAPI.getPromptById as Mock).mockRejectedValue(new ApiError('failed', 'unknown', 500));
+    (promptAPI.getActivePrompt as Mock).mockRejectedValue(new ApiError('failed', 'unknown', 500));
+
+    await user.click(within(chips).getByRole('button', { name: "Ben's check-in" }));
+    reRender(rerender);
+    expect(await screen.findByText("We couldn't load the poll responses")).toBeInTheDocument();
+    const availability = screen.getByRole('heading', { level: 2, name: 'Availability Polls' });
+    await waitFor(() => expect(document.activeElement).toBe(availability));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('PI-15. with no poll parameter the section receives the shown poll as selected and a select handler', async () => {
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    await waitFor(() => expect(h.pss!.selectedPollId).toBe(P1));
+    expect(typeof h.pss!.onSelectPoll).toBe('function');
+  });
+
+  it('PI-16. a prompt_id that is not a UUID is treated as absent: no request, the active poll, no dialog', async () => {
+    h.PARAMS = new URLSearchParams('group_id=G1&prompt_id=not-a-uuid');
+    render(<GroupPlanningPage />);
+    // Positive signal first (CF-26), then the absences.
+    await settledOn(P1);
+    expect(promptAPI.getPromptById).not.toHaveBeenCalled();
+    expect(h.ce!.modal).toBe(false);
+    expect(h.ce!.promptId).toBeNull();
+    expect(h.ce!.hideVisualCalendar).toBe(true);
   });
 });

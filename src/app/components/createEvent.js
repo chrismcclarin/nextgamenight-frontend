@@ -24,6 +24,7 @@ import { StatusRegion } from '@/components/ui/StatusRegion';
 import { Button } from '../../components/ui/Button';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
+import { isUuid } from '../../lib/isUuid';
 
 const REQUIRED_SR_LABEL = '(required)';
 // The two required section titles' visible words. One source for the visible text AND the
@@ -132,7 +133,15 @@ function registerEventWrite(eventId) {
     if (writes.size === 0) eventWritesInFlight.delete(eventId);
   };
 }
-function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
+function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId: rawPromptId = null }) {
+  // DECISION quick-261026-pi6 (coordinator ruling 1, 2026-10-26): a promptId that is not a UUID is
+  // treated as absent (no poll-heatmap request; the group heatmap path runs), chosen OVER passing
+  // it through to the backend's 400 or 404 and OVER a visible error, because a malformed email link
+  // should not read as "the poll request failed" and the id is interpolated into the request path
+  // (src/lib/isUuid.ts ("DECISION Phase 88.6.1-07 (D-03 / AC-6 / CSPT)")); the prop is renamed in
+  // the signature so no later read can see the unchecked value. Changing this is a decision, not a
+  // cleanup.
+  const promptId = isUuid(rawPromptId) ? rawPromptId : null;
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
   // GameComboInput userId props below), not the Auth0 sub (87.5 BINT-02). searchAll
   // fires only on user typing, and GameComboInput's search useCallback already

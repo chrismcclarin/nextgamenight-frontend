@@ -216,12 +216,15 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     receiver: 'roleRecord',
     // RE-DERIVED by plan 88.6.1-63 (task 2's wiring, caught at the task 3 gate): 65 -> 67, pushed down by
     // one import line and one pointer line (selfIdentityErrorSource).
-    declaredAt: 67,
+    // RE-DERIVED by quick-261026-pi6 (2026-10-26): 67 -> 116, pushed down by the poll-selection
+    // imports, the prompt_id and poll reads with their two DECISION markers, and the selection refs
+    // above the role state. Kept as a line number.
+    declaredAt: 116,
     declaration: 'const [roleRecord, setRoleRecord] = useState(',
     why:
       'Local role-read state { groupId, role, error } written only by the page\'s own ' +
       'loadUserRole callback: `error` holds the CAUGHT Error object (or a locally minted one), ' +
-      'never a field of a response body. The read at :69 is a render-time derive off that state.',
+      'never a field of a response body. The read at :118 is a render-time derive off that state.',
   },
 ];
 

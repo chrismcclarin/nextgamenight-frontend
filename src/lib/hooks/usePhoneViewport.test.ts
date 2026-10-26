@@ -220,6 +220,12 @@ const MATCH_MEDIA_SITES: ExemptionRoster = {
     why: 'one-shot reads inside the game title\'s two expand click handlers; a subscription would re-render the page for a value read only on click',
     owner: { kind: 'decision', marker: MARKER },
   },
+  // ADDED by quick-261026-pi6 (2026-10-26), surfaced by the full-suite run: the card tap's scroll.
+  'app/groupPlanning/page.js': {
+    sites: 1,
+    why: 'a one-shot reduced-motion read at a poll card tap picks the scroll behaviour (an explicit smooth scroll overrides the global CSS scroll-behavior rule); a different media feature from the viewport width this hook owns, and a subscription would re-render the page for a value read only on tap',
+    owner: { kind: 'decision', marker: 'DECISION quick-261026-pi6 (owner R3, 2026-10-26)' },
+  },
 };
 
 const PHONE_QUERY_LITERAL_SITES: ExemptionRoster = {
