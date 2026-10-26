@@ -84,6 +84,15 @@
  *       css/quoted string whitespace edit.
  *   Parse errors from parseDiagnostics over ts.transpileModule: see (D-22) above; pinned by
  *   the four parse/ cases.
+ *   (f) AMENDED code review A-IN-01 (2026-10-25): a comment the toolchain reads as a
+ *       directive is a stream entry where it sits, never trivia, so adding, removing, moving
+ *       or editing one is a code change. The set (DIRECTIVE_COMMENT_RE): webpack and
+ *       Turbopack magic comments on import(), the JSX pragmas, #__PURE__ and
+ *       #__NO_SIDE_EFFECTS__, and @vite-ignore. The whole comment is the entry, so a prose
+ *       edit inside a comment that also holds one offends too (the safe side). Pinned by
+ *       code/webpack magic comment added to import(), code/pure annotation removed,
+ *       code/jsxImportSource pragma edited and comment/prose edit beside an unchanged pure
+ *       annotation. A directive outside that set is not seen.
  * Not covered: stylesheet generation. Tailwind builds utilities from the raw text of src
  * comments and test files (src/app/globals.css ("source(none);") plus its @source globs), so a
  * comment-only or test-file edit can add or remove a generated utility. That changes
@@ -195,6 +204,10 @@ function tsStream(text, p) {
     if (gapAt !== null) {
       return { walkerGap: { line: lineOf(gapAt), message: 'non-trivia text outside the walked tokens' } };
     }
+    for (const d of directiveComments(text, prevEnd, start)) {
+      entries.push({ text: 'Directive:' + d.text, line: lineOf(d.pos) }); // (f)
+      mergeable = null;
+    }
     const nl = !first && !isText && LINE_TERMINATOR_RE.test(text.slice(prevEnd, start));
     first = false;
     prevEnd = node.end;
@@ -221,6 +234,9 @@ function tsStream(text, p) {
   const tailAt = nonTriviaAt(text, prevEnd, text.length);
   if (tailAt !== null) {
     return { walkerGap: { line: lineOf(tailAt), message: 'non-trivia text after the last walked token' } };
+  }
+  for (const d of directiveComments(text, prevEnd, text.length)) {
+    entries.push({ text: 'Directive:' + d.text, line: lineOf(d.pos) }); // (f)
   }
   return { entries };
 }
@@ -250,6 +266,28 @@ function nonTriviaAt(text, start, end) {
     const kind = gapScanner.scan();
     if (kind === ts.SyntaxKind.EndOfFileToken) return null;
     if (!TRIVIA_KINDS.has(kind)) return gapScanner.getTokenStart();
+  }
+}
+
+// (f) A comment the toolchain reads as a directive: webpack and Turbopack magic comments
+// (webpackIgnore:, webpackChunkName:, turbopackIgnore: ...), the JSX pragmas (@jsx,
+// @jsxImportSource, @jsxRuntime, @jsxFrag), the annotations tree-shaking reads (#__PURE__,
+// #__NO_SIDE_EFFECTS__, either with @) and @vite-ignore.
+const DIRECTIVE_COMMENT_RE =
+  /\b(?:webpack|turbopack)[A-Z][A-Za-z]*\s*:|@jsx(?:ImportSource|Runtime|Frag)?\b|[#@]__(?:PURE|NO_SIDE_EFFECTS)__|@vite-ignore\b/;
+
+/** (f) The directive comments in text[start, end), each with its whole text and position. */
+function directiveComments(text, start, end) {
+  const out = [];
+  if (end <= start) return out;
+  gapScanner.setText(text, start, end - start);
+  for (;;) {
+    const kind = gapScanner.scan();
+    if (kind === ts.SyntaxKind.EndOfFileToken) return out;
+    if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) {
+      const comment = gapScanner.getTokenText();
+      if (DIRECTIVE_COMMENT_RE.test(comment)) out.push({ text: comment, pos: gapScanner.getTokenStart() });
+    }
   }
 }
 
@@ -496,7 +534,7 @@ function runCheck({ root, base }) {
 // in-script strings, following scripts/tw4-hazard-grep.sh ("DECISION Phase 87.7 (R4): the
 // negative control is the built-in").
 
-const SELF_TEST_CASE_COUNT = 79; // 66 in-memory (code, comment, css, parse, classify), 4 realfile, 9 git
+const SELF_TEST_CASE_COUNT = 83; // 70 in-memory (code, comment, css, parse, classify), 4 realfile, 9 git
 
 const C = (group, name, file, before, after, expect) => ({
   group,
@@ -525,6 +563,10 @@ const IN_MEMORY_CASES = [
   C('code', 'postfix ++ after a newline', 'x.ts', 'a /* */ ++\nb;', 'a /*\n*/ ++\nb;', 'differ'),
   // the line-break flag's known fail-safe (D-22): a rewrapped inline block comment offends.
   C('code', 'inline block comment rewrapped across lines', 'x.ts', 'foo(a, /* x y */ b);', 'foo(a, /* x\ny */ b);', 'differ'),
+  // (f) a directive comment is a stream entry, not trivia (code review A-IN-01).
+  C('code', 'webpack magic comment added to import()', 'x.ts', "const m = import('./a');", "const m = import(/* webpackIgnore: true */ './a');", 'differ'),
+  C('code', 'pure annotation removed', 'x.ts', 'const a = /*#__PURE__*/ f();', 'const a = f();', 'differ'),
+  C('code', 'jsxImportSource pragma edited', 'x.tsx', '/** @jsxImportSource preact */\nconst x = <p/>;', '/** @jsxImportSource react */\nconst x = <p/>;', 'differ'),
 
   // comment/: every one must compare equal.
   C('comment', 'line and block comment edit', 'x.ts', '// a\nconst a = 1; /* x */', '// bb\n// cc\nconst a = 1; /* yyy */', 'equal'),
@@ -540,6 +582,7 @@ const IN_MEMORY_CASES = [
   C('comment', 'comment inside a jsx attribute expression', 'x.tsx', 'const x = <a b={1}/>;', 'const x = <a b={/* c */ 1}/>;', 'equal'),
   C('comment', 'multi-line jsx comment deleted in a .jsx file', 'x.jsx', 'const x = <div>\n  {/*\n    one\n    two\n  */}\n  <span/>\n</div>;', 'const x = <div>\n  <span/>\n</div>;', 'equal'),
   C('comment', 'jsx comment deleted between adjacent text', 'x.tsx', 'const x = <p>a{/* c */}b</p>;', 'const x = <p>ab</p>;', 'equal'),
+  C('comment', 'prose edit beside an unchanged pure annotation', 'x.ts', '// a\nconst a = /*#__PURE__*/ f();', '// bb\nconst a = /*#__PURE__*/ f();', 'equal'),
 
   // css/: comment edits equal, real edits differ.
   C('css', 'comment in a value', 'x.css', 'a{color:red /* x */}', 'a{color:red /* yyy */}', 'equal'),
