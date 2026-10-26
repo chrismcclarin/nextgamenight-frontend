@@ -17,6 +17,18 @@ import { expect, type Locator, type Page } from '@playwright/test';
 /** The floor, in CSS px. */
 export const MIN_TOUCH_TARGET_PX = 44;
 
+// DECISION Phase 88.6.2 code review (ORCH-WR-01): both axes are compared on the measured box
+// rounded to 2 decimals, chosen OVER a tolerance band such as >= 43.9 (it would pass a real 43.9px
+// control) and OVER the raw float (CI run 40220997125 measured a min-h-11 44px disclosure at
+// 43.99993896484375px and red the e2e job on layout float noise). Rounding absorbs less than
+// 0.005px, nothing a finger can feel. The failure message still prints the raw measurement.
+// Pinned by src/test-utils/touchTarget.test.ts ("roundPx absorbs layout float noise and nothing larger").
+// Changing this is a decision, not a cleanup.
+/** A measured CSS px value rounded to 2 decimals, the precision the floor is compared at. */
+export function roundPx(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 export interface TouchTargetOptions {
   /** 'both' (the default) checks width and height; 'height' checks height only. */
   axes?: 'both' | 'height';
@@ -45,8 +57,8 @@ export async function expectTouchTarget(
     return because ? `${text} — ${because}` : text;
   };
 
-  if (axes === 'both') expect(box.width, message('width')).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-  expect(box.height, message('height')).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  if (axes === 'both') expect(roundPx(box.width), message('width')).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(roundPx(box.height), message('height')).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 
   if (withinViewportOf) {
     const viewport = withinViewportOf.viewportSize();
