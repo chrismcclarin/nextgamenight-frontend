@@ -155,6 +155,12 @@ describe('scrubSessionHeaders and scrubError', () => {
     expect(scrubSessionHeaders(block)).toBe([keep[0], `${ESC}[2m    - Cookie: ${SCRUBBED}${ESC}[22m`, keep[1]].join('\n'));
     // A quoted JSON key keeps its quote and loses everything after the colon.
     expect(scrubSessionHeaders('{"authorization": "Bearer abc", "x": 1}')).toBe(`{"authorization": ${SCRUBBED}`);
+    // Code review C-IN-01: a header map serialized twice (or more) escapes the key's closing
+    // quote, and the escaped key is a header line too.
+    const twice = JSON.stringify({ msg: JSON.stringify({ headers: { authorization: 'Bearer SECRET1', cookie: 'sid=SECRET2' } }) });
+    expect(scrubSessionHeaders(twice)).toBe(`{"msg":"{\\"headers\\":{\\"authorization\\": ${SCRUBBED}`);
+    const thrice = JSON.stringify({ outer: twice });
+    expect(scrubSessionHeaders(thrice)).not.toMatch(/SECRET1|SECRET2/);
   });
 
   it('T3: session cookie pairs outside any header line leave no trace of the cookie name', () => {

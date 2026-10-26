@@ -5,15 +5,19 @@
 // DECISION Phase 88.6.2-20 (scrub): two rules, applied in this order, and nothing else.
 //   1. The header-line rule. A header name from the family cookie, set-cookie, authorization,
 //      proxy-authorization matches in any case when no letter, digit, underscore or hyphen
-//      precedes it and an optional closing quote, optional spaces and a colon follow it.
-//      Everything after that colon, up to the first ESC character or the end of the line,
-//      becomes one space plus SCRUBBED. Playwright prints one call-log line per REQUEST
+//      precedes it and an optional closing quote, optional spaces and a colon follow it. The
+//      closing quote may be escaped by any number of backslashes, as in a header map that was
+//      serialized twice (AMENDED code review C-IN-01, 2026-10-25). Everything after that
+//      colon, up to the first ESC character or the end of the line, becomes one space plus
+//      SCRUBBED. Playwright prints one call-log line per REQUEST
 //      header, and it logs RESPONSE headers the same way, which is why set-cookie is in the
 //      family: node_modules:playwright-core/lib/coreBundle.js ("for (const [name, value2] of Object.entries(response2.headers))").
 //      proxy-authorization is in it for the same reason as authorization.
-//   2. The session-pair rule, a second net for any format the line rule misses (prose, JSON,
-//      a header folded onto another line). A session cookie pair anywhere becomes SCRUBBED,
-//      its NAME included, so a log grep for that name reads 0. It is keyed to the
+//   2. The session-pair rule, a second net for the SESSION COOKIE ONLY in any format the line
+//      rule misses (prose, JSON, a header folded onto another line); a bearer token or any
+//      other cookie in such a format is not caught by it (AMENDED code review C-IN-01,
+//      2026-10-25: this said "any format" without naming that limit). A session cookie pair
+//      anywhere becomes SCRUBBED, its NAME included, so a log grep for that name reads 0. It is keyed to the
 //      @auth0/nextjs-auth0 v3 session cookie name (the ^3.8.0 dependency in package.json). An
 //      SDK change that renames the session cookie (Phase 90's v4 move) must update this rule,
 //      the T3 fixtures in the pin and any log grep that uses the name, in the same commit.
@@ -33,8 +37,9 @@ export const SCRUBBED = '[scrubbed]';
 
 // Rule 1. The longer names come first in the alternation; the look-behind keeps the cookie
 // inside set-cookie, and a lookalike such as x-cookie-policy, from matching on their own.
+// The backslashes before the optional quote are an escaped JSON key (code review C-IN-01).
 const HEADER_LINE_RE =
-  /(?<![A-Za-z0-9_-])(set-cookie|proxy-authorization|cookie|authorization)(["']?)([ \t]*):[^\u001b\r\n]*/gi;
+  /(?<![A-Za-z0-9_-])(set-cookie|proxy-authorization|cookie|authorization)(\\*["']?)([ \t]*):[^\u001b\r\n]*/gi;
 
 // Rule 2. The name, an optional chunk suffix (.0, .1, ...), the equals sign and a value that
 // runs up to a semicolon, whitespace, a quote, a comma or the end.
