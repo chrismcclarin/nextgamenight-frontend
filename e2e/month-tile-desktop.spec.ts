@@ -285,7 +285,7 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
       const card = heading.locator('xpath=ancestor::div[contains(@class, "card")][1]');
       await expect(
         card,
-        'UI-SPEC month tile: the month card ancestor was not found — the grid screenshot would otherwise fall back to the WHOLE authenticated page, which the always() artifact publishes from a PUBLIC repo (review MEDLOW-12)'
+        'UI-SPEC month tile: the month card ancestor was not found — the grid screenshot would otherwise fall back to the WHOLE authenticated page, which the always() artifact would carry out of CI, as age ciphertext since Phase 88.6.2-27 (review MEDLOW-12)'
       ).toHaveCount(1);
       await card.screenshot({ path: gridPath });
       await test.info().attach('month-tile-desktop-allowed-tile', { path: tilePath, contentType: 'image/png' });

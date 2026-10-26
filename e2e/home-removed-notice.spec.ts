@@ -64,6 +64,10 @@ async function wrapperHeight(page: Page) {
 // promised it did not take. the page is the e2e account's real home page, and a retry trace records its real network responses, and CI uploads test-results from a public repository: the
 // e2e/friend-invite-panel-header.spec.ts rule (DECISION Phase 88.6.1-27). Re-enabling capture
 // here is a decision, not a cleanup.
+// [AMENDED 2026-10-25, code review A-IN-03: since Phase 88.6.2-27 test-results leave CI only
+// as age ciphertext (scripts/encrypt-evidence.sh), so the public-upload premise no longer
+// holds. The choice stands, as amended on the 88.6.1-27 rule: the real home page would still
+// reach a retained artifact, and the encryption is a second net, not a reason to capture.]
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
 test.describe('Phase 88.6.1-82 — the removed-from-group notice (phone project)', () => {
