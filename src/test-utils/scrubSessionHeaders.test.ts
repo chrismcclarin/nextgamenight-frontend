@@ -18,7 +18,8 @@ const PLANTS = ['PLANT-COOKIE-ONE', 'PLANT-COOKIE-TWO', 'PLANT-BEARER'];
 // The census arm's two call shapes. A Route call under any binding name, and an
 // APIRequestContext verb call: the request fixture, page.request, context.request, or a
 // request.newContext() result named ...Context. Playwright prints the same request headers for
-// the second shape, prefixed apiRequestContext.
+// the second shape, prefixed apiRequestContext. A context under any other name is read from its
+// source (CONTEXT_SOURCE_RES below).
 const ROUTE_FETCH_RE = /\.fetch\s*\(/;
 const REQUEST_VERB_RE = /\b(request|page\.request|context\.request|\w+Context)\s*\.\s*(get|post|put|patch|delete|head|fetch)\s*\(/;
 const HELPER = 'e2e/support/scrubbedFetch.ts';
@@ -40,12 +41,52 @@ function tsFilesUnder(dir: string): string[] {
   return out;
 }
 
-function callLines(file: string): number[] {
-  return readFileSync(file, 'utf8')
-    .split('\n')
-    .flatMap((line, i) =>
-      !isCommentLine(line) && (ROUTE_FETCH_RE.test(line) || REQUEST_VERB_RE.test(line)) ? [i + 1] : [],
-    );
+// Code review C-WR-01: the verb arm reads a receiver's NAME, so the census also reads where an
+// APIRequestContext comes from. Three sources, each capturing the bound name when there is one:
+// request.newContext (on the fixture or on playwright.request); a rename of the request fixture
+// in a destructuring pattern (a lowercase target, so a type annotation such as
+// request: APIRequestContext is not one); and an alias of a .request property (page.request,
+// context.request, playwright.request), never a call such as route.request(). Outside
+// e2e/support/ a source line is itself an offender; in every file a verb call on a captured
+// name is one.
+const CONTEXT_SOURCE_RES = [
+  /(?:\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?)?(?:[\w$]+\s*\.\s*)*\brequest\s*\.\s*newContext\s*\(/,
+  /[{,]\s*request\s*:\s*([a-z_$][\w$]*)/,
+  /(?:\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*)?=\s*(?:[\w$]+\s*\.\s*)+request\b(?!\s*[.(\w$])/,
+];
+const VERB_CALL = '\\s*\\.\\s*(?:get|post|put|patch|delete|head|fetch)\\s*\\(';
+
+function callLinesIn(text: string, rel: string): number[] {
+  const lines = text.split('\n');
+  const code = lines.map((line) => !isCommentLine(line));
+  const names = new Set<string>();
+  const source = lines.map((line, i) => {
+    if (!code[i]) return false;
+    let hit = false;
+    for (const re of CONTEXT_SOURCE_RES) {
+      const m = re.exec(line);
+      if (m) {
+        hit = true;
+        if (m[1]) names.add(m[1]);
+      }
+    }
+    return hit;
+  });
+  const bound =
+    names.size > 0
+      ? new RegExp(`(?<![\\w$.])(?:${[...names].map((n) => n.replace(/\$/g, '\\$')).join('|')})${VERB_CALL}`)
+      : null;
+  const flagSources = !rel.startsWith('e2e/support/');
+  return lines.flatMap((line, i) =>
+    code[i] &&
+    (ROUTE_FETCH_RE.test(line) || REQUEST_VERB_RE.test(line) || bound?.test(line) || (flagSources && source[i]))
+      ? [i + 1]
+      : [],
+  );
+}
+
+function callLines(root: string, rel: string): number[] {
+  return callLinesIn(readFileSync(join(root, rel), 'utf8'), rel);
 }
 
 // A local port that was open a moment ago and is closed now, so a request to it is refused.
@@ -154,15 +195,42 @@ describe('scrubSessionHeaders and scrubError', () => {
     // Non-vacuous: the walk saw the e2e tree, and the helper still holds its one call.
     expect(files.length).toBeGreaterThanOrEqual(70);
     expect(files).toContain(HELPER);
-    expect(callLines(join(root, HELPER))).toHaveLength(1);
+    expect(callLines(root, HELPER)).toHaveLength(1);
     const offenders = files
       .filter((rel) => rel !== HELPER)
-      .flatMap((rel) => callLines(join(root, rel)).map((n) => `${rel}:${n}`));
+      .flatMap((rel) => callLines(root, rel).map((n) => `${rel}:${n}`));
     expect(
       offenders,
       'route a Route call through scrubbedFetch (e2e/support/scrubbedFetch.ts), and an APIRequestContext call ' +
         'through a scrubbed wrapper added under e2e/support/ (0 such calls at FE 995023d): ' +
         offenders.join(', '),
     ).toEqual([]);
+  });
+
+  // Code review C-WR-01: the verb arm alone names a context by its receiver, so a context made
+  // by request.newContext, a renamed request fixture, or an alias of page.request went unseen.
+  it('the census also flags an APIRequestContext reached under another name, at its source and at its calls', () => {
+    const probe = [
+      "const api = await request.newContext({ storageState: 'e2e/.auth/user.json' });",
+      "const res = await api.get('/api/users/me');",
+      "test('x', async ({ request: http }) => { await http.post('/api/feedback'); });",
+      "const ctx = page.request; await ctx.delete('/api/x');",
+    ];
+    expect(callLinesIn(probe.join('\n'), 'e2e/probe.spec.ts')).toEqual([1, 2, 3, 4]);
+    // Each source line is flagged on its own, without the call that follows it.
+    expect(callLinesIn(probe[0], 'e2e/probe.spec.ts')).toEqual([1]);
+    expect(callLinesIn("test('x', async ({ request: http }) => {});", 'e2e/probe.spec.ts')).toEqual([1]);
+    expect(callLinesIn('const ctx = page.request;', 'e2e/probe.spec.ts')).toEqual([1]);
+    expect(callLinesIn('const api = playwright.request;', 'e2e/probe.spec.ts')).toEqual([1]);
+    // Not contexts: a route's Request, its method read, and a type annotation on the fixture.
+    const notContexts = [
+      'const request = route.request();',
+      "if (route.request().method() !== 'GET') {",
+      'async function f({ request }: { request: APIRequestContext }) {}',
+    ];
+    expect(callLinesIn(notContexts.join('\n'), 'e2e/probe.spec.ts')).toEqual([]);
+    // A scrubbed wrapper under e2e/support/ may create the context; its verb calls stay flagged
+    // until the census names that wrapper beside the helper.
+    expect(callLinesIn(probe.slice(0, 2).join('\n'), 'e2e/support/apiWrapper.ts')).toEqual([2]);
   });
 });

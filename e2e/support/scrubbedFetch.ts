@@ -17,8 +17,12 @@ import { scrubError } from '../../src/test-utils/scrubSessionHeaders';
 // Every Playwright route.fetch in e2e/ goes through this file, and the census arm in
 // src/test-utils/scrubSessionHeaders.test.ts enforces it: it flags any .fetch( call and any
 // APIRequestContext verb call (request, page.request, context.request, a ...Context) on a
-// code line. A call reached through an alias it cannot read (a destructured fetch, a call
-// built from a string) is not seen.
+// code line. AMENDED code review C-WR-01 (2026-10-25): it also reads where a context comes
+// from, so request.newContext, a renamed request fixture and an alias of a .request property
+// are offenders outside e2e/support/, and so is every verb call on the name each one binds.
+// A call reached through an alias it cannot read is not seen: a destructured fetch or verb, a
+// call built from a string, a context passed in as a parameter or returned from a function, or
+// a source statement split across lines.
 // No logging and no retry here: this file only scrubs.
 // Changing this is a decision, not a cleanup.
 export async function scrubbedFetch(
