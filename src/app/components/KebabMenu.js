@@ -235,9 +235,9 @@ export default function KebabMenu({
         if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
         setArmedIndex(index);
         /* DECISION Phase 88.6-16 (D-12): the armed announcement names THE ITEM,
-           a deliberate DIVERGENCE from src/components/ui/useConfirmAction.ts ("It MUST name the target") (`It MUST name the
-           target`) and from its `defaultAnnouncement` at src/components/ui/useConfirmAction.ts ("function defaultAnnouncement(")
-           (`function defaultAnnouncement(`), which builds a TWO-part string
+           a deliberate DIVERGENCE from src/components/ui/useConfirmAction.ts ("It MUST name the target")
+           and from its `defaultAnnouncement` at src/components/ui/useConfirmAction.ts ("function defaultAnnouncement("),
+           which builds a TWO-part string
            (`Press again to confirm: ${confirmLabel} ${targetLabel}`). The item
            label is not the target.
            WHY IT IS STILL RIGHT HERE, and it turns entirely on the region being
@@ -290,8 +290,8 @@ export default function KebabMenu({
        it. Plan 88.6-18 is its first consumer.
 
        Delete must NOT become 'twoTap + keepOpen' on the strength of this flag —
-       the two-tap tiers in src/app/gameDetail/page.js ("D-40 + D-07: explicitly NOT the two-tap tier.") (`D-40 + D-07: explicitly NOT
-       the two-tap tier`) and `ManageMembers.js` (anchor `DECISION Phase 88 AR-DEC-3`) reason
+       the two-tap tiers in src/app/gameDetail/page.js ("D-40 + D-07: explicitly NOT the two-tap tier.")
+       and `ManageMembers.js` (anchor `DECISION Phase 88 AR-DEC-3`) reason
        from the CURRENT auto-close and
        are unchanged by a per-item opt-out.
 
@@ -331,8 +331,8 @@ export default function KebabMenu({
           rationale at a site is inherited as fact: it does NOT thin the per-row
           count on either surface that can announce. `ManageMembers.js` (anchor `role !== 'pending').map`)
           maps the members and the mobile kebab (its second `<KebabMenu`) ALWAYS carries the
-          `twoTap: true` Remove (`twoTap: true`); `OpenPollsList.js`
-          (`prompts.map`) / (`prompt.can_close === true`) / (`<KebabMenu`) is the
+          `twoTap: true` Remove; `OpenPollsList.js`'s `prompts.map` rows, each with a
+          `<KebabMenu` gated on `prompt.can_close === true` whose one item is `twoTap: true`, are the
           same shape. So the predicate is TRUE for every row and the region IS per row on
           both surfaces — that is the accepted design, and it is precisely what makes
           the item-label announcement sound. What the gate buys is exactly one thing:
@@ -497,9 +497,9 @@ export default function KebabMenu({
                      of a request, with the item the user was standing on gone from the
                      focus order and no announcement.
                      THE HOUSE RULE IS HONOURED, NOT INVENTED. It is a SPLIT, stated
-                     at src/app/components/NextGameNightCard.tsx ("DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5, narrowed)") (`DECISION Phase 88.5 (SPEC Req 4 /
-                     UI-SPEC A-5, narrowed)`) and src/app/components/EmailAddressSection.tsx ("DECISION Phase 88.8 DR-C (re-scoped 2026-09-04, plan review round 4)") (`DECISION
-                     Phase 88.8 DR-C`; the split restated at src/app/components/EmailAddressSection.tsx ("a control nobody is standing on may be natively disabled"), "a control nobody
+                     at src/app/components/NextGameNightCard.tsx ("DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5, narrowed)")
+                     and src/app/components/EmailAddressSection.tsx ("DECISION Phase 88.8 DR-C (re-scoped 2026-09-04, plan review round 4)") (the
+                     split restated at src/app/components/EmailAddressSection.tsx ("a control nobody is standing on may be natively disabled"), "a control nobody
                      is standing on"): the control being ACTED ON gets `aria-disabled`; a control
                      nobody is standing on may stay natively disabled. `item.disabled`
                      therefore STAYS in the API for that second kind.

@@ -748,8 +748,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
     //           rows) and `gameDetail/page.js` (`py-2`
     //           rows). All have >=8px and would take a bigger extension today.
     //       So a future phase revisiting this has ONE lever, not nine.
-    //       Line numbers are the 88-28 re-derivation: CONTEXT D-37 cites this
-    //       as `RsvpSection.js:288`, which drifted by one.
+    //       Line numbers were the 88-28 re-derivation (Phase 88.6.2 removed them; see its
+    //       note below): CONTEXT D-37 cites this as `RsvpSection.js:288`, which by
+    //       2026-08-05 had drifted by one line (the container sat on the next line).
     //       That lever is deliberately NOT pulled here (D-37): widening the
     //       RSVP row gap is a density change to a list the owner just chose to
     //       keep dense, and doing it as a side effect of an a11y sweep would
@@ -761,9 +762,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // deleted; this paragraph is the delta.
     //
     //   CITE DRIFT: the 88-28 re-derivation wrote `grouplist.js:336`. Verified
-    //   2026-08-31 by reading the file: the container is in `grouplist.js`,
-    //   `flex flex-wrap gap-2 mb-3`. Same container, same 8px, moved line. The
-    //   cite above is corrected in place.
+    //   2026-08-31 by reading the file: the container had moved to another line
+    //   of `grouplist.js`, still `flex flex-wrap gap-2 mb-3`. Same container, same
+    //   8px, moved line. The cite above was corrected in place to that line (a
+    //   number Phase 88.6.2 later removed; see its note below).
     //
     //   SEMANTIC CHANGE: after Phase 88.5 that site is no longer a `gap-2`
     //   flex-wrap of ClickableMemberNames at all. 88.5-09 replaces it with a
@@ -787,6 +789,14 @@ export default function ClickableMemberName({ userId, username, children, showIn
     //   (`gameDetail/page.js` in the Participants dialog and the reviews).
     //   One single-instance Winner line (`gameDetail/page.js`). None on the home group card
     //   (`MemberChipStack.tsx` passes the opt-out). Still ONE lever.
+    //
+    // AMENDED Phase 88.6.2 (2026-10-25, built-in review B-WR-03): this phase's cite conversion
+    //   REMOVED the line numbers from the 88-28, 88.5 and 88.6.1-37 enumerations above (SPEC
+    //   88.6.2 A1: line numbers live only in dated planning documents), so each site is now
+    //   named by file and class token. That is the one deletion from the paragraphs above, and
+    //   it breaks the 88.5 "Nothing above is deleted" promise on purpose; no claim changed, and
+    //   the numbers as written survive in git history before Phase 88.6.2. The two cites still
+    //   quoted above, CONTEXT D-37's and the 88-28 grouplist one, are former cites kept as written.
     //
     // DECISION Phase 87.8 (D-13): invisible pseudo-element hit extension
     // chosen OVER visible min-height growth (the per-CTA token technique at

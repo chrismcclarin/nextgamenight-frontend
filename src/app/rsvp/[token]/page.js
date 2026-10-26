@@ -280,7 +280,7 @@ export default function RsvpPage() {
         if (unmountedRef.current) return;
         /* AC-2 WIDENED (owner ruling 2026-09-09), level AMENDED 2026-09-13: the file's one raw
            `console.error` retired onto the house logger at `logger.info` — a Sentry BREADCRUMB
-           (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg"), anchor `Sentry.addBreadcrumb`), NOT an event. `logger.error` is `Sentry.captureException` and was
+           (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg")), NOT an event. `logger.error` is `Sentry.captureException` and was
            the level first ruled on 2026-09-09; it is the RECORDED REJECTED ARM, because a
            captured event flushes the Session Replay buffer for the rest of that session
            (`sentry.client.config.js` `replaysOnErrorSampleRate` against `replaysSessionSampleRate`),

@@ -1459,6 +1459,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // REACH: 61 `text-content-link` sites across 21 files. Verified LIVE on the page ground —
     // `GroupLibrary.js:265` and `:338` (inside the `bg-surface-page` containers at `:261`/`:326`)
     // and `GroupGamesList.js:432` (inside `:428`); live on card-hover at src/app/friends/page.js ("rounded-full text-xs bg-surface-muted text-content-secondary").
+    //   AMENDED Phase 88.6.2 (2026-10-25, built-in review C-IN-05), a note ON the REACH sentence
+    //   above, which stays HISTORY: its GroupLibrary and GroupGamesList numbers are former cites,
+    //   true as of 2026-08-28 and kept as written. They no longer point at those sites (that
+    //   GroupGamesList line now holds an `<option>` of the sort select). The same three
+    //   page-ground links today: the Clear filters button under
+    //   src/app/components/GroupLibrary.js ("No games found"), the button at
+    //   src/app/components/GroupLibrary.js ("View game"), and the Clear filters button under
+    //   src/app/components/GroupGamesList.js ("No games match these filters"). Only the friends
+    //   cite was converted to an anchor; it lands on the pill as FIXED by 88.6-19, below.
     //
     // AMENDED Phase 88.6-09 (D-16), 2026-09-15 — the sentence above stays as HISTORY; this is
     // what replaced it. That REACH count was HAND-VERIFIED once and never re-checked, which is

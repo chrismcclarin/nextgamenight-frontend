@@ -66,6 +66,8 @@ export default defineConfig({
     // text — with `retries: 1` in CI a single failed login would have re-run WITH tracing and
     // written the real Auth0 password into `test-results/**/trace.zip`, which the failure
     // upload publishes from a PUBLIC repo. REJECTED: masking the value in the trace (Playwright
+    // AMENDED Phase 88.6.2 (2026-10-25, review A-IN-03): since plan 27 every upload is age ciphertext
+    // (scripts/encrypt-evidence.sh, ci.yml "Encrypt Playwright failure evidence"); the sentence above is history.
     // offers no such option) and relying on the upload's exclusion alone (that is the second,
     // independent arm in ci.yml, not a substitute for this one). Lockstep-pinned by
     // `src/lib/ci-grep-gate.fixture.test.ts` ("88.6 CR-01"). Re-enabling tracing here is a

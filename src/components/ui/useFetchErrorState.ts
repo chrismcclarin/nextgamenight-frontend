@@ -221,8 +221,8 @@ export interface FetchErrorMessageOptions {
    * `UseFetchErrorStateOptions.fallbackMessage` carries the same amendment.]
    *
    * DECISION Phase 88.6-14 (D-33): renaming this to `unknownFallbackMessage` was considered
-   * and REJECTED as churn across every call site (src/app/components/OpenPollsList.js ("toast.error("), anchor
-   * `toast.error(` around the end-check-in call, and its
+   * and REJECTED as churn across every call site (the end-check-in toast,
+   * src/app/components/OpenPollsList.js ("toast.error("), and its
    * siblings across the R1 sweeps) for no behaviour change — and it would put a rename
    * inside the same waves as a behaviour migration. The narrowing is documented here
    * instead, and pinned by `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown`
@@ -279,7 +279,7 @@ export interface FetchErrorMessageOptions {
    REJECTED (b): per-site guards. Six would be guarded while dozens of generic sites still print
    the permission line, and the predicate would be copied per site (duplication tenet).
    REJECTED: "bypass `byCode.forbidden` only", the register's own fix text
-   (planning:.planning/deferred/phase-88.6.1.md ("review MEDLOW-9"), anchor `review MEDLOW-9`). It falls to `MESSAGE_BY_CODE.forbidden`, which is
+   (planning:.planning/deferred/phase-88.6.1.md ("review MEDLOW-9")). It falls to `MESSAGE_BY_CODE.forbidden`, which is
    still a permission claim (DF correction 4).
 
    The resulting line, stated plainly: a surface that passes a `fallback` prints its own
@@ -318,8 +318,8 @@ export interface UseFetchErrorStateOptions {
    * review IN-10): this docblock previously read "Override the derived copy (e.g. a
    * surface-specific message)", which describes a general override this option has never
    * been. Renaming it to `unknownFallbackMessage` was considered and REJECTED as churn
-   * across every call site (src/app/components/OpenPollsList.js ("toast.error("), anchor `toast.error(` around the
-   * end-check-in call, and its siblings across the R1
+   * across every call site (the end-check-in toast,
+   * src/app/components/OpenPollsList.js ("toast.error("), and its siblings across the R1
    * sweeps) for no behaviour change — and it would put a rename inside the same waves as a
    * behaviour migration. The narrowing is documented here instead, and pinned by
    * `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown` assertion. The sibling

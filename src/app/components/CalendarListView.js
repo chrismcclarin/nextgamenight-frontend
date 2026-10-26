@@ -551,9 +551,9 @@ export default function CalendarListView({
 
      `dvh` over `vh` is deliberate and is the primitive's own recorded choice: a bottom-anchored
      surface sits exactly where iOS Safari's dynamic toolbar lives, and `vh` resolves against the
-     LARGEST viewport, so the bottom rows would sit under the toolbar. The resulting divergence
-     from `Modal.tsx`'s max-h-[90dvh] (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]")) is recorded by plan 88.1-04 and routed to Phase 88.6 by
-     plan 88.1-06 — "simplifying" this to `vh` for consistency re-opens D-06.
+     LARGEST viewport, so the bottom rows would sit under the toolbar. HISTORY: the divergence from `Modal.tsx`'s then-`max-h-[90vh]` was recorded by plan
+     88.1-04 and routed to Phase 88.6 by plan 88.1-06. AMENDED Phase 88.6.2 (2026-10-25, review B-WR-01): CLOSED by plan 88.6-08, Modal is `dvh` too (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]")),
+     as Modal's own src/app/components/Modal.tsx ("THE OTHER SIDE, now closed (historical)") records; changing this back to `vh` re-opens D-06 AND re-creates the divergence.
 
      `min-h-0` is load-bearing: without it a flex child refuses to shrink below its content and
      the list overflows the sheet instead of scrolling inside it. */

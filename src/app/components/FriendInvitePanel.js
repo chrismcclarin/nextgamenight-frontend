@@ -952,12 +952,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
 
                                         THE PLAN SAID "match a named shipped eyebrow byte-for-byte";
                                         that is not achievable and would be wrong. Measured
-                                        2026-09-16, the three shipped eyebrows
-                                        (CalendarListView.js, RsvpSection.js,
-                                        NextGameNightCard.tsx as of that date; on 2026-10-15
-                                        they sit at CalendarListView.js, RsvpSection.js and
-                                        NextGameNightCard.tsx, each now at 700) are all `font-semibold` (600) and
-                                        disagree on tracking — `tracking-wide`, `tracking-wider`,
+                                        2026-09-16, the three shipped eyebrows (one each in
+                                        CalendarListView.js, RsvpSection.js and
+                                        NextGameNightCard.tsx; by 2026-10-15 all three had moved
+                                        within their files and each is now at 700) were all
+                                        `font-semibold` (600) then and
+                                        disagreed on tracking — `tracking-wide`, `tracking-wider`,
                                         `tracking-[0.08em]`. §4.5 ratifies 700 and §4.2 gives 600
                                         exactly one home, the Button primitive, so copying any of
                                         them would import a prohibited weight; their own sweeps move
@@ -1068,8 +1068,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                             so the control, its two reset handlers, their in-flight
                                             latch and the toast library they used were dead code and
                                             were deleted. The working reset lives in Manage Members,
-                                            behind its reset confirm gate (ManageMembers.js at the
-                                            useConfirmAction call that builds it, on 2026-10-15),
+                                            behind its reset confirm gate (the useConfirmAction call
+                                            that builds it, src/app/components/ManageMembers.js ("const resetInviteGate = useConfirmAction({")),
                                             chosen OVER wiring this copy up: a second entry point is a
                                             product idea recorded as the todo
                                             2026-10-03-group-kebab-second-home-for-invite-link-reset.md.

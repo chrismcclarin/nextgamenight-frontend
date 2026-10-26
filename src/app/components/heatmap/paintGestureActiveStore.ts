@@ -29,6 +29,15 @@
 //      src/app/components/EventDayModal.js ("<TimezoneNudgeBanner />") and src/app/gameDetail/page.js ("<TimezoneNudgeBanner />")). Those two must render exactly as
 //      they do today and must not pull the create-event module into their bundle. A leaf module
 //      that imports nothing from the component tree is the only shape that gives them that.
+//      AMENDED Phase 88.6.2-16 (W034; added 2026-10-25, built-in review B-WR-02), point 3 above
+//      KEPT AS HISTORY: "only one of them has a scheduler" and "must not pull the create-event
+//      module into their bundle" hold for EventDayModal.js only. gameDetail/page.js hosts the
+//      Edit Event form (a scheduler) in its event-only view and already imports createEvent
+//      itself, src/app/gameDetail/page.js ("import CreateEvent from")
+//      so its banner can hold during a paint there (harmless: it sits under the modal). The
+//      leaf-module shape is still the right one: it is what keeps EventDayModal's bundle clean.
+//      The banner carries the same correction,
+//      src/app/components/TimezoneNudgeBanner.js ("AMENDED Phase 88.6.2-16 (W034), every word above kept")
 //
 // DECISION Phase 88.6-39 (D-18): the read seam is an IMPERATIVE `isPaintGestureActive()` plus
 // `subscribePaintGestureActive()`, chosen OVER `useSyncExternalStore` at a consumer's top level.
