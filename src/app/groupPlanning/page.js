@@ -495,6 +495,13 @@ export default function GroupPlanningPage() {
         }
     };
 
+    // quick-261026-pi6-fix F8: ending the poll the dashboard shows reloads it in place. With the
+    // poll in the URL the by-id read returns it closed (the dashboard then reads it as closed);
+    // with none, the active-poll read picks the next open poll or none.
+    const handlePollClosed = (id) => {
+        if (sameId(id, heatmapPrompt?.id)) fetchHeatmapRef.current?.({ keepShown: true });
+    };
+
     // A chip press swaps in place: no scroll, no focus move; armed from the pressed chip in case
     // a failed swap removes it (the hook's contract (1) and (2)).
     const handleChipSelect = (event, id) => {
@@ -694,6 +701,7 @@ export default function GroupPlanningPage() {
                         defaultExpanded={true}
                         selectedPollId={selectedPollId}
                         onSelectPoll={handleSelectPoll}
+                        onPollClosed={handlePollClosed}
                     />
 
                     {/* Response Dashboard */}

@@ -51,6 +51,8 @@ const CHECK_INS_LOADING_LABEL = 'Loading check-ins…';
  *   dashboard shows (quick-261026-pi6); passed to OpenPollsList, whose card marks it.
  * @param {(pollId: string) => void} [props.onSelectPoll] - Passed to OpenPollsList: called with a
  *   poll's id when its card body is tapped (quick-261026-pi6).
+ * @param {(pollId: string) => void} [props.onPollClosed] - Passed to OpenPollsList: called with a
+ *   poll's id after ending it succeeded (quick-261026-pi6-fix F8).
  */
 export default function PromptScheduleSection({
   groupId,
@@ -60,6 +62,7 @@ export default function PromptScheduleSection({
   defaultExpanded = false,
   selectedPollId,
   onSelectPoll,
+  onPollClosed,
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   // AC-7: the header's `aria-controls` target. `useId` rather than a literal so two mounted
@@ -348,6 +351,7 @@ export default function PromptScheduleSection({
           focusFallbackRef={expandControlRef}
           selectedPollId={selectedPollId}
           onSelectPoll={onSelectPoll}
+          onPollClosed={onPollClosed}
         />
 
         {/* Recurring-schedules manager — admin-only sub-mount per D-UI-01.

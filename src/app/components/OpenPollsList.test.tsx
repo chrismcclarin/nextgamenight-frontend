@@ -800,3 +800,29 @@ describe('pollChipLabels (quick-261026-pi6, brief B7 label rule)', () => {
     expect(labels.get('p3')).toBe('Sunday Wingspan');
   });
 });
+
+describe('OpenPollsList: ending a check-in tells the host (quick-261026-pi6-fix F8)', () => {
+  it('OPC-1. a successful end calls onPollClosed once with that poll id, after the list refresh', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    vi.mocked(promptAPI.closePrompt).mockResolvedValue({} as never);
+    const onPollClosed = vi.fn();
+    renderList(undefined, { onSelectPoll: vi.fn(), onPollClosed });
+    await screen.findByText('Started by Ana');
+    endCheckIn(triggers()[0]);
+    await waitFor(() => expect(onPollClosed).toHaveBeenCalledTimes(1));
+    expect(onPollClosed).toHaveBeenCalledWith('pa');
+    // The refresh ran before the call: the list GET went out twice by then.
+    expect(promptAPI.getOpenPrompts).toHaveBeenCalledTimes(2);
+  });
+
+  it('OPC-2. a failed end never calls onPollClosed', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A] } as never);
+    vi.mocked(promptAPI.closePrompt).mockRejectedValueOnce(new ApiError('x', 'internal', 500));
+    const onPollClosed = vi.fn();
+    renderList(undefined, { onSelectPoll: vi.fn(), onPollClosed });
+    await screen.findByText('Started by Ana');
+    endCheckIn(triggers()[0]);
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    expect(onPollClosed).not.toHaveBeenCalled();
+  });
+});

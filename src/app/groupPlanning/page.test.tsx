@@ -1056,6 +1056,40 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     await settledOn(P1);
     expect(promptAPI.getPromptById).toHaveBeenCalledWith(EMAIL_PROMPT_ID);
   });
+
+  // quick-261026-pi6-fix F8: ending the shown poll must not leave it displayed as open.
+  type Closed = (id: string) => void;
+  const onPollClosed = () => (h.pss as { onPollClosed?: Closed } | null)?.onPollClosed as Closed;
+
+  it('FX-8a. ending the poll the URL selects reloads it, and the dashboard reads it as closed', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2) });
+    render(<GroupPlanningPage />);
+    await settledOn(P2);
+    // No deadline, so the page's derive reads falsy here (undefined), not false.
+    expect(h.rd!.pollClosed).toBeFalsy();
+
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2, { status: 'closed' }) });
+    act(() => onPollClosed()(P2));
+    await waitFor(() => expect(h.rd!.pollClosed).toBe(true));
+    expect(h.rd!.promptId).toBe(P2);
+    expect(promptAPI.getPromptById).toHaveBeenCalledTimes(2);
+  });
+
+  it('FX-8b. ending the active poll with no selection loads the next open poll; ending another poll reloads nothing', async () => {
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    act(() => onPollClosed()(P3));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1);
+
+    (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: poll(P2) });
+    act(() => onPollClosed()(P1));
+    await settledOn(P2);
+    expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(2);
+  });
 });
 
 // quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).

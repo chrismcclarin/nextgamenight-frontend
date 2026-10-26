@@ -51,6 +51,9 @@ const OPEN_POLLS_SECTION_NAME = 'Open polls';
  *   dashboard shows (quick-261026-pi6); its card wears the selected border and the Viewing tag.
  * @param {(pollId: string) => void} [props.onSelectPoll] - Called with a poll's id when its card
  *   body is tapped (quick-261026-pi6). Without it the card body is not a control.
+ * @param {(pollId: string) => void} [props.onPollClosed] - Called with a poll's id after ending it
+ *   succeeded and the open-polls list was refreshed (quick-261026-pi6-fix F8), so the planning
+ *   page can reload a dashboard that shows that poll. Never called after a failed end.
  */
 export default function OpenPollsList({
   groupId,
@@ -60,6 +63,7 @@ export default function OpenPollsList({
   focusFallbackRef,
   selectedPollId,
   onSelectPoll,
+  onPollClosed,
 }) {
   const [showStartPoll, setShowStartPoll] = useState(false);
   // Req 4 in-flight latch, keyed per check-in id: the ref refuses synchronously, the state
@@ -156,6 +160,7 @@ export default function OpenPollsList({
       // Backend has already flipped status to 'closed'; invalidate so the
       // GET /prompts/open query refetches and drops it from the list.
       await invalidateOpenPolls();
+      if (typeof onPollClosed === 'function') onPollClosed(promptId);
     } catch (err) {
       /* No `console.error` here on purpose: this file is NOT on `.eslintrc.json`'s legacy
          `no-console: off` allow-list, and adding it to that list to keep a log line would widen
