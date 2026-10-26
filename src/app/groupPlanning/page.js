@@ -51,7 +51,6 @@ export default function GroupPlanningPage() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
-    const groupId = searchParams.get('group_id');
     /* DECISION quick-261026-pi6 (coordinator ruling 1, 2026-10-26): a prompt_id that is not a UUID
        is treated as ABSENT (no request, the active poll shows, the Create Event dialog does not
        auto-open), chosen OVER passing it through to the backend's 400 or 404 and OVER a visible
@@ -59,7 +58,13 @@ export default function GroupPlanningPage() {
        because the id is interpolated into request paths here and in CreateEvent (the CSPT rule of
        src/lib/isUuid.ts ("DECISION Phase 88.6.1-07 (D-03 / AC-6 / CSPT)")); a real email link
        carries the poll's UUID and behaves exactly as before. Changing this is a decision, not a
-       cleanup. */
+       cleanup.
+       AMENDED quick-261026-pi6-fix (F4): group_id gets the same check for the same CSPT reason (it
+       is interpolated into every group and poll request on this page): a group_id that is not a
+       UUID is treated as ABSENT, so the page shows its no-group state and sends no request, OVER
+       sending it on and showing the backend's failure. Every later use reads the checked value. */
+    const groupIdParam = searchParams.get('group_id');
+    const groupId = isUuid(groupIdParam) ? groupIdParam : null;
     const promptIdParam = searchParams.get('prompt_id');
     const promptId = isUuid(promptIdParam) ? promptIdParam : null;
     /* DECISION quick-261026-pi6 (owner R4/R5, 2026-10-26): the dashboard selection lives in its

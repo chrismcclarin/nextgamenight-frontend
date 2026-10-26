@@ -31,14 +31,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const h = vi.hoisted(() => {
   const USER = { sub: 'auth0|self' };
   const SELF_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  // Group ids are real-shaped UUIDs: the page treats a group_id that is not one as absent
+  // (quick-261026-pi6-fix F4), the same conversion P-1's prompt_id fixture had.
+  const G1 = '6a000000-0000-4000-8000-000000000001';
+  const G2 = '6a000000-0000-4000-8000-000000000002';
   const DEFAULT_QUERY = { isError: false, error: null as unknown, refetch: (() => undefined) as () => unknown };
   return {
     USER,
     SELF_UUID,
+    G1,
+    G2,
     DEFAULT_QUERY,
     AUTH: { user: USER as unknown, isLoading: false },
     SELF: { uuid: SELF_UUID as string | null },
-    PARAMS: new URLSearchParams('group_id=G1'),
+    PARAMS: new URLSearchParams(`group_id=${G1}`),
     ROUTER: { replace: () => undefined, push: () => undefined },
     QUERY: DEFAULT_QUERY,
     // The last props the PromptScheduleSection and CreateEvent stubs received, and EVERY
@@ -56,6 +62,9 @@ const h = vi.hoisted(() => {
 });
 
 const SELF_UUID = h.SELF_UUID;
+const G1 = h.G1;
+const G2 = h.G2;
+const G9 = '6a000000-0000-4000-8000-000000000009';
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
@@ -154,7 +163,7 @@ beforeEach(() => {
   h.AUTH = { user: h.USER, isLoading: false };
   h.SELF.uuid = SELF_UUID;
   h.QUERY = h.DEFAULT_QUERY;
-  h.PARAMS = new URLSearchParams('group_id=G1');
+  h.PARAMS = new URLSearchParams(`group_id=${G1}`);
   h.pss = null;
   h.ce = null;
   h.rd = null;
@@ -164,7 +173,7 @@ beforeEach(() => {
   // with no include (periodictabletopbackend_v2/Sonnet/routes/groups.js, the group GET), so the
   // page ALWAYS takes its getGroupMembers fallback. A `Users` array here would pin a path
   // production never takes.
-  (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'G1', name: 'Weekend Warriors' });
+  (groupsAPI.getGroup as Mock).mockResolvedValue({ id: G1, name: 'Weekend Warriors' });
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue([OWNER_ROW]);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
   // 'active' is a real AvailabilityPrompt.status value ('pending' | 'active' | 'closed' | 'converted').
@@ -206,7 +215,7 @@ describe('groupPlanning page — heading outline (P4 levels, P1 wording)', () =>
     expect(within(nav).getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
     expect(within(nav).getByRole('link', { name: 'Weekend Warriors' })).toHaveAttribute(
       'href',
-      '/groupHomePage?id=G1',
+      `/groupHomePage?id=${G1}`,
     );
     expect(within(nav).getByText('Plan Game Session')).toBeInTheDocument();
   });
@@ -309,10 +318,10 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
 
     const g2 = deferred<unknown[]>();
     (groupsAPI.getGroupMembers as Mock).mockImplementation((id: string) =>
-      id === 'G2' ? g2.promise : Promise.resolve([OWNER_ROW]),
+      id === G2 ? g2.promise : Promise.resolve([OWNER_ROW]),
     );
     h.pssRoles = [];
-    h.PARAMS = new URLSearchParams('group_id=G2');
+    h.PARAMS = new URLSearchParams(`group_id=${G2}`);
     rerender(<GroupPlanningPage />);
 
     // Synchronously after the switch — the FIRST render after it included.
@@ -320,7 +329,7 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
     expect(h.pssRoles.every((r) => r === null)).toBe(true);
 
     // Positive: the new group's read is open. The hold: still nothing but null.
-    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith('G2'));
+    await waitFor(() => expect(groupsAPI.getGroupMembers).toHaveBeenCalledWith(G2));
     expect(h.pssRoles.every((r) => r === null)).toBe(true);
 
     await act(async () => {
@@ -449,13 +458,13 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
     // Group half: a G1 read is overtaken by a switch to G2.
     const dC = deferred<unknown[]>();
     (groupsAPI.getGroupMembers as Mock).mockImplementation((id: string) =>
-      id === 'G2' ? Promise.resolve([{ ...OWNER_ROW, UserGroup: { role: 'admin' } }]) : dC.promise,
+      id === G2 ? Promise.resolve([{ ...OWNER_ROW, UserGroup: { role: 'admin' } }]) : dC.promise,
     );
     let pC!: Promise<unknown>;
     act(() => {
       pC = h.compactState!.retry();
     });
-    h.PARAMS = new URLSearchParams('group_id=G2');
+    h.PARAMS = new URLSearchParams(`group_id=${G2}`);
     rerender(<GroupPlanningPage />);
     await waitFor(() => expect(lastRole()).toBe('admin'));
 
@@ -585,7 +594,7 @@ describe('groupPlanning page — loading line and breadcrumb (88.6.1-16, G5 / R7
 describe("groupPlanning leaves the dialog's close to CreateEvent (88.6.1-68)", () => {
   it('P-1: no created-callback; a create closes the email-link dialog once and clears its parameters once', async () => {
     const previousParams = h.PARAMS;
-    h.PARAMS = new URLSearchParams(`group_id=G1&prompt_id=${EMAIL_PROMPT_ID}`);
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&prompt_id=${EMAIL_PROMPT_ID}`);
     (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: null });
     const replace = vi.spyOn(h.ROUTER, 'replace');
     try {
@@ -602,7 +611,7 @@ describe("groupPlanning leaves the dialog's close to CreateEvent (88.6.1-68)", (
       });
       expect(h.ce!.modal).toBe(false);
       expect(replace).toHaveBeenCalledTimes(1);
-      expect(replace).toHaveBeenCalledWith('/groupPlanning?group_id=G1', { scroll: false });
+      expect(replace).toHaveBeenCalledWith(`/groupPlanning?group_id=${G1}`, { scroll: false });
 
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50));
@@ -626,7 +635,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
   const P2 = '22222222-2222-4222-8222-222222222222';
   const P3 = '33333333-3333-4333-8333-333333333333';
   const PX = '99999999-9999-4999-8999-999999999999';
-  const poll = (id: string, extra: Record<string, unknown> = {}) => ({ id, status: 'active', group_id: 'G1', ...extra });
+  const poll = (id: string, extra: Record<string, unknown> = {}) => ({ id, status: 'active', group_id: G1, ...extra });
   const manual = (id: string, username: string) => poll(id, { can_close: true, Creator: { id: `u-${id}`, username } });
   const REDUCED = '(prefers-reduced-motion: reduce)';
 
@@ -695,7 +704,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
   }
 
   it('PI-1. ?poll= loads that poll by id, never the active one, and opens no dialog', async () => {
-    h.PARAMS = new URLSearchParams(`group_id=G1&poll=${P2}`);
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
     (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2) });
     render(<GroupPlanningPage />);
     await settledOn(P2);
@@ -706,7 +715,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
   });
 
   it('PI-2. with prompt_id and poll, the dashboard loads poll and the dialog still auto-opens', async () => {
-    h.PARAMS = new URLSearchParams(`group_id=G1&prompt_id=${P1}&poll=${P2}`);
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&prompt_id=${P1}&poll=${P2}`);
     (promptAPI.getPromptById as Mock).mockImplementation(async (id: string) => ({ prompt: poll(id) }));
     render(<GroupPlanningPage />);
     await settledOn(P2);
@@ -722,7 +731,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
 
     act(() => onSelectPoll()(P2));
     expect(pushed).toHaveLength(1);
-    expect(queryOf(pushed[0]).get('group_id')).toBe('G1');
+    expect(queryOf(pushed[0]).get('group_id')).toBe(G1);
     expect(queryOf(pushed[0]).get('poll')).toBe(P2);
 
     reRender(rerender);
@@ -808,13 +817,13 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
   });
 
   it('PI-8. a poll id that fails to load falls back to the active poll and drops the parameter, with no error banner', async () => {
-    h.PARAMS = new URLSearchParams(`group_id=G1&poll=${PX}`);
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${PX}`);
     (promptAPI.getPromptById as Mock).mockRejectedValue(new ApiError('not found', 'not_found', 404));
     const { rerender } = render(<GroupPlanningPage />);
     await settledOn(P1);
     expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1);
     expect(replaced).toHaveLength(1);
-    expect(queryOf(replaced[0]).get('group_id')).toBe('G1');
+    expect(queryOf(replaced[0]).get('group_id')).toBe(G1);
     expect(queryOf(replaced[0]).has('poll')).toBe(false);
     expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
     expect(h.logInfo).toHaveBeenCalledWith('Selected poll did not load; showing the active poll:', expect.anything());
@@ -827,20 +836,20 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
   });
 
   it('PI-9. a malformed poll id sends no request, the active poll loads and the parameter is dropped', async () => {
-    h.PARAMS = new URLSearchParams('group_id=G1&poll=not-a-uuid');
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=not-a-uuid`);
     render(<GroupPlanningPage />);
     await settledOn(P1);
     expect(promptAPI.getPromptById).not.toHaveBeenCalled();
     expect(replaced).toHaveLength(1);
     expect(queryOf(replaced[0]).has('poll')).toBe(false);
-    expect(queryOf(replaced[0]).get('group_id')).toBe('G1');
+    expect(queryOf(replaced[0]).get('group_id')).toBe(G1);
     // One fallback load: the drop runs with no await, inside the mount commit.
     expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1);
   });
 
   it('PI-10. a poll that belongs to another group is treated as stale', async () => {
-    h.PARAMS = new URLSearchParams(`group_id=G1&poll=${P2}`);
-    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2, { group_id: 'G9' }) });
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2, { group_id: G9 }) });
     render(<GroupPlanningPage />);
     await settledOn(P1);
     expect(promptAPI.getPromptById).toHaveBeenCalledWith(P2);
@@ -882,7 +891,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     await settledOn(P2);
 
     // The modelled popstate: the earlier entry's query, then a re-render.
-    h.PARAMS = new URLSearchParams('group_id=G1');
+    h.PARAMS = new URLSearchParams(`group_id=${G1}`);
     reRender(rerender);
     await settledOn(P1);
     expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(2);
@@ -925,7 +934,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
   });
 
   it('PI-16. a prompt_id that is not a UUID is treated as absent: no request, the active poll, no dialog', async () => {
-    h.PARAMS = new URLSearchParams('group_id=G1&prompt_id=not-a-uuid');
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&prompt_id=not-a-uuid`);
     render(<GroupPlanningPage />);
     // Positive signal first (CF-26), then the absences.
     await settledOn(P1);
@@ -933,5 +942,23 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(h.ce!.modal).toBe(false);
     expect(h.ce!.promptId).toBeNull();
     expect(h.ce!.hideVisualCalendar).toBe(true);
+  });
+});
+
+// quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).
+describe('groupPlanning page: review fix batch (quick-261026-pi6-fix)', () => {
+  it('FX-4. a group_id that is not a UUID is treated as absent: the no-group state and no request at all', async () => {
+    h.PARAMS = new URLSearchParams('group_id=G1');
+    render(<GroupPlanningPage />);
+    // Positive signal first (CF-26), then the absences after a settle.
+    expect(screen.getByText('No group specified. Please navigate from a group page.')).toBeInTheDocument();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(groupsAPI.getGroup).not.toHaveBeenCalled();
+    expect(groupsAPI.getGroupMembers).not.toHaveBeenCalled();
+    expect(promptAPI.getActivePrompt).not.toHaveBeenCalled();
+    expect(promptAPI.getPromptById).not.toHaveBeenCalled();
+    expect(promptAPI.getOpenPrompts).not.toHaveBeenCalled();
   });
 });
