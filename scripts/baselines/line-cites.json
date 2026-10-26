@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "note": "Written only by node scripts/line-cite-census.mjs --write-baseline, which only lowers counts; a hand edit fails src/app/citeRatchet.test.ts.",
-  "digest": "sha256:488a15bad938996c3a4a776cda262f0b94b781ff00469697e10b667c354878a2",
+  "digest": "sha256:de251c913a51ed547d8372ba4c6ea18a9752593784c819fb28bbf42790a5b3b9",
   "counts": {
     "e2e/auth.setup.ts": 2,
     "e2e/contrast.spec.ts": 5,
@@ -42,7 +42,6 @@
     "src/app/components/NextGameNightCard.tsx": 1,
     "src/app/components/NotificationBell.js": 3,
     "src/app/components/NotificationBell.test.tsx": 2,
-    "src/app/components/PromptScheduleReadOnly.js": 1,
     "src/app/components/ResponseDashboard.test.tsx": 3,
     "src/app/components/RsvpSection.js": 21,
     "src/app/components/RsvpSection.statusOnly.test.tsx": 1,
