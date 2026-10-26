@@ -627,7 +627,7 @@ function classSites(
  *     comment there opens a string, and the rest of the line is read inside-out.
  *  11. TEMPLATE-LITERAL ESCAPES ARE DROPPED by `stringChunks`. Its template branch skips an
  *     escape and appends nothing, so the characters either side of it merge into one token
- *     (`a\nb` is read as `ab`). Measured case: `src/components/ui/FetchErrorBanner.tsx`,
+ *     (`a\nb` is read as `ab`). Measured case: src/components/ui/FetchErrorBanner.tsx,
  *     3 prose tokens, no class token.
  *
  * 8-11 are the LEXER's, inherited by every consumer of `stringChunks` / `withoutComments`; each
