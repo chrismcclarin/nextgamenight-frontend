@@ -45,6 +45,10 @@ const h = vi.hoisted(() => {
     AUTH: { user: USER as unknown, isLoading: false },
     SELF: { uuid: SELF_UUID as string | null },
     PARAMS: new URLSearchParams(`group_id=${G1}`),
+    // Mirrors PARAMS into the jsdom location through the PROTOTYPE method, so a test's history
+    // spies never record it (quick-261026-pi6-fix F3: the page's stale drop reads the live
+    // location). Called on every render through the useSearchParams mock and by the spies.
+    syncLocation: () => undefined as void,
     ROUTER: { replace: () => undefined, push: () => undefined },
     QUERY: DEFAULT_QUERY,
     // The last props the PromptScheduleSection and CreateEvent stubs received, and EVERY
@@ -65,6 +69,10 @@ const h = vi.hoisted(() => {
 });
 
 const SELF_UUID = h.SELF_UUID;
+h.syncLocation = () => {
+  const qs = h.PARAMS.toString();
+  History.prototype.replaceState.call(window.history, null, '', qs ? `/groupPlanning?${qs}` : '/groupPlanning');
+};
 const G1 = h.G1;
 const G2 = h.G2;
 const G9 = '6a000000-0000-4000-8000-000000000009';
@@ -80,7 +88,10 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => h.PARAMS,
+  useSearchParams: () => {
+    h.syncLocation();
+    return h.PARAMS;
+  },
   useRouter: () => h.ROUTER,
   usePathname: () => '/groupPlanning',
 }));
@@ -660,10 +671,12 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
       vi.spyOn(window.history, 'pushState').mockImplementation((_d, _t, url) => {
         pushed.push(String(url));
         h.PARAMS = queryOf(String(url));
+        h.syncLocation();
       }),
       vi.spyOn(window.history, 'replaceState').mockImplementation((_d, _t, url) => {
         replaced.push(String(url));
         h.PARAMS = queryOf(String(url));
+        h.syncLocation();
       }),
     ];
     (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: poll(P1) });
@@ -989,6 +1002,39 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(promptAPI.getPromptById).toHaveBeenCalledTimes(2);
     expect(promptAPI.getPromptById).toHaveBeenLastCalledWith(P2);
     expect(replaced).toHaveLength(0);
+  });
+
+  // quick-261026-pi6-fix F3 (the reviewer's probe R-B, ported; a 404 so the stale drop runs).
+  it('PI-18. a stale drop that lands after the dialog closed does not write prompt_id back', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&prompt_id=${EMAIL_PROMPT_ID}&poll=${PX}`);
+    const dx = deferred<unknown>();
+    (promptAPI.getPromptById as Mock).mockImplementation((id: string) =>
+      id === PX ? dx.promise : Promise.resolve({ prompt: poll(id) }),
+    );
+    const replace = vi.spyOn(h.ROUTER, 'replace').mockImplementation(((url: string) => {
+      h.PARAMS = queryOf(url);
+      h.syncLocation();
+    }) as unknown as () => undefined);
+    try {
+      const { rerender } = render(<GroupPlanningPage />);
+      await waitFor(() => expect(h.ce?.modal).toBe(true));
+      act(() => {
+        (h.ce!.modaltoggle as () => void)();
+      });
+      reRender(rerender);
+      expect(h.PARAMS.has('prompt_id')).toBe(false);
+
+      await act(async () => {
+        dx.reject(new ApiError('not found', 'not_found', 404));
+        await new Promise((r) => setTimeout(r, 20));
+      });
+      expect(replaced).toHaveLength(1);
+      expect(queryOf(replaced[0]).has('prompt_id')).toBe(false);
+      expect(queryOf(replaced[0]).has('poll')).toBe(false);
+      expect(queryOf(replaced[0]).get('group_id')).toBe(G1);
+    } finally {
+      replace.mockRestore();
+    }
   });
 });
 

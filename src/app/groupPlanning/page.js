@@ -267,12 +267,16 @@ export default function GroupPlanningPage() {
     // A stale selection (malformed, failed to load, or another group's poll): drop the poll
     // parameter in place, every other parameter kept, and record the drop so the selection
     // effect does not load again for it (quick-261026-pi6, owner R5).
+    // DECISION quick-261026-pi6-fix (F3): the URL is rebuilt from the LIVE location, OVER this
+    // render's searchParams, because the drop runs after an await and a parameter removed in the
+    // meantime (the dialog's close clears prompt_id) must not be written back. Changing this is
+    // a decision, not a cleanup.
     const dropStaleSelection = (forGroup, stalePoll) => {
         lastSelectionRef.current = { groupId: forGroup, poll: null, dropped: stalePoll };
-        const next = new URLSearchParams(searchParams.toString());
+        const next = new URLSearchParams(window.location.search);
         next.delete('poll');
         const qs = next.toString();
-        window.history.replaceState(null, '', qs ? `${pathname}?${qs}` : pathname);
+        window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
     };
 
     const fetchHeatmapData = async ({ keepShown = false } = {}) => {
