@@ -25,9 +25,9 @@
 #       extra-line line <n>, private-key line <n>; never the line's content), then "recipients: OK"
 #       (exit 0) or "recipients: FAIL" (exit 1).
 #   AGE_BIN=... AGE_KEYGEN_BIN=... bash scripts/encrypt-evidence.sh --self-test
-#       Thirteen cases in a fresh temp dir with a throwaway key pair made and deleted there; nothing
-#       is written into the checkout. Last line "self-test: PASS 13 of 13" (exit 0) or
-#       "self-test: FAIL <f> of 13" (exit 1).
+#       Fourteen cases in a fresh temp dir with a throwaway key pair made and deleted there; nothing
+#       is written into the checkout. Last line "self-test: PASS 14 of 14" (exit 0) or
+#       "self-test: FAIL <f> of 14" (exit 1).
 #
 # EXIT CODES: 0 success (or no input); 1 a failed check, tar, age or post-check; 2 a usage error or
 # a refused input. On any non-zero exit an EXIT trap removes enc/<id>/, so the upload after the step
@@ -43,7 +43,9 @@
 # error-context.md: its aria snapshot serialises typed input values). They are applied to every
 # input, twice over: find's -name is basename matching on BSD and GNU alike, and tar's --exclude is
 # the arm D-17 names. The script also refuses an input that is absolute, holds "..", has a .auth
-# segment (the appSession storageState, T-82-12) or names playwright-results.json.
+# segment (the appSession storageState, T-82-12), names playwright-results.json, or is the working
+# directory itself (., ./). The same two names are also kept out of the packed files wherever they
+# sit under an input: a find -prune and a tar --exclude each (code review A-WR-03).
 # Lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts ("Phase 88.6.2-27 — failure evidence
 # leaves CI only as age ciphertext (R7, T-88.6-G34)").
 
@@ -111,8 +113,11 @@ check_recipients() {
 }
 
 # The member list, NUL-separated, for the inputs in PRESENT. The only find in the script.
+# The prune keeps a .auth tree and any playwright-results.json (file or directory) out of the
+# packed files wherever they sit under an input (code review A-WR-03; self-test case 14).
 list_members() {
-  find "${PRESENT[@]}" -type f ! -name '*.zip' ! -name 'error-context.md' ${MATCH_ARGS[@]+"${MATCH_ARGS[@]}"} -print0
+  find "${PRESENT[@]}" \( -name '.auth' -o -name 'playwright-results.json' \) -prune -o \
+    -type f ! -name '*.zip' ! -name 'error-context.md' ${MATCH_ARGS[@]+"${MATCH_ARGS[@]}"} -print0
 }
 
 ENC_CREATED=0
@@ -183,6 +188,11 @@ encrypt_main() {
       usage_error "$NAME: refused input: a symbolic link"
     elif [ -e "$d" ]; then
       [ -d "$d" ] || usage_error "$NAME: refused input: exists but is not a directory"
+      # Any spelling of the working directory itself (., ./, ./.) would pack the whole checkout
+      # (code review A-WR-03; self-test case 14).
+      if [ "$(cd "$d" && pwd -P)" = "$(pwd -P)" ]; then
+        usage_error "$NAME: refused input: the working directory itself"
+      fi
       PRESENT+=("$d")
     fi
   done
@@ -227,7 +237,7 @@ encrypt_main() {
   OUT_CREATED=1
 
   # 6. ONE pipeline: no plaintext copy is ever written.
-  list_members | tar -c -f - --null --exclude='*.zip' --exclude='error-context.md' -T - | "$age_path" -R "$RECIPIENTS" -o "$OUT/$NAME.tar.age"
+  list_members | tar -c -f - --null --exclude='*.zip' --exclude='error-context.md' --exclude='.auth' --exclude='playwright-results.json' -T - | "$age_path" -R "$RECIPIENTS" -o "$OUT/$NAME.tar.age"
 
   # 7. Post-check: exactly one non-empty file whose first line is the age header.
   entries=$(ls -A "$OUT")
@@ -253,7 +263,7 @@ encrypt_main() {
 }
 
 # ---------------------------------------------------------------------------------------------
-# Self-test: thirteen cases, each running this script as a subprocess inside a temp dir.
+# Self-test: fourteen cases, each running this script as a subprocess inside a temp dir.
 
 ST_PASS=0
 ST_FAIL=0
@@ -489,11 +499,34 @@ STUB
   st_report "13 a whitespace-only line is refused by the recipients check, as age refuses it" "$ok"
   cd "$ST_DIR"
 
-  if [ "$ST_FAIL" -eq 0 ] && [ "$ST_PASS" -eq 13 ]; then
-    echo "self-test: PASS $ST_PASS of 13"
+  # Case 14 (code review A-WR-03): a .auth/ tree and a playwright-results.json (file or directory)
+  # under an input are filtered out of the PACKED files, not only refused as an input's own name,
+  # and the checkout root (. or ./) is refused as an input before anything is written.
+  mkdir -p c14/test-results/a/.auth c14/test-results/b/playwright-results.json c14/.auth && cd c14
+  printf '%s\n' "$marker" > test-results/a/shot.png
+  printf '%s\n' "$marker" > test-results/a/.auth/user.json
+  printf '%s\n' "$marker" > test-results/playwright-results.json
+  printf '%s\n' "$marker" > test-results/b/playwright-results.json/x.png
+  printf '%s\n' "$marker" > .auth/user.json
+  ok=0
+  st_run --name playwright-report --recipients ../recipients.txt -- test-results/
+  if [ "$RC" = 0 ] && "$age_bin" -d -i ../id.txt -o out.tar enc/playwright-report/playwright-report.tar.age; then
+    listing=$(tar -tf out.tar | LC_ALL=C sort | tr '\n' ' ')
+    if [ "$listing" = "test-results/a/shot.png " ]; then ok=1; fi
+  fi
+  rm -rf enc out.tar
+  for root in . ./ .// ./.; do
+    st_run --name playwright-report --recipients ../recipients.txt -- "$root"
+    if [ "$RC" != 2 ] || [ -e enc ]; then ok=0; fi
+  done
+  st_report "14 .auth/ and playwright-results.json under an input are never packed, and . is refused" "$ok"
+  cd "$ST_DIR"
+
+  if [ "$ST_FAIL" -eq 0 ] && [ "$ST_PASS" -eq 14 ]; then
+    echo "self-test: PASS $ST_PASS of 14"
     exit 0
   fi
-  echo "self-test: FAIL $((13 - ST_PASS)) of 13"
+  echo "self-test: FAIL $((14 - ST_PASS)) of 14"
   exit 1
 }
 
