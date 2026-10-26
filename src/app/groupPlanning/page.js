@@ -182,7 +182,17 @@ export default function GroupPlanningPage() {
             lastSelectionRef.current = { groupId, poll: selectedPollParam };
             return;
         }
-        if (last.poll === selectedPollParam) return;
+        if (last.poll === selectedPollParam) {
+            // DECISION quick-261026-pi6-fix (F1): the drop record below is honoured for ONE
+            // render, the one that still carries the dropped value, and cleared on the next
+            // settled render, OVER keeping it until the parameter changes again, which skipped a
+            // re-tap of the same poll forever while its card said Viewing. Changing this is a
+            // decision, not a cleanup.
+            if (last.dropped !== undefined && selectedPollParam !== last.dropped) {
+                lastSelectionRef.current = { groupId, poll: selectedPollParam };
+            }
+            return;
+        }
         // A render that still carries the value this page just dropped as stale: the drop's own
         // re-render follows with the parameter gone, so loading here would fetch the fallback
         // twice. A malformed id drops with no await, inside the same commit as this effect.

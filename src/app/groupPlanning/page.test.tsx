@@ -943,6 +943,29 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(h.ce!.promptId).toBeNull();
     expect(h.ce!.hideVisualCalendar).toBe(true);
   });
+
+  // quick-261026-pi6-fix F1 (the reviewer's probe R-A, ported; a 404 so the stale path runs).
+  it('PI-17. re-tapping a poll whose first load was dropped as stale loads it again', async () => {
+    (promptAPI.getPromptById as Mock).mockRejectedValueOnce(new ApiError('not found', 'not_found', 404));
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+
+    act(() => onSelectPoll()(P2));
+    reRender(rerender);
+    await waitFor(() => expect(replaced).toHaveLength(1));
+    reRender(rerender);
+    await waitFor(() => expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(2));
+    await settledOn(P1);
+
+    // The poll is reachable now; the person taps the same card again.
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2) });
+    act(() => onSelectPoll()(P2));
+    expect(pushed).toHaveLength(2);
+    reRender(rerender);
+    expect(h.pss!.selectedPollId).toBe(P2);
+    await waitFor(() => expect(promptAPI.getPromptById).toHaveBeenCalledTimes(2));
+    await settledOn(P2);
+  });
 });
 
 // quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).
