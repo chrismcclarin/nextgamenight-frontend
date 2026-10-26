@@ -1030,10 +1030,13 @@ describe('the census scanner can actually fail (fixture harness)', () => {
 // this wave the live measurement on `<Button>` tags is small, and the roster is what the
 // scanner reported rather than what the plan predicted.
 
-// Every text-size utility: the named rungs xs to 9xl, and the length-unit arbitraries
-// text-[13px], text-[1.1rem] and text-[0.9em]. Each form also matches with a Tailwind v4
-// line-height suffix (text-lg/7) and a trailing important (text-sm!). A leading variant such as
-// md: is already stripped by STRIP_VARIANTS before the token reaches this pattern.
+// The text-size utilities W038 scoped below, not every one: the named rungs xs to 9xl, and the
+// px/rem/em length arbitraries text-[13px], text-[1.1rem] and text-[0.9em]. Each form also
+// matches with a Tailwind v4 line-height suffix (text-lg/7) and a trailing important (text-sm!).
+// A leading variant such as md: is already stripped by STRIP_VARIANTS before the token reaches
+// this pattern. Not matched (code review B-IN-01, 0 uses in the tree on 2026-10-25): the length:
+// type hint (text-[length:var(--x)], v4's text-(length:--x)), vw/vh/ch lengths, and clamp() or
+// calc() values.
 // DECISION Phase 88.6.2-14 (W038): length-unit arbitraries only (px, rem, em) over every
 // text-[…] value — a bracket holding var() or a hex is a COLOUR utility, and flagging it would
 // red legitimate colour arbitraries; 4xl to 9xl join the rung list, every rung also matches with
