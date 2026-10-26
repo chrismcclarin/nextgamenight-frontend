@@ -175,7 +175,7 @@ if (allSpecs.length === 0) {
  * the test's own title, without its describe path, so `--title-prefix D10` selects the
  * `test('D10…` declarations.
  */
-export function matchesSpec(file, specPath) {
+function matchesSpec(file, specPath) {
   const rel = specPath.startsWith('e2e/') ? specPath.slice('e2e/'.length) : specPath;
   return file === rel || file === specPath || file.endsWith('/' + rel);
 }
