@@ -12,7 +12,20 @@ import { describe, expect, it } from 'vitest';
 
 import { assertReadMethod } from '../../e2e/support/readHoldGuard';
 
-const REFUSAL = /^releaseToNetwork refused a (\S*) hold: only a GET or HEAD hold may be released to the network/;
+// The releaseToNetwork IMPLEMENTATION (the property whose value is an async arrow, not the
+// interface line), up to the next property: its first code statement must be the guard, on a
+// code line of its own, and settleAll must come after it (code review C-IN-03).
+function guardRunsFirst(inFlight: string): boolean {
+  const start = inFlight.search(/releaseToNetwork:\s*async\s*\(/);
+  if (start === -1) return false;
+  const end = inFlight.indexOf('abortAll:', start);
+  const body = inFlight.slice(start, end === -1 ? undefined : end);
+  const guard = body.search(/^\s*assertReadMethod\(\s*options\.method\s*\);/m);
+  const settle = body.search(/^\s*await settleAll\(/m);
+  return guard !== -1 && settle !== -1 && guard < settle;
+}
+
+const REFUSAL =/^releaseToNetwork refused a (\S*) hold: only a GET or HEAD hold may be released to the network/;
 
 describe('readHoldGuard — releaseToNetwork never hands a write to the network (Phase 88.6.2-11, code review C-ML3)', () => {
   it('assertReadMethod throws the releaseToNetwork refusal for every write method', () => {
@@ -43,6 +56,21 @@ describe('readHoldGuard — releaseToNetwork never hands a write to the network 
     // hold's own method.
     const inFlight = readFileSync(resolve(__dirname, '../../e2e/support/inFlight.ts'), 'utf8');
     expect(inFlight).toContain("import { assertReadMethod } from './readHoldGuard';");
-    expect(inFlight, 'releaseToNetwork no longer calls assertReadMethod').toMatch(/assertReadMethod\(\s*[A-Za-z_.]*method/);
+    expect(guardRunsFirst(inFlight), 'releaseToNetwork no longer calls assertReadMethod on a code line before settleAll').toBe(true);
+    // Code review C-IN-03: the pin reads the releaseToNetwork implementation only, so each of
+    // these mutants of the live file fails it (a whole-file match passed all three).
+    const live = '      assertReadMethod(options.method);\n      await settleAll((route) => route.fallback());';
+    expect(inFlight.split(live).length - 1, 'the live releaseToNetwork body moved; re-anchor the mutants').toBe(1);
+    const mutants = {
+      'the call after settleAll': inFlight.replace(live, '      await settleAll((route) => route.fallback());\n      assertReadMethod(options.method);'),
+      'the call commented out': inFlight.replace(live, '      // assertReadMethod(options.method);\n      await settleAll((route) => route.fallback());'),
+      'the call moved into release': inFlight
+        .replace(live, '      await settleAll((route) => route.fallback());')
+        .replace('release: (json: unknown, status = 200) => settleAll(', 'release: (json: unknown, status = 200) => assertReadMethod(options.method) ?? settleAll('),
+    };
+    for (const [name, text] of Object.entries(mutants)) {
+      expect(text, `mutant "${name}" did not change the file`).not.toBe(inFlight);
+      expect(guardRunsFirst(text), `mutant "${name}" passed the pin`).toBe(false);
+    }
   });
 });
