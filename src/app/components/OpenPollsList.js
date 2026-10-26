@@ -33,9 +33,10 @@ const OPEN_POLLS_SECTION_NAME = 'Open polls';
  * Unified list of open availability prompts (manual + auto) for a group.
  * Renders the "Start a poll" entry point for any non-pending active member,
  * the source label per prompt (`Started by [creator]` for manual, `From
- * [schedule name]` for auto — Plan 01 ships GroupPromptSettings.template_name
- * inline in the GET /prompts/open response), and a per-card KebabMenu close
- * action gated on the server-derived `can_close` flag.
+ * [schedule name]` for auto: the item's schedule_name first, which the backend
+ * derives per request from the schedule that fired the poll, then the settings
+ * include's template_name, then `From recurring schedule`), and a per-card
+ * KebabMenu close action gated on the server-derived `can_close` flag.
  *
  * @param {Object} props
  * @param {string} props.groupId - Group UUID
@@ -202,7 +203,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
           deliberately keeps BOTH, because its button lives in a persistent panel header rather
           than directly above the list body. Restoring the unconditional render is a decision. */}
       {canCreate && !showEmptyState && (
-        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured).  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
+        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured).  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (src/components/ui/Button.tsx ("LIVES ON THE cva BASE")), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
         <Button
           variant="primary"
           className="mb-4"
@@ -314,12 +315,18 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
 /**
  * OpenPollCard — single prompt row in the unified list.
  *
- * Source label rules (D-UI-02):
+ * Source label rules (D-UI-02, quick-261025-rl3):
  *   - Auto-prompt (created_by_settings_id != null):
- *       "From {GroupPromptSettings.template_name}"
- *       Falls back to "From recurring schedule" if the parent settings row
- *       has been deleted (rare; ON DELETE SET NULL on created_by_settings_id
- *       leaves the include null).
+ *       "From {schedule_name}", the current name of the schedule that fired
+ *       the poll, derived per request by the backend from the poll's own link.
+ *       Falls back to the settings include's template_name (a backend that
+ *       predates the link, or a settings row that still holds a name), then to
+ *       "From recurring schedule" (no link and no name on the settings row).
+ *       A DELETED settings row never reaches this arm: ON DELETE SET NULL clears
+ *       created_by_settings_id itself, so the poll renders through the manual
+ *       arm as "Started by a group member" (review 261025-rl3 FE-L1; no route
+ *       deletes a settings row today, only a group deletion, which removes the
+ *       group's polls with it).
  *   - Manual poll: "Started by {Creator.username}"
  *       Falls back to "a group member" if the Creator association is null.
  *
@@ -328,15 +335,19 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
  * flag still fails with 403 — see threat T-71.2-11 in plan.
  */
 function OpenPollCard({ prompt, group, closing, onClose }) {
+  // DECISION quick-261025-rl3 (261025-dzo review WR-02), backend half at backend:Sonnet/routes/availabilityPrompt.js ("DECISION quick-261025-rl3"):
+  // the automatic card names its schedule from the wire's schedule_name OVER the settings
+  // include's template_name. The backend derives schedule_name per request from the poll's own
+  // schedule link. The include's settings-level column is written by no backend route, so on its
+  // own the label could only ever print the fallback. The include read stays second, OVER
+  // dropping it, for a backend that predates the link and a settings row that still holds a
+  // name. Reading the include first, or dropping schedule_name, is a decision, not a cleanup.
   const isAuto = !!prompt.created_by_settings_id;
 
-  // Note: Plan 01 named the include attribute `template_name` (the actual
-  // model column). The route returns it under the alias `GroupPromptSetting`
-  // (Sequelize default), but to be defensive across alias variations we
-  // accept either shape.
+  // schedule_name is the primary source of the auto label; the settings alias (either shape) is the fallback.
   const settingsRow = prompt.GroupPromptSetting || prompt.GroupPromptSettings;
   const sourceLabel = isAuto
-    ? `From ${settingsRow?.template_name || 'recurring schedule'}`
+    ? `From ${prompt.schedule_name || settingsRow?.template_name || 'recurring schedule'}`
     : `Started by ${prompt.Creator?.username || 'a group member'}`;
 
   // Resolve game name from group.games when available — falls back to the
@@ -375,7 +386,7 @@ function OpenPollCard({ prompt, group, closing, onClose }) {
             is a prohibition outside the `Button` label (§4.2). It is a `<p>` and not an `<hN>`,
             so the A1 heading-`truncate` ruling does not reach it and `truncate` stays. */}
         <p className="font-bold text-content-primary truncate">{title}</p>
-        <p className="text-xs text-content-muted mt-0.5">{sourceLabel}</p>
+        <p className="text-xs text-content-muted mt-0.5 wrap-anywhere">{sourceLabel}</p>
         {deadlineDisplay && (
           <p className="text-xs text-content-secondary mt-1">
             Deadline: {deadlineDisplay}

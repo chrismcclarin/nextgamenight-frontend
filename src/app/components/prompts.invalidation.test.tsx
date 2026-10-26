@@ -123,8 +123,9 @@ describe('prompts trio integration (GAP13/GAP14)', () => {
     );
     const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
 
-    // Auto-prompt (can_close=true) renders with its source label + the kebab.
-    await screen.findByText('From Friday Game Night');
+    // Auto-prompt (can_close=true) renders with its source label + the kebab. The label is the
+    // fixture's schedule_name, which outranks the include's template_name (quick-261025-rl3).
+    await screen.findByText('From Thursday Catan');
     expect(screen.getByText(/Who is in for Catan/)).toBeInTheDocument();
 
     // The next open fetch returns the reduced set (auto-prompt removed).
@@ -149,7 +150,7 @@ describe('prompts trio integration (GAP13/GAP14)', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: promptKeys.openPolls('g1') }),
     );
     await waitFor(() =>
-      expect(screen.queryByText('From Friday Game Night')).not.toBeInTheDocument(),
+      expect(screen.queryByText('From Thursday Catan')).not.toBeInTheDocument(),
     );
     // The remaining manual poll is still rendered.
     expect(screen.getByText(/Who is in for Catan/)).toBeInTheDocument();

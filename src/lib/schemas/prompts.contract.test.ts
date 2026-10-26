@@ -1,27 +1,28 @@
-/**
- * Contract test (A3) — honors the 84-04 FOUNDATION rule for the TWO endpoints
- * migrated to a runtime schema THIS phase: each ships a committed test that runs
- * the ACTUAL safeParse against a captured real BE body, executed by the FE Vitest
- * runner (there is NO jest in the frontend).
- *
- * Fixtures are faithful to the route source of truth:
- *   - prompt-settings: groupPromptSettings.js `res.json({...})` ~line 141
- *   - open-prompts:    availabilityPrompt.js `res.json({ prompts: decorated })` ~line 585
- *     (each item = spread `p.toJSON()` PLUS computed `can_close`; `created_by_user_id`
- *     stripped server-side).
- *
- * NOTE: this sandbox has no live bearer token / network, so the bodies below are
- * authored field-for-field from the route `res.json(...)` source (the authoritative
- * shape), not copied from a live devtools capture. They mirror the real wire shape
- * the routes emit. (Documented as a deviation in 84-09-SUMMARY.md.)
- *
- * The fixtures are exported so the GAP12-14 tests reuse them (mutating copies for
- * the negative cases) rather than inventing new shapes.
- */
+// Contract test (A3) — honors the 84-04 FOUNDATION rule for the TWO endpoints
+// migrated to a runtime schema THIS phase: each ships a committed test that runs
+// the ACTUAL safeParse against a captured real BE body, executed by the FE Vitest
+// runner (there is NO jest in the frontend).
+//
+// Fixtures are faithful to the route source of truth:
+//   - prompt-settings:
+//       backend:Sonnet/routes/groupPromptSettings.js ("router.get('/:group_id/prompt-settings',")
+//   - open-prompts:
+//       backend:Sonnet/routes/availabilityPrompt.js ("res.json({ prompts: decorated })")
+//     (each item = the spread row PLUS the computed can_close and schedule_name;
+//     created_by_user_id and the settings include's template_config stripped server-side).
+//
+// NOTE: this sandbox has no live bearer token / network, so the bodies below are
+// authored field-for-field from the route res.json(...) source (the authoritative
+// shape), not copied from a live devtools capture. They mirror the real wire shape
+// the routes emit. (Documented as a deviation in 84-09-SUMMARY.md.)
+//
+// The fixtures are exported so the GAP12-14 tests reuse them (mutating copies for
+// the negative cases) rather than inventing new shapes.
 import { describe, it, expect } from 'vitest';
 import { promptSettingsSchema, openPromptsSchema } from './prompts';
 
-// Captured GET /groups/:id/prompt-settings body (groupPromptSettings.js ~141).
+// Captured GET /groups/:id/prompt-settings body, from
+// backend:Sonnet/routes/groupPromptSettings.js ("router.get('/:group_id/prompt-settings',")
 export const CAPTURED_PROMPT_SETTINGS_BODY = {
   id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
   group_id: 'a1b2c3d4-1111-2222-3333-444455556666',
@@ -91,7 +92,8 @@ export const CAPTURED_PROMPT_SETTINGS_BODY = {
   ],
 };
 
-// Captured GET /groups/:id/prompts/open body (availabilityPrompt.js ~585).
+// Captured GET /groups/:id/prompts/open body, from
+// backend:Sonnet/routes/availabilityPrompt.js ("res.json({ prompts: decorated })")
 export const CAPTURED_OPEN_PROMPTS_BODY = {
   prompts: [
     {
@@ -102,8 +104,12 @@ export const CAPTURED_OPEN_PROMPTS_BODY = {
       prompt_date: '2026-06-20T18:00:00.000Z',
       deadline: '2026-06-23T18:00:00.000Z',
       status: 'active',
-      week_identifier: '2026-W25',
+      // The worker's real dedup key: the ISO week plus the firing schedule's id.
+      week_identifier: '2026-W25-3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b',
       created_by_settings_id: 'sch-0001-aaaa-bbbb-cccc-000000000001',
+      // quick-261025-rl3: the firing schedule's link and its current name, derived per request.
+      schedule_id: '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b',
+      schedule_name: 'Thursday Catan',
       custom_message: null,
       blind_voting_enabled: false,
       auto_schedule_enabled: false,
@@ -126,6 +132,8 @@ export const CAPTURED_OPEN_PROMPTS_BODY = {
       status: 'pending',
       week_identifier: '2026-W25',
       created_by_settings_id: null,
+      schedule_id: null,
+      schedule_name: null,
       custom_message: 'Who is in for Catan?',
       blind_voting_enabled: false,
       auto_schedule_enabled: false,
@@ -169,6 +177,25 @@ describe('prompts.ts contract — real-body safeParse (84-04 foundation rule)', 
     const auto = result.data.prompts[0];
     expect(auto.GroupPromptSetting).toBeTruthy();
     expect(auto.GroupPromptSetting?.template_name).toBe('Friday Game Night');
+  });
+
+  it('K1. carries schedule_name: the auto item names its schedule, the manual item is null (quick-261025-rl3)', () => {
+    const result = openPromptsSchema.safeParse(CAPTURED_OPEN_PROMPTS_BODY);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.prompts[0].schedule_name).toBe('Thursday Catan');
+    expect(result.data.prompts[1].schedule_name).toBeNull();
+  });
+
+  it('K2. a non-string schedule_name degrades to null and the item is kept (quick-261025-rl3)', () => {
+    const body: any = structuredClone(CAPTURED_OPEN_PROMPTS_BODY);
+    body.prompts[0].schedule_name = 42;
+    const result = openPromptsSchema.safeParse(body);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.prompts.length).toBe(CAPTURED_OPEN_PROMPTS_BODY.prompts.length);
+    expect(result.data.prompts[0].id).toBe(CAPTURED_OPEN_PROMPTS_BODY.prompts[0].id);
+    expect(result.data.prompts[0].schedule_name).toBeNull();
   });
 
   it('preserves prompt-settings schedules + members[].id optionality', () => {
