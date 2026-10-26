@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { groupsAPI, promptAPI } from '../../lib/api';
+import { ApiError, groupsAPI, promptAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
 import ResponseDashboard from '../components/ResponseDashboard';
@@ -38,6 +38,8 @@ const AUTH_LOADING_MESSAGE = "Getting your group's plans...";
 // and the chip row's group name (read by screen readers; the row has no visible label).
 const SHOWING_LABEL = 'Showing';
 const SWITCH_POLL_LABEL = 'Switch poll';
+// The answers that mean a selected poll is gone or not this person's to read: a stale link.
+const STALE_POLL_STATUSES = [400, 403, 404];
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -294,6 +296,20 @@ export default function GroupPlanningPage() {
                         // group's poll here through a crafted link.
                         if (data?.prompt && data.prompt.group_id === forGroup) selected = data.prompt;
                     } catch (err) {
+                        /* DECISION quick-261026-pi6-fix (F2): a failed selected-poll load is split
+                           in two, OVER one silent fallback for both. A stale answer (400, 403 or
+                           404: a malformed, deleted or other-group poll) keeps the quiet path, a
+                           breadcrumb, the parameter dropped and the active poll shown. Anything
+                           else (a 5xx, a network failure) is a real failure: it reaches Sentry,
+                           the parameter and its history entry are KEPT, and it is rethrown so the
+                           poll-data banner and its Retry render, and Retry loads the same poll.
+                           A silent fallback for a transient failure showed another poll with no
+                           word of why and left a dead history entry. Changing this is a
+                           decision, not a cleanup. */
+                        if (!(err instanceof ApiError && STALE_POLL_STATUSES.includes(err.status))) {
+                            logger.error('Selected poll failed to load', err);
+                            throw err;
+                        }
                         logger.info('Selected poll did not load; showing the active poll:', errCtx(err));
                     }
                 }

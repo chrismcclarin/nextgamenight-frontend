@@ -56,6 +56,9 @@ const h = vi.hoisted(() => {
     rd: null as null | Record<string, unknown>,
     pssRoles: [] as unknown[],
     logInfo: vi.fn(),
+    // logger.error and logger.warn spies (quick-261026-pi6-fix F2 and F13).
+    logError: vi.fn(),
+    logWarn: vi.fn(),
     // The `state` prop most recently given to a FetchErrorBanner rendered with `compact`.
     compactState: null as null | { showError: boolean; retry: () => Promise<unknown> },
   };
@@ -112,7 +115,7 @@ vi.mock('@/app/components/PromptScheduleSection', () => ({
 // spy, `errCtx` REAL so the asserted ctx is what the call site passes.
 vi.mock('@/lib/logger', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/logger')>();
-  return { ...actual, logger: { ...actual.logger, info: h.logInfo } };
+  return { ...actual, logger: { ...actual.logger, info: h.logInfo, error: h.logError, warn: h.logWarn } };
 });
 
 // PASS-THROUGH: renders the REAL FetchErrorBanner (the arms assert its real region, line and
@@ -965,6 +968,27 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(h.pss!.selectedPollId).toBe(P2);
     await waitFor(() => expect(promptAPI.getPromptById).toHaveBeenCalledTimes(2));
     await settledOn(P2);
+  });
+
+  // quick-261026-pi6-fix F2: a transient failure is not a stale link.
+  it('FX-2. a selected poll that fails with a 500 shows the banner, keeps the parameter, reports once, and Retry loads it', async () => {
+    const user = userEvent.setup();
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
+    (promptAPI.getPromptById as Mock).mockRejectedValueOnce(new ApiError('failed', 'internal', 500));
+    render(<GroupPlanningPage />);
+    expect(await screen.findByText("We couldn't load the poll responses")).toBeInTheDocument();
+    expect(replaced).toHaveLength(0);
+    expect(h.PARAMS.get('poll')).toBe(P2);
+    expect(h.logError).toHaveBeenCalledTimes(1);
+    expect(h.logError).toHaveBeenCalledWith('Selected poll failed to load', expect.any(ApiError));
+    expect(promptAPI.getActivePrompt).not.toHaveBeenCalled();
+
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2) });
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await settledOn(P2);
+    expect(promptAPI.getPromptById).toHaveBeenCalledTimes(2);
+    expect(promptAPI.getPromptById).toHaveBeenLastCalledWith(P2);
+    expect(replaced).toHaveLength(0);
   });
 });
 
