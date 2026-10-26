@@ -13,8 +13,11 @@
 //   plan 88.6.1-70's RefreshFailedNotice; an access or gone answer withdraws them under the full
 //   banner (C10); focus never falls to <body> when they leave (C12). Tests RF-1..RF-11.
 //
-// Numbering: 1-3, 6-10, then RF-1..RF-11. Numbers 4 and 5 are retired here; plan 88.6.1-75's
-// tests reuse the file-scope mocks, render wrapper and deferred helper.
+// - quick-261025-rl3 (261025-dzo review WR-02): an automatic card reads its source label from the
+//   wire's schedule_name, then the include's template_name, then the fallback. Tests SL-1..SL-5.
+//
+// Numbers 4 and 5 are retired here; plan 88.6.1-75's tests reuse the file-scope mocks, render
+// wrapper and deferred helper. Numbering: 1-3, 6-10, then RF-1..RF-11, then SL-1..SL-5.
 // Every comment is a `//` line (FE-TESTING-CONVENTIONS CF-9).
 import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -583,5 +586,70 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Started by Ben')).toBeInTheDocument();
     client.clear();
+  });
+});
+
+// An automatic poll as the open-polls route sends it: the settings link set, no Creator.
+function autoCheckIn(id: string, extra: Record<string, unknown> = {}) {
+  return checkIn(id, 'unused', { created_by_settings_id: 'set-1', Creator: null, ...extra });
+}
+
+describe('OpenPollsList: the automatic card names its schedule (quick-261025-rl3, dzo review WR-02)', () => {
+  it('SL-1. schedule_name wins over the include template_name', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({
+      prompts: [
+        autoCheckIn('pauto', {
+          schedule_name: 'Sunday Wingspan',
+          GroupPromptSetting: { id: 'set-1', template_name: 'Old settings name' },
+        }),
+      ],
+    } as never);
+    renderList();
+    // Positive text first (CF-26), so the absence below is not read before the list paints.
+    expect(await screen.findByText('From Sunday Wingspan')).toBeInTheDocument();
+    expect(screen.queryByText('From Old settings name')).toBeNull();
+  });
+
+  it('SL-2. with no schedule_name the include template_name is the fallback', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({
+      prompts: [autoCheckIn('pauto', { GroupPromptSetting: { id: 'set-1', template_name: 'Old settings name' } })],
+    } as never);
+    renderList();
+    expect(await screen.findByText('From Old settings name')).toBeInTheDocument();
+  });
+
+  it('SL-3. with neither name the card reads From recurring schedule', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({
+      prompts: [autoCheckIn('pauto', { GroupPromptSetting: null })],
+    } as never);
+    renderList();
+    expect(await screen.findByText('From recurring schedule')).toBeInTheDocument();
+  });
+
+  it('SL-4. a non-string schedule_name degrades to the fallback and the card stays', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({
+      prompts: [
+        autoCheckIn('pauto', {
+          schedule_name: 42,
+          GroupPromptSetting: { id: 'set-1', template_name: null },
+        }),
+      ],
+    } as never);
+    renderList();
+    const label = await screen.findByText('From recurring schedule');
+    // The card is present: the label sits inside a list row, beside the row title.
+    const card = label.closest('li') as HTMLElement;
+    expect(card, 'the automatic card is rendered').not.toBeNull();
+    expect(within(card).getByText('Availability check-in')).toBeInTheDocument();
+    expect(screen.queryByText('From 42')).toBeNull();
+  });
+
+  it('SL-5. a manual card with a stray schedule_name still reads Started by its creator', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({
+      prompts: [checkIn('pa', 'Ana', { schedule_name: 'Sunday Wingspan' })],
+    } as never);
+    renderList();
+    expect(await screen.findByText('Started by Ana')).toBeInTheDocument();
+    expect(screen.queryByText('From Sunday Wingspan')).toBeNull();
   });
 });

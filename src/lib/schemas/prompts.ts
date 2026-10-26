@@ -4,13 +4,14 @@
  * These are a FAITHFUL, PERMISSIVE mirror of the REAL backend res.json bodies —
  * authored from the route source of truth, NOT guessed from the untyped api.ts
  * calls:
- *   - prompt-settings:  periodictabletopbackend_v2/Sonnet/routes/groupPromptSettings.js
- *                       `res.json({...})` ~line 141 (member-visible: requires ACTIVE
- *                       MEMBERSHIP, not admin).
- *   - open-prompts:     periodictabletopbackend_v2/Sonnet/routes/availabilityPrompt.js
- *                       `res.json({ prompts: decorated })` ~line 585 (each item is a
- *                       spread `p.toJSON()` PLUS the computed `can_close` auth field;
- *                       `created_by_user_id` is stripped server-side).
+ *   - prompt-settings:
+ *       backend:Sonnet/routes/groupPromptSettings.js ("router.get('/:group_id/prompt-settings',")
+ *       member-visible: requires ACTIVE MEMBERSHIP, not admin.
+ *   - open-prompts:
+ *       backend:Sonnet/routes/availabilityPrompt.js ("res.json({ prompts: decorated })")
+ *       each item is the spread row PLUS the computed can_close auth field and the
+ *       computed schedule_name; created_by_user_id and the settings include's
+ *       template_config are stripped server-side.
  *
  * Design rules (84 threat register T-84-06 / T-84-07):
  *   - FIELD-LEVEL tolerance (M5): optional fields carry `.catch(...)` and nested
@@ -113,8 +114,9 @@ export const promptCreatorSchema = z
   })
   .passthrough();
 
-// Singular `GroupPromptSetting` alias (Sequelize default belongsTo alias). The UI
-// consumes `.template_name` for the "From [schedule name]" label — MUST survive.
+// Singular `GroupPromptSetting` alias (Sequelize default belongsTo alias). The UI reads
+// `.template_name` only as the fallback after the item's schedule_name for the
+// "From [schedule name]" label (quick-261025-rl3); the alias MUST still survive parsing.
 export const promptGroupSettingAliasSchema = z
   .object({
     id: z.string().nullable().optional(),
@@ -131,6 +133,8 @@ export const promptItemSchema = z
     group_id: z.string().nullable().optional(),
     game_id: z.string().nullable().optional(),
     created_by_settings_id: z.string().nullable().optional(),
+    // The schedule that fired an automatic poll, by its current name, derived per request by the backend; display-only, so a malformed value degrades to null and the item is kept (the same field-level tolerance as the two associations below).
+    schedule_name: z.string().nullable().optional().catch(null),
     deadline: z.string().nullable().optional(),
     prompt_date: z.string().nullable().optional(),
     custom_message: z.string().nullable().optional(),
