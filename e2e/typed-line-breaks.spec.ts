@@ -340,7 +340,7 @@ function targetsFor(surface: Surface, probe: Probe): Target[] {
   if (surface === 'check-ins') {
     return values.checkIns.map((value) => ({
       site: `check-in message ${JSON.stringify(value.slice(0, 12))}`,
-      tag: 'p',
+      tag: 'span',
       text: `${OPEN_QUOTE}${rendered(value)}${CLOSE_QUOTE}`,
       expected: 1,
     }));

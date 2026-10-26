@@ -276,3 +276,18 @@ describe('Check-ins panel classes and loading badge (W018, G4)', () => {
     expect(dotted).toHaveLength(0);
   });
 });
+
+// quick-261026-pi6 (owner R1): the section passes the planning page's selection through to the
+// open-polls list. Every comment in this block is a // line (CF-9).
+describe('Check-ins: the selection passes through to the cards (quick-261026-pi6)', () => {
+  it('PSS-SEL-1. the selected poll card is pressed and a card tap reaches onSelectPoll', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never);
+    const onSelectPoll = vi.fn();
+    renderSection({ defaultExpanded: true, selectedPollId: 'pb', onSelectPoll });
+    await screen.findByText('Started by Ben');
+    expect(screen.getByRole('button', { name: /Started by Ben/ })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /Started by Ana/ }));
+    expect(onSelectPoll).toHaveBeenCalledTimes(1);
+    expect(onSelectPoll).toHaveBeenCalledWith('pa');
+  });
+});

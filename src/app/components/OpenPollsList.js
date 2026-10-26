@@ -47,8 +47,20 @@ const OPEN_POLLS_SECTION_NAME = 'Open polls';
  * @param {{ current: HTMLElement | null }} [props.focusFallbackRef] - Where focus goes after an
  *   ended check-in's row leaves the DOM (Phase 88.6.1-29, H4): the host's own expand control.
  *   When omitted, the shared focus-recovery hook floors to the page (`main h1`, plan 88.6.1-04).
+ * @param {string | null} [props.selectedPollId] - The id of the poll the planning page's
+ *   dashboard shows (quick-261026-pi6); its card wears the selected border and the Viewing tag.
+ * @param {(pollId: string) => void} [props.onSelectPoll] - Called with a poll's id when its card
+ *   body is tapped (quick-261026-pi6). Without it the card body is not a control.
  */
-export default function OpenPollsList({ groupId, group, userRole, currentUserDbId, focusFallbackRef }) {
+export default function OpenPollsList({
+  groupId,
+  group,
+  userRole,
+  currentUserDbId,
+  focusFallbackRef,
+  selectedPollId,
+  onSelectPoll,
+}) {
   const [showStartPoll, setShowStartPoll] = useState(false);
   // Req 4 in-flight latch, keyed per check-in id: the ref refuses synchronously, the state
   // renders the End item's `ariaDisabled`. See DECISION Phase 88.6.1-29 (Req 4) above handleClose.
@@ -291,6 +303,8 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
                   group={group}
                   closing={closingPromptIds.has(p.id)}
                   onClose={handleClose}
+                  selected={typeof onSelectPoll === 'function' && p.id === selectedPollId}
+                  onSelect={onSelectPoll}
                 />
               ))}
             </ul>
@@ -311,6 +325,118 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
     </div>
   );
 }
+
+// The card's title when a poll has no game (quick-261026-pi6: hoisted so the chips can tell a
+// named poll from a generic one; the literal lives here once).
+const GENERIC_POLL_TITLE = 'Availability check-in';
+// Chip and Showing labels for a generic MANUAL poll (coordinator ruling 2, 2026-10-26): the
+// starter's name plus this suffix, or the unnamed form when the starter is unknown. Straight
+// apostrophe (U+0027) only; the card's own source line keeps its own fallback.
+const MANUAL_POLL_LABEL_SUFFIX = "'s check-in";
+const UNNAMED_STARTER_POLL_LABEL = "A group member's check-in";
+
+/**
+ * pollTitle — the poll's title as the card shows it: the poll's game from group.games (name,
+ * then title), else the generic title (quick-261026-pi6, shared with the planning page).
+ *
+ * @param {Object} prompt
+ * @param {Object} [group]
+ * @returns {string}
+ */
+export function pollTitle(prompt, group) {
+  if (prompt?.game_id && Array.isArray(group?.games)) {
+    const g = group.games.find((x) => x.id === prompt.game_id);
+    const name = g?.name || g?.title;
+    if (name) return name;
+  }
+  return GENERIC_POLL_TITLE;
+}
+
+/**
+ * pollSource — who or what started the poll (quick-261026-pi6, shared with the chip labels):
+ * isAuto from the settings link, and name, the schedule's name for an automatic poll or the
+ * starter's username for a manual one, each with its fallback.
+ *
+ * @param {Object} prompt
+ * @returns {{ isAuto: boolean, name: string }}
+ */
+export function pollSource(prompt) {
+  // DECISION quick-261025-rl3 (261025-dzo review WR-02), backend half at backend:Sonnet/routes/availabilityPrompt.js ("DECISION quick-261025-rl3"):
+  // the automatic card names its schedule from the wire's schedule_name OVER the settings
+  // include's template_name. The backend derives schedule_name per request from the poll's own
+  // schedule link. The include's settings-level column is written by no backend route, so on its
+  // own the label could only ever print the fallback. The include read stays second, OVER
+  // dropping it, for a backend that predates the link and a settings row that still holds a
+  // name. Reading the include first, or dropping schedule_name, is a decision, not a cleanup.
+  const isAuto = !!prompt.created_by_settings_id;
+
+  // schedule_name is the primary source of the auto label; the settings alias (either shape) is the fallback.
+  const settingsRow = prompt.GroupPromptSetting || prompt.GroupPromptSettings;
+  const name = isAuto
+    ? prompt.schedule_name || settingsRow?.template_name || 'recurring schedule'
+    : prompt.Creator?.username || 'a group member';
+  return { isAuto, name };
+}
+
+/**
+ * pollChipLabels — one label per open poll for the planning page's chips and Showing line
+ * (quick-261026-pi6, brief B7, coordinator ruling 2): the game name when the poll has one; for a
+ * generic automatic poll the schedule name chain of pollSource; for a generic manual poll the
+ * starter's name plus the check-in suffix, or the unnamed form. When two or more polls share a
+ * label, each one with a deadline gets a comma and its date; labels that still collide stay.
+ *
+ * @param {Object[]} prompts
+ * @param {Object} [group]
+ * @returns {Map<string, string>} poll id to label
+ */
+export function pollChipLabels(prompts, group) {
+  const list = Array.isArray(prompts) ? prompts : [];
+  const base = new Map();
+  for (const p of list) {
+    let label = pollTitle(p, group);
+    if (label === GENERIC_POLL_TITLE) {
+      const { isAuto, name } = pollSource(p);
+      if (isAuto) {
+        label = name;
+      } else {
+        const starter = p.Creator?.username;
+        label = starter ? `${starter}${MANUAL_POLL_LABEL_SUFFIX}` : UNNAMED_STARTER_POLL_LABEL;
+      }
+    }
+    base.set(p.id, label);
+  }
+  const uses = new Map();
+  for (const label of base.values()) uses.set(label, (uses.get(label) || 0) + 1);
+  const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+  const labels = new Map();
+  for (const p of list) {
+    const label = base.get(p.id);
+    const due = p.deadline ? new Date(p.deadline) : null;
+    if (uses.get(label) > 1 && due && !Number.isNaN(due.getTime())) {
+      labels.set(p.id, `${label}, ${dateFormat.format(due)}`);
+    } else {
+      labels.set(p.id, label);
+    }
+  }
+  return labels;
+}
+
+/* DECISION quick-261026-pi6 (owner R2, 2026-10-26, against the mockup): the selected card is a
+   2px border in the link colour plus a Viewing tag above the title, OVER a left accent rail and
+   OVER a tinted background (both rejected at the mockup); both cells pad one pixel less when
+   selected so the border does not grow the card; the tag is aria-hidden because aria-pressed
+   already says selected. Changing this is a decision, not a cleanup. */
+const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex items-start';
+const CARD_ROW_SELECTED_CLASS = 'bg-surface-card border-2 border-content-link rounded-card flex items-start';
+const CARD_BODY_BUTTON_CLASS =
+  'min-w-0 flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-3';
+const CARD_BODY_BUTTON_SELECTED_CLASS =
+  'min-w-0 flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-[11px]';
+const CARD_BODY_STATIC_CLASS = 'min-w-0 flex-1 p-3';
+const CARD_KEBAB_CELL_CLASS = 'shrink-0 py-3 pr-3';
+const CARD_KEBAB_CELL_SELECTED_CLASS = 'shrink-0 py-[11px] pr-[11px]';
+const VIEWING_TAG = 'Viewing';
+const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wide text-content-link mb-0.5';
 
 /**
  * OpenPollCard — single prompt row in the unified list.
@@ -333,34 +459,20 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
  * KebabMenu visibility is gated on the server-derived `can_close` flag.
  * Backend re-validates on PATCH (defense in depth) so a forged client-side
  * flag still fails with 403 — see threat T-71.2-11 in plan.
+ *
+ * Selection (quick-261026-pi6): with onSelect the card body is a button that calls it with the
+ * poll's id; selected marks the poll the planning page's dashboard shows.
  */
-function OpenPollCard({ prompt, group, closing, onClose }) {
-  // DECISION quick-261025-rl3 (261025-dzo review WR-02), backend half at backend:Sonnet/routes/availabilityPrompt.js ("DECISION quick-261025-rl3"):
-  // the automatic card names its schedule from the wire's schedule_name OVER the settings
-  // include's template_name. The backend derives schedule_name per request from the poll's own
-  // schedule link. The include's settings-level column is written by no backend route, so on its
-  // own the label could only ever print the fallback. The include read stays second, OVER
-  // dropping it, for a backend that predates the link and a settings row that still holds a
-  // name. Reading the include first, or dropping schedule_name, is a decision, not a cleanup.
-  const isAuto = !!prompt.created_by_settings_id;
-
-  // schedule_name is the primary source of the auto label; the settings alias (either shape) is the fallback.
-  const settingsRow = prompt.GroupPromptSetting || prompt.GroupPromptSettings;
-  const sourceLabel = isAuto
-    ? `From ${prompt.schedule_name || settingsRow?.template_name || 'recurring schedule'}`
-    : `Started by ${prompt.Creator?.username || 'a group member'}`;
+function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSelect }) {
+  // The source label and the title come from the shared helpers above, so the card and the
+  // planning page's chips can never disagree (quick-261026-pi6).
+  const { isAuto, name: sourceName } = pollSource(prompt);
+  const sourceLabel = isAuto ? `From ${sourceName}` : `Started by ${sourceName}`;
 
   // Resolve game name from group.games when available — falls back to the
   // generic title when the prompt has no associated game.
-  const gameName = (() => {
-    if (!prompt.game_id) return null;
-    if (Array.isArray(group?.games)) {
-      const g = group.games.find((x) => x.id === prompt.game_id);
-      return g?.name || g?.title || null;
-    }
-    return null;
-  })();
-  const title = gameName || 'Availability check-in';
+  const title = pollTitle(prompt, group);
+  const selectable = typeof onSelect === 'function';
 
   // Format deadline in viewer's local timezone using Intl.
   const deadlineDisplay = (() => {
@@ -379,51 +491,89 @@ function OpenPollCard({ prompt, group, closing, onClose }) {
     }
   })();
 
+  const body = (
+    <>
+      {selected && (
+        <span aria-hidden="true" className={VIEWING_TAG_CLASS}>
+          {VIEWING_TAG}
+        </span>
+      )}
+      {/* §4.5 HIERARCHY outcome: 600 -> 700. This is the row's one primary string, and 600
+          is a prohibition outside the `Button` label (§4.2). It is a `<p>` and not an `<hN>`,
+          so the A1 heading-`truncate` ruling does not reach it and `truncate` stays.
+          AMENDED quick-261026-pi6: it is now a block span, not a paragraph, because the card body
+          is a button (phrasing content only); it is still not a heading, so `truncate` stays. */}
+      <span className="block font-bold text-content-primary truncate">{title}</span>
+      <span className="block text-xs text-content-muted mt-0.5 wrap-anywhere">{sourceLabel}</span>
+      {deadlineDisplay && (
+        <span className="block text-xs text-content-secondary mt-1">
+          Deadline: {deadlineDisplay}
+        </span>
+      )}
+      {/* DECISION Phase 88.6.1-29 (R10 / AC-31, shared rule 12): `whitespace-pre-line` +
+          `wrap-anywhere`, the one pair decided for all five R10 sites so that plans 29, 38 and 52
+          agree, so a check-in note keeps the line breaks people type. REJECTED:
+          `whitespace-pre-wrap` (it keeps runs of spaces and leading indentation, which a note does
+          not need, and the five sites must not diverge). REJECTED: splitting the text into line
+          elements or rendering markup (SPEC Constraint: user text renders as text only).
+          CHOSEN as well (owner ruling #115, 2026-10-13): the value passes through plan
+          88.6.1-84's shared `collapseBlankLines`, so a run of three or more breaks renders as one
+          blank line, OVER rendering every break as typed (a flood of blank lines pushes the card
+          off a phone screen) and OVER a server cap (it would change stored text); the stored
+          message is untouched. Removing the call is a decision, not a cleanup.
+          AMENDED quick-261026-pi6: the element is a block span inside the card's button (phrasing
+          content only); the class pair and the `collapseBlankLines` call are unchanged. */}
+      {prompt.custom_message && (
+        <span className="block text-sm text-content-secondary mt-2 italic whitespace-pre-line wrap-anywhere">
+          &ldquo;{collapseBlankLines(prompt.custom_message)}&rdquo;
+        </span>
+      )}
+    </>
+  );
+
   return (
-    <li className="bg-surface-card border border-line rounded-card p-3 flex items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        {/* §4.5 HIERARCHY outcome: 600 -> 700. This is the row's one primary string, and 600
-            is a prohibition outside the `Button` label (§4.2). It is a `<p>` and not an `<hN>`,
-            so the A1 heading-`truncate` ruling does not reach it and `truncate` stays. */}
-        <p className="font-bold text-content-primary truncate">{title}</p>
-        <p className="text-xs text-content-muted mt-0.5 wrap-anywhere">{sourceLabel}</p>
-        {deadlineDisplay && (
-          <p className="text-xs text-content-secondary mt-1">
-            Deadline: {deadlineDisplay}
-          </p>
-        )}
-        {/* DECISION Phase 88.6.1-29 (R10 / AC-31, shared rule 12): `whitespace-pre-line` +
-            `wrap-anywhere`, the one pair decided for all five R10 sites so that plans 29, 38 and 52
-            agree, so a check-in note keeps the line breaks people type. REJECTED:
-            `whitespace-pre-wrap` (it keeps runs of spaces and leading indentation, which a note does
-            not need, and the five sites must not diverge). REJECTED: splitting the text into line
-            elements or rendering markup (SPEC Constraint: user text renders as text only).
-            CHOSEN as well (owner ruling #115, 2026-10-13): the value passes through plan
-            88.6.1-84's shared `collapseBlankLines`, so a run of three or more breaks renders as one
-            blank line, OVER rendering every break as typed (a flood of blank lines pushes the card
-            off a phone screen) and OVER a server cap (it would change stored text); the stored
-            message is untouched. Removing the call is a decision, not a cleanup. */}
-        {prompt.custom_message && (
-          <p className="text-sm text-content-secondary mt-2 italic whitespace-pre-line wrap-anywhere">
-            &ldquo;{collapseBlankLines(prompt.custom_message)}&rdquo;
-          </p>
-        )}
-      </div>
+    <li className={selected ? CARD_ROW_SELECTED_CLASS : CARD_ROW_CLASS}>
+      {/* DECISION quick-261026-pi6 (owner R1, 2026-10-26): the whole card body is ONE native
+          button that selects the poll, OVER a title-only link (one truncated line is a small
+          target, and the schedule name and deadline would be dead to the touch) and OVER a
+          role="button" div, the Check-ins header's choice at
+          src/app/components/PromptScheduleSection.js ("DECISION Phase 88-28 (Req 4)"), which kept
+          its markup; here the text lines become block spans, the phrasing content a button
+          allows, and the native element brings its own keyboard contract. The kebab menu stays
+          the row's sibling, OUTSIDE the button, OVER nesting it (a control inside a control;
+          ending a check-in must never select). Without onSelectPoll the body is a plain div, so
+          no mount ships a control that does nothing. Text inside a button cannot be
+          drag-selected; accepted for this card. Changing any of this is a decision, not a
+          cleanup. */}
+      {selectable ? (
+        <button
+          type="button"
+          aria-pressed={selected}
+          onClick={() => onSelect(prompt.id)}
+          className={selected ? CARD_BODY_BUTTON_SELECTED_CLASS : CARD_BODY_BUTTON_CLASS}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className={CARD_BODY_STATIC_CLASS}>{body}</div>
+      )}
 
       {prompt.can_close === true && (
-        <KebabMenu
-          ariaLabel="Check-in actions"
-          items={[
-            {
-              label: 'End check-in',
-              danger: true,
-              twoTap: true,
-              confirmLabel: 'Tap again to end',
-              ariaDisabled: closing,
-              onClick: () => onClose(prompt.id),
-            },
-          ]}
-        />
+        <div className={selected ? CARD_KEBAB_CELL_SELECTED_CLASS : CARD_KEBAB_CELL_CLASS}>
+          <KebabMenu
+            ariaLabel="Check-in actions"
+            items={[
+              {
+                label: 'End check-in',
+                danger: true,
+                twoTap: true,
+                confirmLabel: 'Tap again to end',
+                ariaDisabled: closing,
+                onClick: () => onClose(prompt.id),
+              },
+            ]}
+          />
+        </div>
       )}
     </li>
   );
